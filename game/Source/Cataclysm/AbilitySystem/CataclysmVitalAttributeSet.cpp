@@ -21,6 +21,8 @@
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For that Bleeding's roll, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
 // For every chance to apply an ailment a blow carried, a blunt weapon's stun
 // among them. Issue #899.
 #include "AbilitySystem/CataclysmAilments.h"
@@ -2546,7 +2548,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const float Chance =
 					Offence ? Offence->GetBleedOnCritChance() : 0.0f;
 
-				if (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance)
+				if (Chance > 0.0f && CataclysmPercentDraw::Draw() < Chance)
 				{
 					// THE DESIGNED NUMBERS AND NOT INVENTED ONES. The node says
 					// only "apply Bleeding" and states neither a magnitude nor a

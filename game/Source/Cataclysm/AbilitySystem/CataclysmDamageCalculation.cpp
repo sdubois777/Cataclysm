@@ -21,6 +21,8 @@
 #include "Items/CataclysmItem.h"
 // For the multiplier a hold puts on everything one character takes, at step 6. Ruled 2026-10-19.
 #include "AbilitySystem/CataclysmDamageTakenMultiplier.h"
+// For the evasion, critical strike and block rolls, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
@@ -833,7 +835,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated && Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
-											   : FMath::FRandRange(0.0f, 100.0f);
+											   : CataclysmPercentDraw::Draw();
 		// ASKED FOR, WITH THE BLOW, for the reason the armour step above gives.
 		// Issue #947. Evasion was the last defensive stat still read straight
 		// off the attribute, so a modifier carrying a condition was dropped in
@@ -876,7 +878,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	if (Hit.CritChance > 0.0f && Hit.CritMultiplier > 0.0f)
 	{
 		const float Roll = CritRoll >= 0.0f ? CritRoll
-											: FMath::FRandRange(0.0f, 100.0f);
+											: CataclysmPercentDraw::Draw();
 		if (Roll < Hit.CritChance)
 		{
 			Result.bWasCritical = true;
@@ -900,7 +902,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	if (Combat && !Hit.bCannotBeMitigated)
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
-											 : FMath::FRandRange(0.0f, 100.0f);
+											 : CataclysmPercentDraw::Draw();
 		// ASKED FOR, WITH THE BLOW, the same as evasion above and armour below.
 		// Issue #947. One authored enchantment needs it -- "You cannot evade or
 		// block melee attacks" -- and that row needs BOTH this and the evasion
@@ -929,6 +931,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// rolled, because `FRandRange` can return 100 itself. Issue #2201: the
 			// block roll above and the other percentage rolls still compare
 			// strictly and wait on that issue's shared fix.
+			// SINCE #2201 evasion, the critical strike roll and the block roll
+			// above are drawn by `CataclysmPercentDraw::Draw`, which is below 100,
+			// so they still compare strictly and a chance of 100 succeeds on every
+			// roll; this roll keeps `FRandRange` and its guard.
 			// AND WHAT IT REMOVED, which the block event carries. Issue #1833
 			// group E part 3.
 			const float BeforeBlock = Damage;

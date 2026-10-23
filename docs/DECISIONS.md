@@ -2,6 +2,257 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — A chance of 100 never fails its roll at the seven rolls that had no guard: evasion, critical strike, block, the cooldown skip, the two contagion spreads and bleed on a critical strike now draw from 0 up to but not 100
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` (new, header only: the namespace
+`CataclysmPercentDraw`, with `FromFraction`, `Draw` and the constant `HighestDraw`); the draw at seven rolls, an include
+and, at two of them, one comment sentence, in `CataclysmDamageCalculation.cpp`, `CataclysmGameplayAbility.cpp`,
+`CataclysmContagion.cpp` and `CataclysmVitalAttributeSet.cpp`, all under `game/Source/Cataclysm/AbilitySystem/`; and
+`game/Source/Cataclysm/Tests/CataclysmPercentDrawTests.cpp` (new, three tests in `Cataclysm.PercentDraw.`). No comparison,
+no pin, no console variable, no data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or
+`game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. **This closes
+[#2201](https://github.com/sdubois777/Cataclysm/issues/2201).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** A second session wrote the header, the seven lines, the tests and this entry under the
+  enchantment session's brief 70. It does not build Unreal. Until "THE WINDOW'S RUN" below is filled in, no line here has
+  been compiled and no test here has been seen to pass or to fail.
+- **The rate is arithmetic, not measured.** A roll at a chance of 100 failed 1 time in 32,768 at each of the seven rolls:
+  `FRand()` has 32,768 values on Windows, because `RAND_MAX` is `0x7fff` (`stdlib.h` of the Windows SDK 10.0.22621.0, line
+  348), and one of them is exactly 1.0. Nobody counted rolls, and no failed roll was ever seen in play or in a test. The
+  fault was found by reading.
+- **A play change, at a chance of exactly 100 and at nothing else.** At 100% evasion, critical strike, block, or bleed on a
+  critical strike, the event now happens on every roll. At the cooldown skip and the two contagion spreads the same holds,
+  but the most any authored source gives them is below 100 (16, 40 and 8, from the ruling recorded in the entry of
+  2026-10-09 on the ailment rolls; not counted again here), so in play nothing changes there today. **A chance below 100 is
+  rolled as before on every draw but the one of exactly 1.0**, which used to fail every chance and now succeeds at any
+  chance above 99.99999.
+- **Every pinned roll is unchanged.** A pin bypasses the draw at every one of the seven, so `Cataclysm.CritRoll` and
+  `Cataclysm.BlockRoll` at 100 still mean "never", and so do `Cataclysm.CooldownSkipRoll` at 100 and a roll of 100 handed to
+  `Resolve` or to the two contagion functions.
+- **One statement that this change makes stale is left as it is,** because no ruling names it: the comment above
+  `Cataclysm.BlockRoll` in `CataclysmVitalAttributeSet.cpp` (about lines 100 to 105) still says "a chance of 100 can still
+  miss on a roll of exactly 100". After this change it can do so only through the pin. See the judgements.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- at 100% evasion, critical strike, block or bleed on a critical strike, the event happens on every roll
+
+### WHO RULED
+
+The coordinating session's ruling of 2026-10-23, verbatim as relayed:
+
+> #2201: the half-open draw at the 7 sites. Comparisons and pins unchanged; the stale comment at DamageCalculation.cpp
+> 929-931 corrected. Record the rate as arithmetic, not measured.
+
+Brief 70 adds the comment at `CataclysmGameplayAbility.cpp` 821-822 to the one the ruling names. No owner sentence is
+quoted; the owner's design statements that bear on it are listed under "What was read first".
+
+### WHAT WAS READ FIRST, ON DEVELOPMENT c514b6746
+
+**The engine (Unreal Engine 5.8).** `UnrealMathUtility.h` line 313: `FRandRange(float InMin, float InMax)` returns
+`InMin + (InMax - InMin) * FRand()`. `GenericPlatformMath.h` lines 611 to 617: `FRand()` is documented "Returns a random
+float between 0 and 1, inclusive" and returns `(Rand() & RandMax) / (float)RandMax`, where `RandMax` is `RAND_MAX` capped
+at `0x00ffffff`. So `FRandRange(0.0f, 100.0f)` returns exactly 0 and exactly 100, each for one of the 32,768 values of
+`Rand()` on Windows. `UnrealMathUtility.h` lines 274 to 279: `RandHelper(A)` returns `[0, A)` by
+`Min(TruncToInt(FRand() * A), A - 1)`, which is how the engine itself keeps the top end out. No Windows file of the engine
+overrides `FRand`. `FRandomStream` draws from [0, 1) and is not in this class.
+
+**The seven rolls, each compared so that a chance of 100 failed on a draw of exactly 100.** Lines at c514b6746:
+
+| Roll | Where | Draw (line) | Comparison (line) | Pin |
+| :-- | :-- | :-- | :-- | :-- |
+| evasion | `UCataclysmDamageCalculation::Resolve`, `CataclysmDamageCalculation.cpp` | 836 | `Roll < DefenderStat(... "evasion" ...)` (846) | the parameter `EvasionRoll`; the game passes -1 (`CataclysmVitalAttributeSet.cpp` 1173) |
+| critical strike | same | 879 | `Roll < Hit.CritChance` (880) | the parameter `CritRoll`, which the game fills from `Cataclysm.CritRoll` (1174) |
+| block | same | 903 | `Roll < DefenderStat(... "block_chance" ...)` (919) | the parameter `BlockRoll`, from `Cataclysm.BlockRoll` (1173) |
+| the cooldown skip | `UCataclysmGameplayAbility::CooldownIsSkipped`, `CataclysmGameplayAbility.cpp` | 819 | `Roll < Chance` (823) | `Cataclysm.CooldownSkipRoll` (818) |
+| contagion on a damage over time tick | `UCataclysmContagion::SpreadOnDebuffDamage`, `CataclysmContagion.cpp` | 245 | skips on `Roll >= ChancePercent` (246) | the parameter `PinnedRoll`; the game passes none (`CataclysmVitalAttributeSet.cpp` 2615) |
+| contagion on a death | `UCataclysmContagion::SpreadOnDeath`, same file | 320 | skips on `Roll >= ChancePercent` (321) | the parameter `PinnedRoll`; the game passes none (`CataclysmEnemyCharacter.cpp` 399) |
+| bleed on a critical strike | `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, `CataclysmVitalAttributeSet.cpp` | 2549 | `Chance > 0.0f && FRandRange(0, 100) < Chance` (2549) | none; it is reached only after a critical strike, which `Cataclysm.CritRoll` pins |
+
+At every one a chance of 0 never succeeded, before and now: no draw is below 0, and the two contagion functions return
+before rolling at a chance of nought or less.
+
+**The two comments.** `CataclysmDamageCalculation.cpp` 928 to 931, on the block negation roll: "Issue #2201: the block
+roll above and the other percentage rolls still compare strictly and wait on that issue's shared fix."
+`CataclysmGameplayAbility.cpp` 821 to 822: "STRICTLY LESS THAN, so a roll of 100 never skips and a chance of 0 never does
+either."
+
+**The sweep for any other such roll.** A script read every `.cpp` and `.h` under `game/Source` outside `/Tests/` (359
+files) for a call to the engine's global generator: `FRand`, `FRandRange`, `RandRange`, `RandHelper`, `RandHelper64`,
+`RandBool`, `Rand`, `Rand32`, `VRand`, `VRandCone`, `RandPointInBox` and `RandPointInCircle`, called through `FMath::`,
+`FPlatformMath::`, `FGenericPlatformMath::` or bare, and not after a `.` (a stream), with the text after `//` removed. It
+also looked for `FRand() * 100` and `100 * FRand()`, and for `FRand()` compared directly with anything. It found 124
+lines: 47 are `FRandRange(0.0f, 100.0f)`, none is `FRand() * 100` or `FRand()` compared, and the other 77 are an index
+(`RandRange(0, N - 1)`), an angle (`FRandRange(0, 2 * PI)`, `FRandRange(0, PI)`, `FRandRange(0, 360)`), a distance, a
+count of casts (`RandRange(1, Held)`) or a coin (`RandBool()`), none compared with a chance. A further 79 lines call a
+stream. The comparison after each of the 47 was read:
+
+- **the seven above**, unguarded;
+- **guarded already, each comparing a chance of 100 before the roll or skipping the roll** (17 draws):
+  `CataclysmAbilitySystemComponent.cpp` 2358 (`Chance < 100.0f` around the roll), 4849 (`Action.Percent < 100.0f &&`),
+  5163, 6377, 6471, 6496, 6570, 6639, 6711, 6733 and 6760 (`Action.Percent >= 100.0f ||`); `CataclysmAilments.cpp` 157,
+  the one draw behind both ailment rolls, guarded at 434 (`bStunIsCertain ||`) and 473 (`Chance >= ChanceCap ||`);
+  `CataclysmDamageCalculation.cpp` 925 (the block negation, guarded at 935) and 1416 (`Chance >= 100.0f ||`, 1417);
+  `CataclysmMinion.cpp` 2163 (`Chance < 100.0f` around the roll) and 2732 (`Chance >= 100.0f ||`);
+  `CataclysmSkillEffects.cpp` 1597 (`Chance < 100.0f &&`, 1598); `CataclysmVoidAura.cpp` 102 (`ChancePercent >= 100.0f
+  ||`, 103). None of them is touched.
+- **the 22 floor-rule roll functions in `CataclysmDungeonGameMode.cpp`** (934 to 1113), a file this change may not touch.
+  Every chance constant they are compared with, in `CataclysmDungeonModifierEffects.h`, is below 100 (the largest is
+  `InfestedHoardMostChancePercent`, 60), so no designed chance of 100 meets them. Two of the 22 comparisons were read
+  (18316 and 21160); the others were not read one by one for this entry.
+
+**So the sweep found no site the ruling does not name.**
+
+**The design.** `docs/Cataclysm_GDD_v2.md`, in its damage section, under "Evasion avoids an attack completely, but
+applies only to direct attacks": "Area damage lands regardless of evasion. This is why evasion's cap can be soft: even at
+100% evasion a character is not immune." That holds after this change: area damage and damage over time are still not
+rolled against evasion (`Resolve`, the condition above the draw), and only a direct attack is now evaded on every roll at
+100%. The entries of 2026-10-08 and 2026-10-09 above
+guarded six row-action rolls and the two ailment rolls in the form `Chance >= 100 ||`, and recorded the seven sites here
+as left for this issue.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+**One helper, `CataclysmPercentDraw`, in a new header** `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h`:
+
+- `FromFraction(float Fraction)` returns `FMath::Min(Fraction * 100.0f, HighestDraw)`. `Fraction * 100.0f` is exactly what
+  `FRandRange(0.0f, 100.0f)` returned for that fraction (`0 + 100 * x`); the minimum moves only the fraction 1.0, to
+  `HighestDraw`.
+- `HighestDraw` is `99.99999f`, which rounds to 99.99999237060547, the largest float below 100 (checked by script: the
+  float one step above it is 100). Two `static_assert`s hold it below 100 and above 99.9999; each compares a literal with a
+  different literal, so each can fail.
+- `Draw()` returns `FromFraction(FMath::FRand())`: one call to the engine's generator, as `FRandRange` made.
+
+**The seven draws** now call `CataclysmPercentDraw::Draw()` in place of `FMath::FRandRange(0.0f, 100.0f)`, and nothing
+else on those lines changes. Lines on this commit: `CataclysmDamageCalculation.cpp` 838 (evasion), 881 (critical strike),
+905 (block); `CataclysmGameplayAbility.cpp` 821 (the cooldown skip); `CataclysmContagion.cpp` 247 and 322;
+`CataclysmVitalAttributeSet.cpp` 2551. Each file gains one include with a one-line comment, after its last project
+include (`CataclysmDamageCalculation.cpp` 24 to 25, `CataclysmGameplayAbility.cpp` 15 to 16, `CataclysmContagion.cpp` 17 to
+18, `CataclysmVitalAttributeSet.cpp` 24 to 25).
+
+**The two comments** keep their words and each gains a sentence beginning "SINCE #2201":
+`CataclysmDamageCalculation.cpp` 934 to 937, that evasion, the critical strike roll and the block roll are drawn by
+`CataclysmPercentDraw::Draw`, below 100, so they still compare strictly and a chance of 100 succeeds on every roll, and
+that the negation roll keeps `FRandRange` and its guard; `CataclysmGameplayAbility.cpp` 825 to 827, that the roll is drawn
+by `CataclysmPercentDraw::Draw`, so a roll of 100 comes only from the pin and a chance of 100 skips on every drawn roll.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The mapping moves only the draw of 1.0, to the largest float below 100.** The option not taken: scale every draw by
+  `RandMax / (RandMax + 1)`, which spreads the 32,768 draws evenly over [0, 100) in steps of 100 / 32,768. That is equally
+  uniform and right at both ends, but it moves every draw by up to 0.003, so which draws succeed at a chance such as
+  99.998 would change, it has to repeat the engine's `RandMax` arithmetic, and on a platform with a 24-bit `RandMax` the
+  scale computed in single precision rounds to 100. The minimum keeps every draw but one bit for bit, so "comparisons and
+  pins unchanged" also holds for every chance below 100.
+- **A header-only namespace, not a member of a class.** All seven rolls are in the `Cataclysm` module, so a header in its
+  `AbilitySystem` folder reaches them with no new module dependency, and it holds nothing but arithmetic on `FMath`, so no
+  source file is built for it. This is the form of `CataclysmMeshWidth.h`, a shared piece of arithmetic in the same folder.
+  The option not taken: a static function on `UCataclysmDamageCalculation`, which the cooldown skip and the contagion would
+  then include for one function, and which a test could reach only through a class it has no other reason to load.
+- **The guard form `Chance >= 100 ||` is not used,** as the ruling says. It would have broken the tests that pin a roll of
+  100 against a chance of 100 to mean "no event" (named under Tests).
+- **The comment above `Cataclysm.BlockRoll`** (`CataclysmVitalAttributeSet.cpp` about 100 to 105, "a chance of 100 can still
+  miss on a roll of exactly 100", given as the reason the pin exists) is left as it is, because the ruling names two
+  comments and not this one. The pin is still needed for a test that wants a block on a chance below 100. A sentence
+  "SINCE #2201 a drawn roll is below 100, so only the pin can be 100" would make it current; that is for the coordinating
+  session.
+
+### THE GENRE SOURCE
+
+None. This is a fault in drawing a number, not a formula or a mechanic; nothing was fetched.
+
+### Tests
+
+Three Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmPercentDrawTests.cpp`, group
+`Cataclysm.PercentDraw.`. They need no world. The file's namespace `CataclysmPercentDrawTest` holds `Succeeds(Roll,
+Chance)`, `Roll < Chance`, the comparison of evasion, critical strike, block, the cooldown skip and bleed on a critical
+strike; `Skips(Roll, Chance)`, `Roll >= Chance`, the comparison of the two contagion rolls; and `OldRange(Fraction)`,
+`0.0f + (100.0f - 0.0f) * Fraction`, the engine's `FRandRange(0, 100)` in its own form. **16 assertions in a passing run.**
+
+1. `AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds`, 9. **Control:** the old range given a fraction of
+   exactly 1 is 100; a chance of 100 fails against it; a contagion chance of 100 skips on it. **Then** the mapping given
+   exactly 1.0: draws below 100; and above 99.9999, the top of the range; a chance of 100 succeeds against it; a contagion
+   chance of 100 does not skip on it. **And** a fraction just below 1 (32766 / 32767) draws what the old range drew; a
+   fraction of one half draws what the old range drew. The 1.0 case goes through `FromFraction`, not a constant.
+2. `AFractionOfZeroDrawsZeroSoAChanceOfZeroNeverSucceeds`, 4. **Control:** a chance of 0.001 succeeds against the draw of a
+   fraction of 0. **Then** a fraction of 0 draws 0; a chance of 0 does not succeed against it; a contagion chance of 0
+   skips on it.
+3. `TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred`, 3. Ten thousand calls of `Draw()`. **Control:** the draws
+   spread over more than 50. **Then** no draw is below 0; no draw is 100 or more.
+
+**Every earlier test is unchanged, and expected to pass unchanged,** because a pinned roll does not reach the draw. The
+tests that pin `Cataclysm.CritRoll` or `Cataclysm.BlockRoll` at 100 against a chance of 100 and read "no event" (found by a
+script that looks for a pin at 100 and a chance of 100 in one test, 12 candidates in 229 files, each read by hand):
+
+- `Cataclysm.BlockShare.TheShareABlockRemovesIsItsStatOnABaseOfFiftyAndStopsAtEightyFive` (block chance 100 at 238, pin
+  100 at 242: the unblocked blow);
+- `Cataclysm.BlockShare.ABlockNegatesAllOfAHitOnItsChanceAndOnlyWhenItBlocks` (294, 300: "and was not blocked");
+- `Cataclysm.BlockReflect.AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker` (176, 215: "set-up: a blow that is not
+  blocked");
+- `Cataclysm.StrikeTarget.TheSameActionOnABlockStrikesTheAttackerWhoseBlowWasBlocked` (718, 730: the same);
+- `Cataclysm.MeleeBleed.AnOrdinaryMeleeHitAppliesNothing` (critical strike chance and bleed chance 100 at 196 to 197, pin
+  100 at 379; found by hand, because the chance is set in a helper outside the test).
+
+The other seven candidates pin 100 only against a chance below 100, or pin a chance of 100 at 0. Two tests read a real
+block roll at a block chance of 100 and expect a block, `CataclysmSkillTemplateTests.cpp` 26689 and 27551:
+- `Cataclysm.HitCancels.AnEvadedBlowAndATickDoNotInterruptAndABlockedBlowAndOneTheShieldTookWholeDo`
+- `Cataclysm.TeleportWhenHit.AnEvadedBlowATickAndAHitInsideTheTriggerCooldownDoNotMoveTheWearer`
+
+By the arithmetic each failed 1 run in 32,768 before and now cannot, by reading; whether their helper `BlowOn` pins the
+block roll was not read.
+
+**Not tested:** that each of the seven rolls calls `Draw` (read in the source and counted by script, not tested); a real
+draw of exactly 1.0 through a site (it cannot be asked for); the guarded rolls (unchanged); the floor-rule rolls; anything
+in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. One proof, PD-I. The old text was counted exactly once in its file by a script, the new text absent before the
+break and once after it, and the file's round, curly and square brackets stay paired: 19/19, 3/3, 0/0 before and 18/18,
+3/3, 0/0 after. It compiles alone by reading: `Fraction` is still read, `HighestDraw` is still used by the two
+`static_assert`s, and the function still returns a float. The prefix is `Cataclysm.PercentDraw.`, with its trailing dot,
+three tests.
+
+**What each test reads.** Test 1 reads `FromFraction(1.0f)`, `FromFraction(32766.0f / 32767.0f)` and `FromFraction(0.5f)`;
+test 2 reads `FromFraction(0.0f)`; test 3 reads ten thousand `Draw()`, each `FromFraction(FRand())`.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| PD-I, the mapping is the old range | `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` | `return FMath::Min(Fraction * 100.0f, HighestDraw);` | `return Fraction * 100.0f;` | `AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds` | none for certain; `TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred` about one run in four |
+
+Failed assertions, by reading:
+
+- **Test 1, 3.** "a fraction of exactly 1 draws below 100" (100.000000), "a chance of 100 succeeds against it", "a contagion
+  chance of 100 does not skip on it". Its three controls pass, as they read `OldRange`; "above 99.9999" passes (100 is above
+  it); the two fractions below 1 pass, as `Fraction * 100.0f` is what the old range gives them.
+- **Test 2, none.** `0.0f * 100.0f` is 0 either way.
+- **Test 3, 1 or none.** "no draw is 100 or more" fails only if one of the ten thousand draws is 1.0: by arithmetic,
+  `1 - (32767 / 32768)^10000`, about 26% of runs. It is not a guard for this break and is not counted as one; the
+  registered prediction is test 1's 3 assertions, with test 3 either passing or failing on that one assertion.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No other test calls the helper, and
+the seven sites' tests pin their rolls.
+
+**A test and no proof:** each site's use of `Draw` (a break at a site would fail only on a draw of 1.0, which no test can
+ask for).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed. The Python checks that read these files' text were read, and
+the whole Python suite was run by the writing session on this change before it was committed:
+`tools/tests/test_the_critical_strike_numbers_are_one_set.py`
+asks for `Hit.CritChance`, `Damage *= Hit.CritMultiplier / 100.0f` and `bWasCritical` in `CataclysmDamageCalculation.cpp`
+and `GetCritChance()` in `CataclysmVitalAttributeSet.cpp`, all kept; `tools/tests/test_affix_percent_column.py` lines 51 to
+53 name `FRandRange(0, 100)` in description strings only, read and not changed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-23 — A shot whose firing skill has gone carries the tags it was fired with, so a trap's rack axe landing after the trap's use has ended explodes its kill; and a blow naming no skill object names its skill's tags on its hit notice, so a leap's hit answers hit rows requiring the throwing skill's tags
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` (`ACataclysmProjectile::HitOne` and
