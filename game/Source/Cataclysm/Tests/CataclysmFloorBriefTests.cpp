@@ -2466,6 +2466,9 @@ namespace CataclysmFloorBriefTest
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Temperance"), ECataclysmType::Celestial, 20.0f));
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Patience"), ECataclysmType::Celestial, 15.0f));
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Stillness"), ECataclysmType::Celestial, 10.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Abstinence"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Vigil"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Humility"), ECataclysmType::Celestial, 15.0f));
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Forced_Tithes"), ECataclysmType::Celestial, 15.0f));
 		return Out;
 	}
