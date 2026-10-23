@@ -16589,7 +16589,7 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	EdictStrengthApplied = EdictStrengthHere();
 	FCataclysmPlayerFloorEffects Effects =
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthApplied);
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthHere());
 
 	// AND EVERY BEAT-DRIVEN FIELD FROM THIS OBJECT, WHICH IS WHY THERE IS ONE
 	// APPLIER AND NOT ONE PER RULE. Issue #41, slice 5. The fields are read
