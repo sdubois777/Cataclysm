@@ -253,6 +253,8 @@ bool UCataclysmBasicAttack::Swing(
 	// server call rather than refusing it.
 	const bool bStarted = AbilitySystem->TryActivateAbility(Spec->Handle,
 															/*bAllowRemoteActivation=*/true);
+	// AND WHAT WAITED FOR ITS END, #2472.
+	AbilitySystem->ActOnWhatWaitedForTheAbilityList();
 	if (!bStarted && Aiming)
 	{
 		Aiming->ClickedTarget.Reset();

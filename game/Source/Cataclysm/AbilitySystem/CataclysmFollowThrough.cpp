@@ -157,7 +157,10 @@ bool UCataclysmFollowThrough::MakePendingRepeat(AActor* Character)
 	const float ClockBefore = System->NoteFollowedThrough(EverySeconds(System));
 	Skill->bFreeRepeat = true;
 	Skill->FreeRepeatAim = Nearest->GetActorLocation();
-	if (!System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
+	const bool bStarted = System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true);
+	// AND WHAT WAITED FOR ITS END, #2472.
+	System->ActOnWhatWaitedForTheAbilityList();
+	if (!bStarted)
 	{
 		Skill->bFreeRepeat = false;
 		System->RestoreFollowThroughClock(ClockBefore);

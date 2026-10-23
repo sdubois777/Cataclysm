@@ -1026,6 +1026,18 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 
 int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
 {
+	// NOTHING FIRES WHILE THE DYING PLAYER'S ABILITY LIST IS LOCKED (#2472, ruled 2026-10-22): a death inside one of its
+	// own activations would have every cast refused at `UCataclysmTriggeredSkill::Trigger`. The casts are kept, and the
+	// end of that activation fires them by this same walk (`UCataclysmAbilitySystemComponent::DrainWaitingGadgetDeathCasts`).
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying)))
+	{
+		if (Theirs->KeepGadgetDeathCastsWhileLocked())
+		{
+			return 0;
+		}
+	}
+
 	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST GADGET FIRES, as a volley takes its list: every skill gadget standing as
 	// the death is raised. A cast that somehow ended a later gadget leaves that one firing nothing (C3). SKILL GADGETS
 	// ONLY: War's gadgets are not fired by this action, by the no-War mandate (ruled 2026-10-19, J2).

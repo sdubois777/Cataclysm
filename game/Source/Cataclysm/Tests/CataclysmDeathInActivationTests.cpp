@@ -452,7 +452,8 @@ CATACLYSM_DEATH_IN_ACTIVATION_TEST(FCataclysmDeathInActivationGadgetHalfTest,
 	// THE KILLING CAST: THE ULTIMATE GADGET'S OWN STEP. The Gathering strikes its enemy, then the player 3 m away.
 	FDeathInActivationDeathWatch Death(Wearer.System, Ultimate, UltimateEnemy);
 	ACataclysmMinion::GadgetStep(Ultimate);
-	TestEqual(TEXT("set-up: the Ultimate gadget's own clock cast The Gathering once"), Ultimate->SkillGadgetCastsMade, 1);
+	TestEqual(TEXT("set-up: the Ultimate gadget's own clock cast The Gathering once"),
+		Ultimate->SkillGadgetCastsMade - Ultimate->SkillGadgetDeathCastsMade, 1);
 	TestTrue(*FString::Printf(TEXT("set-up: and it struck its enemy: %.2f left"), DeathInActivationHealthOf(UltimateEnemy)),
 		DeathInActivationHealthOf(UltimateEnemy) < DeathInActivationEnemyHealth);
 	if (!TestTrue(TEXT("set-up: the player died"), UCataclysmSkillEffects::IsDead(Wearer.Player)))
@@ -465,15 +466,15 @@ CATACLYSM_DEATH_IN_ACTIVATION_TEST(FCataclysmDeathInActivationGadgetHalfTest,
 				  "death is inside that activation"), Death.bWatchedCastActive);
 
 	// WHAT THE SENTENCE PROMISES: EACH GADGET MAKES ITS DEATH CAST.
-	TestEqual(TEXT("the Heavy gadget made its death cast (expected to fail until #2472 is fixed)"),
+	TestEqual(TEXT("the Heavy gadget made its death cast"),
 		Heavy->SkillGadgetDeathCastsMade, 1);
-	TestTrue(*FString::Printf(TEXT("and its death cast struck its enemy: %.2f of %.2f left (expected to fail until #2472 "
-								   "is fixed)"), DeathInActivationHealthOf(HeavyEnemy), DeathInActivationEnemyHealth),
+	TestTrue(*FString::Printf(TEXT("and its death cast struck its enemy: %.2f of %.2f left"),
+							  DeathInActivationHealthOf(HeavyEnemy), DeathInActivationEnemyHealth),
 		DeathInActivationHealthOf(HeavyEnemy) < DeathInActivationEnemyHealth);
-	TestEqual(TEXT("the Ultimate gadget, whose cast killed the player, made its death cast too (expected to fail until "
-				   "#2472 is fixed)"), Ultimate->SkillGadgetDeathCastsMade, 1);
+	TestEqual(TEXT("the Ultimate gadget, whose cast killed the player, made its death cast too"),
+		Ultimate->SkillGadgetDeathCastsMade, 1);
 	TestTrue(*FString::Printf(TEXT("and its death cast struck its enemy after the killing blow: %.2f left, %.2f at the "
-								   "death (expected to fail until #2472 is fixed)"),
+								   "death"),
 							  DeathInActivationHealthOf(UltimateEnemy), Death.ReadHealthAtTheDeath),
 		DeathInActivationHealthOf(UltimateEnemy) < Death.ReadHealthAtTheDeath);
 	return true;
@@ -575,17 +576,17 @@ CATACLYSM_DEATH_IN_ACTIVATION_TEST(FCataclysmDeathInActivationTrapHalfTest,
 				  "death is inside that activation"), Death.bWatchedCastActive);
 
 	// WHAT THE SENTENCE PROMISES: EVERY STANDING TRAP GOES OFF.
-	TestEqual(TEXT("two trap_triggered, one for each standing trap (expected to fail until #2472 is fixed)"),
+	TestEqual(TEXT("two trap_triggered, one for each standing trap"),
 		Triggers.Count, 2);
-	TestTrue(TEXT("the north trap went off at the death and was used up (expected to fail until #2472 is fixed)"),
+	TestTrue(TEXT("the north trap went off at the death and was used up"),
 		DeathInActivationGone(NorthWatched));
-	TestTrue(*FString::Printf(TEXT("and its cast struck its enemy: %.2f of %.2f left (expected to fail until #2472 is "
-								   "fixed)"), DeathInActivationHealthOf(NorthEnemy), DeathInActivationEnemyHealth),
+	TestTrue(*FString::Printf(TEXT("and its cast struck its enemy: %.2f of %.2f left"),
+							  DeathInActivationHealthOf(NorthEnemy), DeathInActivationEnemyHealth),
 		DeathInActivationHealthOf(NorthEnemy) < DeathInActivationEnemyHealth);
-	TestTrue(TEXT("the east trap went off at the death and was used up (expected to fail until #2472 is fixed)"),
+	TestTrue(TEXT("the east trap went off at the death and was used up"),
 		DeathInActivationGone(EastWatched));
-	TestTrue(*FString::Printf(TEXT("and its cast struck its enemy: %.2f of %.2f left (expected to fail until #2472 is "
-								   "fixed)"), DeathInActivationHealthOf(EastEnemy), DeathInActivationEnemyHealth),
+	TestTrue(*FString::Printf(TEXT("and its cast struck its enemy: %.2f of %.2f left"),
+							  DeathInActivationHealthOf(EastEnemy), DeathInActivationEnemyHealth),
 		DeathInActivationHealthOf(EastEnemy) < DeathInActivationEnemyHealth);
 	return true;
 }

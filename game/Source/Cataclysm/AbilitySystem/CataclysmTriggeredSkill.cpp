@@ -106,12 +106,17 @@ bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeapon
 	if (!System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
 	{
 		System->ClearAbility(Handle);
+		// AND WHAT WAITED FOR THE ACTIVATION'S END, #2472, as below.
+		System->ActOnWhatWaitedForTheAbilityList();
 		return false;
 	}
 
 	// AFTER THE ACTIVATION AND NOT BEFORE: the engine refuses to activate a spec already marked for removal. A skill
 	// that ended inside its own activation is removed here and now; one still running is removed when it ends.
 	System->SetRemoveAbilityOnEnd(Handle);
+	// AND WHAT WAITED FOR THE ACTIVATION'S END (#2472): a death inside it kept its gadget death casts and its set-off
+	// traps, which act now that the list is no longer locked.
+	System->ActOnWhatWaitedForTheAbilityList();
 	return true;
 }
 

@@ -4787,6 +4787,40 @@ public:
 	/** Fire each recorded shot in the order recorded, at depth nought. Only the outermost call acts. */
 	void DrainQueuedGadgetShotsAtTrapEnemies();
 
+	/**
+	 * #2472, A PLAYER'S DEATH INSIDE ONE OF ITS OWN ABILITY ACTIVATIONS. Ruled 2026-10-22 by the coordinating session: the
+	 * two death drains (the gadget half's death casts, #15, and traps layer 5's set-offs) also wait while the ability list
+	 * is locked, and run again when the player's own activation ends. The engine holds `ABILITYLIST_SCOPE_LOCK` across an
+	 * activation (`UAbilitySystemComponent::InternalTryActivateAbility`), a grant made under it is only deferred, and
+	 * `UCataclysmTriggeredSkill::Trigger` refuses a deferred grant: so a skill gadget's area cast that killed its own player
+	 * ("Your deployables and traps deal full damage to you if you are within their blast radius") used to lose every
+	 * death cast and every trap trigger of "When you die, all your active traps and gadgets immediately trigger
+	 * simultaneously". The lock count is the engine's own, protected member.
+	 */
+	bool AbilityListIsLocked() const;
+
+	/** Whether the player's death has gadget death casts kept for the end of the activation that locked the list. */
+	bool bGadgetDeathCastsWaiting = false;
+
+	/**
+	 * Asked by `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` before it fires anything: while the list is locked, keep the
+	 * death casts for later and answer true, so nothing fires now; otherwise false.
+	 */
+	bool KeepGadgetDeathCastsWhileLocked();
+
+	/**
+	 * Fire the kept death casts once, at depth one as #15's are fired inside the death's row action, so their blows'
+	 * events are dropped as those are. Nothing while the list is locked or with nothing kept.
+	 */
+	void DrainWaitingGadgetDeathCasts();
+
+	/**
+	 * Called after each `TryActivateAbility` this project makes, when an activation has ended: at depth nought and with
+	 * the list unlocked, drain what waited, in the order the death's own event drains it: the kept death casts, the
+	 * queued deaths, the set-off traps, the gadgets' shots.
+	 */
+	void ActOnWhatWaitedForTheAbilityList();
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

@@ -311,6 +311,8 @@ void UCataclysmAbilitySystemComponent::ProcessAbilityInput()
 		// server remote call rather than refusing it. With it off, every ability
 		// press on a client would be silently dropped.
 		TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true);
+		// AND WHAT WAITED FOR ITS END, #2472.
+		ActOnWhatWaitedForTheAbilityList();
 	}
 
 	for (const FGameplayAbilitySpecHandle& Handle : InputReleasedSpecHandles)
@@ -8429,7 +8431,10 @@ void UCataclysmAbilitySystemComponent::DrainQueuedSkillTrapSetOffs()
 	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside a trap it sets off (its blows' events, its own
 	// `trap_triggered`) returns at once, and the loop below takes up whatever that trap's event recorded, at the end, in
 	// the order recorded.
-	if (PoolActionDepth > 0 || bDrainingQueuedSkillTrapSetOffs)
+	// AND NOT WHILE THE ABILITY LIST IS LOCKED (#2472): a trap set off under the lock would be refused at `Trigger` and
+	// lost. The records and the chain wait, since this returns before the chain is emptied, and the end of the activation
+	// that locked the list sets them off (`ActOnWhatWaitedForTheAbilityList`).
+	if (PoolActionDepth > 0 || bDrainingQueuedSkillTrapSetOffs || AbilityListIsLocked())
 	{
 		return;
 	}
@@ -8595,4 +8600,58 @@ void UCataclysmAbilitySystemComponent::DrainQueuedGadgetShotsAtTrapEnemies()
 		}
 		Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);
 	}
+}
+
+// ==========================================================================
+// #2472: a player's death inside one of its own ability activations. Ruled 2026-10-22; the header carries the ruling.
+// ==========================================================================
+
+bool UCataclysmAbilitySystemComponent::AbilityListIsLocked() const
+{
+	return AbilityScopeLockCount > 0;
+}
+
+bool UCataclysmAbilitySystemComponent::KeepGadgetDeathCastsWhileLocked()
+{
+	if (!AbilityListIsLocked())
+	{
+		return false;
+	}
+	bGadgetDeathCastsWaiting = true;
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::DrainWaitingGadgetDeathCasts()
+{
+	if (!bGadgetDeathCastsWaiting || AbilityListIsLocked())
+	{
+		return;
+	}
+	// ONCE: cleared before anything fires, so a cast made below cannot fire the kept casts again.
+	bGadgetDeathCastsWaiting = false;
+	AActor* Self = GetAvatarActor();
+	if (!Self)
+	{
+		return;
+	}
+	// AT DEPTH ONE, as the death's row action fires them when the list is free (#15): each cast's blows raise their events
+	// on the wearer, and those are dropped, exactly as they are there.
+	TGuardValue<int32> Depth(PoolActionDepth, 1);
+	ACataclysmMinion::FireEveryGadgetAtTheDeathOf(Self);
+}
+
+void UCataclysmAbilitySystemComponent::ActOnWhatWaitedForTheAbilityList()
+{
+	// ONLY ONCE THE ACTIVATION THAT LOCKED THE LIST HAS ENDED, and not inside an event: one inside an event leaves its
+	// own drains to that event's end, as every drain does.
+	if (PoolActionDepth > 0 || AbilityListIsLocked())
+	{
+		return;
+	}
+	// IN THE ORDER THE DEATH'S OWN EVENT ACTS WHEN THE LIST IS FREE: the death casts inside its row loop, then its two
+	// `ON_SCOPE_EXIT`s, the queued deaths and the set-off traps, and last the gadgets' shots.
+	DrainWaitingGadgetDeathCasts();
+	DrainQueuedAfflictedDeaths();
+	DrainQueuedSkillTrapSetOffs();
+	DrainQueuedGadgetShotsAtTrapEnemies();
 }
