@@ -795,6 +795,12 @@ private:
 	 * twice cannot produce two axes. Possession happens more than once on a
 	 * listen server, and everything else in InitAbilityActorInfo is written to
 	 * survive that.
+	 * SINCE #2290: by reading the engine, not by running it, that is doubtful.
+	 * No game code possesses the player's pawn a second time, and in
+	 * single play and for a listen server's own pawn only PossessedBy should
+	 * reach InitAbilityActorInfo; see `MovementSpeedChangedHandle`. Asking
+	 * rather than keeping a flag is still right for a second possession or a
+	 * client's second call. NOT TESTED.
 	 */
 	void GiveStartingWeapon();
 
@@ -823,7 +829,14 @@ private:
 
 	/** So that a second InitAbilityActorInfo replaces the binding rather than
 	 *  adding a second one. That function runs from both PossessedBy and
-	 *  OnRep_PlayerState, and on a listen server both happen. */
+	 *  OnRep_PlayerState, and on a listen server both happen.
+	 *  SINCE #2290: by reading the engine, not by running it, that is doubtful.
+	 *  `APawn::OnRep_PlayerState` is a RepNotify that no engine runtime source
+	 *  calls directly, and `APawn::PossessedBy` calls `SetPlayerState` and not
+	 *  `OnRep_PlayerState`, so in single play and for a listen server's own pawn
+	 *  only PossessedBy should reach it. A second call would come from a client
+	 *  whose player state replicates more than once, or from a second
+	 *  possession. NOT TESTED. */
 	FDelegateHandle MovementSpeedChangedHandle;
 
 	/** Refreshes the walking speed when the Cripple tag is gained or lost. Issue #2273. */
@@ -858,6 +871,16 @@ private:
 
 	/** Replaced rather than added, for the reason the handles above are. */
 	FDelegateHandle ActionEventHandle;
+
+	/** The binding of `OnSomethingDied` to `UCataclysmCombatEvents::OnDeath`, kept so a second set-up does not leave
+	 *  two. Issue #2290: without it a second set-up heard every death twice. */
+	FDelegateHandle SomethingDiedHandle;
+
+	/** The binding of `OnSomethingWasHit` to `UCataclysmCombatEvents::OnHit`, kept for the same reason. Issue #2290. */
+	FDelegateHandle SomethingWasHitHandle;
+
+	/** The binding of `OnSkillWasUsed` to `UCataclysmCombatEvents::OnSkillUsed`, kept for the same reason. Issue #2290. */
+	FDelegateHandle SkillWasUsedHandle;
 
 	/** See `GetUnannouncedSpeedRefreshCount`. */
 	int32 UnannouncedSpeedRefreshCount = 0;
