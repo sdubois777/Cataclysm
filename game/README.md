@@ -263,8 +263,8 @@ by `git add` with no error and no warning. Guarded by
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
 
-  **Every dungeon carries dungeon modifiers, and four of the 117 change the
-  player.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
+  **Every dungeon carries dungeon modifiers, and as of 2026-10-22 116 of the 120
+  do what their rows say.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
   difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
   modifiers of every Cataclysm the run is facing. The sum of their danger scores
   is the dungeon's Modifier Score, which
@@ -277,37 +277,25 @@ by `git add` with no error and no warning. Guarded by
   Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
   the game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **Five modifiers of the 117 do something on a floor, and the other 112 are a
-  name and a number.** `UCataclysmDungeonModifierEffects` in
-  `game/Source/Cataclysm/Dungeon/` holds the four that change the player.
-  Starvation takes 1% of maximum health and energy shield a floor, up to 60%,
-  and Dehydration 1% of maximum mana a floor, up to 60%. Both reach the player
-  through the stat line that gear and the passive tree already use, and both
-  take their share once a floor.
-  **The other two change while the player plays**, on the dungeon game mode's
-  quarter-second beat, and both read the movement state of issue
-  [#41](https://github.com/sdubois777/Cataclysm/issues/41)'s slice 2. Forced
-  March takes 1% of maximum health a second for each stack from a player who has
-  stood still for more than three seconds, one stack a second up to five, and
-  moving clears every stack; that damage is not a hit, so no evasion, block,
-  armour, resistance, critical strike or ailment touches it. The Nihil's Embrace
-  takes 1% off every resistance for each 10 metres walked, down to 10% off, and
-  defeating a Boss or Cataclysm Boss gives every point back and grants 10% more
-  for 20 seconds. Seven of those numbers are judgements rather than the rows',
-  because the two rows state only the three seconds; `docs/DECISIONS.md` records
-  each, and **nothing on screen yet shows the player a stack or a lost point**,
+  **As of 2026-10-22, 116 of the 120 modifiers do what their rows say, one does
+  part of it, and three are a name and a number.** Counted from
+  `UCataclysmDungeonModifierEffects::BuiltStateOf` against every row of
+  `game/Data/DungeonModifiers.csv`: every Celestial, Chaos, Death, Demonic,
+  Famine and Pestilence row is built; Void's Insanity Bursts is partly built,
+  because its "attack allies" waits on co-op; and War's Supply Lines and
+  Battlefield Tactics and the Generic Corrupted Stalker are not built. The rules
+  live in `UCataclysmDungeonModifierEffects` and `FCataclysmDungeonFloorRules` in
+  `game/Source/Cataclysm/Dungeon/`: some change the player's own numbers once a
+  floor, some change while the player plays on the dungeon game mode's
+  quarter-second beat, and some place things on the floor. `docs/DECISIONS.md`
+  records each rule and every number in it that is a judgement rather than its
+  row's. **Nothing on screen yet shows the player a stack or a lost point**,
   which is issue
-  [#1591](https://github.com/sdubois777/Cataclysm/issues/1591). The fifth is
-  `Chaos_Unstable_Dimensions`, "Unstable Dimensions": every floor of a dungeon
-  carrying it draws one extra modifier of its own. It was built through
-  `FCataclysmDungeonFloorRules`, the same seam three dungeon sub-types use, and
-  it is only part of what its row says — the row asks for a new modifier on
-  every enemy, and what it draws is another dungeon modifier. No modifier in the
-  table yet makes a floor go dark, drops fire from a ceiling or resurrects an
-  enemy. A panel in the top right corner of the screen lists the modifiers in
-  force on a floor and marks the ones that do nothing yet, and
-  `Cataclysm.DungeonModifiers` puts chosen modifiers on the dungeon being
-  played, by row key or by name. Three further gaps are open.
+  [#1591](https://github.com/sdubois777/Cataclysm/issues/1591). A panel in the
+  top right corner of the screen lists the modifiers in force on a floor and
+  marks the ones that do nothing yet, and `Cataclysm.DungeonModifiers` puts
+  chosen modifiers on the dungeon being played, by row key or by name. Three
+  further gaps are open.
   The one Generic modifier, the Corrupted Stalker, is deliberately never drawn —
   the project owner ruled it is granted separately — and nothing grants it, which
   is issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308). A
