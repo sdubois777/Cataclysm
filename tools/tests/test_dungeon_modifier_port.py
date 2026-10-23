@@ -208,13 +208,13 @@ class TestTheGenericColumn:
             f"{len(rows) - generic}")
 
     def test_the_row_is_still_in_the_table_it_is_only_not_drawn(self, rows):
-        """The distinction that is easy to get wrong. The table still has 117
-        rows and the data file still has 117 rows; what changed is that one of
+        """The distinction that is easy to get wrong. The table still has 120
+        rows and the data file still has 120 rows; what changed is that one of
         them is no longer DRAWN. Deleting the row instead would break the
         comparison above and would misdescribe the design."""
         assert MODIFIERS.get(GENERIC), (
             "the Generic row was deleted from the model rather than left out "
-            "of the pool. The design has 117 dungeon modifiers. Issue #1303.")
+            "of the pool. The design has 120 dungeon modifiers. Issue #1303.")
         assert sum(len(v) for v in MODIFIERS.values()) == len(rows)
 
     def test_nothing_else_grants_it(self):

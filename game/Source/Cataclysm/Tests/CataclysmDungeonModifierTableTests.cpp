@@ -22,7 +22,7 @@
  * WHY THIS IS SEPARATE FROM `Cataclysm.DungeonModifiers.*` IN THE EMPIRE MODULE.
  * Those tests build a pool by hand and check the RULES: how many a dungeon
  * carries, which Cataclysms it may draw from, that a draw does not repeat. This
- * file checks the JOIN: that `DT_DungeonModifiers` really has 117 rows, that
+ * file checks the JOIN: that `DT_DungeonModifiers` really has 120 rows, that
  * every one of them names a Cataclysm the roster knows or the `Generic` column,
  * that every danger score survives the crossing, and that the score model reads
  * the sum back off the game mode.
@@ -51,12 +51,13 @@ bool FCataclysmDungeonModifierTableLoadsTest::RunTest(const FString& Parameters)
 	const TArray<FCataclysmDungeonModifier> Pool =
 		UCataclysmDungeonModifierTable::PoolFromTable(Table);
 
-	// 117, NOT 116. The Corrupted Stalker was added by issue #504 and the
+	// 120 SINCE 2026-10-22, WHEN THREE CELESTIAL EDICTS BECAME ROWS (G7b), AND 117 BEFORE THAT, NOT 116.
+	// The Corrupted Stalker was added by issue #504 and the
 	// simulation's copy of this table missed it for four months.
 	// `tools/tests/test_dungeon_modifier_port.py` is what compares the two
 	// copies; this is what says the asset the game actually reads holds them.
-	TestEqual(TEXT("the table has 117 rows"), Table->GetRowMap().Num(), 117);
-	TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), 117);
+	TestEqual(TEXT("the table has 120 rows"), Table->GetRowMap().Num(), 120);
+	TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), 120);
 
 	for (const FCataclysmDungeonModifier& Modifier : Pool)
 	{
