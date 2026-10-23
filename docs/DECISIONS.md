@@ -17,7 +17,7 @@ Issue [#2472](https://github.com/sdubois777/Cataclysm/issues/2472), which this s
   area cast is predicted, by reading, to have NONE of its gadgets cast and NONE of its traps go off at its death.
 - **TWO OF THE THREE TESTS ARE EXPECTED TO FAIL UNTIL STEP B FIXES #2472**, and their messages say so ("expected to fail
   until #2472 is fixed"). They assert what the sentence promises, not what the code does today. The third, the control,
-  is expected to pass.
+  is expected to pass. SINCE STEP B (#2472) THEY PASS, and the words are removed from their messages (STEP B, below).
 - **STEP B, THE FIX, FOLLOWS AFTER THIS STEP'S WINDOW.** This step's commit gets no pull request of its own; it merges
   with step B.
 - A player would notice nothing from this step. What a player meets today, by reading: standing inside its own gadget's
@@ -295,7 +295,15 @@ PLAYER**, read on 9b74e7e22.
   counts death casts too (`CataclysmMinion.cpp` 1023 counts every cast of the clock's path, which the death cast takes, and
   1077, 1065 before this commit's block above it, counts the death cast), so with the fix the Ultimate gadget's death cast
   inside the same step made the old figure 2. Nothing else in step A's tests changes. **Its file comment still says the two
-  in-activation tests are expected to fail; it is left as it is, as ruled ("nothing else")**, and is now stale.
+  in-activation tests are expected to fail; it is left as it is, as ruled ("nothing else")**, and is now stale. SINCE STEP
+  B'S SECOND COMMIT IT IS CORRECTED, as ruled on 2026-10-22 (R2): it keeps its words and adds "SINCE STEP B (#2472) THEY
+  PASS". No other "expected to fail" wording remains in the test file; this entry's step A lines keep theirs as the record
+  of step A, and its summary line gains the same sentence.
+- **TWO ADDITIONS BEYOND THE BRIEF, ACCEPTED on 2026-10-22 (R1).** (a) The hook is also called on `Trigger`'s refused path,
+  after `ClearAbility` (`CataclysmTriggeredSkill.cpp` 110): an activation refused while a death inside an enclosing call
+  kept records still reaches the drains, which return under any lock still held. (b) `MakePendingRepeat` keeps
+  `TryActivateAbility`'s result in `const bool bStarted` (`CataclysmFollowThrough.cpp` 160 to 163), so that the hook runs on
+  both the started and the refused path; its behaviour is otherwise the same.
 
 **Tests.** Step A's three, every assertion now expected to pass: 15, 18 and 28, 61 in all.
 
@@ -321,9 +329,17 @@ refused, then empties the chain: step A's code path. Line 455's new figure reads
 holds no lock. Expected to fail: `KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast` and
 `KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff`; no other test of the prefix.
 
+**Python of record on 368da46a9, two worktrees.** The writing session measured JUnit 6904 tests, 0 failures, 0 errors, 7
+skipped; the enchantment session measured 6904, 0, 0, 8 skipped ("6896 passed, 8 skipped"). The likely reason is that a
+skipped count depends on the worktree (at least one Python test skips when built Unreal binaries are present). NOT
+CHECKED: the extra skip was not named. The window's figure, measured in the worktree it runs in, is the figure of record.
+
 **Not tested:** the hooks after `ProcessAbilityInput`, the basic attack and Follow Through (no test kills a player inside a
 pressed skill, a basic swing or a repeat); a death inside a lock taken by anything but an activation; the order of the
-hook's four drains; the real rows worn; anything in play.
+hook's four drains; the real rows worn; anything in play. Nor a gadget that ends between the death and the end of the
+activation (R3, ruled 2026-10-22): the kept death casts are a flag and not a list, so the walk at the activation's end
+finds the gadgets standing then, and a gadget gone by then makes no death cast; no way for one to end inside a single
+activation is known.
 
 ### THE WINDOW'S RUN (STEP B)
 

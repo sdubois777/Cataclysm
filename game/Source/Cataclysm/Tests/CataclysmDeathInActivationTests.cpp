@@ -36,7 +36,8 @@
  * is the player's own skill activated on the player's ability system, kill the player inside that activation.
  *
  * THE TWO TESTS WHOSE DEATH IS INSIDE THE ACTIVATION ASSERT WHAT THE SENTENCE PROMISES, SO THEY ARE EXPECTED TO FAIL UNTIL
- * STEP B FIXES #2472; their messages say so. The third is the control: the same players and rows, killed by an enemy's
+ * STEP B FIXES #2472; their messages say so. SINCE STEP B (#2472) THEY PASS, and the words are removed from their
+ * messages. The third is the control: the same players and rows, killed by an enemy's
  * blow outside any activation of theirs, which every one of its assertions expects to pass today.
  *
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER ON THE PLAYERS' SIDE HOLDING A DEMONIC WHIP, given a weapon damage of 100 and
