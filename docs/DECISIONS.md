@@ -15,7 +15,7 @@ the stairs out -- the clear and the quest objective -- until it is destroyed. Wh
 its city it hits as any Quest dungeon does and also leaves one of its Edicts there for 30 days, and every dungeon on
 that city carries it. The simulation still approximates the Ascendant (the entry headed "In the simulation the
 Ascendant, Celestial's Quest dungeon, is approximated as one more average modifier a floor, down to four").
-Branch `feat/game-ascendant-1` on `development` at `8b31fda27`. Not built and not run: see Proofs and Run.
+Branch `feat/game-ascendant-2` on `development` at `1b9a384ee` (written on `8b31fda27` as `feat/game-ascendant-1` and moved with its zero-context patch ids unchanged). Not built and not run: see Proofs and Run.
 
 ### What changed and why
 
