@@ -1923,6 +1923,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 									 Delivery.ShareOfCurrentHealth);
 	}
 
+	// AND WHETHER A DAMAGE OVER TIME EFFECT'S FIGURE WAS PRICED FROM ITS APPLIER'S OWN STATS, which its ticks read.
+	// Ruled 2026-10-23 (#2235). Not stamped otherwise, so every other effect is as it was.
+	if (Delivery.bPricedFromItsAppliersStats)
+	{
+		Spec.SetSetByCallerMagnitude(FName(PricedFromItsAppliersStatsDataName), 1.0f);
+	}
+
 	// AND HOW MANY ENEMIES THE ATTACK STRUCK TOGETHER, for the armour
 	// penetration lookup where the blow lands. Issue #1515. Sent only when
 	// there is a count, so a blow without one reads the -1 that refuses.
@@ -2556,6 +2563,12 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	Delivery.bIsDamageOverTime = true;
 	Delivery.DamageType = DamageType;
 	Delivery.bIsConvertedDamage = bIsConvertedDamage;
+	// AND WHETHER ITS FIGURE WAS PRICED FROM THE APPLIER'S OWN STATS, so each tick asks the applier's `dot_damage`
+	// rows judged against the character it lands on. Ruled 2026-10-23 (#2235): only such a tick reads the attacker.
+	// `bScalesWithInstigator` is exactly whether `DamageOverTimeNumbers` above was handed the applier; it is off for
+	// a spread copy, the trap's share, a minion's burn and converted damage. NOT ONE THE APPLIER LAYS ON ITSELF: the
+	// sentence is about "the enemy" and "them".
+	Delivery.bPricedFromItsAppliersStats = bScalesWithInstigator && Instigator != Target;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	// AND ITS END IS LISTENED FOR, because one that ends by time may explode. Ruled 2026-10-13. See
@@ -2586,6 +2599,8 @@ const TCHAR* UCataclysmSkillEffects::ShareOfCurrentHealthDataName =
 	TEXT("Cataclysm.ShareOfCurrentHealth");
 const TCHAR* UCataclysmSkillEffects::EnemiesStruckTogetherDataName =
 	TEXT("Cataclysm.EnemiesStruckTogether");
+const TCHAR* UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName =
+	TEXT("Cataclysm.PricedFromItsAppliersStats");
 
 float UCataclysmSkillEffects::ShareOfHealthTick(float Share, float Health,
 												float MaxHealth, bool bIsBoss)

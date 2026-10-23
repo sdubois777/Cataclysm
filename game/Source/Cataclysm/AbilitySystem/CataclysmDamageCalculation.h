@@ -387,6 +387,25 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float SecondsSinceDefenderFirstStruckAttacker = -1.0f;
+
+	/**
+	 * What a damage over time tick is multiplied by for its applier's `dot_damage` rows that are judged against the
+	 * character it lands on. Ruled 2026-10-23 (#2235, Q2 (a)), for "While the enemy is moving, your DoTs on them deal
+	 * 20%-40% more damage". 1 changes nothing, which is every hit and every tick but one marked
+	 * `UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName`.
+	 *
+	 * THE RATIO OF TWO ASKS AT THE TICK, written by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: the
+	 * applier's `dot_damage` asked with this character as the target, over the same asked with no target. Every row
+	 * that holds without a target is in both and cancels, so a row already baked into the tick's figure when it was
+	 * applied (Plague Doctor's unconditioned 25% more) is not counted twice. For a MORE row the ratio is exactly its
+	 * multiplier. AN INCREASED target-conditioned row is judged against the wearer's state at the tick, not at
+	 * application: its share is divided by the wearer's increases as they stand at the tick.
+	 *
+	 * `Resolve` MULTIPLIES BY IT BESIDE `damage_over_time_taken`, in the tick branch, so a tick whose damage is
+	 * suppressed is still nothing.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float TargetConditionedDotDamageMultiplier = 1.0f;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */

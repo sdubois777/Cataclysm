@@ -4163,6 +4163,14 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`: an action row judges it against the enemy its
     # event names, and a stat row on a stat asked while a hit is priced.
     "target_is_silenced": None,
+
+    # "While the enemy is moving, your DoTs on them deal 20%-40% more damage" is
+    # `dot_damage` more under `target_is_moving`. Ruled 2026-10-23 (#2235, Q1):
+    # the character struck is moving, its own ability system's movement sample.
+    # IT TAKES NO VALUE. A fact of the target in hand, read by `WithTargetState`
+    # as `target_is_silenced` is, so it is one of `CONDITIONS_OF_A_HIT_DEALT`.
+    # NOT `while_moving`, which reads the wearer's own movement.
+    "target_is_moving": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -8966,6 +8974,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_not_yet_struck_by_you",
     "target_within_metres",
     "target_is_silenced",
+    "target_is_moving",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -9032,7 +9041,16 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # under `while_moving`, 2026-10-07.
     "damage_over_time_taken": ASKER_PASSES_NOTHING_MORE,
     "debuffs_do_not_expire": ASKER_PASSES_NOTHING_MORE,
-    "dot_damage": ASKER_PASSES_NOTHING_MORE,
+    # ASKED TWICE, AND SINCE 2026-10-23 WITH THE CHARACTER STRUCK. When an effect
+    # is applied, `DamageOverTimeNumbers` asks with the wearer's state and no
+    # target. On each tick of an effect so priced,
+    # `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` asks it again with
+    # the character the tick lands on, its distance and its stagger, and applies
+    # what the target's conditions add (#2235, Q2 (a)). So a condition about the
+    # target is judged on the tick. The four conditions of a hit dealt that are
+    # about a BLOW rather than its target are handed over at neither, and
+    # `CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS` refuses them here.
+    "dot_damage": ASKER_PASSES_A_HIT_DEALT,
     "energy_shield_leech": ASKER_PASSES_NOTHING_MORE,
     "fervour_loss_suppressed": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_cast": ASKER_PASSES_NOTHING_MORE,
@@ -9065,6 +9083,22 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "resistance_celestial": ASKER_PASSES_NOTHING_MORE,
     "resistance_chaos": ASKER_PASSES_NOTHING_MORE,
     "resistance_void": ASKER_PASSES_NOTHING_MORE,
+}
+
+#: Conditions of a hit dealt that a stat's asker does NOT hand over although it
+#: hands over the character struck. Ruled 2026-10-23 (#2235): `dot_damage` is
+#: asked on a tick with the target, its distance and its stagger, and a tick is
+#: no blow, so how many enemies a blow struck together, how far its user moved
+#: before it and what its skill cost are never known there.
+#: `refuse_a_condition_nothing_asks_for` refuses each of these on its stat, which
+#: is what it refused before `dot_damage` was given the target.
+CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS: dict[str, frozenset[str]] = {
+    "dot_damage": frozenset({
+        "enemies_hit_at_least",
+        "enemies_hit_at_most",
+        "metres_moved_before_attack",
+        "skill_health_cost_above",
+    }),
 }
 
 
@@ -9129,6 +9163,16 @@ def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[st
                     f"CataclysmStatExemptionTests.cpp; or take the condition off.")
                 continue
             needs = what_a_condition_needs(condition)
+            if condition in CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS.get(stat, ()):
+                problems.append(
+                    f"{sheet}/{row['Name']}: states {stat!r} under the condition "
+                    f"{condition!r}, which asks about the blow being dealt, and "
+                    f"the code that asks for {stat!r} hands over the character "
+                    f"struck and not the blow. The condition would be refused "
+                    f"every time, so this row would grant NOTHING and say "
+                    f"nothing. CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS "
+                    f"says which.")
+                continue
             if needs and needs not in CONDITIONED_STATS_WITH_AN_ASKER[stat]:
                 about = ("a blow being taken" if needs == "blow_taken"
                          else "an action row's event" if needs == "action_event"

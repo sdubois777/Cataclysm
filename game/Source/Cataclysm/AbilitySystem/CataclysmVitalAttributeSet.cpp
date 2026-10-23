@@ -647,6 +647,56 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Data.EffectSpec, Data.EffectSpec.GetContext().GetEffectCauser(),
 				CataclysmDefendingBody(*this));
 
+			// AND, FOR A TICK WHOSE FIGURE ITS APPLIER'S STATS PRICED, THE SHARE OF THE APPLIER'S `dot_damage` THAT IS
+			// JUDGED AGAINST THIS CHARACTER NOW. Ruled 2026-10-23 (#2235, Q2 (a)), for "While the enemy is moving, your
+			// DoTs on them deal 20%-40% more damage": the condition is judged on each tick, on the defender's side.
+			//
+			// THE RATIO OF TWO ASKS OF THE APPLIER, BOTH AT THIS TICK AND WITH THE SAME TAGS: with this character as
+			// the target, and with none. A row that holds without a target is in both and cancels, so what the
+			// application already baked in (`DamageOverTimeNumbers`, asked with no target) is not counted again. The
+			// target is handed over with the distance and the stagger, as the penetration asks below hand them.
+			//
+			// THE TICK'S OWN TAGS: what its effect grants under `Keyword.DoT`, and that parent. The applying skill's
+			// tags are not carried on the effect, so a target-conditioned row requiring one does not reach a tick.
+			//
+			// A DENOMINATOR OF NOUGHT OR LESS ANSWERS 1, the tick's figure as it was applied: the application clamped
+			// its own multiplier at nought, and there is no share of nothing to take.
+			//
+			// NOT FOR AN UNMARKED TICK, whose figure was not priced from its applier's stats (a spread copy, the trap's
+			// share, a minion's burn, converted damage, a zone, a hazard): it keeps 1. And not when the applier has
+			// gone or has no ability system of this project's.
+			const bool bPricedFromItsAppliersStats = Data.EffectSpec.GetSetByCallerMagnitude(
+				FName(UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName),
+				/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+			if (Hit.bIsDamageOverTime && bPricedFromItsAppliersStats)
+			{
+				if (const UCataclysmAbilitySystemComponent* Applier =
+						Cast<const UCataclysmAbilitySystemComponent>(
+							Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()))
+				{
+					FGameplayTagContainer TickTags = Hit.DamageOverTimeTags;
+					const FGameplayTag TickParent = UCataclysmDamageCalculation::DamageOverTimeTag();
+					if (TickParent.IsValid())
+					{
+						TickTags.AddTag(TickParent);
+					}
+					AActor* Ticked = CataclysmDefendingBody(*this);
+					const float OnThisTarget = Applier->StatForSkill(
+						FName(TEXT("dot_damage")), TickTags, 100.0f,
+						/*SkillHealthCostPercent=*/-1.0f,
+						FCataclysmBlowContext(),
+						/*MetresMovedBeforeBlow=*/-1.0f,
+						Hit.OpponentDistanceMetres,
+						UCataclysmSkillEffects::IsStaggered(Ticked),
+						/*Target=*/Ticked);
+					const float OnNoTarget = Applier->StatForSkill(
+						FName(TEXT("dot_damage")), TickTags, 100.0f);
+					Hit.TargetConditionedDotDamageMultiplier = OnNoTarget > 0.0f
+						? FMath::Max(0.0f, OnThisTarget / OnNoTarget)
+						: 1.0f;
+				}
+			}
+
 			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.
 			// Issues #1032 and #666. Read here beside the other two because they
 			// come from the same place: tags the ability that threw the blow put

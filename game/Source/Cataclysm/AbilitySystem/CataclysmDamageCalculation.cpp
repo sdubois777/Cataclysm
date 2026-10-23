@@ -1259,6 +1259,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 					DefenderStat(Defender, DamageOverTimeTakenStat,
 								 Combat->GetDamageOverTimeTaken(),
 								 FCataclysmBlowContext(), TagsOfTick(Hit))) / 100.0f;
+
+				// AND THE APPLIER'S `dot_damage` ROWS JUDGED AGAINST THIS CHARACTER AT THIS TICK. Ruled 2026-10-23
+				// (#2235, Q2 (a)): "While the enemy is moving, your DoTs on them deal 20%-40% more damage". 1 for every
+				// tick but one its applier's stats priced; see `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier`.
+				Damage *= FMath::Max(0.0f, Hit.TargetConditionedDotDamageMultiplier);
 			}
 		}
 	}
