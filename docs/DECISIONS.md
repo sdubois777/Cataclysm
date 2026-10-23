@@ -13,9 +13,9 @@ can draw and one of the Edicts an Ascendant adds a floor, scaled there up to its
 mana taken, Vigil at most 50% of maximum health with its 3 seconds fixed, Humility not scaled. **And breaking a
 punishing Edict now wakes an Angelic Warden**: on a floor that also carries Angelic Wardens, each payment of the Edict
 of Abstinence, each smite the Edict of Vigil calls, each movement skill under the Edict of Stillness and each skill
-with a cooldown under the Edict of Patience wakes the nearest standing statue. Branch `feat/game-edicts-c-2` on
-`development` at `d4925d422` (written on `c514b6746` as `feat/game-edicts-c-1` and moved with its zero-context
-patch ids unchanged). Not built and not run: see The editor step, Proofs and Run.
+with a cooldown under the Edict of Patience wakes the nearest standing statue. Branch `feat/game-edicts-c-3` on
+`development` at `63cae4775` (written on `c514b6746` as `feat/game-edicts-c-1`, moved onto `d4925d422` as `-2` and
+then onto `63cae4775`, each time with its zero-context patch ids unchanged). Not built and not run: see The editor step, Proofs and Run.
 
 ### What changed and why
 
@@ -444,7 +444,7 @@ each predicted by reading:
 
 Not yet run. Nothing was built and no Unreal test was run by the writing session.
 
-Branch `feat/game-edicts-c-2` on `development` at `d4925d422`. This entry adds lines to `docs/DECISIONS.md` and removes
+Branch `feat/game-edicts-c-3` on `development` at `63cae4775`. This entry adds lines to `docs/DECISIONS.md` and removes
 none of development's.
 
 ---
