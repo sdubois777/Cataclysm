@@ -56530,4 +56530,98 @@ bool FCataclysmAscendantCoreOnlyLastTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// AN ASCENDANT'S TITHE ASKS MORE A FLOOR DEEPER, ITS HEALTH PRICE HELD AT HALF AND ITS ANGELS AT EIGHT. Ruled by the
+// coordinating session on 2026-10-22.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAscendantTitheTest,
+	"Cataclysm.DungeonModifierEffects.AnAscendantsTitheAsksMoreAFloorDeeperWithItsHealthPriceCappedAtHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAscendantTitheTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE NUMBERS AND THE ROUNDING: half up, whole, never below the base, the health share held at 50.
+	TestEqual(TEXT("the health cap is half"), Effects::ForcedTithesMostHealthPercent, 50.0f, 0.0001f);
+	TestEqual(TEXT("12.5 charges round up to 13"), Effects::ForcedTithesPotionChargesAt(1.25f), 13);
+	TestEqual(TEXT("7.5 materials round up to 8"), Effects::ForcedTithesMaterialsAt(1.5f), 8);
+	TestEqual(TEXT("a strength below 1 asks the base charges"), Effects::ForcedTithesPotionChargesAt(0.5f), 10);
+	TestEqual(TEXT("and the base materials"), Effects::ForcedTithesMaterialsAt(0.5f), 5);
+	TestEqual(TEXT("the health share at 2.4 is 48"), Effects::ForcedTithesHealthPercentAt(2.4f), 48.0f, 0.001f);
+	TestEqual(TEXT("and at 7.9, floor 70, held at 50 where it would be 158"),
+			  Effects::ForcedTithesHealthPercentAt(UCataclysmDungeonModifierRules::EdictStrengthOn(70, false)), 50.0f,
+			  0.0001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE LABELS THE ALTAR SHOWS, OR "no altar".
+	auto Label = [Mode](FName Key)
+	{
+		const FCataclysmFloorObjectChoice* Choice = TitheChoice(Mode, Key);
+		return Choice ? Choice->Label : FString(TEXT("no altar"));
+	};
+
+	// FLOOR 41 OF AN ASCENDANT CARRYING FORCED TITHES: STRENGTH 5. Not its last floor: off the empire it has none.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Ascendant;
+	Mode->DungeonModifiers = {TithesRow};
+	if (!TestTrue(TEXT("floor 41 was reached"), Mode->GoToFloor(41))
+		|| !TestNotNull(TEXT("and a tithe altar stands"), Mode->TitheAltarNow()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its Edicts are five times as strong"), Mode->EdictStrengthHere(), 5.0f, 0.0001f);
+	TestEqual(TEXT("the health price is held at half"), Label(PayHealthKey),
+			  FString(TEXT("Pay in health: 50% of maximum health")));
+	TestEqual(TEXT("the potion price is five times ten"), Label(PayPotionKey),
+			  FString(TEXT("Pay with a potion drink: 50 charges from the fullest potion")));
+	TestEqual(TEXT("the materials five times five"), Label(PayMaterialsKey),
+			  FString(TEXT("Pay in materials: 25 of the material you carry most of")));
+	TestEqual(TEXT("and the angels still eight"), Label(RefuseKey), FString(TEXT("Refuse: 8 angels come at once")));
+
+	// AND WHAT IT CHARGES IS WHAT IT SHOWS: half of maximum health.
+	Mode->ClearFloorEnemies();
+	const float Maximum = MaximumHealthOf(Player);
+	const float Before = HealthOf(Player);
+	if (!TestTrue(TEXT("set-up: the half can be paid"), Before - 0.5f * Maximum >= 1.0f)
+		|| !TestTrue(TEXT("paying in health acted"), Mode->ChooseAtFloorObject(Mode->TitheAltarNow(), PayHealthKey)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("half of maximum health was taken"), HealthOf(Player), Before - 0.5f * Maximum, 0.01f);
+
+	// THE CONTROLS: FLOOR 1 OF THE SAME ASCENDANT, STRENGTH 1, ASKS THE BASE; AND FLOOR 41 OF A DUNGEON THAT IS NO
+	// ASCENDANT ASKS THE BASE TOO.
+	for (const ECataclysmDungeonSubType SubType : { ECataclysmDungeonSubType::Ascendant,
+													 ECataclysmDungeonSubType::None })
+	{
+		Mode->DungeonSubType = SubType;
+		const int32 Floor = SubType == ECataclysmDungeonSubType::Ascendant ? 1 : 41;
+		if (!TestTrue(FString::Printf(TEXT("CONTROL: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("CONTROL: at strength 1"), Mode->EdictStrengthHere(), 1.0f, 0.0001f);
+		TestEqual(TEXT("CONTROL: a fifth of maximum health"), Label(PayHealthKey),
+				  FString(TEXT("Pay in health: 20% of maximum health")));
+		TestEqual(TEXT("CONTROL: ten charges"), Label(PayPotionKey),
+				  FString(TEXT("Pay with a potion drink: 10 charges from the fullest potion")));
+		TestEqual(TEXT("CONTROL: five materials"), Label(PayMaterialsKey),
+				  FString(TEXT("Pay in materials: 5 of the material you carry most of")));
+		TestEqual(TEXT("CONTROL: eight angels"), Label(RefuseKey), FString(TEXT("Refuse: 8 angels come at once")));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

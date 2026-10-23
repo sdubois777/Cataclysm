@@ -3319,16 +3319,46 @@ public:
 	static constexpr const TCHAR* ForcedTithesPayMaterials = TEXT("Materials");
 	static constexpr const TCHAR* ForcedTithesRefuse = TEXT("Refuse");
 
-	/** Forced Tithes' health price for this maximum health. */
-	static float ForcedTithesHealthPrice(float MaximumHealth)
+	/**
+	 * Forced Tithes' three prices at `Strength` times their base, the strength of an Edict on the floor being walked
+	 * (`ACataclysmDungeonGameMode::EdictStrengthHere`: 1 outside an Ascendant). Since 2026-10-22, as the coordinating
+	 * session ruled that day under the owner's delegation, verbatim: "TITHE: scale all three prices together by the
+	 * multiplier, and keep the 8 angels fixed, as you recommend, with one cap. The health price is capped at 50% of
+	 * maximum health, the same cap as Vigil's smite: an uncapped 20% reaches 158% at floor 70, which no player could
+	 * pay. The potion-charge and material prices are uncapped."
+	 *
+	 * THE HEALTH SHARE is `ForcedTithesHealthPercent` times the strength, held at `ForcedTithesMostHealthPercent`.
+	 * THE CHARGES AND THE MATERIALS are whole numbers: the base times the strength, ROUNDED HALF UP
+	 * (`FMath::RoundToInt`, so 12.5 charges are 13), and never below the base. A strength below 1 is read as 1. The
+	 * altar shows and charges these same numbers. THE ANGELS DO NOT SCALE.
+	 */
+	static float ForcedTithesHealthPercentAt(float Strength)
 	{
-		return MaximumHealth * ForcedTithesHealthPercent / 100.0f;
+		return FMath::Min(ForcedTithesHealthPercent * FMath::Max(1.0f, Strength), ForcedTithesMostHealthPercent);
+	}
+
+	static int32 ForcedTithesPotionChargesAt(float Strength)
+	{
+		const int32 Base = FMath::RoundToInt(ForcedTithesPotionCharges);
+		return FMath::Max(Base, FMath::RoundToInt(ForcedTithesPotionCharges * FMath::Max(1.0f, Strength)));
+	}
+
+	static int32 ForcedTithesMaterialsAt(float Strength)
+	{
+		return FMath::Max(ForcedTithesMaterials,
+						  FMath::RoundToInt(static_cast<float>(ForcedTithesMaterials) * FMath::Max(1.0f, Strength)));
+	}
+
+	/** Forced Tithes' health price for this maximum health, at `Strength`. */
+	static float ForcedTithesHealthPrice(float MaximumHealth, float Strength = 1.0f)
+	{
+		return MaximumHealth * ForcedTithesHealthPercentAt(Strength) / 100.0f;
 	}
 
 	/** Whether a player at this health can pay the health price: it never leaves them below 1. */
-	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth)
+	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth, float Strength = 1.0f)
 	{
-		return Health - ForcedTithesHealthPrice(MaximumHealth) >= 1.0f;
+		return Health - ForcedTithesHealthPrice(MaximumHealth, Strength) >= 1.0f;
 	}
 
 	/**
@@ -6442,6 +6472,19 @@ public:
 	static constexpr float ForcedTithesPotionCharges = 10.0f;
 	static constexpr int32 ForcedTithesMaterials = 5;
 	static constexpr int32 ForcedTithesAngelCount = 8;
+
+	/**
+	 * The most of maximum health Forced Tithes' health price takes however strong an Ascendant makes it: half. The
+	 * coordinating session's, 2026-10-22, under the owner's delegation; the same cap as the Edict of Vigil's smite.
+	 * See `ForcedTithesHealthPercentAt`.
+	 */
+	static constexpr float ForcedTithesMostHealthPercent = 50.0f;
+
+	static_assert(ForcedTithesHealthPercent <= ForcedTithesMostHealthPercent,
+				  "Forced Tithes' health cap is now below its own base price, so it would cut a tithe nothing made "
+				  "stronger.");
+	static_assert(ForcedTithesMostHealthPercent < 100.0f,
+				  "Forced Tithes' health cap now takes all of maximum health, which no player could pay.");
 	static constexpr int32 ForcedTithesAngelRung = 0;
 	static constexpr float ForcedTithesAngelsAwayCm = 800.0f;
 

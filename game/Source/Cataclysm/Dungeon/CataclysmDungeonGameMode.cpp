@@ -11956,18 +11956,23 @@ void ACataclysmDungeonGameMode::PlaceTheTitheAltar()
 	{
 		return;
 	}
+	// THE PRICES AT THIS FLOOR'S EDICT STRENGTH, since 2026-10-22: an Ascendant's floor N asks more, the health share
+	// capped at half; everywhere else the base. The same three numbers `CanPayTheTithe` and `ChooseAtTitheAltar` charge.
+	// The last floor, the only one a Heavenly Core stands on, asks no tithe, so the strength cannot change under an
+	// altar.
+	const float Strength = EdictStrengthHere();
 	FCataclysmFloorObjectChoice Health;
 	Health.Key = FName(Effects::ForcedTithesPayHealth);
 	Health.Label = FString::Printf(TEXT("Pay in health: %d%% of maximum health"),
-								   FMath::RoundToInt(Effects::ForcedTithesHealthPercent));
+								   FMath::RoundToInt(Effects::ForcedTithesHealthPercentAt(Strength)));
 	FCataclysmFloorObjectChoice Potion;
 	Potion.Key = FName(Effects::ForcedTithesPayPotion);
 	Potion.Label = FString::Printf(TEXT("Pay with a potion drink: %d charges from the fullest potion"),
-								   FMath::RoundToInt(Effects::ForcedTithesPotionCharges));
+								   Effects::ForcedTithesPotionChargesAt(Strength));
 	FCataclysmFloorObjectChoice Materials;
 	Materials.Key = FName(Effects::ForcedTithesPayMaterials);
 	Materials.Label = FString::Printf(TEXT("Pay in materials: %d of the material you carry most of"),
-									  Effects::ForcedTithesMaterials);
+									  Effects::ForcedTithesMaterialsAt(Strength));
 	FCataclysmFloorObjectChoice Refuse;
 	Refuse.Key = FName(Effects::ForcedTithesRefuse);
 	Refuse.Label = FString::Printf(TEXT("Refuse: %d angels come at once"), Effects::ForcedTithesAngelCount);
@@ -11994,7 +11999,8 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 	if (ChoiceKey == FName(Effects::ForcedTithesPayHealth))
 	{
 		return Effects::ForcedTithesHealthIsAffordable(AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
-													   AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+													   AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+													   EdictStrengthHere());
 	}
 
 	if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
@@ -12013,7 +12019,8 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 			*OutPotionSlot = Fullest;
 		}
 		return Fullest != INDEX_NONE
-			&& AbilitySystem->GetPotionCharges(Fullest) >= Effects::ForcedTithesPotionCharges - KINDA_SMALL_NUMBER;
+			&& AbilitySystem->GetPotionCharges(Fullest)
+				>= Effects::ForcedTithesPotionChargesAt(EdictStrengthHere()) - KINDA_SMALL_NUMBER;
 	}
 
 	if (ChoiceKey == FName(Effects::ForcedTithesPayMaterials))
@@ -12038,7 +12045,7 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 		{
 			*OutMaterial = Most;
 		}
-		return MostCount >= Effects::ForcedTithesMaterials;
+		return MostCount >= Effects::ForcedTithesMaterialsAt(EdictStrengthHere());
 	}
 	return false;
 }
@@ -12097,14 +12104,16 @@ bool ACataclysmDungeonGameMode::ChooseAtTitheAltar(ACataclysmFloorObject* Altar,
 		// TAKEN STRAIGHT OFF HEALTH, NOT A HIT, as Forced March takes it: nothing the player wears changes a price.
 		UCataclysmSkillEffects::ReduceHealthDirectly(
 			Player, Player,
-			Effects::ForcedTithesHealthPrice(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())));
+			Effects::ForcedTithesHealthPrice(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+											 EdictStrengthHere()));
 	}
 	else if (ChoiceKey == FName(Effects::ForcedTithesPayPotion))
 	{
 		AbilitySystem->SetPotionCharges(PotionSlot,
-										AbilitySystem->GetPotionCharges(PotionSlot) - Effects::ForcedTithesPotionCharges);
+										AbilitySystem->GetPotionCharges(PotionSlot)
+											- Effects::ForcedTithesPotionChargesAt(EdictStrengthHere()));
 	}
-	else if (!Player->GetInventory() || !Player->GetInventory()->RemoveMaterial(Material, Effects::ForcedTithesMaterials))
+	else if (!Player->GetInventory() || !Player->GetInventory()->RemoveMaterial(Material, Effects::ForcedTithesMaterialsAt(EdictStrengthHere())))
 	{
 		return false;
 	}

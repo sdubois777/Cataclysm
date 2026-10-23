@@ -8,8 +8,9 @@ Decisions made outside the Google Drive documents, newest first.
 an Ascendant. Floor 1 carries one Divine Edict beyond the dungeon's own modifiers, floor 2 two, and so on up to four;
 today only two Edicts are rows -- the Edict of Silence and Forced Tithes, the design's Edict of Tithe -- so from
 floor 2 an Ascendant carries both. Each Edict is 10% stronger a floor deeper and half as strong again on the last
-floor while its Heavenly Core stands; the Edict of Silence, the one of the two with a number to scale, is held at 67.5
-seconds of its 90 second cycle. The last floor's Heavenly Core has the floor boss's health, never attacks, and seals
+floor while its Heavenly Core stands; the Edict of Silence's silence is held at 67.5 seconds of its 90 second
+cycle, and Forced Tithes' three prices scale together with its health price held at half of maximum health and its 8
+angels fixed. The last floor's Heavenly Core has the floor boss's health, never attacks, and seals
 the stairs out -- the clear and the quest objective -- until it is destroyed. When the Ascendant's timer runs out on
 its city it hits as any Quest dungeon does and also leaves one of its Edicts there for 30 days, and every dungeon on
 that city carries it. The simulation still approximates the Ascendant (the entry headed "In the simulation the
@@ -21,7 +22,8 @@ Branch `feat/game-ascendant-1` on `development` at `8b31fda27`. Not built and no
 - **WHAT A PLAYER MEETS.** The city screen says "Ascendant, 30 floors, 2 Edicts by its last floor and a Heavenly
   Core, 9 days until it bites", and a city carrying a left Edict says "Edict of Silence, 12 days left" in its status.
   Inside, the floor panel lists the Edicts as it lists every modifier. On floor 6 the Edict of Silence silences for
-  22.5 seconds, on floor 70 for the cap of 67.5. Forced Tithes asks its altar's prices unchanged. The last floor's
+  22.5 seconds, on floor 70 for the cap of 67.5. On floor 41 Forced Tithes' altar asks 50% of maximum health, 50 potion charges or 25 materials, or 8
+  angels, where floor 1 asks 20%, 10 or 5. The last floor's
   stairs do nothing while the Core stands.
 - **WHY.** The owner chose the design on 2026-10-19 ("Full plan design"); on 2026-10-20, verbatim, "From floor 1",
   "Core floor only" and "One at random"; on 2026-10-20 of what an Edict is, verbatim: "Edicts are part of the
@@ -47,7 +49,7 @@ The coordinating session ruled all eleven on 2026-10-22, as the dungeon session 
    Draw`). The design's sentence "by their weights" is corrected and cites that ruling.
 2. **Caps.** Each Edict scales only its one harshening number, by `1 + 0.10 x (N - 1)` on floor N and x1.5 on the
    Core's floor while the Core stands: the Edict of Silence's length at most 67.5 seconds of its 90 second cycle; the
-   Edict of Tithe its cost; and, recorded for G7b and G7c and not built, Temperance at most 90%, Patience uncapped,
+   Edict of Tithe its cost (ruled further below); and, recorded for G7b and G7c and not built, Temperance at most 90%, Patience uncapped,
    Abstinence at most 100% of the cost, Stillness's slow at most 90% with its 3 seconds fixed, Vigil's smite at most
    50% of maximum health with its 3 seconds fixed, and Humility not scaling. The reason, now in the design beside the
    10% rule: a floor-70 Edict at 7.9 times its base makes Silence permanent, and Quest dungeons are 20 to 70 floors
@@ -71,6 +73,14 @@ The coordinating session ruled all eleven on 2026-10-22, as the dungeon session 
 10. **The Core has that depth's floor boss's health and does not attack.**
 11. **The order is G7a, G7b, G7c.**
 
+**THE TITHE, RULED LATER THE SAME DAY** on the writing session's report that Forced Tithes has three prices and no one
+cost, the coordinating session, verbatim: "TITHE: scale all three prices together by the multiplier, and keep the 8 angels fixed, as you recommend, with one cap. The health price is capped at 50% of maximum health, the same cap as Vigil's smite: an uncapped 20% reaches 158% at floor 70, which no player could pay. The potion-charge and material prices are uncapped. This is the coordinating session's judgement under the owner's delegation; write it into the GDD beside the other caps. The second session adds it with one test (Tithe's three prices on a deep floor, the health price at its cap, the angels at 8) and a control on floor 1." Built: the health share is `min(20 x S, 50)`
+(`ForcedTithesMostHealthPercent = 50.0f`, with `static_assert(ForcedTithesHealthPercent <=
+ForcedTithesMostHealthPercent)`); the potion charges and the materials are the base times `S`, a whole number rounded
+half up (`FMath::RoundToInt`: 12.5 charges are 13) and never below the base; the 8 angels do not scale. `S` is
+`EdictStrengthHere()`, read where the Edict of Silence's length is. The last floor, the Core's, asks no tithe, so the
+Core's half never reaches a tithe.
+
 ### How it is built
 
 - `game/Source/CataclysmEmpire/Empire/CataclysmDungeonKind.h`: `ECataclysmDungeonSubType::Ascendant = 9`, after the
@@ -84,6 +94,12 @@ The coordinating session ruled all eleven on 2026-10-22, as the dungeon session 
   `EdictOrderFor` (one even shuffle of every Edict, `Draw` over them all, on `MixedSeed(WalkSeed, EdictSalt)`),
   `EdictsOnFloor` (the first `min(N, 4)` of that order not already in force), `EdictLeftBy` (one of `EdictsOnFloor` at
   4, evenly, on a stream from the walk seed and the day) and `EdictStrengthOn`.
+- Forced Tithes, `CataclysmDungeonModifierEffects.h`: `ForcedTithesMostHealthPercent = 50.0f` and two static
+  assertions; `ForcedTithesHealthPercentAt`, `ForcedTithesPotionChargesAt` and `ForcedTithesMaterialsAt`;
+  `ForcedTithesHealthPrice` and `ForcedTithesHealthIsAffordable` take the strength, 1 by default. In
+  `CataclysmDungeonGameMode.cpp` every place a price is read takes `EdictStrengthHere()`: the altar's three labels in
+  `PlaceTheTitheAltar`, the three checks in `CanPayTheTithe`, and the three charges in `ChooseAtTitheAltar`, so the
+  price shown is the price charged.
 - `CataclysmEmpireMap.h` and `.cpp`: `FCataclysmCity::LeftEdict` and `LeftEdictUntilDay`, both `SaveGame`;
   `EdictCarriedOn(Today)` and `EdictDaysLeftOn(Today)`; `UCataclysmEmpireMap::LeftEdictDays = 30` and `LeaveEdict`,
   which replaces any earlier Edict and restarts the days.
@@ -114,10 +130,8 @@ The coordinating session ruled all eleven on 2026-10-22, as the dungeon session 
 
 ### Judgements made by the writing session, each open to a ruling
 
-- **Forced Tithes is not scaled.** Its price is three alternatives -- 20% of maximum health, 10 charges of the
-  fullest potion, 5 of the material carried most -- and eight angels if refused (`PlaceTheTitheAltar`); there is no
-  one number that is its cost, so by ruling 2's own condition it does not scale. The design says so, as a reading
-  open to a ruling.
+- **Forced Tithes' prices, rounded half up.** The ruling above leaves the rounding of a scaled charge or material
+  count to the writing session: half up, and never below the base.
 - **Every Edict in force in an Ascendant scales**, including an ordinary modifier that is an Edict and a left Edict
   carried into one; in any other dungeon an Edict is at base strength.
 - **The order is drawn over every Edict and an Edict already in force is passed over**, rather than the order being
@@ -399,7 +413,7 @@ fixture now holds the two city fields).
   - `Cataclysm.DungeonStairs.ThePlayerArrivesAtTheNewFloorsEntrance` (CataclysmDungeonStairsTests.cpp:331)
   - `Cataclysm.DungeonStairs.TheyWorkFromAFloorAskedForAtTheConsole` (CataclysmDungeonStairsTests.cpp:469)
   - `Cataclysm.FloorBrief.EveryFloorOfAnEliteDungeonEndsWithABossFight` (CataclysmFloorBriefTests.cpp:649)
-- **(g) reads the Edict of Silence's length or Forced Tithes' prices**: 9 found. Unless marked, Unreal: outside an Ascendant the strength is 1, so a silence lasts its 15 seconds, and Forced Tithes is not scaled at all, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+- **(g) reads the Edict of Silence's length or Forced Tithes' prices**: 9 found. Unless marked, Unreal: outside an Ascendant the strength is 1, so a silence lasts its 15 seconds and Forced Tithes asks its base prices, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
   - `Cataclysm.DungeonModifierEffects.AFloorCarryingTheEdictLocksSkillsThenLetsThemBack` (CataclysmDungeonModifierEffectsTests.cpp:5251): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
   - `Cataclysm.DungeonModifierEffects.ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` (CataclysmDungeonModifierEffectsTests.cpp:5316): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
   - `Cataclysm.DungeonModifierEffects.ForcedTithesAnAngelThePlayerTakesIsNoLongerOne` (CataclysmDungeonModifierEffectsTests.cpp:40653)
@@ -501,11 +515,13 @@ the old names.
   `test_the_game_has_no_ascendant`, `missing == ["Ascendant"]` -> renamed
   `test_the_game_has_war_s_sub_type_so_the_difference_is_the_mandate`, `missing == []`, with a control that Hollow and
   Ascendant are among the names read; `test_the_two_really_do_differ_and_the_other_six_do_not` -> renamed
-  `test_war_really_does_differ_and_the_other_seven_do_not`, `len(cases) == 6` -> `len(cases) == 7`.
+  `test_war_really_does_differ_and_the_other_seven_do_not`, `len(cases) == 6` -> `len(cases) == 7`. The
+  `missing == []` assertion went beyond the restore text's own steps; accepted by the coordinating session,
+  2026-10-22.
 
 ### New tests
 
-Unreal, 22 registered names:
+Unreal, 23 registered names:
 
 - `game/Source/CataclysmEmpire/Tests/CataclysmDungeonModifierTests.cpp`:
   `Cataclysm.DungeonModifiers.TheEdictsAreTheTwoCelestialRowsTheDesignNames`,
@@ -527,7 +543,11 @@ Unreal, 22 registered names:
   `Cataclysm.DungeonModifierEffects.AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap`,
   `Cataclysm.DungeonModifierEffects.AnEdictIsAtBaseStrengthOutsideAnAscendant`,
   `Cataclysm.DungeonModifierEffects.AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed`,
-  `Cataclysm.DungeonModifierEffects.OnlyAnAscendantsLastFloorHasAHeavenlyCore`.
+  `Cataclysm.DungeonModifierEffects.OnlyAnAscendantsLastFloorHasAHeavenlyCore`,
+  `Cataclysm.DungeonModifierEffects.AnAscendantsTitheAsksMoreAFloorDeeperWithItsHealthPriceCappedAtHalf` (floor 41,
+  strength 5: 50%, 50 charges, 25 materials, 8 angels, and half of maximum health taken; the rounding at 12.5 and
+  7.5 and the floor at the base; CONTROL: the same Ascendant's floor 1, and floor 41 of a dungeon that is no
+  Ascendant, ask 20%, 10, 5 and 8).
 - `CataclysmDungeonModifierTableTests.cpp`:
   `Cataclysm.DungeonModifiers.EnteringADungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScore`.
 - `CataclysmCityScreenTests.cpp`: `Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore`,

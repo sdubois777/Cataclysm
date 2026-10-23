@@ -6516,9 +6516,12 @@ action; which actions and every number are this game's own.
   Temperance withholds at most 90% of healing; the Edict of Patience has no cap; the Edict of Abstinence takes
   at most 100% of the mana cost from health; the Edict of Stillness slows by at most 90%, its 3 seconds fixed; the
   Edict of Vigil smites for at most 50% of maximum health, its 3 seconds fixed; the Edict of Humility does not scale.
-  The Edict of Tithe's price is three alternatives -- a share of health, a potion's charges, or materials -- with the
-  angels if it is refused, so it has no one number to scale and does not scale, until a ruling names one. These caps
-  are the coordinating session's, 2026-10-22, under the owner's delegation of the numbers the design leaves open.
+  The Edict of Tithe scales all three of its prices together -- a share of health, a potion's charges, and
+  materials -- and its 8 angels if it is refused stay fixed; the health price is capped at 50% of maximum health, the
+  same cap as the Edict of Vigil's smite, because an uncapped 20% reaches 158% at floor 70, which no player could pay;
+  the potion-charge and material prices are uncapped, whole numbers rounded half up and never below the base. These
+  caps are the coordinating session's, 2026-10-22, under the owner's delegation of the numbers the design leaves
+  open.
 - **An Edict left on a city is at its base strength**, and so is an Edict in any dungeon that is not an Ascendant.
 - **A Heavenly Core on the last floor.** The dungeon is not cleared, and its quest objective not gained, until the
   Core is destroyed. While it stands, the Edicts on the Core's floor are 50% stronger. That is the opening
