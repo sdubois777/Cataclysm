@@ -2,6 +2,424 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — Three more Celestial Edicts are rows and are built in the game: Abstinence takes a quarter of the mana paid from health, Vigil smites a player who stands still for 3 seconds, Humility takes the extra damage from critical strikes; and breaking a punishing Edict wakes an Angelic Warden
+
+**The last three of the eight Divine Edicts are rows of the design workbook and do what the design says.** The Edict
+of Abstinence takes a quarter of the mana a skill's cast takes from the mana pool from health as well; the Edict of
+Vigil calls a smite on the spot where the player has stood still for 3 seconds, marked as Wings of the Host marks a
+feather, which lands 3 seconds later for 10% of the player's maximum health; the Edict of Humility leaves a critical
+strike a critical strike and takes away its extra damage. Each is a Celestial dungeon modifier any Celestial dungeon
+can draw and one of the Edicts an Ascendant adds a floor, scaled there up to its cap: Abstinence at most 100% of the
+mana taken, Vigil at most 50% of maximum health with its 3 seconds fixed, Humility not scaled. **And breaking a
+punishing Edict now wakes an Angelic Warden**: on a floor that also carries Angelic Wardens, each payment of the Edict
+of Abstinence, each smite the Edict of Vigil calls, each movement skill under the Edict of Stillness and each skill
+with a cooldown under the Edict of Patience wakes the nearest standing statue. Branch `feat/game-edicts-c-1` on
+`development` at `c514b6746`. Not built and not run: see The editor step, Proofs and Run.
+
+### What changed and why
+
+- **WHAT A PLAYER MEETS.** On a Celestial floor carrying the Edict of Abstinence a movement skill that takes 20 mana
+  also takes 5 health, and the floor's log line says "25% of a skill's mana cost also taken from health, by the Edict
+  of Abstinence"; a player on 3 health pays 2 and is left on 1, and the cast is never refused. Under Vigil a player who
+  stands still for 3 seconds sees a mark appear under them, and 3 seconds later it strikes whoever stands on it --
+  the player only -- for a tenth of maximum health; walking off it dodges it, and standing on dodges nothing and is
+  struck again 3 seconds after each landing. Under Humility a critical strike deals what the hit would have and is
+  still announced as a critical strike. On floor 6 of an Ascendant those are 37.5% of the mana, 15% and the same; on
+  floor 70, 100% of the mana, 50% and the same. On a floor that also carries Angelic Wardens, each of the four
+  punishing Edicts' violations wakes the nearest statue still standing, wherever it is on the floor.
+- **WHY.** The owner's rulings of 2026-10-19 to 2026-10-21 quoted in the entries below ("All eight", "Delegated, as
+  proposed"), and the coordinating session's rulings for G7c on 2026-10-23, below.
+- **EVERY ASCENDANT'S EDICTS MOVE AGAIN.** `EdictKeys` grows from five to all eight, in the design's order, and
+  `EdictOrderFor` shuffles that list on the walk seed's stream, so the same seed gives another order; what an
+  Ascendant holds, and which Edict its hit leaves, change for every dungeon. No run stream moves. Every Celestial
+  dungeon's draw also moves, because the Celestial pool grows from 18 rows to 21; and Reality Twister, which draws
+  from every built row, can now add any of the three to a floor of any dungeon.
+
+### The rulings
+
+The coordinating session ruled these on 2026-10-23 for G7c, in substance:
+
+1. **Abstinence takes the health share floored to leave 1, and never refuses the cast** (the precedents: Desperate
+   Measures, and Path of Exile's Blood Magic, below). The share counts as a health cost for Fervour, The Last Drop and
+   Blood Rush.
+2. **"Mana cost" is the mana actually taken from the mana pool, after reductions.** Nothing for a cost paid from health
+   or energy shield, or for an aura's upkeep.
+3. **Humility holds the critical multiplier at 100 only.** Critical strikes still count, and on-crit effects stay (Path
+   of Exile's Elemental Overload, below). Ailments keep counting as crit-sourced because the Edict names only damage --
+   **A JUDGEMENT**, recorded as one. Coup de Grace is kept.
+4. **Vigil: one smite for each 3 seconds standing still, re-armed after it lands**, with Wings of the Host's telegraph
+   (the player only, its mark's size and its 3 second warning). Moving does not cancel a pending smite. It can kill:
+   it is damage, not a cost.
+5. **The divine-law violations are Abstinence's payment, Vigil's smite being called, Stillness's slow, and Patience's
+   longer cooldown.** **Tithe does not count**: paying it ends the floor, so it is excluded. Silence, Temperance and
+   Humility forbid and cannot be broken ("breaking a punishing Edict", the design's Heaven's Wrath section).
+6. **A violation wakes the nearest standing statue, not behind a closed barrier, one for each violation.**
+7. **The stats `mana_cost_also_taken_from_health_percent` and `critical_strikes_deal_no_extra_damage`**, each with its
+   exemption probe (`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`) and its entry in the stat-lookup
+   inventory (`tools/tests/test_stat_lookups_hand_over_what_they_should.py`).
+
+The caps are the design's, the coordinating session's of 2026-10-22 under the owner's delegation: Abstinence
+`min(25 x S, 100)` percent of the mana taken; Vigil `min(10 x S, 50)` percent of maximum health, its 3 seconds fixed;
+Humility does not scale. `S` is `EdictStrengthHere()`: 1 outside an Ascendant and for an Edict left on a city.
+
+### The genre sources, and what they settle
+
+Verified by the dungeon session; the last two as the research agent found them.
+
+- **Path of Exile, Elemental Overload** (poedb.tw/us/Elemental_Overload): "Your Critical Strikes do not deal extra
+  Damage". It settles Humility's shape: a critical strike that is still a critical strike, its extra damage taken away
+  and nothing else.
+- **Path of Exile, Petrified Blood** (poedb.tw/us/Petrified_Blood): "Skills gain a Base Life Cost equal to 40% of Base
+  Mana Cost while not on Low Life". It settles Abstinence's shape: a share of a skill's mana cost charged as a life cost
+  beside it. Which mana -- the base, or what was actually taken -- is this game's ruling 2.
+- **Path of Exile, Blood Magic** (poedb.tw/us/Blood_Magic): "It is not possible to commit suicide through Blood Magic".
+  It settles the floor: a cost paid in life does not kill.
+- **Diablo IV, the Nightmare Dungeon affix Lightning Storm**, as the research agent found it on
+  diablo4.wiki.fextralife.com/Nightmare+Dungeons: "Lightning gathers above the player. Get into the protection dome to
+  avoid severe outcomes." With **Path of Exile's Ultimatum Stormcaller Runes** (poedb.tw/us/Ultimatum, as the research
+  agent found it) it settles Vigil's shape: a strike telegraphed where the player stands, avoided by moving.
+- **This game's own, and not settled by any of them**: the 3 seconds standing still that calls the smite and the
+  re-arming at its landing; the 25% and the 10% (the design's table); every cap; that ailments still count as
+  crit-sourced; that a violation wakes the nearest statue at any distance; and the four violations themselves.
+
+### The rows
+
+`docs/All_Things_Cataclysm.xlsx`, sheet "Dungeon Modifiers", granted for these three rows only:
+
+| Row | Cataclysm Type | Modifier Name | Weight | Description | Row key |
+| --: | :-- | :-- | --: | :-- | :-- |
+| 20 | Celestial | Edict of Abstinence | 15 | A quarter of a skill's mana cost is also taken from health. | `Celestial_Edict_of_Abstinence` |
+| 21 | Celestial | Edict of Vigil | 15 | Standing still for 3 seconds calls a smite on that spot for 10% of the player's maximum health, with the usual telegraph. | `Celestial_Edict_of_Vigil` |
+| 22 | Celestial | Edict of Humility | 15 | A critical strike deals no extra damage. | `Celestial_Edict_of_Humility` |
+
+In the order the coordinating session gave, after Stillness at 19; the design table's own order is Abstinence,
+Stillness, Vigil, Humility. The descriptions are the design's Edict table's "Base effect" cells given a capital and a
+full stop. The keys are the generator's own `row_name`, asserted by the writing script before it wrote anything.
+
+**HOW IT WAS WRITTEN.** As G7b's were: with openpyxl 3.1.5 (the workbook's last writer, per its `docProps/app.xml`) by
+a script in the writing session's scratch folder (`g7cw/wb_write.py`), on a copy proved before it was moved over the
+real file. It moved every row from 20 to the sheet's last, 1015, down three -- values, styles and heights -- wrote the
+three rows with row 19's styles, and widened `Table6` from `A1:D120` to `A1:D123` and its two data validations to row
+123. `tools/generate_datatables.py` then rewrote all 29 CSVs: **28 came back byte for byte the same**, and
+`game/Data/DungeonModifiers.csv` differs by the three lines added after `Celestial_Edict_of_Stillness` and none
+removed; `--check` says "All 29 DataTable CSVs are up to date."
+
+**THE PROOF NOTHING ELSE CHANGED** (`g7cw/wb_prove.py`, printed):
+
+- Every cell of all 27 sheets, value and style, with `data_only=False` and again with `True`: "the other 26 sheets:
+  every cell's value and style equal"; on "Dungeon Modifiers", "4060 cells before, 4072 after; rows 1-19 equal, rows
+  23-1018 equal old rows 20-1015", compared by content: row `r` after against row `r - 3` before.
+- Sheet names and order equal; no defined names; column widths 20.63, 18.25, 13.88 and 60.25 before and after; the
+  frozen pane at A2; no merged cells and no conditional formatting; 0 formula cells, 0 drawings, 0 comments, 0
+  `extLst`, 0 images and 0 charts in either archive.
+- The archive's 55 members are the same 55; three differ in bytes: `docProps/core.xml` (its modified time),
+  `xl/worksheets/sheet1.xml` (this sheet) and `xl/tables/table1.xml` ("only ref A1:D120 -> A1:D123"). G7b's
+  round-trip difference in `sheet27.xml` does not recur: that save had already written the default style on those
+  cells. "PROBLEMS: none".
+- **openpyxl lost nothing this workbook has**: it has none of what openpyxl drops, and it was last saved by openpyxl.
+
+### How it is built
+
+- `CataclysmEmpire/Empire/CataclysmDungeonModifier.h` and `.cpp`: `EdictKeys` holds all eight in the design table's
+  order -- Silence, Temperance, Patience, Abstinence, Stillness, Vigil, Humility, Tithe -- and `EdictName` names the
+  three. The empire module still includes nothing from the `Cataclysm` module.
+- `Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`: `EdictOfAbstinenceKey`, `EdictOfVigilKey`,
+  `EdictOfHumilityKey`, each `Built` in `BuiltStateOf` and listed in `KeysWithARule`; the constants
+  `EdictOfAbstinenceManaAlsoAsHealthPercent = 25`, `EdictOfAbstinenceMostManaAlsoAsHealthPercent = 100`,
+  `EdictOfHumilityValue = 1`, and, after Wings of the Host's whose telegraph they are, `EdictOfVigilStillSeconds = 3`,
+  `EdictOfVigilMaxHealthPercent = 10`, `EdictOfVigilMostMaxHealthPercent = 50`, `EdictOfVigilWarningSeconds` and
+  `EdictOfVigilMarkRadiusCm` (Wings of the Host's 3 seconds and 150 cm), with three static assertions;
+  `EdictOfAbstinenceManaAlsoAsHealthPercentAt`, `EdictOfVigilSmitePercentAt`, `EdictOfVigilIsDue` and
+  `EdictOfVigilHasLanded`; two fields of their own in `FCataclysmPlayerFloorEffects`,
+  `AbstinenceManaAlsoAsHealthPercent` and `HumilityNoExtraCriticalDamageValue`, each in `IsEmpty`, `StatModifiersFor`
+  and `Describe`. `PlayerEffectsFor` writes Abstinence's at `EdictStrength` and Humility's flag unscaled; no new
+  caller, so its three game callers are still the three.
+- **Abstinence's cost path.** `UCataclysmGameplayAbility::ApplyCost` clears `LastManaAlsoTakenAsHealth` before any
+  early return and, once `PoolPaying` has chosen mana and the mana is taken, records the amount taken times
+  `StatForSkill(mana_cost_also_taken_from_health_percent)` / 100 (`ManaAlsoTakenAsHealthThisCast`).
+  `UCataclysmSkillTemplate::PayHealthCost` takes it as a term of its own, `FromAbstinence = min(owed, max(0, Current -
+  1 - FromCurrent - Added))`, added to the cost every consumer reads (`FromCurrent + Added + FromAbstinence`): The Last
+  Drop suppresses it, Fervour is filled by it, Blood Rush's window and Sanguine Momentum hear it, Deferred Payment and
+  Rock Bottom treat it as any health cost, and it is part of `LastHealthCostPercentOfMaximum`. `CheckCost` is
+  untouched, so the cast is never refused for it. An aura's upkeep (`UCataclysmAuraSkill::Pulse`) never passes through
+  `ApplyCost` and pays nothing.
+- **Humility's hold.** `UCataclysmVitalAttributeSet`, where the attacker's critical multiplier is asked for, asks
+  `critical_strikes_deal_no_extra_damage` with the same `Asking` and blow tags and, above nought, sets
+  `Hit.CritMultiplier = FMath::Min(Hit.CritMultiplier, UCataclysmDamageCalculation::NoExtraCriticalMultiplier)`, 100.
+  The roll in `UCataclysmDamageCalculation::Resolve` runs while the multiplier is above nought, so the strike is still
+  rolled, still `bWasCritical`, and still heard as a critical strike by every on-crit row.
+- **Vigil's step.** `ACataclysmDungeonGameMode::StepEdictOfVigil`, on the beat on any floor carrying the row: with no
+  mark, it reads `SecondsSinceMoved()` (the clock the stationary conditions read) and the time since it was last
+  armed, and when the smaller reaches 3 seconds it spawns a harmless floor zone of Wings of the Host's radius in the
+  row's type on the player's spot, owned by the floor's hazard source, records `EdictOfVigilSmitePercentAt(
+  EdictStrengthHere())` and breaks a divine law there. With a mark, it counts the warning on the beat, and at 3
+  seconds strikes the player characters the hazard source finds on the mark, once each, through `ApplyDirectDamage`
+  typed by the row, destroys the mark and re-arms. The floor change forgets the mark, the warning and the percent, and
+  arms it at arrival.
+- **The divine laws.** `ACataclysmDungeonGameMode::NoteDivineLawViolated(const FVector& At)`, public because the ability
+  calls it: of the statues not yet woken and not parted from `At`'s section by a closed barrier
+  (`AClosedBarrierStandsBetweenSections`, the test both older triggers ask), it wakes the nearest, flat from its
+  cell's middle, at any distance, and answers 1, or 0 when none is left. Its four callers: `PayHealthCost` when the
+  cast owed Abstinence's share; `StepEdictOfVigil` when it calls a smite; and the new `NoteSkillUseForDivineLaws`,
+  heard from `OnSkillWasUsed` beside the Wardens' own skill trigger, for the player's skill in the Movement slot on a
+  floor carrying Stillness and for the player's skill with a cooldown (`bHasCooldown`) on a floor carrying Patience.
+- **The strength step** re-applies Abstinence beside Temperance and Patience when `EdictStrengthHere` moves.
+
+**THE FIELDS ARE THEIR OWN** for the reason G7b's are (issue #1765's trap): nothing on the beat assigns them.
+
+### Judgements made by the writing session, each open to a ruling
+
+- **WHERE ABSTINENCE'S PAYMENT CALLS THE WARDENS: `UCataclysmSkillTemplate::PayHealthCost`.** The skill-used notice the
+  game mode hears is sent before the payment and carries no amount, and `PayHealthCost` is the one place a use pays
+  health; it finds the game mode as `UCataclysmAbilitySystemComponent::DungeonBeingWalked` does, with
+  `ACataclysmDungeonGameMode::InWorld`. A free start that pays its cost (Spellblade's Will) pays no health, as before, so
+  it neither pays the share nor breaks the law. The option not taken: `ApplyCost`, which a paying free start also runs.
+- **THE VIOLATION IS THE CAST THAT OWED THE PRICE**, whether or not The Last Drop or the last point of health let any of
+  it be taken: the punished action is spending mana under the Edict, and Patience's violation is likewise the use and
+  not whether the lengthening was above nought. The option not taken: only a payment above nought.
+- **HOW THE SHARE COMBINES WITH THE OTHER HEALTH COSTS.** It is taken from what the current-health share and the added
+  maximum-health cost leave, above the last point of health: so it never kills, and never turns the added cost, which
+  may kill by design, into a death that cost alone would not have been. The option not taken: flooring it with the
+  current-health share alone, which would let it take a player to 1 and the added cost then kill.
+- **VIGIL COUNTS STANDING STILL FROM THE LATER OF THE LAST MOVE AND THE LAST LANDING**, so a player who never moves is
+  smitten every 6 seconds (3 still, 3 warning), never by two at once; the floor's arrival arms it too. Standing still
+  is the world's clock; the warning is counted on the beat, as Wings of the Host's is. The percent is read when the
+  smite is called, as the Edict of Silence reads its strength when a silence begins.
+- **A STILLNESS VIOLATION IS THE MOVEMENT SKILL'S USE**, the notice for a skill in the Movement slot (the slot
+  `CataclysmSkillTemplate.cpp` notes as a movement skill), not the slow's arrival on the next beat: one violation for
+  each skill. A movement skill with a cooldown under both Stillness and Patience breaks two laws.
+- **HUMILITY LEAVES A MULTIPLIER ALREADY BELOW 100 BELOW IT**, and a character whose non-critical blows keep less than
+  all of themselves (`non_critical_damage`) still lands its critical strikes whole: the Edict takes the extra damage and
+  nothing else.
+- **NO PANEL LINE FOR VIGIL.** The floor panel lists the row by name and marks it built, as every row's; the mark is
+  what the player sees. The floor's log line names Abstinence and Humility through `Describe`.
+
+### Counts, old -> new
+
+- `CataclysmDataTableTests.cpp`, `CHECK_TABLE(... "DungeonModifiers.csv", 120)` -> `123`, with its comment.
+- `CataclysmDungeonModifierTableTests.cpp`, `TestEqual(TEXT("the table has 120 rows"), ..., 120)` -> `"the table has 123
+  rows"`, `123`; `TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), 120)` -> `123`; its comment and the
+  file comment's "really has 120 rows" -> 123.
+- `docs/README.md`, "| Dungeon Modifiers | 120 |" -> 123.
+- `tools/tests/test_dungeon_modifier_port.py`'s SPEAKS_THE_COUNT sentences: `CataclysmDayClock.h` "the 120 dungeon
+  modifiers" and `CataclysmSurge.h` twice -> 123; its own docstring and message "The design has 120 dungeon modifiers"
+  -> 123. The pool it counts, every row but the Generic one, is read from the data: 119 -> 122.
+- `docs/Cataclysm_GDD_v2.md`, the Corrupted Stalker's weight paragraph: "holds 120 modifiers" -> 123; still "one of the
+  fourteen at 20", the three new rows being at 15.
+- `CataclysmDungeonModifier.h`: "120 rows and five columns" -> 123; "(120 since 2026-10-22)" -> "(120 from 2026-10-22,
+  123 since 2026-10-23)"; "one active Cataclysm is 12 to 18 rows" -> "12 to 21"; "the pool is 119" -> 122.
+- Comments stating the current count, 120 -> 123: `CataclysmDungeonModifierEffects.h`, `CataclysmDungeonModifierTable.h`
+  (as `CataclysmDungeonModifier.h`'s second), `CataclysmFloorBrief.h` twice, `CataclysmDungeonGameMode.h` and `.cpp`,
+  `CataclysmRoster.h`, `CataclysmDungeonModifierTests.cpp` twice, `CataclysmDungeonModifierEffectsTests.cpp`'s file
+  comment, `CataclysmFloorBriefTests.cpp` twice, and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` twice
+  ("a few of the 123 rows"; "Eight of the 123 rows are written that way", still eight: no new row says "a chance").
+- **Left as written**, each a dated measurement, a quotation or history, as G7b left them: the 117s and 116s G7b's
+  entry lists, and `CataclysmSurge.h`'s history at its line 651.
+- `game/README.md`: "as of 2026-10-22 116 of the 120" -> "as of 2026-10-23 119 of the 123", twice, counted by
+  `g7cw/count_built.py` (G7b's `g7bw/count_built.py` pointed at this worktree) at `c0f13998a`: "123 rows; Built 119,
+  Partly 1, NotBuilt 3"; Celestial "{'Built': 21}"; Partly `Void_Insanity_Bursts`; not built
+  `Generic_Corrupted_Stalker`, `War_Battlefield_Tactics`, `War_Supply_Lines`. The rest of both paragraphs is unchanged
+  and still true.
+- `docs/Cataclysm_GDD_v2.md`, the Ascendant's "Who decided what" paragraph: "it does not yet have the six new Edicts or
+  what they do, nor the Angelic Wardens' 'divine laws'" -- untrue since G7b for three of the six -> the six are rows
+  and built, with their dates, and breaking a punishing Edict wakes the nearest standing statue, one for each.
+
+### Simulation
+
+`sim/cataclysm_sim/modifiers.py` gains `('Edict of Abstinence', 15)`, `('Edict of Humility', 15)` and `('Edict of
+Vigil', 15)` in its Celestial list's 15 band, in name order, so `tools/tests/test_dungeon_modifier_port.py`'s triple
+comparison holds. What moves: the Ascendant stand-in's extra danger a floor, `Simulation.average_modifier_score`, the
+mean of the campaign's pool -- with all eight Cataclysms 10.966 (119 rows) -> 11.066 (122), with Celestial alone
+11.944 (18) -> 12.381 (21) -- and every draw from a pool holding Celestial rows. **`experiments.py` was not run.**
+
+### Existing tests that change (proposed, awaiting ruling)
+
+Q1 to Q5 in one commit, "Existing tests follow the Edict list of eight (proposed, awaiting ruling)", each following
+from `EdictKeys` gaining the three; Q6, found by the whole Python suite, in a commit of its own, "An existing check's
+allowance names Humility's flag field (proposed, awaiting ruling)". Old -> new:
+
+- **Q1** `Cataclysm.DungeonModifiers.TheEdictsAreTheCelestialRowsTheDesignNames` (`CataclysmDungeonModifierTests.cpp`):
+  `Expected = { Silence, Temperance, Patience, Stillness, Tithe }`, "the Edicts are the Edicts of Silence, Temperance,
+  Patience and Stillness and Forced Tithes, in the design's order" -> `{ Silence, Temperance, Patience, Abstinence,
+  Stillness, Vigil, Humility, Tithe }`, "the Edicts are the Edicts of Silence, Temperance, Patience, Abstinence,
+  Stillness, Vigil and Humility and Forced Tithes, in the design's order"; three key constants added beside the five.
+- **Q2** `...AnAscendantAddsOneEdictAFloorAndEachFloorHoldsTheLastFloorsUntilNoneIsLeft`: `TestEqual("and five Edicts
+  are rows today", EdictKeys().Num(), 5)` -> `("and all eight Edicts are rows", ..., 8)`.
+- **Q3** `...AnAscendantsEdictsAreDrawnEvenlyAndNotByTheirDanger`: control `("CONTROL: which is not the one in four a
+  draw by danger would give", |Share - 20/80| > 0.02)` -> `("CONTROL: which is not the 20 in 125 a draw by danger would
+  give", |Share - 20/125| > 0.02)`, the eight dangers summing to 125, and its comment. **A NARROWER MARGIN**: evenly
+  drawn, Share is about 0.125 against 0.16, 0.035 apart where the control asks 0.02; over 4,000 seeds the sampling
+  error is about 0.005, so the margin is about three of them. The seeds are fixed and were not run.
+- **Q4** `tools/tests/test_the_ascendant_in_the_model_and_in_the_game.py::test_every_edict_the_game_lists_is_a_celestial_row`:
+  the key list of five -> the eight in the design's order, its message "the five Edicts that are rows ... G7c adds
+  three" -> "the eight Edicts are the Edicts of Silence, Temperance, Patience, Abstinence, Stillness, Vigil and
+  Humility and Forced Tithes, in the design's order".
+- **Q5** `CataclysmFloorBriefTests.cpp`'s `AnAscendant()` helper, read by
+  `Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers` and
+  `...AnAscendantPassesOverAnEdictAlreadyAmongItsModifiers`: its pool gains `Celestial_Edict_of_Abstinence`,
+  `Celestial_Edict_of_Vigil` and `Celestial_Edict_of_Humility` at their table danger, 15. `EdictDanger` is unchanged:
+  "the rest 15" now covers the three.
+- **Q6** `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py::test_the_struct_was_found_and_holds_the_fields`:
+  its allowance `NOT_PERCENTAGES`, the fields deliberately not ending in `Percent`, gains
+  `HumilityNoExtraCriticalDamageValue` with its reason, a flag written as a value as `PotionsForbiddenValue` is. The
+  assertion is unchanged; it failed on the new field, as its message asks, until the field was listed.
+- **Held by reading, unchanged**: `...AnEdictAlreadyAmongADungeonsModifiersIsNotDrawnAgain` and
+  `...TheEdictAHitLeavesIsOneTheAscendantWouldHoldFromFloorFour` read `EdictKeys()` and `EdictOrderFor`; their
+  "every Edict comes first / is left by some" controls run over 200 and 400 draws, against eight Edicts.
+  `Cataclysm.EmpireRun.AnUnwalkedAscendantLeavesAnEdictItWouldHoldFromFloorFour` asks "more than one Edict was left";
+  `Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore` reads `Min(4, EdictKeys().Num())`, 4.
+  G7b's `AnAscendantCanDrawEachOfItsEdictsAndNamesEachAsTheDesignDoes` loops over `EdictKeys()`.
+
+### AT RISK
+
+**FOUND BY SEARCH, AT `c514b6746`, BEFORE ANY EDIT.** A script (`g7cw/atrisk.py`, G7b's with G7c's patterns) ran these
+Python regular expressions over every `game/Source/**/Tests/*.cpp`, `tools/tests/*.py` and `sim/tests/*.py` read out
+of git at the base, and named the test above each match. It cannot see a test that reaches the change through a helper
+whose own name does not match. How each reaches the change was judged by reading; nothing was built.
+
+- **(a) `(?<![\d.])(120|119)(?![\d.])`**: 87 tests. The pins changed above (`Cataclysm.Data.EveryGeneratedTableImports`
+  **high, CHANGED**; `Cataclysm.DungeonModifiers.EveryRowOfTheTableBecomesAPoolEntry` **high, CHANGED, and fails until
+  the editor step**); every other match an unrelated figure, **cannot reach**.
+- **(b) `EdictKeys|EdictsOnFloor|EdictLeftBy|EdictOrderFor|EdictName|IsEdict\(`**: 16 tests. Q1 to Q5 above, **high,
+  CHANGED, proposed**; the rest held by reading, as above, **low**.
+- **(c) test names matching `Edict|Ascendant|HeavenlyCore|Abstinence|Vigil|Humility|AngelicWarden|DivineLaw`**: 45
+  tests. The G7a and G7b tests on an Ascendant's floors (`AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap`,
+  `AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed`, `OnlyAnAscendantsLastFloorHasAHeavenlyCore`,
+  `AnAscendantsTitheAsksMoreAFloorDeeperWithItsHealthPriceCappedAtHalf`,
+  `InAnAscendantTheThreeEdictsAreStrongerAFloorDeeperUpToTheirCaps`,
+  `DestroyingTheHeavenlyCoreTakesPatienceBackToItsFloorsStrength`) may now draw Abstinence, Vigil or Humility: none
+  casts a mana-paid skill, lands a critical strike that is measured, or samples the player's movement, and a player
+  never sampled reads `SecondsSinceMoved() == -1` and calls no smite, **low**. The Angelic Wardens tests carry no
+  Patience, Stillness, Abstinence or Vigil, so no law is broken on their floors, **low**. The rest, **low** or **cannot
+  reach**.
+- **(d) the cost path** (`PayHealthCost|ManaCostPaidAsHealthPercent|...|LastHealthCostPercentOfMaximum`): 34 tests.
+  None carries the Abstinence stat, so `ManaAlsoTakenAsHealthThisCast()` is nought and every figure is as before,
+  **low**.
+- **(e) critical strikes** (`crit_multiplier|GetCritMultiplierAttribute|CritMultiplier|Cataclysm\.CritRoll|FScopedCritRoll`):
+  299 tests. None carries the Humility stat; the new lookup answers its fallback, nought, and holds nothing, **low**.
+- **(f) standing still** (`SecondsSinceMoved|NoteRelocatedInstantly|SampleStep|ForcedMarch|NoteDidNotMove|\.Walk\(`):
+  26 tests. Vigil's step runs only on a floor carrying its row, and none of them carries it, **low**.
+- **(g) the Wardens and the skill notice** (`AngelicStatue|AngelicWardens|NoteSkillUsed|ThePlayerUses\(`): 44 tests.
+  `NoteSkillUseForDivineLaws` acts only with statues standing on a floor carrying Patience or Stillness; none of these
+  does, **low**.
+- **(h) `BuiltStateOf|KeysWithARule|GetRowNames\(\)|GetRowMap\(\)`**: 98 tests.
+  `Cataclysm.DungeonModifierEffects.EveryRuleNamesARowOfTheTable` **fails until the editor step** (it asks the asset for
+  each key in `KeysWithARule`); `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` **fails until the editor
+  step**; `EveryRowWithSomethingBuiltIsInTheRuleList` passes before and after the rebuild;
+  `EnteringADungeonCarriesEveryBuiltRowForRealityTwister` counts from the pool, **low**. The rest other rows, **cannot
+  reach**.
+- **(i) the exemption list and the inventory**: 28 tests. `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+  **high, held** by the two new probes; the stat-lookup inventory's checks **high, held** by the two new entries
+  (measured: 6 passed); `test_the_exempt_stats_are_read_from_the_engine` and `test_every_listed_stat_has_a_probe_or_is_named_as_unprobed`
+  read the list, **low**.
+- **(j) `PlayerEffectsFor`**: 11 tests. No new caller; test callers keep the default strength, **low**.
+- **(k) ground zones** (`SpawnForTheFloor|ZonesOnTheFloor|AnyZone\(`): 53 tests. Vigil places a zone only on a floor
+  carrying its row; `test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source` holds Vigil's spawn
+  (its owner is `Source` from `ForFloor`), **low, held**.
+- **(l) `DungeonModifiers\.csv` in Python**: 11 tests. `test_dungeon_modifier_port.py`'s eight held by the simulation's
+  three rows, **high, held**; the other three read other rows, **low**.
+- **AND OUTSIDE THE PATTERNS**: `tools/tests/test_datatable_assets_are_current.py` (the CSV's hash against the asset's
+  record) **fails until the editor step**.
+
+### New tests
+
+Nineteen Unreal tests, none built or run.
+
+- `Cataclysm.DungeonModifierEffects.` (`CataclysmDungeonModifierEffectsTests.cpp`), thirteen:
+  `TheEdictsOfAbstinenceVigilAndHumilityAreBuiltRules`;
+  `TheEdictOfAbstinenceTakesAQuarterOfTheManaTakenFromHealthUpToAllOfIt`;
+  `TheEdictOfHumilityHoldsCriticalStrikesAtTheHitAndDoesNotScale`;
+  `TheEdictOfVigilSmitesForATenthOfMaximumHealthUpToHalfWithWingsOfTheHostsTelegraph`;
+  `TheEdictOfAbstinenceTakesItsShareOfAMovementSkillsManaFromHealthAndScalesInAnAscendant` (base, Ascendant floors 6
+  and 70, forty beats beside Death's Embrace, and a floor without the row);
+  `TheEdictOfVigilMarksWhereThePlayerStoodStillForThreeSecondsAndSmitesOnlyThePlayer` (and it re-arms at its landing);
+  `MovingOffTheEdictOfVigilsMarkDodgesItsSmiteAndDoesNotCancelIt`;
+  `ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`;
+  `InAnAscendantTheEdictOfVigilSmitesHarderAFloorDeeperUpToHalf` (as ratios of what each floor's smite took);
+  `ASkillWithACooldownUnderPatienceOrAMovementSkillUnderStillnessWakesTheNearestStatue`;
+  `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue`;
+  `TheEdictsThatForbidWakeNoStatue`;
+  `ADivineLawBrokenDoesNotWakeTheNearestStatueWhileAClosedBarrierPartsItFromThePlayer`.
+- `Cataclysm.Skills.` (`CataclysmSkillTemplateTests.cpp`), four:
+  `UnderTheEdictOfAbstinenceAManaPaidCastAlsoPaysAQuarterOfItsManaInHealth` (and 37.5% and 100% at strengths 1.5 and
+  7.9); `UnderTheEdictOfAbstinenceACostPaidFromHealthOrShieldAFreeCastTheBasicAttackAndAnAurasUpkeepPayNoHealth`;
+  `TheEdictOfAbstinencesShareLeavesOneHealthAndNeverRefusesTheCast`;
+  `TheEdictOfAbstinencesShareFillsFervourOpensBloodRushsWindowAndTheLastDropSuppressesIt`.
+- `Cataclysm.Crit.UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne` (`CataclysmCriticalStrikeTests.cpp`).
+- `Cataclysm.DungeonModifiers.AnAscendantCanDrawAbstinenceVigilAndHumilityAndNamesEachAsTheDesignDoes`
+  (`CataclysmDungeonModifierTests.cpp`).
+- And two probes in `CataclysmStatExemptionTests.cpp`'s `Probes()`, for the two stats.
+
+Their controls: War Supply Lines still not built; Desperate Measures' field unwritten by Abstinence; no row, no share
+or flag; a player who has stood still for less than 3 seconds, or was never sampled, calls nothing; a creature on the
+mark is not struck; a floor without the row calls nothing however long the player stands; a skill with no cooldown
+that is not a movement skill, the basic attack and a creature's skill break no law; a floor carrying the Edict of
+Patience instead of the forbidding Edicts wakes one for the same skill; an attacker without Humility deals 1,500 on a
+critical strike; an Ascendant holding the three among its own modifiers draws none of them.
+
+**NOT TESTED**, by reading only: an on-crit row firing under Humility (the test asserts the hit notice's `bCritical`,
+which is what raises `critical_strike` in `ACataclysmPlayerCharacter`); ailments counting as crit-sourced under
+Humility; the share deferred by Deferred Payment or owed under Rock Bottom; a Vigil smite killing the player; a
+movement skill with a cooldown under both Stillness and Patience breaking two laws; Vigil's mark across a floor's
+change; Tithe waking nothing (held by the Python check's list of callers, not in play).
+
+### Python
+
+`tools/tests/test_the_last_three_celestial_edicts_in_the_game.py`, eleven tests, five of them controls on altered
+copies: the three rows are Celestial rows at 15; the base numbers (25; 3 seconds and 10%, with Wings of the Host's
+telegraph; Humility's hold at 100) against the design's table and the rows' descriptions; the caps (Abstinence 100,
+Vigil 50 with its seconds fixed, Humility unscaled) against the design's Ascendant paragraph and the code; the two stat
+names alike in the ability, the damage calculation, the exemption list and `StatModifiersFor`; the divine laws called
+from exactly the four places ruled and from nothing for Tithe, Silence, Temperance or Humility; and Humility's hold and
+Abstinence's floor in place.
+
+Checked by the writing session in a `git archive` copy of the branch at `d90369191`, with `tools/prove_guard.py`,
+narrowed to the new file -- a check of the file, not a registered proof. Each PROVED, restored "11 passed":
+
+- B1, `EdictOfAbstinenceManaAlsoAsHealthPercent = 25.0f` -> `20.0f`: "2 failed, 9 passed",
+  `test_the_base_numbers_are_the_designs_and_the_rows` and `test_the_base_check_sees_a_changed_number` (its anchor was
+  gone).
+- B2, Vigil's `NoteDivineLawViolated(Where);` removed: "2 failed, 9 passed", `test_the_divine_laws_are_the_four_ruled`
+  and `test_the_law_check_sees_a_caller_added_or_lost` (its anchor was gone).
+- B3, Humility's hold written `FMath::Max`: "2 failed, 9 passed", `test_humilitys_hold_and_abstinences_floor_are_in_place`
+  and `test_the_hold_and_floor_check_sees_them_gone` (its anchor was gone).
+
+### The editor step
+
+Not yet run. `DT_DungeonModifiers.uasset` and `game/Data/datatable_asset_sources.json` are not rebuilt, so
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` fails until it is, and
+`EveryRuleNamesARowOfTheTable`, `EveryGeneratedTableHasAnAssetThatMatchesIt` and `EveryRowOfTheTableBecomesAPoolEntry`
+fail in the editor until it is.
+
+### Proofs
+
+Not yet run. Three to be registered by the dungeon session after reading the code. Suggested by the writing session,
+each predicted by reading:
+
+- **P1, Humility's hold removed** (`CataclysmVitalAttributeSet.cpp`, `UCataclysmDamageCalculation::NoExtraCriticalMultiplier);`
+  -> `Hit.CritMultiplier);`, which leaves the `Min` holding nothing): `Cataclysm.Crit.UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne`
+  ("under it a critical strike deals the hit, 1,000") and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+  (the Humility probe).
+- **P2, Abstinence's health term removed** (`CataclysmSkillTemplate.cpp`, `: FromCurrent + Added + FromAbstinence;` ->
+  `: FromCurrent + Added + FromAbstinence * 0.0f;`): the four `Cataclysm.Skills.` Abstinence tests but the one on what
+  pays nothing; `TheEdictOfAbstinenceTakesItsShareOfAMovementSkillsManaFromHealthAndScalesInAnAscendant` and
+  `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue` (its quarter; the statue still wakes, the share
+  still being owed).
+- **P3, Vigil's step removed** (`CataclysmDungeonGameMode.cpp`, `StepEdictOfVigil(Player, AbilitySystem);` -> a
+  comment): `TheEdictOfVigilMarksWhereThePlayerStoodStillForThreeSecondsAndSmitesOnlyThePlayer`,
+  `MovingOffTheEdictOfVigilsMarkDodgesItsSmiteAndDoesNotCancelIt`, `ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`,
+  `InAnAscendantTheEdictOfVigilSmitesHarderAFloorDeeperUpToHalf` and
+  `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue`; the numbers test passes.
+
+### Run
+
+Not yet run. Nothing was built and no Unreal test was run by the writing session.
+
+Branch `feat/game-edicts-c-1` on `development` at `c514b6746`. This entry adds lines to `docs/DECISIONS.md` and removes
+none of development's.
+
+---
+
 ## 2026-10-23 — A chance of 100 never fails its roll at the seven rolls that had no guard: evasion, critical strike, block, the cooldown skip, the two contagion spreads and bleed on a critical strike now draw from 0 up to but not 100
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` (new, header only: the namespace
