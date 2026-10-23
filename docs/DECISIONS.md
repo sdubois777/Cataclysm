@@ -2,6 +2,249 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — A rack's seconds between throws ask the stat line for attack speed with the skill's tags, once when the rack starts, so a conditioned or scaled attack speed row reaches Butcher's Bill
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`
+(`UCataclysmProjectileSkill::SecondsBetweenThrows`); `CataclysmSkillTemplates.h` (its comment only);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two tests in the new group `Cataclysm.RackStatLine.`, at
+the end of the file); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one `INVENTORY` entry);
+`tools/generate_datatables.py` and `tools/tests/test_every_conditioned_stat_has_an_asker.py` (comments only). No data
+row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. **This closes
+[#2233](https://github.com/sdubois777/Cataclysm/issues/2233).**
+
+### SAID FIRST
+
+**A PLAY CHANGE.** Butcher's Bill (`Demonic_Axe_Ultimate`, the one skill with `ScalesWithAttackSpeed=1`) divides its
+stated interval by the thrower's attack speed. Until this change it read the attack speed ATTRIBUTE, which is worked out
+with no state, so these six built rows never reached it, whether or not their condition held:
+
+- "While below 30% HP your attack speed is increased" (`health_below` 30);
+- "After using a charge skill gain 20%-40% increased attack speed" (`seconds_after_charge_skill`);
+- "Gain 5%-10% attack speed on basic attack for 4 seconds" (`seconds_after_basic_attack`);
+- Spellblade's Will's 6-piece bonus, its second row, scaled by `own_stacks`;
+- the passive nodes `Masochist_basic_fc_a2#1` (`while_bleeding`) and `Masochist_basic_bt_b1#1` (scaled by
+  `momentum_stacks`).
+
+**A rack started while one of them holds now throws faster and empties sooner, at the rate the row gives when the rack
+starts.** It is still 30 axes and the same damage per axe; the rack's ceiling (`Duration`) shortens with the interval,
+as it already did for any attack speed.
+
+**THE RATE IS READ ONCE, WHEN THE RACK STARTS.** A condition that starts or stops while the rack is emptying does not
+change its pace. A player who drops below 30% health halfway through a rack throws the rest at the pace it started at.
+
+**NOTHING CHANGES FOR A CHARACTER WITH NO SUCH ROW.** With nothing recorded for `attack_speed` the answer is the
+attribute, as before. With a recorded line and no conditioned, scaled or tag-scoped row, the pipeline's answer with the
+skill's tags is the attribute's figure. No row of `game/Data/` whose stat column names `attack_speed` requires a tag
+(13 read by script: one affix, six enchantment rows, six passive rows), so asking with the skill's tags changes no
+answer those rows give beyond the six above. A weapon's implicit attack speed was not read by that script. A dungeon's haste still reaches the rack (below).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 71. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- Butcher's Bill started while a conditioned or scaled attack speed row holds throws faster, at the rate the row gives when the rack starts
+
+### WHO RULED
+
+The coordinating session's ruling of 2026-10-23, verbatim:
+
+> #2233: StatForSkill with SkillTags, falling back to the attribute, read once per rack. Asking with SkillTags is the
+> same rule every other skill-stat lookup follows, and once per rack keeps a rack's pace steady. Record both as the
+> coordinating session's judgements.
+
+So both of these are **the coordinating session's judgements**, and not the owner's: asking with `SkillTags` (because it
+is the rule every other skill-stat lookup follows), and reading once per rack (because it keeps a rack's pace steady).
+The owner was not asked; the issue named no owner decision.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `c514b6746`, before this change.
+
+1. **The function.** `UCataclysmProjectileSkill::SecondsBetweenThrows` (`CataclysmSkillTemplates.cpp` 1788 to 1817)
+   returns the stated interval when the row does not scale or states none (1790 to 1794) or when there is no ability
+   system (1796 to 1801); read the attribute at 1802 to 1803; returned the stated interval when that was nought or less,
+   "A character with no weapon equipped has no attack speed at all" (1804 to 1809); and divided by the rate times
+   Cripple's share, for a player character only (1811 to 1816, #2273).
+2. **Its one caller, and once per rack.** `BeginEmptyingTheRack` (1976) throws the first axe at once, then reads
+   `SecondsBetweenThrows()` once (2007), sets the looping `ThrowTimer` at that rate (2008 to 2010) and the rack's
+   ceiling `RackTimer` at `Duration * Interval / Params.Interval` (2017 to 2024). Nothing re-reads it while the rack
+   empties. `BeginEmptyingTheRack` is called once per use, from the release lambda in `ActivateAbility` (1505). The
+   tests read `SecondsBetweenThrows` directly (`CataclysmSkillTemplateTests.cpp` 7461, 7463, 7497;
+   `CataclysmStatExemptionTests.cpp` 11244, 11264, 11278).
+3. **`SkillTags` on this object.** `UCataclysmSkillTemplate::SkillTags` (`CataclysmSkillTemplate.h` 105, in the public
+   section that opens at 36) is the skill's own tags, set from the row's Tags cell. The projectile skill's other three
+   stat lookups pass it: `BouncesWithRows`, `PierceWithRows` and `ExtraProjectilesWithRows` (`CataclysmSkillTemplates.cpp`
+   1336, 1351, 1369), each through a `UCataclysmAbilitySystemComponent` cast from the actor info. The basic attack's
+   `SecondsBetweenSwingsFor` (`CataclysmBasicAttack.cpp` 97 to 99) passes an empty container, "because the basic attack
+   is not one of the tree's skills". So `SkillTags` is the right container here.
+4. **What `StatForSkill` answers.** `UCataclysmAbilitySystemComponent::StatForSkill` (`CataclysmAbilitySystemComponent.cpp`
+   458 to 493; declared public at `CataclysmAbilitySystemComponent.h` 2202, the public section opening at 145): **with no
+   stat line recorded** for the stat it returns the fallback unchanged (466 to 474), "an enemy's ability system is never
+   given a character stat line, and a player's has none until the first refresh"; **with one** it returns the pipeline's
+   `Final` over the recorded base and the whole modifier list, with the skill's tags and the character's state at the
+   call (`CurrentConditions`, reading health and maximum health off the vital set, 907 to 918), and does not look at the
+   fallback. A line is recorded only for a stat that has modifiers (`CataclysmPlayerClassStats.cpp` 1933 to 1946), and
+   its base is the weapons' rate when one is supplied (`BaseOverrides`, 1895 to 1910).
+5. **Whether a dungeon's haste still reaches the rack.** Trick or Treat's haste, and Chaos Touched's, the relic's and the
+   pact's attack speed, are written by `UCataclysmDungeonModifierEffects::StatModifiersFor` as modifiers on
+   `attack_speed` (`CataclysmDungeonModifierEffects.cpp` 1499 to 1502, 1686, 1715, 1797 to 1799), held by
+   `ApplyToCharacter` with `SetDungeonStatModifiers` (1916), and appended to the refresh's modifier list by
+   `UCataclysmEquipmentComponent::RefreshAttributes` (`CataclysmEquipmentComponent.cpp` 875 to 882) before
+   `UCataclysmPlayerClassStats::ApplyTo`, which records them on the `attack_speed` line with the rest. They are
+   unconditioned and unscoped, so the pipeline applies them with any tags. **So the haste a dungeon gives still reaches
+   the rack after this change, at the same figure as before**, where it reached it through the attribute.
+6. **Every row it now reaches**, read by script over `game/Data/EnchantmentEffects.csv`, `PassiveEffects.csv` and
+   `Affixes.csv`: 13 rows state `attack_speed`; six carry a condition or a scale (listed under SAID FIRST, and two more
+   than the issue named: the Spellblade's Will row and `Masochist_basic_bt_b1#1`); none carries a required tag.
+7. **The check that lists every call.** `tools/tests/test_stat_lookups_hand_over_what_they_should.py`'s
+   `test_every_call_site_is_in_the_inventory` failed on the new call before its `INVENTORY` entry was added, naming
+   `FName(TEXT("attack_speed")), SkillTags, Attribute` in `CataclysmSkillTemplates.cpp` (run below).
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit, `CataclysmSkillTemplates.cpp`.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| "StatForSkill with SkillTags, falling back to the attribute" | 1811 to 1816: the attribute is read as before into `Attribute`; the ability system is cast to `UCataclysmAbilitySystemComponent` as `Asking`; `PerSecond` is `Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)`, or `Attribute` when the cast fails. The comment is 1803 to 1810. |
+| "read once per rack" | unchanged code: `BeginEmptyingTheRack` reads `SecondsBetweenThrows()` once (2023) and sets both timers from it. The comment at 1809 to 1810 says so. |
+
+**THE "NO WEAPON" FALLBACK IS KEPT, AND IT NOW JUDGES THE ANSWER** (1817 to 1826): `if (PerSecond <= 0.0f) return
+Stated;`, where `PerSecond` is now the stat line's answer. Cripple's share is unchanged (1828 to 1833).
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE "NO WEAPON" GUARD READS THE ANSWER, NOT THE ATTRIBUTE**, because the answer is what is divided by. A weapon's
+  rate is the stat line's base, so with no weapon the base is nought and an increase or a More of it is nought as well,
+  and the stated interval is returned as before. The option not taken: guard on the attribute, which would divide by the
+  pipeline's answer whenever the attribute is above nought, and so by nought or less if rows took the answer there.
+- **THE CAST FAILING FALLS BACK TO THE ATTRIBUTE.** Every character in the game has a `UCataclysmAbilitySystemComponent`;
+  the fallback keeps an engine `UAbilitySystemComponent` answering as before. The option not taken: return the stated
+  interval, which would change such a character's answer.
+- **THE TESTS ARE IN A GROUP OF THEIR OWN, `Cataclysm.RackStatLine.`, AT THE END OF `CataclysmStatExemptionTests.cpp`.**
+  That file holds the one test that reads `SecondsBetweenThrows` on a real player character
+  (`APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`) and its `SpawnPotionHolder`, which the new tests
+  use; and the change is a stat asked where it is used, which is that file's subject. Options not taken:
+  `Cataclysm.Skills.`, whose rack tests use a fighter with no team and no stat line; and adding attack speed to
+  `AConditionedRowIsJudgedWhereEachOfTheseEightStatsIsUsed`, which would change what a merged test asserts. No test
+  name begins with `Cataclysm.RackStatLine` today, case ignored (searched by script).
+- **NO HISTORY LINE WAS ADDED TO THE DATED COMMENTS ABOVE `INVENTORY`.** Only the entry, in one block at the end of the
+  list, because second sessions are told to keep each addition to a shared file in one block. The option not taken: a
+  dated line beside the others.
+
+### THE GENRE SOURCE
+
+Brief 71 names none and nothing was fetched. The ruling rests on this game's own rule, as the coordinating session states
+it: a skill asks its stats with its own tags.
+
+### Tests
+
+Two Unreal tests at the end of `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, group
+`Cataclysm.RackStatLine.`, in the namespace `CataclysmRackStatLineTest` (its helpers `RackParams`, `WearTheLowLifeHaste`
+and `FRackHolder`; no other file of the module declares any of these names, searched by script with
+`FCataclysmAPlayerReadsCrippleTest` as the control, found in its own file only). The rig: a real player character on its
+player state (`SpawnPotionHolder`, the players' team by the character's own default), 1,000 health and mana, its attack
+speed attribute set to 1 a second by hand as the Cripple test sets it, holding Butcher's Bill's shape in its Heavy slot
+with a half-second interval (`Range=10; Radius=1; Speed=2000; Count=30; Duration=10; Interval=0.5; TargetMode=All;
+ScalesWithAttackSpeed=1`) and the row's own tags (`Item.Weapon.Axe, Element.Demonic, Type.Projectile`). The row is
+written by hand onto the stat line with `SetStatInputs`: `attack_speed`, base 1, one modifier `Increased` 100 under
+`HealthBelowPercent` 30, from an enchantment. 100 rather than the row's 30 to 50 so that one attack a second becomes two
+and the figures are round. No blow is compared, so crit is not pinned (the world helper silences it).
+
+1. `AConditionedAttackSpeedRowThatHoldsShortensTheSecondsBetweenThrows`, 7 assertions in a passing run. In order: set-up,
+   a world; set-up, a player, its ability system and the rack; **control, read first: with no stat line the rack keeps its
+   stated half second at one attack a second**; **control: wearing the row at full health it throws at the unraised
+   rate** (the condition not holding); **below 30% health (200 of 1,000) it throws at the raised rate, half the plain
+   interval**; **the attack speed attribute is still one a second** (the raise came from the line); **back at full health
+   it is asked afresh and answers the unraised rate**.
+2. `ARackStartedWhileTheRowHoldsKeepsItsPaceWhenTheConditionStops`, 19 assertions in a passing run. Two players, each in
+   a world of its own, each wearing the row, each with a creature of the monsters' team 3 m along +X (100,000 health) to
+   throw at. The control starts its rack at full health; the other at 200 health, and is put back to full health 1.15 s
+   after its first throw. The clock is run by hand: first until the first throw has gone (at once, or when the swing
+   connects if an animation gives the throw a wind-up; at most 3 s), then 1.15 s (23 steps of 0.05 s, from 1.125), then
+   0.95 s more. Every reading falls between throws: a quarter-second rack's 5th throw after the first is due at 1.25 s
+   and its 9th at 2.25 s; a half-second rack's 3rd at 1.5 s and its 5th at 2.5 s; the first throw lies within one step
+   of the clock's start. Per run, in order (twice, 6 each): set-up, a world; set-up, a player with a rack; set-up, a
+   creature; set-up, the rack is used; set-up, it made its first throw; set-up, and is still emptying. Then: **control: a
+   rack started at full health throws every half second**; **control: 1.15 s after its first throw it has made three**;
+   **control: 2.1 s after it, five**; **a rack started below 30% health throws every quarter second**; **1.15 s after its
+   first throw it has made five**; **set-up: back at full health the stat line now answers the unraised half second**
+   (the condition really stopped); **and the rack keeps the pace it started at: nine throws 2.1 s after its first**.
+
+**Every earlier test is unchanged, and expected to pass unchanged.**
+
+- `Cataclysm.Skills.AHigherAttackSpeedEmptiesTheRackSooner` reads `SecondsBetweenThrows` on two `FScopedFighter`s whose
+  attack speed attributes are set to 1 and 2. That fighter is never given a stat line, so `StatForSkill` answers the
+  attribute: 0.333 and 0.1665, as before.
+- `Cataclysm.Skills.ARackThatDoesNotScaleKeepsItsStatedInterval` reads a rack without `ScalesWithAttackSpeed`, which
+  returns before the changed lines: 0.333, as before.
+- `Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes` reads `SecondsBetweenThrows`
+  on a player whose skill has no tags, with Cripple of 20 and of 30. With no tags the throw's answer is the same pipeline
+  pass as the swing's, which that test already reads through `StatForSkill` and which passes; Cripple's share is
+  unchanged. So the throw's figures are as before.
+
+**Not tested:** a scaled row (`own_stacks`, `momentum_stacks`) on a rack, judged by the same `StatForSkill` pass that
+`Cataclysm.BasicAttack.TheSwingRateIsAskedForRatherThanReadOffTheAttribute` tests for Sanguine Momentum on the swing; the
+three other conditioned rows; a tag-scoped `attack_speed` row (none is built); a dungeon's haste on a rack (by reading,
+above); the rack's ceiling under the raised rate; a rack started while the condition does NOT hold that then starts to
+hold (the same once-per-rack read); a creature or a gadget's or a trap's copy of the rack; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` by a
+script at this commit's working tree (CRLF read as LF), each new text absent before the break and once after it. Round,
+curly and square brackets before: 1840/1840, 491/491, 29/29; after RS-I 1837/1837, 491/491, 29/29; after RS-II unchanged.
+Each compiles alone by reading: RS-I leaves `Asking ? Attribute : Attribute`, `Asking` still used; RS-II passes a float
+literal for the float fallback.
+
+**The events the tests' actors raise, listed before counting, each with its depth.** Test 1 raises none: no skill is
+used, no blow is dealt, and health is written with `SetNumericAttributeBase`, which applies no gameplay effect. Test 2,
+on each player: the skill's use notice when the rack is used, at depth nought, outside any `ActOnEvent`; each throw fires
+a projectile at the creature, at depth nought, from the test's clock; whether an axe lands in this world is not measured
+(the clock runs timers, not actor ticks), and if one does it raises `hit_dealt` and `first_hit_dealt` at depth nought.
+The rack does not end within the readings (30 axes, a ceiling of 5 s or 10 s), so no `skill_end`. On the creature,
+nothing is worn. **WHAT HANGS ON AN EVENT:** nothing; the players' only row is a stat line. Read from the code, not
+measured.
+
+| Proof | Old text | New text | Prefix | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| RS-I, the rack reads the attribute again | `? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)` | `? Attribute` | `Cataclysm.RackStatLine.` (2 tests) | `AConditionedAttackSpeedRowThatHoldsShortensTheSecondsBetweenThrows` | `ARackStartedWhileTheRowHoldsKeepsItsPaceWhenTheConditionStops` |
+| RS-II, the fallback is not the attribute | `FName(TEXT("attack_speed")), SkillTags, Attribute)` | `FName(TEXT("attack_speed")), SkillTags, 0.0f)` | `Cataclysm.Skills.AHigherAttackSpeedEmptiesTheRackSooner` (1 test; the whole name, which no other test name begins with) | `AHigherAttackSpeedEmptiesTheRackSooner` | none |
+
+Failed assertions, by reading:
+
+- **RS-I, 4 in 2 tests.** Test 1: "below 30% health it throws at the raised rate" (0.5 against 0.25); its two controls,
+  the attribute and the return to full health pass. Test 2: "a rack started below 30% health throws every quarter
+  second" (0.5 against 0.25), "1.15 s after its first throw it has made five" (3), and "the rack keeps the pace it
+  started at: nine" (5); the control's three and "back at full health the stat line now answers the unraised half
+  second" pass.
+- **RS-II, 1 in 1 test.** "At two it is halved" (0.333 against 0.1665): the fighter has no stat line, so the answer is
+  nought and the stated interval is returned. "At one attack a second the stated interval is kept" passes, the stated
+  interval being the answer either way.
+
+**Tests of another group expected to fail, to check in the window:** under RS-II,
+`Cataclysm.StatExemption.APlayerWhoCarriesCrippleWalksSwingsAndThrowsSlowerAsACreatureDoes`, 2 assertions ("and a
+quarter longer between throws", "and throws at seven tenths of the rate"), because its player has no stat line and the
+stated interval is returned before Cripple's share. Under RS-I, none. Both are outside the proofs' prefixes. Under either
+break the Python check `test_every_call_site_is_in_the_inventory` fails too, its key changed; Python is not part of a C++
+proof.
+
+**A test and no proof:** once per rack, which is the unchanged `BeginEmptyingTheRack` and has no single line to break
+short of a new re-read; the "no weapon" guard, which no test reaches with a stat line.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+One `INVENTORY` entry in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, for the new call, with its reason.
+The check is unchanged; it failed before the entry was added, as it is built to.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-23 — A shot whose firing skill has gone carries the tags it was fired with, so a trap's rack axe landing after the trap's use has ended explodes its kill; and a blow naming no skill object names its skill's tags on its hit notice, so a leap's hit answers hit rows requiring the throwing skill's tags
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` (`ACataclysmProjectile::HitOne` and

@@ -1800,12 +1800,28 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 		return Stated;
 	}
 
-	const float PerSecond = AbilitySystem->GetNumericAttribute(
+	// ASKED OF THE STAT LINE WITH THIS SKILL'S TAGS, THE ATTRIBUTE THE FALLBACK. Issue #2233, ruled 2026-10-23: the
+	// rule every other skill-stat lookup follows, and the one the basic attack's `SecondsBetweenSwingsFor` follows
+	// with no tags. The attribute is worked out with no state, so a row raising attack speed under a condition or by
+	// a scale never reached a rack until this asked. With nothing recorded for the stat -- every enemy, every test
+	// fighter, a player before its first refresh -- the answer is the attribute, as before.
+	//
+	// ONCE PER RACK, ALSO RULED: `BeginEmptyingTheRack` is the one caller, and the interval and the rack's ceiling
+	// are set from it when the rack starts. A condition that stops partway leaves the pace where it started.
+	const float Attribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
+	const UCataclysmAbilitySystemComponent* Asking = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float PerSecond = Asking
+		? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)
+		: Attribute;
 	if (PerSecond <= 0.0f)
 	{
 		// A character with no weapon equipped has no attack speed at all. The
 		// stated interval is the right answer rather than an infinite one.
+		//
+		// THE ANSWER IS WHAT IS JUDGED, NOT THE ATTRIBUTE, because the answer is what is divided by. A weapon's
+		// rate is the stat line's base, so with no weapon the base is nought and an increase or a More of it is
+		// nought too.
 		return Stated;
 	}
 

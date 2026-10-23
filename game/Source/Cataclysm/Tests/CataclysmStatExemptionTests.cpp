@@ -12868,4 +12868,240 @@ bool FCataclysmEndExplosionsRowTest::RunTest(const FString&)
 	return true;
 }
 
+// A RACK'S SECONDS BETWEEN THROWS ASK THE STAT LINE. Issue #2233, ruled 2026-10-23: "StatForSkill with SkillTags,
+// falling back to the attribute, read once per rack." Until then `UCataclysmProjectileSkill::SecondsBetweenThrows`
+// read the attack speed attribute, which is worked out with no state, so a row raising attack speed under a condition
+// or by a scale never reached Butcher's Bill. THESE ARE THE REPRODUCTION: the first fails on the code before the fix at
+// "below 30% health it throws at the raised rate".
+//
+// A REAL PLAYER CHARACTER, on the players' team, at the origin, and in the second test a creature of the monsters'
+// team 3 m along +X for the rack to throw at. The player wears no gear: its attack speed attribute is set to 1 a
+// second by hand, as the Cripple test above sets it, and its stat line is written whole with `SetStatInputs`, as
+// `Cataclysm.BasicAttack.TheSwingRateIsAskedForRatherThanReadOffTheAttribute` writes its own.
+
+namespace CataclysmRackStatLineTest
+{
+	/** Butcher's Bill's own shape with a half-second interval, so the figures below are round. */
+	const TCHAR* const RackParams = TEXT("Range=10; Radius=1; Speed=2000; Count=30; Duration=10; Interval=0.5; "
+										 "TargetMode=All; ScalesWithAttackSpeed=1");
+
+	/** "While below 30% HP your attack speed is increased", at 100: one attack a second becomes two. */
+	void WearTheLowLifeHaste(UCataclysmAbilitySystemComponent* System)
+	{
+		FCataclysmStatModifier Haste;
+		Haste.Bucket = ECataclysmStatBucket::Increased;
+		Haste.Source = ECataclysmModifierSource::Enchantment;
+		Haste.Value = 100.0f;
+		Haste.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Haste.ConditionValue = 30.0f;
+
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Line = Lines.FindOrAdd(FName(TEXT("attack_speed")));
+		Line.Base = 1.0f;
+		Line.Modifiers.Add(Haste);
+		System->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/** A player on its player state with a rack in its Heavy slot, attack speed 1 and pools to spare. */
+	struct FRackHolder
+	{
+		explicit FRackHolder(UWorld* World)
+		{
+			Player = CataclysmStatExemptionTest::SpawnPotionHolder(World);
+			System = Player
+				? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)) : nullptr;
+			if (!System)
+			{
+				return;
+			}
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.0f);
+
+			const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+				UCataclysmProjectileSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Player);
+			FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+			Rack = Spec ? Cast<UCataclysmProjectileSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Rack)
+			{
+				Rack->SkillName = TEXT("Butcher's Bill");
+				Rack->Params = UCataclysmSkillShapes::ParseParams(RackParams);
+				Rack->SkillTags = UCataclysmSkillShapes::TagsFromCell(
+					TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+			}
+		}
+
+		bool IsComplete() const { return Player && System && Rack; }
+
+		void SetHealth(float Health) const
+		{
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		}
+
+		ACataclysmPlayerCharacter* Player = nullptr;
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		UCataclysmProjectileSkill* Rack = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackRowRaisesTheRateTest,
+	"Cataclysm.RackStatLine.AConditionedAttackSpeedRowThatHoldsShortensTheSecondsBetweenThrows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRackRowRaisesTheRateTest::RunTest(const FString&)
+{
+	using namespace CataclysmRackStatLineTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRackHolder Holder(World);
+	if (!TestTrue(TEXT("set-up: a player, its ability system and a rack in its Heavy slot"), Holder.IsComplete()))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: with nothing recorded for the stat the attribute is the answer, at its own figure.
+	const float Plain = Holder.Rack->SecondsBetweenThrows();
+	if (!TestEqual(TEXT("control: with no stat line the rack keeps its stated half second at one attack a second"),
+				   Plain, 0.5f, 0.001f))
+	{
+		return false;
+	}
+
+	WearTheLowLifeHaste(Holder.System);
+
+	// THE CONDITION NOT HOLDING: at full health the row grants nothing and the interval is the plain one.
+	TestEqual(TEXT("control: wearing the row at full health it throws at the unraised rate"),
+			  Holder.Rack->SecondsBetweenThrows(), Plain, 0.001f);
+
+	// THE CONDITION HOLDING: at a fifth of its health, one attack a second increased by 100 is two.
+	Holder.SetHealth(200.0f);
+	TestEqual(TEXT("below 30% health it throws at the raised rate, half the plain interval"),
+			  Holder.Rack->SecondsBetweenThrows(), Plain / 2.0f, 0.001f);
+
+	// AND THE ATTRIBUTE NEVER MOVED, so the raise came from the stat line and from nowhere else.
+	TestEqual(TEXT("and the attack speed attribute is still one a second"),
+			  Holder.System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute()), 1.0f, 0.0001f);
+
+	// AND BACK ABOVE IT, THE UNRAISED RATE AGAIN: the row is judged when asked, not once and kept.
+	Holder.SetHealth(1000.0f);
+	TestEqual(TEXT("back at full health it is asked for afresh and answers the unraised rate"),
+			  Holder.Rack->SecondsBetweenThrows(), Plain, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackKeepsItsStartingPaceTest,
+	"Cataclysm.RackStatLine.ARackStartedWhileTheRowHoldsKeepsItsPaceWhenTheConditionStops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Once per rack, as ruled. Two players, each in a world of its own, each wearing the low-life haste and each using
+ * the rack with a creature 3 m away to throw at. THE CONTROL starts its rack at full health: one throw at once and
+ * then one every half second. THE OTHER starts below 30% health, so every quarter second, and is put back to full
+ * health 1.15 s in; its rack goes on throwing every quarter second until the reading.
+ *
+ * THE CLOCK IS RUN BY HAND and stopped between throws. The first throw goes as the rack starts, or when the swing
+ * connects if an animation gives the throw a wind-up, so the clock is first run until it has gone. After it: 1.15 s
+ * (a step of 0.05 s past 1.125), which is four quarter-second throws and two half-second ones; then 0.95 s more, to
+ * 2.1 s, which is four and two more. A throw due at 2.25 s or 2.5 s is not yet thrown either way.
+ */
+bool FCataclysmRackKeepsItsStartingPaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmRackStatLineTest;
+
+	struct FRun
+	{
+		bool bComplete = false;
+		float IntervalAtTheStart = 0.0f;
+		float IntervalAskedAfterTheChange = 0.0f;
+		int32 ThrowsAtTheChange = 0;
+		int32 ThrowsAtTheEnd = 0;
+	};
+
+	const auto Run = [this](const TCHAR* Who, bool bStartBelow) -> FRun
+	{
+		FRun Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FRackHolder Holder(World);
+		ACataclysmEnemyCharacter* Target =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a player with a rack"), Who), Holder.IsComplete())
+			|| !TestNotNull(*FString::Printf(TEXT("%s: set-up: a creature to throw at"), Who), Target))
+		{
+			return Read;
+		}
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Target->SetHealth(100000.0f);
+
+		WearTheLowLifeHaste(Holder.System);
+		Holder.SetHealth(bStartBelow ? 200.0f : 1000.0f);
+		Read.IntervalAtTheStart = Holder.Rack->SecondsBetweenThrows();
+
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the rack is used"), Who),
+					  Holder.System->TryActivateAbility(Holder.Rack->GetCurrentAbilitySpecHandle(),
+														/*bAllowRemoteActivation=*/false)))
+		{
+			return Read;
+		}
+		for (int32 Step = 0; Step < 60 && Holder.Rack->ThrowsMade < 1; ++Step)
+		{
+			CataclysmTestWorld::RunClock(World, 0.05f);
+		}
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: the rack made its first throw"), Who),
+					   Holder.Rack->ThrowsMade, 1)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: and is still emptying"), Who), Holder.Rack->IsActive()))
+		{
+			return Read;
+		}
+
+		CataclysmTestWorld::RunClock(World, 1.125f);
+		Read.ThrowsAtTheChange = Holder.Rack->ThrowsMade;
+
+		// THE CONDITION STOPS: back to full health, partway through the rack.
+		Holder.SetHealth(1000.0f);
+		Read.IntervalAskedAfterTheChange = Holder.Rack->SecondsBetweenThrows();
+
+		CataclysmTestWorld::RunClock(World, 0.95f);
+		Read.ThrowsAtTheEnd = Holder.Rack->ThrowsMade;
+		Read.bComplete = true;
+		return Read;
+	};
+
+	const FRun Plain = Run(TEXT("control"), /*bStartBelow=*/false);
+	const FRun Hasted = Run(TEXT("started below 30%"), /*bStartBelow=*/true);
+	if (!Plain.bComplete || !Hasted.bComplete)
+	{
+		return false;
+	}
+
+	// THE CONTROL: started at full health, one every half second from the first.
+	TestEqual(TEXT("control: a rack started at full health throws every half second"),
+			  Plain.IntervalAtTheStart, 0.5f, 0.001f);
+	TestEqual(TEXT("control: so 1.15 s after its first throw it has made three"), Plain.ThrowsAtTheChange, 3);
+	TestEqual(TEXT("control: and 2.1 s after it, five"), Plain.ThrowsAtTheEnd, 5);
+
+	// STARTED WHILE THE ROW HOLDS: every quarter second, and still every quarter second after the condition stopped.
+	TestEqual(TEXT("a rack started below 30% health throws every quarter second"),
+			  Hasted.IntervalAtTheStart, 0.25f, 0.001f);
+	TestEqual(TEXT("so 1.15 s after its first throw it has made five"), Hasted.ThrowsAtTheChange, 5);
+	TestEqual(TEXT("set-up: back at full health the stat line now answers the unraised half second"),
+			  Hasted.IntervalAskedAfterTheChange, 0.5f, 0.001f);
+	TestEqual(TEXT("and the rack keeps the pace it started at: nine throws 2.1 s after its first"),
+			  Hasted.ThrowsAtTheEnd, 9);
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS
