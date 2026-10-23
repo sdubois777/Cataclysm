@@ -258,7 +258,28 @@ and `GetCritChance()` in `CataclysmVitalAttributeSet.cpp`, all kept; `tools/test
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-23, window t70w, under the editor lock as `enchant-t70w`, at 6bb00058d (the two
+commits moved from f4ac87b31 and 574adf199 on c514b6746 onto development d4925d422, #2483; each kept its zero-context patch
+id, whole and outside this file, and its removed lines). This was the code's first compile. Every figure was registered
+with the coordinating session before the run, and every one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 8 actions, 5 files compiled"; "4108 tests performed, 4108 succeeded, 0
+  failed" (4105 on development + this group's 3); "Declared: 4108 tests in the tree at 6bb00058d; 4108 performed, gap 0".
+  40 tests skipped part of what they check.
+- **Python of record:** "6921 passed, 8 skipped"; JUnit 6929 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **PD-I, the mapping returns the old range** (`CataclysmPercentDraw.h`, `return FMath::Min(Fraction * 100.0f,
+  HighestDraw);` to `return Fraction * 100.0f;`, anchor counted once): PROVED. With the break in, 3 tests performed, 1
+  succeeded, 2 failed:
+  - `AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds`, REQUIRED, its 3 registered assertions ("a fraction
+    of exactly 1 draws below 100: 100.000000", "a chance of 100 succeeds against it", "a contagion chance of 100 does not
+    skip on it");
+  - `TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred`, which MAY fail and DID, its 1 assertion ("no draw is 100 or
+    more", 1 against 0): one of its 10,000 real draws was a fraction of exactly 1.0, the case expected in about 26% of runs.
+    That is one run, not a measurement of the rate;
+  - `AFractionOfZeroDrawsZeroSoAChanceOfZeroNeverSucceeds` passed, as registered.
+  4 failed assertions, as registered for a run in which test 3 fails. Restored, 3 performed, 3 succeeded. The file's hash
+  is the same after.
 
 ---
 
