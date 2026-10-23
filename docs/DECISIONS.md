@@ -583,15 +583,43 @@ narrowed to the new file -- a check of the file and not a registered proof. Each
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code:
+**All three PROVED** in the window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon session
+after reading the code; each break text matched its file exactly once. **Narrowed**: P1 and P2 on the prefix
+`Cataclysm.DungeonModifierEffects.AnAscendants`, P3 on the one test it names. No Python half was registered for them;
+the Python check's own three breaks, run by the writing session, are under Python above.
 
-- **P1**, the strength multiplier fixed at 1.
-- **P2**, the Core no longer sealing the stairs.
-- **P3**, the left Edict never set on the city.
+- **P1**, the strength multiplier fixed at 1: `return bTheCoreStandsOnIt ? Deeper * EdictStrongerWhileTheCoreStands :
+  Deeper;` -> `(void)bTheCoreStandsOnIt; (void)Deeper; return 1.0f;` in `CataclysmDungeonModifier.cpp`. **The
+  registration was short by one test**: it predicted two tests under the prefix and both failing, written before the
+  Tithe test was added, and that test's name begins with the same prefix and reads the strength too. Printed: "3 tests
+  performed, 0 succeeded, 3 failed: AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed,
+  AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap, AnAscendantsTitheAsksMoreAFloorDeeperWithItsHealthPriceCappedAtHalf";
+  restored "3 tests performed, 3 succeeded, 0 failed".
+- **P2**, the Core no longer sealing the stairs: `if (HeavenlyCoreSealsTheStairs())` -> `if (!HeavenlyCoreStands() &&
+  HeavenlyCoreSealsTheStairs())` in `CataclysmDungeonGameMode.cpp` (it can never seal while not standing). Predicted:
+  the Core test fails alone. Printed: "3 tests performed, 2 succeeded, 1 failed:
+  AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed"; restored "3 tests performed, 3
+  succeeded, 0 failed".
+- **P3**, the left Edict never set on the city: `Map->LeaveEdict(HostId, LeftEdict, OutReport.Day);` ->
+  `(void)LeftEdict;` in `CataclysmEmpireRun.cpp`. Predicted: the one test fails. Printed: "1 tests performed, 0
+  succeeded, 1 failed: AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays"; restored "1 tests performed, 1
+  succeeded, 0 failed".
 
 ### Run
 
-Not yet run.
+Nothing was built and no Unreal test was run by the writing session. The window was run by the dungeon session on
+2026-10-22 under the lock `void-zones-w38`, given by the coordinating session once `development`'s CI and Unreal runs
+on `1b9a384ee` (the traps layer 7 merge, #2476) had completed with success and with no run in progress, on
+`feat/game-ascendant-2` at `2db5cff6c`. The five conditions were checked immediately before the lock was taken, and the
+lock was released before this was written.
+
+- **Build:** "Build: Succeeded - 70 actions, 60 files compiled". The first compile of this layer.
+- **The whole Unreal suite:** "4086 tests performed, 4086 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4086 tests in the tree at 2db5cff6c; 4086 performed, gap 0; every declared test was reported by the run."
+  Registered 4086 and 0: the 4063 of the traps layer 7 merge, the 22 new names and the Tithe test.
+- **Python:** "6904 passed, 8 skipped"; JUnit tests 6912, failures 0, errors 0, skipped 8, as registered (one more
+  skipped than before the window: the check that skips once modules are built). Lint: "All checks passed!".
+- **The proofs:** as under Proofs above.
 
 ---
 
