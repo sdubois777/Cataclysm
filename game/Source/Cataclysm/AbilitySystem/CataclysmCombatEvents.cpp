@@ -176,6 +176,14 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 			// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, so a death it causes raises
 			// none of its striker's rows. Ruled 2026-10-15.
 			Blow.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
+			// AND, FOR A BLOW NAMING NO SKILL OBJECT, THE TAGS OF THE SKILL IT IS A BLOW OF: a buried weapon's leap's. Ruled
+			// 2026-10-22 (#2465, N2 (a)). A COPY, kept for every such blow on record as `Skill` is, so the death notice
+			// can point at it after the skill and the leap's component are gone. Empty for every other blow.
+			if (const FGameplayTagContainer* WithNoSkill =
+					UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec))
+			{
+				Blow.SkillTagsWithNoSkill = *WithNoSkill;
+			}
 
 			// THE TAGS ONLY FOR THE BLOW THAT KILLS. See `FCataclysmLastBlow`.
 			if (bLethal)
@@ -279,6 +287,12 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		{
 			Notice.KillingSkillName = FName(*Skill->SkillName);
 			Notice.KillingSkillTags = &Skill->SkillTags;
+		}
+		// AND A LAST BLOW THAT NAMED NO SKILL OBJECT NAMES THE TAGS OF THE SKILL IT WAS A BLOW OF, the copy on the record,
+		// and no skill's name: a buried weapon's leap. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
+		else if (!Blow.SkillTagsWithNoSkill.IsEmpty())
+		{
+			Notice.KillingSkillTags = &Blow.SkillTagsWithNoSkill;
 		}
 		Notice.bByDamageOverTime = Blow.bDamageOverTime;
 		Notice.bIsMelee = Blow.bIsMelee;
