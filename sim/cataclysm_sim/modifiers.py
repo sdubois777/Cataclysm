@@ -31,13 +31,16 @@ GENERIC = "Generic"
 MODIFIERS: dict[str, list[tuple[str, float]]] = {
     'Celestial': [
         ('Edict of Silence', 20),
+        ('Edict of Temperance', 20),
         ('Divine Resurgence', 15),
+        ('Edict of Patience', 15),
         ('Eternal Chorus', 15),
         ('Forced Tithes', 15),
         ('Holy Repercussions', 15),
         ('Sanctioned Passage', 15),
         ('Angelic Wardens', 10),
         ('Divine Wrath', 10),
+        ('Edict of Stillness', 10),
         ('Hallowed Groundfall', 10),
         ('Heaven’s Quake', 10),
         ('Lightforged Walls', 10),
