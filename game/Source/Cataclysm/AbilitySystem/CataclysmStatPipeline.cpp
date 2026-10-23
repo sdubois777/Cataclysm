@@ -144,6 +144,7 @@ namespace
 												ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo },
 		{ TEXT("hit_dealt_is_not_spell"),       ECataclysmStatCondition::HitDealtIsNotSpell },
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
+		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
 	};
 
 	struct FNamedStatScale
@@ -309,8 +310,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::WhileChannelling:
 	case ECataclysmStatCondition::HitDealtIsNotSpell:
 	case ECataclysmStatCondition::TargetIsSilenced:
+	case ECataclysmStatCondition::TargetIsMoving:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-three says
+		// nothing for a number to be compared against. Each of the thirty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -509,6 +511,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 
 	// THE STRUCK CHARACTER'S SILENCE, ruled 2026-10-17: a fact of the target in hand, as `TargetIsBoss` is.
 	case C::TargetIsSilenced:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER IS MOVING, ruled 2026-10-23 (#2235, Q1): a fact of the target in hand, after
+	// `TargetIsSilenced`.
+	case C::TargetIsMoving:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -1228,6 +1235,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. Ruled 2026-10-17. False is also "no target in hand" and
 		// "nothing asked", and all refuse together.
 		return State.bTargetIsSilenced;
+
+	case ECataclysmStatCondition::TargetIsMoving:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. Ruled 2026-10-23 (#2235). False is also "no target in
+		// hand" and "nothing asked", and all refuse together.
+		return State.bTargetIsMoving;
 
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills

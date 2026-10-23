@@ -752,6 +752,20 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr;
 
+	/**
+	 * Whether this damage over time effect's figure was priced from its applier's own damage over time stats: set by
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` exactly when it asked `DamageOverTimeNumbers` with the applier,
+	 * which is `bScalesWithInstigator`, and the applier is not the target. Ruled 2026-10-23 (#2235, point 3 accepted):
+	 * "Only ticks whose figure was priced from the applier's stats read the attacker."
+	 *
+	 * THE EFFECT IS STAMPED WITH `UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName`, and each of its ticks
+	 * then asks its applier's `dot_damage` with the character it lands on. LEFT FALSE, so nothing is stamped, for a
+	 * spread copy, the trap's damage over time share, a minion's burn, the Masochist's converted bleed, a ground zone's
+	 * sweep, a dungeon hazard and a hit. A copy of the effect's tags in a burst of its remaining damage does not carry
+	 * it either, because it is a number and not a tag.
+	 */
+	bool bPricedFromItsAppliersStats = false;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
@@ -2183,6 +2197,15 @@ public:
 	 * `StatedMagnitudeDataName` above gives.
 	 */
 	static const TCHAR* EnemiesStruckTogetherDataName;
+
+	/**
+	 * The name a damage over time effect is stamped under when its figure was priced from its applier's own stats,
+	 * with any value above nought. Ruled 2026-10-23 (#2235). A plain name and no gameplay tag, as
+	 * `ConvertedDamageDataName` is, so nothing has to be registered for it. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` on each tick. See
+	 * `FCataclysmHitDelivery::bPricedFromItsAppliersStats`.
+	 */
+	static const TCHAR* PricedFromItsAppliersStatsDataName;
 
 	/**
 	 * Copy every debuff this actor carries onto each of these others.

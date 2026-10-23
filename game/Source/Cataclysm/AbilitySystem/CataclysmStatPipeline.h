@@ -1691,6 +1691,25 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetIsSilenced
 		UMETA(DisplayName = "Target Is Silenced"),
+
+	/**
+	 * The target is moving: its ability system's `UCataclysmAbilitySystemComponent::IsMoving`, which the movement
+	 * sampler sets. Ruled 2026-10-23 (#2235, Q1), for "While the enemy is moving, your DoTs on them deal 20%-40% more
+	 * damage", whose row is `dot_damage` more under this condition, judged on each tick against the character the
+	 * tick lands on.
+	 *
+	 * NOT `WhileMoving`, which reads the ASKER's own movement: on the attacker's `dot_damage` it would read the
+	 * attacker.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetIsSilenced` is. False is "standing", "no target in
+	 * hand", "a target with no ability system of this project's" and "nothing asked", and all four refuse. So the
+	 * application-time `dot_damage` in `UCataclysmSkillEffects::DamageOverTimeNumbers`, asked with no target, never
+	 * counts it; the tick asks for it in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetIsMoving
+		UMETA(DisplayName = "Target Is Moving"),
 };
 
 /**
@@ -3256,6 +3275,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetIsSilenced = false;
+
+	/**
+	 * Whether the character being hit is moving. Ruled 2026-10-23 (#2235). Filled by `WithTargetState` only when some
+	 * modifier in the lookup asks; false otherwise, which refuses. See `ECataclysmStatCondition::TargetIsMoving`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsMoving = false;
 
 	/**
 	 * Whether the character being hit is a boss. Issue #1815.
@@ -4952,7 +4978,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-third, which is the drift that put the passive tree eight
+	 * adds a seventy-fourth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4961,7 +4987,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-THREE OF THE SEVENTY-TWO COMPARE NOTHING. They are the case labels
+	 * THIRTY-FOUR OF THE SEVENTY-THREE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
