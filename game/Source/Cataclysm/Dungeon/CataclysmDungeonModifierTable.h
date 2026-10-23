@@ -14,8 +14,8 @@ struct FCataclysmDungeonModifierRow;
  * Reads the dungeon modifier table and hands it to the empire layer.
  *
  * WHY THIS EXISTS AND WHY IT IS ON THIS SIDE OF THE MODULE LINE.
- * `game/Data/DungeonModifiers.csv` has held 117 rows since the design workbook
- * was imported and nothing in the game had ever read one. The thing that needs
+ * `game/Data/DungeonModifiers.csv` held 117 rows from the day the design workbook
+ * was imported (120 since 2026-10-22) and nothing in the game had ever read one. The thing that needs
  * them is `UCataclysmEmpireRun`, over in `CataclysmEmpire` -- but the table's row
  * type `FCataclysmDungeonModifierRow` is declared in this module, and
  * `CataclysmEmpire` must not depend on this one. So the pool is built here and

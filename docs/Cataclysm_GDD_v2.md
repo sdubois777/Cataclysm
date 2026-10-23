@@ -4302,7 +4302,7 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
-**Weight 20, the top band.** The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 117 modifiers with weights of 5, 10, 15 and 20, and this is one of the thirteen at 20. That band holds the modifiers that change how a floor is played rather than how hard it hits — Edict of Silence stops all skill use for 15 seconds at a time, Reality Twister adds a random modifier to the dungeon every 30 seconds — and an enemy carrying a real player's class, level, passive allocation, equipment and skills belongs with those.
+**Weight 20, the top band.** The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 120 modifiers with weights of 5, 10, 15 and 20, and this is one of the fourteen at 20. That band holds the modifiers that change how a floor is played rather than how hard it hits — Edict of Silence stops all skill use for 15 seconds at a time, Reality Twister adds a random modifier to the dungeon every 30 seconds — and an enemy carrying a real player's class, level, passive allocation, equipment and skills belongs with those.
 
   
 

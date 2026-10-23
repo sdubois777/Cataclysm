@@ -7972,7 +7972,7 @@ bool FCataclysmEmpireRunAscendantUnwalkedTest::RunTest(const FString& Parameters
 	using namespace CataclysmEmpireRunTest;
 
 	// TWENTY-FOUR ASCENDANTS NOBODY WALKED, each in a run of its own; every third carries the Edict of Silence
-	// among its own modifiers, so it holds and leaves only the Edict of Tithe.
+	// among its own modifiers, so it never holds or leaves the Edict of Silence.
 	TSet<FName> Seen;
 	for (int32 Index = 0; Index < 24; ++Index)
 	{
@@ -8002,14 +8002,15 @@ bool FCataclysmEmpireRunAscendantUnwalkedTest::RunTest(const FString& Parameters
 				 Held.Contains(Left));
 		if (Index % 3 == 0)
 		{
-			TestEqual(TEXT("one carrying the Edict of Silence leaves the Edict of Tithe"), Left, AscendantTitheKey);
+			TestNotEqual(TEXT("one carrying the Edict of Silence never leaves it"), Left, AscendantSilenceKey);
 		}
 		Seen.Add(Left);
 	}
 
-	// THE CONTROL: which one is left really is drawn.
-	TestTrue(TEXT("CONTROL: the Edict of Silence was left by some"), Seen.Contains(AscendantSilenceKey));
-	TestTrue(TEXT("CONTROL: and the Edict of Tithe by others"), Seen.Contains(AscendantTitheKey));
+	// THE CONTROL: which one is left really is drawn. Not "Silence by some and Tithe by others" since five Edicts
+	// are rows: with eight of the twenty-four unable to leave Silence, a fixed Edict being absent from what the other
+	// sixteen leave is no longer rare enough to rely on.
+	TestTrue(FString::Printf(TEXT("CONTROL: more than one Edict was left (%d)"), Seen.Num()), Seen.Num() > 1);
 	return true;
 }
 

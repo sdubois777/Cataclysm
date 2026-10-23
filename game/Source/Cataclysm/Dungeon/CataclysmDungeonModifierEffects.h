@@ -619,6 +619,49 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float ChorusRegenLessPercent = 0.0f;
 
 	/**
+	 * How many percentage points less of each healing amount arrives under the Edict of Temperance: "healing the
+	 * player receives is halved, and life leech does nothing" (`docs/Cataclysm_GDD_v2.md`, Heaven's Wrath). A flat
+	 * addition to `healing_received_reduction`, as Death's Embrace's is, and, while it is above nought, `life_leech`
+	 * REMOVED. 2026-10-22, G7b.
+	 *
+	 * ITS OWN FIELD AND NOT `HealingReceivedLessPercent`, WHICH THE BEAT ASSIGNS. `PlayerEffectsFor` writes this once a
+	 * floor; `ACataclysmDungeonGameMode::ApplyChangingFloorEffects` assigns Death's Embrace's and Necrotic Ground's
+	 * share to that one on every beat that changes, so a Temperance written there would be erased on any floor that
+	 * also carried a beat rule -- issue #1765's trap. Two flat additions to one stat add, and the attribute holds the
+	 * sum between 0 and 100 (`UCataclysmVitalAttributeSet::PreAttributeChange`).
+	 *
+	 * THE LEECH REMOVAL DOES NOT SCALE, ruled 2026-10-22: it is the field being above nought, at any strength.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TemperanceHealingLessPercent = 0.0f;
+
+	/**
+	 * How much longer every cooldown is under the Edict of Patience, in percent: "every cooldown takes 50% longer". A
+	 * flat addition to `cooldown_lengthening`, as Eternal Chorus's is. 2026-10-22, G7b.
+	 *
+	 * ITS OWN FIELD AND NOT `ChorusCooldownLongerPercent`, for the reason the field above gives: the beat writes that
+	 * one, and since 2026-10-08 it adds rather than assigns only because Rule of Chaos shares it. A field of its own
+	 * cannot be erased by any beat rule however the beat is written. Two flat additions add.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float PatienceCooldownLongerPercent = 0.0f;
+
+	/**
+	 * How much slower the player moves under the Edict of Stillness, in percent: "using one [a movement skill] slows the
+	 * player by 40% for 3 seconds". A Less on `movement_speed`. 2026-10-22, G7b.
+	 *
+	 * WRITTEN ON THE BEAT, the Singularity Wells route: the game mode reads
+	 * `UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed` on each beat and sets this while that is within
+	 * the 3 seconds. NOT A TIMED CONDITION ON THE STAT (`WithinSecondsOfMovementSkill`), because nothing showed that a
+	 * dungeon rule's conditional modifier is evaluated again as time passes rather than when the stat line is rebuilt.
+	 *
+	 * ITS OWN FIELD AND NOT `MovementSpeedLessPercent`, which Singularity Wells writes on the same beat, nor the grab's
+	 * or the mushrooms'. Each is its own Less, so a player in a well just after a dash is slowed by both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float StillnessMovementLessPercent = 0.0f;
+
+	/**
 	 * Above zero, no potion may be drunk on this floor. Hard Mode. Issue #806.
 	 * A flag written as a value, as `SkillsLockedValue` is.
 	 */
@@ -685,6 +728,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& PactCurseResistancePercent <= 0.0f && PactCurseSpeedLessPercent <= 0.0f && PactHealingLessPercent <= 0.0f
 			&& ChorusCooldownLongerPercent <= 0.0f
 			&& ChorusRegenLessPercent <= 0.0f
+			&& TemperanceHealingLessPercent <= 0.0f
+			&& PatienceCooldownLongerPercent <= 0.0f
+			&& StillnessMovementLessPercent <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
 			&& PotionKillChargesLessPercent <= 0.0f
 			&& PotionHealLessPerDrinkPercent <= 0.0f
@@ -696,7 +742,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 };
 
 /**
- * What the 117 dungeon modifiers do on a floor, for the ones that do something.
+ * What the 120 dungeon modifiers do on a floor, for the ones that do something.
  *
  * WHY IT EXISTS. Until issue #41's first modifier slice, a dungeon modifier was a
  * name and a danger score. The score reaches the enemy score, and the enemy
@@ -965,6 +1011,24 @@ public:
 	 * and the row says the silence sweeps the dungeon rather than the floor.
 	 */
 	static const TCHAR* EdictOfSilenceKey;
+
+	/**
+	 * Three Divine Edicts, rows since 2026-10-22 (G7b): the Edict of Temperance, "healing the player receives is
+	 * halved, and life leech does nothing"; the Edict of Patience, "every cooldown takes 50% longer"; and the Edict of
+	 * Stillness, "using one [a movement skill] slows the player by 40% for 3 seconds". `docs/Cataclysm_GDD_v2.md`,
+	 * Heaven's Wrath, the Edict table.
+	 *
+	 * EACH IS STRONGER IN AN ASCENDANT, by `ACataclysmDungeonGameMode::EdictStrengthHere`, up to its cap, ruled by the
+	 * coordinating session on 2026-10-22 under the owner's delegation and written into the design beside the 10% rule:
+	 * Temperance withholds at most 90% of healing, and its life leech removal does not scale; Patience has no cap;
+	 * Stillness slows by at most 90%, and its 3 seconds do not scale. Everywhere else each is at its base strength.
+	 *
+	 * TEMPERANCE AND PATIENCE ARE PER-FLOOR, written by `PlayerEffectsFor`; STILLNESS IS ON THE BEAT, written by the
+	 * game mode. Each has a field of its own in `FCataclysmPlayerFloorEffects`, and the fields say why.
+	 */
+	static const TCHAR* EdictOfTemperanceKey;
+	static const TCHAR* EdictOfPatienceKey;
+	static const TCHAR* EdictOfStillnessKey;
 
 	/**
 	 * Artillery Strike: "Every 30 seconds, a massive red circle appears on the
@@ -4230,6 +4294,24 @@ public:
 	static constexpr float EdictOfSilenceMostLastsSeconds = 67.5f;
 
 	/**
+	 * The Edict of Temperance's base share of healing withheld, 50 ("halved"), and the most an Ascendant makes it, 90.
+	 * The Edict of Patience's base lengthening, 50 ("50% longer"), uncapped. The Edict of Stillness's base slow, 40,
+	 * the most an Ascendant makes it, 90, and how long it lasts after a movement skill, 3 seconds, which does not
+	 * scale. 2026-10-22, G7b.
+	 *
+	 * THE BASE NUMBERS ARE THE DESIGN'S TABLE AND THE CAPS ARE THE COORDINATING SESSION'S, 2026-10-22, under the owner's
+	 * delegation of unstated numbers; both are in `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath.
+	 * `tools/tests/test_three_celestial_edicts_in_the_game.py` reads each back out of the design's sentences and the
+	 * rows' descriptions.
+	 */
+	static constexpr float EdictOfTemperanceHealingLessPercent = 50.0f;
+	static constexpr float EdictOfTemperanceMostHealingLessPercent = 90.0f;
+	static constexpr float EdictOfPatienceCooldownLongerPercent = 50.0f;
+	static constexpr float EdictOfStillnessSlowPercent = 40.0f;
+	static constexpr float EdictOfStillnessMostSlowPercent = 90.0f;
+	static constexpr float EdictOfStillnessSeconds = 3.0f;
+
+	/**
 	 * How often a strike is called in. THE ROW'S OWN NUMBER: "Every 30 seconds".
 	 */
 	static constexpr float ArtilleryStrikeSecondsBetween = 30.0f;
@@ -5672,6 +5754,20 @@ public:
 		"The Edict of Silence's lock value is no longer above zero, so nothing "
 		"is locked. Everything that reads the skill-lock stat asks only whether "
 		"it is above zero.");
+
+	static_assert(
+		EdictOfTemperanceHealingLessPercent <= EdictOfTemperanceMostHealingLessPercent
+			&& EdictOfTemperanceMostHealingLessPercent < 100.0f,
+		"The Edict of Temperance's cap is below its base share, or withholds all healing. The cap exists so that the "
+		"strongest Temperance still lets a tenth of healing through.");
+
+	static_assert(
+		EdictOfStillnessSlowPercent <= EdictOfStillnessMostSlowPercent && EdictOfStillnessMostSlowPercent < 100.0f,
+		"The Edict of Stillness's cap is below its base slow, or stops the player outright.");
+
+	static_assert(
+		EdictOfStillnessSeconds > 0.0f && EdictOfPatienceCooldownLongerPercent > 0.0f,
+		"The Edict of Stillness lasts no time, or the Edict of Patience lengthens nothing.");
 
 	static constexpr float GraspingTentaclesReachCm = 300.0f;
 	static constexpr float GraspingTentaclesAppearWithinCm = 1200.0f;
@@ -7138,6 +7234,28 @@ public:
 	static float EdictOfSilenceLastsSecondsAt(float Strength);
 
 	/**
+	 * The share of healing the Edict of Temperance withholds at `Strength` times its base: 50 times it, never past
+	 * `EdictOfTemperanceMostHealingLessPercent`. A strength below nought is read as nought. 2026-10-22, G7b.
+	 */
+	static float EdictOfTemperanceHealingLessPercentAt(float Strength);
+
+	/**
+	 * How much longer every cooldown is under the Edict of Patience at `Strength` times its base: 50 times it, with
+	 * no cap. A strength below nought is read as nought. 2026-10-22, G7b.
+	 */
+	static float EdictOfPatienceCooldownLongerPercentAt(float Strength);
+
+	/**
+	 * How much the Edict of Stillness slows the player at `Strength` times its base, this long after their last
+	 * movement skill: 40 times the strength, never past `EdictOfStillnessMostSlowPercent`, while fewer than
+	 * `EdictOfStillnessSeconds` have passed, and nothing after. 2026-10-22, G7b.
+	 *
+	 * @param SecondsSinceMovementSkill  `UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed`; negative is
+	 *        "never used one" and slows nothing
+	 */
+	static float EdictOfStillnessSlowPercentAt(float Strength, float SecondsSinceMovementSkill);
+
+	/**
 	 * What the skill-lock stat is worth while a silence is running, or nothing
 	 * while it is not. Issues #1786 and #41.
 	 *
@@ -7897,9 +8015,14 @@ public:
 	 * @param RuleOfChaosChange the rule change Rule of Chaos drew for this floor, which is
 	 *                       `FCataclysmFloorBrief::RuleOfChaosChange`; nought, the default, is none. It is
 	 *                       believed as given: the brief holds a change only for a floor carrying the row
+	 * @param EdictStrength  what a Divine Edict's numbers are multiplied by on this floor, which is
+	 *                       `ACataclysmDungeonGameMode::EdictStrengthHere`; 1, the default, is the base strength every
+	 *                       dungeon but an Ascendant gives. Since 2026-10-22 (G7b): the Edicts of Temperance and
+	 *                       Patience read it
 	 */
 	static FCataclysmPlayerFloorEffects PlayerEffectsFor(
-		const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange = 0);
+		const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange = 0,
+		float EdictStrength = 1.0f);
 
 	/**
 	 * The same effects as the stat pipeline's modifiers, keyed by stat name.

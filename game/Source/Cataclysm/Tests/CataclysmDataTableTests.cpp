@@ -80,10 +80,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 		{ AddError(Error); } \
 		else { TestEqual(TEXT(File) TEXT(" row count"), Rows, Expected); }
 
-	// 117, not 116. The Corrupted Stalker was added for issue #504. It was the
+	// 120 SINCE 2026-10-22, when three Celestial Edicts became rows (Temperance, Patience and Stillness, G7b).
+	// 117 before that, not 116: the Corrupted Stalker was added for issue #504. It was the
 	// only dungeon modifier described in prose and missing from the data, and a
 	// modifier with no weight cannot contribute to a dungeon's Modifier Score.
-	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      117)
+	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      120)
 	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          403)
 	// 379, not 380. The two minion count enchantments were merged into one for
 	// issue #339: the rarer of the two granted half as much, and they said the
