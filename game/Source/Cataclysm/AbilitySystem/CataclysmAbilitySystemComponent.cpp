@@ -6769,7 +6769,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			continue;
 		}
 		// EVERY GADGET THE WEARER COMMANDS FIRES ONCE, AT ONCE. Ruled 2026-10-19 (C1-C4), for "When you die, all your
-		// active traps and gadgets immediately trigger simultaneously"; the trap half joins when traps are built.
+		// active traps and gadgets immediately trigger simultaneously"; the trap half joins when traps are built. SINCE
+		// TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death`.
 		// Landed only, once per row per event, on `player_death`, which `HandleDeath` raises once per death after the
 		// player is marked dead and before the respawn's `ClearWhatDeathEnds`, and which a death leaves every gadget
 		// standing for. ALL INSIDE THIS ONE CALL (C3). Each gadget's cast is the player's skill, so its blows' own

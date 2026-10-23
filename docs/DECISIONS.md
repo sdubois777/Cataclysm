@@ -14,6 +14,11 @@ all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Tests/C
 at the end); and in this file, a sentence added to each of four merged statements this layer makes false (below). No
 data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
 `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**THE SECOND COMMIT (L-1 to L-3, below) ALSO AFFECTS:** `CataclysmSkillTemplates.cpp` (`UCataclysmStrikeSkill::SwingOnce`
+hands `FreeRepeatCastBy` to both its searches, and its comment); `CataclysmDeployableSelfBlast.h` and `.cpp`
+(`WearerInCone` gains the same defaulted parameter and hands it on; two comments); `CataclysmAbilitySystemComponent.h`
+and `.cpp` (one comment each, L-2); the test file (renumbered 53 to 58, one include, one helper and test 59); the Python
+test (renamed and widened); and in this file three more merged statements corrected (L-2) and this entry renumbered (L-3).
 
 ### SAID FIRST
 
@@ -42,7 +47,9 @@ LAYER AUTHORS NO ROW.
   Anathema, Break the World and Thicket (read off the sheet; which of them a trap may cast was not checked one by one).
   With that drawback worn as well, such a swing's
   enemies are priced as the trap's (layer 3b) and its wearer is not struck. To reach it is the same one argument at
-  `SwingOnce`'s sphere and a matching last parameter on `WearerInCone`; not built and not tested.
+  `SwingOnce`'s sphere and a matching last parameter on `WearerInCone`; not built and not tested. **SINCE THIS LAYER'S
+  SECOND COMMIT (L-1, ruled 2026-10-22) IT IS BUILT AND TESTED: SUCH A SWING STRIKES THE WEARER INSIDE IT**, as K1's shot
+  and landing do; see THE SECOND COMMIT, below.
 - **WHAT NEVER STRIKES THE WEARER, AS RULED:** a trap's zone's sweeps and a buried weapon's leap (K3, #34's B2); the
   explosion of an enemy a trap kills, "Enemies killed by traps explode" (K4); the pull of "When a trap triggers, all
   enemies within 4-6 meters are pulled toward the blast center", which deals nothing (K5).
@@ -89,10 +96,10 @@ Line numbers are of this commit's working tree, on development `796f2d9f6`.
 | | Ruling, as quoted above | Where it is |
 | :-- | :-- | :-- |
 | K1 (a) | "A shot or landing from a trap that has already been used up is still that trap's blast. ... The blow is the figure an enemy there would take, then the wearer's defences (B3), raising what a blow taken raises (B4)." | `UCataclysmDeployableSelfBlast::IsTheWearersUsedUpTrap` (`CataclysmDeployableSelfBlast.cpp` 31): the identity, matched by `UCataclysmAbilitySystemComponent::SpentSkillTrapNamed` in the wearer's own record of its used-up traps (layer 3b); asked by `WearerInSphere` (47, the condition at 53 to 55) when `IsTheWearersDeployable` did not answer. Handed over by the shot's explosion, `ACataclysmProjectile::Finish` (`CataclysmProjectile.cpp` 1020 to 1021, `CastBy`), and by the landing, `UCataclysmProjectileSkill::Land` (`CataclysmSkillTemplates.cpp` 2194 to 2195, `FreeRepeatCastBy`). The figure and what it raises are #34's, unchanged: `StrikeTheWearerInItsBlast` and `StrikeTheWearerInItsDeployablesBlast` build the enemy's delivery, whose `CastBy` or skill `ApplyHit` names the same used-up trap by (`CataclysmSkillEffects.cpp` 960), so the blow is priced as the trap's exactly as the enemy beside it is, and `StrikeWithASkillsBlow` puts the share's mark on it. |
-| K2 (a) | "No change; one test each for a rearmed trap and a forced trap." | Nothing changed. A rearmed trap returns from `ACataclysmMinion::TriggerSkillTrap` before it is kept as used up or destroyed (`CataclysmMinion.cpp` 2585 to 2590), and a forced trap's whole trigger runs from layer 5's drain (`DrainQueuedSkillTrapSetOffs`) with its own `Destroy` after its cast, so each casts standing and `IsTheWearersDeployable` answers. Tests 53 and 54. |
-| K3 (a) | "A leap or a zone's sweep never strikes the wearer, as #34's B2 already rules." | Nothing changed: `ACataclysmGroundZone::Sweep` and `UCataclysmBuriedWeapon`'s leap ask no self-blast. Test 55 (the sweep). |
-| K4 (a) | "Never. The kill explosion is the dying enemy's, not a blast of the trap's, so the sentence does not name it." | Nothing changed: the explosion is made at the kill by the player's `OnSomethingDied` through `UCataclysmSkillEffects::ExplodeForOverkill` (layer 4), which asks no self-blast. Test 56. |
-| K5 (a) | "The pull deals no damage and is not a blast. The gadget's bonus shot is reached as every gadget cast is; one test shows it." | Nothing changed: `PullEnemiesToThisSkillTrap` moves and deals nothing; `ACataclysmMinion::FireSkillGadgetAtTrapEnemy` casts by `CastPlayersSkillFromHere`, so the gadget is the use's `FreeRepeatCastBy` and stands. Test 57. |
+| K2 (a) | "No change; one test each for a rearmed trap and a forced trap." | Nothing changed. A rearmed trap returns from `ACataclysmMinion::TriggerSkillTrap` before it is kept as used up or destroyed (`CataclysmMinion.cpp` 2585 to 2590), and a forced trap's whole trigger runs from layer 5's drain (`DrainQueuedSkillTrapSetOffs`) with its own `Destroy` after its cast, so each casts standing and `IsTheWearersDeployable` answers. Tests 54 and 55. |
+| K3 (a) | "A leap or a zone's sweep never strikes the wearer, as #34's B2 already rules." | Nothing changed: `ACataclysmGroundZone::Sweep` and `UCataclysmBuriedWeapon`'s leap ask no self-blast. Test 56 (the sweep). |
+| K4 (a) | "Never. The kill explosion is the dying enemy's, not a blast of the trap's, so the sentence does not name it." | Nothing changed: the explosion is made at the kill by the player's `OnSomethingDied` through `UCataclysmSkillEffects::ExplodeForOverkill` (layer 4), which asks no self-blast. Test 57. |
+| K5 (a) | "The pull deals no damage and is not a blast. The gadget's bonus shot is reached as every gadget cast is; one test shows it." | Nothing changed: `PullEnemiesToThisSkillTrap` moves and deals nothing; `ACataclysmMinion::FireSkillGadgetAtTrapEnemy` casts by `CastPlayersSkillFromHere`, so the gadget is the use's `FreeRepeatCastBy` and stands. Test 58. |
 | K6 (a) | "Use that play-check line verbatim." | FOR THE OWNER'S PLAY-CHECK LIST, above. |
 
 ### WHAT WAS READ FIRST, AND WHERE THE BRIEF WAS RIGHT OR WRONG
@@ -123,7 +130,7 @@ it asks and whether that actor can be a used-up trap:
 
 | Site | Asks | Can it be a used-up trap? |
 | :-- | :-- | :-- |
-| `UCataclysmStrikeSkill::SwingOnce` (`CataclysmSkillTemplates.cpp` 410, its search 462 to 468) | `FreeRepeatCastBy.Get()` | Only for a swing a cast delay holds back. NOT REACHED, a judgement (SAID FIRST). |
+| `UCataclysmStrikeSkill::SwingOnce` (`CataclysmSkillTemplates.cpp` 410, its search 462 to 468) | `FreeRepeatCastBy.Get()` | Only for a swing a cast delay holds back. NOT REACHED, a judgement (SAID FIRST). SINCE THE SECOND COMMIT (L-1): `FreeRepeatCastBy` handed to the sphere and to `WearerInCone`, REACHED. |
 | `UCataclysmProjectileSkill::Land` (2157, its search 2192 to 2195) | `FreeRepeatCastBy.Get()`, and since this layer `FreeRepeatCastBy` | Only for a landing a cast delay holds back. REACHED (K1). |
 | `ACataclysmProjectile::Finish` (`CataclysmProjectile.cpp` 969, its search 1020 to 1021) | `CastBy.Get()`, and since this layer `CastBy` | Always, for a trap's shot. REACHED (K1). |
 | `ACataclysmMinion::Explode` (`CataclysmMinion.cpp` 1876) and `ACataclysmMinion::DeathBlast` (1964) | `this`, the dying deployable | Never: a trap used up is destroyed without dying, so neither runs for it; a trap killed is standing as it dies. |
@@ -135,7 +142,8 @@ it asks and whether that actor can be a used-up trap:
 
 - **A STRIKE'S SWING HELD BACK PAST ITS TRAP BY A CAST DELAY IS NOT REACHED**, because K1 names a shot and a landing and the
   brief asks for nothing wider. The option not taken: the same identity at `SwingOnce`'s two searches, which would need a
-  last parameter on `WearerInCone` too. SAID FIRST, for a ruling.
+  last parameter on `WearerInCone` too. SAID FIRST, for a ruling. SINCE THE SECOND COMMIT: RULED L-1 (a), THE OPTION
+  THEN NOT TAKEN, AND BUILT.
 - **THE USED-UP TRAP IS FOUND IN THE WEARER'S OWN RECORD, BY THE IDENTITY THE BLOW ALREADY CARRIES**, the one `ApplyHit`
   prices the same blow by, so the blast and the price of one late blow are one decision on one trap. Only a trap of the
   wearer's own is ever written into that record, by `TriggerSkillTrap`, so a trap found there is a deployable whose
@@ -146,6 +154,9 @@ it asks and whether that actor can be a used-up trap:
   ask the record for every blow.
 - **A DEFAULTED LAST PARAMETER ON `WearerInSphere`**, so the three callers that cannot meet a used-up trap
   (`SwingOnce`'s sphere, `Explode`, `DeathBlast`) are unchanged. The option not taken: a second function beside it.
+  **CORRECTED IN THE SECOND COMMIT:** `SwingOnce`'s sphere can meet one, for a swing a cast delay holds back (SAID
+  FIRST); since L-1 it hands the identity, and `WearerInCone` has the same defaulted parameter. `Explode` and
+  `DeathBlast` are the two callers left on the default.
 - **A SKILL GADGET GONE BEFORE ITS SHOT GOES OFF STILL STRIKES NOBODY**, since a gadget is never kept in the record: its
   late shot is the player's (P5, 2026-10-16), and so is its blast. The option not taken: keep gadgets too, which P5 does
   not allow.
@@ -209,27 +220,30 @@ which that entry's "LEFT FOR LATER LAYERS" line points; and in the code, `UCatac
 false by this layer:** #34's heading; its "THE ONLY DEPLOYABLE A PLAYER CAN HAVE TODAY IS THE SKILL GADGET", made false by
 traps layer 1 and not by this one; its "Not tested" list and "`Finish` stays untested"; #15's lines on its own sentence's
 trap half ("When you die, all your active traps and gadgets immediately trigger simultaneously"), another sentence, built
-by traps layer 5; and the comments on that sentence in `CataclysmAbilitySystemComponent.h` and `.cpp`.
+by traps layer 5; and the comments on that sentence in `CataclysmAbilitySystemComponent.h` and `.cpp`. **SINCE THE SECOND
+COMMIT (L-2) THE LAST THREE ARE CORRECTED TOO**, each keeping its words; see THE SECOND COMMIT, below.
 
 ### Tests
 
-Six Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapSelfBlastTests.cpp`, in layer 1's group
-`Cataclysm.Traps.`, numbered on from layer 6's last (51). The rig is the trap layers': a possessed player character of the
+Seven Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapSelfBlastTests.cpp`, in layer 1's group
+`Cataclysm.Traps.`, numbered on from layer 6b's last (52), the seventh (59) added by the second commit for L-1. The rig is the trap layers': a possessed player character of the
 players' side holding a Demonic Wand (Malefice, a shot of 2,600 cm a second going off in 1 m where it stops), Whip
 (Searing Lash, a 5 m cone; The Gathering, a 14 m ring) or Greataxe (Molten Cleave, a cone leaving 4 m of burning ground at
 the trap), a weapon damage of 100, 10,000 health and 1,000 mana, AND AN ENEMY'S DEFENCES (no armour, evasion, block,
 resistance, damage reduction or energy shield), as #34's rig gives its players; creatures of the monsters' side of 50,000
 health with no defences unless a case says otherwise; every body at least 1 m from every other; every stat and action
 written by hand as the item would build it. NO KEY IS PRESSED, so nothing costs a resource; no gadget is stepped. The
-clock is moved by hand, a trap's step called directly, a shot stepped by hand and a zone's sweep called. Every test pins
+clock is moved by hand, a trap's step called directly, a shot stepped by hand and a zone's sweep called; test 59 alone
+runs the world's timers, by `CataclysmTestWorld::RunClock`, because the swing it holds back waits on one. Every test pins
 `Cataclysm.CritRoll` at 100 after the world is made. Helper types are `FTrapSelfBlastWorld`, `FTrapSelfBlastStat` and
 `FTrapSelfBlastRig`, in the namespace `CataclysmTrapSelfBlastTest`; no other file of the module declares them (searched).
-NO TEST COMBINES A TRAP CHAIN WITH A GADGET SHOT (#2471). ONE ASSERTION COMPARES HEALTH LOST WITH HEALTH LOST, test 52's
+NO TEST COMBINES A TRAP CHAIN WITH A GADGET SHOT (#2471). ONE ASSERTION COMPARES HEALTH LOST WITH HEALTH LOST, test 53's
 figure, where both blows come from the same Wand, so `UCataclysmDamageCalculation::Resolve`'s step 9 (`SubtypeBonus`, a
-Slashing weapon's 10% to health) is the same on both or on neither; NO ASSERTION COMPARES HEALTH LOST WITH A FIGURE SENT.
-**Assertions are counted for a passing run, 85 in all.**
+Slashing weapon's 10% to health) is the same on both or on neither; NO ASSERTION COMPARES HEALTH LOST WITH A FIGURE SENT
+(test 59 asks only whether health was lost, so the Whip's Slashing step cannot move it). **Assertions are counted for a
+passing run, 98 in all** (85 in the first commit, 13 in test 59).
 
-52. `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside`, 21 (K1). Three
+53. `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside`, 21 (K1). Three
     Wand players with the Heavy flag, a trap 20 m north and its enemy 2.5 m east; the control holds no drawback, the
     inside and outside wearers do. Once the shots fly, the control and the inside wearer are moved to 2.16 m east of the
     trap and 1.15 m off the shot's line, the outside wearer to 4 m off it, and an enemy is made 1.15 m off the other side
@@ -240,40 +254,50 @@ Slashing weapon's 10% to health) is the same on both or on neither; NO ASSERTION
     control's shot struck its enemy; control, the control loses nothing; control, the outside shot struck its enemy; the
     outside wearer loses nothing; set-up, the inside shot struck its enemy; control, the blast struck the enemy beside the
     wearer; the used-up trap's shot struck the wearer; at the figure the enemy beside it took, within 0.01.
-53. `ARearmedTrapsSecondCastStrikesItsSelfBlastWearerInsideItAndThePlayerWithoutTheDrawbackIsNot`, 15 (K2). Two Whip
+54. `ARearmedTrapsSecondCastStrikesItsSelfBlastWearerInsideItAndThePlayerWithoutTheDrawbackIsNot`, 15 (K2). Two Whip
     players with the Heavy flag and the rearm chance at 100, each standing 4 m east of its trap, 1.5 m beyond its enemy
     and inside the lash; the control holds no drawback. In order: a world; set-up, the pin; set-up, two enemies (two);
     control, its trap triggered once; control, its player loses nothing; set-up, the wearer's trap triggered once; set-up,
     its first cast struck the wearer; set-up, it stands; set-up, so does the control's; set-up, it is not among the used-up
     traps; control, the control's rearmed trap triggered again; control, its player still loses nothing; set-up, the
     wearer's rearmed trap triggered again; the rearmed trap's cast struck the wearer again.
-54. `ATrapSetOffByAnotherTrapsRowStrikesItsSelfBlastWearerInsideItsCastAndWithoutTheRowNothingDoes`, 14 (K2). Two Whip
+55. `ATrapSetOffByAnotherTrapsRowStrikesItsSelfBlastWearerInsideItsCastAndWithoutTheRowNothingDoes`, 14 (K2). Two Whip
     players with the Heavy flag and the drawback, each with a trap 20 m north and its enemy, a second trap 8 m beyond it
     with its own enemy, never stepped, and the player 4 m east of the second; the other holds "Traps trigger
     simultaneously" at 10 m. In order: a world; set-up, the pin; set-up, four enemies (four); control, the first trap
     struck its enemy; control, the second stands; control, its enemy untouched; control, the wearer loses nothing; set-up,
     the chained first trap struck its enemy; set-up, the row set the second off and it is used up; set-up, its lash struck
     its own enemy; the forced trap's cast struck the wearer.
-55. `ATrapsZoneSweepBurnsAnEnemyInItAndNeverStrikesItsSelfBlastWearerStandingInIt`, 12 (K3). One Greataxe wearer, its
+56. `ATrapsZoneSweepBurnsAnEnemyInItAndNeverStrikesItsSelfBlastWearerStandingInIt`, 12 (K3). One Greataxe wearer, its
     trap's enemy 2.5 m east, an enemy 3.8 m west and the wearer 2 m west and 2 m south, both on the ground and behind the
     cleave. In order: a world; set-up, the pin; set-up, the Heavy leaves ground; set-up, two enemies (two); set-up, one
     zone; set-up, the wearer stands on it; set-up, the cleave struck its enemy; set-up, not the wearer; set-up, nor the
     enemy behind; control, the sweep burned the enemy on the ground; and never strikes the wearer.
-56. `AnEnemyATrapKillsExplodesOnAnEnemyNearItAndNeverOnItsSelfBlastWearerAsNear`, 8 (K4). One Whip wearer holding the
+57. `AnEnemyATrapKillsExplodesOnAnEnemyNearItAndNeverOnItsSelfBlastWearerAsNear`, 8 (K4). One Whip wearer holding the
     explosion row at 50: a doomed enemy of 50 health 2.5 m east of the trap, an enemy 6 m east (3.5 m from the dead) and the
     wearer 1.2 m west (3.7 m from the dead, behind the lash). In order: a world; set-up, the pin; set-up, two enemies (two);
     set-up, the wearer within 4 m of the doomed; set-up, the lash killed it; control, its explosion struck the enemy near
     it; and never the wearer.
-57. `AGadgetsBonusShotAtATrapsEnemyStrikesItsSelfBlastWearerInsideItsRingAndNeitherHalfAloneDoes`, 15 (K5). Three Whip
+58. `AGadgetsBonusShotAtATrapsEnemyStrikesItsSelfBlastWearerInsideItsRingAndNeitherHalfAloneDoes`, 15 (K5). Three Whip
     players with the Heavy trap flag and the Ultimate gadget flag, a trap 20 m north, a skill gadget 6 m west of it and the
     player 3 m west, between them and behind the lash; ONE TRAP TRIGGERED, NOTHING SET OFF. The first holds the drawback
     alone, the second layer 6's shot row at 100 within 10 m alone, the third both. In order: a world; set-up, the pin;
     for each player, its trap armed and its enemy made (six); control, the first trap triggered once; control, its gadget
     fired nothing; control, its wearer loses nothing; control, the second gadget fired one shot; control, its player loses
     nothing; set-up, the third gadget fired one shot; the shot struck the wearer inside its ring.
+59. `AUsedUpTrapsSwingHeldBackByACastDelayStrikesItsSelfBlastWearerInsideItAndNotOneOutside`, 13 (L-1, the second
+    commit). Two Whip players with the Ultimate trap flag, the drawback and "Point blank AOE skills have a 0.75-1.5 second
+    cast delay before firing" at 1 s (`blow_delay_seconds` flat 1, requiring `Type.AOE.PointBlank`): an Ultimate trap 20 m
+    north with its enemy 2.5 m east, so The Gathering, a point-blank Strike, is cast around that enemy in a 14 m ring and
+    its swing waits a second, while the trap is used up at once. The inside wearer stands 5 m south of its trap (5.6 m from
+    the enemy); the outside one 20.2 m from its enemy, the control. In order: a world; set-up, the pin; set-up, the
+    Ultimate carries `Type.AOE.PointBlank`; set-up, two enemies (two); set-up, the inside trap used up; set-up, so is the
+    outside one; set-up, with the swing held back the inside enemy is untouched; set-up, and so is the inside wearer; then
+    `RunClock` 1.5 s; control, the outside swing struck its enemy; control, the outside wearer loses nothing; set-up, the
+    inside swing struck its enemy; the used-up trap's held-back swing struck the wearer inside its ring.
 
 **Every earlier trap test is unchanged**, and expected to pass unchanged: layer 1's ten, layer 2's eight, layer 3's eight,
-layer 3b's four, layer 4's six, layer 5's nine and layer 6's seven (CHANGES TO WHAT A CHECK ACCEPTS).
+layer 3b's four, layer 4's six, layer 5's nine, layer 6's seven and layer 6b's one (CHANGES TO WHAT A CHECK ACCEPTS).
 
 Python, in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
 `test_a_used_up_traps_shot_and_landing_look_for_its_wearer_by_its_identity`, read from the code with comments taken out by
@@ -284,68 +308,161 @@ written over it), with `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), Rad
 `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm))`: "PROVED: 1 failed, 41 passed in 1.31s | restored: 42
 passed in 1.17s", the named failure
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py::test_a_used_up_traps_shot_and_landing_look_for_its_wearer_by_its_identity`,
-`proved` True.
+`proved` True. **RENAMED AND WIDENED IN THE SECOND COMMIT** to
+`test_a_used_up_traps_shot_landing_and_held_back_swing_look_for_its_wearer_by_its_identity`: it also asserts that
+`SwingOnce`'s sphere and cone hand `FreeRepeatCastBy` and that `WearerInCone` hands the identity on, and its control is
+now `ACataclysmMinion::Explode`'s sphere handing none (the old control, `SwingOnce`'s sphere handing `Get` alone, is no
+longer true). Proved again in a copy (`git archive` of `942d095a4` with the second commit's eight files over it), with
+`WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm, UsedUpCastBy);` (counted once) made
+`WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm);`: "PROVED: 1 failed, 41 passed in 1.17s | restored: 42 passed
+in 1.09s", the named failure that test, `proved` True.
 
 **Not tested:** a real row worn (the row's real-row test, #34's, reads the flag); a landing held back past its trap by a
 cast delay (by reading and the Python check); a rack's thrown axes going off after the trap is gone (by reading, the same
 `Finish`); the wearer's defences on the late blow (only an enemy's defences are given; #34's test 2 drives armour on a
 landing); the late blow's events (by reading, above; #34's test 5 drives them on a gadget's); the late blow killing the
 wearer; a wearer outside a landing's radius; the record's 65th used-up trap letting the first go, and the record emptied at
-death; a buried weapon's leap (K3, by reading); a Strike's swing held back past its trap (not built); a skill gadget gone
-before its shot goes off; anything drawn; anything in play.
+death; a buried weapon's leap (K3, by reading); a Strike's swing held back past its trap (not built; SINCE THE SECOND
+COMMIT built and tested by test 59 for a ring, the cone path; a held-back swing through a row's "hits all within" sphere
+is by reading); a skill gadget gone before its shot goes off; anything drawn; anything in play.
 
 ### GUARD PROOFS PROPOSED
 
 Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF,
 as `prove_cpp_guard` reads it), each new text counted absent before the break and once after it, and each break keeps the
 file's round, curly and square brackets paired: `CataclysmProjectile.cpp` 255/255, 88/88, 0/0 before; 256/256 after
-TR-XXIX, which adds a pair of round brackets; 255/255 after TR-XXXI. `CataclysmDeployableSelfBlast.cpp` 49/49, 13/13, 0/0
-before and 50/50 after TR-XXX. Each compiles alone by reading: TR-XXIX binds an empty weak pointer to the `const
-TWeakObjectPtr<AActor>&` parameter, `AActor` being complete in that file; TR-XXX does the same in the lookup, whose
-`CastBy` is still read by `IsExplicitlyNull` above it, so nothing is left unused; TR-XXXI multiplies a `float` by a
-`float` literal. The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight,
-layer 3b's four, layer 4's six, layer 5's nine, layer 6's seven and these six, fifty-eight.
+TR-XXX, which adds a pair of round brackets; 255/255 after TR-XXXII. `CataclysmDeployableSelfBlast.cpp` 49/49, 13/13, 0/0
+before and 50/50 after TR-XXXI. Each compiles alone by reading: TR-XXX binds an empty weak pointer to the `const
+TWeakObjectPtr<AActor>&` parameter, `AActor` being complete in that file; TR-XXXI does the same in the lookup, whose
+`CastBy` is still read by `IsExplicitlyNull` above it, so nothing is left unused; TR-XXXII multiplies a `float` by a
+`float` literal. **RECOUNTED AT THE SECOND COMMIT'S TREE**, with TR-XXXIII added: every anchor once, every new text absent
+before and once after; `CataclysmProjectile.cpp` as above; `CataclysmDeployableSelfBlast.cpp` now 50/50, 13/13, 0/0
+before (`WearerInCone`'s pass-on adds a pair) and 51/51 after TR-XXXI; `CataclysmSkillTemplates.cpp` 1836/1836, 491/491,
+29/29 before and after TR-XXXIII, which drops an argument and a comma, and compiles alone on `WearerInCone`'s default.
+The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer 3b's four,
+layer 4's six, layer 5's nine, layer 6's seven, layer 6b's one and these seven, sixty.
 
 **The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing;
-`trap_triggered` at each trigger (test 54's second trap's by its own trigger from the drain, at depth nought); for every
+`trap_triggered` at each trigger (test 55's second trap's by its own trigger from the drain, at depth nought); for every
 blow of a trap's cast on an enemy, `hit_dealt`, `first_hit_dealt`, `deployable_hit` with the trap's tags less
 `Type.Deployable`, the burn's `dot_applied` (Malefice, Searing Lash, Molten Cleave), and `skill_end` as the one-use grant
-ends; in test 56, `kill` for the doomed enemy, whose row makes the explosion, and `afflicted_death` if it dies carrying
+ends; in test 57, `kill` for the doomed enemy, whose row makes the explosion, and `afflicted_death` if it dies carrying
 the lash's burn, while the explosion's own blow, a consequence of a death (`bIsConsequenceOfADeath`), raises none of the
-player's on-hit events; in test 57, for the gadget's Gathering,
+player's on-hit events; in test 58, for the gadget's Gathering,
 `hit_dealt`, `first_hit_dealt`, `deployable_hit` with the gadget's tags, `dot_applied`, `crowd_control` for its pull and
 knockdown and `skill_end`; for every blow on a wearer, `hit_taken`, `health_falls_below` and, for a lash or the
-Gathering, `melee_hit_taken` (THE EVENTS THE NEW BLOW RAISES, above). A zone's sweep raises no player event. All at depth
-nought. On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 54's chain row on `trap_triggered`; test 56's
-explosion row on `kill`; test 57's shot row on `trap_triggered`. No row hangs on any event a wearer's blow raises. Read
+Gathering, `melee_hit_taken` (THE EVENTS THE NEW BLOW RAISES, above); in test 59 the same for The Gathering's held-back
+swing, its blows raised from the swing timer's callback inside `RunClock`, and whatever else `RunClock`'s timers run on
+the two players (their regeneration, the one-use grants ending, `skill_end`). A zone's sweep raises no player event. All
+at depth nought. On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 55's chain row on `trap_triggered`; test 57's
+explosion row on `kill`; test 58's shot row on `trap_triggered`. No row hangs on any event a wearer's blow raises. Read
 from the code, not measured.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| TR-XXIX, the shot's explosion hands no identity (K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, CastBy))` | `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, TWeakObjectPtr<AActor>()))` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
-| TR-XXX, the record is asked for no trap (K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return Cataclysm && Cataclysm->SpentSkillTrapNamed(CastBy, Spent);` | `return Cataclysm && Cataclysm->SpentSkillTrapNamed(TWeakObjectPtr<AActor>(), Spent);` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
-| TR-XXXI, the late blow on the wearer is not an enemy's figure (B3 under K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent, SkillTags, Delivery);` | `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent * 0.5f, SkillTags, Delivery);` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
+| TR-XXX, the shot's explosion hands no identity (K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, CastBy))` | `GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, TWeakObjectPtr<AActor>()))` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
+| TR-XXXI, the record is asked for no trap (K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return Cataclysm && Cataclysm->SpentSkillTrapNamed(CastBy, Spent);` | `return Cataclysm && Cataclysm->SpentSkillTrapNamed(TWeakObjectPtr<AActor>(), Spent);` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
+| TR-XXXII, the late blow on the wearer is not an enemy's figure (B3 under K1) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent, SkillTags, Delivery);` | `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent * 0.5f, SkillTags, Delivery);` | `AUsedUpTrapsShotStrikesItsSelfBlastWearerInsideItsBlastAsAnEnemyBesideItIsStruckAndNotOneOutside` | none |
+| TR-XXXIII, the Strike's cone hands no identity (L-1, the second commit) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` | `FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees(),` and, on the next line after its three tabs, `FreeRepeatCastBy);` (one text, with its line end) | `FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());` | `AUsedUpTrapsSwingHeldBackByACastDelayStrikesItsSelfBlastWearerInsideItAndNotOneOutside` | none |
 
 Failed assertions, by reading:
 
-- **TR-XXIX, 2 in 1 test.** The explosion asks with the shot's `Get` alone, null for the gone trap. Test 52: "the used-up
+- **TR-XXX, 2 in 1 test.** The explosion asks with the shot's `Get` alone, null for the gone trap. Test 53: "the used-up
   trap's shot struck the wearer inside its blast" (0) and "at the figure the enemy beside it took" (0 against the enemy's).
   Its set-up line on the identity calls `IsTheWearersUsedUpTrap` directly, unbroken, and passes. No other test of the
-  prefix fires a shot at a wearer: tests 53 to 57 and layer 1's test 7 strike by swings.
-- **TR-XXX, 3 in 1 test.** No identity is ever found. Test 52: "the gone trap's identity names a used-up trap of its
+  prefix fires a shot at a wearer: tests 54 to 58 and layer 1's test 7 strike by swings.
+- **TR-XXXI, 3 in 1 test.** No identity is ever found. Test 53: "the gone trap's identity names a used-up trap of its
   wearer's" (false), and the two lines above. Its control, "and none of another player's", stays false and passes.
-- **TR-XXXI, 1 in 1 test.** The wearer's late blow at half the percent. Test 52: "at the figure the enemy beside it took"
-  (half); "struck the wearer" still passes.
+  **SINCE THE SECOND COMMIT, 4 IN 2 TESTS:** test 59's "the used-up trap's held-back swing struck the wearer" fails too,
+  the cone asking the same lookup; its other twelve lines pass.
+- **TR-XXXII, 1 in 1 test.** The wearer's late blow at half the percent. Test 53: "at the figure the enemy beside it took"
+  (half); "struck the wearer" still passes. Test 59 swings and does not reach `Finish`.
+- **TR-XXXIII, 1 in 1 test.** The cone asks with `Get` alone, null for the gone trap. Test 59: "the used-up trap's
+  held-back swing struck the wearer inside its ring" (0). Its enemies are still struck and the outside wearer still loses
+  nothing. Every other swing of the prefix is cast while its trap or gadget stands, so `Get` answers for it; test 53's
+  shot does not reach `SwingOnce`. **IT FAILS TEST 59 ALONE**, so L-1's proof is its own, as ruled; TR-XXX and TR-XXXII do
+  not touch the swing, and TR-XXXI fails test 53 as well.
 
-**Outside the prefix**, the Python test `test_a_used_up_traps_shot_and_landing_look_for_its_wearer_by_its_identity` reads
-TR-XXIX's and TR-XXX's lines as text and fails under each; it is not part of the Unreal proof. `#34`'s
-`Cataclysm.DeployableSelfBlast.` group does not drive `Finish` (its entry: untested) nor a used-up trap, so none of its
-tests is expected to fail under any of the three.
+**Outside the prefix**, the Python test (since the second commit
+`test_a_used_up_traps_shot_landing_and_held_back_swing_look_for_its_wearer_by_its_identity`) reads TR-XXX's, TR-XXXI's
+and TR-XXXIII's lines as text and fails under each; it is not part of the Unreal proof. `#34`'s
+`Cataclysm.DeployableSelfBlast.` group does not drive `Finish` (its entry: untested) nor a used-up trap, and its swings
+are cast by standing gadgets, so none of its tests is expected to fail under any of the four.
 
 **Tests of another group expected to fail, to check in the window:** none, by reading.
 
-**A test and no proof:** K2's rearmed and forced traps (tests 53, 54), K3 (55), K4 (56), K5 (57): no code of this layer
+**A test and no proof:** K2's rearmed and forced traps (tests 54, 55), K3 (56), K4 (57), K5 (58): no code of this layer
 to break, each being an existing path shown to reach, or not to reach, the wearer.
+
+### THE SECOND COMMIT: L-1 TO L-3 (brief 65b, 2026-10-22)
+
+The coordinating session's rulings on the first commit's three findings, under the owner's delegation, verbatim:
+
+> LAYER 7 RULINGS (coordinator, under the owner's delegation), all your recommendations:
+> - L-1 (a). Build it in this layer. K1's reasoning covers it: a strike swing that lands after its trap is used up is
+>   still that trap's blast. Leaving it would ship a case where the row silently does nothing, and we do not ship those.
+>   Pass FreeRepeatCastBy into SwingOnce's sphere, and give WearerInCone the same defaulted parameter. Add one test, with
+>   the blow-delay row and a control (the player outside the swing). Add a proof for it if one break fails it alone;
+>   otherwise say which existing proof covers it.
+> - L-2 (a). Correct all four in this layer's next commit: #34's "the only deployable" sentence, #15's "trap half is not
+>   yet built", and the two code comments in CataclysmAbilitySystemComponent.h/.cpp. Each keeps its words and adds
+>   "since traps layer N ...". A change must not ship beside statements in the same file that it can see are false.
+> - L-3 (a). Layer 7 moves onto 6b's merge and renumbers then: tests 53 onward, proofs TR-XXX onward.
+
+**THE MOVE.** The first commit, e1ee0a5cf on development 796f2d9f6, was cherry-picked onto development 8b31fda27 (#2474,
+traps layer 6b, merged; its tree is 98a421c87's) as 942d095a4, on the new branch `feat/traps-7-2`; `feat/traps-7` is
+untouched. The one conflict was this file: 6b's entry and the Hollow's, which landed on development since, and this
+layer's, all at the top. It was resolved by placing this entry above 6b's and the Hollow's, each kept whole, with a rule
+line between. **Zero-context patch id outside this file: d3dd8bf77a8e before and after the move. Removed lines: 16 before
+and 16 after; added 1418 and 1418; this file's 361 added lines the same set before and after** (by script).
+
+**L-1, BUILT.** `UCataclysmStrikeSkill::SwingOnce` (`CataclysmSkillTemplates.cpp` 463 to 471) hands `FreeRepeatCastBy` as
+the last argument of both searches; `UCataclysmDeployableSelfBlast::WearerInCone` (header 93 to 99, `.cpp` 76 to 86) gains
+`const TWeakObjectPtr<AActor>& UsedUpCastBy`, defaulting to an empty pointer, and hands it on to its `WearerInSphere`.
+A Strike's swing that a row's cast delay holds back until its trap is used up now strikes the wearer inside it, as K1's
+shot and landing do. Test 59; proof TR-XXXIII, which fails it alone.
+
+**L-2, THE STALE STATEMENTS, EACH KEEPING ITS WORDS** (before / the sentence added):
+
+1. #34's entry, SAID FIRST: "THE ONLY DEPLOYABLE A PLAYER CAN HAVE TODAY IS THE SKILL GADGET." / "SINCE TRAPS LAYER 1
+   (2026-10-20) A SKILL TRAP IS ONE TOO: placed by the five conversion rows, a deployable of its player's, whose casts
+   these sites reach."
+2. #15's entry, SAID FIRST: "THE SENTENCE'S TRAP HALF IS NOT YET BUILT. It joins when traps are built." / "SINCE TRAPS
+   LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death`, a second row on the same
+   enchantment; see that entry."
+3. #15's entry, its closing line: "THE SENTENCE'S TRAP HALF IS NOT YET BUILT and joins with traps, scheduled 2026-10-19."
+   / "SINCE TRAPS LAYER 5 (2026-10-22) IT IS BUILT, as `trigger_traps_nearby` on `player_death`; see that entry."
+4. `CataclysmAbilitySystemComponent.h` (the gadgets-cast-now action's comment, 1589): "the sentence's gadget half; its
+   trap half joins when traps are built." / "SINCE TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as
+   `trigger_traps_nearby` on `player_death` (`TriggerTrapsNearbyAction`)."
+5. `CataclysmAbilitySystemComponent.cpp` (`ActOnEvent`'s gadgets-cast-now branch, 6772): "the trap half joins when traps
+   are built." / "SINCE TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death`."
+
+#15's "trap half is not yet built" stands in two places of its entry, so the four ruled are five lines. **THE WHOLE OF EACH
+FILE WAS SEARCHED** ("trap half", "not yet built", "joins when traps", "joins with traps", "only deployable"). Left, each a
+quotation of a ruling or a record of its own commit: #15's quotations of Q1 ("the trap halves join when traps exist ...",
+"Both entries say the sentence's trap half is not yet built and joins with traps.") and its Q1 row's ruling cell; the same
+quotations in #34's entry; #34's heading; and the header comment at `CataclysmAbilitySystemComponent.h` 4705, which is
+true (the trap half's action). **FOUND IN ANOTHER FILE AND NOT CHANGED, FOR A RULING:** `CataclysmMinion.h` 522 to 523,
+on `FireEveryGadgetAtTheDeathOf`: "The trap half is not built, and joins when traps are." The same falsehood; not one
+of the four ruled, and in a file this commit does not otherwise touch.
+
+**L-3, RENUMBERED.** This layer's tests are 53 to 58 (were 52 to 57) and 59 is new; its proofs are TR-XXX to TR-XXXII
+(were TR-XXIX to TR-XXXI) and TR-XXXIII is new, in the test file's headings and throughout this entry. 6b's test 52 and
+TR-XXIX are not touched.
+
+**WHAT ELSE THE SECOND COMMIT CHANGES:** the class and lookup comments in `CataclysmDeployableSelfBlast.h` name the swing;
+the Python check is renamed and widened (Tests, above); and this entry's statements the build makes false gained a
+sentence each: SAID FIRST's left-out swing, the sites table's `SwingOnce` row, the two judgements on it, "Not tested".
+
+**THE NEW BLOW'S EVENTS AND DEPTH:** the held-back swing's blow on the wearer is #34's own, through
+`StrikeTheWearerInItsDeployablesBlast` and `StrikeWithASkillsBlow` with the share's mark, so it raises what THE EVENTS THE
+NEW BLOW RAISES lists (`hit_taken`, `health_falls_below`, and `melee_hit_taken`, The Gathering being `Type.Melee`), and
+none of a hit dealt. **AT DEPTH NOUGHT**, by reading: it is struck from the swing timer's callback
+(`WhenTheSwingConnects`), outside any `ActOnEvent`.
+
+**NOT TESTED BY THE SECOND COMMIT:** a held-back swing through a row's "hits all within" sphere (by reading and the Python
+check); a held-back swing's figure against an enemy's; the wearer's events on it (by reading).
 
 ### THE WINDOW'S RUN
 
@@ -5929,6 +6046,8 @@ every other change is an insertion. No data row, no tag and no workbook cell is 
 
 - **THE SENTENCE'S TRAP HALF IS NOT YET BUILT.** It joins when traps are built. This layer fires skill gadgets only; a
   trap is not a gadget (`ACataclysmMinion::IsGadget` is a deployable that is not a trap) and is left out of the walk.
+  **SINCE TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT**, as `trigger_traps_nearby` on `player_death`, a second row
+  on the same enchantment; see that entry.
 - **WAR'S GADGETS ARE NOT FIRED BY THIS ACTION** (the Bolt Turret, the Ballista and any other gadget that is not a skill
   gadget), because of the owner's no-War mandate: code for them would be code for War alone, and could not be tested
   without War. Ruled 2026-10-19 (J2 (a)). The walk takes skill gadgets only, and a gadget of any other kind fires
@@ -6299,7 +6418,8 @@ took 385.00"; under DG-II, "so its clock has 1.250 s left, as before the death .
 activation, and a Support gadget's buff on the dead player (read and not tested); War's gadgets (not fired, J2); a real
 wearer's gadgets in play; anything drawn on a screen.
 
-**THE SENTENCE'S TRAP HALF IS NOT YET BUILT** and joins with traps, scheduled 2026-10-19.
+**THE SENTENCE'S TRAP HALF IS NOT YET BUILT** and joins with traps, scheduled 2026-10-19. **SINCE TRAPS LAYER 5
+(2026-10-22) IT IS BUILT**, as `trigger_traps_nearby` on `player_death`; see that entry.
 
 ---
 
@@ -6342,7 +6462,8 @@ blast radius".
 - **THE ONLY DEPLOYABLE A PLAYER CAN HAVE TODAY IS THE SKILL GADGET.** `BoltTurret`, `Ballista` and `SpikeTrap` are placed
   only by War's skills (Bolt Turret, Ballista, Iron Fortress). The rule asks `ACataclysmMinion::IsDeployable` (B5), so it
   WOULD cover War's deployables, their copies of the summoner's last skill and their death blasts if those were ever
-  reachable; they are not tested, under the owner's mandate of no War work.
+  reachable; they are not tested, under the owner's mandate of no War work. **SINCE TRAPS LAYER 1 (2026-10-20) A SKILL
+  TRAP IS ONE TOO**: placed by the five conversion rows, a deployable of its player's, whose casts these sites reach.
 - **WHAT "BLAST" COVERS, EVERY KIND NAMED (B2).** Every instant area blow of a skill the wearer's deployable casts: an area
   strike or a nova (a Strike's swing in a cone or all round), a no-speed projectile's landing in a radius, and a
   projectile's explosion where it stops; and a deployable's own death blast, its explosion on death and Shared Ruin's

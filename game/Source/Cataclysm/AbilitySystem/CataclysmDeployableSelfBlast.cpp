@@ -75,11 +75,11 @@ AActor* UCataclysmDeployableSelfBlast::WearerInSphere(const UWorld* World, AActo
 
 AActor* UCataclysmDeployableSelfBlast::WearerInCone(const UWorld* World, AActor* Wearer, const AActor* CastFrom,
 													const FVector& Apex, const FVector& Forward, float RadiusCm,
-													float AngleDegrees)
+													float AngleDegrees, const TWeakObjectPtr<AActor>& UsedUpCastBy)
 {
 	// THE SPHERE OF THE CONE'S RADIUS, THEN `IsInCone` ON THE WEARER'S LOCATION, which is the predicate
-	// `FindEnemiesInCone` hands its search.
-	AActor* Inside = WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm);
+	// `FindEnemiesInCone` hands its search. The used-up trap's identity is handed on to the sphere (traps layer 7, L-1).
+	AActor* Inside = WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm, UsedUpCastBy);
 	return Inside && UCataclysmTargeting::IsInCone(Apex, Forward, Inside->GetActorLocation(), RadiusCm, AngleDegrees)
 		? Inside
 		: nullptr;

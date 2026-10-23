@@ -18,8 +18,8 @@ struct FGameplayTagContainer;
  * "Your deployables and traps deal full damage to you if you are within their blast radius". Ruled 2026-10-19 by the
  * coordinating session, B1 to B6 in the entry of that date in `docs/DECISIONS.md`. THE DEPLOYABLE HALF FIRST (Q1); THE
  * TRAP HALF SINCE TRAPS LAYER 7 (ruled 2026-10-22, K1 to K6): a standing skill trap is a deployable of its wearer's and
- * was reached from traps layer 1, and a shot or a landing of a skill trap already used up is found by its identity,
- * `IsTheWearersUsedUpTrap`.
+ * was reached from traps layer 1, and a shot, a landing or a held-back swing of a skill trap already used up is found by
+ * its identity, `IsTheWearersUsedUpTrap`.
  *
  * WHICH BLOWS (B2): every INSTANT AREA blow of a skill the wearer's deployable casts -- an area strike or a nova
  * (`UCataclysmStrikeSkill::SwingOnce`), a projectile's landing in a radius (`UCataclysmProjectileSkill::Land`) and its
@@ -71,7 +71,7 @@ public:
 
 	/**
 	 * TRAPS LAYER 7 (K1, ruled 2026-10-22): whether `CastBy` names a skill trap of `Wearer`'s ALREADY USED UP, so a
-	 * shot or a landing of its cast that strikes after it is gone is still its blast. FOUND BY IDENTITY among the
+	 * shot, a landing or a swing of its cast that strikes after it is gone is still its blast. FOUND BY IDENTITY among the
 	 * wearer's used-up traps (`UCataclysmAbilitySystemComponent::SpentSkillTrapNamed`, traps layer 3b), which only a
 	 * trap of the wearer's own is ever written into, so one found there is a deployable whose summoner was the wearer, as
 	 * `IsTheWearersDeployable` asks of a standing one. False for an empty pointer, which every use no deployable cast
@@ -92,10 +92,11 @@ public:
 
 	/**
 	 * `Wearer` inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with the same arguments, on the same
-	 * terms as `WearerInSphere`; or null.
+	 * terms as `WearerInSphere`, `UsedUpCastBy` among them (traps layer 7, L-1); or null.
 	 */
 	static AActor* WearerInCone(const UWorld* World, AActor* Wearer, const AActor* CastFrom, const FVector& Apex,
-								const FVector& Forward, float RadiusCm, float AngleDegrees);
+								const FVector& Forward, float RadiusCm, float AngleDegrees,
+								const TWeakObjectPtr<AActor>& UsedUpCastBy = TWeakObjectPtr<AActor>());
 
 	/**
 	 * Strike `Wearer` with a skill's blow of `DamagePercent`, `Delivery` being the delivery the site built for an enemy

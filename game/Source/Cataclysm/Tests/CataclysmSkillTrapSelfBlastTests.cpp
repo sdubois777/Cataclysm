@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -34,7 +35,9 @@
  * they stand (K2); a zone's sweep (K3) and the kill explosion of "Enemies killed by traps explode" (K4) never strike the
  * wearer; a skill gadget's bonus shot at a trap's enemy is reached as every gadget cast is (K5). The flag is a flat 1 on
  * `deployable_blasts_strike_self` with no tags, the row #34 authored. In layer 1's group, `Cataclysm.Traps.`, in a file
- * of its own, numbered on from layer 6's last (51).
+ * of its own, numbered on from layer 6b's last (52). AND L-1 OF THE SAME DAY: a Strike's swing a row's cast delay holds
+ * back until its trap is used up is still that trap's blast (test 59, the one case here that runs the world's timers,
+ * with `CataclysmTestWorld::RunClock`, because the held-back swing is on one).
  *
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER OF THE PLAYERS' SIDE HOLDING A DEMONIC WEAPON, given a weapon damage of
  * 100, 10,000 health and 1,000 mana by hand, AND AN ENEMY'S DEFENCES: no armour, evasion, block, resistance, damage
@@ -133,6 +136,16 @@ namespace CataclysmTrapSelfBlastTest
 	{
 		return {FName(UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat), 1.0f, ECataclysmStatBucket::Flat,
 				SlotTag};
+	}
+
+	/**
+	 * "Point blank AOE skills have a 0.75-1.5 second cast delay before firing" at 1 s: a flat 1 on `blow_delay_seconds`
+	 * requiring `Type.AOE.PointBlank`, as the shipped row states it.
+	 */
+	FTrapSelfBlastStat TrapSelfBlastCastDelay()
+	{
+		return {FName(UCataclysmSkillTemplate::BlowDelaySecondsStat), 1.0f, ECataclysmStatBucket::Flat,
+				TEXT("Type.AOE.PointBlank")};
 	}
 
 	/** The sentence's row, as #34 authored it: a flat 1 on `deployable_blasts_strike_self` with no tags. */
@@ -433,7 +446,7 @@ namespace CataclysmTrapSelfBlastTest
 	bool TestClass::RunTest(const FString& Parameters)
 
 // ==========================================================================
-// 52. A used-up trap's shot strikes its wearer inside its blast, at the figure an enemy beside the wearer takes (K1)
+// 53. A used-up trap's shot strikes its wearer inside its blast, at the figure an enemy beside the wearer takes (K1)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastUsedUpShotTest,
@@ -565,7 +578,7 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastUsedUpShotTest,
 }
 
 // ==========================================================================
-// 53. A rearmed trap's cast strikes its wearer inside it, as it stands (K2)
+// 54. A rearmed trap's cast strikes its wearer inside it, as it stands (K2)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastRearmedTest,
@@ -651,7 +664,7 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastRearmedTest,
 }
 
 // ==========================================================================
-// 54. A trap set off by another trap's row strikes its wearer inside its cast, as it stands (K2)
+// 55. A trap set off by another trap's row strikes its wearer inside its cast, as it stands (K2)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastForcedTest,
@@ -740,7 +753,7 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastForcedTest,
 }
 
 // ==========================================================================
-// 55. A trap's zone's sweep never strikes its wearer standing in it (K3)
+// 56. A trap's zone's sweep never strikes its wearer standing in it (K3)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastZoneTest,
@@ -816,7 +829,7 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastZoneTest,
 }
 
 // ==========================================================================
-// 56. The explosion of an enemy a trap kills never strikes its wearer (K4)
+// 57. The explosion of an enemy a trap kills never strikes its wearer (K4)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastKillExplosionTest,
@@ -879,7 +892,7 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastKillExplosionTest,
 }
 
 // ==========================================================================
-// 57. A skill gadget's bonus shot at a trap's enemy strikes its wearer inside its area (K5)
+// 58. A skill gadget's bonus shot at a trap's enemy strikes its wearer inside its area (K5)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapSelfBlastGadgetShotTest,
@@ -974,6 +987,96 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastGadgetShotTest,
 	TestTrue(*FString::Printf(TEXT("the gadget's bonus shot struck its wearer 3 m from it, inside its ring (K5): %.2f "
 								   "lost"), Both.Lost()),
 		Both.Lost() > 0.0f);
+	return true;
+}
+
+// ==========================================================================
+// 59. A swing a cast delay holds back until its trap is used up strikes its wearer inside it (L-1)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmTrapSelfBlastHeldBackSwingTest,
+	"Cataclysm.Traps.AUsedUpTrapsSwingHeldBackByACastDelayStrikesItsSelfBlastWearerInsideItAndNotOneOutside")
+{
+	using namespace CataclysmTrapSelfBlastTest;
+
+	// TWO PLAYERS 100 M APART, EACH HOLDING A DEMONIC WHIP, THE ULTIMATE TRAP FLAG, THE DRAWBACK AND "Point blank AOE skills
+	// have a 0.75-1.5 second cast delay before firing" AT 1 S: an Ultimate trap 20 m north with its enemy 2.5 m east, so
+	// The Gathering, a point-blank Strike, is cast around that enemy, a 14 m ring, and its swing waits a second while the
+	// trap is used up at once. The inside wearer stands 5 m south of its trap, 5.6 m from the enemy; the outside one stays
+	// where it was made, 20 m south of its trap and 20.2 m from its enemy, outside the ring.
+	FTrapSelfBlastWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FVector OutsideHome(100.0f * M, 0.0f, 0.0f);
+	FTrapSelfBlastRig Inside(World, FVector::ZeroVector, TEXT("Whip"));
+	FTrapSelfBlastRig Outside(World, OutsideHome, TEXT("Whip"));
+	if (!Inside.IsUsable(*this, ECataclysmAbilitySlot::Ultimate, ECataclysmSkillShape::Strike)
+		|| !Outside.IsUsable(*this, ECataclysmAbilitySlot::Ultimate, ECataclysmSkillShape::Strike))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Gathering = Inside.HeldRow(ECataclysmAbilitySlot::Ultimate);
+	const FGameplayTag PointBlank =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.AOE.PointBlank")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the whip's Ultimate carries Type.AOE.PointBlank, which the cast delay requires"),
+			Gathering && PointBlank.IsValid() && Gathering->Tags.HasTag(PointBlank)))
+	{
+		return false;
+	}
+	Inside.Holds({TrapSelfBlastTrapFlag(TEXT("Slot.Ultimate")), TrapSelfBlastDrawback(), TrapSelfBlastCastDelay()});
+	Outside.Holds({TrapSelfBlastTrapFlag(TEXT("Slot.Ultimate")), TrapSelfBlastDrawback(), TrapSelfBlastCastDelay()});
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* InsideSetter = TrapSelfBlastEnemy(World, North + Near);
+	ACataclysmEnemyCharacter* OutsideSetter = TrapSelfBlastEnemy(World, OutsideHome + North + Near);
+	if (!TestNotNull(TEXT("set-up: the inside wearer's enemy"), InsideSetter)
+		|| !TestNotNull(TEXT("set-up: the outside wearer's enemy"), OutsideSetter))
+	{
+		return false;
+	}
+	ACataclysmMinion* InsideTrap = TrapSelfBlastPlaceTrap(*this, Inside, ECataclysmAbilitySlot::Ultimate, North);
+	ACataclysmMinion* OutsideTrap =
+		TrapSelfBlastPlaceTrap(*this, Outside, ECataclysmAbilitySlot::Ultimate, OutsideHome + North);
+	if (!InsideTrap || !OutsideTrap)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> InsideWatched(InsideTrap);
+	const TWeakObjectPtr<ACataclysmMinion> OutsideWatched(OutsideTrap);
+	Inside.StandsAt(North + FVector(0.0f, -5.0f * M, 0.0f));
+
+	// THE TRAPS TRIGGER AND ARE USED UP; THE SWINGS WAIT.
+	TrapSelfBlastPass(World, 1.25f);
+	TrapSelfBlastStep(InsideTrap);
+	TrapSelfBlastStep(OutsideTrap);
+	TestTrue(TEXT("set-up: the inside trap is used up as its cast starts"), TrapSelfBlastGone(InsideWatched));
+	TestTrue(TEXT("set-up: and so is the outside one"), TrapSelfBlastGone(OutsideWatched));
+	TestEqual(TEXT("set-up: with the swing held back, the inside trap's enemy is untouched"),
+		TrapSelfBlastTakenFrom(InsideSetter), 0.0f, 0.001f);
+	TestEqual(TEXT("set-up: and so is the inside wearer"), Inside.Lost(), 0.0f, 0.001f);
+
+	// THE HELD-BACK SWINGS LAND, A SECOND AFTER THE TRIGGERS, ON THE WORLD'S TIMERS.
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	TestTrue(*FString::Printf(TEXT("control: the outside trap's held-back swing struck its enemy: %.2f"),
+							  TrapSelfBlastTakenFrom(OutsideSetter)),
+		TrapSelfBlastTakenFrom(OutsideSetter) > 0.0f);
+	TestEqual(TEXT("control: and the wearer 20.2 m from that enemy, outside the ring, loses nothing"), Outside.Lost(),
+		0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("set-up: the inside trap's held-back swing struck its enemy: %.2f"),
+							  TrapSelfBlastTakenFrom(InsideSetter)),
+		TrapSelfBlastTakenFrom(InsideSetter) > 0.0f);
+	TestTrue(*FString::Printf(TEXT("the used-up trap's held-back swing struck the wearer inside its ring (L-1): %.2f lost"),
+							  Inside.Lost()),
+		Inside.Lost() > 0.0f);
 	return true;
 }
 

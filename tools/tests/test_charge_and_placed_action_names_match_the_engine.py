@@ -714,18 +714,19 @@ def test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_a
         < trigger.index("StartPlayersSkillFromHere(Player, AsTheTraps,")
 
 
-def test_a_used_up_traps_shot_and_landing_look_for_its_wearer_by_its_identity() -> None:
-    """Ruled 2026-10-22 (traps layer 7, K1). A shot or a landing of a skill
-    trap already used up still strikes its wearer standing inside its blast:
-    the explosion where a shot stops and the projectile skill's landing each
-    hand `WearerInSphere` the identity of what cast the use as well as `Get`
-    of it, `WearerInSphere` asks for a used-up trap only when no standing
-    deployable answered, and `IsTheWearersUsedUpTrap` finds the identity among
-    the wearer's used-up traps. Read from the code with comments taken out by
-    tracking `/* ... */` and `//` (R-c). THE CONTROL: the same reading finds
-    `UCataclysmStrikeSkill::SwingOnce`'s sphere handing `Get` alone, which K1
-    leaves as it was, so a pattern that saw no identity argument anywhere
-    could not pass."""
+def test_a_used_up_traps_shot_landing_and_held_back_swing_look_for_its_wearer_by_its_identity() -> None:
+    """Ruled 2026-10-22 (traps layer 7, K1, and L-1 for the swing). A shot, a
+    landing or a held-back swing of a skill trap already used up still strikes
+    its wearer standing inside its blast: the explosion where a shot stops,
+    the projectile skill's landing and the Strike's sphere and cone each hand
+    the identity of what cast the use as well as `Get` of it, `WearerInCone`
+    hands it on to `WearerInSphere`, `WearerInSphere` asks for a used-up trap
+    only when no standing deployable answered, and `IsTheWearersUsedUpTrap`
+    finds the identity among the wearer's used-up traps. Read from the code
+    with comments taken out by tracking `/* ... */` and `//` (R-c). THE
+    CONTROL: the same reading finds `ACataclysmMinion::Explode`'s sphere, a
+    dying deployable's own blast, handing no identity, so a pattern that saw
+    an identity argument everywhere could not pass."""
     blast = code_without_comments(SOURCE.parent / "CataclysmDeployableSelfBlast.cpp")
     assert "return Cataclysm && Cataclysm->SpentSkillTrapNamed(CastBy, Spent);" in blast
     assert re.search(r"!\(IsTheWearersDeployable\(Wearer, CastFrom\) \|\| "
@@ -737,4 +738,10 @@ def test_a_used_up_traps_shot_and_landing_look_for_its_wearer_by_its_identity() 
     assert re.search(r"WearerInSphere\(\s*GetWorld\(\), Self, FreeRepeatCastBy\.Get\(\), Destination, "
                      r"ScaledRadiusCm\(\), FreeRepeatCastBy\);", templates)
     assert re.search(r"WearerInSphere\(\s*GetWorld\(\), Self, FreeRepeatCastBy\.Get\(\), Apex, "
-                     r"FMath::Max\(ThisUseHitsAllWithinCm, ScaledRadiusCm\(\)\)\)", templates)
+                     r"FMath::Max\(ThisUseHitsAllWithinCm, ScaledRadiusCm\(\)\),\s*FreeRepeatCastBy\)", templates)
+    assert re.search(r"WearerInCone\(\s*GetWorld\(\), Self, FreeRepeatCastBy\.Get\(\), Apex, AimDirection\(\), "
+                     r"ScaledRadiusCm\(\), ArcDegrees\(\),\s*FreeRepeatCastBy\);", templates)
+    assert "WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm, UsedUpCastBy);" in blast
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"WearerInSphere\(\s*GetWorld\(\), Summoner\.Get\(\), this, GetActorLocation\(\),\s*"
+                     r"ExplosionRadiusCm \* UCataclysmSecondSelf::AreaMultiplierFor\(this\)\)\)", minion)
