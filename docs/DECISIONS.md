@@ -168,7 +168,13 @@ removed; `--check` says "All 29 DataTable CSVs are up to date."
 
 **THE FIELDS ARE THEIR OWN** for the reason G7b's are (issue #1765's trap): nothing on the beat assigns them.
 
-### Judgements made by the writing session, each open to a ruling
+### Judgements made by the writing session, all six accepted
+
+**ACCEPTED, ALL SIX, by the coordinating session on 2026-10-23**, in its words: "Abstinence's violation is called
+from PayHealthCost. The violation is the cast that owed the price. Vigil's clock counts from the later of the last
+move and the last landing. A player who never moves is smitten every 6 s; that is the Edict working as designed.
+Put it in the play-check list. A Stillness violation is the movement skill's use. Humility leaves a multiplier
+already below 100 as it is. No Vigil panel line, recorded as a gap."
 
 - **WHERE ABSTINENCE'S PAYMENT CALLS THE WARDENS: `UCataclysmSkillTemplate::PayHealthCost`.** The skill-used notice the
   game mode hears is sent before the payment and carries no amount, and `PayHealthCost` is the one place a use pays
@@ -233,7 +239,12 @@ comparison holds. What moves: the Ascendant stand-in's extra danger a floor, `Si
 mean of the campaign's pool -- with all eight Cataclysms 10.966 (119 rows) -> 11.066 (122), with Celestial alone
 11.944 (18) -> 12.381 (21) -- and every draw from a pool holding Celestial rows. **`experiments.py` was not run.**
 
-### Existing tests that change (proposed, awaiting ruling)
+### Existing tests that change (accepted by the coordinating session, 2026-10-23)
+
+**ALL SIX ACCEPTED AS SENT**, ruled on 2026-10-23. The commit messages keep the words "proposed, awaiting ruling"
+they were written with. **Q3's narrow control** is accepted because the gap is about three times the sampling
+error over 4,000 fixed seeds; the ruling's words for a failure: "If it fails, stop and report; do not widen it."
+**Q6** is a change to what a check accepts, recorded under its own heading below.
 
 Q1 to Q5 in one commit, "Existing tests follow the Edict list of eight (proposed, awaiting ruling)", each following
 from `EdictKeys` gaining the three; Q6, found by the whole Python suite, in a commit of its own, "An existing check's
@@ -271,7 +282,24 @@ allowance names Humility's flag field (proposed, awaiting ruling)". Old -> new:
   `Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore` reads `Min(4, EdictKeys().Num())`, 4.
   G7b's `AnAscendantCanDrawEachOfItsEdictsAndNamesEachAsTheDesignDoes` loops over `EdictKeys()`.
 
+### Changes to what a check accepts
+
+- `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`: its `NOT_PERCENTAGES` allowance gains
+  `HumilityNoExtraCriticalDamageValue`, Humility's flag field, which is not a percentage; the assertion is unchanged
+  and only what it accepts widens. Q6 above, accepted by the coordinating session on 2026-10-23.
+
+### For the owner's play-check list
+
+- **A player who never moves under the Edict of Vigil is smitten every 6 seconds**: 3 seconds standing still, then
+  the 3-second telegraph, then the smite, and the clock counts again from the landing. Ruled by the coordinating
+  session on 2026-10-23 as the Edict working as designed.
+
 ### AT RISK
+
+**A RISK ACCEPTED, 2026-10-23.** The dungeon session rates the seeded Ascendant tests that run the clock with a
+sampled player (for example the Silence test that runs `RunClock` twice) MEDIUM, against the writing session's low:
+they can now draw the Edict of Vigil and be smitten. The coordinating session accepted the risk: "If one of them
+fails in the window, stop and send me the failure and an old -> new proposal; do not re-run."
 
 **FOUND BY SEARCH, AT `c514b6746`, BEFORE ANY EDIT.** A script (`g7cw/atrisk.py`, G7b's with G7c's patterns) ran these
 Python regular expressions over every `game/Source/**/Tests/*.cpp`, `tools/tests/*.py` and `sim/tests/*.py` read out
