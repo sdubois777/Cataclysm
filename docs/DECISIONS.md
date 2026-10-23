@@ -172,7 +172,40 @@ cast has ended. **Outside the prefix**, layer 6's Python test reads the guard as
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**THE CHANGE WAS MOVED BEFORE ITS WINDOW** onto development 822d24f6b (#2473, the Hollow), as b04b067e1 from 149205997
+on 796f2d9f6. It kept its whole patch id, its patch id outside this log and its 4 removed lines; the only conflict was
+this log (this entry placed on top); and outside this log the moved top differs from 149205997 by exactly that merge's
+own files and patch id.
+
+**ONE WINDOW, enchant-t6bw, ON 2026-10-22, 17:09:58 to 18:01:50 by its stall guard, on b04b067e1, steps 2 to 4 (no row
+and no asset). Every step exited 0 with the figures registered before it; nothing was re-run.** The pre-checks, run just
+before the lock was taken: development's CI and Unreal runs on 822d24f6b succeeded, no run in progress, no pull request
+open, the lock free, no Excel, editor or build process, the worktree clean at b04b067e1.
+
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - 51 actions, 46 files compiled"; "4056 tests performed, 4056
+  succeeded, 0 failed", registered 4056 and 0 (4055 of development after #2473 and test 52). 40 skipped part of what
+  they check (the Paragon art is not in a worktree). "Declared: 4056 tests in the tree at b04b067e1; 4056 performed, gap
+  0".
+- **Step 3, Python of record on b04b067e1:** "6895 passed, 8 skipped in 294.29s"; JUnit tests 6903, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 53 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XXVI (traps layer 6), re-run | every trap triggered counted as the Nth (`CataclysmAbilitySystemComponent.cpp`) | 3 failed: `EveryThirdTrapTriggered...`, `TheCountOfTrapsTriggered...`, `ATrapSetOffByARowPulls...` | 13 / 13 | 53 of 53 succeeded |
+| TR-XXIX | the lock condition removed (`CataclysmAbilitySystemComponent.cpp`) | 1 failed, `AGadgetsShotEarnedByATrapThatSetsOffItsNeighboursIsNotLostInsideTheirCasts` | 2 / 2 | 53 of 53 succeeded |
+
+**TR-XXVI NOW MEASURES ITS 13, AND TEST 51'S COUNTING LINE NOW DETECTS A SKIPPED COUNT.** With the gadget at 64 m and
+the lock condition in, its counting player's "and the third, a forced trap, fired the gadget once (J4)" failed with the
+break in, reading 3, where in traps layer 6's window it passed. The measured lines include, under TR-XXVI, "'and the
+third, a forced trap, fired the gadget once (J4)' to be 1, but it was 3"; under TR-XXIX, "'the gadget fired three shots,
+one for each trigger: the first trap's was not lost inside its neighbours' casts (#2471)' to be 3, but it was 2".
+
+**Not measured:** everything this entry lists as read and not tested, and #2472 (a death inside the player's own
+activation); anything drawn on a screen.
 
 ---
 
