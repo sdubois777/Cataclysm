@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 // For the dying enemy's maximum health, which `afflicted_death` carries.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the two spread rolls, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Engine/World.h"
@@ -242,7 +244,7 @@ int32 UCataclysmContagion::SpreadOnDebuffDamage(AActor* Character,
 		// of the enemy: "enemies within 6 metres have a 1% chance per point".
 		const float Roll = PinnedRoll >= 0.0f
 			? PinnedRoll
-			: FMath::FRandRange(0.0f, 100.0f);
+			: CataclysmPercentDraw::Draw();
 		if (Roll >= ChancePercent)
 		{
 			continue;
@@ -317,7 +319,7 @@ int32 UCataclysmContagion::SpreadOnDeath(AActor* Dying, AActor* Killer,
 		// of each: "its debuffs have a 2% chance per point to pass".
 		const float Roll = PinnedRoll >= 0.0f
 			? PinnedRoll
-			: FMath::FRandRange(0.0f, 100.0f);
+			: CataclysmPercentDraw::Draw();
 		if (Roll >= ChancePercent)
 		{
 			continue;
