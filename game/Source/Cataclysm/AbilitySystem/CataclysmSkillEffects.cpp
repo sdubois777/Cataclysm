@@ -1338,8 +1338,9 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 		Cast<UCataclysmAbilitySystemComponent>(Defender);
 	const uint32 Before = Resolver ? Resolver->GetResolvedHitStamp() : 0;
 
-	// AND THE TAGS OF THE SKILL A BLOW NAMING NO SKILL OBJECT IS A BLOW OF, a buried weapon's leap's, for this effect
-	// while it is applied: the record of the last blow keeps them for the death notice. Ruled 2026-10-22 (#2465, N2 (a)).
+	// AND THE TAGS OF THE SKILL A BLOW NAMING NO SKILL OBJECT IS A BLOW OF, a buried weapon's leap's or a shot's whose
+	// firing skill has gone, for this effect while it is applied: the record of the last blow keeps them for the death
+	// notice, and the hit notice names them (#2475). Ruled 2026-10-22 (#2465, N2 (a)).
 	// Null tags for every other blow, which names them so for any blow dealt from inside this one.
 	{
 		const TGuardValue<FSkillEffectsBlowNamingNoSkill> NamingNoSkill(BlowNamingNoSkillBeingApplied,
