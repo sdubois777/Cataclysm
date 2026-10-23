@@ -2,6 +2,579 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — In the game the Celestial's Quest dungeon is an Ascendant: one more Edict a floor up to four, 10% stronger a floor with caps, a Heavenly Core sealing its last floor, and one of its Edicts left on its city for 30 days
+
+**The game builds the Ascendant with the two Edicts it already has.** A Quest dungeon the Celestial Cataclysm sends is
+an Ascendant. Floor 1 carries one Divine Edict beyond the dungeon's own modifiers, floor 2 two, and so on up to four;
+today only two Edicts are rows -- the Edict of Silence and Forced Tithes, the design's Edict of Tithe -- so from
+floor 2 an Ascendant carries both. Each Edict is 10% stronger a floor deeper and half as strong again on the last
+floor while its Heavenly Core stands; the Edict of Silence, the one of the two with a number to scale, is held at 67.5
+seconds of its 90 second cycle. The last floor's Heavenly Core has the floor boss's health, never attacks, and seals
+the stairs out -- the clear and the quest objective -- until it is destroyed. When the Ascendant's timer runs out on
+its city it hits as any Quest dungeon does and also leaves one of its Edicts there for 30 days, and every dungeon on
+that city carries it. The simulation still approximates the Ascendant (the entry headed "In the simulation the
+Ascendant, Celestial's Quest dungeon, is approximated as one more average modifier a floor, down to four").
+Branch `feat/game-ascendant-1` on `development` at `8b31fda27`. Not built and not run: see Proofs and Run.
+
+### What changed and why
+
+- **WHAT A PLAYER MEETS.** The city screen says "Ascendant, 30 floors, 2 Edicts by its last floor and a Heavenly
+  Core, 9 days until it bites", and a city carrying a left Edict says "Edict of Silence, 12 days left" in its status.
+  Inside, the floor panel lists the Edicts as it lists every modifier. On floor 6 the Edict of Silence silences for
+  22.5 seconds, on floor 70 for the cap of 67.5. Forced Tithes asks its altar's prices unchanged. The last floor's
+  stairs do nothing while the Core stands.
+- **WHY.** The owner chose the design on 2026-10-19 ("Full plan design"); on 2026-10-20, verbatim, "From floor 1",
+  "Core floor only" and "One at random"; on 2026-10-20 of what an Edict is, verbatim: "Edicts are part of the
+  Celestial cataclysm already. I think they just need to be written but the design document should have some
+  examples. They're basically divine decrees that prevent/punish the player from performing certain actions."; and on
+  2026-10-21 "All eight", "Delegated, as proposed" and "Yes, any Celestial dungeon". All quoted in the entry headed
+  "Divine Edicts are Celestial dungeon modifiers that each forbid or charge for one player action, and the Ascendant
+  draws one more of them a floor". Until this entry the game's Celestial Quest dungeons rolled a sub-type like any
+  dungeon.
+- **NO DRAW OF THE RUN MOVES.** The sub-type is fixed after `MakeDungeon`'s draw, which is still taken and discarded,
+  as for the six Cataclysms before it. The Edicts are drawn on a stream made from the dungeon's walk seed alone
+  (`FCataclysmDungeon::WalkSeed`, `max(1, DungeonId + 1)`, the seed `EnterEmpireDungeon` always gave a walk), and the
+  Edict a hit leaves on a stream made from that seed and the day; neither touches the run's streams. What moves is
+  downstream, as for the Hollow: a Celestial Quest dungeon no longer rolls a Siege or a Cow Level, so its city's
+  history and every later draw a different history causes can move with it.
+
+### The rulings
+
+The coordinating session ruled all eleven on 2026-10-22, as the dungeon session recommended:
+
+1. **Uniform draw.** Each new Edict is drawn evenly from the Edicts not already active: the owner's ruling of
+   2026-09-07 that a modifier's Weight is a danger score and never sets frequency (`UCataclysmDungeonModifierRules::
+   Draw`). The design's sentence "by their weights" is corrected and cites that ruling.
+2. **Caps.** Each Edict scales only its one harshening number, by `1 + 0.10 x (N - 1)` on floor N and x1.5 on the
+   Core's floor while the Core stands: the Edict of Silence's length at most 67.5 seconds of its 90 second cycle; the
+   Edict of Tithe its cost; and, recorded for G7b and G7c and not built, Temperance at most 90%, Patience uncapped,
+   Abstinence at most 100% of the cost, Stillness's slow at most 90% with its 3 seconds fixed, Vigil's smite at most
+   50% of maximum health with its 3 seconds fixed, and Humility not scaling. The reason, now in the design beside the
+   10% rule: a floor-70 Edict at 7.9 times its base makes Silence permanent, and Quest dungeons are 20 to 70 floors
+   (`CataclysmSurge.cpp`, the Quest rows of `SpecFor`). The caps are the coordinating session's under the owner's
+   delegation of unstated numbers. `static_assert(EdictOfSilenceLastsSeconds < EdictOfSilenceEverySeconds)` is kept
+   true for the base values, and two more hold the cap inside the cycle and above the base length.
+3. **Floor N keeps floor N-1's Edicts and adds one**: one, two, three, then four; "when none is left to draw, no
+   further Edict is added". In G7a floor 2 onward holds both.
+4. **An Ascendant that hits unwalked leaves one of the four it would hold from floor 4, drawn on the same stream a walk
+   uses.** So the per-floor draw is a pure function of the dungeon and the floor that the empire's hit can call:
+   `UCataclysmDungeonModifierRules::EdictsOnFloor(WalkSeed, AlreadyActive, Floor)`, in the empire module.
+5. **The left Edict sits beyond the dungeon's modifier count and adds to its modifier score**, for every dungeon on
+   that city, standing or arriving, while the 30 days run.
+6. **The general modifier draw source is left as it is**: `GiveModifiers` still draws from `PoolFor(ModifierPool,
+   ActiveCataclysms)`. Recorded here and unchanged.
+7. **The Angelic Wardens violation hook is G7c**, a gap recorded under "What is not in it".
+8. **Which rows are Edicts is a C++ key list in the empire module**, `UCataclysmDungeonModifierRules::EdictKeys`,
+   holding `Celestial_Edict_of_Silence` and `Celestial_Forced_Tithes` (the row keys of
+   `game/Data/DungeonModifiers.csv`, read there).
+9. **The weights of the six new rows are G7b's**, recorded only.
+10. **The Core has that depth's floor boss's health and does not attack.**
+11. **The order is G7a, G7b, G7c.**
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmDungeonKind.h`: `ECataclysmDungeonSubType::Ascendant = 9`, after the
+  Hollow; `RollSubType` walks `Timed` to `Sacrificial` by name, so it is never on the roll's line.
+- `CataclysmSurge.h` and `.cpp`: `QuestSubTypeFor(Celestial)` answers `Ascendant`; `SubTypeName` "Ascendant";
+  `SpawnWeightFor` lists it at nought; `FCataclysmDungeon::IsAscendant` and `WalkSeed`. `MakeDungeon` is unchanged:
+  the discarded draw is kept. `SubTypeWeightFor` in `CataclysmEnemyScore.cpp` has no Ascendant case, as the port check
+  requires, so an Ascendant scores as the model's `.get(..., 0.0)` does.
+- `CataclysmDungeonModifier.h` and `.cpp`: `EdictKeys`, `IsEdict`, `EdictName` ("Edict of Silence", "Edict of
+  Tithe"), `AscendantMostEdicts = 4`, `EdictStrongerPerFloor = 0.10f`, `EdictStrongerWhileTheCoreStands = 1.5f`,
+  `EdictOrderFor` (one even shuffle of every Edict, `Draw` over them all, on `MixedSeed(WalkSeed, EdictSalt)`),
+  `EdictsOnFloor` (the first `min(N, 4)` of that order not already in force), `EdictLeftBy` (one of `EdictsOnFloor` at
+  4, evenly, on a stream from the walk seed and the day) and `EdictStrengthOn`.
+- `CataclysmEmpireMap.h` and `.cpp`: `FCataclysmCity::LeftEdict` and `LeftEdictUntilDay`, both `SaveGame`;
+  `EdictCarriedOn(Today)` and `EdictDaysLeftOn(Today)`; `UCataclysmEmpireMap::LeftEdictDays = 30` and `LeaveEdict`,
+  which replaces any earlier Edict and restarts the days.
+- `CataclysmEmpireRun.h` and `.cpp`: in `ResolveDungeon`'s Quest block, `LeftEdict` is drawn while `Dungeon` still
+  points at it, and `Map->LeaveEdict(HostId, LeftEdict, OutReport.Day)` runs after the hit is counted and reported
+  and before it is dealt; **the one hit line is unchanged**,
+  `if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))`.
+  The Quest block names no "Floors", "BiteScale" or "Dungeon->DefenceDamage", as
+  `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py` requires. New
+  `LeftEdictCarriedBy`, `ModifiersCarriedBy` and `ModifierScoreCarriedBy` answer what a walk carries, reading the
+  city the dungeon stands on now and `Day()`, the clock's day; the Edict's danger is read from `ModifierPool`.
+- `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp`: rule 6 of `ModifiersFor`, after rule 2 and before
+  Reality Twister, adds an Ascendant's Edicts and their danger; `FCataclysmDungeonIdentity::EdictSeed`, the dungeon's
+  own seed and not the dark floor's, set by `DungeonIdentity` from `ChooseSeed()`.
+- `CataclysmDungeonModifierEffects.h` and `.cpp`: `EdictOfSilenceMostLastsSeconds = 67.5f` and
+  `EdictOfSilenceLastsSecondsAt(Strength)`; two new static assertions.
+- `CataclysmDungeonGameMode.h` and `.cpp`: `EnterEmpireDungeon` takes `Dungeon->WalkSeed()` (the same number as
+  before) and the run's `ModifiersCarriedBy` and `ModifierScoreCarriedBy`, so **the day is read on entry**, the run's
+  day then; `EdictStrengthHere`; `StepEdictOfSilence` sets the silence's length from it; the Heavenly Core:
+  `PlaceTheHeavenlyCore` and `ForgetTheHeavenlyCore` beside the Golden Spires' in `PopulateFloor`, and forgotten in
+  `LeaveEmpireDungeon`; `HeavenlyCoreNow`, `HeavenlyCoreStands`, `HeavenlyCoreSealsTheStairs`, `HeavenlyCoreHealth`
+  (`GatekeeperHealth`, 1248, at Common) and `HeavenlyCoreSealKey`, which `StairsSealedBy` adds last. The console's
+  `Cataclysm.DungeonSubType` help names Ascendant.
+- `game/Source/Cataclysm/Character/CataclysmHeavenlyCoreCharacter.h`: a floor source with no brain and no archetype
+  row, as the Golden Spire is.
+- `CataclysmCityScreenLayout.h` and `.cpp`: the Ascendant's dungeon line and the city's left-Edict part.
+- The empire module still includes nothing from the `Cataclysm` module.
+
+### Judgements made by the writing session, each open to a ruling
+
+- **Forced Tithes is not scaled.** Its price is three alternatives -- 20% of maximum health, 10 charges of the
+  fullest potion, 5 of the material carried most -- and eight angels if refused (`PlaceTheTitheAltar`); there is no
+  one number that is its cost, so by ruling 2's own condition it does not scale. The design says so, as a reading
+  open to a ruling.
+- **Every Edict in force in an Ascendant scales**, including an ordinary modifier that is an Edict and a left Edict
+  carried into one; in any other dungeon an Edict is at base strength.
+- **The order is drawn over every Edict and an Edict already in force is passed over**, rather than the order being
+  drawn over what is left. An even shuffle of all of them is an even shuffle of any part, so the draw is still even,
+  and the empire's answer for a dungeon with no Edict among its own modifiers is exactly a walk's. A walk entered on a
+  city that carries a left Edict which is also one of the Ascendant's four passes over it, so its floors can differ
+  from what the empire assumed for that dungeon; the empire's draw reads the dungeon's own modifiers only.
+- **Which of the four a hit leaves** is drawn on a stream from the walk seed and the day of the hit, so a second hit
+  on another day may leave another, and no run stream moves.
+- **The left Edict is left before the hit is dealt** and kept when the city falls, as the Void stacks are. Nothing
+  clears it but its 30 days.
+- **The Core's health is the Gatekeeper's base figure, unrolled.** No creature's health grows with depth in the game,
+  so "that depth's floor boss's health" is 1248 at every depth; the Gatekeeper's own rung is rolled per creature and
+  the Core's is fixed at Common.
+- **The Core seals only through `StairsSealedBy`**, as every sealing row does: `HandleStairsTaken` refuses, and
+  `GoDownOneFloor` called directly is not gated.
+- **The Core has no line on the floor panel and no label under its health bar**: the panel is keyed by modifier rows
+  and the Core is not one. The sealed stairs answer as for every row, by not moving.
+
+### The save
+
+**A city is written whole, so the two fields are saved with no other change**: `FCataclysmSaveGather::CitiesFrom`
+copies `Map->Cities`. `Run_v1.json` gains `"LeftEdict": "None"` and `"LeftEdictUntilDay": 0` on city 0 and
+`"Celestial_Edict_of_Silence"` until day 140 on city 7; the fixtures' `README.md` records the seventeenth edit.
+**NOTHING LOADS A RUN'S CITIES BACK (issue #753)**, so a restored campaign would lose the left Edict as it loses
+every city field.
+
+### What is not in it
+
+- **The six new Edicts** -- Temperance, Patience, Abstinence, Stillness, Vigil and Humility -- their rows and their
+  weights: G7b. Their caps are recorded above and in the design.
+- **What the new Edicts do, and the Angelic Wardens' hook** -- "breaking a punishing Edict counts as violating a
+  divine law" -- G7c. The game's Angelic Wardens do not read any Edict.
+- **The general modifier draw source** (ruling 6): unchanged.
+- **The global Edicts** of Heaven's Wrath's opening sentence, which the design does not describe.
+- **The simulation**: it keeps its approximation and has no Edicts, Core or left Edict.
+
+### AT RISK
+
+**FOUND BY SEARCH, AT `8b31fda27`, BEFORE ANY EDIT.** A script (`atrisk.py` in the writing session's scratch folder)
+ran these Python regular expressions over every `game/Source/**/Tests/*.cpp`, `tools/tests/*.py` and
+`sim/tests/*.py`, and named for each match the Unreal test (`IMPLEMENT_*AUTOMATION_TEST` name) or Python `def test_`
+that holds it, the nearest one above the match:
+
+- (a) `FCataclysmDungeonFloorRules::(?:ModifiersFor|BriefFor)\(|(?<![A-Za-z])BriefFor\(|FloorBrief\.Modifiers|FloorBrief\.ModifierScore`
+- (b) `QuestSubTypeFor|(ECataclysmDungeonType::Quest[^\n]*SubType|SubType[^\n]*ECataclysmDungeonType::Quest)|QUEST_SUBTYPE_BY_CATACLYSM`
+- (c) `ECataclysmType::Celestial|Celestial_[A-Z]\w+|EdictOfSilence|ForcedTithes|TithesRow|["']Celestial["']`
+- (d) `EverySubType\(|StaticEnum<ECataclysmDungeonSubType>|ECataclysmDungeonSubType::Sacrificial\)?;\s*$|<= static_cast<uint8>\(ECataclysmDungeonSubType::|the_games_sub_type_names|ECataclysmDungeonSubType\s*:\s*uint8`
+- (e) `StatusTextFor|DungeonLinesFor`
+- (f) `StairsSealedBy|IsOnTheLastFloor|ClearEmpireDungeon|GoDownOneFloor|HandleStairsTaken`
+- (g) `EdictOfSilenceLastsSeconds|ForcedTithesHealthPercent|ForcedTithesPotionCharges|ForcedTithesMaterials|ForcedTithesAngelCount`
+- (h) `ModifierScore`
+- (i) `Run_v1|CitiesFrom|Record\.Cities|Record->Cities|Cities\.Num\(\)[^\n]*Record|SaveFixtures`
+
+**WHAT THE SEARCH CANNOT SEE.** A match is attributed to the test whose name comes above it, so a comment heading the
+next test is credited to the one before (marked where seen); a test reaching the change through a helper in another
+file is missed unless the helper's own name matches. The first attempt at (a) matched `StatModifiersFor(` and was
+narrowed; (c) as first written matched every use of the word and was narrowed to the Cataclysm, its rows and its two
+Edicts. How each test reaches the change was judged by reading, not by running: nothing was built.
+
+**NO EXISTING ASSERTION OUTSIDE THE RULED ONES HAD TO CHANGE**, by reading. Two tests reach the change and pass by
+reading only because this layer changed what they read: `Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes`
+(the console help now names Ascendant) and `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` (the
+fixture now holds the two city fields).
+
+- **(a) calls `ModifiersFor` or `BriefFor`, or reads a floor's modifier list or score**: 61 found. Unless marked, Unreal: it names or sets a sub-type that is not Ascendant, or walks a seeded run's dungeon, which is an Ascendant only when a Celestial surge sent it as a Quest dungeon; rule 6 adds Edicts only to an Ascendant, and every other rule is untouched (not checked per test by running), **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.DungeonMode.AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole` (CataclysmDungeonCostsDaysTests.cpp:1977)
+  - `Cataclysm.DungeonMode.AFloorCarryingFieldMedicGivesExactlyOneCreatureTheRole` (CataclysmDungeonGameModeTests.cpp:2970)
+  - `Cataclysm.DungeonMode.AskingForVolatileChangesTheModifiersEveryFloor` (CataclysmDungeonGameModeTests.cpp:1181)
+  - `Cataclysm.DamageDoneToAllies.AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack` (CataclysmDungeonModifierEffectsTests.cpp:46297)
+  - `Cataclysm.DungeonModifierEffects.ADeathLeavesGroundThatTakesRecoveryFromWhoeverStandsOnIt` (CataclysmDungeonModifierEffectsTests.cpp:3747)
+  - `Cataclysm.DungeonModifierEffects.AFloorCarryingInfernalRainDropsTypedPatches` (CataclysmDungeonModifierEffectsTests.cpp:3171)
+  - `Cataclysm.DungeonModifierEffects.AFloorCarryingMortalDecaySapsThePlayersHealth` (CataclysmDungeonModifierEffectsTests.cpp:3987)
+  - `Cataclysm.DungeonModifierEffects.AFloorCarryingTheEdictLocksSkillsThenLetsThemBack` (CataclysmDungeonModifierEffectsTests.cpp:5220): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.AKilledEnemyExplodesOnWhoeverIsStandingNearIt` (CataclysmDungeonModifierEffectsTests.cpp:6830)
+  - `Cataclysm.DungeonModifierEffects.AMushroomLeftByADeathSpeedsUpThePlayerStandingOnIt` (CataclysmDungeonModifierEffectsTests.cpp:8115)
+  - `Cataclysm.DungeonModifierEffects.ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` (CataclysmDungeonModifierEffectsTests.cpp:5336): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.ATentacleGrabsAPlayerWhoLingersAndLetsGoOnItsOwn` (CataclysmDungeonModifierEffectsTests.cpp:4778)
+  - `Cataclysm.DungeonModifierEffects.AVoidOrbSlowsAPlayerStandingInItAndStopsWhenTheyLeave` (CataclysmDungeonModifierEffectsTests.cpp:3499)
+  - `Cataclysm.DungeonModifierEffects.AnEnemysBlowStacksWastingSicknessOntoBothMaximums` (CataclysmDungeonModifierEffectsTests.cpp:4349)
+  - `Cataclysm.DungeonModifierEffects.AngelicWardensEachStatueWakesOnceAndStaysWokenAfterThePlayerDiesAndReturns` (CataclysmDungeonModifierEffectsTests.cpp:49562)
+  - `Cataclysm.DungeonModifierEffects.DeathsEmbraceCutsHealingAndTheStairsClearIt` (CataclysmDungeonModifierEffectsTests.cpp:2590)
+  - `Cataclysm.DungeonModifierEffects.FamishedBeastsAFeederThatRisesARungKeepsBothShares` (CataclysmDungeonModifierEffectsTests.cpp:38245)
+  - `Cataclysm.DungeonModifierEffects.FamishedBeastsARungChangeKeepsTheDropsShare` (CataclysmDungeonModifierEffectsTests.cpp:38177)
+  - `Cataclysm.DungeonModifierEffects.ForcedMarchTakesHealthFromAStandingPlayer` (CataclysmDungeonModifierEffectsTests.cpp:2308)
+  - `Cataclysm.DungeonModifierEffects.NotEveryDeathExplodes` (CataclysmDungeonModifierEffectsTests.cpp:7180)
+  - `Cataclysm.DungeonModifierEffects.NotEveryDeathReleasesSpores` (CataclysmDungeonModifierEffectsTests.cpp:6639)
+  - `Cataclysm.DungeonModifierEffects.OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains` (CataclysmDungeonModifierEffectsTests.cpp:10993)
+  - `Cataclysm.DungeonModifierEffects.ReapingAnEnemySlowsMortalDecayAndOtherDeathsDoNot` (CataclysmDungeonModifierEffectsTests.cpp:4102)
+  - `Cataclysm.DungeonModifierEffects.RuleOfChaosDrawsOneOfThreeRuleChangesForEachFloorAndThePanelNamesIt` (CataclysmDungeonModifierEffectsTests.cpp:49774)
+  - `Cataclysm.DungeonModifierEffects.SporesDoNotReachAPlayerStandingFarFromTheDeath` (CataclysmDungeonModifierEffectsTests.cpp:6468)
+  - `Cataclysm.DungeonModifierEffects.SporesFromADeathNearThePlayerPoisonThem` (CataclysmDungeonModifierEffectsTests.cpp:6299)
+  - `Cataclysm.DungeonModifierEffects.StandingInTheFogCutsHealingReceivedByHalfAndLeavingRestoresIt` (CataclysmDungeonModifierEffectsTests.cpp:11488)
+  - `Cataclysm.DungeonModifierEffects.SufferingAuraAndMortalDecayOnOneFloorBothTakeTheirShare` (CataclysmDungeonModifierEffectsTests.cpp:21375)
+  - `Cataclysm.DungeonModifierEffects.TheConsoleCanPutModifiersOnTheDungeon` (CataclysmDungeonModifierEffectsTests.cpp:2032)
+  - `Cataclysm.DungeonModifierEffects.TheExplosionDoesNotReachSomeoneStandingAwayFromTheCorpse` (CataclysmDungeonModifierEffectsTests.cpp:7015)
+  - `Cataclysm.DungeonModifierEffects.TheGameModeFollowsTheFloorBeingStoodOn` (CataclysmDungeonModifierEffectsTests.cpp:1925)
+  - `Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotSealed` (CataclysmDungeonModifierEffectsTests.cpp:21731)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkAHordeArenaHasNoChasm` (CataclysmDungeonModifierEffectsTests.cpp:51293)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorIsItsOwnFloorAndAFloorBuiltWithoutAFallIsWhatItWas` (CataclysmDungeonModifierEffectsTests.cpp:52181)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorsSealIsOnThePanelWhateverRowsTheFloorDrew` (CataclysmDungeonModifierEffectsTests.cpp:53034)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorsStairsAreSealedUntilEveryCreatureItPlacedIsSlain` (CataclysmDungeonModifierEffectsTests.cpp:52520)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheLastFloorHasNoChasm` (CataclysmDungeonModifierEffectsTests.cpp:51359)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround` (CataclysmDungeonModifierEffectsTests.cpp:51905)
+  - `Cataclysm.DungeonModifierEffects.TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts` (CataclysmDungeonModifierEffectsTests.cpp:7372)
+  - `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheLastFloorsWayOutIsNotSealedByTime` (CataclysmDungeonModifierEffectsTests.cpp:50243)
+  - `Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor` (CataclysmDungeonModifierEffectsTests.cpp:44081)
+  - `Cataclysm.DungeonModifierEffects.WastingSicknessRollsForAnEnemysBlowAndNotForOneTheFloorOrThePlayerDealt` (CataclysmDungeonModifierEffectsTests.cpp:46217)
+  - `Cataclysm.DungeonModifiers.EnteringADungeonCarriesItsModifierScoreOver` (CataclysmDungeonModifierTableTests.cpp:294): enters a tier 4 run's first dungeon on day 2, before any Quest timer can run out, so no city carries a left Edict; if that dungeon is an Ascendant its floor score includes its Edicts, and the test compares the floor's own score with itself. **low**.
+  - `Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule` (CataclysmFloorBriefTests.cpp:2041)
+  - `Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded` (CataclysmFloorBriefTests.cpp:2341)
+  - `Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt` (CataclysmFloorBriefTests.cpp:1029): counts the reflected enum: 9 -> 10 (its other reads are of Horde floors). CHANGED, as ruled. **high**.
+  - `Cataclysm.FloorBrief.AHordeWaveFormsAroundTheOutsideAndAnOrdinaryFloorDoesNot` (CataclysmFloorBriefTests.cpp:1133)
+  - `Cataclysm.FloorBrief.AVolatileDungeonImposesARealityOnTheFloorsThatDrewIt` (CataclysmFloorBriefTests.cpp:1712)
+  - `Cataclysm.FloorBrief.AVolatileDungeonWithNothingToDrawFromKeepsItsOwn` (CataclysmFloorBriefTests.cpp:569)
+  - `Cataclysm.FloorBrief.AVolatileDungeonsModifiersChangeEveryFloor` (CataclysmFloorBriefTests.cpp:457)
+  - `Cataclysm.FloorBrief.AVolatileFloorCarriesTheModifiersItsTierIsWorth` (CataclysmFloorBriefTests.cpp:517)
+  - `Cataclysm.FloorBrief.AnOrdinaryDungeonsFloorsAreAllTheSame` (CataclysmFloorBriefTests.cpp:342)
+  - `Cataclysm.FloorBrief.EveryFloorOfAHordeDungeonIsOneOpenSpace` (CataclysmFloorBriefTests.cpp:827)
+  - `Cataclysm.FloorBrief.EveryFloorOfAnEliteDungeonEndsWithABossFight` (CataclysmFloorBriefTests.cpp:623)
+  - `Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice` (CataclysmFloorBriefTests.cpp:1394): loops every sub-type, now Ascendant too, and reads only the sight multiplier, 1 for an Ascendant. **low**.
+  - `Cataclysm.FloorBrief.RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` (CataclysmFloorBriefTests.cpp:2221)
+  - `Cataclysm.FloorBrief.RealityTwisterDrawsOnlyARowNotAlreadyInForce` (CataclysmFloorBriefTests.cpp:2284)
+  - `Cataclysm.FloorBrief.TheSameFloorOfTheSameDungeonIsAlwaysTheSame` (CataclysmFloorBriefTests.cpp:391)
+  - `Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality` (CataclysmFloorBriefTests.cpp:2442)
+  - `Cataclysm.FloorBrief.UnstableDimensionsGivesEveryLaterFloorOneGenericEnemyModifier` (CataclysmFloorBriefTests.cpp:1643)
+  - `Cataclysm.FloorBrief.WalkingDownAVolatileDungeonChangesWhatItsCreaturesAreWorth` (CataclysmFloorBriefTests.cpp:1818)
+- **(b) reads a Quest dungeon's sub-type, `QuestSubTypeFor` or the model's mapping**: 13 found. Unless marked, Unreal: Celestial's Quest dungeons are now Ascendants and every other pair is as it was, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.EnemyScore.EightScoresMatchWhatThePythonModelComputes` (CataclysmEnemyScoreTests.cpp:125)
+  - `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` (CataclysmSurgeTests.cpp:4277): draws senders over all eight, so a Celestial Quest dungeon is now fixed; its checks read `QuestSubTypeFor` and allow the Siege a fixed one frees. **medium**.
+  - `Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes` (CataclysmSurgeTests.cpp:4109): the match is the comment heading the next test; this one makes ordinary dungeons sent by nobody. **cannot reach**.
+  - `Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll` (CataclysmSurgeTests.cpp:4120): its fixed table and its count of six. RENAMED `SevenCataclysms...` and CHANGED, as ruled. **high**.
+  - `test_it_costs_exactly_one_draw` (test_cataclysm_cannot_be_a_cow_level.py:169)
+  - `test_the_mapping_is_the_owners` (test_each_cataclysms_quest_dungeons_are_one_sub_type.py:35)
+  - `test_the_comparison_sees_a_changed_pair` (test_dungeon_subtype_port.py:602)
+  - `test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it` (test_dungeon_subtype_port.py:614)
+  - `test_the_game_fixes_the_same_six_pairs_the_model_does` (test_dungeon_subtype_port.py:570): six -> seven; RENAMED. **high, CHANGED**.
+  - `test_the_model_lets_the_last_stand_recompute_with_the_sub_type` (test_dungeon_subtype_port.py:553)
+  - `test_the_game_still_rolls_this_cataclysms_quest_dungeons` (test_two_cataclysms_...py, now test_war_s_...py:153): its Celestial case went with the file's own restore text; the file is renamed. **high, CHANGED**.
+  - `test_the_model_gives_each_cataclysms_quest_dungeons_one_sub_type` (test_two_cataclysms_...py, now test_war_s_...py:116): reads the model only; now asked of War alone. **low**.
+  - `test_the_two_really_do_differ_and_the_other_six_do_not` (test_two_cataclysms_...py, now test_war_s_...py:198): six -> seven; RENAMED. **high, CHANGED**.
+- **(c) names Celestial, `ECataclysmType::Celestial`, or a Celestial row**: 74 found. Unless marked, Unreal: its dungeon is not an Ascendant, so an Edict there is at base strength; or it names the Celestial damage type, which this layer does not touch, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.Drop.AWeaponTypeCarriesOnlyTheDamageTypesDesignedForIt` (CataclysmDropRollTests.cpp:1719)
+  - `Cataclysm.DungeonModifierEffects.ADestroyedNecroticBloomFlowerSendsNoMoreAndItsCreaturesStay` (CataclysmDungeonModifierEffectsTests.cpp:28146)
+  - `Cataclysm.DungeonModifierEffects.AFloorCarryingTheEdictLocksSkillsThenLetsThemBack` (CataclysmDungeonModifierEffectsTests.cpp:5213): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` (CataclysmDungeonModifierEffectsTests.cpp:5298): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.AWingsOfTheHostFeatherIsCelestial` (CataclysmDungeonModifierEffectsTests.cpp:27601)
+  - `Cataclysm.DungeonModifierEffects.BloodPriceFiguresCostBleedAndCap` (CataclysmDungeonModifierEffectsTests.cpp:41366)
+  - `Cataclysm.DungeonModifierEffects.BloodPriceWithPandorasBoxThePactAltarAndTheTitheAltar` (CataclysmDungeonModifierEffectsTests.cpp:41547)
+  - `Cataclysm.DungeonModifierEffects.DesperateMeasuresPutsItsRowOnThePlayerUnderTheLowManaCondition` (CataclysmDungeonModifierEffectsTests.cpp:20372)
+  - `Cataclysm.DungeonModifierEffects.EchoChamberAndWildMagicEachActOnceOnOneUseAndNeitherActsOnTheOthersSkill` (CataclysmDungeonModifierEffectsTests.cpp:46706)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesAPriceThePlayerCannotPayIsShownAndRefused` (CataclysmDungeonModifierEffectsTests.cpp:40369)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesAltarStandsOnTheExitWithThreePricesAndRefuse` (CataclysmDungeonModifierEffectsTests.cpp:40211)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesAltarStandsOneCellFromABloodAltar` (CataclysmDungeonModifierEffectsTests.cpp:40528)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesAnAngelThePlayerTakesIsNoLongerOne` (CataclysmDungeonModifierEffectsTests.cpp:40630)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesFiguresPricesAndAngels` (CataclysmDungeonModifierEffectsTests.cpp:40187)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance` (CataclysmDungeonModifierEffectsTests.cpp:40482)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesPayingInHealthTakesAFifthOfMaximumAndOwesNothing` (CataclysmDungeonModifierEffectsTests.cpp:40257)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesPayingWithAPotionOrMaterialsTakesFromTheFullest` (CataclysmDungeonModifierEffectsTests.cpp:40307)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesRefusingBringsEightAngelsBesideTheAltarAtOnce` (CataclysmDungeonModifierEffectsTests.cpp:40427)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesTheLastFloorHasNoAltar` (CataclysmDungeonModifierEffectsTests.cpp:40570)
+  - `Cataclysm.DungeonModifierEffects.InfernalSealsDoesNothingOnAHordeArena` (CataclysmDungeonModifierEffectsTests.cpp:42607)
+  - `Cataclysm.DungeonModifierEffects.KillingAPlagueHarbingerClearsItsTrailAndWeakensThoseNearIt` (CataclysmDungeonModifierEffectsTests.cpp:27215)
+  - `Cataclysm.DungeonModifierEffects.LeavingTheDungeonEndsTheSilenceAndItsClock` (CataclysmDungeonModifierEffectsTests.cpp:5388)
+  - `Cataclysm.DungeonModifierEffects.OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains` (CataclysmDungeonModifierEffectsTests.cpp:11105)
+  - `Cataclysm.DungeonModifierEffects.OnlyTheModifiersOnTheFloorTakeAnything` (CataclysmDungeonModifierEffectsTests.cpp:1702)
+  - `Cataclysm.DungeonModifierEffects.PactOfTemptationAltarStandsApartFromTheOtherExitAltars` (CataclysmDungeonModifierEffectsTests.cpp:41141)
+  - `Cataclysm.DungeonModifierEffects.SanctionedPassageADivineGateStandsBesideTheExitOfferingChannel` (CataclysmDungeonModifierEffectsTests.cpp:42698)
+  - `Cataclysm.DungeonModifierEffects.SanctionedPassageDoesNothingOnAHordeArena` (CataclysmDungeonModifierEffectsTests.cpp:42966)
+  - `Cataclysm.DungeonModifierEffects.TheConsoleCanPutModifiersOnTheDungeon` (CataclysmDungeonModifierEffectsTests.cpp:2020)
+  - `Cataclysm.DungeonModifierEffects.TheEdictIsDueOnItsCadenceAndTheLockIsAllOrNothing` (CataclysmDungeonModifierEffectsTests.cpp:5150)
+  - `Cataclysm.DungeonModifierEffects.ThePlagueDiseaseClearsOnDeathAndAFloorChangeStopsTheConvergence` (CataclysmDungeonModifierEffectsTests.cpp:26310)
+  - `Cataclysm.DungeonModifierEffects.TheThirdInfestedVeinDestroyedCallsTwoEliteGuardiansOnce` (CataclysmDungeonModifierEffectsTests.cpp:29179)
+  - `Cataclysm.DungeonModifierEffects.TypedNamesAreReadAsKeysOrNames` (CataclysmDungeonModifierEffectsTests.cpp:1979)
+  - `Cataclysm.DungeonModifierEffects.UnstableDimensionsGivesASecondHordeWaveItsReality` (CataclysmDungeonModifierEffectsTests.cpp:44236)
+  - `Cataclysm.DungeonModifierEffects.WarBannerAnAssailantThePlayerTakesIsNoLongerOne` (CataclysmDungeonModifierEffectsTests.cpp:40123)
+  - `Cataclysm.DungeonModifierEffects.WildMagicPoolIsCountedFromTheRealTableAndEachExclusionNamesWhatItRemoved` (CataclysmDungeonModifierEffectsTests.cpp:45707)
+  - `Cataclysm.DungeonModifierEffects.WildMagicWithAPoolOfOneOrNoneTriggersNothingMoreAndThePanelSaysSo` (CataclysmDungeonModifierEffectsTests.cpp:45999)
+  - `Cataclysm.DungeonModifiers.ARowKeyCanBeTurnedBackIntoItsDesignedName` (CataclysmDungeonModifierTableTests.cpp:160)
+  - `Cataclysm.Equipment.EvasionBlockPenetrationAndResistanceAffixesReachTheCharacter` (CataclysmEquipmentTests.cpp:1978)
+  - `Cataclysm.SetBonus.Tyrant10.ASummonAMovementSkillOrAHeldUltimateIsNeverCastAndNeitherIsAnEmptySlot` (CataclysmSetBonusTyrantTenTests.cpp:902)
+  - `Cataclysm.SkillBar.AnUnscopedLockMarksEverySkillOnTheBar` (CataclysmSkillBarTests.cpp:732)
+  - `Cataclysm.SkillBar.TheWordIsShownOnlyWhileEveryDrawnSlotIsLocked` (CataclysmSkillBarTests.cpp:1002)
+  - `Cataclysm.StatExemption.ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain` (CataclysmStatExemptionTests.cpp:11550)
+  - `Cataclysm.Roster.EachCataclysmAsksForItsOwnNumberOfQuestDungeons` (CataclysmRosterTests.cpp:175)
+  - `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType` (CataclysmSurgeTests.cpp:4368): Celestial was in `Rolling`. RENAMED `InARunSevenCataclysms...` and CHANGED, as ruled. **high**.
+  - `Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll` (CataclysmSurgeTests.cpp:4163): its fixed table and its count of six. RENAMED `SevenCataclysms...` and CHANGED, as ruled. **high**.
+  - `Cataclysm.Surge.TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen` (CataclysmSurgeTests.cpp:4649)
+  - `test_an_ascendant_is_more_dangerous_than_the_same_dungeon_without_it` (test_an_ascendant_grows_more_dangerous_floor_by_floor.py:62)
+  - `test_the_order_is_stable_across_processes` (test_the_cataclysms_drawn_belong_to_the_character.py:160)
+  - `test_angelic_wardens_row_still_names_statues_that_animate_and_hunt_and_the_traps_not_built` (test_dungeon_modifier_rules_are_the_rows.py:3794)
+  - `test_anti_magic_zones_figures_are_the_shared_constants` (test_dungeon_modifier_rules_are_the_rows.py:3378)
+  - `test_divine_resurgence_row_still_states_its_two_figures` (test_dungeon_modifier_rules_are_the_rows.py:3572)
+  - `test_divine_wrath_row_still_sends_chasing_beams_that_destroy_enemies_and_hurt_players` (test_dungeon_modifier_rules_are_the_rows.py:4139)
+  - `test_eternal_chorus_row_still_halves_resource_regeneration_until_its_source_is_destroyed` (test_dungeon_modifier_rules_are_the_rows.py:4260)
+  - `test_forced_tithes_row_still_names_a_floors_end_its_prices_and_the_angels` (test_dungeon_modifier_rules_are_the_rows.py:4972)
+  - `test_golden_spires_row_still_heals_and_strengthens_enemies_until_its_spires_are_destroyed` (test_dungeon_modifier_rules_are_the_rows.py:4296)
+  - `test_hallowed_groundfall_row_still_splits_its_two_halves_by_side` (test_dungeon_modifier_rules_are_the_rows.py:928)
+  - `test_hallowed_groundfall_still_states_its_own_cadence` (test_dungeon_modifier_rules_are_the_rows.py:909)
+  - `test_heavens_quake_row_still_says_impassable_terrain_and_reroutes` (test_dungeon_modifier_rules_are_the_rows.py:5028)
+  - `test_holy_repercussions_row_states_no_figure_of_its_own` (test_dungeon_modifier_rules_are_the_rows.py:1502)
+  - `test_holy_repercussions_row_still_names_holy_damage_and_a_stacking_debuff` (test_dungeon_modifier_rules_are_the_rows.py:1541)
+  - `test_holy_repercussions_row_still_says_a_chance_upon_being_hit` (test_dungeon_modifier_rules_are_the_rows.py:1521)
+  - `test_judgment_zones_damage_type_is_read_off_the_row_and_not_written` (test_dungeon_modifier_rules_are_the_rows.py:2860)
+  - `test_judgment_zones_row_still_states_its_two_figures` (test_dungeon_modifier_rules_are_the_rows.py:2828)
+  - `test_leech_spores_drains_rather_than_dealing_a_blow` (test_dungeon_modifier_rules_are_the_rows.py:1711)
+  - `test_lightforged_walls_row_still_seals_until_all_enemies_are_slain_and_names_sections` (test_dungeon_modifier_rules_are_the_rows.py:3775)
+  - `test_sanctioned_passage_row_still_names_a_ten_second_channel_at_divine_gates` (test_dungeon_modifier_rules_are_the_rows.py:3759)
+  - `test_the_edict_of_silence_says_all_skills_and_spares_basic_attacks` (test_dungeon_modifier_rules_are_the_rows.py:809)
+  - `test_the_edict_of_silence_says_it_sweeps_the_dungeon_not_the_floor` (test_dungeon_modifier_rules_are_the_rows.py:830)
+  - `test_the_edict_of_silence_states_no_third_number` (test_dungeon_modifier_rules_are_the_rows.py:785)
+  - `test_the_edict_of_silence_still_states_its_own_two_numbers` (test_dungeon_modifier_rules_are_the_rows.py:768)
+  - `test_trial_of_endurance_row_still_doubles_enemies_when_the_floor_is_not_cleared_in_time` (test_dungeon_modifier_rules_are_the_rows.py:4353)
+  - `test_wings_of_the_host_row_still_carpet_bombs_with_feathers_that_pierce_terrain` (test_dungeon_modifier_rules_are_the_rows.py:4234)
+  - `test_the_odd_case_guard_exists_in_the_unreal_tests` (test_the_cataclysm_dungeon_unlocks_at_half.py:364)
+  - `test_the_game_has_no_ascendant` (test_two_cataclysms_...py, now test_war_s_...py:176): Ascendant is in the game; RENAMED and CHANGED. **high, CHANGED**.
+- **(d) counts or loops over the sub-type enum**: 13 found. Unless marked, Unreal: Ascendant is numbered past Sacrificial, where a walk from Timed stops; a loop over the reflected enum meets one more value, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType` (CataclysmDungeonGameModeTests.cpp:799): counts the reflected enum: 9 -> 10. CHANGED, as ruled. **high**.
+  - `Cataclysm.DungeonMode.TheSaveRecordSaysWhichDungeonAndFloorNotSandbox` (CataclysmDungeonGameModeTests.cpp:442)
+  - `Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes` (CataclysmDungeonGameModeTests.cpp:1264): requires the console help to name every value of the enum, Ascendant included; the help now names it. **high, passes by reading**.
+  - `Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt` (CataclysmFloorBriefTests.cpp:1059): counts the reflected enum: 9 -> 10 (its other reads are of Horde floors). CHANGED, as ruled. **high**.
+  - `Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice` (CataclysmFloorBriefTests.cpp:1383): loops every sub-type, now Ascendant too, and reads only the sight multiplier, 1 for an Ascendant. **low**.
+  - `Cataclysm.DungeonModifiers.ASacrificialDungeonCarriesTwiceAsMany` (CataclysmDungeonModifierTests.cpp:167)
+  - `Cataclysm.Surge.ACataclysmDungeonNeverRollsACowLevel` (CataclysmSurgeTests.cpp:1644)
+  - `Cataclysm.Surge.AWaveRollsASubTypePerDungeon` (CataclysmSurgeTests.cpp:1950)
+  - `Cataclysm.Surge.AWaveWillNotPutASiegeOnACityThatHasOne` (CataclysmSurgeTests.cpp:2089)
+  - `Cataclysm.Surge.EverySubTypeCarriesTheWeightTheDesignGivesIt` (CataclysmSurgeTests.cpp:1301)
+  - `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType` (CataclysmSurgeTests.cpp:4363): Celestial was in `Rolling`. RENAMED `InARunSevenCataclysms...` and CHANGED, as ruled. **high**.
+  - `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` (CataclysmSurgeTests.cpp:2478): walks Timed to Sacrificial and counts None; a Celestial Quest dungeon is now neither. **low**.
+  - `Cataclysm.Surge.RollingManySubTypesGivesTheDesignedSpread` (CataclysmSurgeTests.cpp:1379)
+- **(e) compares a city screen line or the city's status text**: 7 found. Unless marked, Unreal: its cities carry no left Edict and its dungeons are not Ascendants, and every other line is as it was, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.CityScreen.ADungeonLineNamesItsSubType` (CataclysmCityScreenTests.cpp:702)
+  - `Cataclysm.CityScreen.AFallenCityNamesItsVoidStacksAndThatRetakingClearsThem` (CataclysmCityScreenTests.cpp:236)
+  - `Cataclysm.CityScreen.AFallenCitySaysSoInsteadOfGivingNumbers` (CataclysmCityScreenTests.cpp:161)
+  - `Cataclysm.CityScreen.AHollowSaysWhetherItIsStillShrinkingAndToWhat` (CataclysmCityScreenTests.cpp:768)
+  - `Cataclysm.CityScreen.AStandingCitysStatusCountsItsVoidStacksOutOfTen` (CataclysmCityScreenTests.cpp:200)
+  - `Cataclysm.CityScreen.DungeonsAreListedSoonestToBiteFirst` (CataclysmCityScreenTests.cpp:311)
+  - `Cataclysm.CityScreen.TheHeadingAndStatusDescribeTheCity` (CataclysmCityScreenTests.cpp:112)
+- **(f) reads `StairsSealedBy`, the last floor's stairs or clearing**: 42 found. Unless marked, Unreal: the Heavenly Core is placed only on an Ascendant's last floor, every one of these that takes the stairs through `HandleStairsTaken` sets its dungeon's sub-type first, and `GoDownOneFloor` itself is not gated, so `StairsSealedBy` and clearing are as they were, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing` (CataclysmDungeonCostsDaysTests.cpp:2636)
+  - `Cataclysm.DungeonMode.AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole` (CataclysmDungeonCostsDaysTests.cpp:1979)
+  - `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk` (CataclysmDungeonCostsDaysTests.cpp:667)
+  - `Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged` (CataclysmDungeonCostsDaysTests.cpp:2497)
+  - `Cataclysm.DungeonMode.ReachingTheBottomTakesTheDungeonOffTheMap` (CataclysmDungeonCostsDaysTests.cpp:395)
+  - `Cataclysm.DungeonMode.TheDungeonBeingWalkedIsTheOneTimerThatStops` (CataclysmDungeonCostsDaysTests.cpp:302)
+  - `Cataclysm.DungeonMode.WalkingADungeonCarriesItsSubTypeIn` (CataclysmDungeonCostsDaysTests.cpp:853)
+  - `Cataclysm.DungeonMode.WalkingDownAFloorSpendsADayOfTheEmpire` (CataclysmDungeonCostsDaysTests.cpp:176)
+  - `Cataclysm.DungeonMode.WithNoEmpireRunAFloorStillCostsNothingAndTheStairsGoOn` (CataclysmDungeonCostsDaysTests.cpp:227)
+  - `Cataclysm.DungeonMode.AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth` (CataclysmDungeonGameModeTests.cpp:2481)
+  - `Cataclysm.DungeonMode.EnteringAHordeArenaTakesTheLastDungeonsStairsOutOfIt` (CataclysmDungeonGameModeTests.cpp:2790)
+  - `Cataclysm.DungeonModifierEffects.AngelicWardensAWokenWardenIsAnEliteAbyssalWardenThatSealsNoStairsAndCanBeKilled` (CataclysmDungeonModifierEffectsTests.cpp:49058)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesTheLastFloorHasNoAltar` (CataclysmDungeonModifierEffectsTests.cpp:40615)
+  - `Cataclysm.DungeonModifierEffects.InfernalSealsDoesNothingOnAHordeArena` (CataclysmDungeonModifierEffectsTests.cpp:42600)
+  - `Cataclysm.DungeonModifierEffects.InfernalSealsTheStairsOpenWithTheLastPiece` (CataclysmDungeonModifierEffectsTests.cpp:42395)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsABarrierOpensWhenItsOwnSectionIsSlainAndThePanelFollows` (CataclysmDungeonModifierEffectsTests.cpp:47161)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsARealityRiftPastAClosedBarrierStillFindsTheStairsSealed` (CataclysmDungeonModifierEffectsTests.cpp:47618)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsAnUnhurtOrRuleRaisedCreatureDoesNotHoldIt` (CataclysmDungeonModifierEffectsTests.cpp:43141)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsDoesNothingOnAHordeArena` (CataclysmDungeonModifierEffectsTests.cpp:43198)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsOnACavernsFloorHasNoBarrierAndSealsTheStairsAsBefore` (CataclysmDungeonModifierEffectsTests.cpp:47450)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsSealedWhileAPlacedCreatureStands` (CataclysmDungeonModifierEffectsTests.cpp:43068)
+  - `Cataclysm.DungeonModifierEffects.LightforgedWallsWithShadowyEnemiesHasNoBarrierAndSealsTheStairsAsBefore` (CataclysmDungeonModifierEffectsTests.cpp:47523)
+  - `Cataclysm.DungeonModifierEffects.PactOfTemptationTheLastFloorHasNoAltar` (CataclysmDungeonModifierEffectsTests.cpp:41215)
+  - `Cataclysm.DungeonModifierEffects.SanctionedPassageADivineGateStandsBesideTheExitOfferingChannel` (CataclysmDungeonModifierEffectsTests.cpp:42735)
+  - `Cataclysm.DungeonModifierEffects.SanctionedPassageDoesNothingOnAHordeArena` (CataclysmDungeonModifierEffectsTests.cpp:42959)
+  - `Cataclysm.DungeonModifierEffects.SanctionedPassageTheStairsOpenAfterTenSecondsChannelled` (CataclysmDungeonModifierEffectsTests.cpp:42785)
+  - `Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotAPortal` (CataclysmDungeonModifierEffectsTests.cpp:22881)
+  - `Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotSealed` (CataclysmDungeonModifierEffectsTests.cpp:21720)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkAFallGoesTenFloorsDeeperOrToTheFinalFloorAndSpendsNoDay` (CataclysmDungeonModifierEffectsTests.cpp:52284)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorIsItsOwnFloorAndAFloorBuiltWithoutAFallIsWhatItWas` (CataclysmDungeonModifierEffectsTests.cpp:52234)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorIsNotTheLastFloorAndHasNoGatekeeperAndLeadsToTheFinalFloor` (CataclysmDungeonModifierEffectsTests.cpp:52380)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorsSealIsOnThePanelWhateverRowsTheFloorDrew` (CataclysmDungeonModifierEffectsTests.cpp:53070)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorsStairsAreSealedUntilEveryCreatureItPlacedIsSlain` (CataclysmDungeonModifierEffectsTests.cpp:52470)
+  - `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheLastFloorHasNoChasm` (CataclysmDungeonModifierEffectsTests.cpp:51363)
+  - `Cataclysm.DungeonModifierEffects.TwoRulesSealTheStairsAndOpenOnlyWhenBothRelease` (CataclysmDungeonModifierEffectsTests.cpp:42536)
+  - `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAndBloodGatesTheStairsNeedBothTheTimeAndTheKills` (CataclysmDungeonModifierEffectsTests.cpp:50164)
+  - `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheLastFloorsWayOutIsNotSealedByTime` (CataclysmDungeonModifierEffectsTests.cpp:50258)
+  - `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheStairsOpenAfterSixtySecondsWhateverIsSlain` (CataclysmDungeonModifierEffectsTests.cpp:50073)
+  - `Cataclysm.DungeonStairs.AThrallAndAnImpComeDownWithThePlayerAndAGadgetDoesNot` (CataclysmDungeonStairsTests.cpp:602)
+  - `Cataclysm.DungeonStairs.ThePlayerArrivesAtTheNewFloorsEntrance` (CataclysmDungeonStairsTests.cpp:331)
+  - `Cataclysm.DungeonStairs.TheyWorkFromAFloorAskedForAtTheConsole` (CataclysmDungeonStairsTests.cpp:469)
+  - `Cataclysm.FloorBrief.EveryFloorOfAnEliteDungeonEndsWithABossFight` (CataclysmFloorBriefTests.cpp:649)
+- **(g) reads the Edict of Silence's length or Forced Tithes' prices**: 9 found. Unless marked, Unreal: outside an Ascendant the strength is 1, so a silence lasts its 15 seconds, and Forced Tithes is not scaled at all, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.DungeonModifierEffects.AFloorCarryingTheEdictLocksSkillsThenLetsThemBack` (CataclysmDungeonModifierEffectsTests.cpp:5251): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` (CataclysmDungeonModifierEffectsTests.cpp:5316): its silence is at base strength on a dungeon that is not an Ascendant: 15 seconds. **low**.
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesAnAngelThePlayerTakesIsNoLongerOne` (CataclysmDungeonModifierEffectsTests.cpp:40653)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesFiguresPricesAndAngels` (CataclysmDungeonModifierEffectsTests.cpp:40194)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesLeavingUnpaidBringsTheAngelsToTheNextEntrance` (CataclysmDungeonModifierEffectsTests.cpp:40510)
+  - `Cataclysm.DungeonModifierEffects.ForcedTithesRefusingBringsEightAngelsBesideTheAltarAtOnce` (CataclysmDungeonModifierEffectsTests.cpp:40455)
+  - `Cataclysm.DungeonModifierEffects.TheEdictIsDueOnItsCadenceAndTheLockIsAllOrNothing` (CataclysmDungeonModifierEffectsTests.cpp:5175)
+  - `test_the_edict_of_silence_states_no_third_number` (test_dungeon_modifier_rules_are_the_rows.py:790)
+  - `test_the_edict_of_silence_still_states_its_own_two_numbers` (test_dungeon_modifier_rules_are_the_rows.py:770)
+- **(h) reads `ModifierScore`**: 25 found. Unless marked, Unreal: only a dungeon on a city carrying a left Edict scores more, and only an Ascendant's timer running out leaves one, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.DungeonMode.AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole` (CataclysmDungeonCostsDaysTests.cpp:1966)
+  - `Cataclysm.DungeonMode.AskingForVolatileChangesTheModifiersEveryFloor` (CataclysmDungeonGameModeTests.cpp:1149)
+  - `Cataclysm.DungeonModifierEffects.AngelicWardensEachStatueWakesOnceAndStaysWokenAfterThePlayerDiesAndReturns` (CataclysmDungeonModifierEffectsTests.cpp:49537)
+  - `Cataclysm.DungeonModifierEffects.RuleOfChaosDrawsOneOfThreeRuleChangesForEachFloorAndThePanelNamesIt` (CataclysmDungeonModifierEffectsTests.cpp:49769)
+  - `Cataclysm.DungeonModifierEffects.TheConsoleCanPutModifiersOnTheDungeon` (CataclysmDungeonModifierEffectsTests.cpp:2021)
+  - `Cataclysm.DungeonModifiers.EnteringADungeonCarriesItsModifierScoreOver` (CataclysmDungeonModifierTableTests.cpp:216): enters a tier 4 run's first dungeon on day 2, before any Quest timer can run out, so no city carries a left Edict; if that dungeon is an Ascendant its floor score includes its Edicts, and the test compares the floor's own score with itself. **low**.
+  - `Cataclysm.DungeonModifiers.TheModifierScoreReachesEveryCreaturesScore` (CataclysmDungeonModifierTableTests.cpp:173)
+  - `Cataclysm.EnemyScore.AWorldWithNoGameModeStillGivesARealFloor` (CataclysmEnemyScoreTests.cpp:476)
+  - `Cataclysm.EnemyScore.EightScoresMatchWhatThePythonModelComputes` (CataclysmEnemyScoreTests.cpp:106)
+  - `Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded` (CataclysmFloorBriefTests.cpp:2319)
+  - `Cataclysm.FloorBrief.AVolatileDungeonWithNothingToDrawFromKeepsItsOwn` (CataclysmFloorBriefTests.cpp:575)
+  - `Cataclysm.FloorBrief.AVolatileFloorCarriesTheModifiersItsTierIsWorth` (CataclysmFloorBriefTests.cpp:542)
+  - `Cataclysm.FloorBrief.AnOrdinaryDungeonsFloorsAreAllTheSame` (CataclysmFloorBriefTests.cpp:353)
+  - `Cataclysm.FloorBrief.EnteringADungeonCarriesTheModifiersItsFloorsMayDraw` (CataclysmFloorBriefTests.cpp:1938): compares `DungeonModifiers` with the dungeon's own on day 2, when no city carries a left Edict. **low**.
+  - `Cataclysm.FloorBrief.RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor` (CataclysmFloorBriefTests.cpp:2236)
+  - `Cataclysm.FloorBrief.TheModifierThatChangesAFloorIsARealRowOfTheTable` (CataclysmFloorBriefTests.cpp:2184)
+  - `Cataclysm.FloorBrief.TheSameFloorOfTheSameDungeonIsAlwaysTheSame` (CataclysmFloorBriefTests.cpp:396)
+  - `Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality` (CataclysmFloorBriefTests.cpp:2434)
+  - `Cataclysm.FloorBrief.UnstableDimensionsGivesEveryLaterFloorOneGenericEnemyModifier` (CataclysmFloorBriefTests.cpp:1635)
+  - `Cataclysm.FloorBrief.WalkingDownAVolatileDungeonChangesWhatItsCreaturesAreWorth` (CataclysmFloorBriefTests.cpp:1776)
+  - `Cataclysm.DungeonModifiers.ARunWithNoPoolGivesNoModifiersAndDoesNotRefuse` (CataclysmDungeonModifierTests.cpp:494)
+  - `Cataclysm.DungeonModifiers.EveryDungeonASurgeLandsCarriesModifiers` (CataclysmDungeonModifierTests.cpp:444)
+  - `Cataclysm.DungeonModifiers.TheModifierScoreIsTheSumOfTheDangerScores` (CataclysmDungeonModifierTests.cpp:385)
+  - `Cataclysm.DungeonModifiers.TheRunSaysWhatEachDungeonsModifiersAreWorth` (CataclysmDungeonModifierTests.cpp:704)
+  - `test_the_port_says_what_still_has_no_source` (test_enemy_score_port.py:304)
+- **(i) reads `FCataclysmCity`'s saved fields or the run fixture**: 16 found. Unless marked, Unreal: the city record writes two more fields, both defaulted; the fixture carries them, **low**; Python: reads text this layer does not change, or the model, which it does not touch, **low**.
+  - `Cataclysm.SaveMigration.EveryCommittedVersionOfTheExampleLoadsToTheSameRecord` (CataclysmSaveMigrationTests.cpp:149)
+  - `Cataclysm.SaveRecords.ACharacterFileFromBeforeAttributesStillLoads` (CataclysmSaveRecordTests.cpp:696)
+  - `Cataclysm.SaveRecords.AFieldWithoutTheSaveGameFlagDoesNotReachTheFile` (CataclysmSaveRecordTests.cpp:299)
+  - `Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt` (CataclysmSaveRecordTests.cpp:1449)
+  - `Cataclysm.SaveRecords.AFileWithoutThePartOfADayStillLoads` (CataclysmSaveRecordTests.cpp:977)
+  - `Cataclysm.SaveRecords.AFileWithoutTheSurgeScheduleStillLoads` (CataclysmSaveRecordTests.cpp:1136)
+  - `Cataclysm.SaveRecords.AFilledRecordSurvivesBeingWrittenAndReadBack` (CataclysmSaveRecordTests.cpp:500)
+  - `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` (CataclysmSaveRecordTests.cpp:507): the run record's cities write `LeftEdict` and `LeftEdictUntilDay`; `Run_v1.json` gains both. **high**.
+  - `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear` (CataclysmSaveRecordTests.cpp:1244)
+  - `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` (CataclysmSaveRecordTests.cpp:585)
+  - `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom` (CataclysmSaveRecordTests.cpp:1409)
+  - `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt` (CataclysmSaveRecordTests.cpp:884)
+  - `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheSurgeSchedule` (CataclysmSaveRecordTests.cpp:1061)
+  - `Cataclysm.SaveStorage.AnOlderRecordIsBackedUpBeforeItIsMigrated` (CataclysmSaveStorageTests.cpp:180)
+  - `Cataclysm.SaveWriter.AGatheredRunRecordCarriesACitysVoidStacks` (CataclysmSaveWriterTests.cpp:1092): reads stacks and the fall marks only. **low**.
+  - `Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheCitiesAndWhatTheyHaveLeft` (CataclysmSaveWriterTests.cpp:937): gathers the cities; the two new fields are copied with the rest and it reads none of them. **low**.
+
+**AND OUTSIDE THE NINE PATTERNS.** Seeded campaigns that face the Celestial Cataclysm now make its Quest dungeons
+Ascendants instead of rolling Sieges and Cow Levels, so their city histories can move, as the Hollow's did for the
+Void: `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`, medium;
+`Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`, low; and every other seeded campaign that faces Celestial,
+low. A Celestial Quest dungeon that rolled Sacrificial drew twice the modifiers; as an Ascendant it draws the
+ordinary count, so `ModifierStream`'s later draws move in a run with a filled pool. The Python checks that read the
+code this layer changed, run and passing on the branch: `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`,
+`test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py`,
+`test_void_stacks_in_the_model_and_in_the_game.py` and `test_the_hollow_in_the_model_and_in_the_game.py` (the Quest
+block and its one hit line), `test_game_readme_is_true.py` (no new file in the empire module),
+`test_dungeon_modifier_rules_are_the_rows.py` (the Edict of Silence's constants) and `test_enemy_score_port.py` (no
+Ascendant case in `SubTypeWeightFor`).
+
+### Tests changed
+
+Only the ones the rulings name, and the Python file whose own restore text this layer followed. Earlier entries keep
+the old names.
+
+- **`Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`**: `TestEqual(TEXT("the reflected enum holds the
+  eight designed sub-types and the Hollow"), All.Num(), 9)` -> `TestEqual(TEXT("the reflected enum holds the eight
+  designed sub-types, the Hollow and the Ascendant"), All.Num(), 10)`; and the message "the enum carries one entry
+  more than the nine sub-types" -> "... the ten sub-types" (its comparison, `All.Num() + 1`, did not change).
+- **`Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt`**: `TestTrue(TEXT("the
+  reflected sub-type list found the seven, the Hollow and None"), All.Num() == 9)` -> `TestTrue(TEXT("the reflected
+  sub-type list found the seven, the Hollow, the Ascendant and None"), All.Num() == 10)`.
+- **`Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll` ->
+  `Cataclysm.Surge.SevenCataclysmsNameTheirQuestSubTypeAndTheRestRoll`**: the fixed table gains `Celestial ->
+  Ascendant`; the list that rolls loses Celestial (War and `None` remain); "the six name six different sub-types", 6
+  -> "the seven name seven different sub-types", 7; "and none of the six answers None" -> "and none of the seven
+  answers None".
+- **`Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType` ->
+  `Cataclysm.Surge.InARunSevenCataclysmsQuestDungeonsAreTheirOneSubType`**: `Expected` gains `Celestial ->
+  Ascendant`; `Rolling` is War alone; "CONTROL: the six's ordinary dungeons still roll" -> "CONTROL: the seven's
+  ordinary dungeons still roll".
+- **`tools/tests/test_dungeon_subtype_port.py`**: `FIXED_IN_THE_GAME` gains "Celestial"; `NEVER_ROLLED` `{"Hollow"}`
+  -> `{"Hollow", "Ascendant"}`; `test_the_game_fixes_the_same_six_pairs_the_model_does` renamed
+  `test_the_game_fixes_the_same_seven_pairs_the_model_does`, its message "not the six. A seventh is one of the two
+  held in test_two_cataclysms_..." -> "not the seven. An eighth is War, held in test_war_s_...", and "so War and
+  Celestial stop rolling" -> "so War stops rolling". No comparison changed.
+- **`tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py` -> renamed
+  `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`**, following its own Celestial
+  restore text (QuestSubTypeFor answers Ascendant; Ascendant is in no spawn weight and is added to `NEVER_ROLLED`;
+  Celestial added to `FIXED_IN_THE_GAME`; Celestial out of the table; the dated sentence below). Its docstring records
+  its five names. `THE_TWO` -> `THE_ONE = {"War": "Siege"}`; `WHEN_BOTH_ARE_GONE` -> `WHEN_IT_IS_GONE`;
+  `test_the_game_still_rolls_this_cataclysms_quest_dungeons[Celestial]` goes;
+  `test_the_game_has_no_ascendant`, `missing == ["Ascendant"]` -> renamed
+  `test_the_game_has_war_s_sub_type_so_the_difference_is_the_mandate`, `missing == []`, with a control that Hollow and
+  Ascendant are among the names read; `test_the_two_really_do_differ_and_the_other_six_do_not` -> renamed
+  `test_war_really_does_differ_and_the_other_seven_do_not`, `len(cases) == 6` -> `len(cases) == 7`.
+
+### New tests
+
+Unreal, 22 registered names:
+
+- `game/Source/CataclysmEmpire/Tests/CataclysmDungeonModifierTests.cpp`:
+  `Cataclysm.DungeonModifiers.TheEdictsAreTheTwoCelestialRowsTheDesignNames`,
+  `Cataclysm.DungeonModifiers.AnAscendantAddsOneEdictAFloorAndEachFloorHoldsTheLastFloorsUntilNoneIsLeft`,
+  `Cataclysm.DungeonModifiers.AnAscendantsEdictsAreDrawnEvenlyAndNotByTheirDanger`,
+  `Cataclysm.DungeonModifiers.AnEdictAlreadyAmongADungeonsModifiersIsNotDrawnAgain`,
+  `Cataclysm.DungeonModifiers.AnEdictIsATenthStrongerAFloorAndHalfAgainWhileTheCoreStands`,
+  `Cataclysm.DungeonModifiers.TheEdictAHitLeavesIsOneTheAscendantWouldHoldFromFloorFour`.
+- `CataclysmSurgeTests.cpp`: `Cataclysm.Surge.CelestialsQuestDungeonIsAnAscendantThatNothingRolls`.
+- `CataclysmEmpireRunTests.cpp`: `Cataclysm.EmpireRun.AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays`,
+  `Cataclysm.EmpireRun.ASecondAscendantHitReplacesTheLeftEdictAndRestartsItsThirtyDays`,
+  `Cataclysm.EmpireRun.AnUnwalkedAscendantLeavesAnEdictItWouldHoldFromFloorFour`,
+  `Cataclysm.EmpireRun.EveryDungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScoreUntilTheThirtyDaysEnd`.
+- `game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp`:
+  `Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers`,
+  `Cataclysm.FloorBrief.AnAscendantPassesOverAnEdictAlreadyAmongItsModifiers`,
+  `Cataclysm.FloorBrief.AnAscendantsEdictsAreTheOnesTheEmpireDrawsForItsWalkEvenOnTheDarkFloor`.
+- `CataclysmDungeonModifierEffectsTests.cpp`:
+  `Cataclysm.DungeonModifierEffects.AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap`,
+  `Cataclysm.DungeonModifierEffects.AnEdictIsAtBaseStrengthOutsideAnAscendant`,
+  `Cataclysm.DungeonModifierEffects.AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed`,
+  `Cataclysm.DungeonModifierEffects.OnlyAnAscendantsLastFloorHasAHeavenlyCore`.
+- `CataclysmDungeonModifierTableTests.cpp`:
+  `Cataclysm.DungeonModifiers.EnteringADungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScore`.
+- `CataclysmCityScreenTests.cpp`: `Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore`,
+  `Cataclysm.CityScreen.ACitysStatusNamesTheEdictLeftOnItAndTheDaysLeft`.
+- `CataclysmSaveWriterTests.cpp`: `Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheEdictLeftOnACity`.
+
+Each has a control where it could pass for the wrong reason: a Horde's hit that leaves nothing, a dungeon on
+another city, an expired Edict, a plain dungeon's floors, the dark floor's own seed giving other Edicts, a dungeon
+that is not an Ascendant having no Core, the danger-weighted share the even draw is not, and both Edicts being
+left by some hits.
+
+### Python
+
+`tools/tests/test_the_ascendant_in_the_model_and_in_the_game.py`, nine tests: the mapping
+(`QUEST_SUBTYPE_BY_CATACLYSM["Celestial"]` and the game's `QuestSubTypeFor` case); at most four
+(`ascendant_extra_modifiers_cap`, `AscendantMostEdicts`, and the design's "floor 4 and every floor after it four");
+the game's 0.10, 1.5, 30 days and 67.5 seconds against the design's own sentences; the even draw (no `Danger` and no
+`Weight` in `EdictOrderFor`, `EdictsOnFloor` or `EdictLeftBy`, `Draw` used, and the design's old "not already active,
+by their weights" gone); and the two Edict keys as Celestial rows of `game/Data/DungeonModifiers.csv`. Four are
+controls on altered copies (Celestial's case answering Hollow; the cap written five, and the model's three; each of
+the four numbers changed, and the design's 30 days; a danger read added to the floor draw, and the design's old
+sentence put back).
+
+Checked by the writing session in a `git archive` copy of the branch at `bdf89e0e4`, with `tools/prove_guard.py`,
+narrowed to the new file -- a check of the file and not a registered proof. Each PROVED, restored "9 passed":
+
+- B1, `EdictStrongerPerFloor = 0.10f` -> `0.20f`: "2 failed, 7 passed",
+  `test_the_games_numbers_are_the_designs` and `test_the_numbers_check_sees_a_changed_number` (its anchor was gone).
+- B2, Celestial's `QuestSubTypeFor` case removed: "2 failed, 7 passed",
+  `test_both_halves_make_celestials_quest_dungeons_ascendants` and `test_the_mapping_check_sees_a_changed_case` (its
+  anchor was gone).
+- B3, a `Danger` read added to `EdictsOnFloor`: "1 failed, 8 passed", `test_the_edicts_are_drawn_evenly_and_read_no_danger`.
+
+### Proofs
+
+Not yet run. Three to be registered by the dungeon session after reading the code:
+
+- **P1**, the strength multiplier fixed at 1.
+- **P2**, the Core no longer sealing the stairs.
+- **P3**, the left Edict never set on the city.
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-22 — A skill gadget's shot earned by a trap is no longer lost when that trap sets off another: the shot drain waits while an ability is activating, and fires the shot at the end of the event that recorded it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
@@ -325,6 +898,7 @@ dungeon field.
 
 - **The Void's 1.25 depth multiplier**, issue #53. A Hollow is made from the plain Quest row, and `HollowFrom` is that.
 - **The Ascendant**, Celestial's Quest dungeon: the next layer, G7. Celestial's Quest dungeons still roll.
+  Since the entry headed "In the game the Celestial's Quest dungeon is an Ascendant…" (2026-10-22) the game has the Ascendant.
 - **The wording of the empire map widget and of `UCataclysmEmpireRun::Describe`** beyond the sub-type name they already
   print through `SubTypeName`. Neither says that a Hollow is shrinking.
 - **The policy rule.** The model's `policies._quest_hit_fells` sees a Hollow's hit as fatal when its stacks would erase
@@ -2555,6 +3129,7 @@ on `development` at `cd5c85e82` (written on `b7980dc48` as `feat/game-quest-subt
   ruled War out of the game, so they roll at the ordinary weights and can still be a Siege (ruling 4 below). Celestial's
   are Ascendant and the Void's Hollow in the simulation, and neither sub-type exists in the game.
   Since the entry headed "In the game the Void's Quest dungeon is a Hollow…" (2026-10-22) the Void's are Hollows in the game as well, and the file that holds the rest is `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
+  Since the entry headed "In the game the Celestial's Quest dungeon is an Ascendant…" (2026-10-22) Celestial's are Ascendants in the game too, and War's alone are held, in `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`.
 - **THE CITY SCREEN NAMES EACH DUNGEON'S SUB-TYPE**: "Horde, 12 floors, 9 days until it bites". A dungeon with no
   sub-type reads as before, "30 floors, 40 days until it bites".
 - **A SEED STILL LANDS THE SAME WAVES ON THE SAME CITIES AT THE SAME DEPTHS, AND SENDS THEM FROM THE SAME
@@ -9292,6 +9867,7 @@ owner's lines, the sentence after the spawn-weight table, and World War.
 - The game: still rolls every Quest dungeon's sub-type, has no Ascendant or Hollow, and no War Cataclysm (#53).
   The not-yet file above fails when it changes. Ruled by the coordinating session on 2026-10-17 for the game layer:
   a Quest dungeon moved because its city fell is listed among the moved dungeons in the end-of-day report.
+  Since the entry headed "In the game the Celestial's Quest dungeon is an Ascendant…" (2026-10-22) the game has the Ascendant, as the Hollow before it.
 - The Void's stacks, Hollow and Ascendant: the next three layers.
 
 On 2026-10-21 the game followed for five of the eight: a Death, Demonic, Pestilence, Famine or Chaos Quest dungeon
