@@ -33,6 +33,12 @@ The coordinating session's ruling of 2026-10-23, verbatim:
 
 There is no owner sentence on this issue.
 
+**AN ADDITION BEYOND THE RULING, ACCEPTED LATER THE SAME DAY.** The Python check
+`tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py` was not in the ruling; the enchantment
+session added it to the brief and asked. The coordinating session's answer, verbatim: "The Python reseed check
+(test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py) is ACCEPTED. A test-file fix with no Unreal proof
+needs a check that fails if the fix is undone. Record it in the entry as an addition beyond the ruling."
+
 ### WHAT WAS READ FIRST
 
 Line numbers are of development `c514b6746`, before this change; engine lines are of Unreal Engine 5.8 as installed.
@@ -144,7 +150,21 @@ No Unreal guard proof is proposed: the Unreal test asserts nothing about the gen
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-23, window t69w, under the editor lock as `enchant-t69w`, at 5d8976bc5 on
+development c514b6746. Every figure was registered with the coordinating session before the run, and every one is as
+registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.33.cpp" (the changed test
+  file's unit); "4105 tests performed, 4105 succeeded, 0 failed" (no new Unreal test); "Declared: 4105 tests in the tree at
+  5d8976bc5; 4105 performed, gap 0". 40 tests skipped part of what they check.
+- **Python of record:** "6921 passed, 8 skipped"; JUnit 6929 tests, 0 failures, 0 errors, 8 skipped (development's 6921
+  and this commit's 8). `ruff check .`: "All checks passed!".
+- **The Python guard proof**, run again in the window by `tools/prove_guard.py`'s `break_and_run` with nothing else
+  running: the added `ON_SCOPE_EXIT` line removed (anchor counted once, its tab and line feed included). "PROVED: 1 failed,
+  7 passed in 0.39s | restored: 8 passed in 0.36s"; the one named failure, as registered,
+  `test_every_reseed_of_the_shared_generator_is_put_back_on_every_exit`; crashed False, nothing disturbed.
+- There is no C++ guard proof: the change is to a test file, so there is no game behaviour to break. That is why the
+  Python check exists.
 
 ---
 
