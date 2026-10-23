@@ -2,6 +2,152 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — The Wings of the Host fifty-seed test puts the shared random generator back on every exit, reseeded from the clock, and keeps its per-seed reseed so a failing seed stays reproducible
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (one `ON_SCOPE_EXIT` and its comment
+in `Cataclysm.DungeonModifierEffects.EveryWingsOfTheHostFlyoverOverFiftySeedsMarksAFeatherAtThirtySeconds`);
+`tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py` (new). No game code, no data row, no
+workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` or `tools/unreal_build.py`. **This closes
+[#2253](https://github.com/sdubois777/Cataclysm/issues/2253).**
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** The change is in a test. No assertion changes.
+- **What changes in a test run:** after the fifty-seed test returns, by any exit, the generator that `FMath::FRand`,
+  `FRandRange` and `RandRange` draw from is seeded from the clock again instead of being left where seed 50's draws put
+  it. A later test that draws from it no longer receives a sequence fixed by this test.
+- **The per-seed `FMath::RandInit(Seed)` stays**, as ruled, so a seed the test names as failing can be run again and
+  gives the same flyover.
+- **[#2251](https://github.com/sdubois777/Cataclysm/issues/2251)'s link to #2253 stays a likely cause, not a proven
+  one.** Nobody read the order the automation tests run in or counted the draws between the two tests, and this change
+  does not either.
+- **NOT COMPILED AND NOT RUN.** A second session wrote the change, the check and this entry under the enchantment
+  session's brief 69. No Unreal build and no Unreal test was run by the session that wrote it.
+
+### WHO RULED
+
+The coordinating session's ruling of 2026-10-23, verbatim:
+
+> #2253: the ON_SCOPE_EXIT reseed, not deleting the reseed, so a failing seed stays reproducible.
+
+There is no owner sentence on this issue.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `c514b6746`, before this change; engine lines are of Unreal Engine 5.8 as installed.
+
+1. **The reseed and the loop.** `FMath::RandInit(Seed);` is at line 27422, inside `FCataclysmWingsEverySeedTest::RunTest`
+   (declared at 27343 to 27345, body 27347 to 27471), once per seed in `for (int32 Seed = 1; Seed <= Seeds; ++Seed)` at
+   27372 (`Seeds` is 50, 27366). A search of `game/Source` for `RandInit`, `SRandInit` and `srand` finds this one line
+   and nothing else. (The issue gives 27332 and 27254, from an older development.)
+2. **Every exit after the first reseed.** The first reseed is in seed 1's pass. After it, the function can leave at
+   `return false` on 27377 (a later seed's `GoToFloor(2)` failed) and on 27397 (a later seed's floor has no floor
+   cells), or at `return true` on 27470. The `continue` at 27433 is not an exit. The two `return false` lines before the
+   loop (27355 and 27363) come before any reseed. So a restore written after the loop would miss two of the three exits.
+3. **What `RandInit` is.** `FGenericPlatformMath::RandInit` is `srand( Seed )` (`GenericPlatformMath.h` 609), the
+   generator `FMath::Rand`, `FRand`, `RandRange` and `FRandRange` read. The C runtime has no call that reads the current
+   seed back, so the state before the loop cannot be saved and restored exactly.
+4. **What the engine seeds it with.** At start-up `FEngineLoop` seeds it with `FPlatformTime::Cycles()` unless
+   `FApp::bUseFixedSeed` is set by `-FixedSeed`, `-Deterministic` or benchmarking, when it seeds 0
+   (`LaunchEngineLoop.cpp` 2462, 2472 and 2476). `tools/unreal_build.py` passes neither flag (searched).
+5. **What the reseed controls in game code.** `ACataclysmDungeonGameMode::StepWingsOfTheHost` draws the cell with
+   `FMath::RandRange` (`CataclysmDungeonGameMode.cpp` 3824) and the heading with `FMath::FRandRange` (3826); neither has a
+   pin. The player's cell in the test is drawn from its own `FRandomStream` (27399) and does not touch the shared one.
+6. **`ON_SCOPE_EXIT` in the test files.** The same file uses it 626 times, the first in this function at 27357; it is
+   also at `CataclysmAbilitySystemTests.cpp` 219. `FPlatformTime` reaches the file through `Misc/AutomationTest.h`
+   (line 23 of that header includes `HAL/PlatformTime.h`), which the file includes at its line 3.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| 1 | The `ON_SCOPE_EXIT` reseed | `CataclysmDungeonModifierEffectsTests.cpp` 27377, after its comment at 27372 to 27376 and before the loop at 27378 |
+| 2 | Not deleting the reseed | `FMath::RandInit(Seed);` kept, now at 27428 |
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **The value: `static_cast<int32>(FPlatformTime::Cycles())`.** It is what the engine seeds the same generator with at
+  start-up (read 4), so later tests draw as they would in a process this test had never seeded. Not taken: the issue's
+  `FPlatformTime::Cycles64()`, which after the cast to `int32` is the same low 32 bits and differs only in not being the
+  engine's own call. Not taken: honouring `FApp::bUseFixedSeed` by seeding 0 under `-FixedSeed`, because the value must
+  not be a fixed number (a fixed number would leave every later test drawing one sequence again, the fault itself), and
+  no run this project makes passes that flag.
+- **Placed before the loop and after the last array declaration**, so every exit after the first reseed runs it (read
+  2). It is declared after the world's `ON_SCOPE_EXIT` (27357), so it runs before the world is destroyed; nothing in
+  either depends on the other. Not taken: before `MakeWorldThatHasBegunPlay`, which would also reseed on the two exits
+  before any reseed, for nothing.
+- **The check asks for a restore of the same generator, not of either.** The brief allows an `ON_SCOPE_EXIT` calling
+  `RandInit` or `SRandInit`. `SRandInit` seeds `FMath::SRand`'s own generator and does nothing for the one `RandInit`
+  set, so a `RandInit` reseed restored by `SRandInit` is refused. This is stricter than the brief's wording.
+- **The check also refuses a restore to a plain number**, and reads a bare `srand(` and the `FPlatformMath::` and
+  `FGenericPlatformMath::` spellings as reseeds as well as `FMath::`. Both are wider than the brief names and cost
+  nothing on development's source, where the one reseed is `FMath::`.
+- **Not taken: the issue's second fix**, handing the flyover a `FRandomStream`. It is game code in
+  `CataclysmDungeonGameMode.cpp`, which this change may not touch, and the ruling chose the reseed.
+
+### WHAT WAS BUILT
+
+- **`CataclysmDungeonModifierEffectsTests.cpp`:** six lines added between 27371 and the loop: a five-line comment
+  (27372 to 27376) saying why (#2253) and why before the loop, and
+  `ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };` (27377). Nothing else changed.
+- **`tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py`:** a check over `game/Source`.
+  Comments are stripped by tokenising (`//` to the line's end and `/* ... */`), never by a line's first characters, and
+  the inside of every string and character literal is blanked, so a brace or a `//` inside one is not read as code; a
+  digit separator (`1'200.0f`) is read as part of its number. A reseed's function is the outermost brace block around it
+  opened straight after a closing parenthesis. A reseed inside an `ON_SCOPE_EXIT` body is a restore and not a reseed.
+
+### THE TESTS, WITH EVERY ASSERTION'S MEANING
+
+All in the new file. On this commit the first prints `1 reseed(s) of the shared generator found under game/Source`.
+
+1. `test_every_reseed_of_the_shared_generator_is_put_back_on_every_exit`: at least one reseed was found (so it cannot
+   pass by finding nothing), and every reseed found has an `ON_SCOPE_EXIT` in its function calling the same generator's
+   seed, declared before the function's first reseed of it, with an argument that is not a plain number.
+2. `test_a_reseed_with_no_restore_is_refused`, **the control**: a short C++ text with a reseed inside a loop that has a
+   `return false` and no restore is refused, at its line, as having no `ON_SCOPE_EXIT`.
+3. `test_a_restore_before_the_loop_is_accepted`: the shape this change built, with a second unrelated `ON_SCOPE_EXIT`, a
+   line opening with `*` and a digit separator, is accepted, so the refusals are of their shapes and not of everything.
+4. `test_a_restore_declared_after_the_reseed_is_refused`.
+5. `test_a_restore_to_a_fixed_number_is_refused`: `FMath::RandInit(0)` as the restore.
+6. `test_a_restore_of_the_other_generator_is_refused`: `SRandInit` restoring a `RandInit` reseed.
+7. `test_a_restore_in_a_comment_or_a_string_is_not_a_restore`: the restore inside a `/* */` comment over two lines,
+   after code behind `//`, and inside a `TEXT("...")` literal; each is refused as having no `ON_SCOPE_EXIT`.
+8. `test_a_reseed_in_a_comment_is_not_counted`.
+
+### NOT TESTED
+
+- **Which later tests drew from the left-over state.** The run order of the automation tests was not read, and no draws
+  were counted. So it is not shown that any later test's outcome changes, nor that #2251's failure came from this.
+- **That the restore runs**, or that a later test then draws a different sequence: nothing was compiled or run in
+  Unreal.
+- Whether any other test relies on the fixed sequence this test used to leave. If one does, it will now fail at random;
+  that would be that test's fault showing, as #2253 says.
+- A reseed spelled other than the four forms the check reads, or a restore made other than by `ON_SCOPE_EXIT`.
+
+### THE GUARD PROOF
+
+Run with `tools/prove_guard.py`'s `break_and_run` in this session's own worktree, with no other run going. The break
+removes the added line `ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };` (counted
+exactly once in its file by script). Command: `python -m pytest
+tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py`. `result.proved` was true.
+
+- `summary`: `PROVED: 1 failed, 7 passed in 0.39s | restored: 8 passed in 0.37s`
+- `named_failures`:
+  `tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py::test_every_reseed_of_the_shared_generator_is_put_back_on_every_exit`
+- Its message with the break in: `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp:27427 RandInit has
+  no ON_SCOPE_EXIT in its function that calls RandInit` (27427 because the removed line moves the reseed up one).
+
+No Unreal guard proof is proposed: the Unreal test asserts nothing about the generator after it returns.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-23 — A shot whose firing skill has gone carries the tags it was fired with, so a trap's rack axe landing after the trap's use has ended explodes its kill; and a blow naming no skill object names its skill's tags on its hit notice, so a leap's hit answers hit rows requiring the throwing skill's tags
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` (`ACataclysmProjectile::HitOne` and

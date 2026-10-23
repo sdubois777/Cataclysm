@@ -27369,6 +27369,12 @@ bool FCataclysmWingsEverySeedTest::RunTest(const FString& Parameters)
 	TArray<int32> NoMarkOnACellMiddleInReach;
 	TArray<int32> OwnCellNotInReach;
 	TArray<int32> ACellOutOfReachOrOffTheFloor;
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253. The loop seeds FMath's generator, which every
+	// later FMath::FRand, FRandRange and RandRange in this process draws from, and no call reads a seed
+	// back to restore. So it is reseeded from the clock, as the engine seeds it at start-up, and never
+	// from a fixed number, which would hand every later test one sequence again. BEFORE THE LOOP, so the
+	// loop's return false exits run it too.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
 	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
 	{
 		Mode->DungeonSeed = Seed;
