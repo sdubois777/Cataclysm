@@ -2,6 +2,273 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — A buried weapon's leap kill carries its throwing skill's tags, so a kill row requiring a tag answers it: a Harrower leap kill is a ranged kill, and a trap's leap kill explodes
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::SkillTagsWithNoSkill`
+and `UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill`, new; in `ApplyDirectDamage` the application of the blow's
+effect wrapped in a scoped record); `CataclysmCombatEvents.h` and `.cpp` (`FCataclysmLastBlow::SkillTagsWithNoSkill`,
+new; `NoteBlow` copies the tags onto the record, `NoteDeath` names the copy; one comment); `CataclysmBuriedWeapon.cpp`
+(the leap's delivery names its tags), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Tests/CataclysmBuriedWeaponKillTests.cpp` (new, three tests in `Cataclysm.BuriedWeaponKills.`);
+this log (this entry, and traps layer 4's play-check line corrected). No data row, no tag, no workbook cell, nothing under
+`game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py`
+is changed. **This closes [#2465](https://github.com/sdubois777/Cataclysm/issues/2465).**
+
+### SAID FIRST
+
+**A PLAY CHANGE, AS N1 RULES IT.** A kill made by a buried weapon's leap (Harrower's axe, a player's own throw or a trap's
+cast of it) now carries the throwing skill's tags, as every other blow a skill delivers carries that skill's, so every
+`kill` row requiring a tag the throwing skill carries answers it. On development that is two rows, by their tags:
+
+- "Ranged kills have a 20%-40% chance to refund the cooldown of the skill used"
+  (`Positive_Ranged_kills_have_a_20_40_chance_to_refund_the#1`, `Type.Ranged`, `cooldown_reset_event_skill`): **now
+  answers every Harrower leap kill**, Harrower carrying `Type.Ranged`, and refunds the slot its tags name, `Slot.Special`.
+  Test 1 shows it.
+- "Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters"
+  (`Positive_Enemies_killed_by_traps_explode_dealing_50_100#1`, `Type.Trap`, `explode_victim_for_killing_blow`): **now
+  answers a trap's leap kill**, a trap's cast carrying `Type.Trap`, and not a player's own. Test 2 shows it.
+- "Melee kills restore 3%-6% of your maximum HP" (`Positive_Melee_kills_restore_3_6_of_your_maximum_HP#1`, `Type.Melee`,
+  `health`): **still never answers a leap kill**, since Harrower's tags carry no `Type.Melee`. By reading.
+
+**N3 NEEDED NO CODE.** `UCataclysmSkillEffects::ApplyHit` already sets a blow's melee and ranged from the tags it is handed
+(`CataclysmSkillEffects.cpp` 1044 to 1053, unchanged), and the leap has always handed it `UCataclysmBuriedWeapon::SkillTags`,
+so a Harrower leap was already ranged and not melee, on its hit and on its kill notice. Test 3 shows it.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 67 and the rulings below. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a Harrower leap kill now counts as a ranged kill for kill rows, including the cooldown refund
+
+### WHO RULED
+
+The coordinating session's rulings of 2026-10-22, verbatim as relayed:
+
+> BRIEF 67 (#2465): N1 (a), N2 (a), N3 (a).
+> - N1 is not new design. Every other blow a skill delivers carries that skill's tags. The leap is a blow of the throwing
+>   skill, so it should carry them too; its lack of tags is the bug #2465 records.
+> - The consequence is a play change: Harrower's leap kills answer "Ranged kills ..." rows, including the cooldown refund.
+>   Write it in the entry as a play-check line: "a Harrower leap kill now counts as a ranged kill for kill rows, including
+>   the cooldown refund". If play shows the refund is too strong, that goes to the owner then.
+> - N3: the leap takes melee or ranged from the skill's tags, as a cast's blow does.
+
+The questions as brief 67 put them: N1 (a) a leap's kill carries the throwing skill's tags; N2 (a) the leap's delivery
+names the throwing skill's tags (`UCataclysmBuriedWeapon::SkillTags`), so `FCataclysmLastBlow` and the kill notice carry
+them as a cast's blow does, read whether the notice can take tags without a skill object; N3 (a) the leap's blow takes
+`bIsMelee` and `bIsRanged` from the skill's tags.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `8b31fda27`, before this change.
+
+1. **How a kill gets its tags and its flags.** `UCataclysmCombatEvents::NoteBlow` (`CataclysmCombatEvents.cpp` 118) writes
+   the struck character's `FCataclysmLastBlow` for every blow that reaches health: `Blow.Skill` is the effect context's
+   ability instance (169), and `bIsMelee`, `bIsRanged` and `bIsSpell` are the incoming hit's (171 to 173), which
+   `UCataclysmVitalAttributeSet` reads off the effect's `Type.Melee`, `Type.Ranged` and `Type.Spell` tags
+   (`CataclysmVitalAttributeSet.cpp` 656 to 660), which `ApplyTypedSpec` puts there from the delivery `ApplyHit` built from
+   the skill's tags. `UCataclysmCombatEvents::NoteDeath` (251) sets `FCataclysmDeathNotice::KillingSkillTags =
+   &Skill->SkillTags` only when `Blow.Skill` is a `UCataclysmSkillTemplate` (277 to 282), and copies the three flags from
+   the record (284 to 286). A pointer to a skill's own container, so a blow with no skill object could not give one.
+2. **What the leap hands `ApplyHit`.** `UCataclysmBuriedWeapon::LeapFromDying` (`CataclysmBuriedWeapon.cpp` 95 to 101) builds
+   a delivery naming no skill, its `CastBy` the kept identity, and passes `Buried->SkillTags` as the skill tags. So the blow
+   is priced with them and is ranged by them (N3), and its context names no ability, so `Blow.Skill` is empty and the kill
+   carries none.
+3. **Every reader of `KillingSkillTags` and of the kill notice's flags, found where each is defined** (the death notice's
+   fields, searched in every `.h` and `.cpp` under `game/Source`): `KillingSkillTags` is read once,
+   `ACataclysmPlayerCharacter::OnSomethingDied` (`CataclysmPlayerCharacter.cpp` 1188), as the tags of `kill`; every row on
+   `kill` with Required Tags, the kill explosion's (1237 to 1270) included, is judged by them in
+   `UCataclysmAbilitySystemComponent::PoolActionAllowed`. The notice's `bIsMelee` is read by
+   `UCataclysmFollowThrough::IsOwnMeleeKill` (`CataclysmFollowThrough.cpp` 39); `bIsRanged` and `bIsSpell` by nothing outside
+   the tests. The necrosis rise (`UCataclysmRisenImps::RiseOnNecrosisKill`, 1276) reads `KillingTags`, the blow's effect's
+   own tags, and not the skill's: unchanged. The dungeon rules hear the notice and read none of these. `KillingSkillName`
+   is read by Follow Through alone (1307).
+4. **Every row on `kill` requiring a tag**, by script over `game/Data/EnchantmentEffects.csv` (13 rows on `kill`, three with
+   Required Tags): the melee heal, the ranged cooldown refund and traps layer 4's explosion. What each now answers is in
+   SAID FIRST.
+5. **The rack's late axe (#2465's second case), read and not built.** Butcher's Bill's axes are projectiles
+   (`ACataclysmProjectile`), whose blows name their firing skill (`CataclysmProjectile.cpp` 655 and 790). A player's own
+   rack keeps its skill granted in its slot, so its late axe's kill carries the skill's tags already. A trap's rack is
+   granted for one use and taken away (`UCataclysmProjectileSkill::EndAbility`, "THE AXES ALREADY THROWN FLY ON"), so its
+   late axe names a skill that is gone and its kill carries none. Carrying them would be the same field set at two other
+   sites, the projectile's contact and its detonation, a change to another blow; brief 67 says to build it only if it is
+   the same change, and it is not. Not measured. Left for a ruling if it is wanted.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| N1 (a) | "a leap's kill carries the throwing skill's tags" | `LeapFromDying` names `&Buried->SkillTags` on its delivery (`CataclysmBuriedWeapon.cpp` 101). |
+| N2 (a) | "the leap's delivery names the throwing skill's tags (`UCataclysmBuriedWeapon::SkillTags`), so `FCataclysmLastBlow` and the kill notice carry them as a cast's blow does" | `FCataclysmHitDelivery::SkillTagsWithNoSkill` (`CataclysmSkillEffects.h` 750); `ApplyDirectDamage` records it beside the blow's effect while that effect is applied (`CataclysmSkillEffects.cpp` 1341 to 1348; the record and its reader `SkillTagsOfABlowWithNoSkill`, 1251 to 1275, declared in the header at 1104 to 1111); `NoteBlow` copies it onto the record (`CataclysmCombatEvents.cpp` 179 to 186, into `FCataclysmLastBlow::SkillTagsWithNoSkill`, `CataclysmCombatEvents.h` 352 to 358); `NoteDeath` points `KillingSkillTags` at the copy when no skill is named (`CataclysmCombatEvents.cpp` 291 to 296). |
+| N3 (a) | "the leap takes melee or ranged from the skill's tags, as a cast's blow does" | Already so: `ApplyHit` (`CataclysmSkillEffects.cpp` 1044 to 1053), unchanged. |
+
+**HOW A LEAP'S TAGS ARE KEPT ALIVE FOR THE NOTICE, AS N2 ASKS.** The notice's `KillingSkillTags` is a pointer, to a skill's
+own container for a cast's blow. A leap has no skill object, and the buried weapon's component that holds the tags is on
+the dying host, so it is not pointed at. **`NoteBlow` copies the tags into the struck character's `FCataclysmLastBlow`**,
+which lives on that character's ability system, and `NoteDeath` points the notice at the copy, as it already points
+`KillingTags` at the record's own copy of the blow's tags. The copy lives until the character's next blow on record
+replaces the record. The delivery's pointer is valid only during the call that deals the blow, which is all it is read in.
+
+**HOW THE TAGS CROSS FROM THE BLOW TO `NoteBlow`.** Nothing of a delivery reaches the defender but what `ApplyTypedSpec`
+puts on the effect. `ApplyDirectDamage` keeps a record of the effect it is applying and the tags its delivery named, set
+for the whole of the application by a `TGuardValue` and put back after it, as `bApplyingASpreadCopy` is kept beside it;
+`SkillTagsOfABlowWithNoSkill` answers the tags only for a spec of that effect. The effect is instant, so the defender's
+`PostGameplayEffectExecute`, and `NoteBlow` inside it, run inside that application (the stamp `ApplyDirectDamage` already
+reads before and after rests on the same fact). **EVERY OTHER BLOW NAMES NULL TAGS**, and a blow dealt from inside the
+leap's application, an explosion at the death the leap causes, sets the record to its own effect and its own null tags
+for its own application; test 2 shows the explosion's kill carrying none.
+
+### FOUND, AND NOT CHANGED
+
+- **THE LEAP'S HIT NOTICE STILL CARRIES NO SKILL TAGS.** `hit_dealt` and `first_hit_dealt` on a leap's blow are raised with
+  `FCataclysmHitNotice::SkillTags`, null for a blow naming no skill, so a hit row requiring a tag does not answer a leap's
+  hit. The rulings are about the kill; nothing here changes the hit notice. By reading.
+- **A TRAP'S HARROWER LEAP KILL ALSO ANSWERS THE RANGED COOLDOWN REFUND**, its cast carrying Harrower's `Type.Ranged` and
+  `Slot.Special`, and refunds the player's Special slot, the slot that trap was placed from. By reading; not tested.
+- **AN AXE WHOSE THROWER HAS GONE** is credited to the dying host (`LeapFromDying`, "THE CASTER IS CREDITED, AND THE DYING
+  CREATURE STANDS IN FOR IT"), and its kill now carries the tags too. Its killer is a creature, which wears no row, and
+  nothing else reads the tags. By reading.
+- **A DEATH AFTER A LEAP'S BLOW THAT DID NOT KILL** (health written directly, `MarkDead` in a test) names the leap's tags,
+  the record holding them for every leap blow on it, as a cast's blow's record names its skill. By reading.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE TAGS CROSS BY A RECORD KEPT FOR THE ONE EFFECT `ApplyDirectDamage` IS APPLYING, MATCHED BY THE EFFECT.** The options
+  not taken: (a) the effect context's source object, which already carries `FCataclysmHitDelivery::DealtBy` as an actor and
+  is read as one in three places; (b) a context type of this project's own, which the coordinating session declined on
+  2026-09-11 because it needs an ability system globals class and a line of config (`FCataclysmHitDelivery::Skill`'s
+  comment); (c) the skill's tags written onto the effect, where the defender's rules read the effect's tags; (d) the
+  throwing skill object kept on the buried weapon, which a trap's cast has already lost.
+- **THE COPY IS KEPT FOR EVERY LEAP BLOW ON RECORD, NOT ONLY THE LETHAL ONE**, as `Skill` is kept for every blow, so a death
+  after a leap's blow names the tags as a cast's blow's names its skill. An allocation only on a leap's blow. The option not
+  taken: only for the lethal blow, as `KillingTags` is.
+- **THE NOTICE NAMES THE TAGS AND NO SKILL NAME.** `KillingSkillName` stays None for a leap's kill: there is no skill object
+  to name, and its one reader, Follow Through, is for melee kills, which a leap's is not. The option not taken: carry the
+  throwing skill's name on the buried weapon.
+- **THE TESTS ARE IN A GROUP OF THEIR OWN, `Cataclysm.BuriedWeaponKills.`**, since the change is to the kill a buried weapon's
+  leap makes, a player's own and a trap's alike; the leap's earlier tests are in `Cataclysm.Skills.` and
+  `Cataclysm.Traps.`. No test name begins with `Cataclysm.Buried` today (searched). The option not taken: `Cataclysm.Traps.`,
+  which test 1 and test 3 are not about.
+- **THE WEAPON IS BURIED BY `BuryIn` WITH HARROWER'S OWN TAGS CELL**, as layer 3b's leap test buries it, and not by a thrown
+  Harrower, for that entry's reason: a throw flies on a timer and a test world never ticks. Its burn is left off
+  (`bInBurns` false), so no tick muddies a figure.
+
+### THE GENRE SOURCE
+
+Brief 67 names none and nothing was fetched. The ruling rests on this game's own rule, as N1 states it: every blow a skill
+delivers carries that skill's tags.
+
+### Tests
+
+Three Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmBuriedWeaponKillTests.cpp`, group
+`Cataclysm.BuriedWeaponKills.`. The rig is traps layer 4's: a possessed player character holding a Demonic weapon (an Axe,
+or a Whip for a trap's), a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the monsters' side with no
+defences and 50,000 health unless a case says otherwise, and every doomed one 50; every body at least 1 m from every
+other; every action written by hand as the item would build it from its row; crit pinned at 100 after the world is made;
+the clock moved by hand. Helper types are `FLeapKillWorld`, `FLeapKillStat`, `FLeapKillRig`, `FLeapKillEventCount`,
+`FLeapKillNoticeHeard` and `FLeapKillNotices`, in the namespace `CataclysmLeapKillTest`; no other file of the module
+declares them (searched). **Assertions are counted for a passing run, 77 in all.** Where health lost is compared with a
+figure sent (test 2's explosion), the Slashing step is allowed for: the Whip is Slashing, asserted in set-up, and the
+measure is divided by `1 + UCataclysmDamageCalculation::SubtypeBonus / 100`, as traps layer 4's test 34 does.
+
+1. `APlayersOwnHarrowerLeapKillRefundsTheSpecialCooldownByTheRangedKillRowAndASkilllessBlowsKillDoesNot`, 16. Two Axe
+   players each holding the ranged cooldown refund at 100 and with the Special cooldown running for 10 s. In order: a world;
+   set-up, the pin; set-up, the tags; set-up, three creatures (three); set-up, the leaping player's cooldown runs; set-up,
+   and the control's; set-up, the control's own blow, naming no skill and no tags, killed; set-up, it raised `kill` once;
+   control, the row refused it and the Special cooldown still runs; set-up, the axe buried in the host with Harrower's tags;
+   set-up, it leaps; set-up, its leap killed the enemy 4 m east; set-up, it raised `kill` once; the leap's kill carries
+   Harrower's tags, so the row refunds the Special cooldown.
+2. `ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot`, 38. Three Whip players with the Heavy trap
+   flag, each trap set off and used up, and each axe buried with that used-up trap's identity and Harrower's tags with
+   `Type.Trap`: the measure (its next host 50,000), the control (no row) and the row ("Enemies killed by traps explode" at 50,
+   as layer 4's tests write it). In order: a world; set-up, the pin; set-up, the tags; set-up, the measure's and the row's
+   Whip is Slashing; set-up, thirteen creatures (thirteen); set-up, three traps placed (three); set-up, three used up (three);
+   set-up, three axes buried (three); set-up, the measure's leaps; set-up, its whole blow kills 50; set-up, the control's
+   leaps; set-up, and kills; set-up, `kill` once; control, with no row its bystander 3 m from the dead is untouched; set-up,
+   the row's leaps; set-up, and kills; the dead explodes: its bystander 3 m away takes half the leap's figure as sent, within
+   0.1% of the leap; set-up, the explosion killed the brittle bystander; whose death explodes nothing: the bystander 3 m
+   beyond it and 6 m from the leap's dead is untouched; set-up, the row's player raised `kill` twice.
+3. `AHarrowerLeapsKillNoticeIsRangedAndNotMeleeAndCarriesTheThrowingSkillsTagsAndAMeleeKillsIsMelee`, 23. Two Axe players;
+   every death notice copied as it is heard. In order: a world; set-up, the pin; set-up, the tags; set-up, three creatures
+   (three); set-up, the world's combat events; set-up, the control's blow carrying `Type.Melee` killed; set-up, one notice
+   named it; control, its kill is melee; control, and not ranged; control, a blow naming no skill gives its kill no skill's
+   tags; set-up, the axe buried; set-up, it leaps; set-up, its leap killed; set-up, one notice named it; the leap's kill is
+   ranged (N3); and not melee (N3); set-up, and not by damage over time; it carries skill tags (N1, N2); `Type.Ranged` among
+   them; and `Slot.Special`; and it names no skill.
+
+**Every earlier test is unchanged, and expected to pass unchanged.** No earlier test reads a leap's kill notice: the leap's
+tests are `Cataclysm.Skills.ABuriedAxeTearsFreeAndStrikesTheNextEnemy`,
+`Cataclysm.Skills.ABuriedAxeTearingFreeTellsItsThrowersRunningBuff` and traps layer 3b's test 27
+(`ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot`), and none hears a death notice
+(searched: `UCataclysmBuriedWeapon` is named by these two files' tests alone). The first kills its new host with
+`MarkDead` after the leap struck it, so that death's notice now names Harrower's tags, which nothing in that test reads.
+With no leap, every blow names null tags and every record and notice is as before.
+
+**Not tested:** a thrown Harrower (the weapon is buried by `BuryIn`); the burn of a burning axe; the melee heal row against
+a leap kill (it cannot answer, by reading); the refund's chance below 100; a trap's Harrower leap kill refunding the Special
+slot; a leap from a thrower who has gone; a rack's late axe (not built); the hit notice of a leap (unchanged); a death after
+a leap's blow that did not kill; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF),
+each new text absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired: `CataclysmBuriedWeapon.cpp` 47/47, 11/11, 1/1 before and after LK-I; `CataclysmSkillEffects.cpp` 1647/1647, 462/462,
+15/15 before and after LK-II. Each compiles alone by reading: LK-I assigns `nullptr` to a `const FGameplayTagContainer*`,
+and `Buried` is still read on the lines below; LK-II makes the tags a conditional of two `const FGameplayTagContainer*`,
+both in scope, the record declared above the function. The prefix is `Cataclysm.BuriedWeaponKills.`, with its trailing dot,
+three tests.
+
+**The events the tests' actors raise, listed before counting, each with its depth.** Every leap is called by the test, and
+every blow below is dealt outside any `ActOnEvent`, so each event is raised at depth nought unless it says otherwise. On a
+player: for a blow of its own on an enemy, the leap's or the skill-less one, `hit_dealt` and `first_hit_dealt`, raised from
+the hit notice inside the blow before health is written, and returned before the death; then `kill` for the death the blow
+causes, raised inside the blow's application at depth nought, after the hit events have returned; for a trap's leap, after
+the blow, `deployable_hit` with the used-up trap's tags (test 2). In test 2 before the leaps: `trap_placed` at each placing,
+and at each trigger, inside the cast's activation, `hit_dealt`, `first_hit_dealt`, `deployable_hit` and the burn's
+`dot_applied` for the lash on the enemy that set the trap off, `skill_end`, then `trap_triggered`. In test 2's row, the
+explosion made after every listener has heard the leap's kill (`AfterThisDeathIsHeard`) is the consequence of a death and
+raises no hit event; its kill of the brittle bystander raises `kill` again, at depth nought, the first `kill`'s call having
+returned. No crit is rolled (the pin). On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 1's refund row on
+`kill` (both players); test 2's explosion row on `kill` (the row's player). Test 3's players hold no row. Read from the
+code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| LK-I, the leap's delivery names no tags (N1, N2) | `game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.cpp` | `Delivery.SkillTagsWithNoSkill = &Buried->SkillTags;` | `Delivery.SkillTagsWithNoSkill = nullptr;` | `AHarrowerLeapsKillNoticeIsRangedAndNotMeleeAndCarriesTheThrowingSkillsTagsAndAMeleeKillsIsMelee` | `APlayersOwnHarrowerLeapKillRefundsTheSpecialCooldownByTheRangedKillRowAndASkilllessBlowsKillDoesNot`, `ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot` |
+| LK-II, a blow inside the leap's application takes the leap's tags (no other blow changed) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `FSkillEffectsBlowNamingNoSkill{Effect, Delivery.SkillTagsWithNoSkill});` | `FSkillEffectsBlowNamingNoSkill{Effect, Delivery.SkillTagsWithNoSkill ? Delivery.SkillTagsWithNoSkill : BlowNamingNoSkillBeingApplied.Tags});` | `ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot` | none |
+
+Failed assertions, by reading:
+
+- **LK-I, 7 in 3 tests.** Test 3: "the leap's kill carries skill tags", "among them Type.Ranged" and "and Slot.Special" (3);
+  its ranged and melee lines pass, N3 being `ApplyHit`'s, and its skill name is None either way. Test 1: "the leap's kill
+  carries Harrower's tags ... so the ranged kill row refunds the Special cooldown" (1); its control and kill count pass.
+  Test 2: "the leap's dead explodes" (nought against half the leap), "set-up: the explosion killed the brittle bystander"
+  and "set-up: the row's player raised kill twice" (one) (3); "whose death explodes nothing" passes, nothing exploding.
+- **LK-II, 1 in 1 test.** Test 2: the brittle bystander's kill, made by the explosion inside the leap's application, takes
+  the leap's tags, `Type.Trap` among them, and explodes in turn, so "whose death explodes nothing: the bystander 3 m beyond
+  it ... is untouched" fails (a quarter of the leap's figure as sent). The first explosion's figure, the brittle death and the two
+  kills are unchanged. Tests 1 and 3 deal no blow inside a leap's application.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. Under LK-I the leap's earlier tests
+read no kill notice; under LK-II no other test deals a blow inside a leap's application while a row hears its kill.
+
+**A test and no proof:** the record matched by the effect in `SkillTagsOfABlowWithNoSkill` (a second guard of the scoping,
+which LK-II's break goes round and no test reaches alone); the notice naming the copy and no skill name; the leap ranged
+and not melee (N3, unchanged code).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-22 — A skill trap's shot or landing that strikes after the trap is used up still strikes the wearer of "Your deployables and traps deal full damage to you" standing inside its blast, found by the trap's identity; a rearmed trap, a trap set off by a row and a gadget's bonus shot are reached as they stand, and a zone's sweep and the kill explosion never strike the wearer: the sentence's trap half, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.h` and `.cpp`
@@ -2460,7 +2727,7 @@ What a player would notice, once the rows are worn:
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
 - 'Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP' takes the full share from a boss
-- an enemy killed by a buried weapon's leap does not explode, and no kill row requiring a tag answers a leap's kill
+- an enemy killed by a buried weapon's leap does not explode, and no kill row requiring a tag answers a leap's kill (SINCE #2465 a leap's kill carries its throwing skill's tags: a trap's leap kill explodes, and a kill row requiring a tag the throwing skill carries answers a leap's kill; see the entry of 2026-10-22 headed "A buried weapon's leap kill carries its throwing skill's tags")
 - a rearmed trap judges a shot of an earlier trigger against its latest triggering enemy, for the increase on the first enemy, the share of its maximum HP and the damage over time
 - a slow a rearmed trap's earlier trigger left waiting can be laid by its next trigger's blow on that same enemy
 - with a Slashing weapon, a trap kill's explosion is a share of the blow before the 10% Slashing bonus, and the trap's damage over time a share of what it took after it

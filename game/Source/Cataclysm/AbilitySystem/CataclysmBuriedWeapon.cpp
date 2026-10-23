@@ -94,6 +94,11 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// `SkillGadgetCasting`, so its axe is the player's then, as before (P5).
 	FCataclysmHitDelivery Delivery;
 	Delivery.CastBy = Buried->Caster.IsValid() ? Buried->CastBy : TWeakObjectPtr<AActor>();
+	// AND THE THROWING SKILL'S TAGS, AS THE BLOW OF THAT SKILL IT IS, so a kill this leap makes carries them as a cast's
+	// blow's kill carries its skill's, and a `kill` row requiring a tag answers it. Ruled 2026-10-22 (#2465, N1 (a),
+	// N2 (a)). The skill object may be long gone, so the tags kept here are named rather than the skill. A player's own
+	// axe and a trap's alike; melee or ranged was already read from these tags by `ApplyHit` (N3 (a)).
+	Delivery.SkillTagsWithNoSkill = &Buried->SkillTags;
 
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(

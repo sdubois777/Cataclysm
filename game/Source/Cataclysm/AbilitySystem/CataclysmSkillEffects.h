@@ -737,6 +737,18 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	TWeakObjectPtr<AActor> CastBy;
 
+	/**
+	 * The tags of the skill this blow is a blow of, FOR A BLOW THAT NAMES NO SKILL OBJECT: a buried weapon's leap, whose
+	 * throwing use ended long before it (`UCataclysmBuriedWeapon::LeapFromDying` is the one writer, with its own
+	 * `SkillTags`). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)): "a leap's kill carries the throwing skill's tags", as a
+	 * cast's blow's kill carries its skill's. `ApplyDirectDamage` hands them, for this blow's effect alone, to
+	 * `UCataclysmCombatEvents::NoteBlow`, which keeps a copy on the struck character's record of its last blow, and the
+	 * death notice names that copy as `FCataclysmDeathNotice::KillingSkillTags`. NOTHING ELSE READS THEM: the blow is
+	 * priced with the tags `ApplyHit` is handed, and its hit notice is unchanged. Null for every other blow. Valid only
+	 * during the call that deals the blow. Not a UPROPERTY, as `Skill` is not.
+	 */
+	const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
@@ -1088,6 +1100,15 @@ public:
 								  const FCataclysmHitDelivery& Delivery =
 									  FCataclysmHitDelivery(),
 								  FCataclysmDamageResult* OutResolved = nullptr);
+
+	/**
+	 * The tags of the skill the blow `Spec` is, when that blow names no skill object and its delivery named them
+	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`, a buried weapon's leap), or null. Ruled 2026-10-22 (#2465, N2 (a)).
+	 * ANSWERED ONLY WHILE `ApplyDirectDamage` APPLIES THAT BLOW'S OWN EFFECT, matched by the effect, so a blow dealt from
+	 * inside it, an explosion at the death it causes, answers its own delivery's, null. Read by
+	 * `UCataclysmCombatEvents::NoteBlow`.
+	 */
+	static const FGameplayTagContainer* SkillTagsOfABlowWithNoSkill(const FGameplayEffectSpec& Spec);
 
 	/**
 	 * How far an overkill explosion reaches from the body, in centimetres: five metres.

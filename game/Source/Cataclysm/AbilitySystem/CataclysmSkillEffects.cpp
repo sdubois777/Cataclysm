@@ -1248,6 +1248,31 @@ bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
 	return true;
 }
 
+namespace
+{
+	/**
+	 * The effect `ApplyDirectDamage` is applying now and the tags its delivery named for a blow naming no skill object
+	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`), or null tags. Ruled 2026-10-22 (#2465, N2 (a)). Set for the whole
+	 * of each application and put back after it, so a blow dealt from inside one, an explosion at the death it causes,
+	 * names its own.
+	 */
+	struct FSkillEffectsBlowNamingNoSkill
+	{
+		const UGameplayEffect* Effect = nullptr;
+		const FGameplayTagContainer* Tags = nullptr;
+	};
+	FSkillEffectsBlowNamingNoSkill BlowNamingNoSkillBeingApplied;
+}
+
+const FGameplayTagContainer* UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(const FGameplayEffectSpec& Spec)
+{
+	// MATCHED BY THE EFFECT, so a blow reaching the attribute set some other way while this one is applied, a tick laid
+	// at the death it causes, is not taken for it.
+	return BlowNamingNoSkillBeingApplied.Tags && Spec.Def.Get() == BlowNamingNoSkillBeingApplied.Effect
+		? BlowNamingNoSkillBeingApplied.Tags
+		: nullptr;
+}
+
 bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
 											   float Damage,
 											   const FCataclysmHitDelivery& Delivery,
@@ -1313,7 +1338,14 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 		Cast<UCataclysmAbilitySystemComponent>(Defender);
 	const uint32 Before = Resolver ? Resolver->GetResolvedHitStamp() : 0;
 
-	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
+	// AND THE TAGS OF THE SKILL A BLOW NAMING NO SKILL OBJECT IS A BLOW OF, a buried weapon's leap's, for this effect
+	// while it is applied: the record of the last blow keeps them for the death notice. Ruled 2026-10-22 (#2465, N2 (a)).
+	// Null tags for every other blow, which names them so for any blow dealt from inside this one.
+	{
+		const TGuardValue<FSkillEffectsBlowNamingNoSkill> NamingNoSkill(BlowNamingNoSkillBeingApplied,
+			FSkillEffectsBlowNamingNoSkill{Effect, Delivery.SkillTagsWithNoSkill});
+		ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
+	}
 
 	if (OutResolved)
 	{
