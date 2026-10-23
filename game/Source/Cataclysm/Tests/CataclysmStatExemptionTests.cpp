@@ -1922,6 +1922,86 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `mana_cost_also_taken_from_health_percent` is read by `UCataclysmGameplayAbility::ApplyCost`, which records the
+	 * health a cast also owes beside the mana it took. 2026-10-23, G7c, the Edict of Abstinence.
+	 *
+	 * TWO CHARACTERS, one carrying a flat row of 25, each casting the same 40-mana skill once. The one carrying it
+	 * records a quarter of the 40 it paid; the plain one records nothing.
+	 */
+	void ProbeManaCostAlsoTakenFromHealthPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Taxed(World, FVector(0, 100 * M, 0));
+		GrantFlat(Taxed.Actor, UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat, 25.0f);
+
+		UCataclysmStrikeSkill* PlainSkill = GrantCostingSkill(Plain);
+		UCataclysmStrikeSkill* TaxedSkill = GrantCostingSkill(Taxed);
+		if (!Test.TestNotNull(TEXT("a skill that costs mana"), PlainSkill)
+			|| !Test.TestNotNull(TEXT("and one under the row"), TaxedSkill))
+		{
+			return;
+		}
+		const bool bPlainCast = Plain.AbilitySystem->TryActivateAbility(PlainSkill->GetCurrentAbilitySpecHandle());
+		const bool bTaxedCast = Taxed.AbilitySystem->TryActivateAbility(TaxedSkill->GetCurrentAbilitySpecHandle());
+		if (!Test.TestTrue(TEXT("both casts went off"), bPlainCast && bTaxedCast))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("a character with no row owes no health beside its mana"),
+			PlainSkill->ManaAlsoTakenAsHealthThisCast(), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and one carrying a row of 25 owes a quarter of the 40 it paid"),
+			TaxedSkill->ManaAlsoTakenAsHealthThisCast(), 10.0f, 0.001f);
+	}
+
+	/**
+	 * `critical_strikes_deal_no_extra_damage` is read beside the critical multiplier in CataclysmVitalAttributeSet.cpp,
+	 * which holds the multiplier at 100 while it is above nought. 2026-10-23, G7c, the Edict of Humility.
+	 *
+	 * TWO ATTACKERS of 1,000 attack damage at a 50% chance and the attribute's 150, the roll pinned so both critically
+	 * strike; one carries a flat row of 1. Its critical strike must be two thirds of the other's.
+	 */
+	void ProbeCriticalStrikesDealNoExtraDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCrits(0.0f);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Humbled(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 50.0f);
+		Humbled.AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 50.0f);
+		GrantFlat(Humbled.Actor, UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat, 1.0f);
+
+		FCataclysmDamageResult Full;
+		UCataclysmSkillEffects::ApplyHit(Plain.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Full);
+		FCataclysmDamageResult Held;
+		UCataclysmSkillEffects::ApplyHit(Humbled.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Held);
+
+		if (!Test.TestTrue(TEXT("both blows landed and both critically struck"),
+				Full.DealtToHealth > 0.0f && Full.bWasCritical && Held.bWasCritical))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the carrying attacker's critical strike deals the hit and no more: two thirds of the other's"),
+			Held.DealtToHealth, Full.DealtToHealth / 1.5f, 0.01f);
+	}
+
+	/**
 	 * `cooldown_lengthening` is read by
 	 * `UCataclysmGameplayAbility::CooldownAfterReduction`. Issue #1994.
 	 *
@@ -10248,6 +10328,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_charges_bonus"), &ProbeSkillCharges},
 			{TEXT("mana_cost_as_current_health_percent"),
 									&ProbeManaCostAsCurrentHealthPercent},
+			{TEXT("mana_cost_also_taken_from_health_percent"),
+									&ProbeManaCostAlsoTakenFromHealthPercent},
+			{TEXT("critical_strikes_deal_no_extra_damage"),
+									&ProbeCriticalStrikesDealNoExtraDamage},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 			{TEXT("minion_hits_count_as_yours"), &ProbeHitsCountAsYours},

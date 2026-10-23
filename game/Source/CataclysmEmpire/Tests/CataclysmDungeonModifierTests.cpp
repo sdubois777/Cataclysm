@@ -1136,4 +1136,61 @@ bool FCataclysmEdictsEachDrawnTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The last three Edicts are rows: Abstinence, Vigil and Humility -- 2026-10-23, G7c
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastEdictsDrawnTest,
+	"Cataclysm.DungeonModifiers.AnAscendantCanDrawAbstinenceVigilAndHumilityAndNamesEachAsTheDesignDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLastEdictsDrawnTest::RunTest(const FString& Parameters)
+{
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const FName Abstinence(TEXT("Celestial_Edict_of_Abstinence"));
+	const FName Vigil(TEXT("Celestial_Edict_of_Vigil"));
+	const FName Humility(TEXT("Celestial_Edict_of_Humility"));
+
+	// THE THREE ARE EDICTS, NAMED AS THE DESIGN NAMES THEM.
+	TestTrue(TEXT("the Edict of Abstinence is an Edict"), Rules::IsEdict(Abstinence));
+	TestTrue(TEXT("and the Edict of Vigil"), Rules::IsEdict(Vigil));
+	TestTrue(TEXT("and the Edict of Humility"), Rules::IsEdict(Humility));
+	TestEqual(TEXT("shown as the Edict of Abstinence"), Rules::EdictName(Abstinence), FString(TEXT("Edict of Abstinence")));
+	TestEqual(TEXT("shown as the Edict of Vigil"), Rules::EdictName(Vigil), FString(TEXT("Edict of Vigil")));
+	TestEqual(TEXT("shown as the Edict of Humility"), Rules::EdictName(Humility), FString(TEXT("Edict of Humility")));
+
+	// EACH COMES FIRST ON SOME SEED AND IS HELD FROM FLOOR 4 ON SOME SEED, AND ALL EIGHT COME FIRST ON SOME SEED.
+	TSet<FName> First;
+	TSet<FName> HeldByFour;
+	for (int32 Seed = 1; Seed <= 400; ++Seed)
+	{
+		First.Add(Rules::EdictsOnFloor(Seed, TArray<FName>(), 1)[0]);
+		for (const FName& Edict : Rules::EdictsOnFloor(Seed, TArray<FName>(), Rules::AscendantMostEdicts))
+		{
+			HeldByFour.Add(Edict);
+		}
+	}
+	for (const FName& Edict : {Abstinence, Vigil, Humility})
+	{
+		TestTrue(FString::Printf(TEXT("%s comes first on some seed"), *Edict.ToString()), First.Contains(Edict));
+		TestTrue(FString::Printf(TEXT("%s is held from floor 4 on some seed"), *Edict.ToString()),
+				 HeldByFour.Contains(Edict));
+	}
+	TestEqual(TEXT("all eight come first on some seed"), First.Num(), 8);
+
+	// THE CONTROL: an Ascendant whose own modifiers hold the three draws none of them again.
+	const TArray<FName> OwnThree = {Abstinence, Vigil, Humility};
+	int32 DrawnAgain = 0;
+	for (int32 Seed = 1; Seed <= 50; ++Seed)
+	{
+		for (const FName& Edict : Rules::EdictsOnFloor(Seed, OwnThree, Rules::AscendantMostEdicts))
+		{
+			DrawnAgain += OwnThree.Contains(Edict) ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("CONTROL: holding the three among its own, it draws none of them"), DrawnAgain, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

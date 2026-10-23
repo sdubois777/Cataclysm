@@ -20,6 +20,10 @@
 // condition asks about. Issue #1982.
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For the Edict of Humility's hold and the hit notice that still says a critical strike happened. 2026-10-23,
+// G7c.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmItem.h"
 #include "AbilitySystemComponent.h"
 #include "Data/CataclysmDataRows.h"
@@ -2014,6 +2018,107 @@ CATACLYSM_TEST(FCataclysmNonCriticalCreatureTest,
 		}
 	}
 	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The Edict of Humility: "a critical strike deals no extra damage" -- 2026-10-23, G7c
+// --------------------------------------------------------------------------
+
+namespace CataclysmHumilityTest
+{
+	/** The Edict of Humility's own modifiers on `System`, built from its row key as a floor builds them, or none. */
+	static void UnderHumility(UCataclysmAbilitySystemComponent* System, bool bCarriesTheRow)
+	{
+		TArray<FName> Rows;
+		if (bCarriesTheRow)
+		{
+			Rows.Add(FName(UCataclysmDungeonModifierEffects::EdictOfHumilityKey));
+		}
+		const TMap<FName, TArray<FCataclysmStatModifier>> FromTheFloor =
+			UCataclysmDungeonModifierEffects::StatModifiersFor(UCataclysmDungeonModifierEffects::PlayerEffectsFor(Rows, 1));
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : FromTheFloor)
+		{
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Stat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Append(Stat.Value);
+		}
+		System->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+// THROUGH A REAL EFFECT, so the hold is shown where the multiplier is asked for. Two attackers of 1,000 attack damage at
+// 40% and 150%, one under the Edict: its critical strike deals the hit, 1,000, where the other's deals 1,500; its blow
+// that does not critically strike deals the same 1,000; and its critical strike is still one, to the result and to the
+// hit notice every on-crit row is raised from.
+CATACLYSM_TEST(FCataclysmHumilityHoldsTheCritTest,
+	"Cataclysm.Crit.UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne")
+{
+	using namespace CataclysmCritTest;
+	using namespace CataclysmHumilityTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the world announces hits"), Events))
+	{
+		return false;
+	}
+
+	FScopedCombatant Humbled(World);
+	FScopedCombatant Proud(World);
+	FScopedCombatant Defender(World);
+	for (const FScopedCombatant* Attacker : {&Humbled, &Proud})
+	{
+		Attacker->AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+														 1'000.0f);
+		Attacker->SetCritical(/*Chance=*/40.0f, /*Multiplier=*/150.0f);
+	}
+	UnderHumility(Humbled.AbilitySystem, /*bCarriesTheRow=*/true);
+	UnderHumility(Proud.AbilitySystem, /*bCarriesTheRow=*/false);
+
+	int32 HumbledCriticalNotices = 0;
+	const AActor* HumbledActor = Humbled.Actor;
+	const FDelegateHandle Heard = Events->OnHit.AddLambda(
+		[HumbledActor, &HumbledCriticalNotices](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Attacker == HumbledActor && Notice.bCritical)
+			{
+				++HumbledCriticalNotices;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Heard); };
+
+	FCataclysmDamageResult HumbledCrit;
+	FCataclysmDamageResult ProudCrit;
+	{
+		const FScopedCritRoll AlwaysCrits(0.0f);
+		UCataclysmSkillEffects::ApplyHit(Humbled.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &HumbledCrit);
+		const float HumbledTook = Defender.TakeDamageReading();
+		UCataclysmSkillEffects::ApplyHit(Proud.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &ProudCrit);
+		const float ProudTook = Defender.TakeDamageReading();
+		TestTrue(TEXT("set-up: both blows critically struck"), HumbledCrit.bWasCritical && ProudCrit.bWasCritical);
+		TestEqual(TEXT("CONTROL: without the Edict a critical strike deals 1,500"), ProudTook, 1'500.0f, 0.01f);
+		TestEqual(TEXT("under it a critical strike deals the hit, 1,000"), HumbledTook, 1'000.0f, 0.01f);
+	}
+	{
+		const FScopedCritRoll NeverCrits(100.0f);
+		FCataclysmDamageResult HumbledPlain;
+		UCataclysmSkillEffects::ApplyHit(Humbled.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &HumbledPlain);
+		TestFalse(TEXT("set-up: this blow did not critically strike"), HumbledPlain.bWasCritical);
+		TestEqual(TEXT("and dealt the same 1,000"), Defender.TakeDamageReading(), 1'000.0f, 0.01f);
+	}
+	TestEqual(TEXT("the critical strike under the Edict still counts as one: one hit notice says so"),
+			  HumbledCriticalNotices, 1);
 	return true;
 }
 
