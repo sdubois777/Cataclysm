@@ -491,6 +491,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// reason `mana_cost` gives: it is asked per cast, with the skill's tags
 		// and the character's conditions at that moment.
 		TEXT("mana_cost_as_current_health_percent"),
+		// What share of the mana a cast takes is also taken from health, read
+		// by UCataclysmGameplayAbility::ApplyCost. 2026-10-23, G7c. Written by
+		// the dungeon floor rule `Celestial_Edict_of_Abstinence`. No gameplay
+		// attribute, for the reason `mana_cost` gives: it is asked per cast.
+		TEXT("mana_cost_also_taken_from_health_percent"),
+		// A flag: an attacker's critical strike deals no extra damage, read by
+		// CataclysmVitalAttributeSet.cpp beside the critical multiplier.
+		// 2026-10-23, G7c. Written by the dungeon floor rule
+		// `Celestial_Edict_of_Humility`. No gameplay attribute: asked per blow.
+		TEXT("critical_strikes_deal_no_extra_damage"),
 		// What share a hit keeps when its critical roll fails, read by
 		// CataclysmVitalAttributeSet.cpp beside the critical multiplier and
 		// applied by UCataclysmDamageCalculation::Resolve. Issue #1686. No

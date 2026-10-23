@@ -49,6 +49,8 @@
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
+// For the Angelic Wardens a payment under the Edict of Abstinence wakes. 2026-10-23, G7c.
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 // For the wait between a swing starting and its blow landing. Issue #1133.
@@ -3723,6 +3725,20 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	const float Added =
 		Maximum * AddedHealthCostPercent(AbilitySystem, SkillTags) / 100.0f;
 
+	// AND THE EDICT OF ABSTINENCE'S SHARE OF THE MANA THIS CAST TOOK, AN AMOUNT `ApplyCost` RECORDED. 2026-10-23, G7c.
+	// "A quarter of a skill's mana cost is also taken from health." A HEALTH COST LIKE THE OTHERS HERE, ruled: the
+	// Fervour it fills, The Last Drop that suppresses it and the Blood Rush window it opens all see it, as they see
+	// Desperate Measures' share.
+	//
+	// AND IT CANNOT KILL AND NEVER REFUSES THE CAST, ruled 2026-10-23 on Desperate Measures and on Path of Exile's
+	// Blood Magic ("It is not possible to commit suicide through Blood Magic"). IT IS TAKEN FROM WHAT THE TWO COSTS
+	// ABOVE LEAVE, and stops at the last point of health: so it never takes a player below 1, and never turns the
+	// added maximum-health cost, which may kill by design, into a death that cost alone would not have been.
+	const float AbstinenceOwed = ManaAlsoTakenAsHealthThisCast();
+	const float FromAbstinence = FMath::Min(
+		AbstinenceOwed,
+		FMath::Max(0.0f, Current - LeastHealthAfterCurrentHealthCost - FromCurrent - Added));
+
 	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
 	// the two are summed rather than one being applied to what the other left.
 	//
@@ -3741,7 +3757,7 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// Nothing was paid, so none of those happened.
 	const float Cost = HealthCostIsSuppressed(AbilitySystem)
 		? 0.0f
-		: FromCurrent + Added;
+		: FromCurrent + Added + FromAbstinence;
 
 	// WHAT THIS SKILL JUST COST, AS A SHARE OF MAXIMUM HEALTH. Issue #983. Grand
 	// Tithe asks "a skill whose health cost is above 10% of your maximum health",
@@ -3918,6 +3934,21 @@ void UCataclysmSkillTemplate::PayHealthCost()
 			// cost grants and the mana a cost restores cannot disagree about
 			// what the cost was.
 			Cataclysm->NoteHealthCostPaid(Cost);
+		}
+	}
+
+	// AND A CAST UNDER THE EDICT OF ABSTINENCE BREAKS A DIVINE LAW, WHICH WAKES AN ANGELIC WARDEN. 2026-10-23, G7c,
+	// ruled: "Abstinence's payment" is a violation, and a violation wakes the nearest standing statue. A CAST THAT OWED
+	// THE PRICE, whether or not The Last Drop or the last point of health let any of it be taken: the punished action is
+	// spending mana under the Edict, and it was done. HERE AND NOT IN THE GAME MODE: the skill-used notice the game mode
+	// hears is sent before this payment and carries no amount, and this is the one place a use pays health. The game
+	// mode is found as `UCataclysmAbilitySystemComponent::DungeonBeingWalked` finds it; outside a dungeon there is none.
+	if (AbstinenceOwed > 0.0f)
+	{
+		if (ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(GetWorld()))
+		{
+			const AActor* Payer = Avatar();
+			Mode->NoteDivineLawViolated(Payer ? Payer->GetActorLocation() : FVector::ZeroVector);
 		}
 	}
 

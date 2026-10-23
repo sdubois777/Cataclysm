@@ -2,7 +2,7 @@
 say what the rules take.
 
 WHY THIS EXISTS. Issue #41. `game/Source/Cataclysm/Dungeon/
-CataclysmDungeonModifierEffects.h` and `.cpp` give a few of the 120 rows of
+CataclysmDungeonModifierEffects.h` and `.cpp` give a few of the 123 rows of
 `game/Data/DungeonModifiers.csv` a rule: Starvation takes 1% of maximum health
 and energy shield a floor up to 60%, Dehydration 1% of maximum mana a floor,
 Forced March a share of maximum health a second from a player standing still,
@@ -967,7 +967,7 @@ def test_spore_clouds_row_still_states_a_chance_and_no_figure_for_it():
 
     THE ROW SAYS "a chance" AND GIVES NO PERCENTAGE, which is why
     `SporeCloudsChancePercentOnDeath` is a judgement rather than a reading. Eight
-    of the 120 rows are written that way and this is one of them.
+    of the 123 rows are written that way and this is one of them.
 
     IF THE ROW EVER STATES A FIGURE, THE RULE MUST USE THAT ONE. A row saying
     "a 25% chance" beside a rule using ten is the exact drift this whole file
@@ -3788,8 +3788,11 @@ def test_angelic_wardens_row_still_names_statues_that_animate_and_hunt_and_the_t
     is the pillars a floor begins with; ANIMATE is a statue waking into a creature; RELENTLESSLY HUNT THEM is the
     warden's sight; FOR THE REST OF THE FLOOR is why a woken warden stays awake and goes with the floor. VIOLATE
     "DIVINE LAWS" is read, on the owner's words of 2026-10-08, as the player coming near a statue or using a skill
-    near it. TRIGGER CERTAIN TRAPS is NOT built: the game has no trap a player triggers. If any changes, the reading
-    built on it must be revisited; see AngelicWardensKey in CataclysmDungeonModifierEffects.h.
+    near it; and since 2026-10-23 (G7c), as the design says, as breaking a punishing Edict too -- Abstinence's
+    payment, Vigil's smite being called, a movement skill under Stillness, a skill with a cooldown under Patience --
+    which wakes the nearest standing statue (`ACataclysmDungeonGameMode::NoteDivineLawViolated`). TRIGGER CERTAIN
+    TRAPS is NOT built: the game has no trap a player triggers. If any changes, the reading built on it must be
+    revisited; see AngelicWardensKey in CataclysmDungeonModifierEffects.h.
     """
     words = flat(rows()["Celestial_Angelic_Wardens"]["Description"])
     lower = words.lower()

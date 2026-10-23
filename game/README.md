@@ -263,7 +263,7 @@ by `git add` with no error and no warning. Guarded by
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
 
-  **Every dungeon carries dungeon modifiers, and as of 2026-10-22 116 of the 120
+  **Every dungeon carries dungeon modifiers, and as of 2026-10-23 119 of the 123
   do what their rows say.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
   difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
   modifiers of every Cataclysm the run is facing. The sum of their danger scores
@@ -277,7 +277,7 @@ by `git add` with no error and no warning. Guarded by
   Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
   the game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **As of 2026-10-22, 116 of the 120 modifiers do what their rows say, one does
+  **As of 2026-10-23, 119 of the 123 modifiers do what their rows say, one does
   part of it, and three are a name and a number.** Counted from
   `UCataclysmDungeonModifierEffects::BuiltStateOf` against every row of
   `game/Data/DungeonModifiers.csv`: every Celestial, Chaos, Death, Demonic,
