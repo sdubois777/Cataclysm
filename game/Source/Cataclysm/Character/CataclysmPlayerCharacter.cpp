@@ -2432,6 +2432,13 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 	// either weapon slot means there is nothing to do: either this already ran,
 	// or the character loaded a save holding something better, and replacing
 	// that would be worse than doing nothing.
+	// SINCE #2290: by reading the engine, not by running it, "both happen" is
+	// doubtful. `APawn::OnRep_PlayerState` is a RepNotify that no engine runtime
+	// source calls directly, and `APawn::PossessedBy` calls `SetPlayerState` and
+	// not `OnRep_PlayerState`, so in single play and for a listen server's own
+	// pawn only PossessedBy should reach InitAbilityActorInfo. A second call
+	// would come on a client whose player state replicates more than once, or
+	// from a second possession. NOT TESTED.
 	for (const ECataclysmGearSlot HeldWeaponSlot :
 		 UCataclysmGearSlots::WeaponSlots())
 	{
@@ -2515,6 +2522,10 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// Removed before adding, because this function is safe to run twice and on a
 	// listen server it does. Without this a second call would leave two handlers
 	// on one pawn.
+	// SINCE #2290: by reading the engine, not by running it, that a listen server
+	// runs it twice is doubtful; see GiveStartingWeapon above. A second call is
+	// still possible, from a client or a second possession, so every binding
+	// below is replaced rather than added. NOT TESTED.
 	// AND WHEN CRIPPLE IS GAINED OR LOST, WHICH MOVES NO ATTRIBUTE. Issue #2273. The walking speed is stored on
 	// the movement component, so something has to say when the tag changes; a stronger Cripple replaces the
 	// running one, which takes the tag off and puts it back, so that is heard too.
@@ -2592,13 +2603,20 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// with the attribute delegates because it is the same kind of thing: an
 	// event this character has to notice, which no attribute write announces.
 	//
-	// NOT UNBOUND, AND THAT IS SAFE, for the reason the dungeon game mode gives
-	// where it binds the same announcement: the subsystem belongs to the world,
-	// so it cannot outlive this character, and a binding to a destroyed object
-	// is skipped rather than called.
+	// REPLACED RATHER THAN ADDED, as the bindings above are. Issue #2290: these
+	// three were added with no handle, so a second run of this function bound
+	// each a second time, and the character heard every death, every hit and
+	// every skill use twice -- two kills counted, every `kill`, `hit_dealt` and
+	// `skill_use` row acting twice.
+	//
+	// NOT UNBOUND WHEN THE CHARACTER GOES, AND THAT IS SAFE, for the reason the
+	// dungeon game mode gives where it binds the same announcement: the
+	// subsystem belongs to the world, so it cannot outlive this character, and a
+	// binding to a destroyed object is skipped rather than called.
 	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
 	{
-		Events->OnDeath.AddUObject(
+		Events->OnDeath.Remove(SomethingDiedHandle);
+		SomethingDiedHandle = Events->OnDeath.AddUObject(
 			this, &ACataclysmPlayerCharacter::OnSomethingDied);
 
 		// AND THE OTHER TWO ANNOUNCEMENTS, for the worn rows that act on a blow
@@ -2609,9 +2627,11 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 		// nothing is listening, so before this nothing built a skill-use notice
 		// at all. The hit one is already on in a dungeon, where the game mode
 		// listens for its own rules.
-		Events->OnHit.AddUObject(
+		Events->OnHit.Remove(SomethingWasHitHandle);
+		SomethingWasHitHandle = Events->OnHit.AddUObject(
 			this, &ACataclysmPlayerCharacter::OnSomethingWasHit);
-		Events->OnSkillUsed.AddUObject(
+		Events->OnSkillUsed.Remove(SkillWasUsedHandle);
+		SkillWasUsedHandle = Events->OnSkillUsed.AddUObject(
 			this, &ACataclysmPlayerCharacter::OnSkillWasUsed);
 	}
 
