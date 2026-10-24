@@ -2,6 +2,274 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — Garbage is collected after every automation test that made a world, so a destroyed test world is freed before the next test; a memory line per test behind a switch, and one summary line at the end of every run
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp` (new; the handler and two tests in
+`Cataclysm.TestWorld.`). No game code, no data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or
+`game/Config/Tags/`, nothing of `CataclysmDungeonGameMode.*`, and **no change to `tools/unreal_build.py`**. Issue
+[#2485](https://github.com/sdubois777/Cataclysm/issues/2485). **Closes #2485 if the window's final `UsedVirtual` is below
+15 GB; otherwise #2485 stays open.**
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** The file compiles only under `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`, so it is nothing
+  in any packaged game.
+- **What changes in a test run:** after each automation test, if more `UWorld` objects are in memory than the last
+  collection left, `CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS)` runs before the next test. Its time is counted into the
+  ending test's reported duration, because the framework broadcasts the end event before it reads the clock
+  (`AutomationTest.cpp` 1386 then 1388).
+- **Every run now prints one line beginning `CataclysmTestMemorySummary:`** when the process exits, if any test ran.
+  The per-test line, beginning `CataclysmTestMemoryPerTest:`, is off unless the environment variable
+  `CATACLYSM_TEST_MEMORY_LINES=1` is set for the editor process or the console variable `Cataclysm.TestMemoryLines` is 1.
+- **Part 3 of the hypothesis is NOT decided.** Parts 1 and 2 (no collection runs between tests; a destroyed test world
+  stays in memory until one does) are proved by reading, below. Whether that is what reaches 45 GB is decided by the
+  window. If `UsedVirtual` stays high while the world count returns to its baseline, the memory is not owned by UObjects,
+  and it goes back to the coordinating session.
+- **A test that fails in the window is reported as a finding and NOT adjusted** (the coordinating session's ruling).
+- **NOT COMPILED AND NOT RUN.** A second session wrote the change and this entry under the enchantment session's brief 74.
+  No Unreal build and no Unreal test was run by the session that wrote it.
+
+### WHO RULED
+
+The owner (2026-10-24): "If it's maxing my ram it's gonna keep slowing everything down and needs to be fixed."
+
+The coordinating session's rulings of 2026-10-24, verbatim:
+
+> SHAPE CHANGE: no separate measuring window. The owner wants this fixed, and parts 1-2 are settled, so a whole-suite
+> window just to watch the growth again would cost an hour and tell us little new. We already have two measurements of
+> the before state (45.7 GB and 45.6 GB). Do Step A's instrument and Step B's fix in ONE commit, and run ONE whole-suite
+> window that measures the after state:
+> - The OnTestEndEvent handler logs one line per test: index, name, UsedVirtual, UsedPhysical, live UWorld count, live
+>   UObject count, and the collection's duration when one ran.
+> - Q2: collect after a test only when the live UWorld count is above its baseline, i.e. after any test that made a world.
+>   Log each collection's time.
+> - The guard as you proposed: Cataclysm.TestWorld.ADestroyedWorldIsFreedByTheCollectionBetweenTests, plus a check that
+>   the handler is registered. Prove it with prove_cpp_guard breaking the CollectGarbage call.
+> Q3: keep the per-test line OFF by default, behind a console variable or command-line switch. Always print one
+> end-of-run summary line: peak and final UsedVirtual, collections run and their total time. The window turns the
+> per-test line on for this measurement.
+
+And later the same day, verbatim: "#2485: tools/unreal_build.py MAY change if a switch needs it. It is an ordinary
+tracked tool with its own tests in tools/tests. If it changes, its tests change with it, and the entry says so. Prefer
+the environment variable if it works without a change." **It did not change**: the environment variable works without
+a change (read 7).
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `439786ca3`, before this change; engine lines are of Unreal Engine 5.8 as installed.
+
+1. **Part 1, no collection between tests.** `game/Source` calls none of `CollectGarbage`, `ForceGarbageCollection` and
+   `TryCollectGarbage` (searched: 0 matches). The automation framework does not either: `InternalStopTest`
+   (`AutomationTest.cpp` 1367 to 1414) sets the result and broadcasts `OnTestEndEvent` (1386), and nothing in it
+   collects. The engine's `UEngine::ConditionalCollectGarbage` (`UnrealEngine.cpp` 2185 on), called at the end of
+   `UWorld::Tick` (`LevelTick.cpp` 1970), collects on a request (`bFullPurgeTriggered`, 2217) or on its timer only when a
+   world in `WorldList` has begun play (2241 to 2295); every test world is made with `bInformEngineOfWorld=false`
+   (`CataclysmTestWorld.h` 285 to 286 and 344 to 345) and has no world context, so it is in no list.
+2. **Part 2, a destroyed world stays in memory.** `UWorld::CreateWorld` roots the world by default (`bAddToRoot = true`,
+   `World.h` 3375). `UWorld::DestroyWorld` (`World.cpp` 2770 to 2802) calls `CleanupWorld`, `RemoveFromRoot` and
+   `ClearFlags(RF_Standalone)`, and frees nothing. `CleanupWorld` and `CleanupWorldInternal` (6223 to 6497) and
+   `ULevel::CleanupLevel` (`Level.cpp` 595 to 649) mark nothing as garbage. The physics and render scenes are released in
+   `UWorld::FinishDestroy` (`World.cpp` 1570 on), which only a collection reaches. So until a collection, the world and
+   every actor in it are still in memory, and a weak pointer to either is still valid.
+3. **The end event.** `FOnTestEvent` is `DECLARE_MULTICAST_DELEGATE_OneParam(FOnTestEvent, FAutomationTestBase*)`
+   (`AutomationTest.h` 937); `OnTestStartEvent` and `OnTestEndEvent` are public members (957, 960). The start event is
+   broadcast in `InternalStartTest` before `RunTest` (`AutomationTest.cpp` 1311); the end event after the test's success
+   state is set (1376 to 1386), with `check(LatentCommands.IsEmpty())` at 1370, and while the test is still the framework's
+   current test (it is cleared at 1407 to 1411). **The thread is the game thread**: `InternalStopTest` is reached from
+   `FAutomationWorkerModule::ReportTestComplete` (`AutomationWorkerModule.cpp` 186 to 196), called from the worker's
+   `Tick` (65 to 100), which `FEngineLoop::Tick` calls outside any world tick (`LaunchEngineLoop.cpp` 6036 to 6045).
+4. **Whether a handler may collect there.** The engine's own `FTestWorldWrapper::DestroyTestWorld` collects with
+   `CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS)` inside a test (`AutomationCommon.cpp` 117 to 146, the call at 140), and
+   at the end event the test body has returned and no latent command is queued. What a collection logs at Log level is
+   not added to the test (`FAutomationTestOutputDevice::Serialize`, `AutomationTest.cpp` 232 to 234, captures only Error,
+   Warning and Display); a Warning or Error logged during the collection would be added to the ending test's entries
+   after its result was already decided (1376 to 1384).
+5. **The end of a run.** The two whole-suite logs of 2026-10-23 and 2026-10-24 (windows t70w and t71w) each hold one
+   "Received StartTestSession" and **no** "Received StopTestSession": the controller sends the stop message
+   ("Sending StopTestSession", t70w line 3654214) and `-testexit` ends the process two milliseconds later with
+   `FPlatformMisc::RequestExit(1, FEngineLoop::Tick.GScopedTestExit)`; the log's last line is "Engine exit requested". So
+   `OnAfterAllTestsEvent` (broadcast only on that stop message, `AutomationWorkerModule.cpp` 370 to 378) never fires in
+   this project's runs, and no module shut-down runs either. The Windows exit broadcasts
+   `FCoreDelegates::GetApplicationWillTerminateDelegate()` and then flushes the log before `TerminateProcess`
+   (`WindowsPlatformMisc.cpp` 1486 to 1515).
+6. **Where to bind.** This project's modules have no `StartupModule` (`Cataclysm.cpp` 8 is
+   `IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, ...)`), and no test or game file binds a global delegate
+   (searched for `FCoreDelegates::`, `OnPostEngineInit`, `FDelayedAutoRegisterHelper` and `Registrar`: 0 matches). Every
+   automation test is itself registered by a static object whose constructor calls
+   `FAutomationTestFramework::Get().RegisterAutomationTest` and whose destructor unregisters it (`AutomationTest.cpp` 165
+   and 176), so a static object binding to the same framework is safe at the same moment. The engine's one precedent,
+   `TestSamples.cpp` 18 to 30, binds both events with `AddRaw` in a `StartupModule` and removes them with `RemoveAll`.
+   Of this project's 236 test files, 206 guard themselves with `#if WITH_AUTOMATION_TESTS` and 30 with
+   `#if WITH_DEV_AUTOMATION_TESTS`; neither implies `WITH_EDITOR`.
+7. **The switch.** `run_automation_tests` in `tools/unreal_build.py` starts the editor with `subprocess.run([...],
+   capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)` and no `env=` (809 to 813), so the
+   editor inherits the environment of whatever runs the script. `FPlatformMisc::GetEnvironmentVariable` returns the
+   value or an empty string (`GenericPlatformMisc.h` 619).
+8. **Counting.** `TObjectIterator<UWorld>` excludes class default objects and, by
+   `GetObjectIteratorDefaultInternalExclusionFlags` (`UObjectIterator.h` 59 to 66), unreachable objects, and does not
+   exclude objects marked as garbage. `GUObjectArray.GetObjectArrayNumMinusAvailable()` is public (`UObjectArray.h` 1266)
+   and counts claimed object slots. `FPlatformMemory::GetStats()` on Windows: `UsedPhysical` is the working set,
+   `PeakUsedPhysical` its peak, `UsedVirtual` the commit charge (`PagefileUsage`, the private memory #2485 measured) and
+   `PeakUsedVirtual` its peak (`WindowsPlatformMemory.cpp` 342 to 346).
+9. **Holders that could outlive a test (point 5 of the brief).** Searched `game/Source` for statics holding a world or
+   actor: no static raw `U...*`/`A...*` variable, no static `TArray`/`TMap`/`TSet` of raw object pointers, no
+   `TStrongObjectPtr`, `FGCObject`, `AddReferencedObjects` or static `TObjectPtr` (every match of the search is a
+   function declaration). Six function-local static maps keyed by `TWeakObjectPtr`: `CataclysmDamageTakenMultiplier.cpp`
+   22, `CataclysmGroundPound.cpp` 35, `CataclysmMinion.cpp` 2079, `CataclysmTaunt.cpp` 31, `CataclysmTauntAura.cpp` 28,
+   `CataclysmTimeLockRift.cpp` 45. A weak key does not keep its object; after a collection it reads as stale instead of
+   pointing at a destroyed but living object. Not read: what each of the six does with a stale key, the engine, and
+   plugins.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit, in `CataclysmCollectGarbageBetweenTests.cpp`.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| 1 | Collect after a test only when the live `UWorld` count is above its baseline | `OnTestEnd`, 186 to 204: the count at 194, the test at 196, `CollectDestroyedWorlds` (102 to 111, the call at 107) at 198 |
+| 2 | Log each collection's time | the per-test line's `collection_ms` (210 to 224); the summary's `collections` and `collection_total_s` (232 to 249) |
+| 3 | One line per test: index, name, `UsedVirtual`, `UsedPhysical`, live `UWorld` count, live `UObject` count, the collection's duration | 216 to 224 |
+| 4 | Per-test line off by default, behind a console variable or switch | the console variable 53 to 59, the environment variable read at 172 to 173, the test at 206 |
+| 5 | Always one end-of-run summary line: peak and final `UsedVirtual`, collections and their total time | `PrintSummary`, 232 to 249, bound at 181 to 183 |
+| 6 | The guard and a check that the handler is registered | `Cataclysm.TestWorld.ADestroyedWorldIsFreedByTheCollectionBetweenTests` 273 to 327; `Cataclysm.TestWorld.TheCollectionBetweenTestsIsBoundToEveryTestEnd` 329 to 343 |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The switch is the environment variable `CATACLYSM_TEST_MEMORY_LINES=1`, or the console variable
+  `Cataclysm.TestMemoryLines`, either one.** The window sets the variable in the shell that runs the script, for example
+  `$env:CATACLYSM_TEST_MEMORY_LINES = "1"; python tools/unreal_build.py tests` in PowerShell or
+  `CATACLYSM_TEST_MEMORY_LINES=1 python tools/unreal_build.py tests` in Git Bash, and the editor inherits it (read 7).
+  It is read once, as the first test starts, and only the exact value `1` turns it on. The console variable is for an
+  interactive editor. Not taken: a command-line switch, which needs `tools/unreal_build.py` to pass it; the console
+  variable alone, which the script could set only through `-ExecCmds`, also a change to the script.
+- **The baseline is the live world count as the first test starts, and after that whatever the last collection left.**
+  Not taken: a fixed baseline from the first test, because one world that some test leaves rooted would then cause a
+  collection after every later test; and an extra collection before the first test, which costs a collection for a
+  baseline the first collection corrects anyway. A count below the baseline (a world alive at start-up that a collection
+  then freed) lowers it at the next collection.
+- **A world marked as garbage is counted** (read 8). It still holds its memory until a collection. Not taken: counting
+  only worlds not marked as garbage, which would skip the collection after a test whose world was so marked.
+- **The summary line is printed from `FCoreDelegates::GetApplicationWillTerminateDelegate()`, bound as the first test
+  starts, once, and only if a test ended.** It is the one event that still runs after the last test in this project's
+  runs (read 5). Not taken: `OnAfterAllTestsEvent`, never broadcast in these runs; the module's shut-down, which the
+  forced exit skips; and printing the summary after every test and keeping the last, which would print 4,000 lines that
+  the ruling kept off by default.
+- **The peak is the operating system's `PeakUsedVirtual`**, the process's peak commit since it started, so it includes
+  the start-up and any moment inside a test. Not taken: the highest figure sampled between tests, which misses a peak
+  inside a large test.
+- **Bound by a static object in the test file, not in a `StartupModule`** (read 6). Not taken: giving `Cataclysm.cpp` a
+  module class of its own, which changes a shared file and the primary module for a test-only purpose.
+- **Guarded by `#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`**, so it is in no packaged game, Development included.
+  Not taken: `WITH_AUTOMATION_TESTS`, as most test files use, which is true in a packaged Development build.
+- **The two tests are in the same new file as the handler, in the group `Cataclysm.TestWorld.`**, the group of the tests
+  of the test harness (`CataclysmTestWorldTests.cpp`). What they need is in the file's namespace
+  `CataclysmCollectGarbageBetweenTests`: the one function `CollectDestroyedWorlds()` (the handler's own collection,
+  returning the world counts before and after and the seconds) and the one accessor `IsHandlerRegistered()`, which asks
+  the framework whether the handler object is bound to both test events. Not taken: a header exposing them, a second new
+  file for nothing.
+- **The weak pointers are asked "even if garbage"** (`IsValid(true)`), so each assertion is about whether the object is
+  still in memory, not about its flags.
+- **Collection times are written as milliseconds with one decimal on the per-test line and seconds with three on the
+  summary; memory is in whole megabytes (bytes divided by 1,048,576).**
+
+### WHAT WAS BUILT
+
+`game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp`, 347 lines, all new:
+
+- 1 to 49: the include of `Misc/AutomationTest.h`, the guard, the includes and the comment saying why.
+- 51: `DEFINE_LOG_CATEGORY_STATIC(LogCataclysmTestMemory, Log, All)`, so both lines reach the log at Log level.
+- 53 to 59: the console variable `Cataclysm.TestMemoryLines`, default 0.
+- 61 to 266: namespace `CataclysmCollectGarbageBetweenTests`: `FCollection` (63 to 73); `CountLiveWorlds` (84 to 92);
+  `CollectDestroyedWorlds` (102 to 111); `Megabytes` (114 to 117); `FTestEndCollector` (129 to 257), whose constructor
+  binds `OnTestStartEvent` and `OnTestEndEvent` with `AddRaw` and whose destructor removes all three bindings;
+  `GTestEndCollector` (259); `IsHandlerRegistered` (262 to 265).
+- 268 to 345: the two tests, between `#define CATACLYSM_TEST` and `#undef CATACLYSM_TEST`, the neighbouring file's
+  macro.
+
+**The two lines, with their fixed prefixes.** The per-test line, when the switch is on:
+
+```
+LogCataclysmTestMemory: CataclysmTestMemoryPerTest: index=<n> name=<dotted test name> used_virtual_mb=<MB> used_physical_mb=<MB> worlds=<count after any collection> objects=<claimed object slots> collection_ms=<ms with one decimal, or none>
+```
+
+The summary line, always, once at exit if a test ended:
+
+```
+LogCataclysmTestMemory: CataclysmTestMemorySummary: tests=<tests ended> peak_used_virtual_mb=<MB> final_used_virtual_mb=<MB> collections=<n> collection_total_s=<s with three decimals> worlds_at_last_collection=<baseline>
+```
+
+`index` counts from 1 in the order tests end. `name` is `GetTestFullName()`, the dotted path. `worlds_at_last_collection`
+is the baseline as the run ended.
+
+### THE TESTS, WITH EVERY ASSERTION'S MEANING
+
+1. **`Cataclysm.TestWorld.ADestroyedWorldIsFreedByTheCollectionBetweenTests`.** One collection first; the worlds it
+   leaves are the test's baseline. Then ten times: a world from `MakeWorldThatHasBegunPlay`, a real
+   `ACataclysmEnemyCharacter` spawned in it (one creature to a world, so no spawn overlaps), a weak pointer to each, and
+   `DestroyWorld(false)`.
+   - Set-up, 20 assertions: `TestNotNull` "world <i>" (the test stops if one is null) and "the creature in world <i>".
+   - **The control, read first, 21 assertions:** for each i, `TestTrue` "before the collection, destroyed world <i> is
+     still in memory" and "... the creature in world <i> is still in memory"; then, from the collection's own count
+     taken before it collects, `TestTrue` "before the collection, the ten destroyed worlds were counted as alive"
+     (`WorldsBefore >= Baseline + 10`). If this half fails, the reading in read 2 is wrong.
+   - **After `CollectDestroyedWorlds()`, 21 assertions:** for each i, `TestFalse` "after the collection, destroyed world
+     <i> is freed" and "... the creature in world <i> is freed"; and `TestEqual` "after the collection, the live world
+     count is back at its baseline" (`int32`, `int32`).
+   - 62 assertions in all, from 8 assertion statements.
+2. **`Cataclysm.TestWorld.TheCollectionBetweenTestsIsBoundToEveryTestEnd`.**
+   - **The control, read first:** `TestFalse` "an object that never bound itself is not on the test end event", the
+     framework's `IsBoundToObject` asked about a local integer.
+   - `TestTrue` "the collection between tests is bound to the test start and test end events".
+   - 2 assertions.
+
+The only `TestEqual` compares `int32` with `int32` (`AutomationTest.h` 1985).
+
+### NOT TESTED
+
+- **Nothing was compiled or run.**
+- **That the handler collects in a real run, and how long it takes.** The guard calls the handler's function directly;
+  the second test shows the handler is bound, not that it was called. The window's per-test lines show both.
+- **That the summary line reaches the log at a `-testexit` exit.** It is read from the engine (read 5), not run.
+- **Memory not owned by UObjects**, growth inside one large test, and the suite-level figure: no automation test can see
+  them. That is the window's question.
+- **Whether forcing a collection breaks a test** that relied on an object living on after its world was destroyed.
+  Read 9 found no static holding a raw pointer in game code; the engine and plugins were not searched, and the six weak
+  maps were not read for what they do with a stale key.
+- **The console variable** is not exercised by any test, and nor is the environment variable.
+
+### GUARD PROOFS PROPOSED
+
+**TW-I, the collection removed.** `prove_cpp_guard` with `test_prefix="Cataclysm.TestWorld."`, trailing dot included. No
+other group begins with `Cataclysm.TestWorld` (a search of `game/Source` for `"Cataclysm.TestWorld` followed by anything
+but a dot: 0 matches), so the prefix selects the three tests of `CataclysmTestWorldTests.cpp` and the two of this file.
+
+- File: `game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp`.
+- Old text: `\t\tCollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);\n` (two tabs, the call, a line feed), line 107, counted
+  exactly once in its file by script. New text: nothing. The function keeps its two counts and its clock, so the file
+  compiles alone with the line gone.
+- **Predicted:** `ADestroyedWorldIsFreedByTheCollectionBetweenTests` fails, with 21 failed assertions: the ten "destroyed
+  world <i> is freed", the ten "the creature in world <i> is freed", and "the live world count is back at its baseline".
+  Its 20 set-up and 21 control assertions pass. `TheCollectionBetweenTestsIsBoundToEveryTestEnd` passes (the handler is
+  still bound; it only no longer collects), and the three tests of `CataclysmTestWorldTests.cpp` pass. Restored: all
+  five pass. Five tests performed in each half.
+
+### THE WINDOW'S PREDICTIONS
+
+Stated by the enchantment session before the run: "UsedVirtual at the end below 15 GB"; the `UWorld` count back at its
+baseline within 2 after each collection; the whole suite 0 failed; and a rough figure for the total collection time,
+which the enchantment session registers. The before figures are #2485's: 45,700 MB private after 3,377 tests (t71w) and
+45,644 MB after 2,956 tests (void-zones-w41).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-24 — The synchronous save waits for the asynchronous writes to its own slot, so a death written just after an item pickup is not refused
 
 **Affects:** `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` (a project-owned task pipe and a record of the last
