@@ -2,6 +2,57 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 (recorded 2026-10-24) — The Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the modifier slots
+
+**Affects:** `docs/DECISIONS.md` and `docs/Cataclysm_GDD_v2.md` only. **Recorded, not built.** Issue
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308), which stays open for the building.
+
+**Every dungeon has an independent 5% chance of carrying the Corrupted Stalker, whatever its Cataclysm type and
+whatever fills its modifier slots.** The project owner decided this on 2026-09-05 in a comment on issue #1308; it was
+not written into `docs/` then, and is recorded here on 2026-10-24 at the coordinating session's ruling of that day:
+"record the owner's decision of 2026-09-05 in docs/: a flat 5% chance on any dungeon, weight 20 in the modifier score,
+out of the slot draw, and no extra draw before the sub-type roll. Quote the owner's words from the issue." It answers
+the question the entry dated 2026-09-05 headed "The Corrupted Stalker is granted separately and does not take a
+modifier slot", further down this file, left open: that ruling took the modifier out of the draw, and nothing said what
+makes it appear instead.
+
+### The owner's answers
+
+Asked what should make the Corrupted Stalker appear, the owner gave two answers, verbatim:
+
+- On the rule: **"A flat chance on any dungeon (Recommended)"** -- put to them as a fixed percentage per dungeon,
+  independent of the modifier slots, on any of the eight Cataclysm types, which is what its Generic type already means.
+- On the number: **"5% of dungeons (Recommended)"** -- put to them as about 1 dungeon in 20, rare enough to stay an
+  event rather than routine, common enough that a player meets several across a campaign.
+
+### Two constraints that bind whatever builds it
+
+1. **It carries its weight of 20 into the Modifier Score.** Section VIII of the design says "Each dungeon modifier
+   carries a weight, and the sum of the weights on a dungeon is the Modifier Score", so a dungeon granted the Stalker
+   scores 20 more than the same dungeon without it. Granted separately is not granted weightlessly.
+2. **It is never also drawn into a slot.** It stays out of the pool `modifiers.pool_for` hands to the draw in
+   `sim/cataclysm_sim/modifiers.py`, as it is today, so a dungeon cannot carry it twice or lose a slot to it.
+
+### Two cautions, from the same comment
+
+- **The roll must not disturb the one-draw sub-type roll.** Rolling a dungeon's sub-type promises exactly one draw from
+  the random stream, guarded by `Cataclysm.Surge.RollingASubTypeCostsExactlyOneDraw`, because an extra draw shifts every
+  later dungeon in the same wave. The coordinating session's ruling above puts it as "no extra draw before the sub-type
+  roll". The issue asks that the test protecting that promise be extended rather than worked around.
+- **Measure what it costs.** One dungeon in twenty gaining a top-weight modifier raises average difficulty; the figures
+  are to be re-measured and restated when it is built, not assumed lost in the noise.
+
+### Nothing is built
+
+**Neither the game nor the simulation grants the Corrupted Stalker yet.** `game/README.md` still says nothing grants it,
+and `modifiers.pool_for` still keeps it out of the pool with nothing granting it elsewhere; both remain true until the
+building lands. No figure was measured for this entry and none has moved. Issue #1308 stays open for the work: the
+roll in the game and in the simulation, the extended one-draw test, and the re-measured figures.
+
+This entry adds lines to `docs/DECISIONS.md` and removes none of development's.
+
+---
+
 ## 2026-10-23 — Three more Celestial Edicts are rows and are built in the game: Abstinence takes a quarter of the mana paid from health, Vigil smites a player who stands still for 3 seconds, Humility takes the extra damage from critical strikes; and breaking a punishing Edict wakes an Angelic Warden
 
 **The last three of the eight Divine Edicts are rows of the design workbook and do what the design says.** The Edict
