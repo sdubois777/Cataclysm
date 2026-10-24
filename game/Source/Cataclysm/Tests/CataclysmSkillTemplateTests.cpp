@@ -33547,4 +33547,344 @@ bool FCataclysmBuffPotencyLeftAloneTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Celestial_Edict_of_Abstinence, the dungeon floor rule. 2026-10-23, G7c.
+//
+// "A quarter of a skill's mana cost is also taken from health." Ruled 2026-10-23: the mana cost is the mana actually
+// taken from the mana pool, after reductions; nothing for a cost paid from health or the energy shield, a free cast,
+// the basic attack or an aura's upkeep; the share is a health cost like any other, floored to leave 1 health, and the
+// cast is never refused for it.
+//
+// EVERY TEST HERE PUTS THE RULE'S OWN MODIFIERS ON THE CASTER, built by `UCataclysmDungeonModifierEffects` from the
+// row key exactly as a floor builds them, as the Desperate Measures tests above do. A caster of its own for each cast,
+// for the reason they give: a skill commits a cooldown, so a second activation would be refused.
+// --------------------------------------------------------------------------
+
+namespace CataclysmAbstinenceTest
+{
+	using namespace CataclysmSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	/**
+	 * What the floor would put on this caster: the Edict of Abstinence's own modifiers at `Strength`, or none; beside
+	 * them a flat figure on each stat in `Flats`; and the caster's own mana cost removed if asked, the way "your skills
+	 * cost no mana" removes it.
+	 */
+	void UnderAbstinence(FScopedFighter& Caster, bool bCarriesTheRow, float Strength = 1.0f,
+						 const TMap<FName, float>& Flats = TMap<FName, float>(), bool bCostRemoved = false)
+	{
+		TArray<FName> Rows;
+		if (bCarriesTheRow)
+		{
+			Rows.Add(FName(UCataclysmDungeonModifierEffects::EdictOfAbstinenceKey));
+		}
+		const TMap<FName, TArray<FCataclysmStatModifier>> FromTheFloor =
+			UCataclysmDungeonModifierEffects::StatModifiersFor(
+				UCataclysmDungeonModifierEffects::PlayerEffectsFor(Rows, 1, 0, Strength));
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : FromTheFloor)
+		{
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Stat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Append(Stat.Value);
+		}
+		for (const TPair<FName, float>& Flat : Flats)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = ECataclysmStatBucket::Flat;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Flat.Value;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Flat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Modifier);
+		}
+		if (bCostRemoved)
+		{
+			FCataclysmStatModifier Free;
+			Free.Bucket = ECataclysmStatBucket::Removed;
+			Free.Source = ECataclysmModifierSource::Enchantment;
+			Free.Value = 1.0f;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(UCataclysmSkillSlots::ManaCostStat));
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Free);
+		}
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A Movement skill, which costs mana from the slot's row, as the Desperate Measures tests grant it. */
+	UCataclysmMovementSkill* GrantAbstinenceStep(FScopedFighter& Caster)
+	{
+		return GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement, TEXT("Mode=Blink; Range=9; Radius=2"), TEXT("Ashwalk"),
+			TEXT("Slot.Movement"));
+	}
+}
+
+// A MANA-PAID CAST ALSO PAYS A QUARTER OF THE MANA IT TOOK IN HEALTH, AND MORE IN AN ASCENDANT UP TO THE WHOLE OF IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceTakesAShareTest,
+	"Cataclysm.Skills.UnderTheEdictOfAbstinenceAManaPaidCastAlsoPaysAQuarterOfItsManaInHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceTakesAShareTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbstinenceTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter AtBase(World, FVector(30 * M, 0, 0));
+	FScopedFighter Deeper(World, FVector(60 * M, 0, 0));
+	FScopedFighter Deepest(World, FVector(90 * M, 0, 0));
+	UnderAbstinence(Plain, /*bCarriesTheRow=*/false);
+	UnderAbstinence(AtBase, true);
+	UnderAbstinence(Deeper, true, /*Strength=*/1.5f);
+	UnderAbstinence(Deepest, true, /*Strength=*/7.9f);
+
+	UCataclysmMovementSkill* PlainStep = GrantAbstinenceStep(Plain);
+	UCataclysmMovementSkill* AtBaseStep = GrantAbstinenceStep(AtBase);
+	UCataclysmMovementSkill* DeeperStep = GrantAbstinenceStep(Deeper);
+	UCataclysmMovementSkill* DeepestStep = GrantAbstinenceStep(Deepest);
+	if (!PlainStep || !AtBaseStep || !DeeperStep || !DeepestStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to all four."));
+		return false;
+	}
+	const float Cost = PlainStep->ManaCostFor(Plain.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("the skill costs mana: %.1f"), Cost), Cost > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the Edict leaves its mana cost as it was"), AtBaseStep->ManaCostFor(AtBase.AbilitySystem), Cost,
+			  0.01f);
+
+	// THE CONTROL: no row, the mana and no health.
+	TestTrue(TEXT("with no row the cast goes off"), Activate(Plain, PlainStep));
+	TestEqual(TEXT("and takes its mana"), Plain.Mana(), 1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and no health"), Plain.Health(), 100000.0f, 0.01f);
+
+	// THE ROW: the mana, and a quarter of it from health.
+	TestTrue(TEXT("under the Edict the cast goes off"), Activate(AtBase, AtBaseStep));
+	TestEqual(TEXT("and takes its mana"), AtBase.Mana(), 1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and a quarter of it from health"), AtBase.Health(), 100000.0f - 0.25f * Cost, 0.01f);
+	TestEqual(TEXT("which is what the payment recorded"), AtBaseStep->ManaAlsoTakenAsHealthThisCast(), 0.25f * Cost,
+			  0.01f);
+
+	// STRONGER: 37.5% on an Ascendant's floor 6, and the whole of it on floor 70, where 197.5% is held at 100.
+	TestTrue(TEXT("at strength 1.5 the cast goes off"), Activate(Deeper, DeeperStep));
+	TestEqual(TEXT("and takes 37.5% of its mana from health"), Deeper.Health(), 100000.0f - 0.375f * Cost, 0.01f);
+	TestTrue(TEXT("at strength 7.9 the cast goes off"), Activate(Deepest, DeepestStep));
+	TestEqual(TEXT("and takes the whole of its mana from health, and no more"), Deepest.Health(), 100000.0f - Cost,
+			  0.01f);
+	return true;
+}
+
+// NOTHING MORE FOR A CAST THAT TOOK NO MANA FROM THE MANA POOL: a cost paid from health or from the energy shield, a
+// free cast, the basic attack, and an aura's upkeep.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceOnlyManaTakenTest,
+	"Cataclysm.Skills.UnderTheEdictOfAbstinenceACostPaidFromHealthOrShieldAFreeCastTheBasicAttackAndAnAurasUpkeepPayNoHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceOnlyManaTakenTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbstinenceTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A COST PAID FROM HEALTH: the whole cost from health, and not a quarter more beside it.
+	FScopedFighter FromHealth(World, FVector::ZeroVector);
+	UnderAbstinence(FromHealth, true, 1.0f, {{FName(UCataclysmGameplayAbility::CostPaidFromHealthStat), 1.0f}});
+	UCataclysmMovementSkill* FromHealthStep = GrantAbstinenceStep(FromHealth);
+	if (!FromHealthStep)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+	const float Cost = FromHealthStep->ManaCostFor(FromHealth.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("the skill costs something: %.1f"), Cost), Cost > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a cast paid from health goes off"), Activate(FromHealth, FromHealthStep));
+	TestEqual(TEXT("and takes no mana"), FromHealth.Mana(), 1000.0f, 0.01f);
+	TestEqual(TEXT("and its cost from health, and nothing beside it"), FromHealth.Health(), 100000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and owes nothing"), FromHealthStep->ManaAlsoTakenAsHealthThisCast(), 0.0f, 0.001f);
+
+	// A COST PAID FROM THE ENERGY SHIELD, with no mana to pay it: Cast from Ward.
+	FScopedFighter FromShield(World, FVector(30 * M, 0, 0));
+	UnderAbstinence(FromShield, true, 1.0f, {{FName(UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat), 1.0f}});
+	FromShield.Set(Vital::GetManaAttribute(), 0.0f);
+	FromShield.Set(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+	FromShield.Set(Vital::GetEnergyShieldAttribute(), 1000.0f);
+	UCataclysmMovementSkill* FromShieldStep = GrantAbstinenceStep(FromShield);
+	if (!FromShieldStep)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+	TestTrue(TEXT("a cast paid from the shield goes off"), Activate(FromShield, FromShieldStep));
+	TestEqual(TEXT("and takes its cost from the shield"), FromShield.Get(Vital::GetEnergyShieldAttribute()),
+			  1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and no health"), FromShield.Health(), 100000.0f, 0.01f);
+
+	// A FREE CAST: the character's own reduction removed the cost.
+	FScopedFighter Free(World, FVector(60 * M, 0, 0));
+	UnderAbstinence(Free, true, 1.0f, TMap<FName, float>(), /*bCostRemoved=*/true);
+	UCataclysmMovementSkill* FreeStep = GrantAbstinenceStep(Free);
+	if (!FreeStep)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+	TestEqual(TEXT("set-up: this character pays no mana for it"), FreeStep->ManaCostFor(Free.AbilitySystem), 0.0f,
+			  0.001f);
+	TestTrue(TEXT("a free cast goes off"), Activate(Free, FreeStep));
+	TestEqual(TEXT("and takes no mana"), Free.Mana(), 1000.0f, 0.01f);
+	TestEqual(TEXT("and no health"), Free.Health(), 100000.0f, 0.01f);
+
+	// THE BASIC ATTACK, which has no mana cost: granted as the Desperate Measures test grants it.
+	FScopedFighter Swinger(World, FVector(90 * M, 0, 0));
+	FScopedFighter Target(World, FVector(92 * M, 0, 0));
+	UnderAbstinence(Swinger, true);
+	const FGameplayAbilitySpecHandle Handle = Swinger.AbilitySystem->GiveAbilityInSlot(
+		UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::BasicAttack, /*Level=*/100, Swinger.Actor);
+	FGameplayAbilitySpec* Spec = Swinger.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the basic attack."));
+		return false;
+	}
+	Swing->SkillName = TEXT("Basic Attack");
+	Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2.4; Angle=120; MaxTargets=1"));
+	TestEqual(TEXT("set-up: the basic attack costs no mana"), Swing->ManaCostFor(Swinger.AbilitySystem), 0.0f, 0.001f);
+	TestTrue(TEXT("it swings"), UCataclysmBasicAttack::Swing(Swinger.AbilitySystem));
+	TestEqual(TEXT("and takes no health"), Swinger.Health(), 100000.0f, 0.01f);
+
+	// AN AURA'S UPKEEP: switching the aura on is a cast; each pulse after it drains mana and takes no health.
+	FScopedFighter Auraist(World, FVector(120 * M, 0, 0));
+	UnderAbstinence(Auraist, true);
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Auraist, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"), TEXT("Conflagration"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+	const float PerPulse = Aura->ManaCostFor(Auraist.AbilitySystem, /*bForAUse=*/false);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the aura costs mana a pulse: %.1f"), PerPulse), PerPulse > 0.0f)
+		|| !TestTrue(TEXT("set-up: the aura switches on"), Activate(Auraist, Aura)))
+	{
+		return false;
+	}
+	const float ManaBeforePulse = Auraist.Mana();
+	const float HealthBeforePulse = Auraist.Health();
+	Aura->Pulse();
+	TestTrue(TEXT("a pulse later it is still running"), Aura->IsHeld());
+	TestEqual(TEXT("and the pulse drained its mana"), Auraist.Mana(), ManaBeforePulse - PerPulse, 0.01f);
+	TestEqual(TEXT("and took no health"), Auraist.Health(), HealthBeforePulse, 0.01f);
+	return true;
+}
+
+// THE SHARE NEVER KILLS AND NEVER REFUSES THE CAST: it stops at the last point of health.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceLeavesOneTest,
+	"Cataclysm.Skills.TheEdictOfAbstinencesShareLeavesOneHealthAndNeverRefusesTheCast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceLeavesOneTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbstinenceTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// AT ITS CAP, THE WHOLE COST IS OWED, FROM 3 HEALTH AND FROM 1.
+	FScopedFighter Frail(World, FVector::ZeroVector);
+	FScopedFighter AtOne(World, FVector(30 * M, 0, 0));
+	UnderAbstinence(Frail, true, /*Strength=*/7.9f);
+	UnderAbstinence(AtOne, true, /*Strength=*/7.9f);
+	Frail.Set(Vital::GetHealthAttribute(), 3.0f);
+	AtOne.Set(Vital::GetHealthAttribute(), 1.0f);
+	UCataclysmMovementSkill* FrailStep = GrantAbstinenceStep(Frail);
+	UCataclysmMovementSkill* AtOneStep = GrantAbstinenceStep(AtOne);
+	if (!FrailStep || !AtOneStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+	const float Cost = FrailStep->ManaCostFor(Frail.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the share owed, the whole %.1f, is more than 3 health"), Cost),
+				  Cost > 3.0f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("from 3 health the cast is not refused"), Activate(Frail, FrailStep));
+	TestEqual(TEXT("and takes its mana"), Frail.Mana(), 1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and leaves 1 health"), Frail.Health(), 1.0f, 0.001f);
+	TestEqual(TEXT("though it owed the whole"), FrailStep->ManaAlsoTakenAsHealthThisCast(), Cost, 0.01f);
+
+	TestTrue(TEXT("from 1 health the cast is not refused"), Activate(AtOne, AtOneStep));
+	TestEqual(TEXT("and takes its mana"), AtOne.Mana(), 1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and leaves the 1"), AtOne.Health(), 1.0f, 0.001f);
+	return true;
+}
+
+// THE SHARE IS A HEALTH COST LIKE THE OTHERS: IT FILLS FERVOUR, IT OPENS BLOOD RUSH'S WINDOW, AND THE LAST DROP
+// SUPPRESSES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceIsAHealthCostTest,
+	"Cataclysm.Skills.TheEdictOfAbstinencesShareFillsFervourOpensBloodRushsWindowAndTheLastDropSuppressesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceIsAHealthCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmAbstinenceTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A THOUSAND MAXIMUM HEALTH, SO A SHARE OF IT IS A FIGURE WORTH READING.
+	FScopedFighter Filler(World, FVector::ZeroVector);
+	FScopedFighter Dropped(World, FVector(30 * M, 0, 0));
+	for (FScopedFighter* Caster : {&Filler, &Dropped})
+	{
+		Caster->Set(Vital::GetMaxHealthAttribute(), 1000.0f);
+		Caster->Set(Vital::GetHealthAttribute(), 1000.0f);
+		// THE MASOCHIST'S RATE FOR HEALTH SPENT AS A COST: 1 Fervour per 1% of maximum health.
+		Caster->Set(UCataclysmClassResourceAttributeSet::GetFervourFromCostAttribute(), 1.0f);
+	}
+	UnderAbstinence(Filler, true);
+	UnderAbstinence(Dropped, true, 1.0f, {{FName(UCataclysmSkillTemplate::HealthCostSuppressedStat), 1.0f}});
+	UCataclysmMovementSkill* FillerStep = GrantAbstinenceStep(Filler);
+	UCataclysmMovementSkill* DroppedStep = GrantAbstinenceStep(Dropped);
+	if (!FillerStep || !DroppedStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+	TestEqual(TEXT("set-up: no window is open before the cast"), Filler.AbilitySystem->SecondsSinceHealthCostPaid(),
+			  -1.0f, 0.001f);
+
+	TestTrue(TEXT("the cast goes off"), Activate(Filler, FillerStep));
+	const float Paid = 1000.0f - Filler.Health();
+	if (!TestTrue(FString::Printf(TEXT("and its share was taken from health (%.2f)"), Paid), Paid > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the share became Fervour, 1 per 1% of maximum health"), Filler.Fervour(), Paid / 1000.0f * 100.0f,
+			  0.01f);
+	TestEqual(TEXT("and opened the window after a health cost, at this instant"),
+			  Filler.AbilitySystem->SecondsSinceHealthCostPaid(), 0.0f, 0.001f);
+
+	// THE LAST DROP: "your skills cost no health". The share is owed and not taken, and nothing a payment opens opens.
+	TestTrue(TEXT("under The Last Drop the cast goes off"), Activate(Dropped, DroppedStep));
+	TestTrue(TEXT("set-up: and owed its share"), DroppedStep->ManaAlsoTakenAsHealthThisCast() > 0.0f);
+	TestEqual(TEXT("which was not taken"), Dropped.Health(), 1000.0f, 0.01f);
+	TestEqual(TEXT("so it filled no Fervour"), Dropped.Fervour(), 0.0f, 0.001f);
+	TestEqual(TEXT("and opened no window"), Dropped.AbilitySystem->SecondsSinceHealthCostPaid(), -1.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

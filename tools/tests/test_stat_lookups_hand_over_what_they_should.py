@@ -221,6 +221,11 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Traps layer 3 added one more on 2026-10-21: the one helper
 #: `SkillTrapFigureOf` in `CataclysmMinion.cpp` that the trap cap bonus and the
 #: no-expire flag are asked through.
+#: The Edicts of Abstinence and Humility (G7c) added two more on 2026-10-23: the
+#: share of the mana a cast took that is also taken from health, asked in
+#: `UCataclysmGameplayAbility::ApplyCost` with the skill's tags once mana has
+#: been taken; and the flag by which a critical strike deals no extra damage,
+#: asked beside the critical multiplier in `CataclysmVitalAttributeSet.cpp`.
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -486,6 +491,20 @@ INVENTORY = {
      'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
         'the chance a skill does not go on cooldown, asked of the '
         'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAlsoTakenFromHealthPercentStat), SkillTagsForStats(), 0.0f'):
+        'the share of the mana a cast took that is also taken from health, the '
+        'Edict of Abstinence (G7c), asked with the tags of the skill once mana '
+        'has been taken; its only row carries no condition, so no blow or '
+        'target is needed; nought is the fallback because the stat has no '
+        'attribute.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat), AssetTags, 0.0f'):
+        'the flag by which a critical strike deals no extra damage, the Edict '
+        'of Humility (G7c), asked of the attacker with the blow\'s tags beside '
+        'the critical multiplier; its only row carries no condition, so no '
+        'target, distance or stagger is handed over; nought is the fallback '
+        'because the stat has no attribute.',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(ManaCostAsCurrentHealthPercentStat), SkillTagsForStats(), 0.0f'):
         'the share of current health a cast pays instead of its mana, asked '
