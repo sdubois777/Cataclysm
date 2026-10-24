@@ -262,7 +262,7 @@ Positive_Summoned_minions_inherit_10_25_of_your_armor_a,Summoned minions inherit
 Positive_Consuming_a_resource_stack_or_charge_grants_5_1,Consuming a resource stack or charge grants 5%-10% increased damage for 3 seconds,Generic,4.0,"Keyword.Consume, Stat.Offense.Global",False,
 Positive_Each_resource_or_charge_consumed_restores_1_3,Each resource or charge consumed restores 1%-3% of your maximum HP,Generic,4.0,"Keyword.Consume, Stat.Defense.Life",False,
 Positive_While_moving_your_leech_is_increased_by_20_40,"While moving, your leech is increased by 20%-40%",Generic,4.0,"Scope.WhileMoving, Stat.Recovery.Leech",False,
-Positive_While_moving_your_DoTs_deal_20_40_increased_d,"While moving, your DoTs deal 20%-40% increased damage",Generic,4.0,"Scope.WhileMoving, Keyword.DoT.Generic",False,
+Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea,"While the enemy is moving, your DoTs on them deal 20%-40% more damage",Generic,4.0,Keyword.DoT.Generic,False,
 Positive_While_moving_your_evasion_chance_is_increased_b,"While moving, your evasion chance is increased by 10%-20%",Generic,4.0,"Scope.WhileMoving, Stat.Defense.Evasion",False,
 Positive_While_stationary_your_gadgets_deal_20_40_incr,"While stationary, your gadgets deal 20%-40% increased damage",Generic,4.0,"Scope.WhileStationary, Type.Deployable",False,
 Positive_While_stationary_your_aura_radius_is_doubled,"While stationary, your aura radius is doubled",Generic,4.0,"Scope.WhileStationary, Slot.Aura, Type.AOE.Aura",False,

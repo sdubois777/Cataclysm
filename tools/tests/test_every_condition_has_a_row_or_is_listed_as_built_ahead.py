@@ -107,7 +107,7 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # built ahead of its row on branch `feat/dot-target-moving`, for "While the
     # enemy is moving, your DoTs on them deal 20%-40% more damage". The data
     # commit on the same branch rewrites the row and takes this name out.
-    "target_is_moving",
+    # TAKEN OUT ON 2026-10-24 by that data commit: the row names it now.
 }
 
 #: A condition several enchantment effect rows name. The control.

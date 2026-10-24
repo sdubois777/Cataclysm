@@ -31,6 +31,12 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 	// AND ONE ON 2026-10-08, the owner's approved reword of Divine
 	// Retribution's ten-piece bonus, so that its sentence states the five
 	// seconds its row waits. The old sentence opened "Every 10 seconds".
+	//
+	// AND ONE ON 2026-10-24, the owner's reword of 2026-10-23 (#2235): "While moving,
+	// your DoTs deal 20%-40% increased damage" became "While the enemy is moving, your
+	// DoTs on them deal 20%-40% more damage", the owner's words being "Pretty sure this
+	// was originally meant to be while the enemy is moving your dots on them deal
+	// 20-40% MORE damage." The same roll now means 20-40 more on each tick the target moves.
 	static const TMap<FName, FName> Table = {
 		{TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_10_se"),
 		 TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec")},
@@ -105,6 +111,8 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach")},
 		{TEXT("Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse"),
 		 TEXT("Negative_Bleeding_on_you_lasts_50_100_longer")},
+		{TEXT("Positive_While_moving_your_DoTs_deal_20_40_increased_d"),
+		 TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea")},
 	};
 	return Table;
 }
