@@ -282,11 +282,12 @@ def test_every_edict_the_game_lists_is_a_celestial_row() -> None:
     body = body[:body.index("return Keys;")]
     keys = re.findall(r'TEXT\("(\w+)"\)', body)
     assert keys == ["Celestial_Edict_of_Silence", "Celestial_Edict_of_Temperance",
-                    "Celestial_Edict_of_Patience", "Celestial_Edict_of_Stillness",
-                    "Celestial_Forced_Tithes"], (
-        f"EdictKeys lists {keys}; the five Edicts that are rows are the Edicts of "
-        "Silence, Temperance, Patience and Stillness and Forced Tithes, in the "
-        "design's order. G7c adds three")
+                    "Celestial_Edict_of_Patience", "Celestial_Edict_of_Abstinence",
+                    "Celestial_Edict_of_Stillness", "Celestial_Edict_of_Vigil",
+                    "Celestial_Edict_of_Humility", "Celestial_Forced_Tithes"], (
+        f"EdictKeys lists {keys}; the eight Edicts are the Edicts of Silence, "
+        "Temperance, Patience, Abstinence, Stillness, Vigil and Humility and "
+        "Forced Tithes, in the design's order")
     rows = {row["Name"]: row for row in csv.DictReader(
         io.StringIO(TABLE.read_bytes().decode("utf-8-sig")))}
     for key in keys:

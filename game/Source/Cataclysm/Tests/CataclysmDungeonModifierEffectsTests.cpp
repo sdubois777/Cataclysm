@@ -103,7 +103,7 @@
 /**
  * What the dungeon modifiers do on a floor. Issue #41.
  *
- * WHAT THESE COVER. Starvation and Dehydration, the first two of the 120 rows of
+ * WHAT THESE COVER. Starvation and Dehydration, the first two of the 123 rows of
  * `game/Data/DungeonModifiers.csv` to change anything a player can see; the
  * console variable that puts chosen modifiers on the dungeon being played; and
  * what the floor panel says about each modifier, the ones that do nothing
@@ -57201,6 +57201,1056 @@ bool FCataclysmEdictsAfterTheCoreTest::RunTest(const FString& Parameters)
 	// THE CONTROL: and further beats leave it there.
 	Beat(Mode, 4);
 	TestEqual(TEXT("CONTROL: and it stays at 55"), PlayerStat(Player, TEXT("cooldown_lengthening")), 55.0f, 0.05f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Edicts of Abstinence, Vigil and Humility, and the divine laws that wake an Angelic Warden -- 2026-10-23, G7c
+//
+// NO TEST HERE RUNS A CREATURE'S BRAIN OR TICKS A CHARACTER. The beat is stepped by hand. Standing still is the world's
+// clock, moved by `CataclysmTestWorld::RunClock`, against the clock a character's own tick starts by sampling where it
+// stands; a test player is sampled only where a test says so, by `UCataclysmMovement::SampleStep`, so a player never
+// sampled has never stood still and calls no smite. That is why the Ascendant tests of G7a and G7b, which may now draw
+// the Edict of Vigil, are untouched by it.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName AbstinenceRow(UCataclysmDungeonModifierEffects::EdictOfAbstinenceKey);
+	const FName VigilRow(UCataclysmDungeonModifierEffects::EdictOfVigilKey);
+	const FName HumilityRow(UCataclysmDungeonModifierEffects::EdictOfHumilityKey);
+
+	/** The player's stand-still clock started where they stand, by one sample, as the character's own tick takes one. */
+	void StartTheStandStillClock(const FPossessedPlayer& Player)
+	{
+		UCataclysmMovement::SampleStep(Player.Character);
+	}
+
+	/**
+	 * Goes to `Floor` of a dungeon of this sub-type carrying `Rows`, clears its creatures, steps `Beats` beats, and uses
+	 * the player's movement skill once with full mana, as `RuleOfChaosUseAtManaShare` uses it. False, with the reason,
+	 * when the floor is not reached or the use does not go off and take mana.
+	 */
+	bool AbstinenceUseOnAFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+							   UCataclysmMovementSkill* Step, ECataclysmDungeonSubType SubType, int32 Floor,
+							   const TArray<FName>& Rows, int32 Beats, FRuleOfChaosUse& Out)
+	{
+		Mode->DungeonSubType = SubType;
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, Beats);
+		Out = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+		return Test.TestTrue(
+			FString::Printf(TEXT("set-up: on floor %d the movement skill went off and took mana (%.2f)"), Floor,
+							Out.ManaTaken),
+			Out.bWentOff && Out.ManaTaken > 0.0f);
+	}
+
+	/**
+	 * Goes to floor 2 carrying `Rows` on dungeon seeds 1, 2, ... until the floor stands at least `Wanted` Angelic
+	 * statues, clears its creatures, and steps one beat. The player is left at the entrance, twenty metres or more from
+	 * every statue. False, with a failure, when no seed tried serves.
+	 */
+	bool AFloorWithStatues(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const TArray<FName>& Rows,
+						   int32 Wanted)
+	{
+		Mode->DungeonModifiers = Rows;
+		for (int32 Seed = 1; Seed <= AngelicSeedsTried; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (!Mode->GoToFloor(2))
+			{
+				continue;
+			}
+			Mode->ClearFloorEnemies();
+			Beat(Mode, 1);
+			if (Mode->AngelicStatueCellsStanding().Num() >= Wanted)
+			{
+				Test.AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor 2 %d statues"), Seed,
+											 Mode->AngelicStatueCellsStanding().Num()));
+				return true;
+			}
+		}
+		Test.AddError(FString::Printf(TEXT("set-up: none of dungeon seeds 1 to %d gives floor 2 %d statues"),
+									  AngelicSeedsTried, Wanted));
+		return false;
+	}
+
+	/** The standing statue nearest `At`, flat from its cell's middle, or (-1, -1). */
+	FIntPoint NearestStandingStatue(const ACataclysmDungeonGameMode* Mode, const FVector& At)
+	{
+		FIntPoint Best(-1, -1);
+		float BestCm = 0.0f;
+		for (const FIntPoint& Cell : Mode->AngelicStatueCellsStanding())
+		{
+			const float Cm = AngelicCmFromCell(Mode, Cell, At);
+			if (Best == FIntPoint(-1, -1) || Cm < BestCm)
+			{
+				Best = Cell;
+				BestCm = Cm;
+			}
+		}
+		return Best;
+	}
+
+	/** Whether every standing statue is further from `At` than either of the Wardens' own triggers reaches. */
+	bool EveryStatueIsBeyondBothTriggers(const ACataclysmDungeonGameMode* Mode, const FVector& At)
+	{
+		for (const FIntPoint& Cell : Mode->AngelicStatueCellsStanding())
+		{
+			if (AngelicCmFromCell(Mode, Cell, At) <= UCataclysmDungeonModifierEffects::AngelicWardensSkillWakesWithinCm)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** The player's skill-used notice, as `CommitAndBegin` sends it, with whether the skill has a cooldown. */
+	void ThePlayerUsesWithACooldown(const FPossessedPlayer& Player, ECataclysmAbilitySlot Slot, bool bHasCooldown)
+	{
+		const FGameplayTagContainer NoTags;
+		const FVector Aim = Player.Character->GetActorLocation() + FVector(100.0f, 0.0f, 0.0f);
+		UCataclysmCombatEvents::NoteSkillUsed(Player.Character, TEXT("A Skill Of The Players"), NoTags, Slot, &Aim,
+											  bHasCooldown);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastThreeEdictsBuiltTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictsOfAbstinenceVigilAndHumilityAreBuiltRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLastThreeEdictsBuiltTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	struct FEdict { FName Row; const TCHAR* Name; };
+	const FEdict Edicts[] = {
+		{AbstinenceRow, TEXT("Edict of Abstinence")},
+		{VigilRow, TEXT("Edict of Vigil")},
+		{HumilityRow, TEXT("Edict of Humility")},
+	};
+	for (const FEdict& Edict : Edicts)
+	{
+		const FString Key = Edict.Row.ToString();
+		TestEqual(FString::Printf(TEXT("%s is built"), *Key), static_cast<int32>(Effects::BuiltStateOf(Edict.Row)),
+				  static_cast<int32>(ECataclysmModifierBuilt::Built));
+		TestTrue(FString::Printf(TEXT("%s has a rule"), *Key), Effects::KeysWithARule().Contains(Edict.Row));
+		TestTrue(FString::Printf(TEXT("%s is an Edict"), *Key), Rules::IsEdict(Edict.Row));
+		TestEqual(FString::Printf(TEXT("%s is shown as the design names it"), *Key), Rules::EdictName(Edict.Row),
+				  FString(Edict.Name));
+	}
+
+	// IN THE DESIGN TABLE'S PLACES: Abstinence after Patience, Vigil after Stillness, Humility after Vigil.
+	const TArray<FName>& Keys = Rules::EdictKeys();
+	TestEqual(TEXT("the Edict list holds the design's eight"), Keys.Num(), 8);
+	TestEqual(TEXT("Abstinence comes after Patience"), Keys.IndexOfByKey(AbstinenceRow),
+			  Keys.IndexOfByKey(FName(Effects::EdictOfPatienceKey)) + 1);
+	TestEqual(TEXT("Vigil after Stillness"), Keys.IndexOfByKey(VigilRow),
+			  Keys.IndexOfByKey(FName(Effects::EdictOfStillnessKey)) + 1);
+	TestEqual(TEXT("Humility after Vigil"), Keys.IndexOfByKey(HumilityRow), Keys.IndexOfByKey(VigilRow) + 1);
+
+	// THE CONTROL: a row that waits on systems that do not exist is still not built.
+	TestEqual(TEXT("CONTROL: War Supply Lines is not built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(TEXT("War_Supply_Lines")))),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfAbstinenceTakesAQuarterOfTheManaTakenFromHealthUpToAllOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const TCHAR* const Stat = UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat;
+	TestEqual(TEXT("at base a quarter"), Effects::PlayerEffectsFor({AbstinenceRow}, 6).AbstinenceManaAlsoAsHealthPercent,
+			  25.0f, 0.001f);
+	TestEqual(TEXT("on an Ascendant's floor 6, 37.5"),
+			  Effects::PlayerEffectsFor({AbstinenceRow}, 6, 0, Rules::EdictStrengthOn(6, false))
+				  .AbstinenceManaAlsoAsHealthPercent,
+			  37.5f, 0.001f);
+	TestEqual(TEXT("on floor 70, held at 100 where it would be 197.5"),
+			  Effects::PlayerEffectsFor({AbstinenceRow}, 70, 0, Rules::EdictStrengthOn(70, false))
+				  .AbstinenceManaAlsoAsHealthPercent,
+			  100.0f, 0.001f);
+	TestEqual(TEXT("and with its Core standing, still 100"),
+			  Effects::EdictOfAbstinenceManaAlsoAsHealthPercentAt(Rules::EdictStrengthOn(70, true)), 100.0f, 0.001f);
+
+	const FCataclysmPlayerFloorEffects AtBase = Effects::PlayerEffectsFor({AbstinenceRow}, 6);
+	const TArray<FCataclysmStatModifier> Share = ModifiersOn(Effects::StatModifiersFor(AtBase), Stat);
+	if (TestEqual(TEXT("one modifier on mana_cost_also_taken_from_health_percent"), Share.Num(), 1))
+	{
+		TestTrue(TEXT("flat"), Share[0].Bucket == ECataclysmStatBucket::Flat);
+		TestTrue(TEXT("from a dungeon rule"), Share[0].Source == ECataclysmModifierSource::DungeonRule);
+		TestEqual(TEXT("a quarter"), Share[0].Value, 25.0f, 0.001f);
+	}
+	TestFalse(TEXT("a floor doing this is not empty"), AtBase.IsEmpty());
+	TestTrue(TEXT("and the panel names it"),
+			 Effects::Describe(AtBase).Contains(
+				 TEXT("25% of a skill's mana cost also taken from health, by the Edict of Abstinence")));
+
+	// THE CONTROLS: Desperate Measures' field is not written, a floor without the row takes nothing, and an empty floor
+	// writes no modifier on the stat.
+	TestEqual(TEXT("CONTROL: Desperate Measures' field is untouched"), AtBase.ManaCostAsCurrentHealthPercent, 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("CONTROL: no row, no share"), Effects::PlayerEffectsFor({}, 6).AbstinenceManaAlsoAsHealthPercent, 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("CONTROL: an empty floor writes nothing on the stat"),
+			  ModifiersOn(Effects::StatModifiersFor(FCataclysmPlayerFloorEffects()), Stat).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHumilityNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfHumilityHoldsCriticalStrikesAtTheHitAndDoesNotScale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHumilityNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const TCHAR* const Stat = UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat;
+	const FCataclysmPlayerFloorEffects AtBase = Effects::PlayerEffectsFor({HumilityRow}, 6);
+	TestEqual(TEXT("at base the flag is set"), AtBase.HumilityNoExtraCriticalDamageValue, 1.0f, 0.0001f);
+	TestEqual(TEXT("and on an Ascendant's floor 70 with its Core standing it is the same flag: it does not scale"),
+			  Effects::PlayerEffectsFor({HumilityRow}, 70, 0, Rules::EdictStrengthOn(70, true))
+				  .HumilityNoExtraCriticalDamageValue,
+			  1.0f, 0.0001f);
+	TestEqual(TEXT("it holds the critical multiplier at 100"), UCataclysmDamageCalculation::NoExtraCriticalMultiplier,
+			  100.0f, 0.0001f);
+
+	const TArray<FCataclysmStatModifier> Flag = ModifiersOn(Effects::StatModifiersFor(AtBase), Stat);
+	if (TestEqual(TEXT("one modifier on critical_strikes_deal_no_extra_damage"), Flag.Num(), 1))
+	{
+		TestTrue(TEXT("flat"), Flag[0].Bucket == ECataclysmStatBucket::Flat);
+		TestTrue(TEXT("from a dungeon rule"), Flag[0].Source == ECataclysmModifierSource::DungeonRule);
+		TestEqual(TEXT("worth one"), Flag[0].Value, 1.0f, 0.0001f);
+	}
+	TestFalse(TEXT("a floor doing this is not empty"), AtBase.IsEmpty());
+	TestTrue(TEXT("and the panel names it"),
+			 Effects::Describe(AtBase).Contains(TEXT("critical strikes deal no extra damage, by the Edict of Humility")));
+
+	// THE CONTROLS.
+	TestEqual(TEXT("CONTROL: no row, no flag"), Effects::PlayerEffectsFor({}, 6).HumilityNoExtraCriticalDamageValue, 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("CONTROL: an empty floor writes nothing on the stat"),
+			  ModifiersOn(Effects::StatModifiersFor(FCataclysmPlayerFloorEffects()), Stat).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfVigilSmitesForATenthOfMaximumHealthUpToHalfWithWingsOfTheHostsTelegraph",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVigilNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestFalse(TEXT("2.9 seconds still calls nothing"), Effects::EdictOfVigilIsDue(2.9f));
+	TestTrue(TEXT("3 seconds still calls a smite"), Effects::EdictOfVigilIsDue(3.0f));
+	TestFalse(TEXT("2.75 seconds of warning has not landed"), Effects::EdictOfVigilHasLanded(2.75f));
+	TestTrue(TEXT("3 seconds has"), Effects::EdictOfVigilHasLanded(3.0f));
+	TestEqual(TEXT("its warning is Wings of the Host's"), Effects::EdictOfVigilWarningSeconds,
+			  Effects::WingsOfTheHostWarningSeconds, 0.0001f);
+	TestEqual(TEXT("and so is its mark"), Effects::EdictOfVigilMarkRadiusCm, Effects::WingsOfTheHostFeatherRadiusCm,
+			  0.0001f);
+
+	TestEqual(TEXT("at base a tenth of maximum health"), Effects::EdictOfVigilSmitePercentAt(1.0f), 10.0f, 0.001f);
+	TestEqual(TEXT("on an Ascendant's floor 6, 15"), Effects::EdictOfVigilSmitePercentAt(Rules::EdictStrengthOn(6, false)),
+			  15.0f, 0.001f);
+	TestEqual(TEXT("on floor 70, held at 50 where it would be 79"),
+			  Effects::EdictOfVigilSmitePercentAt(Rules::EdictStrengthOn(70, false)), 50.0f, 0.001f);
+	TestEqual(TEXT("and with its Core standing, still 50"),
+			  Effects::EdictOfVigilSmitePercentAt(Rules::EdictStrengthOn(70, true)), 50.0f, 0.001f);
+
+	// THE CONTROLS: never sampled calls nothing, and the floor's own rules leave the Edict to the beat.
+	TestFalse(TEXT("CONTROL: a player never sampled calls nothing"), Effects::EdictOfVigilIsDue(-1.0f));
+	TestTrue(TEXT("CONTROL: the floor's own rules write nothing for it"),
+			 Effects::PlayerEffectsFor({VigilRow}, 6).IsEmpty());
+	return true;
+}
+
+// THE COST PATH IN PLAY, THROUGH A REAL MOVEMENT SKILL'S USE: AT BASE, IN AN ASCENDANT, AT ITS CAP, AND AFTER FORTY BEATS
+// BESIDE DEATH'S EMBRACE, WHICH THE BEAT REAPPLIES (THE #1765 TRAP). Every health figure is a difference from what the
+// player held just before the use; the world's time does not move, so nothing regenerates between.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceInPlayTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfAbstinenceTakesItsShareOfAMovementSkillsManaFromHealthAndScalesInAnAscendant",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAbstinenceInPlayTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	if (!TestNotNull(TEXT("set-up: the player holds a movement skill"), Step))
+	{
+		return false;
+	}
+
+	struct FCase { ECataclysmDungeonSubType SubType; int32 Floor; TArray<FName> Rows; int32 Beats; float Percent;
+				   const TCHAR* Where; };
+	const FCase Cases[] = {
+		{ECataclysmDungeonSubType::None, 2, {AbstinenceRow}, 0, 25.0f, TEXT("on an ordinary floor")},
+		{ECataclysmDungeonSubType::Ascendant, 6, {AbstinenceRow}, 0, 37.5f, TEXT("on an Ascendant's floor 6")},
+		{ECataclysmDungeonSubType::Ascendant, 70, {AbstinenceRow}, 0, 100.0f, TEXT("on an Ascendant's floor 70, held")},
+		// THE CONTROL: a floor without the row takes no health for the same use.
+		{ECataclysmDungeonSubType::None, 3, {}, 0, 0.0f, TEXT("CONTROL: on a floor without the row")},
+		// LAST, AFTER FORTY BEATS: the Edict of Silence an Ascendant above may have drawn counts its ninety seconds in
+		// beats, and no floor before this one is beaten.
+		{ECataclysmDungeonSubType::None, 4, {AbstinenceRow, DeathsEmbrace}, 40, 25.0f,
+		 TEXT("forty beats into a floor beside Death's Embrace")},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FRuleOfChaosUse Use;
+		if (!AbstinenceUseOnAFloor(*this, Mode, Player, Step, Case.SubType, Case.Floor, Case.Rows, Case.Beats, Use))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s: %.1f%% of the %.2f mana taken was also taken from health"), Case.Where,
+								  Case.Percent, Use.ManaTaken),
+				  Use.HealthTaken, Use.ManaTaken * Case.Percent / 100.0f, 0.01f);
+	}
+	return true;
+}
+
+// STANDING STILL FOR 3 SECONDS MARKS THE SPOT; THE SMITE LANDS 3 SECONDS LATER ON THE PLAYER AND ON NO CREATURE, FOR AT
+// MOST A TENTH OF MAXIMUM HEALTH; AND IT RE-ARMS WHEN IT LANDS, so the player still standing there is not smitten again
+// until 3 more seconds have passed.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player where the floor put them; a creature on the
+// mark 120 cm aside, inside its 150 cm and clear of the player.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilSmiteTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfVigilMarksWhereThePlayerStoodStillForThreeSecondsAndSmitesOnlyThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVigilSmiteTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {VigilRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	Beat(Mode, 1);
+	TestNull(TEXT("two and a half seconds still: nothing is called"), Mode->EdictOfVigilMarkNow());
+	CataclysmTestWorld::RunClock(World, 0.75f);
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Mark = Mode->EdictOfVigilMarkNow();
+	if (!TestNotNull(TEXT("three and a quarter seconds still: a smite is marked"), Mark))
+	{
+		return false;
+	}
+	TestTrue(TEXT("on the spot where the player stands"),
+			 FVector::Dist2D(Mark->GetActorLocation(), Player.Character->GetActorLocation()) < 1.0f);
+
+	const FVector Aside = Mark->GetActorLocation() + FVector(120.0f, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* Creature = PlaceCreatureAtRung(World, Mode, Aside, 0);
+	if (!TestNotNull(TEXT("set-up: a creature on the mark"), Creature))
+	{
+		return false;
+	}
+	Creature->SetActorLocation(FVector(Aside.X, Aside.Y, Creature->GetActorLocation().Z));
+	const float PlayerBefore = HealthOf(Player.Character);
+	const float CreatureBefore = HealthOf(Creature);
+
+	Beat(Mode, BeatsFor(Effects::EdictOfVigilWarningSeconds) - 1);
+	// AT LEAST, NOT EQUAL: regeneration may only raise it, and the smite can only lower it.
+	TestTrue(TEXT("nothing lands a beat early"), HealthOf(Player.Character) >= PlayerBefore - 0.01f);
+	TestNotNull(TEXT("and the mark still stands"), Mode->EdictOfVigilMarkNow());
+	Beat(Mode, 1);
+	const float Lost = PlayerBefore - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the player on the mark was struck (%.1f lost)"), Lost), Lost > 0.0f);
+	TestTrue(FString::Printf(TEXT("once, for at most a tenth of maximum health (%.1f lost)"), Lost),
+			 Lost <= HealthForTypedDamage * Effects::EdictOfVigilMaxHealthPercent / 100.0f + 0.5f);
+	TestEqual(TEXT("the creature on the mark was not"), HealthOf(Creature), CreatureBefore, 0.01f);
+	TestNull(TEXT("the mark is gone"), Mode->EdictOfVigilMarkNow());
+	TestEqual(TEXT("and no zone is left in the world"), ZonesOnTheFloor(World), 0);
+
+	// RE-ARMED WHEN IT LANDED: still standing there, nothing on the next beat, nothing 2.5 seconds on, and the next
+	// smite 3.25 seconds after the landing.
+	Beat(Mode, 1);
+	TestNull(TEXT("still standing there, no smite on the beat after the landing"), Mode->EdictOfVigilMarkNow());
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	Beat(Mode, 1);
+	TestNull(TEXT("nor two and a half seconds after it"), Mode->EdictOfVigilMarkNow());
+	CataclysmTestWorld::RunClock(World, 0.75f);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("the next is marked three and a quarter seconds after the landing"), Mode->EdictOfVigilMarkNow());
+	return true;
+}
+
+// MOVING OFF THE MARK DODGES THE SMITE, AND MOVING DOES NOT CANCEL IT: the mark counts down and lands on the empty spot.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player where the floor put them, then three metres
+// along X, sampled, so the player has moved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilDodgeTest,
+	"Cataclysm.DungeonModifierEffects.MovingOffTheEdictOfVigilsMarkDodgesItsSmiteAndDoesNotCancelIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVigilDodgeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {VigilRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 3.25f);
+	Beat(Mode, 1);
+	const ACataclysmGroundZone* Mark = Mode->EdictOfVigilMarkNow();
+	if (!TestNotNull(TEXT("set-up: a smite is marked"), Mark))
+	{
+		return false;
+	}
+	const FVector MarkAt = Mark->GetActorLocation();
+
+	Player.Walk(3.0f);
+	if (!TestTrue(TEXT("set-up: the player has walked off the mark"),
+				  FVector::Dist2D(Player.Character->GetActorLocation(), MarkAt)
+					  > Effects::EdictOfVigilMarkRadiusCm + 100.0f))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestNotNull(TEXT("moving does not cancel the smite"), Mode->EdictOfVigilMarkNow());
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(Effects::EdictOfVigilWarningSeconds) - 1);
+	TestNull(TEXT("it landed in its time"), Mode->EdictOfVigilMarkNow());
+	TestTrue(TEXT("on nobody: the player who walked off it lost nothing"),
+			 HealthOf(Player.Character) >= Before - 0.01f);
+	return true;
+}
+
+// A BLINK OR A STEP PUTS THE 3 SECONDS BACK TO NOTHING. A teleport is announced, as every instant relocation is
+// (`UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`), and a step is sampled.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilClockTest,
+	"Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {VigilRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// A BLINK TWO SECONDS IN.
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Player.AbilitySystem->NoteRelocatedInstantly();
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("four seconds in, two after a blink: nothing"), Mode->EdictOfVigilMarkNow());
+	CataclysmTestWorld::RunClock(World, 1.25f);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("three and a quarter seconds after the blink: a smite is marked"), Mode->EdictOfVigilMarkNow());
+
+	// A STEP, ON THE NEXT FLOOR, TWO SECONDS IN.
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Player.Walk(3.0f);
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("four seconds in, two after a step: nothing"), Mode->EdictOfVigilMarkNow());
+	CataclysmTestWorld::RunClock(World, 1.25f);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("three and a quarter seconds after the step: a smite is marked"), Mode->EdictOfVigilMarkNow());
+
+	// THE CONTROL: a floor without the row calls nothing however long the player stands.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("CONTROL: floor 4 was reached"), Mode->GoToFloor(4)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 4.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("CONTROL: without the row, four seconds still calls nothing"), Mode->EdictOfVigilMarkNow());
+	return true;
+}
+
+// IN AN ASCENDANT THE SMITE IS STRONGER A FLOOR DEEPER, UP TO HALF OF MAXIMUM HEALTH. Compared as a ratio of what each
+// floor's smite took, so the player's own mitigation, the same on every floor, cancels: floor 6's is half again the
+// ordinary floor's, and floor 70's five times, held at 50% where it would be 79%.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilAscendantTest,
+	"Cataclysm.DungeonModifierEffects.InAnAscendantTheEdictOfVigilSmitesHarderAFloorDeeperUpToHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVigilAscendantTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	struct FCase { ECataclysmDungeonSubType SubType; int32 Floor; };
+	const FCase Cases[] = {
+		{ECataclysmDungeonSubType::None, 2},
+		{ECataclysmDungeonSubType::Ascendant, 6},
+		{ECataclysmDungeonSubType::Ascendant, 70},
+	};
+	float Lost[3] = {};
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Mode->DungeonSubType = Cases[Index].SubType;
+		Mode->DungeonModifiers = {VigilRow};
+		if (!TestTrue(FString::Printf(TEXT("floor %d was reached"), Cases[Index].Floor),
+					  Mode->GoToFloor(Cases[Index].Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+		{
+			return false;
+		}
+		StartTheStandStillClock(Player);
+		CataclysmTestWorld::RunClock(World, 3.25f);
+		Beat(Mode, 1);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: floor %d marks a smite"), Cases[Index].Floor),
+						 Mode->EdictOfVigilMarkNow()))
+		{
+			return false;
+		}
+		const float Before = HealthOf(Player.Character);
+		Beat(Mode, BeatsFor(Effects::EdictOfVigilWarningSeconds));
+		Lost[Index] = Before - HealthOf(Player.Character);
+		if (!TestTrue(FString::Printf(TEXT("set-up: floor %d's smite struck (%.1f lost)"), Cases[Index].Floor,
+									  Lost[Index]),
+					  Lost[Index] > 0.0f))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("an Ascendant's floor 6 smites half again as hard"), Lost[1] / Lost[0], 1.5f, 0.02f);
+	TestEqual(TEXT("and its floor 70 five times as hard, held at half of maximum health"), Lost[2] / Lost[0], 5.0f,
+			  0.05f);
+	return true;
+}
+
+// EACH OF THE FOUR WAYS TO BREAK A PUNISHING EDICT WAKES THE NEAREST STANDING STATUE, ONE FOR EACH: a skill with a
+// cooldown under Patience and a movement skill under Stillness, from the skill-used notice.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player at the entrance, twenty metres or more from
+// every statue, so neither of the Wardens' own triggers can reach one, which the set-up asserts.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineLawsSkillTest,
+	"Cataclysm.DungeonModifierEffects.ASkillWithACooldownUnderPatienceOrAMovementSkillUnderStillnessWakesTheNearestStatue",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDivineLawsSkillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode
+		|| !AFloorWithStatues(*this, Mode,
+							  {AngelicWardensRow, FName(Effects::EdictOfPatienceKey), FName(Effects::EdictOfStillnessKey)},
+							  2))
+	{
+		return false;
+	}
+	const FVector At = Player.Character->GetActorLocation();
+	if (!TestTrue(TEXT("set-up: every statue stands beyond both of the Wardens' own triggers"),
+				  EveryStatueIsBeyondBothTriggers(Mode, At)))
+	{
+		return false;
+	}
+	const int32 Before = Mode->AngelicStatueCellsStanding().Num();
+
+	// THE CONTROLS: A SKILL WITH NO COOLDOWN, NOT A MOVEMENT SKILL, AND THE BASIC ATTACK, BREAK NO LAW.
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/false);
+	TestEqual(TEXT("CONTROL: a skill with no cooldown, not a movement skill, wakes nothing"),
+			  Mode->AngelicStatueCellsStanding().Num(), Before);
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::BasicAttack, /*bHasCooldown=*/false);
+	TestEqual(TEXT("CONTROL: nor does the basic attack"), Mode->AngelicStatueCellsStanding().Num(), Before);
+
+	// PATIENCE: A SKILL WITH A COOLDOWN.
+	const FIntPoint First = NearestStandingStatue(Mode, At);
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	TestEqual(TEXT("a skill with a cooldown under Patience wakes one statue"), Mode->AngelicStatueCellsStanding().Num(),
+			  Before - 1);
+	TestFalse(TEXT("the nearest"), Mode->AngelicStatueCellsStanding().Contains(First));
+	TestNotNull(TEXT("and its warden stands on its cell"), TheWardenOnCell(Mode, First));
+
+	// STILLNESS: A MOVEMENT SKILL, WITH NO COOLDOWN SO PATIENCE CANNOT BE WHAT WOKE IT.
+	const FIntPoint Second = NearestStandingStatue(Mode, At);
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Movement, /*bHasCooldown=*/false);
+	TestEqual(TEXT("a movement skill under Stillness wakes one more"), Mode->AngelicStatueCellsStanding().Num(),
+			  Before - 2);
+	TestFalse(TEXT("the nearest of those left"), Mode->AngelicStatueCellsStanding().Contains(Second));
+
+	// THE CONTROL: A CREATURE'S SKILL WITH A COOLDOWN BREAKS NO LAW.
+	ACataclysmEnemyCharacter* Someone =
+		PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld() + FVector(200.0f, 0.0f, 100.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature near the entrance"), Someone))
+	{
+		return false;
+	}
+	const FGameplayTagContainer NoTags;
+	const FVector Aim = Someone->GetActorLocation();
+	UCataclysmCombatEvents::NoteSkillUsed(Someone, TEXT("A Skill Of A Creature's"), NoTags, ECataclysmAbilitySlot::Heavy,
+										  &Aim, /*bHasCooldown=*/true);
+	TestEqual(TEXT("CONTROL: a creature's skill with a cooldown wakes nothing"), Mode->AngelicStatueCellsStanding().Num(),
+			  Before - 2);
+	return true;
+}
+
+// ABSTINENCE'S PAYMENT AND VIGIL'S SMITE BEING CALLED EACH WAKE THE NEAREST STANDING STATUE: the payment through a real
+// movement skill's use, which `UCataclysmSkillTemplate::PayHealthCost` reports; the smite from the beat.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineLawsPaymentTest,
+	"Cataclysm.DungeonModifierEffects.PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDivineLawsPaymentTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	if (!Mode || !TestNotNull(TEXT("set-up: the player holds a movement skill"), Step)
+		|| !AFloorWithStatues(*this, Mode, {AngelicWardensRow, AbstinenceRow, VigilRow}, 2))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: every statue stands beyond both of the Wardens' own triggers"),
+				  EveryStatueIsBeyondBothTriggers(Mode, Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const int32 Before = Mode->AngelicStatueCellsStanding().Num();
+
+	// ABSTINENCE: THE PAYMENT.
+	const FIntPoint First = NearestStandingStatue(Mode, Player.Character->GetActorLocation());
+	const FRuleOfChaosUse Use = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	if (!TestTrue(TEXT("set-up: the movement skill went off and took mana"), Use.bWentOff && Use.ManaTaken > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its quarter was taken from health"), Use.HealthTaken, Use.ManaTaken * 0.25f, 0.01f);
+	TestEqual(TEXT("and paying it woke one statue"), Mode->AngelicStatueCellsStanding().Num(), Before - 1);
+	TestFalse(TEXT("the nearest"), Mode->AngelicStatueCellsStanding().Contains(First));
+
+	// VIGIL: THE SMITE CALLED, 3 SECONDS STILL WHERE THE PLAYER STANDS NOW.
+	if (!TestTrue(TEXT("set-up: the statues left stand beyond both triggers"),
+				  EveryStatueIsBeyondBothTriggers(Mode, Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const FIntPoint Second = NearestStandingStatue(Mode, Player.Character->GetActorLocation());
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 3.25f);
+	Beat(Mode, 1);
+	if (!TestNotNull(TEXT("set-up: a smite is marked"), Mode->EdictOfVigilMarkNow()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("calling it woke one more"), Mode->AngelicStatueCellsStanding().Num(), Before - 2);
+	TestFalse(TEXT("the nearest of those left"), Mode->AngelicStatueCellsStanding().Contains(Second));
+	return true;
+}
+
+// THE EDICTS THAT FORBID CANNOT BE BROKEN, AND WAKE NOTHING: a floor carrying the Edicts of Silence, Temperance and
+// Humility, on which the player uses a skill with a cooldown and a movement skill, pays mana for a real movement skill
+// and stands still for four seconds. A critical strike under Humility is not tried here: no code path from a blow
+// reaches `NoteDivineLawViolated`, which `tools/tests/test_three_celestial_edicts_in_the_game.py` holds by naming its
+// callers. The control is a floor carrying the Edict of Patience instead: the same skill wakes one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineLawsForbiddenTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictsThatForbidWakeNoStatue",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDivineLawsForbiddenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	const TArray<FName> Forbidding = {AngelicWardensRow, EdictOfSilence, FName(Effects::EdictOfTemperanceKey),
+									  HumilityRow};
+	if (!Mode || !TestNotNull(TEXT("set-up: the player holds a movement skill"), Step)
+		|| !AFloorWithStatues(*this, Mode, Forbidding, 1))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: every statue stands beyond both of the Wardens' own triggers"),
+				  EveryStatueIsBeyondBothTriggers(Mode, Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const int32 Before = Mode->AngelicStatueCellsStanding().Num();
+
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Movement, /*bHasCooldown=*/true);
+	const FRuleOfChaosUse Use = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	TestTrue(TEXT("set-up: the movement skill went off and took mana"), Use.bWentOff && Use.ManaTaken > 0.0f);
+	TestEqual(TEXT("and no health beside it"), Use.HealthTaken, 0.0f, 0.01f);
+	StartTheStandStillClock(Player);
+	CataclysmTestWorld::RunClock(World, 4.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("and standing still calls no smite"), Mode->EdictOfVigilMarkNow());
+	TestEqual(TEXT("under Silence, Temperance and Humility nothing the player did woke a statue"),
+			  Mode->AngelicStatueCellsStanding().Num(), Before);
+
+	// THE CONTROL: THE SAME FLOOR'S RULES WITH THE EDICT OF PATIENCE ADDED, AND THE SAME SKILL.
+	if (!TestTrue(TEXT("CONTROL: set-up: a floor with Patience added"),
+				  AFloorWithStatues(*this, Mode, {AngelicWardensRow, FName(Effects::EdictOfPatienceKey)}, 1))
+		|| !TestTrue(TEXT("CONTROL: set-up: its statues stand beyond both triggers"),
+					 EveryStatueIsBeyondBothTriggers(Mode, Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const int32 Standing = Mode->AngelicStatueCellsStanding().Num();
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	TestEqual(TEXT("CONTROL: under Patience the same skill wakes one"), Mode->AngelicStatueCellsStanding().Num(),
+			  Standing - 1);
+	return true;
+}
+
+// A STATUE BEHIND A CLOSED BARRIER IS NOT WOKEN BY A DIVINE LAW BROKEN ON THE OTHER SIDE, though it is the nearest; a
+// farther one on the player's side is; and once the barrier opens, the same law broken from the same place wakes it.
+//
+// WHERE EACH STANDS: every placed creature where the floor placed it. The floor carries Lightforged Walls for its
+// sections and the Edict of Patience, and no Angelic Wardens row, so the only statues are the two placed by hand. The
+// player stands on a free cell of section 0; `Across` is on a cell of section 1, behind barrier 0, more than 13 m from
+// the player, so beyond the Wardens' own skill trigger's 12; `Near` is on a cell of section 0 farther still. The floor
+// is found as the barrier test of the Wardens' own triggers, above, finds it, on 80 seeds of its own and with every
+// free cell of section 0 tried as the player's, ruled by the coordinating session on 2026-10-24 after the first window
+// found no layout on the shared 20 with only the first free cell tried.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineLawsBarrierTest,
+	"Cataclysm.DungeonModifierEffects.ADivineLawBrokenDoesNotWakeTheNearestStatueWhileAClosedBarrierPartsItFromThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDivineLawsBarrierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {WallsRow, FName(Effects::EdictOfPatienceKey)};
+
+	// ITS OWN SEED LIMIT, ruled 2026-10-24: the shared `SectionFloorSeedsTried`, 20, found no layout in the first window.
+	constexpr int32 DivineLawBarrierFloorSeedsTried = 80;
+	FIntPoint PlayersCell(-1, -1);
+	FIntPoint Across(-1, -1);
+	FIntPoint Near(-1, -1);
+	for (int32 Seed = 1; Seed <= DivineLawBarrierFloorSeedsTried && Near == FIntPoint(-1, -1); ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() != 3
+			|| BoundaryCellsShared(Mode->FloorSectionsNow()).Num() > 0 || SectionBarriersStanding(Mode) != 2
+			|| Mode->StandingInSection(0) == 0 || Mode->StandingInSection(1) == 0 || Mode->StandingInSection(2) == 0
+			|| !Mode->AClosedBarrierStandsBetweenSections(1, 0))
+		{
+			continue;
+		}
+		const FCataclysmFloorPlan& Tried = Mode->CurrentFloor->GetPlan();
+		const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+		TArray<FIntPoint> Zero;
+		TArray<FIntPoint> One;
+		for (int32 Y = 0; Y < Tried.Height; ++Y)
+		{
+			for (int32 X = 0; X < Tried.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				if (!Tried.IsFloor(Cell) || Held.Contains(Cell))
+				{
+					continue;
+				}
+				const int32 Section = Mode->FloorSectionsNow().SectionOf(Tried, Cell);
+				if (Section == 0)
+				{
+					Zero.Add(Cell);
+				}
+				else if (Section == 1)
+				{
+					One.Add(Cell);
+				}
+			}
+		}
+		if (Zero.IsEmpty() || One.IsEmpty())
+		{
+			continue;
+		}
+
+		// EVERY FREE CELL OF SECTION 0 TRIED AS THE PLAYER'S, ruled 2026-10-24. THE DISTANCES FIRST, AND ONLY THEN A
+		// STATUE: a candidate is tried only when some cell of section 1 lies more than 13 m from it and some cell of
+		// section 0 lies more than a metre farther than the nearest such cell, so no statue is placed for a candidate
+		// that could never serve. The statue across is tried on the nearest cell of section 1 beyond 13 m first, and the
+		// near one on the farthest cell of section 0 first, which leaves the most room between the two; each is asked of
+		// the one rule every statue is placed by.
+		for (const FIntPoint& Candidate : Zero)
+		{
+			if (Near != FIntPoint(-1, -1))
+			{
+				break;
+			}
+			const FVector From = Mode->CurrentFloor->WorldOfCell(Candidate);
+			float NearestOneBeyondCm = -1.0f;
+			float FarthestZeroCm = 0.0f;
+			for (const FIntPoint& Cell : One)
+			{
+				const float Cm = AngelicCmFromCell(Mode, Cell, From);
+				if (Cm > 1300.0f && (NearestOneBeyondCm < 0.0f || Cm < NearestOneBeyondCm))
+				{
+					NearestOneBeyondCm = Cm;
+				}
+			}
+			for (const FIntPoint& Cell : Zero)
+			{
+				FarthestZeroCm = FMath::Max(FarthestZeroCm, AngelicCmFromCell(Mode, Cell, From));
+			}
+			if (NearestOneBeyondCm < 0.0f || FarthestZeroCm <= NearestOneBeyondCm + 100.0f)
+			{
+				continue;
+			}
+
+			TArray<FIntPoint> Ones = One;
+			TArray<FIntPoint> Zeros = Zero;
+			const auto Farther = [Mode, From](const FIntPoint& A, const FIntPoint& B)
+			{
+				return AngelicCmFromCell(Mode, A, From) > AngelicCmFromCell(Mode, B, From);
+			};
+			const auto Nearer = [Mode, From](const FIntPoint& A, const FIntPoint& B)
+			{
+				return AngelicCmFromCell(Mode, A, From) < AngelicCmFromCell(Mode, B, From);
+			};
+			Ones.Sort(Nearer);
+			Zeros.Sort(Farther);
+			FIntPoint Placed(-1, -1);
+			for (const FIntPoint& Cell : Ones)
+			{
+				if (AngelicCmFromCell(Mode, Cell, From) <= 1300.0f)
+				{
+					continue;
+				}
+				if (Mode->PlaceAnAngelicStatueOn(Cell))
+				{
+					Placed = Cell;
+					break;
+				}
+			}
+			if (Placed == FIntPoint(-1, -1))
+			{
+				continue;
+			}
+			const float AcrossCm = AngelicCmFromCell(Mode, Placed, From);
+			for (const FIntPoint& Cell : Zeros)
+			{
+				if (AngelicCmFromCell(Mode, Cell, From) <= AcrossCm + 100.0f)
+				{
+					break;
+				}
+				if (Cell != Candidate && Mode->PlaceAnAngelicStatueOn(Cell))
+				{
+					PlayersCell = Candidate;
+					Across = Placed;
+					Near = Cell;
+					AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d, the player on (%d, %d), a statue across "
+												 "barrier 0 on (%d, %d) and one beside the player on (%d, %d)"),
+											Seed, PlayersCell.X, PlayersCell.Y, Across.X, Across.Y, Near.X, Near.Y));
+					break;
+				}
+			}
+			if (Near == FIntPoint(-1, -1))
+			{
+				// THE STATUE ACROSS STANDS AND NO NEAR ONE COULD: THE FLOOR IS BUILT AGAIN, which forgets every statue
+				// (a floor that is not a Horde wave is a new arena, and every new arena forgets its statues before
+				// placing its own, of which this floor has none), and the next candidate is tried on it. The same seed
+				// builds the same floor, so the cells listed above are its cells still.
+				if (!Mode->GoToFloor(2) || Mode->AngelicStatueCellsStanding().Num() != 0)
+				{
+					break;
+				}
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a statue behind barrier 0 more than 13 m from a free cell of section 0, and one on "
+					   "that section farther still"), Near != FIntPoint(-1, -1))
+		|| !TestEqual(TEXT("set-up: the two statues stand"), Mode->AngelicStatueCellsStanding().Num(), 2))
+	{
+		return false;
+	}
+	const FVector Standing = Mode->CurrentFloor->WorldOfCell(PlayersCell) + FVector(0.0f, 0.0f, 100.0f);
+	StandThePlayerAt(Player, Standing);
+	if (!TestTrue(TEXT("set-up: barrier 0 is closed"), Mode->SectionBarrierIsClosed(0))
+		|| !TestTrue(TEXT("set-up: both statues stand beyond both of the Wardens' own triggers"),
+					 EveryStatueIsBeyondBothTriggers(Mode, Player.Character->GetActorLocation()))
+		|| !TestTrue(TEXT("set-up: the statue across the barrier is the nearer"),
+					 AngelicCmFromCell(Mode, Across, Standing) < AngelicCmFromCell(Mode, Near, Standing)))
+	{
+		return false;
+	}
+
+	// CLOSED: THE LAW BROKEN WAKES THE FARTHER STATUE ON THE PLAYER'S SIDE AND NOT THE NEARER ONE ACROSS IT.
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	TestTrue(TEXT("across the closed barrier the nearer statue does not wake"),
+			 Mode->AngelicStatueCellsStanding().Contains(Across));
+	TestFalse(TEXT("the farther one on the player's side does"), Mode->AngelicStatueCellsStanding().Contains(Near));
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	TestTrue(TEXT("and broken again, with only the parted one standing, nothing wakes"),
+			 Mode->AngelicStatueCellsStanding().Contains(Across));
+
+	// OPEN: SECTION 0'S CREATURES SLAIN. The player stands beyond both triggers' reach of it, as the set-up asserts.
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: barrier 0 opened"), Mode->SectionBarrierIsClosed(0))
+		|| !TestTrue(TEXT("set-up: the statue across still stands after that beat"),
+					 Mode->AngelicStatueCellsStanding().Contains(Across)))
+	{
+		return false;
+	}
+	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
+	TestFalse(TEXT("with the barrier open the same law broken from the same place wakes it"),
+			  Mode->AngelicStatueCellsStanding().Contains(Across));
 	return true;
 }
 

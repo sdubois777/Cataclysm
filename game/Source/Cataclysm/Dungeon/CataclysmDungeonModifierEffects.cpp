@@ -42,6 +42,12 @@ const TCHAR* UCataclysmDungeonModifierEffects::EdictOfPatienceKey =
 	TEXT("Celestial_Edict_of_Patience");
 const TCHAR* UCataclysmDungeonModifierEffects::EdictOfStillnessKey =
 	TEXT("Celestial_Edict_of_Stillness");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfAbstinenceKey =
+	TEXT("Celestial_Edict_of_Abstinence");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfVigilKey =
+	TEXT("Celestial_Edict_of_Vigil");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfHumilityKey =
+	TEXT("Celestial_Edict_of_Humility");
 const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
 	TEXT("War_Artillery_Strike");
 const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
@@ -740,6 +746,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(EdictOfTemperanceKey)
 		|| RowKey == FName(EdictOfPatienceKey)
 		|| RowKey == FName(EdictOfStillnessKey)
+		// THE EDICTS OF ABSTINENCE, VIGIL AND HUMILITY, BUILT WITH THEIR ROWS, 2026-10-23 (G7c).
+		|| RowKey == FName(EdictOfAbstinenceKey)
+		|| RowKey == FName(EdictOfVigilKey)
+		|| RowKey == FName(EdictOfHumilityKey)
 		|| RowKey == FName(ArtilleryStrikeKey)
 		|| RowKey == FName(HallowedGroundfallKey)
 		|| RowKey == FName(SporeCloudsKey)
@@ -1025,6 +1035,9 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(EdictOfTemperanceKey),
 		FName(EdictOfPatienceKey),
 		FName(EdictOfStillnessKey),
+		FName(EdictOfAbstinenceKey),
+		FName(EdictOfVigilKey),
+		FName(EdictOfHumilityKey),
 		FName(ArtilleryStrikeKey),
 		FName(HallowedGroundfallKey),
 		FName(SporeCloudsKey),
@@ -1265,6 +1278,30 @@ float UCataclysmDungeonModifierEffects::EdictOfStillnessSlowPercentAt(float Stre
 	return FMath::Min(EdictOfStillnessSlowPercent * FMath::Max(0.0f, Strength), EdictOfStillnessMostSlowPercent);
 }
 
+float UCataclysmDungeonModifierEffects::EdictOfAbstinenceManaAlsoAsHealthPercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP: at most the whole of the mana taken.
+	return FMath::Min(EdictOfAbstinenceManaAlsoAsHealthPercent * FMath::Max(0.0f, Strength),
+					  EdictOfAbstinenceMostManaAlsoAsHealthPercent);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfVigilSmitePercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP. The 3 seconds are not scaled here or anywhere.
+	return FMath::Min(EdictOfVigilMaxHealthPercent * FMath::Max(0.0f, Strength), EdictOfVigilMostMaxHealthPercent);
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfVigilIsDue(float SecondsStill)
+{
+	// AT OR PAST THE 3 SECONDS. A negative answer, "never sampled", is below them and calls nothing.
+	return SecondsStill >= EdictOfVigilStillSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfVigilHasLanded(float WarningSoFar)
+{
+	return WarningSoFar >= EdictOfVigilWarningSeconds;
+}
+
 float UCataclysmDungeonModifierEffects::SkillsLockedWhile(bool bSilenced)
 {
 	// EVERY SILENCE IS THE SAME. The row describes one that prevents all skill
@@ -1408,6 +1445,17 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 	if (FloorModifiers.Contains(FName(EdictOfPatienceKey)))
 	{
 		Effects.PatienceCooldownLongerPercent = EdictOfPatienceCooldownLongerPercentAt(EdictStrength);
+	}
+
+	// AND THE EDICTS OF ABSTINENCE AND HUMILITY, THE SAME WAY AND FOR THE SAME REASON. 2026-10-23, G7c. Abstinence's share
+	// scales up to its cap; Humility's flag does not scale. The Edict of Vigil is not here: the beat calls its smite.
+	if (FloorModifiers.Contains(FName(EdictOfAbstinenceKey)))
+	{
+		Effects.AbstinenceManaAlsoAsHealthPercent = EdictOfAbstinenceManaAlsoAsHealthPercentAt(EdictStrength);
+	}
+	if (FloorModifiers.Contains(FName(EdictOfHumilityKey)))
+	{
+		Effects.HumilityNoExtraCriticalDamageValue = EdictOfHumilityValue;
 	}
 
 	// AND THE THREE ROWS ON POTIONS, THE SAME ON EVERY FLOOR. Issue #806. None
@@ -1857,6 +1905,16 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	// STILLNESS: a Less on `movement_speed`, its own, beside Singularity Wells' and the rest, which multiply.
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
 								  Effects.StillnessMovementLessPercent);
+
+	// AND THE EDICTS OF ABSTINENCE AND HUMILITY, EACH FROM ITS OWN FIELD. 2026-10-23, G7c.
+	//
+	// ABSTINENCE: flat on the share of the mana a cast takes that is also taken from health, a stat no other rule
+	// writes; `UCataclysmGameplayAbility::ApplyCost` reads it with the skill's tags.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat,
+								  Effects.AbstinenceManaAlsoAsHealthPercent);
+	// HUMILITY: the flag, flat, read as above nought where the critical multiplier is asked for.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat,
+								  Effects.HumilityNoExtraCriticalDamageValue);
 
 	// AND FRAGMENTED REALITY'S PAIR, WHILE THE PLAYER STANDS IN THE FRAGMENTED SECTION, each from its own field. Issues
 	// #1820 and #41. Damage as Void Parasite's is taken, a More and a Less on attack damage and on spell damage;
@@ -2328,6 +2386,17 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less after a movement skill, by the Edict of Stillness"),
 									Effects.StillnessMovementLessPercent));
+	}
+	// AND TWO MORE, NAMED FOR THE SAME REASON. 2026-10-23, G7c. The Edict of Vigil writes no figure here: its smite is
+	// marked on the floor.
+	if (Effects.AbstinenceManaAlsoAsHealthPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("%.0f%% of a skill's mana cost also taken from health, by the Edict of Abstinence"),
+									Effects.AbstinenceManaAlsoAsHealthPercent));
+	}
+	if (Effects.HumilityNoExtraCriticalDamageValue > 0.0f)
+	{
+		Clauses.Add(TEXT("critical strikes deal no extra damage, by the Edict of Humility"));
 	}
 	if (Effects.ArmourMorePercent > 0.0f)
 	{

@@ -15,7 +15,7 @@ struct FCataclysmDungeonModifierRow;
  *
  * WHY THIS EXISTS AND WHY IT IS ON THIS SIDE OF THE MODULE LINE.
  * `game/Data/DungeonModifiers.csv` held 117 rows from the day the design workbook
- * was imported (120 since 2026-10-22) and nothing in the game had ever read one. The thing that needs
+ * was imported (120 from 2026-10-22, 123 since 2026-10-23) and nothing in the game had ever read one. The thing that needs
  * them is `UCataclysmEmpireRun`, over in `CataclysmEmpire` -- but the table's row
  * type `FCataclysmDungeonModifierRow` is declared in this module, and
  * `CataclysmEmpire` must not depend on this one. So the pool is built here and

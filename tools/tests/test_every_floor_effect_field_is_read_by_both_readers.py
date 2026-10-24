@@ -104,9 +104,13 @@ def body_of(text: str, opening: str) -> str:
 #: `ManaCostAsHealthAtAnyManaValue` IS A FLAG FOR `PotionsForbiddenValue`'S REASON: Rule of Chaos' change "skills are
 #: paid in health" writes 1 to it, and `StatModifiersFor` asks only whether it is above zero, to write
 #: `ManaCostAsCurrentHealthPercent` with no low-mana condition. Issues #1820 and #41.
+#:
+#: `HumilityNoExtraCriticalDamageValue` IS A FLAG FOR `PotionsForbiddenValue`'S REASON: the Edict of Humility writes 1
+#: to it, unscaled, and `StatModifiersFor` writes it flat on `critical_strikes_deal_no_extra_damage`, which is read
+#: only as above zero. 2026-10-23, G7c.
 NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded",
                    "PotionsForbiddenValue", "BeaconMagicFindAdded", "PactMagicFindAdded",
-                   "ManaCostAsHealthAtAnyManaValue"}
+                   "ManaCostAsHealthAtAnyManaValue", "HumilityNoExtraCriticalDamageValue"}
 
 
 @pytest.fixture(scope="module")

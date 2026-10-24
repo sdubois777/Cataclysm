@@ -662,6 +662,34 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float StillnessMovementLessPercent = 0.0f;
 
 	/**
+	 * The Edict of Abstinence: what share of the mana a skill's cast takes from the mana pool is also taken from
+	 * health, in percent: "a quarter of a skill's mana cost is also taken from health" (`docs/Cataclysm_GDD_v2.md`,
+	 * Heaven's Wrath). Written flat on `mana_cost_also_taken_from_health_percent`, which
+	 * `UCataclysmGameplayAbility::ApplyCost` reads when the pool paying a cast is mana, and
+	 * `UCataclysmSkillTemplate::PayHealthCost` takes from health. 2026-10-23, G7c.
+	 *
+	 * "MANA COST" IS THE MANA ACTUALLY TAKEN FROM THE MANA POOL, after every reduction, ruled 2026-10-23: nothing for a
+	 * cost paid from health or energy shield, nothing for a free cast, nothing for an aura's upkeep.
+	 *
+	 * ITS OWN FIELD, WRITTEN ONCE A FLOOR BY `PlayerEffectsFor` AT THE EDICT STRENGTH, which no beat rule assigns: the
+	 * #1765 trap the three G7b Edicts' fields name. NOT `ManaCostAsCurrentHealthPercent`, Desperate Measures', which
+	 * REPLACES a cast's mana with a share of current health where this ADDS a share of the mana taken.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float AbstinenceManaAlsoAsHealthPercent = 0.0f;
+
+	/**
+	 * The Edict of Humility: above nought, a critical strike deals no extra damage: "a critical strike deals no extra
+	 * damage". A flag written as a value, as `SkillsLockedValue` is, flat on `critical_strikes_deal_no_extra_damage`,
+	 * which holds the critical multiplier at 100 where `UCataclysmVitalAttributeSet` asks for it. 2026-10-23, G7c.
+	 *
+	 * IT DOES NOT SCALE: the design says "the Edict of Humility does not scale". A CRITICAL STRIKE STILL COUNTS AS ONE,
+	 * ruled 2026-10-23: the roll, the hit notice and every on-crit row are untouched; only the extra damage goes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float HumilityNoExtraCriticalDamageValue = 0.0f;
+
+	/**
 	 * Above zero, no potion may be drunk on this floor. Hard Mode. Issue #806.
 	 * A flag written as a value, as `SkillsLockedValue` is.
 	 */
@@ -731,6 +759,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TemperanceHealingLessPercent <= 0.0f
 			&& PatienceCooldownLongerPercent <= 0.0f
 			&& StillnessMovementLessPercent <= 0.0f
+			&& AbstinenceManaAlsoAsHealthPercent <= 0.0f
+			&& HumilityNoExtraCriticalDamageValue <= 0.0f
 			&& PotionsForbiddenValue <= 0.0f
 			&& PotionKillChargesLessPercent <= 0.0f
 			&& PotionHealLessPerDrinkPercent <= 0.0f
@@ -742,7 +772,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 };
 
 /**
- * What the 120 dungeon modifiers do on a floor, for the ones that do something.
+ * What the 123 dungeon modifiers do on a floor, for the ones that do something.
  *
  * WHY IT EXISTS. Until issue #41's first modifier slice, a dungeon modifier was a
  * name and a danger score. The score reaches the enemy score, and the enemy
@@ -1029,6 +1059,28 @@ public:
 	static const TCHAR* EdictOfTemperanceKey;
 	static const TCHAR* EdictOfPatienceKey;
 	static const TCHAR* EdictOfStillnessKey;
+
+	/**
+	 * The last three Divine Edicts, rows since 2026-10-23 (G7c): the Edict of Abstinence, "a quarter of a skill's mana
+	 * cost is also taken from health"; the Edict of Vigil, "standing still for 3 seconds calls a smite on that spot for
+	 * 10% of the player's maximum health, with the usual telegraph"; and the Edict of Humility, "a critical strike deals
+	 * no extra damage". `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath, the Edict table.
+	 *
+	 * EACH SCALES ITS ONE NUMBER IN AN ASCENDANT UP TO ITS CAP, the design's beside the 10% rule: Abstinence takes at
+	 * most 100% of the mana cost from health; Vigil smites for at most 50% of maximum health, its 3 seconds fixed;
+	 * Humility does not scale. Everywhere else each is at its base strength.
+	 *
+	 * ABSTINENCE AND HUMILITY ARE PER-FLOOR, written by `PlayerEffectsFor` on fields of their own; VIGIL IS ON THE BEAT,
+	 * `ACataclysmDungeonGameMode::StepEdictOfVigil`, which marks the spot with Wings of the Host's telegraph.
+	 *
+	 * THE PUNISHING EDICTS A PLAYER BREAKS -- Abstinence's payment, Vigil's smite being called, Stillness's slow and
+	 * Patience's longer cooldown -- EACH WAKE AN ANGELIC WARDEN, ruled 2026-10-23:
+	 * `ACataclysmDungeonGameMode::NoteDivineLawViolated`. Humility, like Silence and Temperance, forbids and cannot be
+	 * broken. Tithe is not counted: paying it ends the floor.
+	 */
+	static const TCHAR* EdictOfAbstinenceKey;
+	static const TCHAR* EdictOfVigilKey;
+	static const TCHAR* EdictOfHumilityKey;
 
 	/**
 	 * Artillery Strike: "Every 30 seconds, a massive red circle appears on the
@@ -1986,6 +2038,11 @@ public:
 	 *   on the quarter-second beat; or the player using a skill other than the basic attack while within
 	 *   `AngelicWardensSkillWakesWithinCm` of it, asked when the skill is used. The basic attack is left out as Wild
 	 *   Magic leaves it out. Neither has a wall test, as no target search has.
+	 * - AND, SINCE 2026-10-23 (G7c), A DIVINE LAW BROKEN, the row's "violate 'divine laws'" as the design reads it:
+	 *   "breaking a punishing Edict counts as violating a divine law". Each payment of the Edict of Abstinence, each
+	 *   smite the Edict of Vigil calls, each movement skill under the Edict of Stillness and each skill with a cooldown
+	 *   under the Edict of Patience wakes the nearest standing statue, at any distance, one for each, not across a
+	 *   closed barrier: `ACataclysmDungeonGameMode::NoteDivineLawViolated`. Ruled by the coordinating session.
 	 * - WAKING: the pillar is removed, its cell is walkable again, and an Abyssal Warden at `AngelicWardensRung` is
 	 *   raised on that cell at once, with no warning marker. Each statue wakes once.
 	 * - THE HUNT IS `AngelicWardensSightMultiplier`. The warden is raised by a rule, by both marks, so it never holds
@@ -4312,6 +4369,20 @@ public:
 	static constexpr float EdictOfStillnessSeconds = 3.0f;
 
 	/**
+	 * The Edict of Abstinence's base share of the mana a cast takes, also taken from health, 25 ("a quarter"), and the
+	 * most an Ascendant makes it, 100. The Edict of Humility's flag, 1, which does not scale. 2026-10-23, G7c. The Edict
+	 * of Vigil's figures are after Wings of the Host's, whose telegraph they are.
+	 *
+	 * THE BASE NUMBERS ARE THE DESIGN'S TABLE AND THE CAP IS THE COORDINATING SESSION'S, 2026-10-22, under the owner's
+	 * delegation of unstated numbers; both are in `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath.
+	 * `tools/tests/test_three_celestial_edicts_in_the_game.py` reads each back out of the design's sentences and the
+	 * rows' descriptions.
+	 */
+	static constexpr float EdictOfAbstinenceManaAlsoAsHealthPercent = 25.0f;
+	static constexpr float EdictOfAbstinenceMostManaAlsoAsHealthPercent = 100.0f;
+	static constexpr float EdictOfHumilityValue = 1.0f;
+
+	/**
 	 * How often a strike is called in. THE ROW'S OWN NUMBER: "Every 30 seconds".
 	 */
 	static constexpr float ArtilleryStrikeSecondsBetween = 30.0f;
@@ -5769,6 +5840,15 @@ public:
 		EdictOfStillnessSeconds > 0.0f && EdictOfPatienceCooldownLongerPercent > 0.0f,
 		"The Edict of Stillness lasts no time, or the Edict of Patience lengthens nothing.");
 
+	static_assert(
+		EdictOfAbstinenceManaAlsoAsHealthPercent > 0.0f
+			&& EdictOfAbstinenceManaAlsoAsHealthPercent <= EdictOfAbstinenceMostManaAlsoAsHealthPercent,
+		"The Edict of Abstinence takes nothing, or its cap is below its base share.");
+
+	static_assert(
+		EdictOfHumilityValue > 0.0f,
+		"The Edict of Humility's flag is read as above zero; a flag of nought would hold nothing.");
+
 	static constexpr float GraspingTentaclesReachCm = 300.0f;
 	static constexpr float GraspingTentaclesAppearWithinCm = 1200.0f;
 	static constexpr int32 GraspingTentaclesMostOnAFloor = 5;
@@ -6115,6 +6195,23 @@ public:
 	static_assert(
 		WingsOfTheHostMaxHealthPercent > 0.0f && WingsOfTheHostMaxHealthPercent < ArtilleryStrikeMaxHealthPercent,
 		"A feather is ruled below Artillery Strike's single large circle.");
+
+	/**
+	 * The Edict of Vigil's figures. 2026-10-23, G7c. "Standing still for 3 seconds calls a smite on that spot for 10% of
+	 * the player's maximum health, with the usual telegraph": 3 seconds, which do not scale; 10% of maximum health, the
+	 * most an Ascendant makes it 50%, the coordinating session's cap of 2026-10-22; and "the usual telegraph", ruled
+	 * 2026-10-23 to be Wings of the Host's, its mark's radius and its 3 second warning.
+	 */
+	static constexpr float EdictOfVigilStillSeconds = 3.0f;
+	static constexpr float EdictOfVigilMaxHealthPercent = 10.0f;
+	static constexpr float EdictOfVigilMostMaxHealthPercent = 50.0f;
+	static constexpr float EdictOfVigilWarningSeconds = WingsOfTheHostWarningSeconds;
+	static constexpr float EdictOfVigilMarkRadiusCm = WingsOfTheHostFeatherRadiusCm;
+
+	static_assert(
+		EdictOfVigilStillSeconds > 0.0f && EdictOfVigilMaxHealthPercent > 0.0f
+			&& EdictOfVigilMaxHealthPercent <= EdictOfVigilMostMaxHealthPercent && EdictOfVigilMostMaxHealthPercent < 100.0f,
+		"The Edict of Vigil calls its smite at once, smites for nothing, or its cap is below its base or kills outright.");
 
 	/** Eternal Chorus's figures. "Halved" is the row's; the rest are play-test values. See the key. */
 	static constexpr int32 EternalChorusSources = 2;
@@ -7256,6 +7353,28 @@ public:
 	static float EdictOfStillnessSlowPercentAt(float Strength, float SecondsSinceMovementSkill);
 
 	/**
+	 * The share of the mana a cast takes that the Edict of Abstinence also takes from health, at `Strength` times its
+	 * base: 25 times it, never past `EdictOfAbstinenceMostManaAlsoAsHealthPercent`. A strength below nought is read as
+	 * nought. 2026-10-23, G7c.
+	 */
+	static float EdictOfAbstinenceManaAlsoAsHealthPercentAt(float Strength);
+
+	/**
+	 * The share of maximum health the Edict of Vigil's smite deals at `Strength` times its base: 10 times it, never past
+	 * `EdictOfVigilMostMaxHealthPercent`. A strength below nought is read as nought. 2026-10-23, G7c.
+	 */
+	static float EdictOfVigilSmitePercentAt(float Strength);
+
+	/**
+	 * Whether a player standing still this long calls the Edict of Vigil's smite: `EdictOfVigilStillSeconds` or more,
+	 * which do not scale. Negative is "never sampled" and calls nothing. 2026-10-23, G7c.
+	 */
+	static bool EdictOfVigilIsDue(float SecondsStill);
+
+	/** Whether the Edict of Vigil's smite has counted down its warning and lands. 2026-10-23, G7c. */
+	static bool EdictOfVigilHasLanded(float WarningSoFar);
+
+	/**
 	 * What the skill-lock stat is worth while a silence is running, or nothing
 	 * while it is not. Issues #1786 and #41.
 	 *
@@ -8018,7 +8137,7 @@ public:
 	 * @param EdictStrength  what a Divine Edict's numbers are multiplied by on this floor, which is
 	 *                       `ACataclysmDungeonGameMode::EdictStrengthHere`; 1, the default, is the base strength every
 	 *                       dungeon but an Ascendant gives. Since 2026-10-22 (G7b): the Edicts of Temperance and
-	 *                       Patience read it
+	 *                       Patience read it; since 2026-10-23 (G7c), the Edict of Abstinence too
 	 */
 	static FCataclysmPlayerFloorEffects PlayerEffectsFor(
 		const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange = 0,

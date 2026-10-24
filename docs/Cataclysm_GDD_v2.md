@@ -4302,7 +4302,7 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
-**Weight 20, the top band.** The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 120 modifiers with weights of 5, 10, 15 and 20, and this is one of the fourteen at 20. That band holds the modifiers that change how a floor is played rather than how hard it hits — Edict of Silence stops all skill use for 15 seconds at a time, Reality Twister adds a random modifier to the dungeon every 30 seconds — and an enemy carrying a real player's class, level, passive allocation, equipment and skills belongs with those.
+**Weight 20, the top band.** The Dungeon Modifiers sheet in `docs/All_Things_Cataclysm.xlsx` holds 123 modifiers with weights of 5, 10, 15 and 20, and this is one of the fourteen at 20. That band holds the modifiers that change how a floor is played rather than how hard it hits — Edict of Silence stops all skill use for 15 seconds at a time, Reality Twister adds a random modifier to the dungeon every 30 seconds — and an enemy carrying a real player's class, level, passive allocation, equipment and skills belongs with those.
 
   
 
@@ -6539,7 +6539,10 @@ Exile's Delirium (difficulty that rises the further the player goes) and Ultimat
 round) as its precedents. The simulation approximates the Ascendant with one more average modifier a floor. The game
 has the Ascendant since 2026-10-22, with the two Edicts that are already modifiers, its strength, its Heavenly Core
 (the floor boss's health, never attacking, sealing the last floor's stairs while it stands) and the Edict left on its
-city; it does not yet have the six new Edicts or what they do, nor the Angelic Wardens' "divine laws".
+city. The six new Edicts are rows and are built in the game: Temperance, Patience and Stillness since 2026-10-22,
+Abstinence, Vigil and Humility since 2026-10-23, each scaled in an Ascendant up to its cap; and since 2026-10-23
+breaking a punishing Edict -- Abstinence's payment, Vigil's smite being called, a movement skill under Stillness, a
+skill with a cooldown under Patience -- wakes the nearest standing statue of the Angelic Wardens, one for each.
 
   
 

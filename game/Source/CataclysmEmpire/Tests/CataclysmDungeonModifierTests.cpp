@@ -26,7 +26,7 @@
  * passes `-nullrhi`, and a rule that needed an asset loaded could only be
  * checked where content is present.
  * `Cataclysm.DungeonModifiers.EveryRowOfTheTableBecomesAPoolEntry`, over in the
- * `Cataclysm` module, is the one that reads the real 120 rows.
+ * `Cataclysm` module, is the one that reads the real 123 rows.
  */
 
 namespace CataclysmDungeonModifierTest
@@ -268,7 +268,7 @@ bool FCataclysmDungeonModifierGenericTest::RunTest(const FString& Parameters)
 	}
 
 	// AND THE ROW IS STILL IN THE TABLE. It is not drawn; it is not deleted.
-	// The design has 120 dungeon modifiers and this one is among them.
+	// The design has 123 dungeon modifiers and this one is among them.
 	const bool bStillThere = All.ContainsByPredicate(
 		[](const FCataclysmDungeonModifier& Modifier)
 		{
@@ -822,6 +822,9 @@ namespace CataclysmDungeonModifierTest
 	const FName EdictOfTemperanceKey(TEXT("Celestial_Edict_of_Temperance"));
 	const FName EdictOfPatienceKey(TEXT("Celestial_Edict_of_Patience"));
 	const FName EdictOfStillnessKey(TEXT("Celestial_Edict_of_Stillness"));
+	const FName EdictOfAbstinenceKey(TEXT("Celestial_Edict_of_Abstinence"));
+	const FName EdictOfVigilKey(TEXT("Celestial_Edict_of_Vigil"));
+	const FName EdictOfHumilityKey(TEXT("Celestial_Edict_of_Humility"));
 	const FName EdictOfTitheKey(TEXT("Celestial_Forced_Tithes"));
 }
 
@@ -834,11 +837,11 @@ bool FCataclysmEdictKeysTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonModifierTest;
 	using Rules = UCataclysmDungeonModifierRules;
 
-	// THE FIVE THAT ARE ROWS TODAY, IN THE DESIGN'S ORDER. Abstinence, Vigil and Humility are G7c.
-	const TArray<FName> Expected = { EdictOfSilenceKey, EdictOfTemperanceKey, EdictOfPatienceKey, EdictOfStillnessKey,
-									  EdictOfTitheKey };
-	TestTrue(TEXT("the Edicts are the Edicts of Silence, Temperance, Patience and Stillness and Forced Tithes, in the "
-				  "design's order"),
+	// ALL EIGHT THE DESIGN NAMES, IN ITS ORDER: Abstinence, Vigil and Humility rows since 2026-10-23 (G7c).
+	const TArray<FName> Expected = { EdictOfSilenceKey, EdictOfTemperanceKey, EdictOfPatienceKey, EdictOfAbstinenceKey,
+									  EdictOfStillnessKey, EdictOfVigilKey, EdictOfHumilityKey, EdictOfTitheKey };
+	TestTrue(TEXT("the Edicts are the Edicts of Silence, Temperance, Patience, Abstinence, Stillness, Vigil and Humility "
+				  "and Forced Tithes, in the design's order"),
 			 Rules::EdictKeys() == Expected);
 
 	TestTrue(TEXT("the Edict of Silence is an Edict"), Rules::IsEdict(EdictOfSilenceKey));
@@ -865,7 +868,7 @@ bool FCataclysmEdictsAFloorTest::RunTest(const FString& Parameters)
 	using Rules = UCataclysmDungeonModifierRules;
 
 	TestEqual(TEXT("four at most, the owner's"), Rules::AscendantMostEdicts, 4);
-	TestEqual(TEXT("and five Edicts are rows today"), Rules::EdictKeys().Num(), 5);
+	TestEqual(TEXT("and all eight Edicts are rows"), Rules::EdictKeys().Num(), 8);
 
 	const TArray<FName> NoneActive;
 	TestEqual(TEXT("a floor numbered below one adds none"), Rules::EdictsOnFloor(7, NoneActive, 0).Num(), 0);
@@ -954,9 +957,9 @@ bool FCataclysmEdictsEvenTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonModifierTest;
 	using Rules = UCataclysmDungeonModifierRules;
 
-	// THE OWNER'S RULING OF 2026-09-07, APPLIED TO THE EDICTS: an equal chance. The five rows' dangers are 20, 20,
-	// 15, 10 and 15; drawn by them the Edict of Silence would come first one time in four. Drawn evenly, one time in
-	// as many as there are Edicts: one in five.
+	// THE OWNER'S RULING OF 2026-09-07, APPLIED TO THE EDICTS: an equal chance. The eight rows' dangers are 20, 20,
+	// 15, 15, 10, 15, 15 and 15, 125 in all; drawn by them the Edict of Silence would come first 20 times in 125, 0.16.
+	// Drawn evenly, one time in as many as there are Edicts: one in eight.
 	constexpr int32 Seeds = 4000;
 	int32 SilenceFirst = 0;
 	const TArray<FName> NoneActive;
@@ -971,8 +974,8 @@ bool FCataclysmEdictsEvenTest::RunTest(const FString& Parameters)
 	const float Even = 1.0f / Rules::EdictKeys().Num();
 	TestTrue(TEXT("the Edict of Silence comes first about one time in as many as there are Edicts"),
 			 Share > Even - 0.05f && Share < Even + 0.05f);
-	TestTrue(TEXT("CONTROL: which is not the one in four a draw by danger would give"),
-			 FMath::Abs(Share - 20.0f / 80.0f) > 0.02f);
+	TestTrue(TEXT("CONTROL: which is not the 20 in 125 a draw by danger would give"),
+			 FMath::Abs(Share - 20.0f / 125.0f) > 0.02f);
 	return true;
 }
 
@@ -1130,6 +1133,63 @@ bool FCataclysmEdictsEachDrawnTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("CONTROL: no more Edicts come first than are listed"), First.Num(), Rules::EdictKeys().Num());
 	TestFalse(TEXT("CONTROL: Golden Spires, a Celestial row, is never drawn as an Edict"),
 			  HeldByFour.Contains(FName(TEXT("Celestial_Golden_Spires"))));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The last three Edicts are rows: Abstinence, Vigil and Humility -- 2026-10-23, G7c
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastEdictsDrawnTest,
+	"Cataclysm.DungeonModifiers.AnAscendantCanDrawAbstinenceVigilAndHumilityAndNamesEachAsTheDesignDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLastEdictsDrawnTest::RunTest(const FString& Parameters)
+{
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const FName Abstinence(TEXT("Celestial_Edict_of_Abstinence"));
+	const FName Vigil(TEXT("Celestial_Edict_of_Vigil"));
+	const FName Humility(TEXT("Celestial_Edict_of_Humility"));
+
+	// THE THREE ARE EDICTS, NAMED AS THE DESIGN NAMES THEM.
+	TestTrue(TEXT("the Edict of Abstinence is an Edict"), Rules::IsEdict(Abstinence));
+	TestTrue(TEXT("and the Edict of Vigil"), Rules::IsEdict(Vigil));
+	TestTrue(TEXT("and the Edict of Humility"), Rules::IsEdict(Humility));
+	TestEqual(TEXT("shown as the Edict of Abstinence"), Rules::EdictName(Abstinence), FString(TEXT("Edict of Abstinence")));
+	TestEqual(TEXT("shown as the Edict of Vigil"), Rules::EdictName(Vigil), FString(TEXT("Edict of Vigil")));
+	TestEqual(TEXT("shown as the Edict of Humility"), Rules::EdictName(Humility), FString(TEXT("Edict of Humility")));
+
+	// EACH COMES FIRST ON SOME SEED AND IS HELD FROM FLOOR 4 ON SOME SEED, AND ALL EIGHT COME FIRST ON SOME SEED.
+	TSet<FName> First;
+	TSet<FName> HeldByFour;
+	for (int32 Seed = 1; Seed <= 400; ++Seed)
+	{
+		First.Add(Rules::EdictsOnFloor(Seed, TArray<FName>(), 1)[0]);
+		for (const FName& Edict : Rules::EdictsOnFloor(Seed, TArray<FName>(), Rules::AscendantMostEdicts))
+		{
+			HeldByFour.Add(Edict);
+		}
+	}
+	for (const FName& Edict : {Abstinence, Vigil, Humility})
+	{
+		TestTrue(FString::Printf(TEXT("%s comes first on some seed"), *Edict.ToString()), First.Contains(Edict));
+		TestTrue(FString::Printf(TEXT("%s is held from floor 4 on some seed"), *Edict.ToString()),
+				 HeldByFour.Contains(Edict));
+	}
+	TestEqual(TEXT("all eight come first on some seed"), First.Num(), 8);
+
+	// THE CONTROL: an Ascendant whose own modifiers hold the three draws none of them again.
+	const TArray<FName> OwnThree = {Abstinence, Vigil, Humility};
+	int32 DrawnAgain = 0;
+	for (int32 Seed = 1; Seed <= 50; ++Seed)
+	{
+		for (const FName& Edict : Rules::EdictsOnFloor(Seed, OwnThree, Rules::AscendantMostEdicts))
+		{
+			DrawnAgain += OwnThree.Contains(Edict) ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("CONTROL: holding the three among its own, it draws none of them"), DrawnAgain, 0);
 	return true;
 }
 

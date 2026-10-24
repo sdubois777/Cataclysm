@@ -186,7 +186,7 @@ public:
 	/**
 	 * The dungeon's own modifiers, as row keys of the modifier table.
 	 *
-	 * CARRIED SO A PER-FLOOR RULE CAN READ THEM. One of the 120 modifiers,
+	 * CARRIED SO A PER-FLOOR RULE CAN READ THEM. One of the 123 modifiers,
 	 * Unstable Dimensions, gives every floor an extra modifier of its own, and
 	 * whether it fires depends on which modifiers the dungeon drew. The score
 	 * alone cannot answer that.
@@ -1533,7 +1533,7 @@ private:
 
 	/**
 	 * The Edicts of Temperance and Patience: put them on the player again when the Edict strength here has moved
-	 * since they were put there. 2026-10-22, G7b.
+	 * since they were put there. 2026-10-22, G7b. And the Edict of Abstinence, written the same way, since 2026-10-23.
 	 *
 	 * THE STRENGTH MOVES WHILE THE PLAYER STANDS ON ONE FLOOR IN ONE PLACE ONLY: an Ascendant's last floor, when its
 	 * Heavenly Core is destroyed, takes the Edicts from half again as strong to the floor's own strength. Both rules are
@@ -1542,6 +1542,22 @@ private:
 	 * begins and needs nothing here; the Edict of Stillness reads it on its own beat.
 	 */
 	void StepEdictStrength(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Edict of Vigil: a player who has stood still for its 3 seconds calls a smite on that spot, marked as Wings of the
+	 * Host marks a feather; three seconds later it lands on whoever stands on the mark, the player only, for the share
+	 * of maximum health `UCataclysmDungeonModifierEffects::EdictOfVigilSmitePercentAt` gives at `EdictStrengthHere`
+	 * when it was called. 2026-10-23, G7c.
+	 *
+	 * RULED 2026-10-23: one smite for each 3 seconds standing still, re-armed when it lands, so standing still is counted
+	 * from the later of the player's last move and the last landing; moving does not cancel a smite already called;
+	 * it is damage and not a cost, so it can kill. STANDING STILL IS `UCataclysmAbilitySystemComponent::SecondsSinceMoved`,
+	 * the clock the stationary conditions read, on the world's clock; the warning is counted on the beat, as Wings of the
+	 * Host counts its own. Calling the smite breaks a divine law: `NoteDivineLawViolated`.
+	 */
+	void StepEdictOfVigil(
 		class ACataclysmPlayerCharacter* Player,
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
@@ -2364,6 +2380,28 @@ public:
 	TArray<ACataclysmEnemyCharacter*> AngelicWardensNow() const;
 	bool PlaceAnAngelicStatueOn(FIntPoint Cell);
 	bool AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const;
+
+	/**
+	 * A divine law broken at `At`: the nearest Angelic Warden statue still standing wakes, unless a closed barrier stands
+	 * between its section and the section of `At`'s cell, ONE STATUE FOR EACH CALL, at any distance. Answers how many
+	 * woke, 0 or 1. Nothing on a floor with no statue standing. 2026-10-23, G7c.
+	 *
+	 * THE DESIGN: "Where the dungeon also carries Angelic Wardens, which animate when the player violates 'divine
+	 * laws', breaking a punishing Edict counts as violating a divine law" (`docs/Cataclysm_GDD_v2.md`, Heaven's
+	 * Wrath). RULED 2026-10-23, the four violations and their callers: the Edict of Abstinence's payment
+	 * (`UCataclysmSkillTemplate::PayHealthCost`); the Edict of Vigil's smite being called (`StepEdictOfVigil`); and,
+	 * from the skill-used notice (`NoteSkillUseForDivineLaws`), a movement skill under the Edict of Stillness, whose
+	 * slow it brings on, and a skill with a cooldown under the Edict of Patience, which lengthens that cooldown. The
+	 * Edicts of Silence, Temperance and Humility forbid and cannot be broken. The Edict of Tithe is not counted: paying
+	 * it ends the floor.
+	 *
+	 * THE NEAREST, FLAT FROM THE MIDDLE OF EACH STATUE'S CELL, with the barrier test the two older triggers ask
+	 * (`WakeTheAngelicStatuesNear`), and with no distance limit, ruled 2026-10-23. PUBLIC BECAUSE THE ABILITY CALLS IT.
+	 */
+	int32 NoteDivineLawViolated(const FVector& At);
+
+	/** The Edict of Vigil, for tests: the smite's mark while it counts down, or null. 2026-10-23, G7c. */
+	class ACataclysmGroundZone* EdictOfVigilMarkNow() const;
 
 	/**
 	 * Fragmented Reality, for the panel and tests. Issues #1820 and #41. Ruled 2026-10-08, each a labelled judgement
@@ -4234,6 +4272,16 @@ private:
 	float EdictStrengthApplied = 1.0f;
 
 	/**
+	 * Edict of Vigil: the smite's mark while it counts down, the warning so far, the share of maximum health it was
+	 * called at, and the world's time when it was last armed -- a floor's arrival or the last landing -- or below
+	 * nought for never. 2026-10-23, G7c. All of it goes at the stairs; the mark with the floor's other zones.
+	 */
+	TWeakObjectPtr<class ACataclysmGroundZone> EdictOfVigilMark;
+	float EdictOfVigilWarningSoFar = 0.0f;
+	float EdictOfVigilSmitePercent = 0.0f;
+	float EdictOfVigilArmedAtSeconds = -1.0f;
+
+	/**
 	 * Dirge Resonance: the beat's clock since the last crescendo, when the last one's haste
 	 * ends on the world's clock, and the whole second the panel last showed. All of it is
 	 * the floor's and goes at the stairs.
@@ -4615,6 +4663,13 @@ private:
 
 	/** Angelic Wardens, on every skill use: the player's skill, not the basic attack, wakes the statues near them. */
 	void NoteSkillUseForAngelicWardens(const struct FCataclysmSkillUsedNotice& Notice);
+
+	/**
+	 * The Edicts of Stillness and Patience, on every skill use: the player's skill in the Movement slot on a floor
+	 * carrying the Edict of Stillness, and the player's skill with a cooldown of its own on a floor carrying the Edict of
+	 * Patience, each break a divine law where it was used. A skill in both breaks two. 2026-10-23, G7c.
+	 */
+	void NoteSkillUseForDivineLaws(const struct FCataclysmSkillUsedNotice& Notice);
 
 	/**
 	 * Wakes every standing statue whose centre is within `WithinCm` of `PlayerAt`, flat, unless a closed barrier

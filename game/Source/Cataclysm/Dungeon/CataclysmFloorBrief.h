@@ -277,7 +277,7 @@ struct CATACLYSM_API FCataclysmFloorBrief
  * What a dungeon does to the floors it generates.
  *
  * **THIS IS THE SEAM, AND IT HAS FOUR USERS.** Three dungeon sub-types and one
- * of the 120 dungeon modifiers. Every one of them is a rule of the form "this
+ * of the 123 dungeon modifiers. Every one of them is a rule of the form "this
  * dungeon's floors are not like an ordinary dungeon's", and before this existed
  * there was nowhere to write one down. Issue #41.
  *
@@ -527,7 +527,7 @@ public:
 	/**
 	 * The row key of the dungeon modifier that gives every creature of a floor after the first one more enemy modifier.
 	 *
-	 * A ROW KEY AND NOT A NEW ENUM, because the 120 modifiers are data and one
+	 * A ROW KEY AND NOT A NEW ENUM, because the 123 modifiers are data and one
 	 * of them behaving differently does not make it a different kind of thing.
 	 * `Cataclysm.FloorBrief.TheModifierThatChangesAFloorIsARealRowOfTheTable` is
 	 * what fails if this key stops naming a row of
