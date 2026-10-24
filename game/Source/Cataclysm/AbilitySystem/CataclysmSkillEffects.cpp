@@ -2199,7 +2199,12 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 
 	// ALL THREE ARE ASKED FOR RATHER THAN READ. Issue #947. The attribute is
 	// worked out with every condition refused, so "While moving, your DoTs deal
-	// 20%-40% increased damage" was dropped in silence.
+	// 20%-40% increased damage" was dropped in silence. SINCE #2235 (ruled
+	// 2026-10-23, the owner's reword) that row reads "While the enemy is moving,
+	// your DoTs on them deal 20%-40% more damage", under `target_is_moving`, and
+	// is judged on each tick against the enemy the tick lands on, in
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`; asked here with no
+	// target, it is refused and adds nothing to the figure laid.
 	//
 	// THE CALLER'S TAGS, SINCE ISSUE #1833'S SMALL ENGINE HALVES: the ailment's
 	// own `Keyword.DoT.*` tag and the applying skill's tags. Until then this

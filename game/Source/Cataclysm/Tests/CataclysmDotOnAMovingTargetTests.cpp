@@ -13,10 +13,15 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmItem.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystemComponent.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -458,6 +463,126 @@ CATACLYSM_DOT_MOVING_TEST(FCataclysmDotOnAMovingTargetSpreadCopyTest,
 			  0.001f);
 	TestEqual(TEXT("the spread copy's tick on its moving carrier is the control's: a copy is not priced by its applier"),
 			  Lost[1] / Lost[2], 1.0f, 0.001f);
+	return true;
+}
+
+namespace CataclysmDotOnAMovingTargetTest
+{
+	/** The real row the data commit wrote, and a drawback with no effect row to pair it with on one item. */
+	const TCHAR* const MovingRealRow = TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea");
+	const TCHAR* const MovingRowDrawback = TEXT("Negative_Can_t_use_a_basic_attack");
+
+	/**
+	 * The roll pinned on the real row: 0.5. `UCataclysmItemValues::EnchantmentValue` gives a 20 to 40 range 21
+	 * written values, each owning an equal share of the roll, so 0.5 x 21 = 10.5 falls in share 10, which is 30.
+	 */
+	constexpr float RealRowPinnedRoll = 0.5f;
+	constexpr float ValueAtThePinnedRoll = 30.0f;
+
+	/** A generated table read from `game/Data`, as `Cataclysm.Enchantments.` reads the real data; null if it cannot be. */
+	template <typename RowType>
+	UDataTable* MovingTargetTableFrom(const TCHAR* FileName)
+	{
+		FString Contents;
+		if (!FFileHelper::LoadFileToString(Contents, *(FPaths::ProjectDir() / TEXT("Data") / FileName)))
+		{
+			return nullptr;
+		}
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = RowType::StaticStruct();
+		return Table->CreateTableFromCSVString(Contents).Num() > 0 ? nullptr : Table;
+	}
+}
+
+/**
+ * THE REAL ROW, "While the enemy is moving, your DoTs on them deal 20%-40% more damage", ruled 2026-10-23 (C4). The
+ * three generated enchantment tables are read from `game/Data`, as `Cataclysm.Enchantments.` reads them; the row is put
+ * on a helm beside a drawback with no effect row, its roll pinned at 0.5, and the item code
+ * (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`) turns it into the modifier the wearer's `dot_damage` line
+ * carries, written onto the wearer from a base of 100. Set-up checks first: the tables read, both names are rows, and
+ * the row gives exactly one `dot_damage` modifier, a "more" of 30 under `target_is_moving`. Then the scene of the first
+ * test: a still control and a walker, one burn each. The walker's tick is 1.3 times the control's: within the
+ * sentence's 1.2 to 1.4, and exactly the pinned roll's 30.
+ */
+CATACLYSM_DOT_MOVING_TEST(FCataclysmDotOnAMovingTargetRealRowTest,
+	"Cataclysm.DotOnAMovingTarget.TheRealRowAtAPinnedRollMakesATickOnAMovingEnemyWorthThirtyPerCentMore")
+{
+	using namespace CataclysmDotOnAMovingTargetTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	const UDataTable* Effects = MovingTargetTableFrom<FCataclysmEnchantmentEffectRow>(TEXT("EnchantmentEffects.csv"));
+	const UDataTable* Positive = MovingTargetTableFrom<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const UDataTable* Negative = MovingTargetTableFrom<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestTrue(TEXT("set-up: the three enchantment tables are read from game/Data"),
+				  Effects && Positive && Negative)
+		|| !TestTrue(TEXT("set-up: the real row is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(MovingRealRow)))
+		|| !TestTrue(TEXT("set-up: the drawback with no effect row is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(MovingRowDrawback))))
+	{
+		return false;
+	}
+
+	FCataclysmItem Piece;
+	Piece.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive = FName(MovingRealRow);
+	Rolled.Negative = FName(MovingRowDrawback);
+	Rolled.PositiveRoll = RealRowPinnedRoll;
+	Piece.Enchantments.Add(Rolled);
+	Piece.EnchantmentCount = 1;
+	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(Totals, {Piece}, Effects, Positive, Negative);
+	const TArray<FCataclysmStatModifier>* FromTheRow = Totals.Find(FName(TEXT("dot_damage")));
+	if (!TestTrue(TEXT("set-up: the row gives exactly one dot_damage modifier"),
+				  FromTheRow && FromTheRow->Num() == 1))
+	{
+		return false;
+	}
+	const FCataclysmStatModifier& Modifier = (*FromTheRow)[0];
+	TestTrue(TEXT("set-up: it is a \"more\""), Modifier.Bucket == ECataclysmStatBucket::More);
+	TestEqual(TEXT("set-up: at the pinned roll of 0.5 it is 30"), Modifier.Value, ValueAtThePinnedRoll, 0.001f);
+	TestTrue(TEXT("set-up: under target_is_moving"), Modifier.Condition == ECataclysmStatCondition::TargetIsMoving);
+
+	FWearer Wearer(World);
+	ACataclysmEnemyCharacter* Still = CreatureAt(World, FirstAt);
+	ACataclysmEnemyCharacter* Walker = CreatureAt(World, SecondAt);
+	if (!TestTrue(TEXT("set-up: the wearer"), Wearer.IsComplete())
+		|| !TestNotNull(TEXT("set-up: creature 0, the control"), Still)
+		|| !TestNotNull(TEXT("set-up: creature 1, the walker"), Walker))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Damage = Inputs.FindOrAdd(FName(TEXT("dot_damage")));
+	Damage.Base = 100.0f;
+	Damage.Modifiers = *FromTheRow;
+	Inputs.FindOrAdd(FName(TEXT("dot_frequency"))).Base = 100.0f;
+	Inputs.FindOrAdd(FName(TEXT("dot_duration"))).Base = 100.0f;
+	Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	Settle(World, {Still, Walker});
+
+	if (!TestTrue(TEXT("set-up: the control's burn is laid"), LayBurn(Wearer, Still))
+		|| !TestTrue(TEXT("set-up: the walker's burn is laid"), LayBurn(Wearer, Walker)))
+	{
+		return false;
+	}
+	Pace(World, {}, {Still, Walker}, 0.5f);
+	const TArray<float> Lost = Pace(World, {Walker}, {Still}, 1.0f);
+	TestTrue(TEXT("set-up: the walker reads as moving at the window's end"), ReadsAsMoving(Walker));
+	TestFalse(TEXT("set-up: the control reads as standing at the window's end"), ReadsAsMoving(Still));
+	if (!TestTrue(TEXT("control: the still creature lost one tick"), Lost[1] > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the real row at the pinned roll: the moving creature's tick is 1.3 times the still one's"),
+			  Lost[0] / Lost[1], 1.0f + ValueAtThePinnedRoll / 100.0f, 0.001f);
 	return true;
 }
 

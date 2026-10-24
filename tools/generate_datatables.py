@@ -9003,11 +9003,15 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
 #: here to have a probe in `CataclysmStatExemptionTests.cpp`, or to be named there
 #: as read from the code and not yet probed.
 #:
-#: WHAT IT DOES NOT SAY. That every consumer of a stat asks. Two are known to
-#: have one that reads the attribute, each with an issue: damage priced outside
-#: a hit for `attack_damage` (#2234), and `dot_damage` judged once at
-#: application (#2235). A third, a projectile skill's throw interval for
-#: `attack_speed`, asks since issue #2233 (2026-10-23), once when a rack starts.
+#: WHAT IT DOES NOT SAY. That every consumer of a stat asks. One is known to
+#: have one that reads the attribute, with an issue: damage priced outside a
+#: hit for `attack_damage` (#2234). A second, a projectile skill's throw
+#: interval for `attack_speed`, asks since issue #2233 (2026-10-23), once when a
+#: rack starts. A third, `dot_damage` judged once at application, is BUILT since
+#: #2235 (2026-10-23): a tick priced from its applier's stats asks `dot_damage`
+#: again with the character it lands on, so a condition about the target is
+#: judged on each tick. A condition about the wearer's own state is still
+#: judged once, when the effect is applied.
 ASKER_PASSES_NOTHING_MORE: frozenset[str] = frozenset()
 ASKER_PASSES_A_BLOW_TAKEN = frozenset({"blow_taken"})
 ASKER_PASSES_A_HIT_DEALT = frozenset({"hit_dealt"})
