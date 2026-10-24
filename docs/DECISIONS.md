@@ -444,34 +444,61 @@ narrowed to the new file -- a check of the file, not a registered proof. Each PR
 
 ### The editor step
 
-Not yet run. `DT_DungeonModifiers.uasset` and `game/Data/datatable_asset_sources.json` are not rebuilt, so
-`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded` fails until it is, and
-`EveryRuleNamesARowOfTheTable`, `EveryGeneratedTableHasAnAssetThatMatchesIt` and `EveryRowOfTheTableBecomesAPoolEntry`
-fail in the editor until it is.
+Run by the dungeon session on 2026-10-23 as its own locked step, under the lock `void-zones-ed7c`, on
+`feat/game-edicts-c-3` at `a2780ef3a`, once `development`'s CI and Unreal runs on `63cae4775` had completed with success
+and with no run in progress; the five conditions were checked immediately before the lock was taken. "Build: Succeeded -
+71 actions, 61 files compiled"; then `python tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and
+changed exactly `game/Content/Data/DT_DungeonModifiers.uasset` and `game/Data/datatable_asset_sources.json` (its
+`DungeonModifiers.csv` entry: rows 120 -> 123 and the CSV's hash, nothing else). Both were committed as `1540dc640` and
+pushed (a Git LFS dry-run push afterwards listed nothing left to upload), and the lock was released. Python on that
+head: "6932 passed, 8 skipped" (JUnit 6940, 0 failures).
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code. Suggested by the writing session,
-each predicted by reading:
+**All three PROVED** in the second window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon
+session after reading the code; each break text matched its file exactly once. **Narrowed**: P1 and P2 on the one test
+each names, P3 on the prefix `Cataclysm.DungeonModifierEffects.TheEdictOfVigil` (two tests). No Python half was
+registered for them; the Python check's own three breaks, run by the writing session, are under Python above.
 
-- **P1, Humility's hold removed** (`CataclysmVitalAttributeSet.cpp`, `UCataclysmDamageCalculation::NoExtraCriticalMultiplier);`
-  -> `Hit.CritMultiplier);`, which leaves the `Min` holding nothing): `Cataclysm.Crit.UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne`
-  ("under it a critical strike deals the hit, 1,000") and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
-  (the Humility probe).
-- **P2, Abstinence's health term removed** (`CataclysmSkillTemplate.cpp`, `: FromCurrent + Added + FromAbstinence;` ->
-  `: FromCurrent + Added + FromAbstinence * 0.0f;`): the four `Cataclysm.Skills.` Abstinence tests but the one on what
-  pays nothing; `TheEdictOfAbstinenceTakesItsShareOfAMovementSkillsManaFromHealthAndScalesInAnAscendant` and
-  `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue` (its quarter; the statue still wakes, the share
-  still being owed).
-- **P3, Vigil's step removed** (`CataclysmDungeonGameMode.cpp`, `StepEdictOfVigil(Player, AbilitySystem);` -> a
-  comment): `TheEdictOfVigilMarksWhereThePlayerStoodStillForThreeSecondsAndSmitesOnlyThePlayer`,
-  `MovingOffTheEdictOfVigilsMarkDodgesItsSmiteAndDoesNotCancelIt`, `ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`,
-  `InAnAscendantTheEdictOfVigilSmitesHarderAFloorDeeperUpToHalf` and
-  `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue`; the numbers test passes.
+- **P1**, Humility's hold removed: `Hit.CritMultiplier = FMath::Min(Hit.CritMultiplier,` -> `FMath::Max(` in
+  `CataclysmVitalAttributeSet.cpp`. Predicted: `UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne`
+  fails. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  UnderTheEdictOfHumilityACriticalStrikeDealsTheHitAndStillCountsAsOne"; restored "1 tests performed, 1 succeeded, 0
+  failed".
+- **P2**, Abstinence's health term removed: `: FromCurrent + Added + FromAbstinence;` -> `: FromCurrent + Added + 0.0f *
+  FromAbstinence;` in `CataclysmSkillTemplate.cpp` (still read, so no unused warning). Predicted:
+  `UnderTheEdictOfAbstinenceAManaPaidCastAlsoPaysAQuarterOfItsManaInHealth` fails. Printed: "1 tests performed, 0
+  succeeded, 1 failed: UnderTheEdictOfAbstinenceAManaPaidCastAlsoPaysAQuarterOfItsManaInHealth"; restored "1 tests
+  performed, 1 succeeded, 0 failed".
+- **P3**, Vigil's beat removed: `StepEdictOfVigil(Player, AbilitySystem);` -> a comment in `CataclysmDungeonGameMode.cpp`.
+  Predicted: the marking test fails (it runs the beat) and the pure-function one passes. Printed: "2 tests performed, 1
+  succeeded, 1 failed: TheEdictOfVigilMarksWhereThePlayerStoodStillForThreeSecondsAndSmitesOnlyThePlayer"; restored "2
+  tests performed, 2 succeeded, 0 failed".
 
 ### Run
 
-Not yet run. Nothing was built and no Unreal test was run by the writing session.
+Nothing was built and no Unreal test was run by the writing session. Two windows were run by the dungeon session,
+each given by the coordinating session, each with the conditions checked immediately before the lock was taken and the
+lock released before anything was written here.
+
+- **First window** (lock `void-zones-w40`, `feat/game-edicts-c-3` at `1540dc640`, on `63cae4775`, 2026-10-23): "4127
+  tests performed, 4126 succeeded, 1 failed: ADivineLawBrokenDoesNotWakeTheNearestStatueWhileAClosedBarrierPartsItFromThePlayer";
+  Python "6932 passed, 8 skipped". It stopped there; no proof was run. The failure was the test's own set-up, ruled and
+  changed as recorded under "The first window, and a set-up the coordinating session ruled" above.
+- **Second window** (lock `void-zones-w41`, `feat/game-edicts-c-4` at `8911a0c61`, on `0454df1a4`, the #2233 merge
+  #2486, 2026-10-24), with a sixth condition the coordinating session added that day -- at least 12 GB of free physical
+  memory (issue #2485); measured "free GB: 16.7 of 31.1" just before the lock:
+  - **Build:** "Build: Succeeded - 55 actions, 50 files compiled".
+  - **The whole Unreal suite:** "4129 tests performed, 4129 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4129 tests in the tree at 8911a0c61; 4129 performed, gap 0; every declared test was reported by the
+    run." Registered 4129 and 0: the 4110 of the #2486 merge and the nineteen new names here. The barrier test passed,
+    its set-up finding its floor on dungeon seed 2 ("the player on (5, 3), a statue across barrier 0 on (23, 3) and one
+    beside the player on (18, 37)"); seed 2 was within the old limit too, so it was trying every free cell of section 0
+    that found it. The hand-built fallback the coordinating session accepted in advance was not needed and was not
+    applied. Q3's narrow draw control and every seeded Ascendant test passed.
+  - **Python:** "6932 passed, 8 skipped"; JUnit tests 6940, failures 0, errors 0, skipped 8, as registered. Lint: "All
+    checks passed!".
+  - **The proofs:** as under Proofs above.
 
 Branch `feat/game-edicts-c-4` on `development` at `0454df1a4`. This entry adds lines to `docs/DECISIONS.md` and removes
 none of development's.
