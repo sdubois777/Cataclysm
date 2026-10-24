@@ -262,7 +262,26 @@ None. No Python check, generator or validator is changed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-24, window t72w, under the editor lock as `enchant-t72w`, at 1541a2e81 (this
+commit moved from fac596a7c on c514b6746 onto development 439786ca3, #2487; the move kept its zero-context patch id, whole
+and outside this file, and its 8 removed lines). This was the code's first compile. Every figure was registered with the
+coordinating session before the run, and every one is as registered. Free physical memory before the lock was taken:
+15.6 GB (the 12 GB pre-check of #2485).
+
+- **The whole Unreal suite:** "Build: Succeeded - 55 actions, 50 files compiled"; "4131 tests performed, 4131 succeeded,
+  0 failed" (4129 on development + this group's 2); "Declared: 4131 tests in the tree at 1541a2e81; 4131 performed, gap 0".
+  40 tests skipped part of what they check.
+- **Python of record:** "6932 passed, 8 skipped"; JUnit 6940 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **PL-I, OnDeath's binding is not removed first** (`CataclysmPlayerCharacter.cpp`, `Events->OnDeath.Remove(SomethingDiedHandle);`
+  removed, anchor counted once): PROVED. With the break in, 2 tests performed, 1 succeeded, 1 failed,
+  `APlayerSetUpTwiceStillHearsOneKillOneHitAndOneSkillUseOnce`; 2 failed assertions, 2 registered ("the kill counted on the
+  player state", 2 against 1; "set up twice: the kill is heard once", 2 against 1). The control passed. Restored, 2
+  performed, 2 succeeded. The file's hash is the same after.
+- **PL-II, OnHit's and OnSkillUsed's bindings are not removed first** (the same file, both `Remove` lines removed, each
+  anchor counted once): PROVED. With the break in, 2 performed, 1 succeeded, 1 failed, the same test; 2 failed assertions,
+  2 registered ("set up twice: the hit is heard once" and "set up twice: the skill use is heard once", each 2 against 1).
+  The control passed. Restored, 2 performed, 2 succeeded. The file's hash is the same after.
 
 ---
 
