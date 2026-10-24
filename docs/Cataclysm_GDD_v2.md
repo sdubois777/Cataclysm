@@ -4310,6 +4310,10 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
+**How often it appears: one dungeon in twenty.** Every dungeon has an independent 5% chance of carrying this modifier, whatever its Cataclysm Type and whatever fills its modifier slots; it is never drawn into a slot, and it still adds its weight of 20 to the dungeon's Modifier Score — the project owner's decision of 2026-09-05, recorded in `docs/DECISIONS.md` under "2026-09-05 (recorded 2026-10-24) — The Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the modifier slots".
+
+  
+
 ## **Dungeon Score Formula**
 
 A dungeon's score is **its middle floor**, with that floor's six rarity scores collapsed into one number by how common each rarity is.
