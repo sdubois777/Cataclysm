@@ -925,6 +925,17 @@ static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+// ---------------------------------------------------------------------------
+// THE DRAWS LEFT ON THE SHARED GENERATOR, BY RULING. Issue #2381, ruled 2026-10-24 by the coordinating session: "The
+// seven floor-deciding draws move onto seeded streams, with a test each. The 29 in-play draws stay shared." The seven
+// are what a floor holds when it is built (see the salts beside `RawSewageHeadingSalt`). What stays on FMath's shared
+// generator is 29 member functions, 53 lines, that draw while the player is on the floor, on a beat or on an event:
+// combat moments, not what a floor holds. A per-floor seed alone would not make them repeat, because when they draw
+// depends on what the player does. The 25 roll helpers below stay on it too; each is pinned for tests by its console
+// variable. One of them, `DungeonGameModeIllusoryEnemiesRoll`, is asked by `SpawnPlacedCreature` as each creature is
+// placed, the floor's own population included; it is not one of the seven and was not changed.
+// ---------------------------------------------------------------------------
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -3491,10 +3502,17 @@ void ACataclysmDungeonGameMode::ChooseThePlagueHarbingers()
 	}
 	const int32 Wanted = FMath::Min(Effects::PlagueHarbingersFor(CurrentWave.Num()), Candidates.Num());
 
-	// AT RANDOM: the first `Wanted` of an even shuffle.
+	// AT RANDOM: the first `Wanted` of an even shuffle, ON THE FLOOR'S OWN STREAM, one draw a Harbinger as before.
+	// Issue #2381, ruled 2026-10-24. The plan's seed mixed with this rule's salt and the floor number, which is the
+	// wave's number in a Horde arena, whose plan is the same on every wave. `CurrentWave` is in the order the seeded
+	// populator placed its creatures, so the same dungeon seed and floor choose the same. Which creatures are
+	// candidates still rests on the rungs `RarityStepFor` rolls, which a floor's seed does not fix.
+	const int32 PlanSeed = CurrentFloor ? CurrentFloor->GetPlan().Seed : 0;
+	FRandomStream Choice(FCataclysmFloorGenerator::SeedForFloor(
+		FCataclysmFloorGenerator::SeedForFloor(PlanSeed, Effects::PlagueHarbingersChoiceSalt), FloorNumber));
 	for (int32 Index = 0; Index < Wanted; ++Index)
 	{
-		Candidates.Swap(Index, FMath::RandRange(Index, Candidates.Num() - 1));
+		Candidates.Swap(Index, Choice.RandRange(Index, Candidates.Num() - 1));
 		ACataclysmEnemyCharacter* Chosen = Candidates[Index];
 		Chosen->bPlagueHarbinger = true;
 		FPlagueHarbingerTrail Trail;
@@ -5261,9 +5279,14 @@ void ACataclysmDungeonGameMode::PlaceTheRivers()
 	// picker gives and at a random heading, keeping the marks that stand clear of the entrance.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::RawSewageRiversPerHordeArena : Effects::RawSewageRiversPerFloor;
 	const FVector Entrance = CurrentFloor->EntranceWorld();
+	// EACH HEADING ON THE FLOOR'S OWN STREAM, one draw a river as before: the plan's seed mixed with this rule's salt.
+	// Issue #2381, ruled 2026-10-24; until then the shared generator, and two builds of one floor ran its rivers two
+	// ways.
+	FRandomStream Headings(
+		FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::RawSewageHeadingSalt));
 	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::RawSewageCellsSalt))
 	{
-		const float Heading = FMath::FRandRange(0.0f, PI);
+		const float Heading = Headings.FRandRange(0.0f, PI);
 		for (const FVector& Where : WingsOfTheHostFeathers(
 				 *CurrentFloor, CurrentFloor->WorldOfCell(Cell), FVector(FMath::Cos(Heading), FMath::Sin(Heading), 0.0f)))
 		{
@@ -5384,7 +5407,13 @@ void ACataclysmDungeonGameMode::ChooseThePlaguebearer()
 			   FloorNumber);
 		return;
 	}
-	ACataclysmEnemyCharacter* Chosen = From[FMath::RandRange(0, From.Num() - 1)];
+	// ON THE FLOOR'S OWN STREAM, one draw as before, mixed with the floor number for the reason
+	// `ChooseThePlagueHarbingers` gives. Issue #2381, ruled 2026-10-24. `CurrentWave` is in the populator's order; which
+	// creatures are Elites still rests on the rungs `RarityStepFor` rolls, which a floor's seed does not fix.
+	const int32 PlanSeed = CurrentFloor ? CurrentFloor->GetPlan().Seed : 0;
+	FRandomStream Choice(FCataclysmFloorGenerator::SeedForFloor(
+		FCataclysmFloorGenerator::SeedForFloor(PlanSeed, Effects::PlaguebearerChoiceSalt), FloorNumber));
+	ACataclysmEnemyCharacter* Chosen = From[Choice.RandRange(0, From.Num() - 1)];
 	const bool bRaised = Elites.IsEmpty();
 	if (bRaised)
 	{
@@ -8926,7 +8955,11 @@ void ACataclysmDungeonGameMode::PlaceTheQuarantine()
 	}
 	// ONE KIND, OF THE FLOOR'S OWN, drawn once, and shown on its bar. The player can destroy it: the Imp's health at
 	// Common, paying nothing and not one of the floor's creatures.
-	QuarantineHeldKind = Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)].Creature;
+	// ON THE FLOOR'S OWN STREAM: the plan's seed mixed with this rule's salt, issue #2381, ruled 2026-10-24. The
+	// population is the seeded populator's, in its own order, so the same dungeon seed and floor hold the same kind.
+	FRandomStream Held(
+		FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::QuarantineBreachKindSalt));
+	QuarantineHeldKind = Population.Enemies[Held.RandRange(0, Population.Enemies.Num() - 1)].Creature;
 	Containment->Holds = FString::Printf(TEXT("%d %s"), Effects::QuarantineBreachHeld, *QuarantineHeldName());
 	Containment->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 	Containment->SetHealth(QuarantineHealth());
@@ -9305,6 +9338,10 @@ void ACataclysmDungeonGameMode::PlaceTheHoards()
 
 	const TArray<FIntPoint> Cells =
 		EternalChorusCells(*CurrentFloor, Effects::LuxuryHoardersPerFloor, Effects::LuxuryHoardersCellsSalt);
+	// EVERY GUARD'S KIND AND CELL ON ONE STREAM OF THE FLOOR'S OWN, two draws a guard in the same order as before: the
+	// plan's seed mixed with this rule's salt. Issue #2381, ruled 2026-10-24. The pile below keeps its own stream.
+	FRandomStream Guards(
+		FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::LuxuryHoardersGuardsSalt));
 	for (int32 Index = 0; Index < Cells.Num(); ++Index)
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cells[Index]);
@@ -9325,8 +9362,8 @@ void ACataclysmDungeonGameMode::PlaceTheHoards()
 			 ++Which)
 		{
 			FCataclysmEnemyPlacement Placement =
-				Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
-			Placement.Cell = Beside[FMath::RandRange(0, Beside.Num() - 1)];
+				Population.Enemies[Guards.RandRange(0, Population.Enemies.Num() - 1)];
+			Placement.Cell = Beside[Guards.RandRange(0, Beside.Num() - 1)];
 			if (ACataclysmEnemyCharacter* Guard = SpawnPlacedCreature(
 					Placement, FloorBrief.SightRadiusMultiplier, Effects::LuxuryHoardersGuardRung))
 			{
@@ -11276,12 +11313,16 @@ void ACataclysmDungeonGameMode::PlaceTheRelics()
 	}
 
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::BattlefieldRelicsPerHordeArena : Effects::BattlefieldRelicsPerFloor;
+	// EACH KIND DRAWN ON THE FLOOR'S OWN STREAM, one draw a relic as before and none when pinned: the plan's seed mixed
+	// with this rule's salt. Issue #2381, ruled 2026-10-24.
+	FRandomStream KindDraws(
+		FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::BattlefieldRelicsKindSalt));
 	for (ACataclysmFloorObject* Relic : PlaceFloorObjects(FName(Effects::BattlefieldRelicsKey), Count,
 														  Effects::BattlefieldRelicsCellsSalt,
 														  TEXT("Battlefield Relic"),
 														  TEXT("An ancient relic of war. Activating it wakes the fallen.")))
 	{
-		const int32 Kind = Pinned.IsEmpty() ? FMath::RandRange(0, Effects::BattlefieldRelicKinds - 1)
+		const int32 Kind = Pinned.IsEmpty() ? KindDraws.RandRange(0, Effects::BattlefieldRelicKinds - 1)
 											: Pinned[BattlefieldRelics.Num() % Pinned.Num()];
 		Relic->DisplayName = FString::Printf(TEXT("Battlefield Relic of %s"), Effects::BattlefieldRelicKindName(Kind));
 		const FString Gives = Kind == Effects::BattlefieldRelicHaste
@@ -12414,13 +12455,21 @@ void ACataclysmDungeonGameMode::PlaceThePactAltar()
 	if (Offer.IsEmpty())
 	{
 		// TEN SETS OF THREE AND ONE RULED OUT, SO A HANDFUL OF DRAWS FINDS ANOTHER; the last draw stands if none did.
+		//
+		// EVERY SHUFFLE ON ONE STREAM OF THE FLOOR'S OWN, as many draws as before: the plan's seed mixed with this
+		// rule's salt and the floor number, for the reason `ChooseThePlagueHarbingers` gives -- this altar is placed
+		// on every wave of a Horde arena. Issue #2381, ruled 2026-10-24. The offer also rests on the last floor's,
+		// which the same dungeon walked in the same order offers the same.
+		FRandomStream Offers(FCataclysmFloorGenerator::SeedForFloor(
+			FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::PactOfTemptationOfferSalt),
+			FloorNumber));
 		for (int32 Draw = 0; Draw < 32; ++Draw)
 		{
 			TArray<int32> Pacts = {Effects::PactWrath, Effects::PactHaste, Effects::PactBulwark, Effects::PactGreed,
 								   Effects::PactBlood};
 			for (int32 Index = Pacts.Num() - 1; Index > 0; --Index)
 			{
-				Pacts.Swap(Index, FMath::RandRange(0, Index));
+				Pacts.Swap(Index, Offers.RandRange(0, Index));
 			}
 			Offer = TArray<int32>(Pacts.GetData(), Effects::PactsOffered);
 			Offer.Sort();
