@@ -58935,4 +58935,109 @@ bool FCataclysmSeededPlaguebearerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ILLUSORY ENEMIES: THE SAME DUNGEON SEED AND FLOOR BUILD THE SAME CREATURES AS ILLUSIONS, HOWEVER THE SHARED GENERATOR
+// WAS SEEDED; ANOTHER SEED MAKES OTHERS ILLUSIONS. Issue #2381, the eighth draw, ruled 2026-10-24.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededIllusionsTest,
+	"Cataclysm.DungeonModifierEffects.IllusoryEnemiesIllusionsComeFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededIllusionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	// DRAWN, NOT PINNED: the roll's console variable at -1, and put back to what it was on every exit. Set here and not
+	// with `FScopedConsoleString`, whose clearing writes an empty string, which a number variable may read as 0.
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.IllusoryEnemiesRoll"));
+	if (!TestNotNull(TEXT("the roll's console variable exists"), Roll))
+	{
+		return false;
+	}
+	const FString RollWas = Roll->GetString();
+	ON_SCOPE_EXIT { Roll->Set(*RollWas, ECVF_SetByConsole); };
+	Roll->Set(TEXT("-1"), ECVF_SetByConsole);
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// WHERE IN THE FLOOR'S OWN CREATURES EACH ILLUSION STANDS, the creatures in the order the seeded populator placed
+	// them, and how many there are.
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out, int32& Illusions, int32& Placed) -> bool
+	{
+		SeededFloorCarry(Mode, {IllusoryEnemies}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		TArray<int32> At;
+		for (int32 Index = 0; Index < Mode->CurrentWave.Num(); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Enemy = Mode->CurrentWave[Index].Get();
+			if (IsValid(Enemy) && Enemy->IsAnIllusion())
+			{
+				At.Add(Index);
+			}
+		}
+		Out = SeededFloorJoined(At);
+		Illusions = At.Num();
+		Placed = Mode->CurrentWave.Num();
+		return TestTrue(FString::Printf(TEXT("seed %d: the floor placed creatures"), Seed), Placed > 0);
+	};
+
+	FString First;
+	FString Second;
+	int32 Illusions = 0;
+	int32 Placed = 0;
+	int32 IllusionsAgain = 0;
+	int32 PlacedAgain = 0;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First, Illusions, Placed)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second, IllusionsAgain, PlacedAgain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor place as many creatures"), PlacedAgain, Placed);
+	TestEqual(TEXT("and make the same of them illusions"), Second, First);
+
+	// DRAWN AND NOT PINNED: some of the floor's creatures are illusions and some are not, which a pinned roll (all or
+	// none) would not give.
+	TestTrue(FString::Printf(TEXT("some of seed %d's %d creatures are illusions (%d)"), SeededFloorSeed, Placed, Illusions),
+			 Illusions > 0);
+	TestTrue(FString::Printf(TEXT("and some are not (%d of %d are)"), Illusions, Placed), Illusions < Placed);
+
+	// THE CONTROL. The floor's creatures differ by seed too, so this says the answer is not one answer everywhere; it
+	// cannot say the draw itself moved. Read, not measured.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		int32 OtherIllusions = 0;
+		int32 OtherPlaced = 0;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other, OtherIllusions, OtherPlaced))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's illusions stand at [%s] of %d; seeds [%s] differ"), SeededFloorSeed, *First,
+							Placed, *SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed makes other creatures illusions"), Differing.Num() > 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

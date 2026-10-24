@@ -6393,6 +6393,13 @@ public:
 	static constexpr int32 PlagueHarbingersChoiceSalt = 0x5D06;
 	static constexpr int32 PlaguebearerChoiceSalt = 0x5D07;
 
+	/**
+	 * And the eighth, ruled the same day: Illusory Enemies' roll for the creatures a floor is built with, drawn on
+	 * `ACataclysmDungeonGameMode::IllusoryEnemiesStream`. Mixed with the floor number too, because a Horde wave is
+	 * populated afresh into the first wave's plan. Issue #2381, ruled 2026-10-24.
+	 */
+	static constexpr int32 IllusoryEnemiesSalt = 0x5D08;
+
 	/** Whether a floor of this seed that carries Reality Rifts has a hidden chamber. The same seed, the same answer. */
 	static bool RealityChamberOnFloor(int32 FloorSeed);
 

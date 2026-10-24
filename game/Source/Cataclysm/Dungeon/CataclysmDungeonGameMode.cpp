@@ -933,7 +933,8 @@ static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 // combat moments, not what a floor holds. A per-floor seed alone would not make them repeat, because when they draw
 // depends on what the player does. The 25 roll helpers below stay on it too; each is pinned for tests by its console
 // variable. One of them, `DungeonGameModeIllusoryEnemiesRoll`, is asked by `SpawnPlacedCreature` as each creature is
-// placed, the floor's own population included; it is not one of the seven and was not changed.
+// placed; ruled the same day, it draws on the floor's own stream for the creatures the floor is built with (see
+// `IllusoryEnemiesStream`) and on the shared generator for a creature put down in play, so its line is still counted.
 // ---------------------------------------------------------------------------
 
 namespace
@@ -980,11 +981,19 @@ namespace
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
-	/** The roll a creature is judged an illusion by: pinned, or drawn. */
-	float DungeonGameModeIllusoryEnemiesRoll()
+	/**
+	 * The roll a creature is judged an illusion by: pinned, or drawn. THE PIN WINS, as before. Drawn on `Stream` when
+	 * one is given, which is the floor's own for the creatures it is built with (issue #2381, ruled 2026-10-24), and
+	 * on the shared generator otherwise, which is a creature put down in play.
+	 */
+	float DungeonGameModeIllusoryEnemiesRoll(const FRandomStream* Stream)
 	{
 		const float Pinned = CVarIllusoryEnemiesRoll.GetValueOnAnyThread();
-		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Pinned >= 0.0f)
+		{
+			return Pinned;
+		}
+		return Stream ? Stream->FRandRange(0.0f, 100.0f) : FMath::FRandRange(0.0f, 100.0f);
 	}
 
 	/** The roll a wounded creature's mutation is decided by: pinned, or drawn. */
@@ -1797,6 +1806,16 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		return 0;
 	}
 
+	// ILLUSORY ENEMIES' ROLL FOR EVERY CREATURE THIS FUNCTION PUTS DOWN IS DRAWN ON THE FLOOR'S OWN STREAM, one draw a
+	// creature in the order they are put down: the plan's seed mixed with the rule's salt and the floor number, which
+	// is the wave's number in a Horde arena. Issue #2381, ruled 2026-10-24. Restored on every exit, so a creature put
+	// down in play afterwards draws as before. See `IllusoryEnemiesStream`.
+	IllusoryEnemiesStream = FRandomStream(FCataclysmFloorGenerator::SeedForFloor(
+		FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed,
+											   UCataclysmDungeonModifierEffects::IllusoryEnemiesSalt),
+		FloorNumber));
+	TGuardValue<bool> IllusionsWhileBuilding(bIllusionsFromTheFloorsSeed, true);
+
 	// FIRST, because this is called again every time the floor is replaced.
 	//
 	// **UNLESS THE FLOOR IS NOT BEING REPLACED.** A Horde dungeon's later floors
@@ -2260,7 +2279,7 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	if (FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::IllusoryEnemiesKey))
 		&& UCataclysmDungeonModifierEffects::IllusoryEnemiesIsAnIllusion(
-			DungeonGameModeIllusoryEnemiesRoll()))
+			DungeonGameModeIllusoryEnemiesRoll(bIllusionsFromTheFloorsSeed ? &IllusoryEnemiesStream : nullptr)))
 	{
 		Enemy->SetIsAnIllusion(true);
 	}
@@ -2487,6 +2506,10 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		WaveStillToArrive.Reset();
 		return 0;
 	}
+
+	// THE REST OF A WAVE IS STILL THE FLOOR'S POPULATION, put down a few a frame, so its Illusory Enemies rolls go on
+	// along the stream `PopulateFloor` seeded, in the order the wave arrives. Issue #2381, ruled 2026-10-24.
+	TGuardValue<bool> IllusionsWhileArriving(bIllusionsFromTheFloorsSeed, true);
 
 	const int32 ThisFrame = FMath::Min(WaveCreaturesPerFrame, WaveStillToArrive.Num());
 	int32 Arrived = 0;
