@@ -241,7 +241,31 @@ The check is unchanged; it failed before the entry was added, as it is built to.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-24, window t71w, under the editor lock as `enchant-t71w`, at 2fb7dcf95 (this
+commit moved from 9deb79750 on c514b6746 onto development 63cae4775, #2484; the move kept its zero-context patch id, whole
+and outside this file, and its 7 removed lines). This was the code's first compile. Every figure was registered with the
+coordinating session before the run, and every one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 40 actions, 37 files compiled"; "4110 tests performed, 4110 succeeded,
+  0 failed" (4108 on development + this group's 2); "Declared: 4110 tests in the tree at 2fb7dcf95; 4110 performed, gap 0".
+  40 tests skipped part of what they check. No set-up line failed, so the two set-up assumptions made by reading (a player
+  activates a projectile skill in its Heavy slot; the clock fires the rack's throw timer) held.
+- **Python of record:** "6921 passed, 8 skipped"; JUnit 6929 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **RS-I, the rack reads the attribute again** (`CataclysmSkillTemplates.cpp`, `? Asking->StatForSkill(FName(TEXT(
+  "attack_speed")), SkillTags, Attribute)` to `? Attribute`, anchor counted once): PROVED. With the break in, 2 tests
+  performed, 2 failed, the two registered; 4 failed assertions, 4 registered (0.5 against 0.25 in each test; 3 throws
+  against 5; 5 against 9). Restored, 2 performed, 2 succeeded. The file's hash is the same after.
+- **RS-II, the fallback is not the attribute** (the same file, `FName(TEXT("attack_speed")), SkillTags, Attribute)` to
+  `..., SkillTags, 0.0f)`, anchor counted once; prefix the whole name
+  `Cataclysm.Skills.AHigherAttackSpeedEmptiesTheRackSooner`): PROVED. With the break in, 1 performed, 1 failed; 1 failed
+  assertion, 1 registered ("At two it is halved", 0.333 against 0.1665). Restored, 1 performed, 1 succeeded. The file's
+  hash is the same after.
+- **THE RUN WAS SLOW, AND ITS FIGURES ARE NOT AFFECTED.** The coordinating session measured it: the run slowed about 70
+  times, to about 53 seconds a test, because the Unreal process reached 45.7 GB private memory on this 32 GB machine while
+  a game and a browser held about 24 GB. The stall guard ran from 11:44:01 to 14:07:43 and did not end the editor. Every
+  test reported, and every figure above is as registered. Issue #2485. Since this run, every window first checks that at
+  least 12 GB of physical memory is free before taking the lock.
 
 ---
 
