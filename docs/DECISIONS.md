@@ -2,11 +2,13 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-24 — What a dungeon floor holds is drawn from the floor's own seed: rivers, quarantines, hoard guards, relics, pacts and plague picks no longer use the shared random generator
+## 2026-10-24 — What a dungeon floor holds is drawn from the floor's own seed: rivers, quarantines, hoard guards, relics, pacts, plague picks and illusions no longer use the shared random generator
 
-**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (seven functions, and a note on the draws left
-on the shared generator); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (seven new salts);
-`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (seven new tests and their helpers, at the end of
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (seven functions, Illusory Enemies' roll
+helper and the three functions that set its stream, and a note on the draws left on the shared generator);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` (that stream and its flag);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (eight new salts);
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (eight new tests and their helpers, at the end of
 the file). No data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/`, and no Python
 file. Issue [#2381](https://github.com/sdubois777/Cataclysm/issues/2381).
 
@@ -15,22 +17,26 @@ file. Issue [#2381](https://github.com/sdubois777/Cataclysm/issues/2381).
 - **WHAT CHANGES IN PLAY.** The same dungeon seed and floor now hold the same river headings (Raw Sewage), the same
   quarantined kind (Quarantine Breach), the same hoard guards on the same cells (Luxury Hoarders), the same relic kinds
   (Battlefield Relics), the same pact offer (Pact of Temptation), and choose the same Plague Harbingers and the same
-  Plaguebearer, every time the floor is built. Before, each of these was drawn from FMath's shared generator, so two
+  Plaguebearer, and make the same of their creatures illusions (Illusory Enemies), every time the floor is built.
+  Before, each of these was drawn from FMath's shared generator, so two
   builds of one floor differed. How often each outcome comes up is unchanged: every draw keeps its range and its count.
 - **NOT COMPILED AND NOT RUN.** No Unreal build and no Unreal test was run by the session that wrote this. The new tests
   have never been compiled.
-- **ONE MORE POPULATE-TIME DRAW WAS FOUND AND NOT CHANGED.** The roll helper `DungeonGameModeIllusoryEnemiesRoll` is
-  asked by `SpawnPlacedCreature` for every creature placed, the floor's own population included (`PopulateFloor`), on a
-  floor carrying Illusory Enemies. It decides which of a floor's creatures are illusions when the floor is built, so it
-  decides what the floor holds; it is on the shared generator; it is not one of the seven the ruling names. The brief
-  said to stop and report such a one rather than change it, so it is reported here and to the coordinating session.
+- **AN EIGHTH POPULATE-TIME DRAW WAS FOUND, REPORTED, AND RULED INTO THIS CHANGE.** The roll helper
+  `DungeonGameModeIllusoryEnemiesRoll` is asked by `SpawnPlacedCreature` for every creature placed on a floor carrying
+  Illusory Enemies, the floor's own population included, so it decides what a floor holds when it is built. It was not
+  one of the seven the first ruling named; the writing session stopped on it and reported it, and the coordinating
+  session ruled it in (THE RULING below). It is now drawn from the floor's own seed for the creatures a floor is built
+  with, and stays on the shared generator for a creature put down in play.
 - **THE PLAGUE PICKS ARE REPRODUCIBLE ONLY AS FAR AS THE CREATURES' RUNGS ARE.** Both choose from `CurrentWave`, which is
   in the order the seeded populator placed it. But which creatures are candidates rests on their rungs (a Harbinger is
   never a boss rung; the Plaguebearer is chosen among Elites, else Commons), and `ACataclysmGameMode::RarityStepFor`
   rolls a rung from each creature's unique identifier and the clock, not from any seed. So in play the same floor can
-  still choose differently when its creatures drew different rungs. The tests set every kind's rung to Common.
-- **A HORDE WAVE MIXES IN ITS FLOOR NUMBER**, a judgement below: the pact altar and the two plague picks run on every
-  wave of a Horde arena, whose plan seed is the first wave's on every wave.
+  still choose differently when its creatures drew different rungs. The tests set every kind's rung to Common. **The
+  rungs are not in this change**: by the coordinating session's ruling they become a separate issue, filed by the
+  dungeon session.
+- **A HORDE WAVE MIXES IN ITS FLOOR NUMBER**, a judgement below: the pact altar, the two plague picks and the
+  Illusory Enemies stream run on every wave of a Horde arena, whose plan seed is the first wave's on every wave.
 
 ### THE RULING
 
@@ -38,6 +44,17 @@ The coordinating session's ruling of 2026-10-24, verbatim:
 
 > GO. The seven floor-deciding draws move onto seeded streams, with a test each. The 29 in-play draws stay shared,
 > recorded as a note.
+
+And its ruling on the writing session's report, the same day, verbatim:
+
+> Illusory Enemies' roll: YES, seed it in this branch, with one salt and one test, as recommended. It decides what a
+> floor holds at build time.
+
+In the same ruling the coordinating session ACCEPTED four items, each recorded where it applies below: the pact altar's
+floor-number mix "as a recorded judgement"; the weaker quarantine and hoard controls "as you described; say so in the
+entry"; P3's chance-pass risk, "registered; if P3's broken run passes it is recorded as "not detected on this run", not
+a stop"; and the rarity rungs (`RarityStepFor`) as a separate issue, filed by the dungeon session, named here as not
+in this change.
 
 There is no owner sentence on this issue.
 
@@ -83,26 +100,50 @@ Line numbers are of development `439786ca3`, before this change.
 
 Line numbers are of this commit. Every stream is `FRandomStream`, whose `RandRange` has inclusive bounds as
 `FMath::RandRange` does and whose `FRandRange` is the same form as `FMath::FRandRange`. The salts are beside the
-picker's, at `CataclysmDungeonModifierEffects.h` 6388 to 6394.
+picker's, at `CataclysmDungeonModifierEffects.h` 6388 to 6394, and the eighth at 6401.
 
 | Function | What is drawn | Salt | Seed of the stream | Draws, before and after |
 | :-- | :-- | :-- | :-- | :-- |
-| `PlaceTheRivers` | each river's heading | `RawSewageHeadingSalt` 0x5D01 | `SeedForFloor(Plan.Seed, salt)` | one `FRandRange(0, PI)` a river (5289) |
-| `PlaceTheQuarantine` | the kind held | `QuarantineBreachKindSalt` 0x5D02 | `SeedForFloor(Plan.Seed, salt)` | one `RandRange` (8962) |
-| `PlaceTheHoards` | each guard's kind, then its cell | `LuxuryHoardersGuardsSalt` 0x5D03 | `SeedForFloor(Plan.Seed, salt)`, one stream for every hoard | two `RandRange` a guard, in the same order (9365, 9366) |
-| `PlaceTheRelics` | each relic's kind, unless pinned | `BattlefieldRelicsKindSalt` 0x5D04 | `SeedForFloor(Plan.Seed, salt)` | one `RandRange` a relic, none when pinned (11325) |
-| `PlaceThePactAltar` | the shuffles the three are taken from | `PactOfTemptationOfferSalt` 0x5D05 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | four `RandRange` a shuffle, up to 32 shuffles (12472) |
-| `ChooseThePlagueHarbingers` | the first `Wanted` of a shuffle | `PlagueHarbingersChoiceSalt` 0x5D06 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | one `RandRange` a Harbinger (3515) |
-| `ChooseThePlaguebearer` | the creature | `PlaguebearerChoiceSalt` 0x5D07 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | one `RandRange` (5416) |
+| `PlaceTheRivers` | each river's heading | `RawSewageHeadingSalt` 0x5D01 | `SeedForFloor(Plan.Seed, salt)` | one `FRandRange(0, PI)` a river (5312) |
+| `PlaceTheQuarantine` | the kind held | `QuarantineBreachKindSalt` 0x5D02 | `SeedForFloor(Plan.Seed, salt)` | one `RandRange` (8985) |
+| `PlaceTheHoards` | each guard's kind, then its cell | `LuxuryHoardersGuardsSalt` 0x5D03 | `SeedForFloor(Plan.Seed, salt)`, one stream for every hoard | two `RandRange` a guard, in the same order (9388, 9389) |
+| `PlaceTheRelics` | each relic's kind, unless pinned | `BattlefieldRelicsKindSalt` 0x5D04 | `SeedForFloor(Plan.Seed, salt)` | one `RandRange` a relic, none when pinned (11348) |
+| `PlaceThePactAltar` | the shuffles the three are taken from | `PactOfTemptationOfferSalt` 0x5D05 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | four `RandRange` a shuffle, up to 32 shuffles (12495) |
+| `ChooseThePlagueHarbingers` | the first `Wanted` of a shuffle | `PlagueHarbingersChoiceSalt` 0x5D06 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | one `RandRange` a Harbinger (3538) |
+| `ChooseThePlaguebearer` | the creature | `PlaguebearerChoiceSalt` 0x5D07 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)` | one `RandRange` (5439) |
+| `DungeonGameModeIllusoryEnemiesRoll`, from `SpawnPlacedCreature`, while a floor is built | whether each creature put down is an illusion, unless pinned | `IllusoryEnemiesSalt` 0x5D08 | `SeedForFloor(SeedForFloor(Plan.Seed, salt), FloorNumber)`, seeded at the top of `PopulateFloor` (1813) | one `FRandRange(0, 100)` a creature put down, none when pinned or without the row (989 to 997, asked at 2282) |
 
 The hoards' pile keeps its own stream, `Plan.Seed ^ (0x5A17 + Index)`, unchanged, as the brief said.
 
-No two of the seven salts are equal, and none equals another salt in `game/Source`: searched for `0x5D0` and for the
-decimal values 23809 to 23815, with no match before this change. They start at 0x5D01 rather than continuing the
+No two of the eight salts are equal, and none equals another salt in `game/Source`: searched for `0x5D0` and for the
+decimal values 23809 to 23815 before the seven were added, and for `0x5D08` and 23816 before the eighth, with no
+match. They start at 0x5D01 rather than continuing the
 picker's run at 0x5CF9, so that run keeps its next number for the next placing rule.
 
 ### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
 
+- **Illusory Enemies: only the floor-building path is seeded.** `DungeonGameModeIllusoryEnemiesRoll` has one caller,
+  `SpawnPlacedCreature`, and that has 32 call sites in this file. Four put a creature down while a floor is built,
+  found by a script listing which callers are reachable from `PopulateFloor`: `PopulateFloor` itself (the floor's
+  population), `ContinueTheWaveArriving` (the rest of a Horde wave, a few a frame, decided when the wave was
+  populated), `PlaceTheHoards` (the guards) and `PlaceTheGuide` (Demonic Guide's guide). The other 28, in 27 functions,
+  put a creature down in play (raised, summoned, sent or reinforcing), and their roll stays on the shared generator
+  with the 29 in-play draws. The two paths differ, so only the first is seeded, as the brief asked.
+- **How: one member stream per floor, drawn in the order creatures are put down, and a flag.**
+  `IllusoryEnemiesStream` is seeded at the top of `PopulateFloor` from the plan's seed, `IllusoryEnemiesSalt` and the
+  floor number. `bIllusionsFromTheFloorsSeed` is set by a `TGuardValue` for the whole of `PopulateFloor` and for each
+  call of `ContinueTheWaveArriving`, and put back as it was on every exit; while it is set, the roll draws on the stream,
+  and otherwise on the shared generator. **Why it is reproducible:** the stream is seeded afresh for each floor, and the
+  creatures put down while the flag is set come in a fixed order for a given seed and floor -- the rule-placed ones in
+  `PopulateFloor`'s fixed call order (the hoard guards, now drawn from the floor's seed, then the guide), then the
+  population in the seeded populator's order, a Horde wave carrying on along the same stream across frames. One draw
+  a creature, only after it has spawned and only when the floor carries the row, as before. **The console variable's
+  pin still wins**: a pinned roll is returned before either generator is touched. Not taken: a seed per creature
+  index, which would need an index passed through `SpawnPlacedCreature`'s 32 call sites or kept beside the stream
+  anyway. Not taken: seeding every caller, which would put the in-play spawns on a stream advanced by play, the
+  ruling's reason for leaving the 29 shared. **One edge, read and not measured:** a Horde floor that is populated while
+  the last wave has not finished arriving (`PopulateFloor`'s `else` branch, reached only when `GoToFloor` is called
+  directly, as a test does) puts the last wave's remainder down on the new floor's stream; that is still a fixed order.
 - **The floor number is mixed in for the three that run on every Horde wave** (the pact altar and the two plague
   picks), because a Horde arena's plan seed is the same on every wave (read 6). Without it the same offer would be
   shuffled on every wave (and, after the "not the same three as the last floor" retry, would alternate between two),
@@ -111,7 +152,9 @@ picker's run at 0x5CF9, so that run keeps its next number for the next placing r
   wave count, because `PopulateFloor` updates it after its first `ContinueTheWaveArriving` call, so a wave small enough
   to arrive in one frame would choose before its count moved. Not taken: mixing it in for the other four, which are
   placed once an arena (inside `!FloorBrief.bSameArenaAsLastFloor`), where the plan's seed already differs by floor,
-  as the picker's salts are ruled.
+  as the picker's salts are ruled. For the pact altar this was ACCEPTED by the coordinating session "as a recorded
+  judgement", 2026-10-24. The Illusory Enemies stream mixes it in for the same reason: a Horde wave is populated afresh
+  into the first wave's plan.
 - **One stream per function call, built before its loop**, so a function's draws come in the order and number they
   came before. Not taken: one stream per river, guard or relic, which would change nothing a test can see and add
   salts.
@@ -124,9 +167,11 @@ picker's run at 0x5CF9, so that run keeps its next number for the next placing r
 ### WHAT STAYS ON THE SHARED GENERATOR, BY RULING
 
 **29 member functions, 53 lines**, and the **25 file-scope roll helpers, 25 lines**, counted by the same script on this
-commit (before: 36 functions and 61 lines, and the same 25 helpers). The 29 draw while the player is on the floor, on a
+commit (before: 36 functions and 61 lines, and the same 25 helpers). The Illusory Enemies helper is still among the 25
+and its line still counted, because a creature put down in play still draws on the shared generator there. The 29 draw while the player is on the floor, on a
 beat or on an event: combat moments, not what a floor holds. A note saying so, with the ruling quoted, the issue and the
-date, is at `CataclysmDungeonGameMode.cpp` 928 to 937, above the roll helpers; it names the Illusory Enemies roll too.
+date, is at `CataclysmDungeonGameMode.cpp` 928 to 938, above the roll helpers; it says what the Illusory Enemies roll
+now does.
 The 29: `StepPlagueConvergence`, `StepWingsOfTheHost`, `StepNecroticBloom`, `NoteDeathForObsidianSarcophagi`,
 `StepPortalUnleashing`, `ChooseObstacleCells`, `BringWarzoneAllies`, `SendWarzoneWave`, `StepSwarmOfLocusts`,
 `StepAbyssalRifts`, `InfectionBloomSend`, `StepInfectionBloom`, `NoteDeathForQuarantineBreach`,
@@ -141,11 +186,11 @@ The 29: `StepPlagueConvergence`, `StepWingsOfTheHost`, `StepNecroticBloom`, `Not
 metres.**", whose last sentence names as testable "the same seed always produces the same floor"; and the paragraph
 opening "**A floor is generated from the dungeon's seed mixed with the floor number.**", which says a dungeon is the
 same when the player leaves and returns and a bug in a floor is reproducible from its seed. Before this change a floor
-carrying any of the seven rules was not the same floor on a second build.
+carrying any of the eight rules was not the same floor on a second build.
 
 ### NEW TESTS
 
-Seven, at the end of `CataclysmDungeonModifierEffectsTests.cpp`. Each builds floor 2 of dungeon seed 1 twice, seeding
+Eight, at the end of `CataclysmDungeonModifierEffectsTests.cpp`. Each builds floor 2 of dungeon seed 1 twice, seeding
 the shared generator with 11 before the first build and 977 before the second, and asks for the same answer; then
 builds the same floor of dungeon seeds 2 to 8 and asks that at least one answers differently from seed 1 (the
 control). Every build leaves the dungeon first (`LeaveEmpireDungeon`, which forgets the last pact offer and the last
@@ -158,9 +203,11 @@ exit, by an `ON_SCOPE_EXIT` before its first reseed, as the reseed check asks.
    of two rivers).
 2. `Cataclysm.DungeonModifierEffects.QuarantineBreachHeldKindComesFromTheFloorsSeed`: the containment's `Holds` text
    the same. Its control also moves with the floor's own creatures, so it says the answer is not one kind everywhere and
-   cannot say the draw itself moved.
+   cannot say the draw itself moved. ACCEPTED as weaker by the coordinating session, "as you described; say so in the
+   entry".
 3. `Cataclysm.DungeonModifierEffects.LuxuryHoardersGuardKindsAndCellsComeFromTheFloorsSeed`: each guard's class and
    cell the same, read before any beat. Its control is weak in the same way: the cells beside a hoard move by seed too.
+   ACCEPTED as weaker in the same ruling.
 4. `Cataclysm.DungeonModifierEffects.BattlefieldRelicKindsComeFromTheFloorsSeed`: each relic's name, which carries its
    kind, the same and in the same order, with `Cataclysm.BattlefieldRelicKinds` empty so the kinds are drawn.
 5. `Cataclysm.DungeonModifierEffects.PactOfTemptationOfferComesFromTheFloorsSeed`: the three offered and the altar's
@@ -172,8 +219,13 @@ exit, by an `ON_SCOPE_EXIT` before its first reseed, as the reseed check asks.
    is what mixing in the floor number is for.
 7. `Cataclysm.DungeonModifierEffects.ThePlaguebearerChosenComesFromTheFloorsSeedOnAFloorAndOnEachHordeWave`: the same for
    the Plaguebearer's place in `CurrentWave`, which is never "none".
+8. `Cataclysm.DungeonModifierEffects.IllusoryEnemiesIllusionsComeFromTheFloorsSeed`: as many creatures, and the places
+   in `CurrentWave` of the illusions the same, with `Cataclysm.IllusoryEnemiesRoll` set to -1 so the roll is drawn (set
+   and put back by hand, not by `FScopedConsoleString`; see EXISTING TESTS). Seed 1's floor must have at least one
+   illusion and at least one creature that is not, which a pinned roll (all or none) would not give. Its control is
+   weak in the way the quarantine's is: the floor's creatures move by seed too.
 
-Registered count for a run: development's last measured total plus these seven.
+Registered count for a run: development's last measured total plus these eight.
 
 ### EXISTING TESTS
 
@@ -183,20 +235,28 @@ instead of whatever the shared generator held. A test that passed only for most 
 always. Those read: `RawSewageDrawsRiversClearOfTheEntrance` (asks for marks, and the Horde wave's marks in the same
 place), `PactOfTemptationOfferIsDifferentEachFloor` (floors 2 to 6, three distinct and not the last floor's three; the
 32-shuffle retry is kept), `PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre` and
-`OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite`. None asserts a particular draw.
+`OneEliteOfTheFloorIsThePlaguebearerOrACommonRaisedToElite`. None asserts a particular draw. The existing Illusory
+Enemies tests pin the roll, and a pinned roll is returned exactly as before.
+
+**Read, not measured, and not changed:** `FScopedConsoleString`'s destructor writes an empty string, and the existing
+Illusory Enemies tests use it on `Cataclysm.IllusoryEnemiesRoll`, a number. If the engine reads that empty string as 0,
+the roll is left pinned at 0 (every creature an illusion) for every later test in the process. The new test sets -1
+itself and puts back whatever it found, so it does not depend on this; whether it happens was not checked.
 
 ### Python
 
 `python -m ruff check .`: "All checks passed!". `python -u -m pytest --junit-xml=...`, the whole suite, on the
-commit carrying the code and the tests (`dc1ffc321`, before this entry was added): "6933 passed, 7 skipped in
-307.97s"; JUnit tests 6940, failures 0, errors 0, skipped 7. No Python file was changed, and no Python check that
-reads the changed C++ as text failed. The reseed check,
-`tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py`, now reads eight reseeds, the one
-before and the seven added, and accepts every one.
+commit carrying the eighth draw and its test (`20b25047b`, before this entry was brought up to date): "6933 passed, 7 skipped in 308.69s";
+JUnit tests 6940, failures 0, errors 0, skipped 7. No Python file was changed, and no Python check that reads the changed C++ as text failed.
+The reseed check, `tools/tests/test_a_reseed_of_the_shared_generator_is_put_back_on_every_exit.py`, now reads nine
+reseeds, the one before and the eight added, and accepts every one.
 
 ### Proofs
 
 Not yet run. Three to be registered by the dungeon session after reading the code.
+
+P3's risk of passing by chance with its break in is registered and ACCEPTED by the coordinating session:
+"registered; if P3's broken run passes it is recorded as "not detected on this run", not a stop".
 
 ### Run
 
