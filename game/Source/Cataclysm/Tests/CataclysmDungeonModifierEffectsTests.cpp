@@ -58046,7 +58046,9 @@ bool FCataclysmDivineLawsForbiddenTest::RunTest(const FString& Parameters)
 // sections and the Edict of Patience, and no Angelic Wardens row, so the only statues are the two placed by hand. The
 // player stands on a free cell of section 0; `Across` is on a cell of section 1, behind barrier 0, more than 13 m from
 // the player, so beyond the Wardens' own skill trigger's 12; `Near` is on a cell of section 0 farther still. The floor
-// is found as the barrier test of the Wardens' own triggers, above, finds it.
+// is found as the barrier test of the Wardens' own triggers, above, finds it, on 80 seeds of its own and with every
+// free cell of section 0 tried as the player's, ruled by the coordinating session on 2026-10-24 after the first window
+// found no layout on the shared 20 with only the first free cell tried.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineLawsBarrierTest,
 	"Cataclysm.DungeonModifierEffects.ADivineLawBrokenDoesNotWakeTheNearestStatueWhileAClosedBarrierPartsItFromThePlayer",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -58072,10 +58074,12 @@ bool FCataclysmDivineLawsBarrierTest::RunTest(const FString& Parameters)
 	MakeEveryKindCommon(Mode);
 	Mode->DungeonModifiers = {WallsRow, FName(Effects::EdictOfPatienceKey)};
 
+	// ITS OWN SEED LIMIT, ruled 2026-10-24: the shared `SectionFloorSeedsTried`, 20, found no layout in the first window.
+	constexpr int32 DivineLawBarrierFloorSeedsTried = 80;
 	FIntPoint PlayersCell(-1, -1);
 	FIntPoint Across(-1, -1);
 	FIntPoint Near(-1, -1);
-	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried && Near == FIntPoint(-1, -1); ++Seed)
+	for (int32 Seed = 1; Seed <= DivineLawBarrierFloorSeedsTried && Near == FIntPoint(-1, -1); ++Seed)
 	{
 		Mode->DungeonSeed = Seed;
 		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() != 3
@@ -58114,49 +58118,95 @@ bool FCataclysmDivineLawsBarrierTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		// THE PLAYER ON THE FIRST FREE CELL OF SECTION 0; THE TWO STATUES AS FAR FROM IT AS THEIR SECTIONS ALLOW, the
-		// farthest tried first, each asked of the one rule every statue is placed by.
-		const FIntPoint Candidate = Zero[0];
-		const FVector From = Mode->CurrentFloor->WorldOfCell(Candidate);
-		const auto Farther = [Mode, From](const FIntPoint& A, const FIntPoint& B)
+		// EVERY FREE CELL OF SECTION 0 TRIED AS THE PLAYER'S, ruled 2026-10-24. THE DISTANCES FIRST, AND ONLY THEN A
+		// STATUE: a candidate is tried only when some cell of section 1 lies more than 13 m from it and some cell of
+		// section 0 lies more than a metre farther than the nearest such cell, so no statue is placed for a candidate
+		// that could never serve. The statue across is tried on the nearest cell of section 1 beyond 13 m first, and the
+		// near one on the farthest cell of section 0 first, which leaves the most room between the two; each is asked of
+		// the one rule every statue is placed by.
+		for (const FIntPoint& Candidate : Zero)
 		{
-			return AngelicCmFromCell(Mode, A, From) > AngelicCmFromCell(Mode, B, From);
-		};
-		One.Sort(Farther);
-		Zero.Sort(Farther);
-		FIntPoint Placed(-1, -1);
-		for (const FIntPoint& Cell : One)
-		{
-			if (AngelicCmFromCell(Mode, Cell, From) <= 1300.0f)
+			if (Near != FIntPoint(-1, -1))
 			{
 				break;
 			}
-			if (Mode->PlaceAnAngelicStatueOn(Cell))
+			const FVector From = Mode->CurrentFloor->WorldOfCell(Candidate);
+			float NearestOneBeyondCm = -1.0f;
+			float FarthestZeroCm = 0.0f;
+			for (const FIntPoint& Cell : One)
 			{
-				Placed = Cell;
-				break;
+				const float Cm = AngelicCmFromCell(Mode, Cell, From);
+				if (Cm > 1300.0f && (NearestOneBeyondCm < 0.0f || Cm < NearestOneBeyondCm))
+				{
+					NearestOneBeyondCm = Cm;
+				}
 			}
-		}
-		if (Placed == FIntPoint(-1, -1))
-		{
-			continue;
-		}
-		const float AcrossCm = AngelicCmFromCell(Mode, Placed, From);
-		for (const FIntPoint& Cell : Zero)
-		{
-			if (AngelicCmFromCell(Mode, Cell, From) <= AcrossCm + 100.0f)
+			for (const FIntPoint& Cell : Zero)
 			{
-				break;
+				FarthestZeroCm = FMath::Max(FarthestZeroCm, AngelicCmFromCell(Mode, Cell, From));
 			}
-			if (Cell != Candidate && Mode->PlaceAnAngelicStatueOn(Cell))
+			if (NearestOneBeyondCm < 0.0f || FarthestZeroCm <= NearestOneBeyondCm + 100.0f)
 			{
-				PlayersCell = Candidate;
-				Across = Placed;
-				Near = Cell;
-				AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d, the player on (%d, %d), a statue across barrier 0 "
-											 "on (%d, %d) and one beside the player on (%d, %d)"),
-										Seed, PlayersCell.X, PlayersCell.Y, Across.X, Across.Y, Near.X, Near.Y));
-				break;
+				continue;
+			}
+
+			TArray<FIntPoint> Ones = One;
+			TArray<FIntPoint> Zeros = Zero;
+			const auto Farther = [Mode, From](const FIntPoint& A, const FIntPoint& B)
+			{
+				return AngelicCmFromCell(Mode, A, From) > AngelicCmFromCell(Mode, B, From);
+			};
+			const auto Nearer = [Mode, From](const FIntPoint& A, const FIntPoint& B)
+			{
+				return AngelicCmFromCell(Mode, A, From) < AngelicCmFromCell(Mode, B, From);
+			};
+			Ones.Sort(Nearer);
+			Zeros.Sort(Farther);
+			FIntPoint Placed(-1, -1);
+			for (const FIntPoint& Cell : Ones)
+			{
+				if (AngelicCmFromCell(Mode, Cell, From) <= 1300.0f)
+				{
+					continue;
+				}
+				if (Mode->PlaceAnAngelicStatueOn(Cell))
+				{
+					Placed = Cell;
+					break;
+				}
+			}
+			if (Placed == FIntPoint(-1, -1))
+			{
+				continue;
+			}
+			const float AcrossCm = AngelicCmFromCell(Mode, Placed, From);
+			for (const FIntPoint& Cell : Zeros)
+			{
+				if (AngelicCmFromCell(Mode, Cell, From) <= AcrossCm + 100.0f)
+				{
+					break;
+				}
+				if (Cell != Candidate && Mode->PlaceAnAngelicStatueOn(Cell))
+				{
+					PlayersCell = Candidate;
+					Across = Placed;
+					Near = Cell;
+					AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d, the player on (%d, %d), a statue across "
+												 "barrier 0 on (%d, %d) and one beside the player on (%d, %d)"),
+											Seed, PlayersCell.X, PlayersCell.Y, Across.X, Across.Y, Near.X, Near.Y));
+					break;
+				}
+			}
+			if (Near == FIntPoint(-1, -1))
+			{
+				// THE STATUE ACROSS STANDS AND NO NEAR ONE COULD: THE FLOOR IS BUILT AGAIN, which forgets every statue
+				// (a floor that is not a Horde wave is a new arena, and every new arena forgets its statues before
+				// placing its own, of which this floor has none), and the next candidate is tried on it. The same seed
+				// builds the same floor, so the cells listed above are its cells still.
+				if (!Mode->GoToFloor(2) || Mode->AngelicStatueCellsStanding().Num() != 0)
+				{
+					break;
+				}
 			}
 		}
 	}

@@ -288,6 +288,35 @@ allowance names Humility's flag field (proposed, awaiting ruling)". Old -> new:
   `HumilityNoExtraCriticalDamageValue`, Humility's flag field, which is not a percentage; the assertion is unchanged
   and only what it accepts widens. Q6 above, accepted by the coordinating session on 2026-10-23.
 
+### The first window, and a set-up the coordinating session ruled
+
+The first window ran under the lock `void-zones-w40`, on `feat/game-edicts-c-3` at `1540dc640`, and printed "4127 tests
+performed, 4126 succeeded, 1 failed: ADivineLawBrokenDoesNotWakeTheNearestStatueWhileAClosedBarrierPartsItFromThePlayer".
+Its message: "Expected 'set-up: a statue behind barrier 0 more than 13 m from a free cell of section 0, and one on that
+section farther still' to be true." No layout was found; no assertion after the set-up was reached.
+
+The coordinating session ruled on 2026-10-24, in substance: "Try every free cell of section 0 as the player's cell.
+Give this test its own seed limit of 80, and leave the shared constant of 20 alone. No assertion after the set-up
+changes. Record it in the entry as old -> new with the failure quoted." And: "If the second window still finds no
+layout, build the layout by hand in the same commit's follow-up."
+
+The set-up, old -> new, in that test alone:
+
+- **The player's cell**: `Zero[0]`, the first free cell of section 0, only -> every free cell of section 0 in turn.
+- **The seeds**: `SectionFloorSeedsTried`, the shared 20 -> `DivineLawBarrierFloorSeedsTried`, the test's own 80. The
+  shared constant is untouched.
+- **The order of placing**, which the old set-up did not need: a candidate is tried only when the distances allow it
+  -- a cell of section 1 more than 13 m from it, and a cell of section 0 more than a metre farther than the nearest
+  such -- and only then is a statue placed; `Across` on the nearest qualifying cell of section 1 first, `Near` on the
+  farthest cell of section 0 first. A candidate that placed `Across` and could place no `Near` builds the floor again
+  with `GoToFloor(2)`, which forgets every statue: a floor that is not a Horde wave is a new arena, and every new arena
+  runs `ForgetTheAngelicStatues` before placing its own, of which this floor, carrying no Angelic Wardens row, has none.
+  The same seed builds the same floor. So "the two statues stand" counts only the two of the candidate that served.
+- **Unchanged**: the floor's conditions, the `AddInfo` set-up line, and every assertion after the set-up.
+
+Not built and not run by the writing session. The hand-built layout the ruling names for a second window that still
+finds none is prepared as `g7cw/e13_fallback_hand_layout.py` and not applied.
+
 ### For the owner's play-check list
 
 - **A player who never moves under the Edict of Vigil is smitten every 6 seconds**: 3 seconds standing still, then
