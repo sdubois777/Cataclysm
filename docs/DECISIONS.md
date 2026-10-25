@@ -78,7 +78,8 @@ control); `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthI
 | P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails |
 | P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails |
 | P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails |
-| P4, the first floor's cell taken as the entrance | `TheCorruptedStalkerComesAMinuteIntoItsFirstFloorAtTheCellFarthestFromThePlayer` fails |
+
+Three proofs, the owner's limit of 2026-09-14; a fourth, the first floor's cell taken as the entrance, was dropped by the coordinating session on 2026-10-25, and its test still runs in the whole suite.
 
 ### Run
 
