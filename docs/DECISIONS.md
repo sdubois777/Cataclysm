@@ -6,7 +6,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** a new creature class, `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` / `.cpp`;
 `ACataclysmEnemyCharacter` (one flag and two guards); `UCataclysmDungeonModifierEffects` (the row's key, numbers and
-built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, the resets); nine tests appended to
+built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, the resets, `ClearFloorEnemies`, Divine Wrath's beam); ten tests appended to
 `CataclysmDungeonModifierEffectsTests.cpp`; two diagnostic test files removed; `game/README.md`'s count. Issue
 [#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layers 2 to 4.
 
@@ -23,6 +23,8 @@ built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, t
   through a setter still reaches the Stalker. Twenty-seven such writes are in the game mode (counted by searching for
   the call, 2026-10-25); none was read for whether it can reach a creature raised by a rule.
 - **Its death drops what a Common creature drops** until layer 3.
+- **WINDOW W55 STOPPED AT ONE FAILING TEST**, recorded under Run below; the code was changed as ruled, and the window is
+  registered again.
 
 ### The rules, as decided (the owner's answers and the coordinating session's rulings, 2026-10-25)
 
@@ -57,6 +59,50 @@ and Thick Hide in full). Every affix was checked against its piece's slot in `Af
 - Removed: `CataclysmEnemyCastsAPlayerSkillTests.cpp` and `CataclysmCreatureWearsAPlayerBuildTests.cpp`, the two
   diagnostics, whose measurements are recorded above and in the part A entry; tests below assert what they measured.
 
+### The floor's enemy list, and the two rulings after window w55
+
+**The cause of w55's failure.** The Stalker is in `FloorEnemies`, as The Reaper is, and `ClearFloorEnemies` destroyed
+it: the Horde test calls it to clear the second wave's own creatures, and the floor's clock had been kept for a
+Stalker that stood. In the game, `ClearFloorEnemies` is called only by `PopulateFloor`, when the arena changes.
+
+**RULED, 2026-10-25, the coordinating session: `ClearFloorEnemies` keeps a standing Corrupted Stalker**, neither
+destroying it nor taking it out of the list, so every floor rule that reads the list still reaches it. A floor change
+still removes it, through `UCataclysmFloorContents::ClearTheFloor`. The ruling replaced an earlier one, to take it out
+of `FloorEnemies`, after the dungeon session listed what that would have exempted it from:
+
+| Function | What it does with the list | The Stalker, by reading |
+|---|---|---|
+| `LivingFloorEnemies` | the floor-clear count | already excluded: raised by a rule |
+| `StandingInSection` | a section's count | already excluded, same predicate |
+| `LightforgedWallsStanding` | the stairs' count | already excluded, same predicate |
+| `BloodGatesPlacedCount` | the gate's count | already excluded: raised by a rule |
+| `ChooseTheSoulChainBearers` | chooses bearers | already excluded: raised by a rule |
+| `ChooseTheSealBearers` | chooses bearers | already excluded: raised by a rule |
+| `StepShadowyEnemies`, the shroud | shrouds unlit creatures | already lit: raised by a rule |
+| `StepShadowyEnemies`, the light | lights creatures that cannot move | not reached: it moves |
+| `RaiseTheTrickOrTreatPair` | the floor's creature kinds | not reached: it is no placed kind |
+| `ChooseTheFloorsMedic` | makes a creature the floor's healer | reached; may choose it only by rarity, and it is Common |
+| `ChooseTheFloorsCommander` | makes the highest rung the commander | reached, as any creature; at the Common rung, chosen only when nothing outranks it |
+| `StepBloodBond` | bonds an elite | not reached: it is Common |
+| `NoteDeathForObsidianSarcophagi` | counts the floor's paid deaths | reached, as any creature's death |
+| `DivineResurgencePlacedCount` | counts creatures standing | reached, as any creature |
+| `NoteDeathForInfestedHoard` | a drop on a death | reached, as any creature's death |
+| `StepPlaguebearer` | a damage multiplier | reaches it and writes nothing: the build guard |
+| `ChooseAtGrimTotem` | a damage multiplier | reaches it and writes nothing: the build guard |
+| `StepMoraleBreak` | panics a pack | not reached: it is in no pack |
+| `StepSanctionedPassage` | widens sight | reached; it already sees the whole floor |
+| `StepDirgeResonance` | hastes "all enemies" and makes them immune to fear | reached, as its row's "all enemies" says |
+| `StepDivineWrath` | destroys the creatures its beam covers | **spared**, ruled below |
+| `GoToFloor` | finds the Gatekeeper | not reached: it is no Gatekeeper |
+
+Counted from `CataclysmDungeonGameMode.cpp` by a script listing the function each mention of `FloorEnemies` is in,
+2026-10-25: 22 functions read the list, and the rest only add to it.
+
+**RULED, 2026-10-25, the coordinating session: Divine Wrath's beam spares the Corrupted Stalker, as it spares a floor's
+boss.** Its reason, verbatim: "the Stalker is ruled to pay a Boss-rung creature's experience and drop about 6 items. A
+beam that erases it would let a player lure the beam onto it and skip the encounter. The row already exempts the floor's
+boss for the same kind of reason." The check is in `StepDivineWrath` alone.
+
 ### Tests, all in `Cataclysm.DungeonModifierEffects.`
 
 `TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored`;
@@ -67,23 +113,41 @@ session's, with a plain creature as control);
 control); `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad`;
 `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon`; `ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone`;
 `ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer`;
-`TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist`.
+`TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist`;
+`ADivineWrathBeamSparesACorruptedStalkerAndDestroysAnOrdinaryCreature` (with an ordinary creature under the same beam as
+control).
 
 ### Registered before the run
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | 4198 (`1bf218ccb`, the #2516 merge, window t88x) + 9 new − 1 removed diagnostic = **4206**, 0 failed |
+| Step 1b | `ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone` alone, by its full name; the window stops if it fails |
+| Whole Unreal suite | 4198 (`1bf218ccb`, the #2516 merge, window t88x) + 10 new − 1 removed diagnostic = **4207**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails |
 | P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails |
 | P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails |
 
-Three proofs, the owner's limit of 2026-09-14; a fourth, the first floor's cell taken as the entrance, was dropped by the coordinating session on 2026-10-25, and its test still runs in the whole suite.
+Three proofs, the owner's limit of 2026-09-14; a fourth, the first floor's cell taken as the entrance, was dropped by the coordinating session on 2026-10-25, and its test still runs in the whole suite. The beam's check is not proved:
+the three are the setter guard, the carried health and the slain flag, unchanged.
 
 ### Run
 
-Not run yet.
+**Window w55 (lock `dungeon-w55`, `feat/corrupted-stalker-body-2` at `3da41694c`, on `1bf218ccb`, 2026-10-25) stopped
+at the whole suite.** The six conditions were checked immediately before the lock was taken: both of `development`'s
+runs at `1bf218ccb` succeeded (waited for until they had); none in progress or queued; the lock free; no build or
+editor process; no open pull request; "free GB: 12.7 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 40 actions, 37 files compiled` |
+| Whole Unreal suite | 4206 / 0 | `4206 tests performed, 4205 succeeded, 1 failed: ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone`; declared 4206, gap 0 |
+| The failure | | "Expected 'and a minute later no second one stands' to be 1, but it was 0." The assertion before it, "the same Stalker is still hunting", passed |
+| Memory | about 7,700 | `final_used_virtual_mb=7731`, peak 8,078 |
+| Python (JUnit) | | 6996 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1 to P3 | | not run: "STOPPED: the whole suite did not pass" |
+
+The next window is registered above.
 
 ---
 

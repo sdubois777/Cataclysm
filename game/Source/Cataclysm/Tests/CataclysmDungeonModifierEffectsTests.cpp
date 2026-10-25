@@ -60380,4 +60380,50 @@ bool FCataclysmCorruptedStalkerBuiltStateTest::RunTest(const FString& Parameters
 	return true;
 }
 
+// A DIVINE WRATH BEAM PASSES OVER A STANDING CORRUPTED STALKER, as it passes over a floor's boss, and destroys an
+// ordinary creature under it. Ruled by the coordinating session on 2026-10-25.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerWrathTest,
+	"Cataclysm.DungeonModifierEffects.ADivineWrathBeamSparesACorruptedStalkerAndDestroysAnOrdinaryCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerWrathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWrathFloor(*this, World, Player);
+	ACataclysmGroundZone* Beam = Mode ? ABeamCame(*this, Mode) : nullptr;
+	if (!Beam)
+	{
+		return false;
+	}
+	const FVector Under = Beam->GetActorLocation();
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(World, Under, /*Tier=*/2, /*Seed=*/9);
+	ACataclysmEnemyCharacter* Ordinary = PlaceCreatureAtRung(World, Mode, Under + FVector(50.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a Stalker under the beam"), Stalker)
+		|| !TestNotNull(TEXT("set-up: an ordinary creature under it"), Ordinary))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Stalker);
+	if (!TestTrue(TEXT("set-up: the beam covers the Stalker"), Beam->Covers(Stalker->GetActorLocation()))
+		|| !TestTrue(TEXT("set-up: and the ordinary creature"), Beam->Covers(Ordinary->GetActorLocation())))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestFalse(TEXT("the Corrupted Stalker under the beam lives"), UCataclysmSkillEffects::IsDead(Stalker));
+	TestTrue(TEXT("CONTROL: the ordinary creature under it was destroyed"), UCataclysmSkillEffects::IsDead(Ordinary));
+	TestEqual(TEXT("one destroyed"), Mode->DivineWrathDestroyedCount(), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

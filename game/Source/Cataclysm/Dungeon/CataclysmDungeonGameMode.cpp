@@ -1770,8 +1770,19 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 
 void ACataclysmDungeonGameMode::ClearFloorEnemies()
 {
+	// A STANDING CORRUPTED STALKER STAYS, in this list and on the floor, ruled by the coordinating session on
+	// 2026-10-25 after window w55: it belongs to no wave, and a floor change takes it through
+	// `UCataclysmFloorContents::ClearTheFloor` instead. It stays in the list so every floor rule that reads the list
+	// still reaches it. Issue #1308.
+	ACataclysmEnemyCharacter* Hunter = CorruptedStalker.Get();
+	const bool bKeepTheHunter = IsValid(Hunter) && !UCataclysmSkillEffects::IsDead(Hunter);
 	for (ACataclysmEnemyCharacter* Enemy : FloorEnemies)
 	{
+		if (bKeepTheHunter && Enemy == Hunter)
+		{
+			continue;
+		}
+
 		// ALREADY GONE IS THE ORDINARY CASE, not an error: the player kills
 		// creatures, and a killed one destroys itself once its death animation
 		// has played.
@@ -1798,6 +1809,10 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	}
 
 	FloorEnemies.Reset();
+	if (bKeepTheHunter)
+	{
+		FloorEnemies.Add(Hunter);
+	}
 
 	// AND THE WAVE WITH THEM, because every creature in it was one of those.
 	// Left behind it would be a list of destroyed actors, and a wave that had
@@ -13231,8 +13246,12 @@ void ACataclysmDungeonGameMode::StepDivineWrath(
 		TArray<ACataclysmEnemyCharacter*> Covered;
 		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 		{
+			// NOR THE CORRUPTED STALKER, ruled by the coordinating session on 2026-10-25, as a floor's boss is spared:
+			// it pays a Boss-rung creature's experience and drops about six items, and a beam that ended it would let
+			// a player lure the beam onto it and skip the encounter. Issue #1308.
 			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bCannotBeHurt
-				&& !DiedAsAFloorsBoss(Enemy) && Beam->Covers(Enemy->GetActorLocation()))
+				&& !DiedAsAFloorsBoss(Enemy) && !Enemy->IsA<ACataclysmCorruptedStalkerCharacter>()
+				&& Beam->Covers(Enemy->GetActorLocation()))
 			{
 				Covered.Add(Enemy);
 			}
