@@ -2,6 +2,204 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A single weapon worn is drawn in the right hand, whichever weapon slot holds it; the slot it sits in is left as it is
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (the new public static
+`ACataclysmPlayerCharacter::WeaponsInHands`; `RefreshWeaponMeshes` draws what it chooses; the header note on
+`RightHandWeapon` and `LeftHandWeapon`); `game/Source/Cataclysm/Tests/CataclysmWeaponMeshTests.cpp` (one existing
+assertion changed by the ruling, its comment rewritten, three new tests in `Cataclysm.WeaponMesh.`); this file. One
+commit. **`UCataclysmEquipmentComponent::Equip` is not changed**, and nothing under `game/Data/` or `game/Content/` is.
+
+### SAID FIRST
+
+**A SINGLE ONE-HANDED WEAPON IS NOW DRAWN IN THE RIGHT HAND, WHICHEVER SLOT HOLDS IT.** Before this, a one-handed weapon
+put on over a two-handed one, which is what the creation choice does with the starting Greataxe, was drawn in the LEFT
+hand with the right hand empty. Two weapons worn are drawn as before, Weapon1 right and Weapon2 left.
+
+**THE WEAPON STAYS IN Weapon2.** Only the drawing moved. Which slot a lone weapon sits in has no meaning by design, and
+moving it would have broken three tests' path and changed where the skills come from (below).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 92 and the ruling below. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+**THE MESH HALVES NEED THE WEAPONS PACK.** `game/Content/Medieval_Weapons/` is gitignored, so in a worktree every mesh
+lookup is null and the hand halves report a skipped half. The rule is also asked through `WeaponsInHands`, which needs
+no art, so the proof below fails in a worktree too. **The one changed existing assertion is in a mesh half**, so it runs
+only where the pack is.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a single one-handed weapon is drawn in the right hand, whichever slot holds it
+
+### THE MEASUREMENT AND THE RULINGS
+
+Window t88x, 2026-10-25, the AddInfo line of
+`Cataclysm.Passives.CarriedTypes.TheStartingWeaponCarriesTheCreationTypeAndFollowsAChangeOfIt`, quoted: "set-up: after
+the creation choice Weapon1 holds nothing and Weapon2 holds Weapon_Sword".
+
+The coordinating session's first ruling (brief 92) was to put such a weapon in Weapon1 inside `Equip`. The writing
+session read `Equip` and its tests and stopped before building, for the reasons in the next section. The coordinating
+session, 2026-10-25, verbatim:
+
+> Your session was right to stop. Its reading changes my ruling. **Fix the drawing, not the slot.**
+> - The design document says "There is no primary hand", in the lead sentence "A hit's sub-type is the one every weapon
+>   actually swung agrees on". The equipment component relies on it: "The two weapon slots are interchangeable".
+> - So which slot a lone weapon sits in carries no meaning by design. Moving it in Equip breaks the path three #1214
+>   tests use (Q-E1) and changes which weapon the skills come from (Q-E2).
+> - What a player sees wrong is only the left hand.
+> **Ruling, replacing brief 92's change:**
+> - Leave Equip as it is. Q-E1 and Q-E2 do not arise.
+> - Change the weapon meshes in CataclysmPlayerCharacter.cpp, about lines 300-307: when exactly one weapon is worn, draw
+>   it in the right hand, whichever slot holds it; with two worn, draw Weapon1 right and Weapon2 left, as now; a
+>   two-hander is unchanged.
+> - Cataclysm.WeaponMesh.SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand changes by this ruling: its assertion
+>   that the swapped-in one-hander is drawn by the hand of the slot Equip reports becomes "drawn in the right hand";
+>   rewrite its comment, "THAT IS THE DESIGN AND NOT A FAULT", to say that the slot is meaningless by design and the
+>   drawing follows the one weapon worn. That is the only existing assertion that changes. Name it with its old and
+>   new figure.
+> - Add tests: a lone one-hander in Weapon2 is drawn in the right hand; its control: two one-handers are drawn right
+>   and left by slot; one proof, the lone-weapon rule removed.
+> - The CarriedTypes comment and AddInfo line stay true as they are, because the Sword does stay in Weapon2. Leave them.
+
+### WHY THE SLOT IS NOT MOVED (Q-E1 AND Q-E2, READ AT `1bf218ccb`)
+
+- **Q-E1.** `Equip` (`CataclysmEquipmentComponent.cpp` 249-309) puts an item in the first free candidate, so with a
+  two-handed weapon in Weapon1 a one-handed weapon goes to Weapon2, and `EquipInto`'s branch for a one-handed weapon
+  beside a two-handed one (434-452, issue #1214) takes the two-handed weapon off without a second announcement. Three
+  tests reach that branch through `Equip`: `Cataclysm.Equipment.NoListenerSeesAHalfFinishedWeaponSwap` (line 2204),
+  which would FAIL three assertions ("taking the Sword off reports that it took something", "and announces it", "and it
+  was the Sword that came off", all reading `Weapon2`); and `Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced`
+  (887) and `EveryChangeToWhatIsWornRaisesTheChangeCount` (2112), which would still pass but would silently stop
+  reaching the branch their comments say they cover.
+- **Q-E2.** After a moved first weapon, a second one-handed weapon would go to Weapon2 instead of Weapon1, so the worn
+  order (`WornWeapons()`, and with it `EquippedWeaponType` and the carried-types order) would flip, and the skills would
+  come from the other weapon.
+- The design's sentence, `docs/Cataclysm_GDD_v2.md`, under "A hit's sub-type is the one every weapon actually swung
+  agrees on": "There is no primary hand, and the pair stays unordered as it has been since 2026-08-15."
+
+### WHAT WAS READ FIRST
+
+Line numbers are of `1bf218ccb`.
+
+1. **The mesh code**, `ACataclysmPlayerCharacter::RefreshWeaponMeshes` (`CataclysmPlayerCharacter.cpp` 272-349). A
+   planted weapon clears both hands and returns (288-293). Then a fixed table pairs `Weapon1` with `RightHandWeapon` and
+   `Weapon2` with `LeftHandWeapon` (299-306), and for each hand an empty slot sets the mesh to null (312-320), which is
+   how the left hand is cleared, and a worn item sets its mesh and scale (342-346). The header note on the two hand
+   components (`CataclysmPlayerCharacter.h` 703-724) said "`ECataclysmGearSlot::Weapon1` is drawn in the right hand and
+   `Weapon2` in the left".
+2. **What calls it.** `BeginPlay` (760 at this commit) for a character arriving already armed;
+   `OnEquipmentChanged` (its last line, 2264 at this commit), bound to `EquipmentChanged` in `BeginPlay` (717-718); and
+   `ACataclysmPlantedWeapon` (`CataclysmPlantedWeapon.cpp` 254) when a planted weapon goes. `Equip`, `EquipInto`,
+   `Unequip` and `UnequipEverything` all announce, so **every change re-runs it, two weapons going down to one
+   included** (an `Unequip` announces).
+3. **The seven `Cataclysm.WeaponMesh.` tests at that commit**, every hand half behind `WeaponArtIsPresent`:
+   `EveryWeaponBaseHasARowInTheTable` (four bases have rows, a helm none); `AFistHasARowAndStillDrawsNothing`;
+   `EquippingAWeaponPutsItInTheRightHand` (a sword on emptied hands, Weapon1, the right hand draws);
+   `ItStopsDrawingAWeaponThatWasTakenOff` (the right hand empties when Weapon1 comes off);
+   `SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand` (a Greataxe, then a sword with `Equip`; the sword is worn
+   in the slot reported; the hand OF THAT SLOT holds a weapon that is not the axe; the axe is in neither slot);
+   `ATwoHandedWeaponLeavesTheOffHandEmpty` (right draws, left empty); `AWeaponLeftInTheGroundIsNotDrawnInTheHand`.
+
+### WHAT WAS BUILT
+
+- **`ACataclysmPlayerCharacter::WeaponsInHands(FromEquipment, OutRight, OutLeft)`**, public static
+  (`CataclysmPlayerCharacter.h` 448-457; `.cpp` 272-289): Weapon1's item for the right hand and Weapon2's for the left,
+  and **when Weapon1 is empty and Weapon2 is not, Weapon2's item goes to the right and the left is empty** (284-288), with
+  a comment quoting "There is no primary hand". Null equipment gives two empty hands.
+- **`RefreshWeaponMeshes`** (`.cpp` 318-330) pairs the two items `WeaponsInHands` gives with the two hands instead of the
+  two slots; everything after it is unchanged. The header note (724-726) now says so.
+- A two-handed weapon is unchanged: it is in Weapon1 and draws in the right hand.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE CHOICE IS A STATIC THAT NEEDS NO ART**, so the rule is tested and its proof fails in a worktree, where the
+  weapons pack is absent and every mesh half is skipped. The option not taken: testing it only through the meshes, which
+  would have left the rule, its tests and its proof unmeasured on every machine without the pack.
+- **A LONE TWO-HANDED WEAPON IN Weapon2 IS ALSO DRAWN IN THE RIGHT HAND.** That happens only with Both Hands Full
+  (`EquipInto` keeps a two-handed weapon where it was put then) and is the same fault. The option not taken: excluding
+  two-handed weapons from the rule, which would leave that weapon drawn in the left hand alone.
+
+### THE GENRE SOURCE
+
+None. The ruling and the design settle it; no formula was proposed and no source was fetched.
+
+### Tests
+
+**The changed assertion, by the ruling**, in `Cataclysm.WeaponMesh.SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand`:
+
+- old: `CataclysmWeaponMeshTest::HandNamed(Player, SwappedInto == ECataclysmGearSlot::Weapon1 ? TEXT("RightHandWeapon") :
+  TEXT("LeftHandWeapon"))`, checked with `TestNotNull(TEXT("the hand it went to"), Holding)`. With the sword in Weapon2
+  that was the **left** hand.
+- new: `CataclysmWeaponMeshTest::HandNamed(Player, TEXT("RightHandWeapon"))`, checked with `TestNotNull(TEXT("the right
+  hand"), Holding)`: the **right** hand. Its two checks on that hand, "holds a weapon after the swap" and "and it is not
+  the axe", are unchanged in text. The comment "THAT IS THE DESIGN AND NOT A FAULT" now says the slot is meaningless by
+  design and the drawing follows the one weapon worn.
+
+**Three new tests in `Cataclysm.WeaponMesh.`** (`CataclysmWeaponMeshTests.cpp`), sharing `HandHolds`,
+`EmptyWeaponSlots` (one set-up check), `WearSwordOverGreatsword` (`Equip` of a Greatsword then a Sword; one set-up check
+that the Sword is in Weapon2 with Weapon1 empty, so `Equip`'s choice is measured) and `WearSwordAndShield` (`EquipInto` a
+Sword to Weapon1 and a Shield to Weapon2; one set-up check). Each asks `WeaponsInHands` on a bare equipment component
+first, then, with the pack, a spawned character's hands. Counts by reading, without the pack and then with it.
+
+1. `ALoneOneHandedWeaponInTheSecondSlotIsDrawnInTheRightHand`, 8 / 15: set-up three; **control, a lone Sword in Weapon1
+   is drawn in the right hand** and **the left draws nothing**; set-up, `WearSwordOverGreatsword`; **the Sword in Weapon2
+   is drawn in the right hand**, **the left draws nothing**. With the pack: set-up five (a player, the slots emptied,
+   the swap, the two hand components); **the right hand draws a mesh**, **the left draws none**.
+2. `TwoOneHandedWeaponsAreDrawnRightAndLeftBySlot`, 5 / 13, the control: set-up three; **Weapon1's Sword is drawn
+   right**, **Weapon2's Shield left**. With the pack: set-up five; **the right hand draws a mesh**, **the left does**,
+   **and they differ**.
+3. `TakingTheRightHandWeaponOffOfTwoDrawsTheOtherInTheRightHand`, 7 / 16: set-up three; **control, the Shield is drawn
+   left while the Sword is worn**; set-up, the Sword comes off Weapon1; **the Shield alone in Weapon2 is drawn right**,
+   **the left draws nothing**. With the pack: set-up five; **control, the left hand draws the Shield's mesh**; set-up, the
+   Sword comes off; **the right hand now draws that mesh**, **the left none**.
+
+**Every other test is expected to pass unchanged, by reading.** The other six `Cataclysm.WeaponMesh.` tests draw a lone
+weapon from Weapon1, a two-handed one, or none. Nothing in the equipment component changed, so the `Cataclysm.Equipment.`,
+`Cataclysm.GearPanel.`, `Cataclysm.Wearing.`, `Cataclysm.BothHandsFull.` and `Cataclysm.Passives.CarriedTypes.` tests
+are untouched, and test 7 of the last still records "Weapon1 holds nothing and Weapon2 holds Weapon_Sword".
+
+**`Test` calls used by the new tests:** `TestNotNull` on `UWorld*`, `UCataclysmEquipmentComponent*` and `const
+UStaticMeshComponent*` / `UStaticMeshComponent*`; `TestNull` on `const FCataclysmItem*`; `TestTrue` on `bool`. No
+`TestEqual`.
+
+**The events the tests raise:** none. No blow, kill or ability; only `EquipmentChanged`, a delegate.
+
+**Not tested:** that a weapon drawn in the right hand looks right (the automation command runs `-nullrhi`); the mesh
+halves on a machine without the weapons pack (skipped there, reported); a lone two-handed weapon in Weapon2 under Both
+Hands Full (by reading); a character arriving from a save already holding a lone weapon in Weapon2 (`BeginPlay` calls
+the same function, by reading).
+
+### GUARD PROOFS PROPOSED
+
+Not run. One: **G1, the lone-weapon rule removed.** File `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`;
+old text `if (!OutRight && OutLeft)`, counted **exactly once** by a script (`t92_sweep.py`); new text
+`if (!OutRight && OutLeft && OutRight)`, absent before the break. It is always false, so the swap never runs; it compiles
+alone (three pointers in a boolean expression, every local still read). Brackets before and after, round 1777 and 1777,
+curly 391 and 391, square 88 and 88. Prefix `Cataclysm.WeaponMesh.` with its dot: **10 tests**, and the same 10 without
+the dot (a script over 4,251 test name strings in `game/Source`; each new name found once, and
+`SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand` found once as the control).
+
+Predicted, by reading:
+
+- **Without the weapons pack (a worktree): 4 failed assertions in 2 tests.** Test 1: "the Sword in Weapon2 is drawn in
+  the right hand" (right empty) and "the left draws nothing" (it holds the Sword): 2. Test 3: "the Shield alone in Weapon2
+  is drawn right" and "the left draws nothing": 2. Their controls pass. Test 2 passes. The other seven pass (the swap
+  test's hand half is skipped).
+- **With the pack: 9 failed assertions in 3 tests.** Test 1 adds its two mesh checks (4); test 3 adds "the right hand
+  now draws that mesh" and "the left none" (4); and `SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand` fails "holds
+  a weapon after the swap" (the right hand is empty) while "and it is not the axe" passes (an empty mesh is not the
+  axe): 1.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — The Corrupted Stalker arrives, hunts and follows from floor to floor wearing a player's build (#1308, part B, layer 1)
 
 **Affects:** a new creature class, `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` / `.cpp`;

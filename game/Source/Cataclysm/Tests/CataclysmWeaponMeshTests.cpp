@@ -20,6 +20,8 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Misc/ScopeExit.h"
+#include "UObject/Package.h"
 
 /**
  * Tests for the weapon drawn in the player character's hand. Issue #1125.
@@ -410,14 +412,15 @@ CATACLYSM_TEST(FCataclysmWeaponSwapRedrawsTest,
 				// takes a slot you name. That matters here, because a
 				// two-handed weapon occupies Weapon1 and leaves Weapon2 reading
 				// as empty, so a one-handed weapon swapped in over it lands in
-				// **Weapon2** and is drawn in the LEFT hand.
+				// **Weapon2**, with Weapon1 empty.
 				//
-				// THAT IS THE DESIGN AND NOT A FAULT.
-				// UCataclysmEquipmentComponent says so where it relocates a
-				// two-hander: "The two weapon slots are interchangeable -- the
-				// design says there is no primary hand". This test asserted the
-				// right hand first time and failed, which was the test being
-				// wrong about the design rather than the code being wrong.
+				// THE SLOT IS MEANINGLESS BY DESIGN, AND THE DRAWING FOLLOWS THE
+				// ONE WEAPON WORN. UCataclysmEquipmentComponent says so where it
+				// relocates a two-hander: "The two weapon slots are
+				// interchangeable -- the design says there is no primary hand".
+				// So a lone weapon is drawn in the right hand whichever slot holds
+				// it (ruled 2026-10-25, `ACataclysmPlayerCharacter::WeaponsInHands`).
+				// Until then this asserted the hand of the slot, the left.
 				ECataclysmGearSlot SwappedInto = ECataclysmGearSlot::Weapon1;
 				Equipment->Equip(
 					CataclysmWeaponMeshTest::Plain(
@@ -432,13 +435,11 @@ CATACLYSM_TEST(FCataclysmWeaponSwapRedrawsTest,
 						FName(CataclysmWeaponMeshTest::OneHandedBase));
 				}
 
-				// THE HAND THAT MATCHES THE SLOT IT ACTUALLY WENT TO.
+				// THE RIGHT HAND, WHICHEVER SLOT IT WENT TO.
 				const UStaticMeshComponent* Holding =
-					CataclysmWeaponMeshTest::HandNamed(Player,
-						SwappedInto == ECataclysmGearSlot::Weapon1
-							? TEXT("RightHandWeapon") : TEXT("LeftHandWeapon"));
+					CataclysmWeaponMeshTest::HandNamed(Player, TEXT("RightHandWeapon"));
 
-				if (TestNotNull(TEXT("the hand it went to"), Holding))
+				if (TestNotNull(TEXT("the right hand"), Holding))
 				{
 					TestTrue(TEXT("holds a weapon after the swap"),
 						Holding->GetStaticMesh() != nullptr);
@@ -598,6 +599,242 @@ CATACLYSM_TEST(FCataclysmPlantedWeaponLeavesTheHandTest,
 	}
 
 	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// One weapon worn is drawn in the right hand, whichever slot holds it. Ruled
+// 2026-10-25: "There is no primary hand", so the slot means nothing and the
+// drawing follows the one weapon worn. Each test asks
+// `ACataclysmPlayerCharacter::WeaponsInHands` first, which needs no art, and
+// then the hands' meshes when the weapons pack is on the machine.
+// --------------------------------------------------------------------------
+
+namespace CataclysmWeaponMeshTest
+{
+	/** Whether a hand's item is of this base; false for an empty hand. */
+	bool HandHolds(const FCataclysmItem* InHand, const TCHAR* Base)
+	{
+		return InHand && InHand->Base == FName(Base);
+	}
+
+	/** Both weapon slots emptied, since a spawned player starts with a Greataxe.
+	 *  One set-up check. */
+	bool EmptyWeaponSlots(FAutomationTestBase& Test, UCataclysmEquipmentComponent* Equipment)
+	{
+		FCataclysmItem Discarded;
+		Equipment->Unequip(ECataclysmGearSlot::Weapon1, Discarded);
+		Equipment->Unequip(ECataclysmGearSlot::Weapon2, Discarded);
+		return Test.TestTrue(TEXT("set-up: both weapon slots are empty"),
+			Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon1)
+			&& Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon2));
+	}
+
+	/** A sword put on with `Equip` over a greatsword, as a player does. `Equip`
+	 *  leaves it in Weapon2 with Weapon1 empty, and that is measured, not assumed.
+	 *  One set-up check. */
+	bool WearSwordOverGreatsword(FAutomationTestBase& Test, UCataclysmEquipmentComponent* Equipment)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Plain(TwoHandedBase), Removed, AlsoRemoved, Slot);
+		Equipment->Equip(Plain(OneHandedBase), Removed, AlsoRemoved, Slot);
+		return Test.TestTrue(TEXT("set-up: Equip leaves the sword in Weapon2 with Weapon1 empty"),
+			Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon1)
+			&& HandHolds(Equipment->EquippedAt(ECataclysmGearSlot::Weapon2), OneHandedBase));
+	}
+
+	/** A sword in Weapon1 and a shield in Weapon2. One set-up check. */
+	bool WearSwordAndShield(FAutomationTestBase& Test, UCataclysmEquipmentComponent* Equipment)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		Equipment->EquipInto(Plain(OneHandedBase), ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+		Equipment->EquipInto(Plain(OffHandBase), ECataclysmGearSlot::Weapon2, Removed, AlsoRemoved);
+		return Test.TestTrue(TEXT("set-up: the sword is in Weapon1 and the shield in Weapon2"),
+			HandHolds(Equipment->EquippedAt(ECataclysmGearSlot::Weapon1), OneHandedBase)
+			&& HandHolds(Equipment->EquippedAt(ECataclysmGearSlot::Weapon2), OffHandBase));
+	}
+}
+
+CATACLYSM_TEST(FCataclysmLoneWeaponDrawnRightTest,
+	"Cataclysm.WeaponMesh.ALoneOneHandedWeaponInTheSecondSlotIsDrawnInTheRightHand")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL: A LONE SWORD IN Weapon1 IS DRAWN IN THE RIGHT HAND ALREADY.
+	UCataclysmEquipmentComponent* InFirst = NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	UCataclysmEquipmentComponent* InSecond = NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("set-up: equipment"), InFirst) || !TestNotNull(TEXT("set-up: equipment"), InSecond))
+	{
+		return false;
+	}
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	InFirst->EquipInto(Plain(OneHandedBase), ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+	const FCataclysmItem* Right = nullptr;
+	const FCataclysmItem* Left = nullptr;
+	ACataclysmPlayerCharacter::WeaponsInHands(InFirst, Right, Left);
+	TestTrue(TEXT("control: a lone sword in Weapon1 is drawn in the right hand"), HandHolds(Right, OneHandedBase));
+	TestNull(TEXT("control: and the left hand draws nothing"), Left);
+
+	// THE RULE: THE SAME SWORD IN Weapon2, AS Equip LEAVES IT OVER A TWO-HANDER.
+	if (!WearSwordOverGreatsword(*this, InSecond))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter::WeaponsInHands(InSecond, Right, Left);
+	TestTrue(TEXT("a lone sword in Weapon2 is drawn in the right hand"), HandHolds(Right, OneHandedBase));
+	TestNull(TEXT("and the left hand draws nothing"), Left);
+
+	// AND ON A CHARACTER'S HANDS.
+	if (!WeaponArtIsPresent())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, NoArtReason());
+		return true;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player with equipment"), Equipment)
+		|| !EmptyWeaponSlots(*this, Equipment)
+		|| !WearSwordOverGreatsword(*this, Equipment))
+	{
+		return false;
+	}
+	Player->RefreshWeaponMeshes();
+	const UStaticMeshComponent* RightHand = HandNamed(Player, TEXT("RightHandWeapon"));
+	const UStaticMeshComponent* LeftHand = HandNamed(Player, TEXT("LeftHandWeapon"));
+	if (!TestNotNull(TEXT("set-up: the right hand"), RightHand) || !TestNotNull(TEXT("set-up: the left hand"), LeftHand))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the right hand draws the sword"), RightHand->GetStaticMesh() != nullptr);
+	TestTrue(TEXT("and the left hand draws nothing"), LeftHand->GetStaticMesh() == nullptr);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTwoWeaponsDrawnBySlotTest,
+	"Cataclysm.WeaponMesh.TwoOneHandedWeaponsAreDrawnRightAndLeftBySlot")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	// THE CONTROL FOR THE RULE ABOVE: WITH TWO WORN NOTHING MOVES.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmEquipmentComponent* TwoWorn = NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("set-up: equipment"), TwoWorn) || !WearSwordAndShield(*this, TwoWorn))
+	{
+		return false;
+	}
+	const FCataclysmItem* Right = nullptr;
+	const FCataclysmItem* Left = nullptr;
+	ACataclysmPlayerCharacter::WeaponsInHands(TwoWorn, Right, Left);
+	TestTrue(TEXT("Weapon1's sword is drawn in the right hand"), HandHolds(Right, OneHandedBase));
+	TestTrue(TEXT("and Weapon2's shield in the left"), HandHolds(Left, OffHandBase));
+
+	if (!WeaponArtIsPresent())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, NoArtReason());
+		return true;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player with equipment"), Equipment)
+		|| !EmptyWeaponSlots(*this, Equipment)
+		|| !WearSwordAndShield(*this, Equipment))
+	{
+		return false;
+	}
+	Player->RefreshWeaponMeshes();
+	const UStaticMeshComponent* RightHand = HandNamed(Player, TEXT("RightHandWeapon"));
+	const UStaticMeshComponent* LeftHand = HandNamed(Player, TEXT("LeftHandWeapon"));
+	if (!TestNotNull(TEXT("set-up: the right hand"), RightHand) || !TestNotNull(TEXT("set-up: the left hand"), LeftHand))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the right hand draws a weapon"), RightHand->GetStaticMesh() != nullptr);
+	TestTrue(TEXT("the left hand draws a weapon"), LeftHand->GetStaticMesh() != nullptr);
+	TestTrue(TEXT("and they are different weapons"), RightHand->GetStaticMesh() != LeftHand->GetStaticMesh());
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRightHandEmptiedDrawsOtherTest,
+	"Cataclysm.WeaponMesh.TakingTheRightHandWeaponOffOfTwoDrawsTheOtherInTheRightHand")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmEquipmentComponent* TwoWorn = NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("set-up: equipment"), TwoWorn) || !WearSwordAndShield(*this, TwoWorn))
+	{
+		return false;
+	}
+	const FCataclysmItem* Right = nullptr;
+	const FCataclysmItem* Left = nullptr;
+	ACataclysmPlayerCharacter::WeaponsInHands(TwoWorn, Right, Left);
+	TestTrue(TEXT("control: the shield is drawn in the left hand while the sword is worn"),
+		HandHolds(Left, OffHandBase));
+
+	FCataclysmItem TakenOff;
+	if (!TestTrue(TEXT("set-up: the sword in Weapon1 comes off"),
+			TwoWorn->Unequip(ECataclysmGearSlot::Weapon1, TakenOff)))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter::WeaponsInHands(TwoWorn, Right, Left);
+	TestTrue(TEXT("the shield left alone in Weapon2 is drawn in the right hand"), HandHolds(Right, OffHandBase));
+	TestNull(TEXT("and the left hand draws nothing"), Left);
+
+	if (!WeaponArtIsPresent())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, NoArtReason());
+		return true;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player with equipment"), Equipment)
+		|| !EmptyWeaponSlots(*this, Equipment)
+		|| !WearSwordAndShield(*this, Equipment))
+	{
+		return false;
+	}
+	Player->RefreshWeaponMeshes();
+	UStaticMeshComponent* RightHand = HandNamed(Player, TEXT("RightHandWeapon"));
+	UStaticMeshComponent* LeftHand = HandNamed(Player, TEXT("LeftHandWeapon"));
+	if (!TestNotNull(TEXT("set-up: the right hand"), RightHand) || !TestNotNull(TEXT("set-up: the left hand"), LeftHand))
+	{
+		return false;
+	}
+	const UStaticMesh* Shield = LeftHand->GetStaticMesh();
+	TestTrue(TEXT("control: the left hand draws the shield to begin with"), Shield != nullptr);
+
+	if (!TestTrue(TEXT("set-up: the character's sword comes off"),
+			Equipment->Unequip(ECataclysmGearSlot::Weapon1, TakenOff)))
+	{
+		return false;
+	}
+	Player->RefreshWeaponMeshes();
+	TestTrue(TEXT("the right hand now draws the shield"), RightHand->GetStaticMesh() == Shield);
+	TestTrue(TEXT("and the left hand draws nothing"), LeftHand->GetStaticMesh() == nullptr);
 	return true;
 }
 
