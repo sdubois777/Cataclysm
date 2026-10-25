@@ -12,11 +12,13 @@ accumulation in `RefreshAttributes` reads the worn list); `game/Source/Cataclysm
 `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (`GiveStartingWeapon`, `ApplyCreationChoice`, the
 `Cataclysm.ShowPassives` console line); `game/Source/Cataclysm/Interface/CataclysmPassiveTreeWidget.cpp` (`ClassRefusalFor`);
 `game/Source/Cataclysm/Items/CataclysmItem.h` (the comment on `FCataclysmItem::DamageTypes`, and the new `SaveGame` field
-`FCataclysmItem::bMadeAtCreation`, Q-L1); `game/Tests/SaveFixtures/Character_v3.json`, `Run_v1.json` and `README.md` (the
+`FCataclysmItem::bMadeAtCreation`, Q-L1); `game/Tests/SaveFixtures/Character_v3.json`, `game/Tests/SaveFixtures/Run_v1.json` and
+`game/Tests/SaveFixtures/README.md` (the
 field on every item, no version bump);
 `game/Source/Cataclysm/Tests/CataclysmExtraDamageTypesTests.cpp` (one comment, no assertion); the new
 `game/Source/Cataclysm/Tests/CataclysmCarriedDamageTypesTests.cpp` (eleven tests, the group
-`Cataclysm.Passives.CarriedTypes.`); this file. Two commits on one branch: `24f2e075a`, and the marker of Q-L1 on top. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill or slot change**: the
+`Cataclysm.Passives.CarriedTypes.`); this file. Three commits on one branch: `24f2e075a`; the marker of Q-L1, `24ec628ee`; and one that names the two
+fixtures above by their whole paths. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill or slot change**: the
 weapon slots, `SkillsFor`, `EquippedWeaponType` and `DamageTypeOf` are untouched. **It does not close #857**: layer 2 reads
 the types where skills are chosen (#837).
 
