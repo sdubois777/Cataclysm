@@ -98,15 +98,15 @@ def test_a_difficulty_tier_outside_the_range_is_rejected():
         af.max_affix_tier_on_a_drop(af.DIFFICULTY_TIERS + 1)
 
 
-def test_the_drop_gate_is_the_weapon_damage_type_gate_shifted_by_one():
-    """Both are `min(a fixed ceiling, something that rises with the difficulty
-    tier)`. The affix gate adds one to the tier first; the weapon gate does not.
-    Keeping them recognisably the same shape is deliberate."""
+def test_the_drop_gate_rises_with_the_tier_and_the_damage_type_limit_does_not():
+    """The affix gate is `min(T7, the difficulty tier + 1)`. A weapon's damage
+    type limit had the same shape without the one until the project owner
+    removed the tier cap on 2026-10-25; it is now the base's own limit at every
+    tier."""
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
         assert af.max_affix_tier_on_a_drop(tier) == min(
             af.AFFIX_TIERS[-1], tier + af.DROP_TIERS_ABOVE_DIFFICULTY)
-        assert af.max_damage_types(1, tier) == min(
-            af.DAMAGE_TYPES_ON_ONE_HANDED, tier)
+    assert af.max_damage_types(1) == af.DAMAGE_TYPES_ON_ONE_HANDED
 
 
 # --------------------------------------------------------------------------

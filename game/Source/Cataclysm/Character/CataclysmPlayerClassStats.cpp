@@ -939,6 +939,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ACataclysmMinion::SkillTrapPullRadiusCmFor. No gameplay attribute and no
 		// base.
 		TEXT("trap_pull_radius"),
+		// "This weapon has 2-4 damage types", ruled 2026-10-25 (Q-D5): how many
+		// damage types the weapon its enchantment is drawn on holds, read off the
+		// ITEM's drawn enchantments by UCataclysmDropRoll::DamageTypesCarriedBy
+		// when it drops, and not off any character. Flat, a whole number. Here
+		// only so its row is not refused; nothing reads it on the wearer. No
+		// gameplay attribute and no base.
+		TEXT("damage_types_carried"),
 	};
 	return Stats;
 }

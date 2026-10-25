@@ -1758,10 +1758,12 @@ bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// EVERY TIER, because the tier is one of the three limits and for most of
-	// the game it is the one that binds.
+	// EVERY TIER, because the tier was one of the limits until the project
+	// owner removed it on 2026-10-25, and a drop at any tier must now reach the
+	// same two limits.
 	int32 Weapons = 0;
 	int32 NonWeapons = 0;
+	int32 AboveTheTier = 0;
 	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
 	{
 		FRandomStream Stream(/*InSeed=*/8570 + Tier);
@@ -1800,7 +1802,7 @@ bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
 			++Weapons;
 			const TArray<FName> Allowed =
 				FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, Row->WeaponType);
-			const int32 Most = FDrop::MaxDamageTypesFor(*Row, Tier, Allowed.Num());
+			const int32 Most = FDrop::MaxDamageTypesFor(*Row, Allowed.Num());
 
 			// FROM ONE, not from zero: the design says a weapon rolls "from one
 			// damage type up to" its cap, so a weapon with none is not a drop.
@@ -1808,9 +1810,9 @@ bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
 			{
 				AddError(FString::Printf(
 					TEXT("a %s at tier %d carries %d damage types; it may carry 1 to "
-						 "%d (base limit %d, tier %d, %d designed for a %s)"),
+						 "%d (base limit %d, %d designed for a %s, no tier cap)"),
 					*Row->BaseName, Tier, Item.DamageTypes.Num(), Most,
-					Row->MaxDamageTypes, Tier, Allowed.Num(), *Row->WeaponType));
+					Row->MaxDamageTypes, Allowed.Num(), *Row->WeaponType));
 				return false;
 			}
 
@@ -1834,8 +1836,20 @@ bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
 				}
 				Seen.Add(Each);
 			}
+
+			// AND MORE THAN THE TIER, which the tier cap forbade until 2026-10-25.
+			if (Item.DamageTypes.Num() > Tier)
+			{
+				++AboveTheTier;
+			}
 		}
 	}
+
+	// THE OWNER'S RULING, SEEN IN A ROLL: some weapon carries more damage types
+	// than the tier it dropped on. Under the old cap this was 0.
+	TestTrue(FString::Printf(TEXT("some weapon carries more damage types than its tier (%d did)"),
+			AboveTheTier),
+		AboveTheTier > 0);
 
 	// THE RUN HAS TO HAVE SEEN BOTH KINDS, or the checks above passed by never
 	// running. Ten of the eleven slots are not weapons, so a run that rolled no
@@ -1847,7 +1861,7 @@ bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageTypeCapTest,
-	"Cataclysm.Drop.TheDamageTypeCapIsTheLowestOfTheThreeLimits",
+	"Cataclysm.Drop.TheDamageTypeCapIsTheLowerOfTheTwoLimitsAtAnyTier",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
@@ -1870,22 +1884,21 @@ bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
 	TwoHanded.MaxDamageTypes = 8;
 	TwoHanded.WeaponType = TEXT("Greatsword");
 
-	// THE TIER BINDS BELOW THE BASE LIMIT for most of the game. Mirrors
+	// NO TIER CAPS IT, by the project owner's ruling of 2026-10-25: the base's
+	// own limit binds when enough types are designed. Until then a one-hander
+	// at tier 2 was held to 2 and a two-hander at tier 5 to 5. Mirrors
 	// max_damage_types() in sim/cataclysm_sim/affixes.py.
-	TestEqual(TEXT("a one-hander at tier 2 rolls at most 2"),
-		FDrop::MaxDamageTypesFor(OneHanded, 2, 8), 2);
-	TestEqual(TEXT("a one-hander at tier 8 is still held to its own 4"),
-		FDrop::MaxDamageTypesFor(OneHanded, 8, 8), 4);
-	TestEqual(TEXT("a two-hander at tier 5 rolls at most 5"),
-		FDrop::MaxDamageTypesFor(TwoHanded, 5, 8), 5);
+	TestEqual(TEXT("a one-hander is held to its own 4, at any tier"),
+		FDrop::MaxDamageTypesFor(OneHanded, 8), 4);
+	TestEqual(TEXT("a two-hander is held to its own 8, at any tier"),
+		FDrop::MaxDamageTypesFor(TwoHanded, 8), 8);
 
-	// AND HOW MANY TYPES EXIST FOR THE WEAPON IS THE THIRD LIMIT, which neither
-	// the design document nor the Python model states. A Greatsword has six
-	// designed, so tier 8 and a base limit of eight still cannot exceed six.
+	// AND HOW MANY TYPES EXIST FOR THE WEAPON IS THE SECOND LIMIT. A Greatsword
+	// has six designed, so a base limit of eight still cannot exceed six.
 	const TArray<FName> ForAGreatsword =
 		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Greatsword"));
-	TestEqual(TEXT("a Greatsword at tier 8 is held to what is designed for it"),
-		FDrop::MaxDamageTypesFor(TwoHanded, 8, ForAGreatsword.Num()),
+	TestEqual(TEXT("a Greatsword is held to what is designed for it"),
+		FDrop::MaxDamageTypesFor(TwoHanded, ForAGreatsword.Num()),
 		ForAGreatsword.Num());
 	TestTrue(TEXT("and that is fewer than its base limit of eight"),
 		ForAGreatsword.Num() < TwoHanded.MaxDamageTypes);
@@ -1895,7 +1908,7 @@ bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
 	Boots.MaxDamageTypes = 0;
 	Boots.WeaponType = FString();
 	TestEqual(TEXT("a non-weapon rolls no damage types"),
-		FDrop::MaxDamageTypesFor(Boots, 8, 0), 0);
+		FDrop::MaxDamageTypesFor(Boots, 0), 0);
 
 	return true;
 }

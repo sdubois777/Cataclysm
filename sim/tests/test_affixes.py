@@ -1225,64 +1225,104 @@ def test_a_weapon_base_carries_a_limit_not_a_count():
     assert af.DAMAGE_TYPES_ON_TWO_HANDED == len(af.DAMAGE_TYPES)
 
 
-def test_the_difficulty_tier_caps_how_many_damage_types_a_weapon_rolls():
-    """A two-hander gains one more possible type per tier until it reaches its
-    own limit; a one-hander stops at four however deep the player goes."""
-    assert [af.max_damage_types(2, t) for t in range(1, 9)] == [
-        1, 2, 3, 4, 5, 6, 7, 8]
-    assert [af.max_damage_types(1, t) for t in range(1, 9)] == [
-        1, 2, 3, 4, 4, 4, 4, 4]
-    # The two are identical up to tier 4 and diverge from tier 5, which is the
-    # rule as the project owner stated it.
-    for tier in range(1, 5):
-        assert af.max_damage_types(1, tier) == af.max_damage_types(2, tier)
-    for tier in range(5, 9):
-        assert af.max_damage_types(1, tier) < af.max_damage_types(2, tier)
+def test_no_difficulty_tier_caps_how_many_damage_types_a_weapon_rolls():
+    """The project owner removed the tier cap on 2026-10-25: "I think we should
+    remove the tier cap." A one-hander may roll up to four and a two-hander up
+    to eight at every tier. Until then a two-hander's cap rose 1, 2, ... 8 with
+    the tier and a one-hander's 1, 2, 3, 4 and then stayed at four."""
+    assert af.max_damage_types(1) == af.DAMAGE_TYPES_ON_ONE_HANDED == 4
+    assert af.max_damage_types(2) == af.DAMAGE_TYPES_ON_TWO_HANDED == 8
 
 
 def test_no_weapon_can_roll_more_damage_types_than_exist():
     for hands in (1, 2):
-        for tier in range(1, af.DIFFICULTY_TIERS + 1):
-            assert 1 <= af.max_damage_types(hands, tier) <= len(af.DAMAGE_TYPES)
+        assert 1 <= af.max_damage_types(hands) <= len(af.DAMAGE_TYPES)
 
 
 def test_max_damage_types_rejects_input_that_cannot_happen():
     with pytest.raises(ValueError, match="one- or two-handed"):
-        af.max_damage_types(3, 1)
-    with pytest.raises(ValueError, match="outside 1 to"):
-        af.max_damage_types(1, 0)
-    with pytest.raises(ValueError, match="outside 1 to"):
-        af.max_damage_types(1, af.DIFFICULTY_TIERS + 1)
+        af.max_damage_types(3)
 
 
 def test_dual_wielding_carries_more_damage_types_than_a_two_hander():
     """The design says dual wielding is the primary route to multiclassing
     BECAUSE it is how a player carries more damage types at once.
 
-    COMPARING THE RAW LIMITS NO LONGER PROVES IT: both reach eight. The tier cap
-    is what keeps it true, so this walks the tiers.
+    WITH NO TIER CAP the raw limits tie at eight, so what keeps it true is the
+    designed types: no two-hander is designed for all eight, the most being
+    seven, while two one-handers hold all eight between them. Until 2026-10-25
+    the tier cap kept the lead, 1, 2, 3, 4, 3, 2, 1 and a tie at tier 8; it is
+    now one type at every tier.
     """
     af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
-    leads = [af.max_damage_types(1, t) * 2 - af.max_damage_types(2, t)
-             for t in range(1, af.DIFFICULTY_TIERS + 1)]
-    # Ahead at every tier but the last, widest at tier 4, level at tier 8.
-    assert leads == [1, 2, 3, 4, 3, 2, 1, 0]
+    dual = min(af.max_damage_types(1) * 2, len(af.DAMAGE_TYPES))
+    two_handed = min(af.max_damage_types(2),
+                     af.MOST_DAMAGE_TYPES_DESIGNED_FOR_A_TWO_HANDER)
+    assert (dual, two_handed) == (8, 7)
 
 
 def test_that_the_multiclassing_check_actually_fires(monkeypatch):
-    """Lowering the one-handed limit to two lets a two-hander draw level at tier
-    4, three tiers before it is allowed to."""
+    """Lowering the one-handed limit to two leaves a dual wielder four types
+    against a two-hander's seven."""
     monkeypatch.setattr(af, "DAMAGE_TYPES_ON_ONE_HANDED", 2)
     with pytest.raises(ValueError, match="route to multiclassing"):
         af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
 
 
-def test_the_multiclassing_check_allows_the_two_hander_to_catch_up_at_the_last_tier():
-    """The shipped numbers tie at tier 8 and that is deliberate, so the check
-    must pass rather than treating the tie as a failure."""
-    assert (af.max_damage_types(1, af.DIFFICULTY_TIERS) * 2
-            == af.max_damage_types(2, af.DIFFICULTY_TIERS))
-    af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+def test_the_multiclassing_check_fires_when_a_two_hander_is_designed_for_all_eight(
+        monkeypatch):
+    """The reason the design now gives, broken: a two-hander designed for all
+    eight ties a dual wielder, and a tie is not a lead."""
+    monkeypatch.setattr(af, "MOST_DAMAGE_TYPES_DESIGNED_FOR_A_TWO_HANDER", 8)
+    with pytest.raises(ValueError, match="route to multiclassing"):
+        af._check_dual_wielding_carries_more_damage_types_than_a_two_hander()
+
+
+def _designed_damage_types_by_weapon_type():
+    """Every weapon type's designed damage types, read off the weapon skill
+    matrix. The auras' rows, weapon type "All", are not a weapon."""
+    import csv
+    import pathlib
+    path = (pathlib.Path(__file__).resolve().parents[2] / "game" / "Data"
+            / "WeaponSkills.csv")
+    if not path.is_file():
+        pytest.skip("game/Data/WeaponSkills.csv is not present")
+    designed: dict[str, set[str]] = {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["WeaponType"] != "All":
+                designed.setdefault(row["WeaponType"], set()).add(row["DamageType"])
+    return designed
+
+
+def test_no_two_hander_is_designed_for_all_eight_damage_types():
+    """THE MATRIX THE DUAL-WIELD CLAIM NOW RESTS ON. The Staff and the Spear
+    reach seven; the Greatsword and the Warhammer six; the Greataxe four; the
+    2H Crossbow three. Read off the matrix, so a two-hander gaining its eighth
+    type fails here by name."""
+    designed = _designed_damage_types_by_weapon_type()
+    two_handed = {b.weapon_type for b in af.WEAPON_BASES if b.hands == 2}
+    counts = {weapon: len(designed[weapon]) for weapon in two_handed}
+    assert counts == {"Staff": 7, "Spear": 7, "Greatsword": 6, "Warhammer": 6,
+                      "Greataxe": 4, "2H Crossbow": 3}
+    assert max(counts.values()) == af.MOST_DAMAGE_TYPES_DESIGNED_FOR_A_TWO_HANDER
+    assert len(af.DAMAGE_TYPES) == 8
+
+
+def test_two_one_handers_can_hold_all_eight_damage_types_between_them():
+    """The other half of the claim: some pair of one-handers, each holding at
+    most four of its own designed types, holds all eight."""
+    import itertools
+    designed = _designed_damage_types_by_weapon_type()
+    one_handed = sorted({b.weapon_type for b in af.WEAPON_BASES if b.hands == 1})
+    limit = af.DAMAGE_TYPES_ON_ONE_HANDED
+    pairs = [(a, b) for a, b in itertools.combinations(one_handed, 2)
+             if len(designed[a] | designed[b]) == len(af.DAMAGE_TYPES)
+             and len(designed[a] - designed[b]) <= limit
+             and len(designed[b] - designed[a]) <= limit
+             and min(len(designed[a]), limit) + min(len(designed[b]), limit)
+             >= len(af.DAMAGE_TYPES)]
+    assert pairs, "no pair of one-handers can hold all eight damage types"
 
 
 def test_a_weapon_base_naming_a_sub_type_that_does_not_exist_is_rejected():

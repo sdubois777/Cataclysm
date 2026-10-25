@@ -2,6 +2,592 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — "This weapon has 2-4 damage types" adds damage types to the weapon it drops on, up to its rolled 2 to 4, never fewer than it had and never more than are designed for the weapon type (layer 2 of brief 86b)
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp` (the new public
+`UCataclysmDropRoll::DamageTypesCarriedStat`, `DamageTypesCarriedBy` and `TopUpDamageTypes`, and a last, defaulted
+parameter `EnchantmentEffectTable` on `RollItem`); `game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp` (the drop
+spawner hands the effect table over); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at the end
+of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, the probe `ProbeDamageTypesCarried` and its entry at the end of the probe table); the new
+`game/Source/Cataclysm/Tests/CataclysmExtraDamageTypesTests.cpp` (six tests, the group `Cataclysm.ExtraDamageTypes.`);
+`tools/generate_datatables.py` (`DAMAGE_TYPES_CARRIED_STAT`, `MAX_DAMAGE_TYPES_CARRIED` and
+`refuse_a_damage_types_carried_row_the_game_cannot_read`, called by `validate_enchantment_effects`);
+`tools/tests/test_generate_datatables.py` (four tests); this file. **No data row**: the workbook row is the enchantment
+session's to write; nothing under `game/Data/` or `game/Content/`, no workbook cell. It sits on layer 1 below, on one
+branch. It closes nothing; issue #1815 is closed by the coordinating session.
+
+### SAID FIRST
+
+**NOTHING CHANGES IN PLAY UNTIL THE ROW IS WRITTEN.** The shipped effect table has no `damage_types_carried` row, so
+`DamageTypesCarriedBy` answers nought for every drop and nothing more is drawn: every drop is the item it was at layer 1.
+
+**ONCE THE ROW IS WRITTEN, A WEAPON DRAWN WITH THE SENTENCE HOLDS 2, 3 OR 4 DAMAGE TYPES** (its own roll of the row,
+rounded), or as many as it already rolled if that is more, and never more than its weapon type is designed for: a Shield
+and a 2H Crossbow three, a Greataxe four. At any tier, by the owner's ruling of layer 1. The added types are drawn from the
+drop's own stream after the enchantments, so a drop carrying the sentence also moves every later item of the same kill.
+
+**THE EXTRA TYPES SHOW ON THE TOOL TIP AND DO NOT YET OPEN TREES OR SKILLS IN PLAY.** The tool tip already lists every type
+a weapon holds. But nothing in play reads a worn weapon's `FCataclysmItem::DamageTypes`: the passive trees and the
+skills follow the one damage type chosen at creation (`ACataclysmPlayerState::ReachableTrees` and `ReachesTreeOf`,
+`CataclysmPlayerState.cpp` 380 to 417; `UCataclysmEquipmentComponent`'s passive accumulation, `CataclysmEquipmentComponent.cpp`
+853; the skills through `UCataclysmWeaponSlotsComponent::DamageTypeOf`). `FCataclysmItem::DamageTypes`' own comment says
+so: "NOTHING READS IT YET, AND THAT IS THE REST OF ISSUE #857". **Brief 86's test 5, the extra type's trees reachable and
+its skills available "to a character wielding it", cannot pass until #857 is built, and was not written as asked**; the
+test below asks the tree rules about the weapon's own list instead, and says so.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 86 and its addendum 86b. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a weapon with "This weapon has 2-4 damage types" drops with that many damage types, as many as its weapon type allows,
+  and its tool tip lists them. **It does not yet open each type's class trees and skills**: that waits on issue #857.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner was asked Q-D1 and answered it for every weapon, which is layer 1 below, verbatim: "I think we should remove the
+tier cap. They're already gated by their level with how many points they can spread out so getting a multi damage weapon
+doesn't matter. This is more for when you have a really nice weapon, but need access to different classes. So you don't
+have to craft a whole new weapon."
+
+The coordinating session's rulings of 2026-10-25, verbatim, as brief 86 gives them:
+
+> - **Q-D2: YES.** Use the same integer rounding as the existing integer enchantments, and quote it in the brief.
+> - **Q-D3: YES.** Never lower. A weapon already at or above the count is unchanged.
+> - **Q-D4: YES.** Use the same uniform draw over the designed types not already held, on the same stream, appended
+>   after the enchantments. War may be drawn, as any drop can already; that is existing drop behaviour.
+> - **Q-D5: YES.** Use an effect row with a new item-level stat, damage_types_carried, flat 2-4, read by the drop.
+>   Dry-run the new kind of row through the whole generator first.
+> - **Q-D6: YES.** Saved items keep what they have.
+> - Tests and proofs DT-I and DT-II are approved as listed. Add one test that the floor or character screen shows the
+>   extra damage type, or say where the item tooltip already lists DamageTypes. Every system needs a basic UI.
+
+And, from brief 86b, verbatim: "**Layer 2, "This weapon has 2-4 damage types":** as already ruled. It tops up to the
+rolled 2-4, capped only by the designed types. Your one switch is no longer needed: there is no tier cap left to switch."
+
+**Q-D1, "whether it lifts the tier cap"**, was ASKED OF THE OWNER and ANSWERED by layer 1: no tier caps any weapon's
+damage types, so none caps the top-up. Brief 86's switch was not built, and its test 6, the switch, is dropped.
+
+**Q-D2's rounding**, as brief 86 quotes it: "+1-3 to your max deployable count" (`minion_cap_bonus`) is turned into a whole
+number by `FMath::RoundToInt(Bonus)` in `MinionCapFor` (`CataclysmSkillTemplates.cpp`). The figure at the roll is
+`UCataclysmItemValues::EnchantmentValue(ValueLow, ValueHigh, Roll)`, the function `EnchantmentModifierFor` uses for every
+effect row's value (`CataclysmItem.cpp` 927 to 928) and the hover text uses for the sentence. A range its sentence marks as
+rolling down arrives from the generator with its two ends exchanged, so the same call serves it.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of `357fa7b61` unless stated (`CataclysmDropRoll.cpp` is the same there as at `e1a43519d`).
+
+1. **The drop.** `RollItem` (`CataclysmDropRoll.cpp` 1942 onward) draws base, rarity, sockets, residue, the affixes, then
+   `OutItem.DamageTypes = RollDamageTypes(...)` (2027 to 2028), then `RollEnchantments(...)` (2032 to 2037), each "last"
+   so existing seeds keep their items. `RollDamageTypes`, `MaxDamageTypesFor` and `DamageTypesAvailableTo` are as layer
+   1 below gives them. `RollEnchantments` (1643 to 1940) writes each pair's row names and its two rolls,
+   `PositiveRoll` and `NegativeRoll`, drawn from a second stream seeded from the item's (1928 to 1932); the item stores
+   them on `FCataclysmRolledEnchantment` (`CataclysmItem.h` 100 to 144, all `SaveGame`).
+2. **The drop had no effect table.** `RollItem` takes eight tables and none is `EnchantmentEffects`; its callers are
+   `UCataclysmDropSpawner::SpawnDropsFor` (`CataclysmDroppedItem.cpp` 584) and three test helpers
+   (`CataclysmDropRollTests.cpp` 1084, `CataclysmEnchantmentTests.cpp` 118, `CataclysmDungeonModifierEffectsTests.cpp`
+   22367). An effect row is found by its `Enchantment` cell, as `AccumulateEnchantmentsInto` and `KillCrossesAStep` find
+   them (`CataclysmItem.cpp` 1059 to 1122), and the table is loaded by `UCataclysmItemModifiers::LoadEnchantmentEffectTable`
+   (public, `CataclysmItem.h` 667).
+3. **How the generator validates a stat.** `validate_enchantment_effects` refuses a stat nothing supplies, where a flat row
+   in the sheet supplies its own stat, so the row was **accepted by the generator unchanged** (the dry run below, run first
+   on an unedited copy, accepted it). What refuses a stat with no attribute is the engine side:
+   `Cataclysm.Enchantments.EveryStatAnEnchantmentGrantsHasAnAttributeBehindIt` fails a row whose stat is neither in
+   `StatToAttribute` nor in `StatsWithNoAttribute()`, and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+   fails a name on that list with no probe. `tools/tests/test_stat_lookups_hand_over_what_they_should.py` lists the
+   `StatForSkill` call sites; the drop does not call `StatForSkill`, so nothing joins it.
+4. **Every reader of `FCataclysmItem::DamageTypes`** (searched in non-test code): the tool tip's `WeaponLines`
+   (`CataclysmItemTooltip.cpp` 425 to 434 lists them joined by ", "; 444 to 451 states the ceiling), and nothing else. Not
+   the trees, not the skills, not equipping (item 3 of SAID FIRST). The save writes the field with the item (`SaveGame`,
+   `CataclysmItem.h` 198), so a saved item keeps what it has and nothing re-rolls it (Q-D6).
+5. **Every test that draws a weapon with a fixed seed**, layer 1's list below. None passes an effect table to `RollItem`,
+   and the shipped table has no such row, so none moves under this layer.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| Q-D5, an item-level stat read by the drop | `DamageTypesCarriedStat`, `.cpp` 1224, declared `.h` 671; on `StatsWithNoAttribute`, `CataclysmPlayerClassStats.cpp` 948; the drop asks it in `RollItem`, `.cpp` 2109. |
+| Q-D2, the figure at the roll, rounded | `DamageTypesCarriedBy`, `.cpp` 1226 to 1263: `FMath::RoundToInt(UCataclysmItemValues::EnchantmentValue(ValueLow, ValueHigh, Roll))` (1253 to 1254), the largest over both halves of every pair. |
+| Q-D3, never lower | `TopUpDamageTypes`, `.cpp` 1265 to 1288: returns at once when `Count <= InOutDamageTypes.Num()`; it only adds. |
+| Q-D4, the same draw, the same stream, after the enchantments | 1274 to 1287: the designed pool less what is held, `RandRange(0, Pool.Num() - 1)` and `RemoveAt`, from the item's stream; called after `RollEnchantments`, 2105 to 2112. |
+| Capped only by the designed types (86b) | 1275 to 1276: `Wanted = min(Count, MaxDamageTypesFor(BaseRow, Pool.Num()))`, which since layer 1 has no tier. |
+| Q-D6, saved items keep what they have | nothing re-rolls: the top-up runs only in `RollItem`. |
+| The drop reads the table | `SpawnDropsFor`, `CataclysmDroppedItem.cpp` 515 to 519 and 595. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE STAT GOES ON `StatsWithNoAttribute`**, so the real row passes the engine check that every stat a row grants has an
+  attribute or an exemption; `ApplyTo` then records it on the wearer, where nothing reads it. The option not taken: a
+  separate list of item-level stats that `ApplyTo` skips, which would widen that check and the generator's vocabulary for
+  one row.
+- **`RollItem` TAKES THE EFFECT TABLE AS A LAST, DEFAULTED PARAMETER, AND ONLY THE DROP SPAWNER PASSES IT.** So every test
+  helper rolls exactly what it rolled, with or without the real row. The option not taken: `RollItem` loading the table
+  itself, which would hide an asset load inside a function the tests feed made-up tables.
+- **THE TABLE IS NOT REQUIRED BY THE SPAWNER**: a missing one drops what it would have, without the top-up. The option not
+  taken: dropping nothing, as the eight required tables do.
+- **BOTH HALVES ARE READ, AND THE LARGEST COUNT WINS.** Only a positive sentence states the stat; reading both costs nothing
+  and keeps the reader honest if a drawback ever states one. "Holds N" is not additive, so two rows do not sum. The option
+  not taken: positives only, or summing as a flat modifier would.
+- **THE ROW IS REFUSED UNLESS IT IS FLAT, A WHOLE NUMBER FROM 1 TO 8 AT EACH END, WITH NO REQUIRED TAG, ACTION, CONDITION
+  OR SCALE**, since the drop reads the two ends and nothing else. The sentence's own `Item.Slot.Weapon` belongs to the
+  sentence row, not the effect row. The option not taken: allowing a scale or condition the drop would ignore. **Not
+  refused**: a row on this stat under a sentence that is not a weapon's; the top-up does nothing on a non-weapon
+  (`MaxDamageTypes` of nought).
+- **THE TESTS ARE A NEW GROUP, `Cataclysm.ExtraDamageTypes.`**, in a file of their own beside the drop's tests, so a proof's
+  prefix with its dot selects exactly these six. The option not taken: `Cataclysm.Drop.`, 29 names, which layer 1's
+  proof already uses.
+- **BRIEF 86'S TEST 5 IS WRITTEN AGAINST THE TREE RULES AND NOT A CHARACTER**, because nothing hands a character a worn
+  weapon's types (SAID FIRST). Its skills half is not written: `UCataclysmWeaponSkills::SkillsFor` takes one damage type
+  and would answer for any name handed to it.
+
+### THE GENRE SOURCE
+
+None. The rulings settle the mechanism; no formula was proposed and no source was fetched.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmDropRoll::DamageTypesCarriedStat`**, `"damage_types_carried"`.
+- **`UCataclysmDropRoll::DamageTypesCarriedBy(const TArray<FCataclysmRolledEnchantment>&, const UDataTable*)`**, public:
+  nought with no table or no enchantment; otherwise, for each half of each pair, every effect row whose `Enchantment` is the
+  half's row name and whose `Stat` is the stat, `RoundToInt(EnchantmentValue(ValueLow, ValueHigh, the half's roll))`, the
+  largest.
+- **`UCataclysmDropRoll::TopUpDamageTypes(WeaponSkillTable, BaseRow, Count, Stream, InOutDamageTypes)`**, public: nothing
+  when the weapon already holds `Count` or is not a weapon; else the designed pool, `Ceiling = MaxDamageTypesFor(BaseRow,
+  Pool.Num())`, `Wanted = min(Count, Ceiling)`, the held types taken out of the pool, then one uniform pick at a time until
+  it holds `Wanted` or the pool is empty.
+- **`RollItem`** gains `const UDataTable* EnchantmentEffectTable = nullptr` and, after the enchantments, `Carried =
+  DamageTypesCarriedBy(OutItem.Enchantments, EnchantmentEffectTable)` and the top-up when it is above nought.
+- **`SpawnDropsFor`** loads the effect table and hands it over.
+- **`damage_types_carried`** joins the end of `StatsWithNoAttribute()`, with its probe at the end of the probe table.
+- **The generator** refuses the wrong shapes of the row (above), from `validate_enchantment_effects`, at the end of its
+  list.
+
+### THE DRY RUN
+
+**THE ROW WAS DRY-RUN THROUGH THE WHOLE GENERATOR**, as the first row of a new kind must be, twice, on copies of the
+tree outside the repository (`git archive` of the head with the working tree's changed files written over it), the
+workbook copy's Enchantment Effects sheet given one row by a script that DERIVES the name by the copy's `row_name` from
+"This weapon has 2-4 damage types", asserts the copy's `EnchantmentsPositive.csv` holds that name with those words once
+and with `Item.Slot.Weapon`, and asserts it has no effect row yet. The cells: Enchantment
+`Positive_This_weapon_has_2_4_damage_types`, Effect "This weapon has 2-4 damage types", Stat `damage_types_carried`, Value
+Kind `flat`, Value Low 2, Value High 4, every other cell empty.
+
+- **First, on an unedited copy of `e1a43519d`**, before any change: `tools/generate_datatables.py --workbook <copy>
+  --output-dir <copy>/game/Data` printed "Wrote 29 CSVs" and refused nothing. **The generator needed no change to accept
+  the row**: a flat row supplies its own stat. The refusals it gains here are for the wrong shapes.
+- **Then on a copy of this commit's tree**: "Wrote 29 CSVs", no refusal. The row came out as
+  `Positive_This_weapon_has_2_4_damage_types#1,Positive_This_weapon_has_2_4_damage_types,damage_types_carried,flat,2.0,4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0`
+  (the generator's own fills). `EnchantmentEffects.csv` differs from the same generator's output on an untouched control
+  copy by exactly that row, 706 to 707, none removed; the other 28 CSVs are byte for byte the same, and the control's
+  output is byte for byte the committed `game/Data/`.
+
+**The whole Python suite was then run in that copy and in the control copy**: the control "12 failed, 6971 passed, 13
+skipped" (JUnit tests 6996, failures 12, errors 0, skipped 13), the copy with the row "16 failed, 6967 passed, 13 skipped"
+(JUnit tests 6996, failures 16, errors 0, skipped 13). Eleven of the control's twelve are the copy lacking its repository
+directory ("not a git repository"). **The twelfth was a fault of this change, found by this run**:
+`test_every_conditioned_stat_has_an_asker.py::test_the_three_probe_tables_can_be_read_and_are_three_tables` failed "assert
+None ... fullmatch('[a-z][a-z0-9_]*', 'Probe_damage_types_carried')", because the probe was first written as a lambda inside
+the probe table, and that check reads every `TEXT("...")` there as a stat name. It was moved into a named function,
+`ProbeDamageTypesCarried`, before `ConditionedProbes()`, as the other probes are; that file and
+`test_every_scaled_stat_has_an_asker.py` then ran "19 passed" in the worktree. The row's copy fails the same twelve. **The four only the row's copy fails** are the
+bookkeeping the row moves, and nothing about its words:
+
+- `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`: the asset rebuild, which
+  needs the editor.
+- `test_docs_readme_sheet_table_is_true.py::test_every_row_count_in_the_table_is_true`: "Enchantment Effects: 706, 707".
+- `test_enchantment_effects_match_the_row_text.py::test_the_coverage_is_what_it_is_measured_to_be`: "707 effect rows,
+  pinned at 706".
+- `test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: "EnchantmentEffects.csv: 706, 707".
+
+**`test_enchantment_effects_match_the_row_text.py` accepts the row against its own words**: its 2 and 4 are the sentence's
+"2-4", and every other check in that file passed in the row's copy. The stat is not a flag, so nothing joins `FLAG_STATS`.
+
+**With the bookkeeping applied in that copy** (`AUTHORED_ROWS` 706 to 707 and `AUTHORED_ENCHANTMENTS` 569 to 570 in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; `docs/README.md`'s "| Enchantment Effects | 706 |" to 707;
+`CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    706)` to 707 in `CataclysmDataTableTests.cpp`),
+those three files ran "49 passed".
+
+**THE BOOKKEEPING THE ENCHANTMENT SESSION DOES WITH THE ROW**, measured above: the four figures in three files and the
+asset rebuild. This commit needs none of it: no check in it requires the row.
+
+### Tests
+
+Six Unreal tests in `Cataclysm.ExtraDamageTypes.` (`CataclysmExtraDamageTypesTests.cpp`), sharing
+`CataclysmExtraDamageTypesTest`: the tables read from `game/Data/` CSVs; `EffectTableWithTheRow` (the row the session will
+author: flat 2 to 4 on the sentence, built with `AddRow`); `EmptyEffectTable`; `TheSentenceAt(Roll)`; `BaseFor`;
+`Describe` (an item as one line, damage types optional); `PositivesHoldingTheSentence` (the real sentence row and three
+copies under made-up names, all weight 1, no effect row on the copies); `Roll` (a whole drop for the Weapon slot, magic
+find 500); `AllDesignedAndDistinct`. No world, no actor, no tick; every draw seeded.
+
+1. `AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`, 18 assertions plus 4 for each drop found (at most 3 found): the
+   tables load; **control, no row: 0**; **roll 0: 2**; **roll 0.5: 3**; **roll 1: 4**; a Sword base; set-up, more than 4
+   types designed for it; for counts 2, 3, 4: **it holds the count**, **it keeps its first type**, **every type designed
+   and none repeated**; set-up, the sentence is in the real table; for each drop found at tier 1 carrying the sentence (seeds
+   1 up to 20,000, stopping at 3): its base is in the table, **it holds `max(what the same seed rolled without the table,
+   min(its count, the weapon's ceiling))`**, **the types first rolled are kept in order**, **nothing else about the item
+   differs**; and **the search found at least one**. Fails if the row is not read, the roll not used, the rounding not
+   applied, the top-up missing, or a tier capping it at tier 1.
+2. `AWeaponAlreadyHoldingTheCountIsUnchanged`, 9 assertions: the tables load; a Sword base; **control, holding two and
+   asked for four, it holds four**; for counts 2, 3, 4 with four held: **the same four in order**, **the stream not moved**.
+   Fails if the top-up trims, replaces, or draws when it adds nothing.
+3. `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`, 8 assertions: the tables load; a Shield and a Sword base; set-up,
+   three designed for a Shield; set-up, its base allows four; **a Shield holding one, asked for four, holds three**; **its
+   three designed types**; **control, a Sword asked for four holds four**. Fails if the top-up is missing (one) or passes
+   the designed types (four).
+4. `WithoutTheSentenceASeedGivesTheSameItem`, 3 assertions: the tables load; over seeds 1 to 300 at tiers 1 and 8, the real
+   tables, **every weapon not carrying the sentence is the same item with the table and without**, by `Describe`; and **the
+   run compared weapons carrying enchantments**. Fails if the change draws anything for a drop without the sentence.
+5. `TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`, 10 assertions: the tables load; a Sword base; set-up, topped
+   up to two; set-up, the added type unlocks three classes; for each: **control, not reachable before**, **reachable
+   after**. The tree rules only, not a character (SAID FIRST). Fails if the top-up adds a name the tree rules do not know.
+6. `TheTooltipListsEveryTypeTheWeaponHolds`, 6 assertions: the tables and the base table asset load; a Sword base;
+   **control, before the top-up the tool tip lists the one type**; set-up, it holds four; **after it the tool tip lists all
+   four, joined by ", "**. The UI test brief 86 asks for, on `UCataclysmItemTooltip::WeaponLines`, which already lists a
+   weapon's types. Fails if the added types are not on the item the tool tip reads.
+
+Brief 86's test 6, the switch, is dropped by 86b (no tier cap is left to switch).
+
+The probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, 2 assertions: **control, a made-up
+enchantment with no row on the stat asks for 0**; **with a flat 3, 3**.
+
+Python, `tools/tests/test_generate_datatables.py::TestTheDamageTypesCarriedRow`, on a made-up sheet holding the real
+sentence and its real tags: the proposed row's name is `row_name`'s and the shipped sentence's, the row is carried through
+as `("Positive_This_weapon_has_2_4_damage_types#1", "damage_types_carried", "flat", 2.0, 4.0, "", "", "", "")` and refused
+by nothing; the stat is on `stats_with_no_attribute()` and is exactly the name `CataclysmDropRoll.cpp` gives
+`DamageTypesCarriedStat` (control, a made-up name on no list); eight wrong shapes are each refused once by name (increased,
+a required tag, an action, a condition, a scale, 0, 2.5, 9) while 2 to 4 and 1 to 8 pass and another stat is left alone;
+and the whole sheet's validation runs the check.
+
+**Every earlier test is expected to pass unchanged**: no test helper passes the effect table to `RollItem`, and the shipped
+table has no row on the stat, so every seeded drop is layer 1's (read, not run).
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, int32, int32)`, `(const TCHAR*, FName, FName)` and
+`(const TCHAR*, const FString&, const FString&)`, each declared in the engine's `AutomationTest.h` (1985, 2003, 1997);
+`TestTrue` and `TestFalse` on `bool`; `TestNotNull` on `const FCataclysmItemBaseRow*`, `UDataTable*` and `const
+UDataTable*`.
+
+**The events the tests raise, with their depth:** none. No actor, no world, no ability; the tests call static functions.
+
+**Not tested:** FIRST, AS RULED 2026-10-25 by the coordinating session (Q-D7, option A): the sentence **does not yet
+open each type's class trees and skills; that waits on #857 and #837**. A character's trees follow the one damage type
+chosen at creation (`ACataclysmPlayerState::ReachableTrees`, `CataclysmPlayerState.cpp` about 380 to 417) and its
+skills a type held on `UCataclysmWeaponSlotsComponent`, and nothing in play reads `FCataclysmItem::DamageTypes` but the
+tool tip. So brief 86's test 5 as written, "the extra type's three trees are reachable and its skills available to a
+character wielding it", WAS NOT WRITTEN: it cannot pass until those land. Its tree-rules half is
+`TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`, which asks the rules about the weapon's list, not a
+character. Then: the real row (the tests build
+it); a drop through `SpawnDropsFor` with the row; a saved item loaded (nothing re-rolls it, by reading); the larger count
+winning when two halves state the stat (no sentence does); a row on the stat under a non-weapon sentence.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text counted exactly once in `CataclysmDropRoll.cpp` by a script (CRLF read as LF), each new text absent
+before the break; the file's round brackets 805 and 802 before and after each break (the difference is in comments at
+`357fa7b61` too, 764 and 761), curly 278 and 278, square 57 and 57. Each compiles alone by reading: DT-I keeps every local read (`Wanted` and `Pool` stay in the
+condition, so no unused-variable warning); DT-II' copies a `const TArray<FName>&` into the `TArray<FName>`. Prefix `Cataclysm.ExtraDamageTypes.` (6 tests): no other name begins with
+it, with or without its dot (searched by script over 4,597 name strings, 4,261 distinct, case ignored, with
+`Cataclysm.Drop.ADroppedWeaponCarriesDamageTypesItIsAllowedToHold` found once as the control). Layer 1's TC-I anchor is
+still counted once.
+
+| Proof | Old text | New text | Stated to fail | Every other test of the prefix |
+|---|---|---|---|---|
+| DT-I, the top-up removed | `while (InOutDamageTypes.Num() < Wanted && Pool.Num() > 0)` | `while (InOutDamageTypes.Num() < Wanted && Pool.Num() < 0)` | `AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`, `AWeaponAlreadyHoldingTheCountIsUnchanged` (its control), `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`, `TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList` (its set-up), `TheTooltipListsEveryTypeTheWeaponHolds` (its set-up) | pass: `WithoutTheSentenceASeedGivesTheSameItem` |
+| DT-II', the top-up allowed past the designed types | `TArray<FName> Pool = DamageTypesAvailableTo(WeaponSkillTable, BaseRow.WeaponType);` | `TArray<FName> Pool = UCataclysmItemModifiers::DamageTypeNames();` | `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour` | pass: tests 2, 4, 6 and the tree half of 5; **may also fail, by seed and not predictable by reading**: test 1's "every type designed" and its whole-drop count for a Shield, Axe, Crossbow, Greataxe or 2H Crossbow drop, where the eight-type pool lifts the ceiling |
+
+Brief 86's DT-II, the top-up capped by the tier, is now layer 1's TC-I, by 86b.
+
+Failed assertions, by reading:
+
+- **DT-I, at least 8 in 5 tests.** Test 1: "holds the count" three times (1 held). Its whole-drop half also fails "holds
+  max(...)" for every found drop whose roll asked for more than it rolled, by seed. Test 2: the control (2 held). Test 3: "holds
+  three" (1), "its three designed types" passes (one designed type), the control (1 against 4): 2. Test 5: the set-up
+  "holds two", and the test returns: 1. Test 6: the set-up "holds four", and the test returns: 1. So 3 + 1 + 2 + 1 + 1 = 8
+  certain, and more in test 1's drops by seed.
+- **DT-II', 1 certain**: test 3's "holds three" (four); its "its three designed types" fails too if a fourth was drawn,
+  which it then must be: **2 certain in test 3**. Others by seed, as the table says.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The generator now refuses a row on `damage_types_carried` that is not flat, states a tag, an action, a condition or a
+scale, or an end that is not a whole number from 1 to 8. No such row exists. Nothing else.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-25, window t86w, under the editor lock as `enchant-t86w`, at `b9704cca6` on
+`feat/weapon-carries-2-4-damage-types` (three commits on development `357fa7b61`: layer 1 `5a16d6e07`, layer 2
+`2b4685b63`, and the data half `b9704cca6`, the workbook row written by the enchantment session under the coordinating
+session's grant). **Free physical memory: 10.3 GB before the lock, under the threshold the coordinating session set at
+10 GB that day (Q-M1, lowered from 12 GB), and 8.8 GB after the asset rebuild, before the suite.**
+
+- **The asset rebuild:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset` and `game/Data/datatable_asset_sources.json`, as registered; both are
+  in the commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4187 tests performed,
+  4187 succeeded, 0 failed" (4181 on development + 6 of layer 2); "Declared: 4187 tests in the tree at b9704cca6; 4187
+  performed, gap 0". 40 tests skipped part of what they check. The two seeded drop tests the ruling could move,
+  `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` and `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier`,
+  passed. The memory summary line, quoted (read from the run's editor log, the window's script not printing it):
+  "CataclysmTestMemorySummary: tests=4794 peak_used_virtual_mb=7947 final_used_virtual_mb=7604 collections=3170
+  collection_total_s=114.982 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!". (At `b9704cca6` before the rebuild it was "1
+  failed, 6987 passed, 8 skipped", the one failure the asset hash check, as registered.)
+- **DT-I, the top-up removed** (anchor counted once; prefix `Cataclysm.ExtraDamageTypes.`, 6 tests): PROVED, AS
+  REGISTERED. With the break in, 6 performed, 1 succeeded, 5 failed:
+  `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`, `AWeaponAlreadyHoldingTheCountIsUnchanged`,
+  `AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`, `TheTooltipListsEveryTypeTheWeaponHolds` and
+  `TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`; `WithoutTheSentenceASeedGivesTheSameItem` passed. 8 failed
+  assertions, registered "at least 8, measured" (for example "a Sword topped up to 4 holds 4", which held 1). 0 ensures.
+  Restored, 6 performed, 6 succeeded. The file's hash is the same after.
+- **DT-II', the top-up allowed past the designed types** (anchor counted once; same prefix): PROVED, AS REGISTERED. With
+  the break in, 6 performed, 5 succeeded, 1 failed, `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`; 2 failed
+  assertions, registered 2 ("a Shield holding one and asked for four holds three", which held 4; "and they are its three
+  designed types"). The rounded count test, registered as one that MAY fail by seed, passed. 0 ensures. Restored, 6
+  performed, 6 succeeded. The file's hash is the same after.
+- Layer 1's proof, TC-I, ran in the same window and is recorded in layer 1's entry below.
+
+---
+
+## 2026-10-25 — No difficulty tier caps how many damage types a weapon rolls: a one-hander rolls 1 to 4 and a two-hander 1 to 8 at every tier, held only to the types designed for its weapon type (the owner's ruling, superseding the tier cap of 2026-08-04)
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp` (`UCataclysmDropRoll::MaxDamageTypesFor` loses its
+tier parameter and its tier term; `RollDamageTypes` calls it without the tier); `game/Source/Cataclysm/Items/CataclysmItem.h`
+(the comment on `FCataclysmItem::DamageTypes`); `game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp` (two tests, one
+renamed); `sim/cataclysm_sim/affixes.py` (`max_damage_types` loses its tier, the new
+`MOST_DAMAGE_TYPES_DESIGNED_FOR_A_TWO_HANDER`, the dual-wield self-check and the report); `sim/tests/test_affixes.py` (seven
+tests rewritten or added) and `sim/tests/test_affix_tier_gate.py` (one rewritten); the docstring and one message of
+`tools/tests/test_damage_type_availability_matches_the_design.py`; `docs/Cataclysm_GDD_v2.md` (three paragraphs and a
+table); this file (this entry, and one dated line on the entry of 2026-08-04). No data row, no workbook cell, nothing under
+`game/Data/` or `game/Content/`. **It supersedes the tier cap of the 2026-08-04 entry "A weapon holds 1 to 8 damage types,
+rolled on drop and capped by tier"**, which now carries one line saying so.
+
+### SAID FIRST
+
+**A PLAY CHANGE AT EVERY TIER BELOW 8.** A weapon dropped at tier 1 used to carry exactly one damage type; a one-hander
+reached four only from tier 4 and a two-hander eight only at tier 8. **Now a dropped one-hander carries 1 to 4 and a
+two-hander 1 to 8 at any tier, drawn evenly, held to the types designed for its weapon type** (a Shield and a 2H Crossbow
+three, a Greataxe four, a Greatsword and a Warhammer six, a Staff and a Spear seven, every other one-hander four). At tier 8
+nothing changes: the tier was already above both other limits there.
+
+**SEEDED ITEMS MOVE, AS THE RULING EXPECTS.** A weapon's count is drawn with one `RandRange(1, Most)` either way, so the
+number of draws taken for the count is the same; the count it returns is now larger at low tiers, so more type picks follow
+it, and everything drawn after on the same stream moves: that weapon's enchantments, every later gear item of the same kill,
+and the kill's materials (`SpawnDropsFor` rolls all of them from one stream, the gear first). Below tier 8 only.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 86 and its addendum 86b. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+**THE SPEAR READS SEVEN, NOT SIX, IN THE DUAL-WIELD PARAGRAPH**, corrected in the rewrite it needed anyway:
+`game/Data/WeaponSkills.csv` designs seven damage types for the Spear (counted by script, the auras' "All" rows left out),
+and the design document's own Damage Types and Skill Availability table agrees, as
+`tools/tests/test_damage_type_availability_matches_the_design.py` holds. The paragraph said six.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a weapon dropped at tier 1 can carry up to four damage types on a one-hander and up to eight on a two-hander, as many as
+  are designed for its weapon type
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-25, as the coordinating session quotes it, verbatim: "I think we should remove the tier cap. They're
+already gated by their level with how many points they can spread out so getting a multi damage weapon doesn't matter. This
+is more for when you have a really nice weapon, but need access to different classes. So you don't have to craft a whole new
+weapon."
+
+And earlier, verbatim: "A 1h weapon can drop with 1-4 damage types and a 2h weapon can drop with 1-8."
+
+The coordinating session's ruling, 2026-10-25, verbatim, as brief 86b gives it:
+
+> **Layer 1, the owner's rule: no tier cap on weapon damage types.**
+> - UCataclysmDropRoll::RollDamageTypes draws a count from 1 up to the lower of the base's limit (4 or 8) and the types
+>   designed for that weapon type, at any tier. Keep the draw's existing shape and only remove the tier term. Say in the
+>   brief what that shape is.
+> - Make the matching change in the simulation, sim/cataclysm_sim/affixes.py.
+> - Its dual-wield guard in sim/tests/test_affixes.py was built on the tier cap. Rewrite it on what the design document
+>   now gives as the reason: no two-hander is designed for all eight types (the Staff reaches seven), so a dual wielder,
+>   who holds all eight, leads on breadth at every tier.
+> - Update the design document's weapon damage type section and its dual-wield paragraph, the one beginning "Dual
+>   wielding is still the primary route to multiclassing". Add a new DECISIONS entry with the owner's words verbatim,
+>   saying it supersedes the tier cap in the 2026-08-04 entry. Mark that old entry as superseded in a line, without
+>   rewriting it.
+> - Every existing test, Unreal or Python, that asserts the tier cap changes under this ruling. Name each one in the
+>   brief, with its old and new expected figure.
+> - Seeds: removing the cap changes drawn counts, so items from the same seed change. That is expected under the owner's
+>   ruling. Say which seeded-item tests move.
+
+### THE DRAW'S SHAPE, BEFORE AND AFTER
+
+Read in `UCataclysmDropRoll::RollDamageTypes` (`CataclysmDropRoll.cpp` 1179 to 1222 of this commit). **Before:** a weapon
+base with `MaxDamageTypes` of nought draws nothing; otherwise the pool is `DamageTypesAvailableTo` (the matrix's damage types
+for the weapon type, in `DamageTypeNames` order), `Most = max(0, min(MaxDamageTypes, tier, pool size))`, nought draws nothing
+with a warning, and otherwise **the count is uniform from 1 to `Most` (`RandRange(1, Most)`), then that many types uniformly
+without repeats** (`RandRange(0, Pool.Num() - 1)`, then `RemoveAt`). **After:** the same, with `Most = max(0,
+min(MaxDamageTypes, pool size))`. Nothing else in the draw moved; the tier is still a parameter of `RollDamageTypes`, named
+only in the warning.
+
+### WHERE IT IS IN THE CODE
+
+| Ruling | Where it is |
+| :-- | :-- |
+| No tier term | `MaxDamageTypesFor(BaseRow, AvailableCount)`, `.cpp` 1172 to 1177: `FMath::Max(0, FMath::Min(BaseRow.MaxDamageTypes, AvailableCount))`; declared `.h` 629 to 646. Its one game caller, `RollDamageTypes` 1194. |
+| The simulation | `max_damage_types(hands)`, `affixes.py` 2003 to 2013: the base's own limit, 4 or 8; `MOST_DAMAGE_TYPES_DESIGNED_FOR_A_TWO_HANDER = 7`, 1852. |
+| The dual-wield guard on the designed types | `_check_dual_wielding_carries_more_damage_types_than_a_two_hander`, `affixes.py` 2904 onward: `min(4 x 2, 8) = 8` against `min(8, 7) = 7`, strictly more. |
+| The design document | the three passages below. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **`MaxDamageTypesFor` LOSES ITS TIER PARAMETER** rather than keeping one it ignores. A parameter nothing reads says the
+  tier still matters. The option not taken: keep the signature, which would have left the test call sites alone and let
+  guard proof TC-I be written inside the function. TC-I is written at the one call site instead (below).
+- **`RollDamageTypes` KEEPS ITS TIER PARAMETER**, named in its warning only, so `RollItem` is untouched and the guard proof
+  has the tier in scope. The option not taken: drop it too and edit `RollItem`.
+- **THE SIMULATION HOLDS THE MOST DESIGNED FOR A TWO-HANDER AS ONE CONSTANT, 7**, held to the matrix by a sim test that
+  reads `game/Data/WeaponSkills.csv` and skips when it is absent, as the gem test beside it does. The simulation still has
+  no runtime dependency. The option not taken: give the model every weapon type's designed types, which nothing in it
+  would read.
+- **A NEW ASSERTION, SO THAT THE RULING HAS A TEST THAT FAILS WITHOUT IT**: in
+  `ADroppedWeaponCarriesDamageTypesItIsAllowedToHold`, some weapon carries more damage types than its tier. Without it,
+  putting the tier back would fail nothing in the `Cataclysm.Drop.` group: every other check there is an upper bound the
+  old cap also met.
+- **THE TEST `TheDamageTypeCapIsTheLowestOfTheThreeLimits` IS RENAMED** `TheDamageTypeCapIsTheLowerOfTheTwoLimitsAtAnyTier`:
+  three limits is now false. The option not taken: keep a name that states the old rule.
+
+### THE TESTS THE RULING CHANGES, WITH THEIR OLD AND NEW FIGURES
+
+Unreal, `CataclysmDropRollTests.cpp`:
+
+| Test | Old | New |
+| :-- | :-- | :-- |
+| `Cataclysm.Drop.TheDamageTypeCapIsTheLowestOfTheThreeLimits`, now `...TheLowerOfTheTwoLimitsAtAnyTier` (1863) | a one-hander at tier 2: 2; at tier 8: 4; a two-hander at tier 5: 5; a Greatsword at tier 8: its designed 6; a non-weapon: 0 | a one-hander: 4; a two-hander: 8; a Greatsword: its designed 6; a non-weapon: 0. Five assertions, then four: the two tier-2 and tier-5 figures went, the two-hander's 8 came |
+| `Cataclysm.Drop.ADroppedWeaponCarriesDamageTypesItIsAllowedToHold` (1747) | each weapon carries 1 to `min(base, tier, designed)` | each carries 1 to `min(base, designed)`; and, new, some weapon carries more than its tier (it fails under the old cap) |
+
+Python:
+
+| Test | Old | New |
+| :-- | :-- | :-- |
+| `sim/tests/test_affixes.py::test_the_difficulty_tier_caps_how_many_damage_types_a_weapon_rolls`, now `test_no_difficulty_tier_caps_how_many_damage_types_a_weapon_rolls` | two-hander by tier `[1, 2, 3, 4, 5, 6, 7, 8]`, one-hander `[1, 2, 3, 4, 4, 4, 4, 4]` | 8 and 4 |
+| `test_no_weapon_can_roll_more_damage_types_than_exist` | 1 to 8 for each hand and tier | 1 to 8 for each hand |
+| `test_max_damage_types_rejects_input_that_cannot_happen` | three hands, tier 0 and tier 9 refused | three hands refused; there is no tier to refuse |
+| `test_dual_wielding_carries_more_damage_types_than_a_two_hander` | leads by tier `[1, 2, 3, 4, 3, 2, 1, 0]` | dual 8 against the best two-hander's 7 |
+| `test_that_the_multiclassing_check_actually_fires` | a one-handed limit of 2 lets a two-hander draw level at tier 4 | a one-handed limit of 2 leaves a dual wielder 4 against 7 |
+| `test_the_multiclassing_check_allows_the_two_hander_to_catch_up_at_the_last_tier` | the tie at tier 8 passes | **removed**: there is no tie |
+| new `test_the_multiclassing_check_fires_when_a_two_hander_is_designed_for_all_eight` | | a designed most of 8 ties and the check raises |
+| new `test_no_two_hander_is_designed_for_all_eight_damage_types` | | from the matrix: Staff 7, Spear 7, Greatsword 6, Warhammer 6, Greataxe 4, 2H Crossbow 3; the most equals the constant |
+| new `test_two_one_handers_can_hold_all_eight_damage_types_between_them` | | from the matrix, some pair of one-handers, four each, covers all eight (twelve pairs do, counted by script) |
+| `sim/tests/test_affix_tier_gate.py::test_the_drop_gate_is_the_weapon_damage_type_gate_shifted_by_one`, now `test_the_drop_gate_rises_with_the_tier_and_the_damage_type_limit_does_not` | the weapon gate is `min(4, tier)` at each tier | the affix gate unchanged; the weapon limit is 4 |
+
+### THE SEEDED-ITEM TESTS THAT MOVE, AND WHY THEY ARE EXPECTED TO PASS
+
+By reading every test that rolls an item or spawns a kill's drops below tier 8 (a read-only search of the test sources,
+not a run). A bare test world resolves to tier 1, so every `SpawnDropsFor` test without the console variable is a tier 1
+test. **None asserts an exact seeded item after a weapon's damage types.**
+
+- **Unchanged, tier 8 only or no weapon:** `Cataclysm.Drop.AWholeItemRollsToSomethingValid`,
+  `Cataclysm.Item.EveryRolledItemHasAReadableName`,
+  `Cataclysm.Enchantments.ADroppedItemCarriesAsManyEnchantmentsAsItsRaritySays` (a Chest at tier 8),
+  `Cataclysm.DungeonModifierEffects.AChaoticDropKeepsItsBaseRarityAffixesAndValues` (tier 8), and the second call of
+  `Cataclysm.Drop.AKillPutsNamedItemsOnTheFloor` (a step with no row, nothing rolled).
+- **Items move, the assertions are properties of any item or compare a drop with itself:**
+  `Cataclysm.Drop.AKillPutsNamedItemsOnTheFloor`, `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`,
+  `Cataclysm.SaveApply.AFloorGatheredAndPutBackIsTheSameFloor`,
+  `Cataclysm.SaveApply.ARestoredDropIsDescribedTheSameWayASpawnedOneIs`,
+  `Cataclysm.DungeonModifierEffects.ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat` (its seed is chosen by the
+  drop count, drawn before any item), the Reality Rifts chamber tests at `CataclysmDungeonModifierEffectsTests.cpp` 55548
+  and 55934 (each compares the game's own drop with a rebuild on the same seed, so both sides move together).
+- **Items move under a statistic with a margin:** `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed`, tier 1's mean rarity
+  over eight boss kills must stay below 2.0 and below half of tier 8's (its comment measures tier 1 at 0.68 to 0.95 and tier
+  8 at 2.32 to 2.55, so about 0.2 to 0.3 of room on the second); rarity is drawn before damage types, so only which numbers
+  feed later items moves. `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier`, tier 1's best stone at most +3 (a hard
+  cap any draw meets) and tier 8's best above it (tier 8 does not move). **These two are the ones to read in the window.**
+
+### WHAT WAS CHANGED IN THE DESIGN DOCUMENT, OLD AND NEW
+
+1. Old: "**The difficulty tier is the design's own gate, three times already.** ... A weapon rolls damage types up to the
+   lower of its own limit and the tier it dropped on. This is the fourth use of the same shape, not a new mechanism."
+   New: "**The difficulty tier is the design's own gate, twice already.** ... This is the third use of the same shape, not
+   a new mechanism. (A weapon's damage types were a third such gate until 2026-10-25, when the owner removed the tier cap
+   on them.)"
+2. Old: "**The difficulty tier caps the count as well, and it is the tighter limit for most of the game.** A weapon rolls
+   from one damage type up to the lower of its own limit and the tier it dropped on. ..." and its eight-row table by tier.
+   New: "**No difficulty tier caps the count.** A weapon rolls from one damage type up to the lower of its own limit and the
+   number of damage types designed for its weapon type, at any tier ..." with the owner's reason in prose, and a
+   three-row table: one one-hander 4 (3 on a Shield); one two-hander 7, 6, 4 or 3 by weapon; two one-handers 8.
+3. Old: "**Dual wielding is still the primary route to multiclassing that section V describes, and the tier cap is what
+   makes it so.** ... the Staff reaches seven, the Greatsword, Spear and Warhammer six ... A dual wielder holds all eight
+   from tier 4; a two-hander gains one type per tier up to its own ceiling and never catches up. Dual wielding leads at
+   every tier, by the widest margin at tier 4, and is never matched. ..." New: "**... and the designed damage types are
+   what make it so.** ... the Staff and Spear reach seven, the Greatsword and Warhammer six ... So a single two-hander never
+   reaches eight, at any tier, while a dual wielder can hold all eight at any tier. Dual wielding leads by at least one type
+   at every tier and is never matched. ..." with a dated note of what it said.
+
+### THE GENRE SOURCE
+
+None. This is the owner's ruling on this game's gate, not a formula, and no genre source was recorded for it.
+
+### `sim/experiments.py`
+
+**It does not need a re-run for this.** `max_damage_types` is called only by `affixes.py`'s own self-check and report and by
+the tests (searched over every `.py` file in the repository); nothing in the campaign model rolls a weapon's damage types.
+It was not run.
+
+### Not tested
+
+A weapon's types reaching a character's trees and skills in play (nothing reads `FCataclysmItem::DamageTypes` there yet,
+issue #857); the two statistical drop tests' margins after the change (read, not run); the report's printed lines (read
+by running `python -m cataclysm_sim.affixes`, not asserted).
+
+### GUARD PROOFS PROPOSED
+
+One, TC-I. Not run.
+
+| Proof | File | Old text | New text | Prefix | Stated to fail | Every other test of the prefix |
+|---|---|---|---|---|---|---|
+| TC-I, the tier term put back | `CataclysmDropRoll.cpp` | `const int32 Most = MaxDamageTypesFor(BaseRow, Pool.Num());` | `const int32 Most = FMath::Min(MaxDamageTypesFor(BaseRow, Pool.Num()), DifficultyTier);` | `Cataclysm.Drop.` | `ADroppedWeaponCarriesDamageTypesItIsAllowedToHold`, one assertion: "some weapon carries more damage types than its tier (0 did)" | pass: `TheDamageTypeCapIsTheLowerOfTheTwoLimitsAtAnyTier` calls `MaxDamageTypesFor` directly; every seeded test returns to the behaviour it passed under before this commit |
+
+The old text counted exactly once in its file by a script (CRLF read as LF). The new text compiles alone: `DifficultyTier`
+is `RollDamageTypes`' parameter, and `FMath::Min(int32, int32)`; brackets balanced (one pair of round brackets added). The
+break is at the call site, not in `MaxDamageTypesFor`, because that function no longer has the tier (judgement above). The
+prefix `Cataclysm.Drop.` selects 29 test name strings (counted by script over the tests' name strings, case ignored, with
+`Cataclysm.Drop.ADroppedWeaponCarriesDamageTypesItIsAllowedToHold` found once as the control).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The tier cap's tests, all listed above, by the ruling. Nothing else.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-25, window t86w, under the editor lock as `enchant-t86w`, at `b9704cca6` on
+`feat/weapon-carries-2-4-damage-types` (three commits on development `357fa7b61`: layer 1 `5a16d6e07`, layer 2
+`2b4685b63`, and the data half `b9704cca6`, the workbook row written by the enchantment session under the coordinating
+session's grant). **Free physical memory: 10.3 GB before the lock, under the threshold the coordinating session set at
+10 GB that day (Q-M1, lowered from 12 GB), and 8.8 GB after the asset rebuild, before the suite.**
+
+- **The asset rebuild:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset` and `game/Data/datatable_asset_sources.json`, as registered; both are
+  in the commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4187 tests performed,
+  4187 succeeded, 0 failed" (4181 on development + 6 of layer 2); "Declared: 4187 tests in the tree at b9704cca6; 4187
+  performed, gap 0". 40 tests skipped part of what they check. The two seeded drop tests the ruling could move,
+  `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` and `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier`,
+  passed. The memory summary line, quoted (read from the run's editor log, the window's script not printing it):
+  "CataclysmTestMemorySummary: tests=4794 peak_used_virtual_mb=7947 final_used_virtual_mb=7604 collections=3170
+  collection_total_s=114.982 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!". (At `b9704cca6` before the rebuild it was "1
+  failed, 6987 passed, 8 skipped", the one failure the asset hash check, as registered.)
+- **TC-I, the tier term put back in the damage type draw** (anchor `const int32 Most = MaxDamageTypesFor(BaseRow,
+  Pool.Num());` counted once; prefix `Cataclysm.Drop.`, 29 tests): PROVED, AS REGISTERED. With the break in, 29
+  performed, 28 succeeded, 1 failed, `ADroppedWeaponCarriesDamageTypesItIsAllowedToHold`, on 1 assertion, registered 1:
+  "some weapon carries more damage types than its tier (0 did)". 0 ensures. Restored, 29 performed, 29 succeeded. The
+  file's hash is the same after.
+- Layer 2's proofs, DT-I and DT-II', are recorded in layer 2's entry above.
+
+---
+
 ## 2026-10-25 — A flat attack damage row the attribute cannot carry, such as "Your skills deal 10%-30% of your current mana as more damage", reaches a skill's hit, once, whether or not the skill is a Spell: #2499, which closes it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the new public
@@ -137799,6 +138385,8 @@ an issue or this log before other work continues.
 ---
 
 ## 2026-08-04 — A weapon holds 1 to 8 damage types, rolled on drop and capped by tier
+
+*Superseded 2026-10-25: the owner removed the tier cap; see the entry of 2026-10-25 headed "No difficulty tier caps how many damage types a weapon rolls".*
 
 **The question.** The project owner stated that a weapon can carry anywhere from
 one damage type to all eight. The data and the design document both said

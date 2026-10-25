@@ -627,30 +627,79 @@ public:
 												const FString& WeaponType);
 
 	/**
-	 * The most damage types a weapon of this base can roll at this tier.
+	 * The most damage types a weapon of this base can roll, at any tier.
 	 *
-	 * `docs/Cataclysm_GDD_v2.md`: "A weapon rolls from one damage type up to
-	 * the lower of its own limit and the tier it dropped on." Mirrors
-	 * max_damage_types() in `sim/cataclysm_sim/affixes.py`.
+	 * THE LOWER OF TWO LIMITS: the base's own (4 on a one-hander, 8 on a
+	 * two-hander) and how many damage types are designed for its weapon type at
+	 * all. A Shield's base limit is four and only three types exist for it; a
+	 * 2H Crossbow's is eight and only three exist for it. Without the second a
+	 * roll would ask for more distinct types than there are to draw.
 	 *
-	 * THERE IS A THIRD LIMIT THAT NEITHER STATES, and for some weapons it is
-	 * the one that binds: how many damage types that weapon type has at all.
-	 * A Shield's base limit is four and only three types exist for it. A 2H
-	 * Crossbow's base limit is eight and only three exist for it. Without
-	 * this a roll would ask for more distinct types than there are to draw.
+	 * NO TIER, SINCE 2026-10-25. The project owner removed the tier cap: "I
+	 * think we should remove the tier cap. They're already gated by their level
+	 * with how many points they can spread out so getting a multi damage weapon
+	 * doesn't matter." It was the third limit, the lower of these and the tier
+	 * the weapon dropped on, from 2026-08-04. Mirrors max_damage_types() in
+	 * `sim/cataclysm_sim/affixes.py`, which holds the base's limit only.
 	 */
 	static int32 MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
-								   int32 DifficultyTier, int32 AvailableCount);
+								   int32 AvailableCount);
 
 	/**
 	 * The damage types one dropped weapon carries. Empty for a non-weapon.
 	 *
+	 * @param DifficultyTier  named only in the warning for a weapon that can
+	 *        carry none; since 2026-10-25 it caps nothing
 	 * @param Stream  drawn from without replacement, so no type repeats
 	 */
 	static TArray<FName> RollDamageTypes(const UDataTable* WeaponSkillTable,
 										 const FCataclysmItemBaseRow& BaseRow,
 										 int32 DifficultyTier,
 										 FRandomStream& Stream);
+
+	/**
+	 * The stat an enchantment effect row states for "This weapon has 2-4 damage
+	 * types": `damage_types_carried`, a flat whole number of damage types.
+	 * Ruled 2026-10-25 (Q-D5).
+	 *
+	 * AN ITEM'S STAT AND NOT A CHARACTER'S. The drop reads it off the item's own
+	 * drawn enchantments, in `DamageTypesCarriedBy`. It is on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` only so that a row
+	 * stating it is not refused as a stat with no attribute; `ApplyTo` then
+	 * records it on the wearer, where nothing reads it.
+	 */
+	static const TCHAR* DamageTypesCarriedStat;
+
+	/**
+	 * How many damage types an item's drawn enchantments say it holds, or 0 when
+	 * none of their effect rows states `DamageTypesCarriedStat`.
+	 *
+	 * THE ROW'S FIGURE AT THE ITEM'S OWN ROLL, `UCataclysmItemValues::
+	 * EnchantmentValue` of its two ends, which is what the hover text and every
+	 * other effect row use, turned into a whole number by `FMath::RoundToInt` as
+	 * "+1-3 to your max deployable count" is (Q-D2). A half's row is matched by
+	 * its Enchantment cell; the larger count wins if two halves state one.
+	 *
+	 * @param EnchantmentEffectTable  null reads as no row, so 0
+	 */
+	static int32 DamageTypesCarriedBy(const TArray<FCataclysmRolledEnchantment>& Enchantments,
+									  const UDataTable* EnchantmentEffectTable);
+
+	/**
+	 * Adds damage types to a weapon until it holds `Count`, NEVER TAKING ANY
+	 * AWAY: a weapon already holding at least that many is left as it is
+	 * (Q-D3).
+	 *
+	 * THE SAME UNIFORM DRAW AS RollDamageTypes, over the types designed for the
+	 * weapon type that it does not already hold, from the same stream (Q-D4).
+	 * War may be drawn, as any drop can already draw it. Capped by
+	 * `MaxDamageTypesFor`, the base's limit and those designed types, and by no
+	 * tier, which the project owner removed on 2026-10-25. Nothing is drawn when
+	 * nothing is added, so a weapon left as it is leaves the stream where it was.
+	 */
+	static void TopUpDamageTypes(const UDataTable* WeaponSkillTable,
+								 const FCataclysmItemBaseRow& BaseRow, int32 Count,
+								 FRandomStream& Stream, TArray<FName>& InOutDamageTypes);
 
 	// -----------------------------------------------------------------------
 	// Which enchantments a drop rolls
@@ -913,6 +962,9 @@ public:
 	 * THE UPGRADE LEVEL IS THE FLOOR ITS RARITY FORCES and nothing more. A
 	 * Legendary drops at +4 because it could not be a Legendary below that.
 	 *
+	 * @param EnchantmentEffectTable  read only for `DamageTypesCarriedStat`
+	 *        rows; null draws no damage types for them, which is what every
+	 *        caller but the drop spawner passes
 	 * @return false when a table is missing or the pool cannot fill the item
 	 */
 	static bool RollItem(const UDataTable* BaseTable,
@@ -925,7 +977,8 @@ public:
 						 const UDataTable* NegativeEnchantmentTable,
 						 const FString& Slot, int32 DifficultyTier,
 						 float MagicFind, FRandomStream& Stream,
-						 FCataclysmItem& OutItem, bool bChaoticTiers = false);
+						 FCataclysmItem& OutItem, bool bChaoticTiers = false,
+						 const UDataTable* EnchantmentEffectTable = nullptr);
 
 	// -----------------------------------------------------------------------
 	// What a kill drops

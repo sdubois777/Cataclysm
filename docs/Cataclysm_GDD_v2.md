@@ -2916,7 +2916,7 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 
 
-**The difficulty tier is the design's own gate, three times already.** Gear and gem rarity reach one rarity above the difficulty tier. The best upgrade stone that can drop is capped by the current difficulty tier. A weapon rolls damage types up to the lower of its own limit and the tier it dropped on. This is the fourth use of the same shape, not a new mechanism.
+**The difficulty tier is the design's own gate, twice already.** Gear and gem rarity reach one rarity above the difficulty tier. The best upgrade stone that can drop is capped by the current difficulty tier. This is the third use of the same shape, not a new mechanism. (A weapon's damage types were a third such gate until 2026-10-25, when the owner removed the tier cap on them.)
 
 
 
@@ -3289,24 +3289,19 @@ A weapon carries two things no other item has: a physical **sub-type**, and a li
 
   
 
-**The difficulty tier caps the count as well, and it is the tighter limit for most of the game.** A weapon rolls from one damage type up to the lower of its own limit and the tier it dropped on. So a two-handed weapon cannot roll five damage types until tier 5, and reaches its full eight only at tier 8. A one-handed weapon is identical to a two-hander up to tier 4, and never rolls more than four however deep the player goes.
+**No difficulty tier caps the count.** A weapon rolls from one damage type up to the lower of its own limit and the number of damage types designed for its weapon type, at any tier: a one-handed weapon up to four, a two-handed weapon up to eight where that many are designed. The owner removed the tier cap on 2026-10-25: a character is already gated by its level in how many class points it can spread across the trees a weapon opens, and a weapon carrying several damage types is for when a player has a really good weapon and needs access to other classes without crafting a whole new one.
 
   
 
-| Difficulty tier | Most on one one-hander | Most on one two-hander | Most while dual wielding |
-| :-: | :-: | :-: | :-: |
-| 1 | 1 | 1 | 2 |
-| 2 | 2 | 2 | 4 |
-| 3 | 3 | 3 | 6 |
-| 4 | 4 | 4 | 8 |
-| 5 | 4 | 5 | 8 |
-| 6 | 4 | 6 | 8 |
-| 7 | 4 | 7 | 8 |
-| 8 | 4 | 8 | 8 |
+| Weapon | Most damage types, at any tier |
+| :-- | :-: |
+| One one-hander | 4 (3 on a Shield) |
+| One two-hander | 7 on a Staff or Spear, 6 on a Greatsword or Warhammer, 4 on a Greataxe, 3 on a 2H Crossbow |
+| Two one-handers, dual wielding | 8 |
 
   
 
-**Dual wielding is still the primary route to multiclassing that section V describes, and the tier cap is what makes it so.** The raw limits look tied — two one-handers reach eight damage types and a two-hander's base limit is also eight — but the Damage Types and Skill Availability table above restricts which damage types each weapon type may carry at all, and no two-handed weapon is designed for all eight: the Staff reaches seven, the Greatsword, Spear and Warhammer six, the Greataxe four and the 2H Crossbow three. So a single two-hander never reaches eight, at any tier. A dual wielder holds all eight from tier 4; a two-hander gains one type per tier up to its own ceiling and never catches up. Dual wielding leads at every tier, by the widest margin at tier 4, and is never matched. Every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage throughout. (Corrected 2026-09-14, issue #875: this said a two-hander catches up at tier 8.)
+**Dual wielding is still the primary route to multiclassing that section V describes, and the designed damage types are what make it so.** The raw limits look tied — two one-handers reach eight damage types and a two-hander's base limit is also eight — but the Damage Types and Skill Availability table above restricts which damage types each weapon type may carry at all, and no two-handed weapon is designed for all eight: the Staff and Spear reach seven, the Greatsword and Warhammer six, the Greataxe four and the 2H Crossbow three. So a single two-hander never reaches eight, at any tier, while a dual wielder can hold all eight at any tier. Dual wielding leads by at least one type at every tier and is never matched. Every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage throughout. (Corrected 2026-09-14, issue #875: this said a two-hander catches up at tier 8. Rewritten 2026-10-25, when the owner removed the tier cap: it said the tier cap made it so, that a dual wielder held all eight from tier 4, and that the Spear reached six.)
 
   
 

@@ -512,6 +512,12 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		return 0;
 	}
 
+	// AND THE ENCHANTMENT EFFECTS, for "This weapon has 2-4 damage types" alone.
+	// Not required: without it a drop is exactly what it was, so its absence is
+	// no reason to drop nothing. Its loader says when it is missing.
+	const UDataTable* EnchantmentEffects =
+		UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+
 	const FName EnemyRarity = EnemyRarityForStep(Drops, EnemyRarityStep);
 	if (EnemyRarity.IsNone())
 	{
@@ -586,7 +592,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										  PositiveEnchantments,
 										  NegativeEnchantments, Slot,
 										  DifficultyTier, Together, Stream, Item,
-										  bChaotic))
+										  bChaotic, EnchantmentEffects))
 		{
 			// RollItem has already said why. One item failing to roll is not a
 			// reason to drop the rest on the floor unspawned.

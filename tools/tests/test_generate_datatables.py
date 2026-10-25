@@ -10500,3 +10500,78 @@ class TestAGadgetsShotAtATrapsEnemyAndATrapsPull(GadgetRowsOnAMadeUpSheet):
         assert re.search(r"if \(Action\.bGadgetFiresAtTrapEnemy && Effect->EveryNth > 1\)\s*\{\s*"
                          r"Action\.EveryNth = Effect->EveryNth;\s*"
                          r"Action\.CountWindowSeconds = 0\.0f;", item)
+
+
+class TestTheDamageTypesCarriedRow(GadgetRowsOnAMadeUpSheet):
+    """`damage_types_carried`, ruled 2026-10-25 (Q-D2 to Q-D6) and built
+    ahead of its row, for "This weapon has 2-4 damage types": a flat whole
+    number of damage types, read by the drop off the item's own drawn
+    enchantments and by no character. The row is the enchantment session's;
+    this shows the generator carries the shape the drop reads and refuses the
+    shapes it would read wrongly or not at all."""
+
+    TAG = "Item.Slot.Weapon"
+    WORDS = "This weapon has 2-4 damage types"
+    SENTENCE_TAGS = ("Element.Demonic, Element.Celestial, Element.Void, Element.Death, "
+                     "Element.War, Element.Pestilence, Element.Chaos, Element.Famine, "
+                     "Item.Slot.Weapon")
+    ROW = {"Stat": "damage_types_carried", "Value Kind": "flat", "Value Low": 2,
+           "Value High": 4}
+
+    def refusals(self, rows):
+        return gen.refuse_a_damage_types_carried_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        """Under the real sentence's name, derived by `row_name`."""
+        assert gen.row_name("Positive", self.WORDS[:48]) == \
+            "Positive_This_weapon_has_2_4_damage_types"
+        assert shipped_positive_sentence(
+            "Positive_This_weapon_has_2_4_damage_types") == self.WORDS
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Name"], row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("Positive_This_weapon_has_2_4_damage_types#1", "damage_types_carried",
+             "flat", 2.0, 4.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_stat_is_one_with_no_attribute_named_as_the_engine_names_it(self):
+        """THE CONTROL is a made-up name that is on no list."""
+        import re
+        assert gen.DAMAGE_TYPES_CARRIED_STAT in gen.stats_with_no_attribute()
+        assert "damage_types_carrying" not in gen.stats_with_no_attribute()
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                  / "CataclysmDropRoll.cpp").read_text(encoding="utf-8")
+        assert re.findall(r'UCataclysmDropRoll::DamageTypesCarriedStat\s*=\s*TEXT\("([^"]+)"\)',
+                          source) == [gen.DAMAGE_TYPES_CARRIED_STAT]
+
+    def test_every_shape_the_drop_would_read_wrongly_is_refused(self):
+        right = {"Name": "X#1", "Stat": "damage_types_carried", "ValueKind": "flat",
+                 "ValueLow": 2.0, "ValueHigh": 4.0, "RequiredTags": ""}
+        assert self.refusals([right]) == []
+        assert self.refusals([dict(right, ValueLow=1.0, ValueHigh=8.0)]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Item.Slot.Weapon"}, "required tags 'Item.Slot.Weapon'"),
+                ({"Action": "strike_target"}, "action 'strike_target'"),
+                ({"Condition": "while_stationary"}, "condition 'while_stationary'"),
+                ({"Scale": "max_health"}, "scale 'max_health'"),
+                ({"ValueLow": 0.0}, "whole number from 1 to 8"),
+                ({"ValueHigh": 2.5}, "whole number from 1 to 8"),
+                ({"ValueHigh": 9.0}, "whole number from 1 to 8")):
+            problems = self.refusals([dict(right, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        assert self.refusals([dict(right, Stat="trap_cap_bonus", ValueKind="increased")]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing in the test above."""
+        out = self.out(tmp_path, self.WORDS, [dict(self.ROW, **{"Value Kind": "increased"})])
+        assert any("damage_types_carried" in problem and "'increased'" in problem
+                   for problem in self.validation(out)), self.validation(out)
