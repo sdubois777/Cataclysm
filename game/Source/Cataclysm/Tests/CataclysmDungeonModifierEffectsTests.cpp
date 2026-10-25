@@ -46999,6 +46999,93 @@ bool FCataclysmEchoChamberSelfHitTagRowsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ISSUE #2498, settled 2026-10-25 (Q-S1): the copy's self hit is "a tenth of what it would deal an enemy", and a
+// Spell's hit on an enemy includes its spell damage, so the copy of a Spell carries it. One test of the group
+// `Cataclysm.NoTargetSpellDamage.`, whose other four are in `CataclysmSkillTemplateTests.cpp`.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSpellCopyTest,
+	"Cataclysm.NoTargetSpellDamage.AnEchoChamberCopyOfASpellHitsThePlayerWithItsSpellDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The first Spell strike of the real table that Echo Chamber copies and whose radius is at least 2 m, and the strike
+ * the tests above copy, which is no Spell. THE CONTROL FIRST, with no spell damage: each copy hits the player. Then the
+ * player is given spell damage equal to the Spell copy's own weapon part, W x its percent, which doubles that copy's hit
+ * before the player's defences: the Spell copy's self hit is at least twice the control's (every defence step
+ * multiplies, except a flat reduction, which takes a smaller share of a larger hit), and the other copy's is the
+ * control's within 0.5%. Before #2498 both were the control's.
+ */
+bool FCataclysmEchoChamberSpellCopyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	const FEchoChamberRollPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* SpellCopy = Demonic.FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+	{
+		return Skill.Shape == ECataclysmSkillShape::Strike && Skill.Params.RadiusCm >= 200.0f
+			&& UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill) && UCataclysmSkillEffects::IsSpell(Skill.Tags);
+	});
+	const FCataclysmWeaponSkill* OtherCopy = AStrikeEchoChamberCopies(Demonic, 200.0f);
+	FEchoChamberAnglePinned Pinned(0.0f);
+	if (!TestNotNull(TEXT("set-up: a copied Spell strike with a radius of two metres or more"), SpellCopy)
+		|| !TestNotNull(TEXT("set-up: the copied strike the tests above use"), OtherCopy)
+		|| !TestFalse(TEXT("set-up: which is no Spell"), UCataclysmSkillEffects::IsSpell(OtherCopy->Tags))
+		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the block roll can be pinned"), NeverBlocks.Variable))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+
+	// THE CONTROL, READ FIRST: the plain weapon figure, no row, and no spell damage. No `spell_damage` line is recorded,
+	// so the attribute is the figure.
+	GiveThePlayerAttackDamageRows(Player, {});
+	const FGameplayAttribute SpellDamage = UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, 0.0f);
+	const float SpellPlain = HealthAnEchoChamberCopyTakes(Mode, Player, *SpellCopy);
+	const float OtherPlain = HealthAnEchoChamberCopyTakes(Mode, Player, *OtherCopy);
+	if (!TestTrue(FString::Printf(TEXT("control: the Spell's copy hits the player, who loses health (%.2f)"), SpellPlain),
+				  SpellPlain > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("control: the other copy hits the player, who loses health (%.2f)"), OtherPlain),
+					 OtherPlain > 0.0f))
+	{
+		return false;
+	}
+
+	// SPELL DAMAGE EQUAL TO THE SPELL COPY'S WEAPON PART, W x ITS PERCENT, so its hit before defences is doubled.
+	const float Percent = SpellCopy->DamagePercent >= 0.0f
+		? SpellCopy->DamagePercent
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), SpellCopy->Slot).DamagePercent;
+	const float Given = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem) * Percent / 100.0f;
+	if (!TestTrue(FString::Printf(TEXT("set-up: the spell damage given is above nought (%.2f)"), Given), Given > 0.0f))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, Given);
+	const float SpellWith = HealthAnEchoChamberCopyTakes(Mode, Player, *SpellCopy);
+	TestTrue(FString::Printf(TEXT("the Spell's copy takes its spell damage: %.2f, at least twice the control's %.2f"),
+							 SpellWith, SpellPlain),
+			 SpellWith >= SpellPlain * 2.0f * 0.995f);
+	TestEqual(TEXT("and the other copy, under the same spell damage, is the control's: it is no Spell"),
+			  HealthAnEchoChamberCopyTakes(Mode, Player, *OtherCopy), OtherPlain, OtherPlain * 0.005f);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // Celestial_Lightforged_Walls' sections. Issues #1820 and #41. Ruled 2026-10-08: on a Halls floor that carries the row,
 // is not a Horde arena and does not carry Shadowy Enemies, the floor is in two or three sections, each but the last

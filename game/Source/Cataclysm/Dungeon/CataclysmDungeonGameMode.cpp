@@ -13516,9 +13516,10 @@ bool ACataclysmDungeonGameMode::MakeTheEchoChamberCopy()
 		// AND FROM THE WHOLE ATTACK DAMAGE LINE, ruled 2026-10-23 for #2234 (path C): the player's own conditioned,
 		// scaled and skill-type rows, asked with the copied row's own tags, are judged here, on the tick after the use,
 		// which is when the copy is made. No enemy is struck and no blow fact is passed, so no enemy row reaches it.
+		// AND A SPELL'S SPELL DAMAGE IS IN IT, as in its hit on an enemy (#2498).
 		const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
 			AbilitySystem,
-			UCataclysmSkillEffects::AttackDamageWithNoTarget(AbilitySystem, Skill.Tags) * Percent / 100.0f,
+			UCataclysmSkillEffects::SkillHitWithNoTarget(AbilitySystem, Skill.Tags, Percent),
 			Skill.Tags);
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;

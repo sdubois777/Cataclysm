@@ -305,16 +305,16 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// AND FROM THE WHOLE ATTACK DAMAGE LINE, ruled 2026-10-23 for #2234: the user's own conditioned, scaled and
 		// skill-type rows are judged now, with this use's health cost and the metres walked before it, and no row
 		// about an enemy reaches it, since no enemy is struck.
+		// AND A SPELL'S SPELL DAMAGE IS IN IT, as in its hit on an enemy (#2498).
 		if (RolledSelfHitSharePercent > 0.0f && GetDamagePercent() > 0.0f)
 		{
 			if (AActor* Self = Avatar())
 			{
 				const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
 					Cataclysm,
-					UCataclysmSkillEffects::AttackDamageWithNoTarget(Cataclysm, SkillTags,
+					UCataclysmSkillEffects::SkillHitWithNoTarget(Cataclysm, SkillTags, GetDamagePercent(),
 						/*SkillHealthCostPercent=*/LastHealthCostPercentOfMaximum,
-						/*MetresMovedBeforeBlow=*/LastMetresMovedBeforeUse)
-						* GetDamagePercent() / 100.0f,
+						/*MetresMovedBeforeBlow=*/LastMetresMovedBeforeUse),
 					SkillTags);
 				FCataclysmHitDelivery Delivery;
 				Delivery.bIsArea = true;
@@ -3384,15 +3384,16 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 	// AND THE TRAP'S INCREASES JOIN THE LINE'S IN ONE BRACKET (ruling 7), so they add to it rather than multiply it; the
 	// effectiveness spent and the trap's "more" multiply the whole. For a caster with no line this is the figure it was,
 	// except a patch carrying both a spent charge and a trap's increases, whose two now add instead of multiplying.
+	// AND A SPELL'S SPELL DAMAGE IS IN IT, as in its hit (#2498), without the rows naming gadgets on a gadget's ground.
 	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)),
 		ACataclysmMinion::SkillGadgetCasting(this));
-	const float WeaponDamage = UCataclysmSkillEffects::AttackDamageWithNoTarget(
-		AbilitySystem, SkillTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+	const float SkillHit = UCataclysmSkillEffects::SkillHitWithNoTarget(
+		AbilitySystem, SkillTags, GetDamagePercent(), /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 		/*ExtraIncreases=*/FMath::Max(0.0f, LastNextUseIncreasePercent) / 100.0f + TrapIncreases);
 	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
 							AbilitySystem,
-							WeaponDamage * GetDamagePercent() / 100.0f,
+							SkillHit,
 							SkillTags)
 						* PercentPerSweep / 100.0f
 						// AND ANY EFFECTIVENESS SPENT, a "more" on the whole figure. Issue #1833.
