@@ -276,6 +276,28 @@ NAMED row of that kind is still refused by `test_weapon_skill_rows_carry_one_ele
 under the ruling it would grant nothing scoped anyway. The four Unreal assertions in the table above, by the ruling.
 Nothing else.
 
+### Q-B2: THE DELETED CHECK IS REPLACED BY ONE THAT GUARDS THE OWNER'S RULE (ruled 2026-10-25)
+
+The coordinating session, verbatim: "**Q-B2: the deletion is ACCEPTED, but put a check in its place that enforces the
+owner's rule.** Deleting test_every_skill_with_an_increase_carries_an_element_tag is right, because its stated reason is
+gone. The owner's rule should now be guarded instead."
+
+`tools/tests/test_no_damage_increase_is_scoped_to_a_damage_type.py`, added by the enchantment session (its docstring
+quotes both owner sentences):
+- `test_no_effect_row_scopes_a_damage_stat_to_a_damage_type`: refuses a row of `EnchantmentEffects.csv` or
+  `PassiveEffects.csv` whose stat names "damage" (not `damage_taken` or a reduction) and whose RequiredTags names an
+  `Element.*` tag;
+- `test_no_affix_scopes_a_damage_stat_to_a_damage_type`: refuses an affix whose damage stat, or either hybrid part,
+  names a damage type, except `damage_vs_<type>` (against an enemy's type, kept by the owner);
+- `test_the_check_reads_rows_and_lets_the_against_enemy_affixes_through`: the control; the files are read and the 8
+  against-enemy affixes are seen and allowed.
+
+**PROVED with `tools/prove_guard.py`'s `break_and_run`, in an exported copy of the tree** (`git archive`, as the Stalker
+window could be reading the files): the break gives `Positive_Your_skills_deal_10_30_of_your_current_mana_as#1`
+(`attack_damage`, flat) the RequiredTags `Element.Demonic`. Printed: "PROVED: 1 failed, 2 passed in 0.10s | restored: 3
+passed in 0.05s"; `named_failures`: `test_no_effect_row_scopes_a_damage_stat_to_a_damage_type`. This is a Python proof,
+not one of the branch's prefixed proofs.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
