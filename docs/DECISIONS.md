@@ -72,9 +72,12 @@ Registered for the window and not yet run:
 
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus three.
+Not yet run. Predicted Unreal total: `development`'s last measured total plus three, 4157 (4154 at `e26af37c9`).
 
-Branch `fix/floors-a-still-creature-cannot-block-1` on `development` at `b2b60ebf6`.
+Branch `fix/floors-a-still-creature-cannot-block-2` on `development` at `e26af37c9` (written on `b2b60ebf6` as `-1`
+and moved, its zero-context patch ids unchanged; the append-append conflict at the end of
+`CataclysmDungeonModifierEffectsTests.cpp` was resolved by taking `development`'s file and re-applying this change's
+own edit script, each edit asserted to match once, which gave the original's 194 lines added).
 
 ---
 
