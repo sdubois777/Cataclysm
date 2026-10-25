@@ -61,14 +61,19 @@ after the exit's. A failure there comes to the coordinating session as old -> ne
 
 ### Proofs
 
-Registered for the window and not yet run:
+**Both PROVED** in the third window below, each with `unreal_build.prove_cpp_guard`, each break text matching
+`CataclysmDungeonGameMode.cpp` exactly once, each narrowed to the one test it names:
 
 - **P1**, the light's `ShadowLightCells.Add(CurrentFloor->CellOfWorld(At));` -> a comment. Predicted:
   `ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches` fails. Prefix
-  `Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsACreatureThatCannotMove`.
+  `Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsACreatureThatCannotMove`. Printed: "1 tests performed, 0
+  succeeded, 1 failed: ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches"; restored "1 tests performed, 1
+  succeeded, 0 failed".
 - **P2**, `if (ANecroticPatchHereWouldReachACreatureThatCannotMove(Player, Where))` -> `if (false)`. Predicted:
   `NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove` fails. Prefix
-  `Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatch`.
+  `Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatch`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove"; restored "1 tests performed, 1 succeeded, 0
+  failed".
 
 ### The windows, a compile error, and a test the coordinating session ruled
 
@@ -103,10 +108,25 @@ random light zone reaches the Gatekeeper" are unchanged.
 
 ### Run
 
-Not yet run past the windows above. Predicted Unreal total: `development`'s last measured total plus three, 4158
-(4155 at `010461d7f`), with no failure. **Step 1b**: the third window runs
-`Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsTheExitWhereTheBossStands` alone right after the build, and stops
-there if it fails.
+Nothing was built and no Unreal test was run by the writing session. Three windows were run by the dungeon session,
+each given by the coordinating session, each with the six conditions checked immediately before the lock was taken and
+the lock released before anything was written here. The first two are above.
+
+- **Third window** (lock `dungeon-w50`, `fix/floors-a-still-creature-cannot-block-3` at `aa5a59711`, on `010461d7f`, the
+  #2495 merge #2508, 2026-10-25): both of `development`'s runs at `010461d7f` succeeded; none in progress or queued;
+  the lock free; no build or editor process; no open pull request; "free GB: 16.0 of 31.1". The move:
+  `check_resolved_cpp.py` before its commit, "3 files read, 0 with complaints", and by name on its head, the same;
+  every commit's zero-context patch id unchanged.
+  - **Build:** "Build: Succeeded - 23 actions, 20 files compiled".
+  - **Step 1b**, the exit-light test alone: "Tests: 1 tests performed, 1 succeeded, 0 failed".
+  - **The whole Unreal suite:** "4158 tests performed, 4158 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4158 tests in the tree at aa5a59711; 4158 performed, gap 0; every declared test was reported by the
+    run." Registered 4158 and 0: the 4155 of the #2495 merge and the three new tests here. Memory:
+    "CataclysmTestMemorySummary: tests=4765 peak_used_virtual_mb=11343 final_used_virtual_mb=11091 collections=3151
+    collection_total_s=107.054 worlds_at_last_collection=1".
+  - **Python:** "6974 passed, 8 skipped"; JUnit tests 6982, failures 0, errors 0, skipped 8. Lint: "All checks
+    passed!".
+  - **The proofs:** as under Proofs above.
 
 Branch `fix/floors-a-still-creature-cannot-block-3` on `development` at `010461d7f` (written on `b2b60ebf6` as `-1`,
 moved onto `e26af37c9` as `-2`, where its first two windows ran, and then onto `010461d7f`, the #2495 merge; its zero-context patch ids unchanged; the append-append conflict at the end of
