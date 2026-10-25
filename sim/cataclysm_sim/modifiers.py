@@ -199,12 +199,13 @@ def pool_for(active_types) -> list[tuple[str, float]]:
     Cataclysm" meant "in every pool". That reading was recorded as a reading
     rather than a decision, and issue #1303 is the owner rejecting it.
 
-    SO NOTHING IN THIS MODEL GRANTS IT AT ALL, and that is deliberate rather
-    than an oversight. Section VIII of `docs/Cataclysm_GDD_v2.md` describes what
-    the modifier does, where its character comes from, how it scales, what it
-    drops, what happens offline, its weight and its Cataclysm Type -- and never
-    says what causes it to appear. Inventing a trigger here would be inventing
-    design. Issue #1308 is the gap.
+    SO NOTHING IN THIS MODEL GRANTS IT YET. What causes it to appear was
+    decided by the project owner on 2026-09-05 and recorded on 2026-10-24: every
+    dungeon has an independent 5% chance of carrying it, outside the modifier
+    slots (`docs/DECISIONS.md`, "2026-09-05 (recorded 2026-10-24) -- The
+    Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the
+    modifier slots", and Section VIII of `docs/Cataclysm_GDD_v2.md`). That roll
+    is not built here or in the game; issue #1308 is the building.
 
     WHEN THAT RULE ARRIVES IT MUST CARRY THE WEIGHT WITH IT. The same section
     says "Each dungeon modifier carries a weight, and the sum of the weights on
