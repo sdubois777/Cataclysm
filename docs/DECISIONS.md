@@ -17,7 +17,9 @@ row, no workbook cell and nothing under `game/Data/` is changed. **This closes t
 - **THE LIGHT IS NOT PLACED WHERE THE RULING SAID.** The ruling put it in `PlaceTheShadowLights`, and asked first for
   a check that the floor's creatures exist when that runs. They do not: `GoToFloor` places the arena's objects, the
   light zones among them, before the population pass places any creature. So the light is added on the beat, in
-  `StepShadowyEnemies`, which also reaches a creature a later wave brings. A labelled judgement of the dungeon session.
+  `StepShadowyEnemies`, which also reaches a creature a later wave brings. A labelled judgement of the dungeon session. **It replaces
+  the location the coordinating session ruled, and was accepted by it on 2026-10-24** for that reason: no creature exists
+  when `PlaceTheShadowLights` runs.
 
 ### What was ruled
 
