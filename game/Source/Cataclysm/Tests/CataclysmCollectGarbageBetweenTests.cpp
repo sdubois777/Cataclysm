@@ -157,10 +157,19 @@ namespace CataclysmCollectGarbageBetweenTests
 
 	private:
 		/**
-		 * THE BASELINE IS TAKEN AS THE FIRST TEST STARTS: the editor's world and
-		 * whatever else is alive before any test has made one. After that it is
-		 * whatever the last collection left, so a world some test leaves rooted
-		 * raises it once instead of causing a collection after every later test.
+		 * THE BASELINE IS TAKEN AS THE FIRST TEST STARTS: whatever is alive before
+		 * any test has made a world. After that it is whatever the last collection
+		 * left, so a world some test leaves rooted raises it once instead of
+		 * causing a collection after every later test.
+		 *
+		 * IN A WHOLE-SUITE RUN THE FIRST TEST IS AN ENGINE SMOKE TEST THAT RUNS
+		 * BEFORE THE EDITOR'S OWN WORLD EXISTS, so the baseline does not include
+		 * it, and the live count can sit one above the first baseline from about
+		 * the 608th test on. Read by the enchantment session from the log of
+		 * window t74w (#2485), not measured by any test: the baseline was 0,
+		 * tests 1 to 607 ran before "LogEngine: Initializing Engine", and the
+		 * count rose by one at test 608. That the extra world is the editor's was
+		 * not measured by name.
 		 */
 		void OnTestStart(FAutomationTestBase* /*Test*/)
 		{

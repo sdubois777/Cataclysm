@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "GameplayEffect.h"
 #include "Engine/World.h"
+#include "Misc/ScopeExit.h"
 #include "GameplayTagsManager.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -321,6 +322,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffCountTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -366,6 +368,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffParentTagTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -404,6 +407,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffIgnoresHelpfulTagsTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -455,6 +459,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffExpiryTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -497,6 +502,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffBleedingIsItsOwnQuestionTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -628,6 +634,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffDurationArithmeticTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 
@@ -692,6 +699,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffBothApplyPathsTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 
@@ -759,6 +767,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 	const FGameplayTag Bleed = Debuffs::BleedTag();
@@ -843,6 +852,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldLeavesOtherEffectsTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 	Character.TakeCeaselessPenance();
@@ -885,6 +895,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldRefusalsTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Character(World);
 	Character.TakeCeaselessPenance();
@@ -975,6 +986,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinLeavesTheFirstAloneTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier First(World);
@@ -1073,6 +1085,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmRecalculatingWhileTwoArePinnedTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier First(World);
@@ -1137,6 +1150,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinOnOneTargetTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier Held(World);
@@ -1199,6 +1213,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmStrongerPinStandsTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier Held(World);
@@ -1253,6 +1268,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondBleedOnOneTargetTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier Bleeding(World);
@@ -1310,6 +1326,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmWeakerPinRefreshesTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FGameplayAttribute Taken =
@@ -1372,6 +1389,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmPinWithoutIncreaseTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FScopedCarrier Attacker(World);
 	const FScopedCarrier Held(World);
@@ -1415,6 +1433,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmShredAgainTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
 	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
@@ -1467,6 +1486,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmStrongerShredTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
 	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
@@ -1516,6 +1536,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmWeakerShredTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
 	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
@@ -1574,6 +1595,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmWeakerAuraTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Aura = TagNamed(TEXT("Status.Debuff.AbyssalAura"));
 	if (!TestTrue(TEXT("Status.Debuff.AbyssalAura is a gameplay tag"),
@@ -1635,6 +1657,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmWeakerBleedTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Bleed = Debuffs::BleedTag();
 	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
@@ -1715,6 +1738,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmFasterBleedTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Bleed = Debuffs::BleedTag();
 	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
@@ -1780,6 +1804,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmEqualBleedKeepsTickingTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Bleed = Debuffs::BleedTag();
 	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
@@ -1862,6 +1887,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmEqualApplicationNeverShortensTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
 	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
@@ -1924,6 +1950,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmTagOnlyEffectKeepsTheLongerTest,
 	{
 		return false;
 	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FGameplayTag Madness = TagNamed(TEXT("Status.Debuff.Madness"));
 	if (!TestTrue(TEXT("Status.Debuff.Madness is a gameplay tag"), Madness.IsValid()))

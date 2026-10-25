@@ -5,7 +5,8 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-10-24 — Garbage is collected after every automation test that made a world, so a destroyed test world is freed before the next test; a memory line per test behind a switch, and one summary line at the end of every run
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp` (new; the handler and two tests in
-`Cataclysm.TestWorld.`). No game code, no data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or
+`Cataclysm.TestWorld.`); `game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp` (second commit: each of its 26 test
+worlds is now destroyed). No game code, no data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or
 `game/Config/Tags/`, nothing of `CataclysmDungeonGameMode.*`, and **no change to `tools/unreal_build.py`**. Issue
 [#2485](https://github.com/sdubois777/Cataclysm/issues/2485). **Closes #2485 if the window's final `UsedVirtual` is below
 15 GB; otherwise #2485 stays open.**
@@ -122,16 +123,17 @@ Line numbers are of development `439786ca3`, before this change; engine lines ar
 
 ### THE RULING, AND WHERE IT IS IN THE CODE
 
-Line numbers are of this commit, in `CataclysmCollectGarbageBetweenTests.cpp`.
+Line numbers are of the second commit (below), in `CataclysmCollectGarbageBetweenTests.cpp`; the first commit's were 9
+lower from 165 on, where the second added nine comment lines.
 
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
-| 1 | Collect after a test only when the live `UWorld` count is above its baseline | `OnTestEnd`, 186 to 204: the count at 194, the test at 196, `CollectDestroyedWorlds` (102 to 111, the call at 107) at 198 |
-| 2 | Log each collection's time | the per-test line's `collection_ms` (210 to 224); the summary's `collections` and `collection_total_s` (232 to 249) |
-| 3 | One line per test: index, name, `UsedVirtual`, `UsedPhysical`, live `UWorld` count, live `UObject` count, the collection's duration | 216 to 224 |
-| 4 | Per-test line off by default, behind a console variable or switch | the console variable 53 to 59, the environment variable read at 172 to 173, the test at 206 |
-| 5 | Always one end-of-run summary line: peak and final `UsedVirtual`, collections and their total time | `PrintSummary`, 232 to 249, bound at 181 to 183 |
-| 6 | The guard and a check that the handler is registered | `Cataclysm.TestWorld.ADestroyedWorldIsFreedByTheCollectionBetweenTests` 273 to 327; `Cataclysm.TestWorld.TheCollectionBetweenTestsIsBoundToEveryTestEnd` 329 to 343 |
+| 1 | Collect after a test only when the live `UWorld` count is above its baseline | `OnTestEnd`, 195 to 233: the count at 203, the test at 205, `CollectDestroyedWorlds` (102 to 111, the call at 107) at 207 |
+| 2 | Log each collection's time | the per-test line's `collection_ms` (219 to 233); the summary's `collections` and `collection_total_s` (241 to 258) |
+| 3 | One line per test: index, name, `UsedVirtual`, `UsedPhysical`, live `UWorld` count, live `UObject` count, the collection's duration | 225 to 233 |
+| 4 | Per-test line off by default, behind a console variable or switch | the console variable 53 to 59, the environment variable read at 181 to 182, the test at 215 |
+| 5 | Always one end-of-run summary line: peak and final `UsedVirtual`, collections and their total time | `PrintSummary`, 241 to 258, bound at 190 to 192 |
+| 6 | The guard and a check that the handler is registered | `Cataclysm.TestWorld.ADestroyedWorldIsFreedByTheCollectionBetweenTests` 282 to 336; `Cataclysm.TestWorld.TheCollectionBetweenTestsIsBoundToEveryTestEnd` 338 to 352 |
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
 
@@ -174,16 +176,16 @@ Line numbers are of this commit, in `CataclysmCollectGarbageBetweenTests.cpp`.
 
 ### WHAT WAS BUILT
 
-`game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp`, 347 lines, all new:
+`game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp`, all new, 356 lines at the second commit:
 
 - 1 to 49: the include of `Misc/AutomationTest.h`, the guard, the includes and the comment saying why.
 - 51: `DEFINE_LOG_CATEGORY_STATIC(LogCataclysmTestMemory, Log, All)`, so both lines reach the log at Log level.
 - 53 to 59: the console variable `Cataclysm.TestMemoryLines`, default 0.
-- 61 to 266: namespace `CataclysmCollectGarbageBetweenTests`: `FCollection` (63 to 73); `CountLiveWorlds` (84 to 92);
-  `CollectDestroyedWorlds` (102 to 111); `Megabytes` (114 to 117); `FTestEndCollector` (129 to 257), whose constructor
+- 61 to 275: namespace `CataclysmCollectGarbageBetweenTests`: `FCollection` (63 to 73); `CountLiveWorlds` (84 to 92);
+  `CollectDestroyedWorlds` (102 to 111); `Megabytes` (114 to 117); `FTestEndCollector` (129 to 266), whose constructor
   binds `OnTestStartEvent` and `OnTestEndEvent` with `AddRaw` and whose destructor removes all three bindings;
-  `GTestEndCollector` (259); `IsHandlerRegistered` (262 to 265).
-- 268 to 345: the two tests, between `#define CATACLYSM_TEST` and `#undef CATACLYSM_TEST`, the neighbouring file's
+  `GTestEndCollector` (268); `IsHandlerRegistered` (271 to 274).
+- 277 to 354: the two tests, between `#define CATACLYSM_TEST` and `#undef CATACLYSM_TEST`, the neighbouring file's
   macro.
 
 **The two lines, with their fixed prefixes.** The per-test line, when the switch is on:
@@ -253,7 +255,7 @@ but a dot: 0 matches), so the prefix selects the three tests of `CataclysmTestWo
   still bound; it only no longer collects), and the three tests of `CataclysmTestWorldTests.cpp` pass. Restored: all
   five pass. Five tests performed in each half.
 
-### THE WINDOW'S PREDICTIONS
+### THE FIRST WINDOW'S PREDICTIONS
 
 Stated by the enchantment session before the run: "UsedVirtual at the end below 15 GB"; the `UWorld` count back at its
 baseline within 2 after each collection; the whole suite 0 failed; and a rough figure for the total collection time,
@@ -263,6 +265,67 @@ which the enchantment session registers. The before figures are #2485's: 45,700 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
 None.
+
+### THE FIRST WINDOW'S RUN
+
+Run by the enchantment session as window t74w, with the first commit moved onto development `b2b60ebf6` as `16182a6c7`
+(branch `fix/collect-garbage-between-tests-2`). The figures below are the enchantment session's, passed to the writing
+session; the writing session did not read the log.
+
+- **The summary line, verbatim:** "CataclysmTestMemorySummary: tests=4740 peak_used_virtual_mb=10783
+  final_used_virtual_mb=10732 collections=3130 collection_total_s=103.829 worlds_at_last_collection=27".
+- **The memory fell from about 45.7 GB to 10.7 GB.** "UsedVirtual at the end below 15 GB": **MET** (10,732 MB final,
+  10,783 MB peak). That is the condition this entry set for closing #2485.
+- **The whole suite 0 failed: NOT MET.** The run stopped on one failing test, traced to an unrelated race in the save
+  writer, [#2494](https://github.com/sdubois777/Cataclysm/issues/2494), fixed separately.
+- **The `UWorld` count back at its baseline within 2 after each collection: NOT MET.** The baseline was 0 and the count
+  after collection rose to 27; 2,609 collections left more than 2 worlds. The enchantment session's reading of why:
+  - 26 worlds come from `CataclysmDebuffTests.cpp`. It calls `CataclysmTestWorld::MakeWorldThatHasBegunPlay()` 26 times
+    and destroyed none of them: no `DestroyWorld` and no `ON_SCOPE_EXIT`, so each world stayed rooted (`CreateWorld`
+    roots by default). `FScopedCarrier`'s destructor destroys only its actor.
+  - The 27th, from test 608 on, is very likely the editor's own world. Tests 1 to 607 ran before "LogEngine:
+    Initializing Engine", so the baseline of 0 was taken before the editor's world existed. Not measured by name.
+- 3,130 collections took 103.829 s in all, about 33 ms each.
+
+### THE SECOND COMMIT
+
+The coordinating session's ruling of 2026-10-24, verbatim: "Q3: YES. The R2 fix goes in
+fix/collect-garbage-between-tests-2: ON_SCOPE_EXIT DestroyWorld in the 26 Debuff tests, and the comment about the
+baseline being taken before the editor world exists. Re-register the world prediction as at most 1 above the first
+line's baseline after every collection."
+
+Line numbers are of the second commit.
+
+1. **`CataclysmDebuffTests.cpp`.** `#include "Misc/ScopeExit.h"` at line 19, after `#include "Engine/World.h"`, and
+   `ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };` on the line straight after each of the 26
+   null checks of a world from `MakeWorldThatHasBegunPlay`: lines 325, 371, 410, 462, 505, 637, 702, 770, 855, 898,
+   989, 1088, 1153, 1216, 1271, 1329, 1392, 1436, 1489, 1539, 1598, 1660, 1741, 1807, 1890 and 1953. Nothing else
+   changed.
+   - **What was read first.** All 26 make the world the same way, followed by the same five-line
+     `if (!TestNotNull(TEXT("a world"), World)) { return false; }`; nothing but `using namespace CataclysmDebuffTest;`
+     comes before the world in any of them. The file had no `DestroyWorld`, no `ON_SCOPE_EXIT`, no lambda and no
+     static that could hold the world. The one test without a world (`FCataclysmDebuffNoAbilitySystemTest`) is
+     unchanged.
+   - **Why straight after the null check.** Every `FScopedCarrier` is declared after the scope exit, so on every exit,
+     early returns included, each carrier's destructor destroys its actor while the world still exists, and the world is
+     destroyed last. A null world returns before the scope exit is declared.
+   - **Checked by script:** 26 calls to `MakeWorldThatHasBegunPlay()` in the file, 26 of them with the scope exit on the
+     line after the null check, 0 without; 26 `ON_SCOPE_EXIT` and 26 `DestroyWorld(` in the file.
+2. **`CataclysmCollectGarbageBetweenTests.cpp`, the comment above `OnTestStart` (159 to 173).** It no longer says the
+   baseline includes the editor's world. It says that in a whole-suite run the first test runs before the editor's own
+   world exists, so the count can sit one above the first baseline from about the 608th test on, and labels that as read
+   by the enchantment session from the log of window t74w and not measured by name. Nine lines more than the first
+   commit; no code changed.
+
+**Not tested:** nothing in the second commit was compiled or run. That the 26 Debuff tests still pass with their
+worlds destroyed, and that the count stays where the prediction below says, are the second window's questions.
+
+### THE SECOND WINDOW'S PREDICTIONS
+
+The world prediction, re-registered by the coordinating session's ruling, in its words: **"at most 1 above the first
+line's baseline after every collection"**, that is, the `worlds=` figure of every per-test line on which a collection
+ran is at most 1 above the baseline the handler took at the first test. The rest are as the enchantment session registers
+them for the second window.
 
 ### THE WINDOW'S RUN
 
