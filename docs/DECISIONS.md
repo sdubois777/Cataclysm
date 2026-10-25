@@ -2,6 +2,232 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — The synchronous save waits for the asynchronous writes to its own slot, so a death written just after an item pickup is not refused
+
+**Affects:** `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` (a project-owned task pipe and a record of the last
+asynchronous write per slot; `FCataclysmSaveStorage::WriteToSlot` waits on that slot's last write;
+`FCataclysmSaveStorage::WriteToSlotAsync` launches its own task on the pipe instead of calling
+`ISaveGameSystem::SaveGameAsync`; new `FCataclysmSaveStorage::HasAWriteInFlight`);
+`game/Source/Cataclysm/Save/CataclysmSaveStorage.h` (the declaration of `HasAWriteInFlight`; three comments corrected);
+`game/Source/Cataclysm/Tests/CataclysmSaveStorageTests.cpp` (one new test in the existing group `Cataclysm.SaveStorage.`).
+No data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` is changed. **This closes [#2494](https://github.com/sdubois777/Cataclysm/issues/2494).**
+
+### SAID FIRST
+
+- **PLAY CHECK: a character that dies just after picking something up keeps its death record.** Before this change the
+  death's synchronous Character write could be refused while a pickup's asynchronous write to the same file was still
+  writing, and the error "A Character record could not be written to 'Character_<id>' for the character dying: the save
+  system would not write to slot ..." was logged. By reading, not by measurement.
+- **A DEATH WRITE MAY NOW TAKE AS LONG AS THE WRITES QUEUED BEFORE IT.** The game thread blocks on them. In play these are
+  a run record and Character records of a few kilobytes each; nothing was measured.
+- **A LOAD CAN ALSO COLLIDE WITH A WRITE, AND THAT IS NOT BUILT HERE.** See point 6 of what was read. No game code loads a
+  slot today; some tests do.
+- **NOT COMPILED AND NOT RUN.** A second session wrote the code, the test and this entry under the enchantment session's
+  brief 75. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### WHO RULED
+
+Nothing of the owner's is quoted here. The coordinating session's ruling of 2026-10-24, verbatim as relayed in brief 75:
+
+> Q2: YES. File the save-writer race as its own issue now, with R1's evidence. Its title should state the play effect: a
+> death within milliseconds of an item pickup can lose the death record. Brief its fix (a project-owned pipe, the last
+> task kept per slot, and the synchronous write waiting on it) for a second session while #2235's window runs. Its window
+> runs BEFORE t74w's second run, so the memory fix can pass cleanly. The new test should reproduce the race: queue
+> asynchronous writes, then write synchronously to the same slot at once, and expect it to succeed. Prove it with a guard
+> that removes the wait.
+
+### WHAT WAS READ FIRST
+
+Game lines are of development `b2b60ebf6`, before this change; engine lines are of Unreal Engine 5.8 as installed.
+
+1. **Every write of a slot in `game/Source`** (searched for `SaveDataToSlot`, `SaveGameToSlot`, `AsyncSaveGameToSlot`,
+   `SaveGameAsync`, `->SaveGame(`, `WriteToSlot`, `GetSaveGameSystem`). Outside the tests there are three:
+   `FCataclysmSaveStorage::WriteToSlot` (`CataclysmSaveStorage.cpp` 210 to 241, `UGameplayStatics::SaveDataToSlot` at 234),
+   `FCataclysmSaveStorage::WriteToSlotAsync` (243 to 296, `ISaveGameSystem::SaveGameAsync` at 282) and the backup write in
+   `FCataclysmSaveStorage::ReadFromSlot` (`SaveDataToSlot` at 341, to the backup slot's name). `ReadFromSlot` also writes the
+   migrated record back through `WriteToSlot` (371). The callers: `UCataclysmSaveWriter::Write` (`CataclysmSaveWriter.cpp`
+   290 to 355) calls `WriteToSlot` (310) for a trigger that must be written before the frame ends, which is only the
+   character's death, and `WriteToSlotAsync` (326) for every other. No game code calls `AsyncSaveGameToSlot`,
+   `SaveGameToSlot` or the engine's asynchronous save. The tests also write with `SaveDataToSlot` directly
+   (`CataclysmSaveStorageTests.cpp` 65).
+2. **How `WriteToSlotAsync` handed bytes to the engine.** It built the JSON on the calling thread, made a shared byte
+   array, and called `SaveSystem->SaveGameAsync(false, *SlotName, User, Bytes, callback)` (282 to 293). Its callback
+   asserted `check(IsInGameThread())` and called `WhenDone(bSucceeded)` if one was given (288 to 292). The writer's
+   `WhenDone` logs an Error when the write failed (`CataclysmSaveWriter.cpp` 328 to 338) and does nothing else.
+3. **The engine's asynchronous save.** `ISaveGameSystem::SaveGameAsync` (`Engine/Source/Runtime/Engine/Private/SaveGameSystem.cpp`
+   40 to 67) launches a task on `AsyncTaskPipe` (45) with `ETaskPriority::Default`, `EExtendedTaskPriority::None` and
+   `ETaskFlags::DoNotRunInsideBusyWait` (63 to 65); the task calls the blocking `SaveGame` (50) and hands the callback to
+   `OnAsyncComplete` (55), which adds it to `FTSTicker::GetCoreTicker()` (200 to 210). `AsyncTaskPipe` and `OnAsyncComplete`
+   are `protected` (`Public/SaveGameSystem.h` 99, 102, 105); `SaveGameAsync` returns `void` (81). On Windows the save
+   system is `FGenericSaveGameSystem` (`PlatformFeatures.cpp` 13 to 17), whose `SaveGame` is
+   `FFileHelper::SaveArrayToFile` (`SaveGameSystem.h` 151 to 154).
+4. **Why the two writes collide.** `UGameplayStatics::SaveDataToSlot` (`GameplayStatics.cpp` 2390 to 2401) calls the same
+   blocking `SaveGame` on the game thread, outside any pipe. `SaveArrayToFile` reaches `FFileManagerGeneric::CreateFileWriterInternal`
+   (`FileManagerGeneric.cpp` 95 to 130), which calls `OpenWrite` with `bAllowRead` false; `FWindowsPlatformFile::OpenWrite`
+   (`WindowsPlatformFile.cpp` 1638 onward) opens with `CREATE_ALWAYS` and share flags 0 (plus `FILE_SHARE_DELETE` in the
+   editor when enabled, 45 to 54). So while one write holds a file open, a second open of it fails. Inferred from the code,
+   as issue #2494 says; no log line shows the Windows error.
+5. **The `UE::Tasks` API used.** `UE::Tasks::FPipe` (`Runtime/Core/Public/Tasks/Pipe.h` 28; `public:` at 30): its
+   constructor (35), `Launch` with priority, extended priority and flags (61 to 80), and its destructor's
+   `check(!HasWork())` (40 to 43). A pipe runs its tasks one at a time, FIFO for tasks with no prerequisites (20 to 26);
+   each piped task takes the previous one as a prerequisite (`TaskPrivate.h` 589 to 594). `UE::Tasks::FTask` is
+   `Private::FTaskHandle` (`Task.h` 208; `public:` at 38): `IsCompleted` (50, true for an empty handle), `Wait` (70 to 80, a
+   no-op for an empty handle). `Wait` first tries to run the task, and its prerequisites, on the waiting thread, then spins
+   and blocks (`Private/Tasks/TaskPrivate.cpp` 69 to 195, 211 to 260). `FTSTicker::AddTicker` (`Containers/Ticker.h` 45;
+   `public:` at 29) "can be called concurrently".
+6. **Whether a load can collide with a write: yes, and it is not built here.** `ReadFromSlot` reads with
+   `UGameplayStatics::LoadDataFromSlot` (317), which opens with `FWindowsPlatformFile::OpenRead` (`WindowsPlatformFile.cpp`
+   1527 onward), share flags `FILE_SHARE_READ` and no `FILE_SHARE_WRITE`; against a writer holding the file with share
+   flags 0 that open fails too, and the load answers `SlotCouldNotBeRead`. **No game code calls `ReadFromSlot`** (only the
+   tests, and `ReadFromSlot` itself), so in play nothing loads a slot yet. In the tests, `CataclysmSaveWriterTest::WaitForSlot`
+   (`CataclysmSaveWriterTests.cpp` 76 to 93) waits until the file EXISTS, which it does from the moment `CREATE_ALWAYS`
+   opens it, and several tests then call `ReadFromSlot` (817, 900, 1274, 1529, 1673, 2054); each could read while the write
+   is still writing. The ruling covers the synchronous write only, so this is reported and not built.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| a project-owned pipe | "a project-owned pipe" | `FWritesInFlight::Pipe`, a `UE::Tasks::FPipe` named `CataclysmSavePipe`, in a function-local static (`CataclysmSaveStorage.cpp` 65 to 70, the static in `WritesInFlight` 72 to 76). `WriteToSlotAsync` launches its task there (354 to 377). |
+| the last task kept per slot | "the last task kept per slot" | `FWritesInFlight::LastBySlot`, a `TMap<FString, UE::Tasks::FTask>` under `FWritesInFlight::Lock` (68 to 69); `WriteToSlotAsync` adds or replaces the slot's entry with the task it launched (354). |
+| the synchronous write waits on it | "the synchronous write waiting on it" | `WriteToSlot`: `LastWriteTo(SlotName).Wait();` (297), after the JSON is built and before `SaveDataToSlot`. `LastWriteTo` (91 to 98) copies the slot's task out under the lock, so the wait holds no lock. |
+| the new test | "queue asynchronous writes, then write synchronously to the same slot at once, and expect it to succeed" | `Cataclysm.SaveStorage.ASynchronousWriteWaitsForTheAsynchronousWritesToItsSlot`, below. |
+| the guard | "Prove it with a guard that removes the wait" | SS-I, below. |
+
+**THE TASK** (354 to 377) does what the engine's did: the blocking `ISaveGameSystem::SaveGame(false, SlotName, UserIndex,
+Bytes)`, then `FTSTicker::GetCoreTicker().AddTicker` with a lambda that asserts `check(IsInGameThread())`, calls `WhenDone`
+if set, and returns `false` so it fires once. The same three task flags as the engine. **The completion callback's
+game-thread behaviour is kept:** it runs on the game thread on a later core tick, as `OnAsyncComplete` ran it, with the
+same assertion and the same call.
+
+**WHY THE WAIT CANNOT DEADLOCK IN A ONE-FRAME TEST.** The task waited on writes the file and adds a ticker element; it
+never waits for the game thread or anything the game thread holds, and it does not take `FWritesInFlight::Lock`. The
+`WhenDone` callback is a separate ticker element, not part of the task, so the wait never waits for a tick. If the waiting
+game thread runs the task itself (`Wait` may retract it), it writes the file and adds the ticker element from the game
+thread, which is allowed. Read from the engine source, not run.
+
+**THE PER-SLOT RECORD DOES NOT GROW.** `ForgetFinishedWrites` (79 to 88) drops every completed task, and runs, under the
+lock, every time the record is read (`LastWriteTo`) or added to (`WriteToSlotAsync`). So it holds at most one entry for
+each slot with a write still in flight; in play that is the run's slot and the character's.
+
+**THE THREE CORRECTED COMMENTS** in `CataclysmSaveStorage.h`: the class comment (62 to 70) said the asynchronous route was
+`ISaveGameSystem::SaveGameAsync` and now says a background task, with a paragraph beginning "SINCE #2494" saying it is this
+file's own and that the older sentence "NOTHING CALLS ANY OF THIS YET" was already out of date; `WriteToSlot`'s comment
+(124 to 125) says it waits; `WriteToSlotAsync`'s (141 to 144) keeps its words and adds a paragraph beginning "SINCE #2494".
+`HasAWriteInFlight` is declared at 159 to 167, and defined in the `.cpp` at 382 to 385.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE WAIT IS ON THE SLOT'S LAST TASK, NOT ON THE WHOLE PIPE.** Because the pipe is FIFO, the last task finishing means
+  every earlier one has too; waiting on one task keeps the death write from waiting for writes queued to other slots after
+  it. The option not taken: `FPipe::WaitUntilEmpty`, which the engine says is for shutting a pipe down.
+- **THE TASK CALLS THE BLOCKING `ISaveGameSystem::SaveGame`**, as the engine's default `SaveGameAsync` does. On a platform
+  whose save system overrides `SaveGameAsync` (`FBaseAsyncSaveGameSystem`, `SaveGameSystem.h` 178 to 213) this bypasses the
+  override and calls its blocking `SaveGame` from a worker, which waits on its own task off the game thread
+  (`SaveGameSystem.cpp` 319 to 338). Windows uses `FGenericSaveGameSystem`. The option not taken: keep `SaveGameAsync`,
+  which returns nothing to wait on.
+- **A LOCK, ALTHOUGH EVERY CALLER IS ON THE GAME THREAD TODAY.** `WriteToSlot` and `WriteToSlotAsync` are static and public;
+  the lock costs one uncontended acquire per write. The option not taken: no lock, with a `check(IsInGameThread())`.
+- **THE PIPE IS A FUNCTION-LOCAL STATIC.** The engine's `AsyncTaskPipe` is a static too, so a write still in flight when the
+  process ends meets the same `check(!HasWork())` in the pipe's destructor as before. The option not taken: a pipe allocated
+  and never freed, which avoids that check by leaking.
+- **THE BACKUP WRITE (341) DOES NOT WAIT.** Nothing writes a backup slot asynchronously, so there is nothing to wait for.
+  The migrated record's write-back (371) goes through `WriteToSlot` and waits.
+- **THE TEST IS IN THE EXISTING GROUP `Cataclysm.SaveStorage.`**, in `CataclysmSaveStorageTests.cpp`, because the change is
+  in `FCataclysmSaveStorage` and that file tests it through the real save system, with the same slot prefix and `Cleanup`.
+  The options not taken: `Cataclysm.SaveWriter.`, which tests the writer's triggers, and a new group. Brief 75 asked for an
+  existing save group; the common brief's "a group of their own" is not followed, by brief 75's narrower instruction. The
+  prefix `Cataclysm.SaveStorage.` holds 7 tests with this one (5 in this file, 2 in `CataclysmEnchantmentRenameTests.cpp`).
+- **A NEW PUBLIC QUESTION, `HasAWriteInFlight`.** The test needs to know, without ticking, whether a queued write is still
+  writing; the `WhenDone` callbacks run only on a later core tick. The option not taken: ticking the core ticker inside the
+  test, which would fire every other pending ticker element in the editor.
+- **THE QUEUED WRITES HAVE NO CALLBACK.** With the guard in, a queued write can be refused; the writer's callback would
+  then log an Error in whatever test runs on the next tick.
+
+### THE GENRE SOURCE
+
+None. This is a fault of this game's own save code; it proposes no formula, affix or mechanic, and brief 75 names no
+source. Nothing was fetched.
+
+### Tests
+
+One Unreal test, `Cataclysm.SaveStorage.ASynchronousWriteWaitsForTheAsynchronousWritesToItsSlot`
+(`CataclysmSaveStorageTests.cpp`, `FCataclysmSaveWaitsForItsSlot`, 436 to 522, helpers in `CataclysmSaveStorageRaceTest`
+373 to 414). It uses the slot `CataclysmAutomationTest_SynchronousAfterAsynchronous`, cleaned first and after, and
+`UCataclysmSaveExampleRecord` records: the synchronous one with `Gold` 99 and an empty `Label`, whose JSON is built first
+as the expected text. Nothing waits on a tick.
+
+**HOW THE RACE IS MADE LIKELY.** Every record is built before any is queued. The first queued write carries a `Label` of
+32 MB (`LargeLabelLength`, 32 * 1024 * 1024 characters of `x`); three small ones (`Gold` 2, 3 and 4, empty labels) are
+queued behind it; then the synchronous write follows at once. Between the large write being handed over and the
+synchronous open the game thread does only three small JSON builds and one more, microseconds, while a 32 MB write takes
+milliseconds. Read, not measured. After the synchronous write returns the test waits, up to 30 seconds, sleeping 10 ms at
+a time, until `HasAWriteInFlight` is false, and only then reads the file, so a queued write landing after the synchronous
+one is seen.
+
+**Assertions are counted for a passing run: 8.** In order:
+
+1. control: with nothing queued the synchronous write succeeds;
+2. control: and nothing is in flight when it returns;
+3. control: and the file holds the synchronous record's bytes (the file's text equals the expected JSON);
+4. every queued write was handed over (`TestEqual`, `int32`, 4);
+5. with writes queued the synchronous write still succeeds;
+6. and no write to the slot is in flight when it returns;
+7. every queued write finished within the wait;
+8. and the file holds the synchronous record's bytes, not a queued one's.
+
+`TestEqual` is used once, on two `int32`; the rest are `TestTrue` and `TestFalse`. The byte comparison is a `TestTrue` on
+`OnDisk == Expected` so that a failure does not print a 32 MB string.
+
+**Every earlier test is unchanged, and expected to pass unchanged, by reading.** The asynchronous write still writes the
+same bytes to the same file through the same `SaveGame`, and its callback still runs on the game thread on a later tick.
+`Cataclysm.DungeonModifierEffects.InfestationEndsWithTheFloorLeavingOrThePlayersDeath`, the test that failed in window
+t74w, is expected to pass: its death write now waits for the nine pickups' writes.
+
+**Not tested:** the race in play; a load colliding with a write (point 6); a write still in flight at shutdown; a platform
+whose save system overrides `SaveGameAsync`; how long a death write now blocks; the `WhenDone` callback still arriving on
+the game thread (unchanged in shape, not asserted by the new test).
+
+### GUARD PROOFS PROPOSED
+
+Not run. The anchor was counted exactly once in `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` by a script at this
+commit's working tree (CRLF read as LF): the line `	LastWriteTo(SlotName).Wait();` (with its tab and newline) once, and
+`LastWriteTo(SlotName).Wait()` anywhere once. The break deletes the whole line. Brackets: round 202/202 before and 200/200
+after; curly 50/49 and square 2/2 unchanged (the curly count was already 41/40 at `b2b60ebf6`, from `TEXT("{")` at 149).
+It compiles alone by reading: `LastWriteTo` is still called by `HasAWriteInFlight`, so nothing becomes unused. The prefix
+is `Cataclysm.SaveStorage.`, with its trailing dot, 7 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| SS-I, the synchronous write does not wait | `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` | `	LastWriteTo(SlotName).Wait();` | (nothing) | `ASynchronousWriteWaitsForTheAsynchronousWritesToItsSlot` | none |
+
+Failed assertions, by reading: **3 in 1 test, or 2.** If the worker has opened the file before the synchronous write does,
+the synchronous open is refused: 5 ("still succeeds"), 6 ("no write in flight", the large and the small writes still
+queued) and 8 (the file ends holding `Gold` 4). If the synchronous write gets in first, it succeeds and 5 passes, and 6 and
+8 fail the same way. The control's three pass either way: nothing is queued. The other six tests of the prefix pass: none
+writes asynchronously.
+
+**THE FAILURE IS EXPECTED, NOT CERTAIN; REGISTER IT AS "MAY FAIL".** It passes with the break in only if all four queued
+writes finish in the microseconds between the first being queued and assertion 6 being read, which a 32 MB write cannot
+do on a machine that is not stalled. That is a reading of timing, not a guarantee. What would make it certain: a hold on
+the pipe from the test, such as a task launched first on the same pipe that waits on a `UE::Tasks::FTaskEvent` the test
+triggers after the synchronous write. That needs the pipe exposed to tests and is not built.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-09-05 (recorded 2026-10-24) — The Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the modifier slots
 
 **Affects:** `docs/DECISIONS.md` and `docs/Cataclysm_GDD_v2.md` only. **Recorded, not built.** Issue
