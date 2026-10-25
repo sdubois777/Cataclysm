@@ -2,6 +2,320 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A character's six skills come from every combination of its worn weapon types and the damage types they carry, filled by default with the creation type first (#837, layer 2)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.h` and `.cpp` (the new public statics
+`UCataclysmWeaponSkills::PoolFor` and `DefaultFillFrom`); `game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h`
+and `.cpp` (the field `DamageType` becomes `DamageTypes`, a list, with `bDamageTypesPinned`; the new `EquipWeaponTypes`,
+`UseDamageTypes`, `GetDamageTypes`, `GetWornWeaponTypes`, `GetSkillPool`, and the statics `DamageTypesOf`,
+`CarriesDamageType` and `InFillOrder`; `SetDamageType`, `GetDamageType`, `EquipWeaponType`, the private
+`FillSlotsFromWeaponTypes` (was `FillSlotsFromWeaponType`) and `UnequipWeapon` changed);
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the new public `WornWeaponTypes`; comments on
+`EquippedWeaponType` and `CarryCreationDamageType`); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(`FillAbilitySlotsFromWornWeapon`, `ApplyCreationChoice`); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`
+(the foreign-damage window); `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp`
+(`FindTheSkillUsed`); comments only in `game/Source/Cataclysm/Items/CataclysmItem.h`,
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `game/Source/Cataclysm/Tests/CataclysmCarriedDamageTypesTests.cpp`;
+the new `game/Source/Cataclysm/Tests/CataclysmSkillPoolTests.cpp` (eight tests, the group `Cataclysm.SkillPool.`); this
+file. One commit. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill assignment,
+no save field, no screen** (layers 3 and 4). **It does not close #837**, and it does not change `Equip`.
+
+### SAID FIRST
+
+**A CHARACTER'S SIX SKILLS COME FROM EVERY COMBINATION OF ITS WORN WEAPON TYPES AND THE DAMAGE TYPES THEY CARRY, FILLED
+BY DEFAULT WITH THE CREATION TYPE FIRST; THE PLAYER CANNOT CHOOSE YET.** A Greataxe carrying War worn by a character
+created Demonic now casts War Greataxe skills (layer 1 opened the War trees and left the skills Demonic). A Greataxe
+carrying Demonic and War fills the Demonic six, because Demonic is the creation type; the War six are in the pool
+(`GetSkillPool`) and nothing can put them in a slot until layer 3.
+
+**A WEAPON CARRYING ONLY TYPES WITH NO DESIGNED SKILL GRANTS ONLY ITS BASIC ATTACK.** Only Demonic and War have designed
+rows (117 of 403). So a Sword carrying Void and Famine now swings and casts nothing else, where before layer 2 it cast
+the creation type's Sword skills; about 40% of Swords, Daggers, Fists and Whips drop carrying neither Demonic nor War
+(worked from the roll's rule in the reading of 2026-10-25, not counted from drops). That follows from the owner's
+Q2 answer ("If the skills for that type/damage aren't created yet, that's fine. We'll get to them") and is said here so
+it is not met first in play.
+
+**WAR SKILLS ARE NOW REACHED FROM ANY WEAPON CARRYING WAR.** Existing content (61 War rows, none of them with a shape,
+so each fills its slot with the placeholder that does nothing) reached by existing drops; no War row, node or skill was
+written or changed. **NO WAR WORK.**
+
+**A DUAL WIELDER'S POOL IS THE CROSS PRODUCT**, so a Sword carrying Demonic beside an Axe carrying War pools the War
+Sword's and the Demonic Axe's rows as well as their own: 22 entries. Within one damage type the first worn weapon fills
+every slot it has a row for, which today is all five, so the second weapon of the same type adds to the pool and not to
+the slots.
+
+**THREE READERS OF A CHARACTER'S "OWN" DAMAGE TYPE WERE NOT MOVED**, because they are in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, which the writing session's brief forbids: Echo Chamber's
+lookup of the skill to copy, Wild Magic's pool, and the Wild Magic panel line. They still ask `DamageTypeOf`, which now
+answers the first carried type in fill order (the creation type when it is carried). For a character carrying one type
+nothing differs. The change proposed for them is below, under "NOT BUILT".
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 91, from development `1bf218ccb`. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a character's six skills come from every combination of its worn weapon types and carried damage types, filled by
+  default with the creation type first; the player cannot choose yet.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-25, relayed by the coordinating session, verbatim. **Q4:** "every combination, as the design says"
+(`docs/Cataclysm_GDD_v2.md`: "Every combination of an equipped weapon type and an available damage type contributes its
+skills to that pool."). **Q9:** "we shouldn't have anything that says "increased X damage". It should all be generic for
+this reason." The coordinating session: "So the basic attack question is moot".
+
+The coordinating session, 2026-10-25, verbatim:
+
+> **Q8:** "own type" means any carried type. YES.
+> **Q11:** the default fill order is the creation type first, then Weapon1's types, then Weapon2's. YES.
+> Layer 2's fill order should read the first occupied slot, as you say. Note that in its brief.
+
+Ruled by the coordinating session the same day, on building this beside the branch that moves a lone one-handed weapon to
+Weapon1: "start A and layer 2 from that merge, built side by side. A goes to the machine first, because it is small and
+touches Equip, which layer 2's test with a lone weapon in Weapon2 reads."
+
+### WHAT WAS READ FIRST
+
+Line numbers are of `1bf218ccb`.
+
+1. **`UCataclysmWeaponSlotsComponent`** (`CataclysmWeaponSlotsComponent.h` and `.cpp`): one `FString DamageType =
+   "Demonic"` (`.h` 234 to 235, "TEMPORARY"), set by `SetDamageType` (`.h` 199) and by nothing else outside the tests but
+   `ACataclysmPlayerCharacter::ApplyCreationChoice` (`CataclysmPlayerCharacter.cpp` 2344); `EquipWeaponType` (`.cpp` 139
+   to 172) wraps `FillSlotsFromWeaponType` (174 to 371) and writes the one log line; the fill empties the slots, grants
+   the basic attack from the item bases row of the one weapon type with the slot tag, `Type.Melee` for a strike and one
+   `Element.<DamageType>` tag (205 to 240), then `UCataclysmWeaponSkills::SkillsFor(table, weapon type, DamageType)` (252
+   to 253). `DamageTypeOf` (121 to 137) answers `GetDamageType()`.
+2. **`UCataclysmWeaponSkills::SkillsFor`** (`CataclysmWeaponSkills.cpp` 200 to 270): the weapon's rows, one per slot,
+   first wins; then the type's weapon-independent rows (the Aura) only when the weapon gave one, with the same set of
+   taken slots.
+3. **`UCataclysmEquipmentComponent::EquippedWeaponType`** (`CataclysmEquipmentComponent.cpp` 639 to 673, the first
+   occupied weapon slot's type) and every caller outside tests: `FillAbilitySlotsFromWornWeapon`
+   (`CataclysmPlayerCharacter.cpp` 2264 to 2268), `ApplyCreationChoice`'s "already holding the chosen type" check (2350)
+   and the `Cataclysm.ShowEquipment` line "Weapon type in hand" (2935 to 2937). In tests: five in
+   `CataclysmCharacterCreationTests.cpp`, four in `CataclysmBothHandsFullTests.cpp`, six in `CataclysmEquipmentTests.cpp`.
+4. **`WornWeapons()`** (`CataclysmEquipmentComponent.cpp` 675 to 692): both weapon slots in order, an empty slot left
+   out, a two-handed weapon once, so a lone weapon in Weapon2 is first. **`CarriedDamageTypes`** (694 to 736): the union
+   of the worn weapons' lists in that order, an empty list counting as the creation type, nothing worn the creation type
+   alone.
+5. **What refills on a change of gear:** `ACataclysmPlayerCharacter::OnEquipmentChanged` (`CataclysmPlayerCharacter.cpp`
+   about 2187 to 2244) refreshes the stat line and then calls `FillAbilitySlotsFromWornWeapon` (2246 to 2303), bound to
+   `EquipmentChanged` at `BeginPlay`; every equip and unequip announces. `ApplyCreationChoice` also fills by hand, after
+   its early return (2360) and after putting the chosen weapon on (2436). `ACataclysmPlayerState::ChooseAtCreation` and
+   `SetCreationChoice` change the marked creation weapon's list without announcing and do not refill.
+6. **The five readers of `DamageTypeOf`:** the foreign-damage window (`CataclysmVitalAttributeSet.cpp` 2263, Cataclysmic
+   Resonance's); `FindTheSkillUsed` (`CataclysmTriggeredSkill.cpp` 55, the row of a skill a repeat row or a kept-stack
+   cast makes again); Echo Chamber's `DungeonGameModeEchoChamberSkill` and Wild Magic's `DungeonGameModeWildMagicPoolOf`
+   (`CataclysmDungeonGameMode.cpp` 1082 and 1110) and the Wild Magic panel line (19675).
+7. **The designed rows, by script** (`t91_count_rows.py` over `game/Data/WeaponSkills.csv`): 403 rows, 117 with a skill
+   name, Demonic 56 and War 61; every designed (weapon type, damage type) pair has exactly five rows, one per slot
+   (Support, Heavy, Ultimate, Movement, Special), Demonic on eleven weapon types and War on twelve, and each type has one
+   Aura on a row whose weapon type is "All". No slot is claimed twice within a pair and no skill name appears twice.
+8. **Python reads of these files:** `tools/tests/test_the_critical_strike_numbers_are_one_set.py` reads the slots header
+   for `DefaultSkillCritChancePercent`, unchanged. No Python test asserts the skills.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| Q4, every combination | `UCataclysmWeaponSkills::PoolFor`, `CataclysmWeaponSkills.cpp` 373 to 453: for each damage type, each weapon type's rows (404 to 424), then the type's Aura once (426 to 450). |
+| A matched pair once | the same, 382 to 398: each list without repeats. |
+| Q11, the creation type first | `UCataclysmWeaponSlotsComponent::InFillOrder`, `CataclysmWeaponSlotsComponent.cpp` 160 to 177; called by `ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon`, `CataclysmPlayerCharacter.cpp` 2271 to 2278. |
+| Weapon1 read as the first OCCUPIED slot | `UCataclysmEquipmentComponent::WornWeaponTypes`, `CataclysmEquipmentComponent.cpp` 740 to 759, in `WornWeapons` order; handed to `EquipWeaponTypes` at `CataclysmPlayerCharacter.cpp` 2279 to 2285. |
+| The default fill | `UCataclysmWeaponSkills::DefaultFillFrom`, `CataclysmWeaponSkills.cpp` 455 to 469; `FillSlotsFromWeaponTypes`, `CataclysmWeaponSlotsComponent.cpp` 332 to 337. |
+| Q8, "own" is any carried type | `CarriesDamageType` and `DamageTypesOf`, `CataclysmWeaponSlotsComponent.cpp` 142 to 158; read by the foreign-damage window, `CataclysmVitalAttributeSet.cpp` 2264 to 2268, and `FindTheSkillUsed`, `CataclysmTriggeredSkill.cpp` 54 to 68. |
+| Q9, moot: one Element tag on the basic attack | `CataclysmWeaponSlotsComponent.cpp` 290 to 307: the first carried type in fill order, read at 301. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE SLOTS STILL HOLD ONE SKILL EACH (`GetAvailableSkills`), AND THE POOL IS A SECOND LIST (`GetSkillPool`).** Eleven
+  calls outside tests, in four files, look a held skill up in `GetAvailableSkills` (the skill bar, the triggered
+  skills' held pool, minions' copies, the ability system), and each means "what is in a slot". The option not taken: the pool in
+  `GetAvailableSkills`, which would make each of them see skills no key reaches.
+- **`SetDamageType` PINS THE LIST, so the worn weapons' types are not handed over afterwards.** 37 lines in 32 test files
+  call it (by `git grep`), many on a real possessed player that then changes gear; before this the type was one field
+  nothing but `ApplyCreationChoice` wrote, so a pinned type held. Pinning keeps every one of them meaning what it meant
+  without reading each. `ApplyCreationChoice` no longer calls it, so nothing outside the tests does. The option not
+  taken: `SetDamageType` setting the list only until the next change of gear, which would need every one of those tests
+  read for a change of gear after it.
+- **THE BASIC ATTACK KEEPS ONE ELEMENT TAG, THE FIRST CARRIED TYPE (the creation type when carried).** Something DOES
+  read it: a skill's own scoped bonus. `UCataclysmSelfBuffSkill::GrantIncrease` scopes Burning Wrath's "more fire
+  damage" to the buff's own `Element.*` tag, and `UCataclysmAuraSkill::HelpAlliesInside` scopes Conflagration's ally
+  increase the same way, so a Demonic basic attack is reached by Burning Wrath. A tag per carried type would let a
+  two-type basic attack take both elements' bonuses; no tag would take Burning Wrath's bonus off it. The options not
+  taken: a tag per type (the plan's first reading of the design's "enhanced by all damage types present") and none.
+  **FOR THE COORDINATING SESSION:** those two skills are increases scoped to a damage type, which the owner's Q9
+  sentence ("we shouldn't have anything that says "increased X damage"") may reach; the count of 2026-10-25 searched
+  data rows, and these two scopes are written in C++ from the skill's own tag. Nothing was changed.
+- **THE BASIC ATTACK, THE SUB-TYPE AND THE HANDS STILL COME FROM THE FIRST WORN WEAPON** (`GetEquippedWeaponType`), as
+  before. The rule for two swung weapons (2026-08-16) is not built here.
+- **A CHANGE OF ONLY THE CREATION TYPE ON A STANDING CHARACTER DOES NOT REFILL THE SLOTS** until the next change of gear
+  or `ApplyCreationChoice`, which the creation screen calls straight after `ChooseAtCreation`. Before this the slots'
+  type moved only in `ApplyCreationChoice` too. The option not taken: a refill from the player state, which needs the
+  pawn's private fill made public.
+- **`EquippedWeaponType` IS KEPT**: two readers outside tests (`ApplyCreationChoice`'s check and the
+  `Cataclysm.ShowEquipment` line) and fifteen test lines read it, and it answers the first
+  worn weapon's type, which is still the basic attack's weapon.
+- **THE LOG LINE JOINS THE TYPES WITH "and"** ("Weapon change: Sword and Axe, Demonic and War damage, ..."), which reads
+  as before for one of each, so `Cataclysm.WeaponSlots.EveryEquipWritesOneLineTheLogFileKeeps` keeps its words.
+- **THE CHANGE OF Q8 FOR THE FOREIGN-DAMAGE WINDOW.** The entry of 2026-08-25 that read Cataclysmic Resonance's "other
+  than Demonic" as "other than the character's own type" said the two readings "cannot diverge for any character that can
+  take this node". With several carried types they can: a Masochist carrying Demonic and War now opens nothing on a War
+  hit, where the literal "other than Demonic" would open it. Q8 rules "own" as any carried type, so that is built; the
+  divergence is said here so the coordinating session can see it.
+
+### THE GENRE SOURCE
+
+None. The design and the rulings settle the mechanism; no formula was proposed and no source was fetched.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmWeaponSkills::PoolFor(Table, WeaponTypes, DamageTypes)`**, public static: for each damage type in the
+  order given, each weapon type's designed rows in table order, one per slot as `SkillsFor` reads one pair, then that
+  type's weapon-independent rows once, only when a weapon row of the type joined and only in a slot the type's weapon
+  rows left free. Repeats of a weapon type or a damage type are read once. One weapon and one type give `SkillsFor`
+  exactly.
+- **`UCataclysmWeaponSkills::DefaultFillFrom(Pool)`**, public static: the first entry for each slot, in the pool's order.
+- **`UCataclysmWeaponSlotsComponent`**: `DamageTypes` (a list, `{Demonic}` from the constructor, `EditDefaultsOnly` as
+  the one field was); `EquipWeaponTypes(list)`, which `EquipWeaponType(one)` now calls with a list of one; the fill
+  records the worn types, makes the first the equipped type, and fills from `PoolFor` and `DefaultFillFrom`;
+  `UseDamageTypes(list)`, which the pawn calls before each fill and which a pin or an empty list leaves alone;
+  `SetDamageType(x)`, now `{x}` and pinned; `GetDamageType()`, now the first of the list by value; `DamageTypesOf`,
+  `CarriesDamageType` and `InFillOrder`; `UnequipWeapon` also empties the pool and the worn types.
+- **`UCataclysmEquipmentComponent::WornWeaponTypes()`**, public: the weapon type of each worn weapon in `WornWeapons`
+  order, by the lookup `EquippedWeaponType` makes.
+- **`ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon`** hands the slots `InFillOrder(CarriedDamageTypes(creation
+  type), creation type)` and every worn weapon type; with nothing worn, the creation type alone and the starting weapon as
+  before. **`ApplyCreationChoice`** no longer calls `SetDamageType`.
+- **The two readers moved:** the foreign-damage window asks `CarriesDamageType(body, hit's type)`; `FindTheSkillUsed`
+  looks the name up among the skills of every carried type, in fill order.
+
+### NOT BUILT, AND THE CHANGE PROPOSED FOR IT
+
+The three readers in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, outside the writing session's brief.
+Each is one call:
+
+- `DungeonGameModeEchoChamberSkill` (1079 to 1091): loop over `UCataclysmWeaponSlotsComponent::DamageTypesOf(Character)`
+  and look in `SkillsOfDamageType(table, type)` for each, as `FindTheSkillUsed` now does.
+- `DungeonGameModeWildMagicPoolOf` (1107 to 1111): append `UCataclysmDungeonModifierEffects::WildMagicPool(table, type)`
+  for each carried type. The 2026-10-04 Wild Magic entry reads "your class tree" as "the skills of the player's damage
+  type"; with Q8 the reading would be every carried type's.
+- The panel line (19675): name `FString::Join(DamageTypesOf(PanelPlayer), TEXT(" and "))`.
+
+### Tests
+
+Eight Unreal tests in `Cataclysm.SkillPool.` (`CataclysmSkillPoolTests.cpp`), sharing `CataclysmSkillPoolTest`:
+`SpawnPossessedPlayer` (the creation tests' helper); `SpawnCarrier` (one set-up check); `SpawnBareCarrier` (everything
+taken off and checked: a second set-up check); `Weapon(base, types)`; `Wear` (`EquipInto`, which announces and so
+refills; one set-up check); `SkillNamesOf`, `WithoutTheBasic`, `HowManyIn`, `HoldsEvery`, `Joined`. Every expected list is read
+from `SkillsFor` on the real table. One character per world, at the origin; no tick. Assertion counts include the
+helpers' set-up checks, by reading.
+
+1. `OneWeaponOfOneTypeFillsTodaysSixInTodaysOrder`, 19, THE REGRESSION ANCHOR: set-up two; **control, a Demonic Greataxe
+   offers six**; for a Demonic Greataxe, a War Sword and a War Shield, **the pool's names are `SkillsFor`'s in order**,
+   **the default fill's are too**, set-up, and **a bare component pinned to the type fills the basic attack (none for
+   the Shield) and those six, names in order**; set-up, a possessed player; **its starting Greataxe carries "Demonic"**,
+   **its six are the Demonic Greataxe's in order**, **its pool is six**.
+2. `OneWeaponOfTwoTypesPoolsBoth`, 14: set-up; **control, Greataxe and Demonic pool six**; **Demonic and War pool
+   twelve**, **two Auras**, **every Demonic Greataxe skill**, **every War Greataxe skill**; **control, Void has no
+   Greataxe row**, **adding Void leaves twelve**; set-up three, a Greataxe carrying Demonic and War worn; **the slots
+   carry "Demonic, War"**, **the pool is twelve**, **seven slots are filled**.
+3. `AMatchedPairPoolsOnce`, 10: set-up; **control, a War Sword beside a War Axe pools eleven**; **two War Swords pool the
+   one Sword's six in order**; set-up five, a War Sword in each hand; **the slots were handed "Sword, Sword"**, **the
+   pool is six**.
+4. `TwoWeaponsPoolEveryCombinationOfWeaponAndType`, 14 (Q4): set-up; **on the pure function, twenty-two**; set-up three,
+   a Sword carrying Demonic; **control, six**; set-up two, an Axe carrying War in Weapon2; **twenty-two**, **the War
+   Sword's rows**, **the Demonic Axe's**, **the Demonic Sword's**, **the War Axe's**, **two Auras**.
+5. `TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder`, 25 (Q11): set-up; **control, `InFillOrder`
+   of War and Void, created Demonic, is "War, Void"**; **of War and Demonic, created Demonic, "Demonic, War"**; set-up
+   two; created War, set-up, a Greataxe carrying War then Demonic; **control, the slots carry "War, Demonic"** and
+   **fill the War Greataxe's six**; created Demonic, set-up two, the same weapon again; **"Demonic, War"** and **the
+   Demonic Greataxe's six**; set-up three, a War Sword in Weapon1 and a War Axe in Weapon2: **the Sword's six**; set-up
+   three, swapped: **the Axe's six**; set-up two, a War Axe alone in Weapon2 by `EquipInto`, an `AddInfo` line naming
+   what each weapon slot holds, **set-up, the Axe alone in Weapon2**; **the Axe's six**, **the basic attack's weapon is
+   the Axe**.
+6. `AHitOfAnyCarriedTypeIsTheCharactersOwnAndOpensNoForeignWindow`, 13 (Q8, the first reader): set-up three, a bare
+   defender with its own ability system and two creature attackers five metres either side; carrying Demonic: **control,
+   War is not its own**, **no window yet**, set-up, the hit lands, **the War hit opens the window now**, **six seconds
+   later it is six seconds old**; carrying Demonic and War: **War is its own**, set-up, **a War hit leaves the window six
+   seconds old**; set-up, **a Void hit opens it now**.
+7. `ARepeatFindsASkillOfTheSecondCarriedType`, 8 (Q8, the second reader): set-up three, a possessed player, Carom from
+   the Demonic skills, the repeat roll pinned to 0, a repeat row made by hand as
+   `Cataclysm.Enchantments.ARepeatRowRepeatsTheSkillJustUsedFreeAtTheSameAim` makes it; carrying War: **control, the use
+   records a repeat of Carom**, **the repeat is not made**; carrying War then Demonic: **`DamageTypeOf` is "War"**, **the
+   use records it again**, **the repeat is made**.
+8. `ATestsPinnedDamageTypeHoldsThroughAChangeOfGear`, 9: set-up three, a Sword carrying Void and Demonic on a player
+   nothing pinned; **control, the slots carry "Demonic, Void"**; in a second world, set-up two, `SetDamageType("War")`,
+   set-up, the same Sword; **the slots keep "War"**, **and fill the War Sword's six**.
+
+112 assertions in all, by reading.
+
+**Every earlier test is expected to pass unchanged, by reading, and none was changed.** From the plan's list of
+2026-10-25: the tree tests (`Cataclysm.Passives.*`, `ClassPointsFromGear.`, `OneClass.`, `CarriedTypes.`,
+`Cataclysm.ExtraDamageTypes.TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`) assert trees, not skills; the
+five `Cataclysm.Creation.` tests and `BothHandsFull.LosingTheOptionReturnsTheSecondToTheBagOrTheFloor` read
+`EquippedWeaponType`, unchanged, and `GetDamageType` as "Demonic" after a Staff carrying Demonic, which is the first
+carried type; the 17 `Cataclysm.WeaponSlots.` tests use bare components, the type pinned or the `{Demonic}` default, and
+one weapon type, which is `SkillsFor` exactly, and the log line reads as before; the two `Cataclysm.Equipment.` tests and
+`BothHandsFull.TheWeaponTheSkillsComeFromIsTwoHandedWithTwoAndWithOneInTheSecondHand` read `EquippedWeaponType`, kept;
+`Cataclysm.DefenderBody.AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow` and the `Cataclysm.ConditionalDamage.` own-type
+tests pin one type, so "own" is that type. A script over every test body found none that both puts a second weapon on
+or gives a weapon types and reads the skills (`t91_two_weapon_skill_tests.py`, 0 of 3,584 bodies; 118 read skills and
+29 wear two weapons, apart); helpers outside test bodies were not searched.
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, int32, int32)`, `(const TCHAR*, const FString&, const
+FString&)`, `(const TCHAR*, float, float, float)` and `(const TCHAR*, FName, FName)`; `TestTrue` and `TestFalse` on
+`bool`; `TestNotNull` on `const UDataTable*`, `UCataclysmWeaponSlotsComponent*`, `AActor*`, `ACataclysmEnemyCharacter*`,
+`const FCataclysmWeaponSkill*` and `IConsoleVariable*`.
+
+**The events the tests raise, with their depth:** test 6, three blows from creatures on a bare defender through
+`UCataclysmSkillEffects::ApplyHit`, each one event at depth one and no kill; test 7, two `skill_use` events through
+`UCataclysmCombatEvents::NoteSkillUsed` at depth one, and one free start of Carom by `MakePendingRepeat`, which sends no
+skill-used notice. Everything else is `EquipmentChanged`, a delegate and not a combat event.
+
+**Not tested:** the three Dungeon game mode readers (not moved); a weapon carrying a type with no designed skill swinging
+only its basic attack (by reading, `PoolFor` of such a type is empty); a refill after `ChooseAtCreation` alone (none, by
+reading); the skill bar drawing a second weapon's skill; a planted weapon's type in the pool (it stays worn, by
+reading); the log line for two weapons.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Three, prefix `Cataclysm.SkillPool.` with its dot: 8 tests, the same 8 without the dot, by a script over the
+test name strings in `game/Source` (4,369 distinct; `Cataclysm.Passives.CarriedTypes.` found 11 as the control). Each old
+text counted exactly once in its file by that script (CRLF read as LF) and each new text absent before the break.
+Brackets before and after, round, curly, square, each pair balanced: L2-G1 158 and 159, 54 and 54, 10 and 10; L2-G2 183
+and 183, 57 and 57, 4 and 4; L2-G3 855 and 859, 131 and 131, 1 and 1. Each compiles alone by reading: L2-G1 is
+`FMath::Min` of two `int32`; L2-G2 drops one `!`; L2-G3 puts the line this change replaced in front of the new one with
+`||`, each operand a `bool`.
+
+| Proof | File | Old text | New text | Stated to fail | Every other test of the prefix |
+|---|---|---|---|---|---|
+| L2-G1, the pool reads only the first worn weapon | `CataclysmWeaponSkills.cpp` | `WeaponAt < Weapons.Num(); ++WeaponAt)` | `WeaponAt < FMath::Min(1, Weapons.Num()); ++WeaponAt)` | `AMatchedPairPoolsOnce`, `TwoWeaponsPoolEveryCombinationOfWeaponAndType` | pass: the others pool one weapon type, and test 5's default fill takes the first weapon either way |
+| L2-G2, the fill ignores the creation type's priority | `CataclysmWeaponSlotsComponent.cpp` | `const bool bCreationFirst = !CreationDamageType.IsNone()` | `const bool bCreationFirst = CreationDamageType.IsNone()` | `TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder`, `ATestsPinnedDamageTypeHoldsThroughAChangeOfGear` | pass: their carried lists already begin with the creation type, or do not carry it |
+| L2-G3, the foreign-damage window reads only the first carried type | `CataclysmVitalAttributeSet.cpp` | `if (!UCataclysmWeaponSlotsComponent::CarriesDamageType(` | `if (!Hit.DamageType.ToString().Equals(UCataclysmWeaponSlotsComponent::DamageTypeOf(CataclysmDefendingBody(*this)), ESearchCase::IgnoreCase) \|\| !UCataclysmWeaponSlotsComponent::CarriesDamageType(` | `AHitOfAnyCarriedTypeIsTheCharactersOwnAndOpensNoForeignWindow` | pass: no other test of the prefix lands a blow |
+
+Failed assertions, by reading:
+
+- **L2-G1, 5 in 2 tests.** Test 3: the control, eleven (reads six): 1. Test 4: twenty-two on the pure function (twelve),
+  twenty-two on the player (twelve), the Demonic Axe's rows, the War Axe's rows: 4. Test 4's control, its Sword rows and
+  its two Auras pass.
+- **L2-G2, 4 in 2 tests.** Test 5: `InFillOrder` of War and Demonic (reads "War, Demonic"), created Demonic "Demonic,
+  War" (reads "War, Demonic"), the Demonic Greataxe's six (reads the War six): 3. Test 8's control, "Demonic, Void"
+  (reads "Void, Demonic"): 1.
+- **L2-G3, 1 in 1 test.** Test 6: the War hit on the Demonic and War carrier leaves the window six seconds old (reads 0).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — A single weapon worn is drawn in the right hand, whichever weapon slot holds it; the slot it sits in is left as it is
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (the new public static

@@ -336,11 +336,14 @@ public:
 	 * so before this function was written; issue #829 was raised calling it
 	 * undefined and was wrong.
 	 *
-	 * SO THIS FUNCTION SHOULD NOT EXIST IN THE END. It is what lets
-	 * UCataclysmWeaponSlotsComponent keep working while it still takes one
-	 * weapon type, and it goes when issue #837 gives the player the choice.
-	 * A matched pair -- same weapon type, same damage types -- is unaffected
-	 * either way, because both weapons contribute the same skills.
+	 * IT NO LONGER DECIDES THE SKILLS, since issue #837 layer 2: the ability
+	 * slots are filled from every worn weapon's type (`WornWeaponTypes` below),
+	 * and the first of those is the basic attack's weapon, the same answer as this.
+	 * What still reads this: `ACataclysmPlayerCharacter::ApplyCreationChoice`, to
+	 * ask whether the chosen weapon type is already held; the `Cataclysm.ShowEquipment`
+	 * line "Weapon type in hand"; and tests of the equipment and of character
+	 * creation. A matched pair -- same weapon type, same damage types -- is
+	 * unaffected either way, because both weapons contribute the same skills.
 	 *
 	 * @return the weapon type, or an empty string when no weapon is worn.
 	 */
@@ -387,6 +390,14 @@ public:
 	TArray<FName> CarriedDamageTypes(FName CreationDamageType) const;
 
 	/**
+	 * The weapon type of each worn weapon, in `WornWeapons` order: the first OCCUPIED weapon slot first, so a lone
+	 * weapon in the second hand is first. Issue #837 layer 2, for the skill pool. A matched pair is listed twice and the
+	 * pool reads it once. A weapon whose base the item bases table has no weapon type for is left out, as
+	 * `EquippedWeaponType` leaves it out, and with no table the answer is empty.
+	 */
+	TArray<FString> WornWeaponTypes() const;
+
+	/**
 	 * Make the weapon creation gave carry `DamageType`, when the creation choice has moved to another damage type
 	 * and not to another weapon type. Issue #857, layer 1.
 	 *
@@ -396,8 +407,10 @@ public:
 	 * type puts a new weapon on.
 	 *
 	 * NOTHING IS ANNOUNCED, and the count `ChangeCount` reads rises. The callers write the stat line themselves, which
-	 * is what `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` asks of them, and the weapon slots do
-	 * not read the list yet (layer 2, issue #837). The count rises so a screen drawing the weapon draws it again.
+	 * is what `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` asks of them. The weapon slots read the
+	 * list at their next fill since issue #837 layer 2, which `ACataclysmPlayerCharacter::ApplyCreationChoice` runs
+	 * straight after this; `ACataclysmPlayerState::ChooseAtCreation` and `SetCreationChoice` alone do not refill them.
+	 * The count rises so a screen drawing the weapon draws it again.
 	 *
 	 * @return whether a weapon was changed
 	 */

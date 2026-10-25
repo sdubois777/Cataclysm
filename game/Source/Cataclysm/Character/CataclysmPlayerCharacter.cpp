@@ -2282,11 +2282,26 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	// UCataclysmPlayerClassStats::ApplyTo, from the modifiers every worn item
 	// supplies. UCataclysmEquipmentComponent::RefreshAttributes runs it whenever
 	// equipment changes, which is the first half of OnEquipmentChanged above.
-	const FString WornWeapon =
-		Equipment ? Equipment->EquippedWeaponType() : FString();
-	if (!WornWeapon.IsEmpty())
+	//
+	// EVERY WORN WEAPON AND EVERY TYPE THEY CARRY, since issue #837 layer 2. The
+	// slots pool every combination and fill each slot from it by default: the
+	// types in fill order, the creation type first when a worn weapon carries it
+	// (Q11), and the weapons in slot order, the first OCCUPIED slot first, so a
+	// lone weapon in the second hand is the first weapon. With nothing worn the
+	// carried list is the creation type alone, for the starting weapon below.
+	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
+									   : UCataclysmCharacterCreation::DefaultDamageType;
+	if (Equipment)
 	{
-		WeaponSlots->EquipWeaponType(WornWeapon);
+		WeaponSlots->UseDamageTypes(UCataclysmWeaponSlotsComponent::InFillOrder(
+			Equipment->CarriedDamageTypes(CreationType), CreationType));
+	}
+	const TArray<FString> WornTypes =
+		Equipment ? Equipment->WornWeaponTypes() : TArray<FString>();
+	if (!WornTypes.IsEmpty())
+	{
+		WeaponSlots->EquipWeaponTypes(WornTypes);
 		return;
 	}
 
@@ -2357,12 +2372,10 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 		return false;
 	}
 
-	// THE DAMAGE TYPE FIRST, BECAUSE IT COSTS NOTHING AND CANNOT FAIL. It is a
-	// stand-in on the weapon slots component until a rolled item carries its own
-	// types; the field's own comment says so. Setting it before the weapon means
-	// a failure to change the weapon still leaves the two agreeing, rather than
-	// a Greataxe granting Void skills.
-	WeaponSlots->SetDamageType(ChosenDamageType.ToString());
+	// THE DAMAGE TYPE IS NOT SET ON THE WEAPON SLOTS ANY MORE, and it was until
+	// issue #837 layer 2. The slots take the types the worn weapons carry at every
+	// fill, and the weapon this gives carries the chosen one, so a failure to
+	// change the weapon still leaves the skills agreeing with what is worn.
 	WeaponSlots->SetStartingWeaponType(ChosenWeaponType.ToString());
 
 	// ALREADY HOLDING ONE OF THE CHOSEN TYPE IS DONE, NOT REFUSED. Confirming
