@@ -143,7 +143,9 @@ file's own and that the older sentence "NOTHING CALLS ANY OF THIS YET" was alrea
   prefix `Cataclysm.SaveStorage.` holds 7 tests with this one (5 in this file, 2 in `CataclysmEnchantmentRenameTests.cpp`).
 - **A NEW PUBLIC QUESTION, `HasAWriteInFlight`.** The test needs to know, without ticking, whether a queued write is still
   writing; the `WhenDone` callbacks run only on a later core tick. The option not taken: ticking the core ticker inside the
-  test, which would fire every other pending ticker element in the editor.
+  test, which would fire every other pending ticker element in the editor. **ACCEPTED by the coordinating session on
+  2026-10-24 as an addition beyond the ruling**: "HasAWriteInFlight is ACCEPTED as an addition beyond the ruling, used by
+  the test. Record it."
 - **THE QUEUED WRITES HAVE NO CALLBACK.** With the guard in, a queued write can be refused; the writer's callback would
   then log an Error in whatever test runs on the next tick.
 
@@ -216,6 +218,17 @@ do on a machine that is not stalled. That is a reading of timing, not a guarante
 the pipe from the test, such as a task launched first on the same pipe that waits on a `UE::Tasks::FTaskEvent` the test
 triggers after the synchronous write. That needs the pipe exposed to tests and is not built.
 
+**THE REGISTRATION AS RULED, 2026-10-24 (P1), verbatim:** "register SS-I as you recommend. The new test is REQUIRED to
+fail, with 2 or 3 assertions; the other 6 tests in the prefix pass; all 7 pass when restored. If it ever passes with the
+break in, it comes back to me and we build the pipe-holding hook. In the entry, state the one timing in which it would not
+fail." **The one timing in which it would not fail:** all four queued writes, the first 32 MB, finish on the pipe before
+the synchronous write, issued at once after them, opens the file. Its 3-assertion case is a background write holding the
+file when the synchronous write opens it; its 2-assertion case is the synchronous write getting in first and a queued
+write overwriting the file afterwards.
+
+**A load can collide with a write in the tests**, found while reading: issue #2495 (filed 2026-10-24, read, not
+measured).
+
 **Tests of another group expected to fail, to check in the window:** none, by reading.
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
@@ -224,7 +237,26 @@ None. No Python check, generator or validator is changed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-24, window t75w, under the editor lock as `enchant-t75w`, at 86030e78d (this
+commit moved from c15d269e0 on b2b60ebf6 onto development 3c1f3ac5f, #2496; the move kept its zero-context patch id, whole
+and outside this file, and its 13 removed lines). This was the code's first compile. Every figure was registered with the
+coordinating session before the run, and every one is as registered. Free physical memory before the lock: 16.1 GB. Free
+memory was NOT watched during the suite (this run had no collection between tests); whether it fell below about 5 GB is
+not known.
+
+- **The whole Unreal suite:** "Build: Succeeded - 8 actions, 5 files compiled"; "4137 tests performed, 4137 succeeded,
+  0 failed" (4136 on development + this test); "Declared: 4137 tests in the tree at 86030e78d; 4137 performed, gap 0". 40
+  tests skipped part of what they check. `Cataclysm.DungeonModifierEffects.InfestationEndsWithTheFloorLeavingOrThePlayersDeath`,
+  the test that failed in #2485's window t74w, passed (it also passed in earlier windows without the collection, so this
+  run does not show the race fixed in that test; the new test is what shows it).
+- **Python of record:** "6946 passed, 8 skipped"; JUnit 6954 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **SS-I, the synchronous write does not wait** (`CataclysmSaveStorage.cpp`, `LastWriteTo(SlotName).Wait();` removed,
+  anchor counted once; prefix `Cataclysm.SaveStorage.`, 7 tests): PROVED. With the break in, 7 tests performed, 6
+  succeeded, 1 failed, `ASynchronousWriteWaitsForTheAsynchronousWritesToItsSlot`, the required one; 2 failed assertions,
+  within the registered 2 or 3: "and no write to the slot is in flight when it returns" and "and the file holds the
+  synchronous record's bytes, not a queued one's". That is the 2-assertion case: the synchronous write got in first and a
+  queued write overwrote the file afterwards. Restored, 7 performed, 7 succeeded. The file's hash is the same after.
 
 ---
 
