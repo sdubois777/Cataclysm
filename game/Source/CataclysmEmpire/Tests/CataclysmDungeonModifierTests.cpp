@@ -75,6 +75,29 @@ namespace CataclysmDungeonModifierTest
 		return All;
 	}
 
+	/** Pins `Cataclysm.CorruptedStalkerRoll` for one scope and puts back the value it found. */
+	struct FScopedStalkerRoll
+	{
+		explicit FScopedStalkerRoll(float Roll)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CorruptedStalkerRoll")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+		~FScopedStalkerRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
 	/** A run at a chosen tier, with the whole table in its pool. */
 	UCataclysmEmpireRun* MakeRun(int32 Seed, int32 DifficultyTier)
 	{
@@ -423,6 +446,9 @@ bool FCataclysmDungeonModifierRunTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierTest;
 
+	// THE CORRUPTED STALKER PINNED OFF, so the count is the slots' alone. Ruled 2026-10-25 (issue #1308).
+	const FScopedStalkerRoll NoStalker(100.0f);
+
 	// TIER 4, SO THE COUNT IS NOT 1. At tier 1 a count of one agrees with
 	// several wrong rules, including "every dungeon gets exactly one".
 	UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 42, /* DifficultyTier */ 4);
@@ -621,6 +647,9 @@ bool FCataclysmDungeonModifierSacrificialRunTest::RunTest(const FString& Paramet
 {
 	using namespace CataclysmDungeonModifierTest;
 
+	// THE CORRUPTED STALKER PINNED OFF, so the count is the slots' alone. Ruled 2026-10-25 (issue #1308).
+	const FScopedStalkerRoll NoStalker(100.0f);
+
 	// SEARCHED FOR RATHER THAN ASSUMED, AND THE SEARCH IS ASSERTED. Sacrificial
 	// carries 8 of the 100 spawn weight, so no fixed number of days is
 	// guaranteed to produce one. A test that quietly found none would pass
@@ -732,6 +761,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModifierFamineQuestTest,
 bool FCataclysmDungeonModifierFamineQuestTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierTest;
+
+	// THE CORRUPTED STALKER PINNED OFF, so the count is the slots' alone. Ruled 2026-10-25 (issue #1308).
+	const FScopedStalkerRoll NoStalker(100.0f);
 
 	// **A FAMINE QUEST DUNGEON IS SACRIFICIAL, SO IT DRAWS DOUBLE.** Since
 	// 2026-10-21 each of five Cataclysms' Quest dungeons is one sub-type, and
@@ -1201,29 +1233,6 @@ bool FCataclysmLastEdictsDrawnTest::RunTest(const FString& Parameters)
 
 namespace CataclysmCorruptedStalkerTest
 {
-	/** Pins `Cataclysm.CorruptedStalkerRoll` for one scope and puts back the value it found. */
-	struct FScopedStalkerRoll
-	{
-		explicit FScopedStalkerRoll(float Roll)
-			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CorruptedStalkerRoll")))
-		{
-			if (Variable)
-			{
-				Previous = Variable->GetFloat();
-				Variable->Set(Roll, ECVF_SetByConsole);
-			}
-		}
-		~FScopedStalkerRoll()
-		{
-			if (Variable)
-			{
-				Variable->Set(Previous, ECVF_SetByConsole);
-			}
-		}
-		IConsoleVariable* Variable = nullptr;
-		float Previous = -1.0f;
-	};
-
 	/** A dungeon built by hand, with the identifier its walk seed comes from. */
 	FCataclysmDungeon Dungeon(int32 Id, ECataclysmDungeonSubType SubType)
 	{

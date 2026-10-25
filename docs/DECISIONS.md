@@ -19,13 +19,15 @@ which dungeons carry the row. What the Stalker does on a floor is part B, not bu
   the Stalker. So the roll's stream mixes the run's seed in as well: `CorruptedStalkerSeed` is
   `MixedSeed(run seed, "stlk")`, and each dungeon's stream is `MixedSeed(CorruptedStalkerSeed, WalkSeed)`. No other
   stream is touched either way.
-- **AT RISK IN THE WINDOW: three existing tests compare a dungeon's modifier count exactly**, with a pool that holds
-  the Stalker row: `EveryDungeonASurgeLandsCarriesModifiers`, `ASacrificialDungeonInARunReallyGetsDouble` and
-  `AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot`. A dungeon they look at that rolls the Stalker carries one
-  more. Whether any does is decided by their seeds and is not computed here.
-- **`tools/tests/test_dungeon_modifier_port.py::test_nothing_else_grants_it` still passes and its docstring is now
-  false:** it checks that `_make_dungeon` does not name the Generic type, and the grant is in a helper. Changing it
-  is a change to an existing test, which waits for a ruling.
+- **CONFIRMED BY THE COORDINATING SESSION, 2026-10-25:** "Mix the run's seed with the dungeon's id."
+- **THREE EXISTING TESTS COMPARE A DUNGEON'S MODIFIER COUNT EXACTLY**, with a pool that holds the Stalker row:
+  `EveryDungeonASurgeLandsCarriesModifiers`, `ASacrificialDungeonInARunReallyGetsDouble` and
+  `AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot`. By the coordinating session's ruling of 2026-10-25 their
+  assertions are unchanged: each pins `Cataclysm.CorruptedStalkerRoll` at 100, which never carries, through a scoped
+  helper that puts back the value it found, so the count is the slots' alone whatever its seed rolls.
+- **`tools/tests/test_dungeon_modifier_port.py::test_nothing_else_grants_it` is rewritten**, by the same day's ruling,
+  as `test_it_is_granted_by_its_own_helper_and_not_by_the_slot_draw`: the slot draw in `_make_dungeon` still never
+  names the Generic type, and the grant is its own helper, called from there.
 
 ### The rules, as decided
 
@@ -68,6 +70,16 @@ which dungeons carry the row. What the Stalker does on a floor is part B, not bu
   the design document's sentence, the row and its weight, the rate, the +20, that no other draw moves (the shared
   `rng`'s state compared), Sacrificial dungeons, the chance at 0, and seeds.
 
+### The enemy-cast diagnostic, for part B
+
+`Cataclysm.EnemyCastsAPlayerSkill.WhatATriggeredStrikeDoesWhenACreatureCastsIt`, in
+`game/Source/Cataclysm/Tests/CataclysmEnemyCastsAPlayerSkillTests.cpp`, asked for by the coordinating session on
+2026-10-25 and put on this branch at its ruling. A creature casts a Strike all round of 4 m through
+`UCataclysmTriggeredSkill::Trigger`, aimed at a player 2 m away. What happened is printed as information, in the
+engine log line beginning "ENEMY CAST:", and fails nothing: part B decides what it should do once the answer is
+known, and the test is then replaced by one that asserts it. What it asserts is its set-up, and a control: the player
+casting the same Strike at the creature starts it and hurts the creature.
+
 ### Proofs
 
 Simulation, by `tools/prove_guard.py`, 2026-10-25, both **PROVED**:
@@ -76,6 +88,7 @@ Simulation, by `tools/prove_guard.py`, 2026-10-25, both **PROVED**:
 |---|---|---|
 | `picked.append(CORRUPTED_STALKER)` -> `pass` (no grant) | 4: the rate, the +20, Sacrificial, seeds | 8 passed |
 | the roll on `self.rng.random()` (the shared stream) | 2: `test_a_carrying_dungeon_holds_it_once_and_is_worth_twenty_more`, `test_the_grant_moves_no_other_draw` | 8 passed |
+| the grant's call removed from `_make_dungeon` | 1: `tools/tests/test_dungeon_modifier_port.py::TestTheGenericColumn::test_it_is_granted_by_its_own_helper_and_not_by_the_slot_draw` | 29 passed |
 
 Unreal: not run yet. **Registered** for the window: no grant (`Dungeon.Modifiers.Add(Stalker->RowKey);` removed),
 predicted to fail `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` and the other two; and the roll
@@ -83,7 +96,8 @@ taken from `ModifierStream`, predicted to fail `TheModifierDrawTakesTheSlotCount
 
 ### Run
 
-Not run yet. The whole Unreal suite is registered at the base's last measured total plus 3.
+Not run yet. The whole Unreal suite is registered at the base's last measured total plus 4: the three grant tests
+and the diagnostic. The diagnostic's "ENEMY CAST:" line is quoted from the engine log as it prints.
 
 ---
 
