@@ -53332,8 +53332,12 @@ bool FCataclysmDarkSaveEnteringTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("entering is told to the save as one change of floor"), Writer->FloorChangesNoted(),
-			  NotedBeforeEntering + 1);
+	// TWO CHANGES OF FLOOR SINCE 2026-10-24: entering while this walk is still under way leaves it first, so its days
+	// run (ruled by the coordinating session that day), and a leave from the dark floor is told to the save, so no
+	// record says the dark floor after it is left. Then entering is told as before.
+	TestEqual(TEXT("entering from a walk still under way is told to the save as two changes of floor: leaving the dark ")
+			  TEXT("floor, then entering"),
+			  Writer->FloorChangesNoted(), NotedBeforeEntering + 2);
 	TestEqual(TEXT("after entering the record holds floor 1"), Entered.Floor, 1);
 	TestFalse(TEXT("and does not say the dark floor"), Entered.bOnTheDarkFloor);
 	TestEqual(TEXT("and holds no floor fallen from"), Entered.DarkFloorFellFrom, 0);

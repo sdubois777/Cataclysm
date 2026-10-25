@@ -199,9 +199,27 @@ Unreal, registered for the window and not yet run:
   `EnterEmpireDungeon`. Predicted: `EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes` fails. Prefix
   `Cataclysm.DungeonMode.EnteringADungeonWhileAnotherIsWalked`.
 
+### The first window, and a test the coordinating session ruled
+
+The first window (lock `dungeon-w43`, `feat/defer-days-to-exit-2` at `86573e10f`, on `ac6d505a5`, 2026-10-24), with the
+six conditions checked immediately before the lock ("free GB: 16.5 of 31.1"): "Build: Succeeded - 71 actions, 61 files
+compiled"; "4148 tests performed, 4147 succeeded, 1 failed: ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor";
+"Declared: 4148 tests in the tree at 86573e10f; 4148 performed, gap 0"; memory "final_used_virtual_mb=11501"; Python
+"6961 passed, 8 skipped", JUnit 6969, failures 0. It stopped there, and no proof was run.
+
+The failure, from the engine log: "Expected 'entering is told to the save as one change of floor' to be 3, but it was
+4." The test falls to the dark floor and then enters the same dungeon while its walk is still bound. By ruling 6,
+entering now leaves that walk first, and `LeaveEmpireDungeon` tells the save one change of floor when the walk is left
+from the dark floor. So the save hears two. Its other three assertions passed. **Changed, as ruled by the coordinating
+session, with no code changed:** `Cataclysm.DungeonModifierEffects.ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`,
+old "entering is told to the save as one change of floor", `NotedBeforeEntering + 1` -> new "entering from a walk still
+under way is told to the save as two changes of floor: leaving the dark floor, then entering", `NotedBeforeEntering +
+2`, with a comment saying why.
+
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus one (four new tests, three removed).
+Not yet run past the first window above. Predicted Unreal total: `development`'s last measured total plus one (four new
+tests, three removed), 4148, with no failure.
 
 Branch `feat/defer-days-to-exit-2` on `development` at `ac6d505a5` (written on `b2b60ebf6` as `-1` and moved, its
 zero-context patch ids unchanged).
