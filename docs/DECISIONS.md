@@ -12,7 +12,9 @@ which dungeons carry the row. What the Stalker does on a floor is part B, not bu
 
 ### SAID FIRST
 
-- **THE UNREAL HALF IS NOT BUILT AND NOT RUN WHEN WRITTEN.** The simulation half was run; its figures are below.
+- **BOTH HALVES WERE RUN.** The window `dungeon-w53` below passed every registered figure, and both C++ proofs were
+  PROVED. **The diagnostic measured that a creature can cast a player skill:** `Trigger` with a creature as owner
+  returned true and the Strike took 250 health from the player 2 m away.
 - **ONE DEPARTURE FROM THE RULING, for the coordinating session to confirm or reverse:** the ruling said to seed the
   roll "from the dungeon's own seed with a fixed salt". A dungeon's own seed, `FCataclysmDungeon::WalkSeed`, is its
   identifier plus one and is the same in every campaign. On it alone, the same dungeons of every campaign would carry
@@ -90,13 +92,13 @@ Simulation, by `tools/prove_guard.py`, 2026-10-25, both **PROVED**:
 | the roll on `self.rng.random()` (the shared stream) | 2: `test_a_carrying_dungeon_holds_it_once_and_is_worth_twenty_more`, `test_the_grant_moves_no_other_draw` | 8 passed |
 | the grant's call removed from `_make_dungeon` | 1: `tools/tests/test_dungeon_modifier_port.py::TestTheGenericColumn::test_it_is_granted_by_its_own_helper_and_not_by_the_slot_draw` | 29 passed |
 
-Unreal: not run yet. **Registered** for the window: no grant (`Dungeon.Modifiers.Add(Stalker->RowKey);` removed),
+Unreal: **both PROVED** in the window below. **Registered** for the window: no grant (`Dungeon.Modifiers.Add(Stalker->RowKey);` removed),
 predicted to fail `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` and the other two; and the roll
 taken from `ModifierStream`, predicted to fail `TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted`.
 
 ### Run
 
-Not run yet. Registered before the run, on `64811044d` (the #2488 merge, measured at 4168):
+Registered before the run, on `64811044d` (the #2488 merge, measured at 4168):
 
 | Figure | Registered |
 |---|---|
@@ -105,6 +107,29 @@ Not run yet. Registered before the run, on `64811044d` (the #2488 merge, measure
 | P1, `Dungeon.Modifiers.Add(Stalker->RowKey);` removed | `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` fails |
 | P2, the roll taken from `ModifierStream` | `TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted` fails |
 | The enemy-cast diagnostic | **measured, either outcome reported**: its "ENEMY CAST:" line is quoted from the engine log as it prints. Not predicted |
+
+One window, run by the dungeon session and given by the coordinating session (lock `dungeon-w53`,
+`feat/corrupted-stalker-grant-1` at `67d91a584`, on `64811044d`, 2026-10-25). The six conditions were checked
+immediately before the lock was taken: both of `development`'s runs at `64811044d` succeeded (waited for until they
+had); none in progress or queued; the lock free; no build or editor process; no open pull request; "free GB: 15.0 of
+31.1". The lock was released before anything was written here. The move: one top-of-file conflict in this file,
+resolved by taking `development`'s file with this entry above its first, asserted lossless; the branch's patch outside
+this file has the same patch id before and after the move (`babb7219fe8d6b8fdd86eb100be188e41877b25d`);
+`check_resolved_cpp.py`, "6 files read, 0 with complaints".
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 71 actions, 61 files compiled` |
+| Whole Unreal suite | 4172 / 0 | `4172 tests performed, 4172 succeeded, 0 failed`; declared 4172, gap 0 |
+| Memory | about 7,700 | `final_used_virtual_mb=7824`, peak 8,195 |
+| The enemy-cast diagnostic | measured, either outcome reported | "ENEMY CAST: Trigger with a creature as owner returned true; the player 2 m away lost 250.00 health of 100000". Its control, the player's Strike hurting the creature, passed |
+| Python (JUnit) | | 6990 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, the key not added | `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` fails | "1 tests performed, 0 succeeded, 1 failed: AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the roll from `ModifierStream` | `TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted` fails | "1 tests performed, 0 succeeded, 1 failed: TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**What the diagnostic does not say:** whether 250 is the right figure for a creature's Strike at a weapon damage of
+100, or whether the creature's other player-side lines (class, passives, gear) reached it. Part B asserts what it
+should be.
 
 ---
 
