@@ -360,7 +360,75 @@ skipped. The run after this commit is in the second session's hand-back.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**THE FIRST WINDOW STOPPED ON THIS PATH'S GADGET TEST, AND A SECOND WINDOW PASSED.** Both were run by the enchantment
+session on 2026-10-25 under the editor lock, with paths C and A stacked on one branch (below).
+
+**STACKED WITH PATH C, BY RULING.** The coordinating session, 2026-10-25, verbatim: "STACK PATHS C AND A, to save a
+window. Both are #2234, both are small, and they conflict only in comments and the log. Build ONE branch: path C's
+commit (183b932a5), then path A's on top of it. Resolve the comment conflict to path A's wording, which is true once both
+are in, and record that." Path C's commit was moved from path B's branch onto development and this commit placed on it.
+The comments of `tools/generate_datatables.py` and the docstring of `tools/tests/test_every_conditioned_stat_has_an_asker.py`
+conflicted between the two, and both files were resolved to this commit's wording, byte for byte. The branch was then
+moved onto development `40dc75470` as `fix/attack-damage-reaches-patches-and-copies-1`: path C `2141db453`, this commit
+`bb177b217`. Path C kept its zero-context patch id, whole and outside this file. This commit applied with no conflict, but
+its patch id changed in one file, `CataclysmSkillTemplateTests.cpp`: the same lines are added, and git lists one closing
+brace at another place because the new block borders identical lines. Checked: in that file, and in the whole tree
+outside this file, the moved branch differs from the original by exactly development's own change since `74acd5e1c`
+(one patch id each, the same on both sides). 56 removed lines before and after.
+
+**THE RULINGS ON THIS PATH, 2026-10-25, verbatim:**
+
+> - A1 ACCEPTED: the spent and trap increases now add instead of multiplying. That is ruling 7 itself. Record it as a
+>   known change, with the free-start reading (a trap's cast writes 0 to LastNextUseIncreasePercent), labelled as not
+>   every path searched.
+> - A3 ACCEPTED as a reading risk: if the gadget rig fails in the window, stop and report it as a finding. The NOT TESTED
+>   list goes in the entry.
+
+A1 is the case under THE ALGEBRA where S and T are both above nought: **a known change**. The free-start reading there (a
+trap's cast is a free start, and a use that is not paid for writes nought to `LastNextUseIncreasePercent`) **was read and
+NOT searched for every path.** A3's NOT TESTED list is the **Not tested** paragraph under Tests, unchanged.
+
+**WINDOW t81w STOPPED AT THE WHOLE SUITE: A3'S RISK HAPPENED.** At `bb177b217`, lock `enchant-t81w`, 15.3 GB of physical
+memory free: "Build: Succeeded - 39 actions, 36 files compiled"; "4167 tests performed, 4166 succeeded, 1 failed:
+AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget"; declared 4167, gap 0. **NOT AS REGISTERED** (4167 / 0). The memory
+summary line, quoted: "CataclysmTestMemorySummary: tests=4774 peak_used_virtual_mb=11509 final_used_virtual_mb=11219
+collections=3159 collection_total_s=108.979 worlds_at_last_collection=1". No assertion failed; the test failed on the
+engine's check "FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute set for attribute
+MaxHealth" (`GameplayEffect.cpp` line 3994), reached from the test's `ACataclysmMinion::PlaceSkillGadget` call through
+`ACataclysmMinion::Spawn`, where it sets the gadget's `MaxHealth` base. The test made its world with the group's
+`MakeWorld`, `UWorld::CreateWorld(EWorldType::Game, false)`, which never initializes actors for play; every other test
+that places a skill gadget uses `CataclysmTestWorld::MakeWorldThatHasBegunPlay()`. Python and the proofs did not run.
+
+**THE CORRECTION, RULED 2026-10-25 by the coordinating session:** "In AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget
+only, make the world with CataclysmTestWorld::MakeWorldThatHasBegunPlay(). Keep its tear-down matching what that helper
+expects. Change no assertion and no other test." Commit `178ffae28` does that: one line replaced and a two-line comment
+saying why ("A skill gadget needs a world that has begun play, or its attribute set is not registered and setting its
+MaxHealth hits the engine's check"). The tear-down, `World->DestroyWorld(false)`, is what that helper's other users do,
+and is unchanged. **That the attribute set goes unregistered in a world not begun is a reading, not measured**; that the
+test passes in a begun world is measured below. The test's line numbers under Tests now run 2 lines later from the
+gadget test on, and its **Crit** sentence ("after `MakeWorld`") holds for the other four tests.
+
+**WINDOW t82w, AS REGISTERED.** At `178ffae28` on `fix/attack-damage-reaches-patches-and-copies-2`, lock `enchant-t82w`,
+15.8 GB free; registered 4167 / 0 with EC-I, EC-II, GP-I and GP-II, as for t81w.
+
+- **The gadget test alone, first:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.36.cpp"; "1 tests
+  performed, 1 succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** build already up to date, 0 actions; "4167 tests performed, 4167 succeeded,
+  0 failed" (4160 on development + 2 of path C + 5 of this path); "Declared: 4167 tests in the tree at 178ffae28; 4167
+  performed, gap 0". 40 tests skipped part of what they check. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4774 peak_used_virtual_mb=11431 final_used_virtual_mb=11143 collections=3159
+  collection_total_s=109.267 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6974 passed, 8 skipped"; JUnit 6982 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **GP-I, the patch priced from the attribute again** (anchor counted once; prefix `Cataclysm.GroundPatchLine.`, 5
+  tests): PROVED, AS REGISTERED. With the break in, 5 performed, 0 succeeded, 5 failed, all five; 7 failed assertions,
+  registered 7, each a "times" figure listed under GUARD PROOFS PROPOSED, at 1.0 (the bracket test's 1.8 at 1.6). 0
+  ensures. Restored, 5 performed, 5 succeeded. The file's hash is the same after.
+- **GP-II, the spent charge multiplied outside the bracket** (anchor counted once; same prefix): PROVED, AS REGISTERED.
+  With the break in, 5 performed, 4 succeeded, 1 failed, `ASpentChargeJoinsTheLinesIncreasesInOneBracket`; 1 failed
+  assertion, registered 1: "and the patch ticks 1 + 0.2 + 0.6 = 1.8 times the control's, one bracket, and not 1.2 x 1.6 =
+  1.92", which was 1.92. 0 ensures. Restored, 5 performed, 5 succeeded. The file's hash is the same after.
+- Path C's proofs, EC-I and EC-II, ran in the same window and are recorded in path C's entry below.
 
 ---
 
@@ -623,7 +691,42 @@ skipped. The run after this commit is in the second session's hand-back.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25 in one window with path A, stacked on one branch by the coordinating
+session's ruling (recorded in path A's entry above, with the move and the first window, t81w, which stopped on path A's
+gadget test). This commit was moved from `0a7a16185` on path A's branch to `2141db453` on development `40dc75470`; it kept
+its zero-context patch id, whole and outside this file, and its 10 removed lines.
+
+**THE RULINGS ON THIS PATH, 2026-10-25, verbatim:**
+
+> - J1 ACCEPTED as is: the price stays after the trigger. Record it in the entry, with your reason: within one call it is
+>   still "judged when the blow is copied", and pricing before the trigger would price copies that the trigger refuses.
+> - The oracle change in the existing Echo test is ACCEPTED as a change to what a test computes, old -> new, with the
+>   reason that its player wears no rows, so its figure is unchanged.
+> - Registration ACCEPTED: base + 2 / 0; Python as measured; EC-I with both tests failing 1 assertion each; EC-II with
+>   only the tag test failing 1. The prefix selects exactly the 2 tests.
+
+J1 is the first judgement under JUDGEMENTS OF THE WRITING SESSION: **ACCEPTED 2026-10-25**, the price staying after the
+trigger, for the coordinating session's reason above. The oracle change is the one under Tests, old `WeaponDamageOf` and
+new `AttackDamageWithNoTarget` with the strike's tags: **ACCEPTED 2026-10-25**.
+
+**WINDOW t82w, AS REGISTERED** (t81w ran this path's tests in its whole suite and they passed there; its proofs did not
+run). At `178ffae28`, the top of `fix/attack-damage-reaches-patches-and-copies-2`, lock `enchant-t82w`, 15.8 GB of
+physical memory free.
+
+- **The whole Unreal suite, as registered:** "4167 tests performed, 4167 succeeded, 0 failed" (4160 on development + 2
+  of this path + 5 of path A); declared 4167, gap 0. The memory summary line, quoted: "CataclysmTestMemorySummary:
+  tests=4774 peak_used_virtual_mb=11431 final_used_virtual_mb=11143 collections=3159 collection_total_s=109.267
+  worlds_at_last_collection=1".
+- **Python of record, as registered:** "6974 passed, 8 skipped"; JUnit 6982 tests, 0 failures, 0 errors, 8 skipped.
+- **EC-I, the copy's self hit priced from the attribute again** (anchor counted once; prefix
+  `Cataclysm.DungeonModifierEffects.EchoChamberSelfHit`, 2 tests): PROVED, AS REGISTERED. With the break in, 2
+  performed, 0 succeeded, 2 failed, both; 1 failed assertion each, registered 2: "a row scoped to the copied skill's
+  Type.Melee raises it: 13.65 against 13.65" and "still, the self hit takes the 50% row: 13.65 against the control's
+  13.65". 0 ensures. Restored, 2 performed, 2 succeeded. The file's hash is the same after.
+- **EC-II, the copy priced with no tags** (anchor counted once; same prefix): PROVED, AS REGISTERED. With the break in,
+  2 performed, 1 succeeded, 1 failed, `EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys`;
+  1 failed assertion, registered 1, the Type.Melee one. 0 ensures. Restored, 2 performed, 2 succeeded. The file's hash is
+  the same after.
 
 ---
 
