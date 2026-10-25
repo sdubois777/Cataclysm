@@ -358,7 +358,35 @@ None.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t91w, under the editor lock as `enchant-t91w`, taken at 11.7 GB
+free, at `179951c70` on `feat/skill-pool-follows-worn-weapons-1`: the two commits moved from `8d45a0dd9` and `30c38401a`
+(on `1bf218ccb`) onto development `7f3d26e8c` as `5c34d4363` and `179951c70`. Both kept their zero-context patch ids,
+whole and outside this file, and their removed lines (70 and 28). This file conflicted in the first, resolved by placing
+the entry, its lines unchanged. `CataclysmDungeonGameMode.cpp` merged without a conflict; **the second commit's test block
+in `CataclysmDungeonModifierEffectsTests.cpp` conflicted append-to-append with the Corrupted Stalker's tests**, which git
+interleaved across both; the file was REBUILT rather than its markers edited: development's file with this commit's one
+inserted block (134 lines, no removal) put back before the file's last two lines, giving 0 markers, 757 registered tests
+(development's 754 + 3) and +134 / -0 against development. `tools/check_resolved_cpp.py` over the 17 C++ files the branch
+changes: "17 files read, 0 with complaints".
+
+- **The test most at risk from that rebuild, alone, first:** `Cataclysm.SkillPool.EchoChamberCopiesASkillOfTheSecondCarriedType`:
+  "Build: Succeeded - 40 actions, 37 files compiled"; "1 tests performed, 1 succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** build already up to date; "4221 tests performed, 4221 succeeded, 0 failed"
+  (4210 on development + 11 of this layer); "Declared: 4221 tests in the tree at 179951c70; 4221 performed, gap 0". 43
+  tests skipped part of what they check. The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4828
+  peak_used_virtual_mb=7972 final_used_virtual_mb=7656 collections=3202 collection_total_s=107.589
+  worlds_at_last_collection=1".
+- **Python of record, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.SkillPool.` (11 tests), each anchor counted once, 0 ensures, the file's hash the
+  same after, and every restored half 11 performed, 11 succeeded:**
+  - **L2-G1, the pool reads only the first worn weapon:** PROVED, AS REGISTERED. 2 failed, `AMatchedPairPoolsOnce` and
+    `TwoWeaponsPoolEveryCombinationOfWeaponAndType`; 5 failed assertions, registered 5.
+  - **L2-G2, the fill ignores the creation type's priority:** PROVED, AS REGISTERED. 2 failed,
+    `TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder` and
+    `ATestsPinnedDamageTypeHoldsThroughAChangeOfGear`; 4 failed assertions, registered 4.
+  - **L2-G3, the foreign window reads only the first carried type:** PROVED, AS REGISTERED. 1 failed,
+    `AHitOfAnyCarriedTypeIsTheCharactersOwnAndOpensNoForeignWindow`; 1 failed assertion, registered 1.
 
 ---
 
