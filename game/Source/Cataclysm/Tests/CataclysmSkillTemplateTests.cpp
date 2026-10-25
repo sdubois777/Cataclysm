@@ -18060,6 +18060,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseGroundTest,
  * tick is 1.6 times the same blink's used with none. The fighter's weapon damage
  * carries no folded increases, so (1 + 0 + 0.6) / (1 + 0) is 1.6. Issue #1833,
  * phase 2.
+ *
+ * SINCE #2234 the spent 60% joins the attack damage line's own increases in one
+ * bracket, (1 + line + spent), and not the folded ones; this fighter records no
+ * line, so its line's increases are the folded nought and the figure is still 1.6.
  */
 bool FCataclysmNextUseGroundTest::RunTest(const FString&)
 {
@@ -18102,6 +18106,409 @@ bool FCataclysmNextUseGroundTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("the ground left by the use that spent 60% ticks 1.6 times as hard"),
 		Held / Plain, 1.6f, 0.001f);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Issue #2234, path A: a skill's ground is priced from its caster's whole attack damage line.
+// --------------------------------------------------------------------------
+
+/**
+ * The option the owner chose on 2026-10-23: "A ground patch and a reflected self-hit read the full attack-damage line.
+ * Conditions about you are judged when the patch is laid or the blow copied; conditions about the enemy struck do not
+ * apply to a patch." Before #2234 a patch read only the attack damage attribute, which holds no conditioned, scaled or
+ * skill-type row, so every figure below except the controls was the plain one.
+ *
+ * ONE RIG FOR THE FIVE TESTS: the `Cataclysm.Skills.` fighter, whose attack damage attribute is 100, and a Heavy strike
+ * all round of 4 m with no cooldown and no mana that leaves 3 m of ground for 6 seconds at 16.7% of its hit a sweep, so
+ * a plain tick is 100 x 250% x 16.7% = 41.75. The caster's attack damage line is built by hand as
+ * `UCataclysmPlayerClassStats::ApplyTo` would leave it: the weapon's 100 flat, which the attribute already holds, nothing
+ * folded, and the rows under test, which the attribute cannot hold. NO ENEMY STANDS ANYWHERE: each patch's figure is
+ * read off the zone as it is laid, so no blow is struck, no team is asked about and no tick is waited for. The critical
+ * strike roll is pinned at 100 all the same, after the world is made, for the strike's own swing, which finds nobody.
+ * Each patch is destroyed once read, so the next use leaves the only one.
+ */
+namespace CataclysmGroundPatchLineTest
+{
+	using namespace CataclysmNextUseTest;
+
+	/** What one sweep of the strike's ground deals from the weapon alone: 100 x 250% x 16.7%. */
+	constexpr float PlainTick = WeaponDamage * 250.0f / 100.0f * 16.7f / 100.0f;
+
+	/** One increase on the caster's attack damage line, of `Percent`, under `Condition`, requiring `RequiredTag`. */
+	FCataclysmStatModifier AGroundLineIncrease(float Percent,
+		ECataclysmStatCondition Condition = ECataclysmStatCondition::Always, const TCHAR* RequiredTag = nullptr)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Percent;
+		Row.Condition = Condition;
+		if (RequiredTag)
+		{
+			Row.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(RequiredTag), /*ErrorIfNotFound=*/false));
+		}
+		return Row;
+	}
+
+	/** The caster's attack damage line: the weapon's 100 flat, nothing folded, and `Rows`. */
+	void RecordTheGroundLine(FScopedFighter& Caster, const TArray<FCataclysmStatModifier>& Rows)
+	{
+		FCataclysmStatModifier Weapon;
+		Weapon.Bucket = ECataclysmStatBucket::Flat;
+		Weapon.Source = ECataclysmModifierSource::GearImplicit;
+		Weapon.Value = WeaponDamage;
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Weapon);
+		Line.Modifiers.Append(Rows);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("attack_damage")), Line);
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	}
+
+	/** The rig's strike, carrying the tags `TagCell` names, with no cooldown and no mana so it can be used again. */
+	UCataclysmStrikeSkill* AGroundStrike(FScopedFighter& Caster, const TCHAR* TagCell)
+	{
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Heavy,
+			TEXT("Radius=4; Angle=360; GroundRadius=3; GroundDuration=6; GroundPercent=16.7"),
+			TEXT("A strike leaving ground"), TagCell);
+		if (Strike)
+		{
+			Strike->CooldownOverride = 0.0f;
+			Strike->ManaCostOverride = 0.0f;
+		}
+		return Strike;
+	}
+
+	/**
+	 * Use `Strike` and read the one patch it left: what a sweep of it deals and what its first sweep was told. False,
+	 * and both -1, when the use was refused or did not leave exactly one patch. The patch is destroyed once read.
+	 */
+	bool UseAndReadTheGround(FScopedFighter& Caster, UCataclysmStrikeSkill* Strike, float& OutTick, float& OutFirstSweep)
+	{
+		OutTick = -1.0f;
+		OutFirstSweep = -1.0f;
+		if (!Activate(Caster, Strike))
+		{
+			return false;
+		}
+		ACataclysmGroundZone* Patch = TheOnlyGroundZone(Caster.Actor->GetWorld());
+		if (!Patch)
+		{
+			return false;
+		}
+		OutTick = Patch->DamagePerTick;
+		OutFirstSweep = Patch->FirstSweepDamage;
+		Patch->Destroy();
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineWearerRowTest,
+	"Cataclysm.GroundPatchLine.AWearerRowRaisesTheGroundLaidWhileItHoldsAndNotWhileItDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "While stationary your damage is increased by 20%", hand-built as 20% increased under `WhileStationary`. THE CONTROL
+ * FIRST: having just moved, the row does not hold, and the patch ticks the plain 41.75. Standing still, the row holds
+ * when the patch is laid, and the patch ticks 20% harder; its first sweep is told the same raised figure.
+ */
+bool FCataclysmGroundLineWearerRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(20.0f, ECataclysmStatCondition::WhileStationary)});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	if (!TestTrue(TEXT("control: having just moved, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float WhenMoved = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75, the row not holding"), WhenMoved, PlainTick, 0.01f);
+
+	Caster.AbilitySystem->NoteDidNotMove();
+	if (!TestTrue(TEXT("standing still, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("standing still, the patch ticks 20% harder: the row is judged when the patch is laid"),
+			  Tick / WhenMoved, 1.2f, 0.001f);
+	TestEqual(TEXT("and its first sweep is told the same raised figure"), FirstSweep, Tick, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineTagRowTest,
+	"Cataclysm.GroundPatchLine.ATagScopedRowRaisesTheGroundOfAMatchingSkillOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Melee skills deal 20%-40% increased damage", hand-built at 30% requiring `Type.Melee`, with no condition: ruling 1,
+ * an unconditioned tag-scoped row reaches a patch, judged with the skill's own tags (ruling 2). THE CONTROL FIRST: the
+ * strike with no type tag leaves the plain patch. The same strike tagged as a spell leaves the same; tagged as melee,
+ * a patch 30% harder.
+ */
+bool FCataclysmGroundLineTagRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: Type.Melee is in the tag vocabulary"),
+					 FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false).IsValid()))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(30.0f, ECataclysmStatCondition::Always, TEXT("Type.Melee"))});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	if (!TestTrue(TEXT("control: the strike with no type tag is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float Untyped = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75"), Untyped, PlainTick, 0.01f);
+
+	Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic, Type.Spell"));
+	if (!TestTrue(TEXT("tagged as a spell, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks as the control's: the melee row keeps to melee"), Tick, Untyped, 0.001f);
+
+	Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic, Type.Melee"));
+	if (!TestTrue(TEXT("tagged as melee, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 30% harder than the control's"), Tick / Untyped, 1.3f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineEnemyRowTest,
+	"Cataclysm.GroundPatchLine.ARowAboutTheEnemyStruckDoesNotRaiseTheGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Deal 40%-80% increased damage to Boss enemies" at 50% and "Staggered enemies take 20%-35% increased damage" at 35%,
+ * hand-built under `TargetIsBoss` and `TargetIsStaggered`, beside the stationary 20%. The owner's option: "conditions
+ * about the enemy struck do not apply to a patch". A patch has no target, so both refuse. THE CONTROL FIRST: having
+ * moved, the patch is the plain one and not 85% harder; standing still, it is 20% harder and not 105%.
+ */
+bool FCataclysmGroundLineEnemyRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(20.0f, ECataclysmStatCondition::WhileStationary),
+								 AGroundLineIncrease(50.0f, ECataclysmStatCondition::TargetIsBoss),
+								 AGroundLineIncrease(35.0f, ECataclysmStatCondition::TargetIsStaggered)});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	if (!TestTrue(TEXT("control: having just moved, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float WhenMoved = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75: neither enemy row reaches it"), WhenMoved, PlainTick,
+			  0.01f);
+
+	Caster.AbilitySystem->NoteDidNotMove();
+	if (!TestTrue(TEXT("standing still, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 20% harder, the stationary row's alone, and not 105%"), Tick / WhenMoved, 1.2f,
+			  0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineGadgetTest,
+	"Cataclysm.GroundPatchLine.AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 6 of 2026-10-24: "a gadget's ground takes 'Gadgets deal ...' and the gadget-age rows, inside the gadget scope.
+ * The flat max-health share stays out." Hand-built: "Gadgets deal 20%-40% increased damage" at 30% and "While
+ * stationary your gadgets deal 20%-40% increased damage" at 25%, both requiring `Type.Deployable`. The caster has just
+ * moved throughout. A skill gadget stands 10 m away, outside the strike's 4 m. A gadget's cast carries
+ * `Type.Deployable` (`ACataclysmMinion::CastPlayersSkillFromHere`) and names the gadget in `FreeRepeatCastBy`
+ * (`UCataclysmTriggeredSkill::Trigger`); this test sets both by hand on the rig's strike.
+ *
+ * THE CONTROL FIRST: the strike with no `Type.Deployable`, cast by the caster, leaves the plain patch. The same strike
+ * carrying `Type.Deployable` and cast by the caster takes the 30% and not the stationary 25%, the caster having moved.
+ * Cast by the gadget, it takes both: inside the gadget's scope "while stationary" is judged on the gadget, which stands.
+ */
+bool FCataclysmGroundLineGadgetTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	// A skill gadget needs a world that has begun play, or its attribute set is not registered and setting its
+	// MaxHealth hits the engine's check (window t81w, 2026-10-25).
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: Type.Deployable is in the tag vocabulary"),
+					 FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false).IsValid()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget =
+		ACataclysmMinion::PlaceSkillGadget(Caster.Actor, ECataclysmAbilitySlot::Heavy, FVector(10.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a skill gadget is placed. If not, DT_MinionTypes needs the SkillGadget row: run "
+						  "tools/generate_datatable_assets.py"), Gadget)
+		|| !TestTrue(TEXT("set-up: and it is a skill gadget"), Gadget->IsSkillGadget()))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(30.0f, ECataclysmStatCondition::Always, TEXT("Type.Deployable")),
+								 AGroundLineIncrease(25.0f, ECataclysmStatCondition::WhileStationary,
+													 TEXT("Type.Deployable"))});
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	if (!TestTrue(TEXT("control: the strike with no Type.Deployable is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float NoGadget = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75: neither gadget row reaches it"), NoGadget, PlainTick,
+			  0.01f);
+
+	Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic, Type.Deployable"));
+	if (!TestTrue(TEXT("carrying Type.Deployable and cast by the caster, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch takes the 30% and not the stationary 25%: the caster has moved"), Tick / NoGadget,
+			  1.3f, 0.001f);
+
+	Strike->FreeRepeatCastBy = Gadget;
+	if (!TestTrue(TEXT("cast by the gadget, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the gadget's patch takes both, 55% harder: the stationary row is judged on the gadget"),
+			  Tick / NoGadget, 1.55f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineBracketTest,
+	"Cataclysm.GroundPatchLine.ASpentChargeJoinsTheLinesIncreasesInOneBracket",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling 7 of 2026-10-24: "spent and trap increases go into the same bracket on a patch". The stationary 20% and a held
+ * "next skill" charge of 60%. Nothing is folded. THE CONTROL FIRST: having moved, with no charge, the plain patch. Then
+ * standing still, 1.2 times it; having moved with the charge spent, 1.6 times; and standing still with the charge
+ * spent, 1 + 0.2 + 0.6 = 1.8 times, one bracket, and not (1 + 0.2) x (1 + 0 + 0.6) / (1 + 0) = 1.92, which is what
+ * keeping the charge's own multiplier beside the line's would give.
+ */
+bool FCataclysmGroundLineBracketTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(20.0f, ECataclysmStatCondition::WhileStationary)});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	if (!TestTrue(TEXT("control: having just moved, with no charge, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float Plain = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75"), Plain, PlainTick, 0.01f);
+
+	Caster.AbilitySystem->NoteDidNotMove();
+	if (!TestTrue(TEXT("standing still, with no charge, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 1.2 times the control's"), Tick / Plain, 1.2f, 0.001f);
+
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	HoldASkillCharge(Caster);
+	if (!TestTrue(TEXT("having moved, with the charge, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 1.6 times the control's"), Tick / Plain, 1.6f, 0.001f);
+
+	Caster.AbilitySystem->NoteDidNotMove();
+	HoldASkillCharge(Caster);
+	if (!TestTrue(TEXT("standing still, with the charge, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 1 + 0.2 + 0.6 = 1.8 times the control's, one bracket, and not 1.2 x 1.6 = 1.92"),
+			  Tick / Plain, 1.8f, 0.001f);
 	return true;
 }
 

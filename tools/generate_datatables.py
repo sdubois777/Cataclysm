@@ -9003,14 +9003,14 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
 #: here to have a probe in `CataclysmStatExemptionTests.cpp`, or to be named there
 #: as read from the code and not yet probed.
 #:
-#: WHAT IT DOES NOT SAY. That every consumer of a stat asks. One is known to
-#: have one that reads the attribute, with an issue: damage priced outside a
-#: hit for `attack_damage` (#2234). Of its three paths the self hit ("hits you
-#: instead", "backfire") reads the whole line since 2026-10-24 (path B); the
-#: Echo Chamber copy (path C) and a ground patch (path A) still read the
-#: attribute. A second, a projectile skill's throw
-#: interval for `attack_speed`, asks since issue #2233 (2026-10-23), once when a
-#: rack starts. A third, `dot_damage` judged once at application, is BUILT since
+#: WHAT IT DOES NOT SAY. That every consumer of a stat asks. One was known to
+#: have one that read the attribute, with an issue: damage priced outside a
+#: hit for `attack_damage` (#2234). All three of its paths are built: the self
+#: hit ("hits you instead", "backfire") reads the whole line since 2026-10-24
+#: (path B), the Echo Chamber copy that hits the player since 2026-10-25 (path
+#: C), and a skill's ground patch since 2026-10-25 (path A). A second, a
+#: projectile skill's throw interval for `attack_speed`, asks since issue
+#: #2233 (2026-10-23), once when a rack starts. A third, `dot_damage` judged once at application, is BUILT since
 #: #2235 (2026-10-23): a tick priced from its applier's stats asks `dot_damage`
 #: again with the character it lands on, so a condition about the target is
 #: judged on each tick. A condition about the wearer's own state is still
