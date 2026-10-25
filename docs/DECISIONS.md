@@ -54,7 +54,7 @@ warnings remain. The agent that read the log estimated at most 37,657 warnings f
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | the base's last measured total, 4160 at `00a925dc7`, plus this change's 1: **4161**, 0 failed. Plus whatever has merged into `development` since, by name |
+| Whole Unreal suite | `development`'s measured total at `489386e89` (the #2234 merge), 4167, plus this change's 1: **4168**, 0 failed |
 | `grep -c "World has no context"` on the kept engine log | falls from 1,830,986 to **at most 75,314** (at most 37,657 warnings, each printed twice) |
 | `final_used_virtual_mb` | within 1 GB of 11,421, so **10,421 to 12,421**. A context that is never removed holds its world and would raise this |
 | Guard proof | the call to `GiveTestWorldAContext` removed from `MakeWorldThatHasBegunPlay`. Predicted: `ATestWorldHasAWorldContextUntilItIsDestroyed` fails |
