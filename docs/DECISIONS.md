@@ -329,7 +329,43 @@ them for the second window.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**THE SECOND WINDOW, t74x**, run by the enchantment session on 2026-10-24 under the editor lock as `enchant-t74x`, at
+53beaa124 (the two commits moved from 16182a6c7 and 6f47c8b6d onto development 7edf6c0e6, #2500; each kept its
+zero-context patch id, whole and outside this file, and its removed lines), with `CATACLYSM_TEST_MEMORY_LINES=1`. Free
+physical memory before the lock: 17.7 GB. Every figure below is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 22 actions, 19 files compiled"; "4139 tests performed, 4139 succeeded,
+  0 failed"; "Declared: 4139 tests in the tree at 53beaa124; 4139 performed, gap 0". 40 tests skipped part of what they
+  check.
+- **The memory, from the summary line, quoted:** "CataclysmTestMemorySummary: tests=4746 peak_used_virtual_mb=10914
+  final_used_virtual_mb=10715 collections=3135 collection_total_s=106.841 worlds_at_last_collection=1". Final UsedVirtual
+  10,715 MB, below the registered 15,000 MB, against 45,700 and 45,644 MB before this change. Peak 10,914 MB. The longest
+  single collection took 3,608.9 ms.
+- **The world prediction, re-registered for this window, MET:** after every collection the live world count was 1, and
+  0 collections left more than 1 above the first line's baseline of 0. So the 26 Debuffs worlds are freed, and the 1 is the
+  editor's own world.
+- **Python of record:** "6946 passed, 8 skipped"; JUnit 6954 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **TW-I: NO MEASUREMENT in t74x.** After the break was written and built, `unreal_build.run_automation_tests` raised
+  "PermissionError: [WinError 32] The process cannot access the file because it is being used by another process" on
+  deleting `game/Saved/Logs/Cataclysm.log`, before any test ran. The source file was restored. That is issue #2459's
+  second incident.
+
+**THE PROOF-ONLY WINDOW, t74y**, ruled 2026-10-24 ("R1: YES, a proof-only window now. Run only TW-I ... The suite and
+Python figures stand from t74x."), run under the lock as `enchant-t74y` at the same 53beaa124. Free memory before the lock:
+17.5 GB. The enchantment session's scratch log check now renames the log away and back (a delete-capable test) instead of
+appending to it; it printed "can be renamed away and back, so it can be deleted (waited 5 s)", so the log was held for
+about 5 s and the check waited.
+
+- **TW-I, the collection between tests collects nothing** (`CataclysmCollectGarbageBetweenTests.cpp`, the
+  `CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);` line removed, anchor counted once; prefix `Cataclysm.TestWorld.`, 5
+  tests): PROVED. With the break in, 5 tests performed, 4 succeeded, 1 failed,
+  `ADestroyedWorldIsFreedByTheCollectionBetweenTests`; 21 failed assertions, 21 registered (each of the 10 worlds and 10
+  creatures still in memory after the collection, and the live world count 13 against its baseline of 3). Restored, 5
+  performed, 5 succeeded. The file's hash is the same after.
+
+So this change closes #2485: the whole suite's final private memory is 10.7 GB, below the 15 GB the entry set as its
+condition.
 
 ---
 
