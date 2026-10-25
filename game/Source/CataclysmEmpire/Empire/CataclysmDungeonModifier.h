@@ -290,6 +290,41 @@ public:
 	/** Mixed into a dungeon's walk seed for which Edict its hit leaves. The letters "left". */
 	static constexpr int32 LeftEdictSalt = 0x6C656674;
 
+	// ----------------------------------------------------------------------
+	// The Corrupted Stalker's grant -- 2026-10-25, issue #1308
+	// ----------------------------------------------------------------------
+
+	/** The Corrupted Stalker's row: the one row of the table's `Generic` column. */
+	static FName CorruptedStalkerKey();
+
+	/**
+	 * The chance that a dungeon carries the Corrupted Stalker: one in twenty.
+	 *
+	 * THE OWNER'S, 2026-09-05, recorded 2026-10-24: `docs/DECISIONS.md`, "2026-09-05 (recorded 2026-10-24) -- The
+	 * Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the modifier slots". Flat on every
+	 * dungeon, Sacrificial and Cataclysm dungeons included, ruled by the coordinating session on 2026-10-25: it is
+	 * outside the slots, so nothing that doubles the slots doubles it.
+	 */
+	static constexpr float CorruptedStalkerChance = 0.05f;
+
+	/** Mixed into the run's seed for the Corrupted Stalker's roll. The letters "stlk". */
+	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
+
+	/**
+	 * Whether a dungeon carries the Corrupted Stalker: one roll, 0 to 100, below 5 carries it.
+	 *
+	 * ON A STREAM OF ITS OWN, ruled by the coordinating session on 2026-10-25, so no modifier draw moves: the run's
+	 * Stalker seed (`UCataclysmEmpireRun::CorruptedStalkerSeed`) mixed with the dungeon's walk seed. The same
+	 * dungeon of the same run answers the same every time it is asked.
+	 *
+	 * THE RUN'S SEED AS WELL AS THE DUNGEON'S, which the Edicts above do not take: a dungeon's walk seed is its
+	 * identifier plus one, the same in every campaign, so on it alone the same dungeons of every campaign would
+	 * carry the Stalker.
+	 *
+	 * `Cataclysm.CorruptedStalkerRoll`, 0 to 100, replaces the roll for a test; -1, the default, rolls.
+	 */
+	static bool CarriesTheCorruptedStalker(int32 RunStalkerSeed, int32 WalkSeed);
+
 	/**
 	 * Every Edict, in the order an Ascendant of this walk seed takes them.
 	 *

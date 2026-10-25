@@ -598,6 +598,17 @@ class TuningConfig:
     modifiers_per_tier: int = 1
     sacrificial_modifier_multiplier: int = 2
 
+    # THE CORRUPTED STALKER IS GRANTED OUTSIDE THE SLOTS. Every dungeon has an
+    # independent chance of carrying it, whatever its Cataclysm and sub-type,
+    # Sacrificial and Cataclysm dungeons included; it is never drawn into a slot
+    # and still adds its weight to the Modifier Score. The project owner decided
+    # it on 2026-09-05 (`docs/DECISIONS.md`, "2026-09-05 (recorded 2026-10-24) --
+    # The Corrupted Stalker is granted by a flat 5% chance on any dungeon,
+    # outside the modifier slots"). The roll is on a stream of its own, ruled by
+    # the coordinating session on 2026-10-25, so the shared `rng` does not move;
+    # see `Simulation._carries_the_corrupted_stalker`. 0 turns it off.
+    corrupted_stalker_chance: float = 0.05
+
     # Spawn distribution over dungeon subtypes. Every dungeon gets one: there
     # is deliberately no "None" entry here, because the owner ruled on
     # 2026-09-05 that every dungeon should have a sub-type. See

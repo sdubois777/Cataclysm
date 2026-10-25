@@ -2,6 +2,16 @@
 
 #include "Empire/CataclysmDungeonModifier.h"
 
+#include "HAL/IConsoleManager.h"
+
+/** Pins the Corrupted Stalker's roll, 0 to 100: below 5 a dungeon carries it. Issue #1308. */
+static TAutoConsoleVariable<float> CVarCorruptedStalkerRoll(
+	TEXT("Cataclysm.CorruptedStalkerRoll"),
+	-1.0f,
+	TEXT("Pin the roll that decides whether a dungeon carries the Corrupted Stalker, 0 to 100: below 5 it does. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 int32 UCataclysmDungeonModifierRules::CountFor(
 	int32 DifficultyTier, ECataclysmDungeonSubType SubType)
 {
@@ -92,6 +102,20 @@ float UCataclysmDungeonModifierRules::DangerOf(
 	}
 
 	return Total;
+}
+
+FName UCataclysmDungeonModifierRules::CorruptedStalkerKey()
+{
+	return FName(TEXT("Generic_Corrupted_Stalker"));
+}
+
+bool UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(int32 RunStalkerSeed, int32 WalkSeed)
+{
+	const float Pinned = CVarCorruptedStalkerRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f
+		? Pinned
+		: FRandomStream(UCataclysmRoster::MixedSeed(RunStalkerSeed, WalkSeed)).FRandRange(0.0f, 100.0f);
+	return Roll < CorruptedStalkerChance * 100.0f;
 }
 
 TArray<FName> UCataclysmDungeonModifierRules::KeysOf(

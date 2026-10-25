@@ -2,6 +2,91 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A dungeon carries the Corrupted Stalker one time in twenty, on a roll of its own (#1308, part A)
+
+**Affects:** the empire layer (`UCataclysmEmpireRun::GiveModifiers`, `UCataclysmDungeonModifierRules`), the simulation
+(`Simulation._make_dungeon`, `TuningConfig.corrupted_stalker_chance`), three Unreal tests, one simulation test file, and
+the statements in `game/README.md` and two source comments that said nothing grants it. **Part A only:** this decides
+which dungeons carry the row. What the Stalker does on a floor is part B, not built, and the row's state stays
+**Not built** in `UCataclysmDungeonModifierEffects::BuiltStateOf`.
+
+### SAID FIRST
+
+- **THE UNREAL HALF IS NOT BUILT AND NOT RUN WHEN WRITTEN.** The simulation half was run; its figures are below.
+- **ONE DEPARTURE FROM THE RULING, for the coordinating session to confirm or reverse:** the ruling said to seed the
+  roll "from the dungeon's own seed with a fixed salt". A dungeon's own seed, `FCataclysmDungeon::WalkSeed`, is its
+  identifier plus one and is the same in every campaign. On it alone, the same dungeons of every campaign would carry
+  the Stalker. So the roll's stream mixes the run's seed in as well: `CorruptedStalkerSeed` is
+  `MixedSeed(run seed, "stlk")`, and each dungeon's stream is `MixedSeed(CorruptedStalkerSeed, WalkSeed)`. No other
+  stream is touched either way.
+- **AT RISK IN THE WINDOW: three existing tests compare a dungeon's modifier count exactly**, with a pool that holds
+  the Stalker row: `EveryDungeonASurgeLandsCarriesModifiers`, `ASacrificialDungeonInARunReallyGetsDouble` and
+  `AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot`. A dungeon they look at that rolls the Stalker carries one
+  more. Whether any does is decided by their seeds and is not computed here.
+- **`tools/tests/test_dungeon_modifier_port.py::test_nothing_else_grants_it` still passes and its docstring is now
+  false:** it checks that `_make_dungeon` does not name the Generic type, and the grant is in a helper. Changing it
+  is a change to an existing test, which waits for a ruling.
+
+### The rules, as decided
+
+- **Every dungeon has an independent 5% chance**, the owner's decision of 2026-09-05: `docs/DECISIONS.md`,
+  "2026-09-05 (recorded 2026-10-24) — The Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the
+  modifier slots". It is never drawn into a slot, and it adds its weight, 20, to the Modifier Score.
+- **Flat on every dungeon, Sacrificial and Cataclysm dungeons included**, ruled by the coordinating session on
+  2026-10-25. It is outside the slots, so nothing doubles it, and no dungeon carries it twice.
+- **On a stream of its own**, ruled the same day, so no modifier draw moves: `GiveModifiers` still advances
+  `ModifierStream` by exactly the slot count. In the simulation the roll is `random.Random` seeded with the run's
+  seed and the dungeon's id, so the shared `rng` does not move.
+- **The re-run of `experiments.py` is a follow-up**, ruled the same day, after this merges.
+
+### What changed
+
+- `CataclysmDungeonModifier.h` / `.cpp`: `CorruptedStalkerKey()`, `CorruptedStalkerChance` (0.05),
+  `CorruptedStalkerSalt`, and `CarriesTheCorruptedStalker(RunStalkerSeed, WalkSeed)`: one roll, 0 to 100, below 5
+  carries it. The console variable `Cataclysm.CorruptedStalkerRoll` pins the roll for a test; -1, the default, rolls.
+- `CataclysmEmpireRun.h` / `.cpp`: `CorruptedStalkerSeed`, set in `Begin`. After the slots are drawn,
+  `GiveModifiers` looks for the Stalker's row in the run's whole table and, if the dungeon carries it, appends its key
+  and adds its weight. A pool without the row grants nothing.
+- `sim/cataclysm_sim/config.py`: `corrupted_stalker_chance = 0.05`. `modifiers.py`: `CORRUPTED_STALKER`, the table's
+  Generic row, and the docstring of `pool_for` saying the row is now granted. `engine.py`: `Simulation.seed` and
+  `_carries_the_corrupted_stalker(did)`, called by `_make_dungeon` after the slot draw.
+
+### Tests
+
+- Unreal, `CataclysmEmpire/Tests/CataclysmDungeonModifierTests.cpp`:
+  - `Cataclysm.DungeonModifiers.AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight`: 4,000 hand-built
+    dungeons; the share carrying it is within five standard deviations of 200. Each carrier holds it once and is worth
+    exactly 20 more than the same dungeon in a control run without the row. Every dungeon's slots, and the stream's
+    end, match the control. Sacrificial dungeons carry it too, and another run seed grants it to other dungeons.
+  - `Cataclysm.DungeonModifiers.TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted`: with the
+    roll pinned at 0, at tier 8, each dungeon's slots are the draw of its slot count on a copy of the stream, the
+    stream ends where the copy does, and the Stalker comes last.
+  - `Cataclysm.DungeonModifiers.NoDungeonCarriesTheCorruptedStalkerWhenItsRollIsAboveFiveOrItsRowIsAbsent`: the roll
+    pinned at 5 grants none of 200; a pool without the row grants none even pinned at 0; the control with the row
+    grants all 200.
+- Python, `sim/tests/test_the_corrupted_stalker_is_granted_outside_the_slots.py`: eight tests covering the 5% against
+  the design document's sentence, the row and its weight, the rate, the +20, that no other draw moves (the shared
+  `rng`'s state compared), Sacrificial dungeons, the chance at 0, and seeds.
+
+### Proofs
+
+Simulation, by `tools/prove_guard.py`, 2026-10-25, both **PROVED**:
+
+| Break in `engine.py` | Failed with the break in | Restored |
+|---|---|---|
+| `picked.append(CORRUPTED_STALKER)` -> `pass` (no grant) | 4: the rate, the +20, Sacrificial, seeds | 8 passed |
+| the roll on `self.rng.random()` (the shared stream) | 2: `test_a_carrying_dungeon_holds_it_once_and_is_worth_twenty_more`, `test_the_grant_moves_no_other_draw` | 8 passed |
+
+Unreal: not run yet. **Registered** for the window: no grant (`Dungeon.Modifiers.Add(Stalker->RowKey);` removed),
+predicted to fail `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` and the other two; and the roll
+taken from `ModifierStream`, predicted to fail `TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted`.
+
+### Run
+
+Not run yet. The whole Unreal suite is registered at the base's last measured total plus 3.
+
+---
+
 ## 2026-10-25 — Every test world has a world context, so destroying an actor in one no longer warns (#2488)
 
 **Affects:** four test files under `game/Source/Cataclysm/Tests/` and nothing else. No game code changes. **This closes

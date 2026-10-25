@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
-from .modifiers import pool_for
+from .modifiers import CORRUPTED_STALKER, pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
@@ -282,6 +282,9 @@ class Simulation:
     def __init__(self, cfg: TuningConfig, seed: int = 0):
         self.cfg = cfg
         self.rng = random.Random(seed)
+        # KEPT FOR STREAMS OF ITS OWN, which must not draw on `rng`. See
+        # `_carries_the_corrupted_stalker`.
+        self.seed = seed
         self.empire: Empire = build_empire(cfg)
         self.dungeons: dict[int, Dungeon] = {}
         self._next_did = 0
@@ -423,6 +426,9 @@ class Simulation:
         if pool and n_mods > 0:
             k = min(n_mods, len(pool))
             picked = self.rng.sample(pool, k)
+        # THE CORRUPTED STALKER, OUTSIDE THE SLOTS AND OFF `rng`. Issue #1308.
+        if self._carries_the_corrupted_stalker(self._next_did):
+            picked.append(CORRUPTED_STALKER)
         mod_score = sum(s for _, s in picked)
 
         if dtype in (DungeonType.BASIC, DungeonType.QUEST):
@@ -471,6 +477,25 @@ class Simulation:
         self._next_did += 1
         self.dungeons[d.did] = d
         return d
+
+    def _carries_the_corrupted_stalker(self, did: int) -> bool:
+        """Whether the dungeon about to be made with this id carries the
+        Corrupted Stalker.
+
+        ONE ROLL A DUNGEON, ON A STREAM OF ITS OWN, made from the run's seed and
+        the dungeon's id, ruled by the coordinating session on 2026-10-25. A roll
+        on the shared `rng` would shift every later draw of the campaign, so a
+        measurement could not tell the Stalker's own 20 from everything else
+        moving. The game does the same on a stream of its own.
+
+        A FLAT CHANCE ON EVERY DUNGEON, Sacrificial and Cataclysm dungeons
+        included, and once at most: it is outside the slots, so nothing doubles
+        it. `TuningConfig.corrupted_stalker_chance`.
+        """
+        chance = self.cfg.corrupted_stalker_chance
+        if chance <= 0.0:
+            return False
+        return random.Random(f"corrupted-stalker:{self.seed}:{did}").random() < chance
 
     def _walk_days(self, floors: int, subtype: str) -> int:
         """How many days walking a dungeon of this depth and sub-type costs.

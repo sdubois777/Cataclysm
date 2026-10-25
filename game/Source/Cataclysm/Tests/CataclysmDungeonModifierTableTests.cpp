@@ -142,8 +142,8 @@ bool FCataclysmDungeonModifierTableTypesTest::RunTest(const FString& Parameters)
 
 	// AND EXACTLY ONE ROW IS GENERIC: the Corrupted Stalker. The project owner
 	// ruled on 2026-09-05 that it is granted separately and does not take a
-	// modifier slot, so it maps to `None` and is never in a pool. Nothing grants
-	// it; that gap is issue #1308.
+	// modifier slot, so it maps to `None` and is never in a pool. It is granted
+	// outside the slots, one dungeon in twenty, since 2026-10-25 (issue #1308).
 	TestEqual(TEXT("exactly one row is Generic"), Generic, 1);
 
 	return true;

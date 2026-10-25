@@ -8,6 +8,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
+#include "HAL/IConsoleManager.h"
 
 /**
  * Which dungeon modifiers a dungeon carries, and how dangerous they make it.
@@ -1190,6 +1191,219 @@ bool FCataclysmLastEdictsDrawnTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("CONTROL: holding the three among its own, it draws none of them"), DrawnAgain, 0);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// The Corrupted Stalker's grant -- 2026-10-25, issue #1308
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCorruptedStalkerTest
+{
+	/** Pins `Cataclysm.CorruptedStalkerRoll` for one scope and puts back the value it found. */
+	struct FScopedStalkerRoll
+	{
+		explicit FScopedStalkerRoll(float Roll)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CorruptedStalkerRoll")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+		~FScopedStalkerRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/** A dungeon built by hand, with the identifier its walk seed comes from. */
+	FCataclysmDungeon Dungeon(int32 Id, ECataclysmDungeonSubType SubType)
+	{
+		FCataclysmDungeon Made;
+		Made.DungeonId = Id;
+		Made.SubType = SubType;
+		return Made;
+	}
+
+	/** The run's modifiers without the Corrupted Stalker: what the slots drew. */
+	TArray<FName> SlotsOf(const FCataclysmDungeon& Of)
+	{
+		TArray<FName> Slots = Of.Modifiers;
+		Slots.Remove(UCataclysmDungeonModifierRules::CorruptedStalkerKey());
+		return Slots;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerRateTest,
+	"Cataclysm.DungeonModifiers.AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerRateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using namespace CataclysmCorruptedStalkerTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	// THE OWNER'S RULE, 2026-09-05: every dungeon has an independent 5% chance of carrying it, outside the slots, and
+	// it adds its weight of 20. A CONTROL RUN OF THE SAME SEED WHOSE POOL HAS NO STALKER ROW draws the same slots,
+	// so each dungeon is compared with itself without the grant. Every fourth dungeon is Sacrificial, which the
+	// coordinating session ruled on 2026-10-25 does not double it.
+	const FScopedStalkerRoll Rolls(-1.0f);
+	UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 7, /* DifficultyTier */ 3);
+	UCataclysmEmpireRun* Control = MakeRun(/* Seed */ 7, /* DifficultyTier */ 3);
+	UCataclysmEmpireRun* OtherSeed = MakeRun(/* Seed */ 8, /* DifficultyTier */ 3);
+	const int32 Removed = Control->ModifierPool.RemoveAll([](const FCataclysmDungeonModifier& Row)
+		{ return Row.RowKey == Rules::CorruptedStalkerKey(); });
+	TestEqual(TEXT("CONTROL: the control run's pool lost exactly the one Stalker row"), Removed, 1);
+
+	const int32 Dungeons = 4000;
+	int32 Carrying = 0;
+	int32 SacrificialCarrying = 0;
+	int32 CarryingDifferently = 0;
+	bool bAllOnce = true;
+	bool bAllWorthTwentyMore = true;
+	bool bOthersUnchanged = true;
+	bool bSlotsUnchanged = true;
+	for (int32 Id = 0; Id < Dungeons; ++Id)
+	{
+		const ECataclysmDungeonSubType SubType =
+			Id % 4 == 0 ? ECataclysmDungeonSubType::Sacrificial : ECataclysmDungeonSubType::None;
+		FCataclysmDungeon WithGrant = Dungeon(Id, SubType);
+		FCataclysmDungeon Without = Dungeon(Id, SubType);
+		FCataclysmDungeon Elsewhere = Dungeon(Id, SubType);
+		Run->GiveModifiers(WithGrant);
+		Control->GiveModifiers(Without);
+		OtherSeed->GiveModifiers(Elsewhere);
+
+		const int32 Held = WithGrant.Modifiers.FilterByPredicate([](const FName& Key)
+			{ return Key == Rules::CorruptedStalkerKey(); }).Num();
+		bSlotsUnchanged &= SlotsOf(WithGrant) == Without.Modifiers;
+		CarryingDifferently += (Held > 0) != Elsewhere.Modifiers.Contains(Rules::CorruptedStalkerKey()) ? 1 : 0;
+		if (Held > 0)
+		{
+			++Carrying;
+			SacrificialCarrying += SubType == ECataclysmDungeonSubType::Sacrificial ? 1 : 0;
+			bAllOnce &= Held == 1;
+			bAllWorthTwentyMore &= FMath::IsNearlyEqual(WithGrant.ModifierScore, Without.ModifierScore + 20.0f);
+		}
+		else
+		{
+			bOthersUnchanged &= FMath::IsNearlyEqual(WithGrant.ModifierScore, Without.ModifierScore);
+		}
+	}
+
+	// FIVE STANDARD DEVIATIONS of a binomial of 4000 at one in twenty: 200, give or take 69.
+	const float Band = 5.0f * FMath::Sqrt(Dungeons * 0.05f * 0.95f);
+	TestTrue(FString::Printf(TEXT("%d of %d dungeons carry it, within %.0f of 200"), Carrying, Dungeons, Band),
+			 FMath::Abs(Carrying - 200.0f) <= Band);
+	TestTrue(TEXT("a carrying dungeon holds it once"), bAllOnce);
+	TestTrue(TEXT("and is worth exactly its weight of 20 more than without it"), bAllWorthTwentyMore);
+	TestTrue(TEXT("a dungeon that does not carry it is worth what it was"), bOthersUnchanged);
+	TestTrue(TEXT("every dungeon's slots drew the same modifiers as without the grant"), bSlotsUnchanged);
+	TestEqual(TEXT("the grant took nothing from the modifier stream"),
+			  Run->ModifierStream.GetCurrentSeed(), Control->ModifierStream.GetCurrentSeed());
+	TestTrue(FString::Printf(TEXT("Sacrificial dungeons carry it too: %d of %d"), SacrificialCarrying, Dungeons / 4),
+			 SacrificialCarrying > 0);
+	TestTrue(FString::Printf(TEXT("another run's seed grants it to other dungeons: %d differ"), CarryingDifferently),
+			 CarryingDifferently > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerSlotDrawTest,
+	"Cataclysm.DungeonModifiers.TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerSlotDrawTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using namespace CataclysmCorruptedStalkerTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	// THE ROLL PINNED AT 0, so every dungeon carries it, and each is given its modifiers on a copy of the stream as
+	// well. The run's stream must end where the copy does after drawing the slot count: the ruling of 2026-10-25
+	// that the grant takes no draw from `ModifierStream`. Tier 8, so a Sacrificial dungeon draws sixteen.
+	const FScopedStalkerRoll Rolls(0.0f);
+	UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 21, /* DifficultyTier */ 8);
+	const TArray<FCataclysmDungeonModifier> Pool = Rules::PoolFor(Run->ModifierPool, Run->ActiveCataclysms);
+
+	for (int32 Id = 0; Id < 40; ++Id)
+	{
+		const ECataclysmDungeonSubType SubType =
+			Id % 2 == 0 ? ECataclysmDungeonSubType::Sacrificial : ECataclysmDungeonSubType::None;
+		FCataclysmDungeon Made = Dungeon(Id, SubType);
+		FRandomStream Copy = Run->ModifierStream;
+		const TArray<FName> Expected = Rules::KeysOf(Rules::Draw(Pool, Rules::CountFor(8, SubType), Copy));
+
+		Run->GiveModifiers(Made);
+
+		if (!TestTrue(FString::Printf(TEXT("dungeon %d's slots are the draw of its slot count"), Id),
+					  SlotsOf(Made) == Expected)
+			|| !TestEqual(FString::Printf(TEXT("dungeon %d left the stream where that draw does"), Id),
+						  Run->ModifierStream.GetCurrentSeed(), Copy.GetCurrentSeed())
+			|| !TestTrue(FString::Printf(TEXT("dungeon %d carries the Stalker last, after its slots"), Id),
+						 Made.Modifiers.Num() == Expected.Num() + 1
+							 && Made.Modifiers.Last() == Rules::CorruptedStalkerKey()))
+		{
+			break;
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerControlTest,
+	"Cataclysm.DungeonModifiers.NoDungeonCarriesTheCorruptedStalkerWhenItsRollIsAboveFiveOrItsRowIsAbsent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using namespace CataclysmCorruptedStalkerTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	int32 CarryingAtFive = 0;
+	{
+		// FIVE EXACTLY IS NOT BELOW FIVE.
+		const FScopedStalkerRoll Rolls(5.0f);
+		UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 3, /* DifficultyTier */ 2);
+		for (int32 Id = 0; Id < 200; ++Id)
+		{
+			FCataclysmDungeon Made = Dungeon(Id, ECataclysmDungeonSubType::None);
+			Run->GiveModifiers(Made);
+			CarryingAtFive += Made.Modifiers.Contains(Rules::CorruptedStalkerKey()) ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("with the roll pinned at 5, none of 200 dungeons carries it"), CarryingAtFive, 0);
+
+	int32 CarryingWithoutTheRow = 0;
+	int32 CarryingWithTheRow = 0;
+	{
+		// THE ROW IS WHAT IS GRANTED, so a pool without it grants nothing even when every roll succeeds. The run
+		// with the row is the control that the pinned roll does succeed.
+		const FScopedStalkerRoll Rolls(0.0f);
+		UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 3, /* DifficultyTier */ 2);
+		UCataclysmEmpireRun* NoRow = MakeRun(/* Seed */ 3, /* DifficultyTier */ 2);
+		NoRow->ModifierPool.RemoveAll([](const FCataclysmDungeonModifier& Row)
+			{ return Row.RowKey == Rules::CorruptedStalkerKey(); });
+		for (int32 Id = 0; Id < 200; ++Id)
+		{
+			FCataclysmDungeon Made = Dungeon(Id, ECataclysmDungeonSubType::None);
+			FCataclysmDungeon Bare = Dungeon(Id, ECataclysmDungeonSubType::None);
+			Run->GiveModifiers(Made);
+			NoRow->GiveModifiers(Bare);
+			CarryingWithTheRow += Made.Modifiers.Contains(Rules::CorruptedStalkerKey()) ? 1 : 0;
+			CarryingWithoutTheRow += Bare.Modifiers.Contains(Rules::CorruptedStalkerKey()) ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("a pool without the row grants it to none of 200"), CarryingWithoutTheRow, 0);
+	TestEqual(TEXT("CONTROL: with the row, the roll pinned at 0 grants it to all 200"), CarryingWithTheRow, 200);
 	return true;
 }
 

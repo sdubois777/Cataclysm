@@ -294,11 +294,12 @@ by `git add` with no error and no warning. Guarded by
   [#1591](https://github.com/sdubois777/Cataclysm/issues/1591). A panel in the
   top right corner of the screen lists the modifiers in force on a floor and
   marks the ones that do nothing yet, and `Cataclysm.DungeonModifiers` puts
-  chosen modifiers on the dungeon being played, by row key or by name. Three
-  further gaps are open.
-  The one Generic modifier, the Corrupted Stalker, is deliberately never drawn —
-  the project owner ruled it is granted separately — and nothing grants it, which
-  is issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308). A
+  chosen modifiers on the dungeon being played, by row key or by name. The one
+  Generic modifier, the Corrupted Stalker, is never drawn into a slot: the project
+  owner ruled it is granted separately, and since 2026-10-25 every dungeon has an
+  independent 5% chance of carrying it (`UCataclysmEmpireRun::GiveModifiers`,
+  issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308)). What it does
+  on a floor is not built. Two further gaps are open. A
   Sacrificial dungeon's doubled modifiers cannot be shed by sacrificing
   materials, because there is nothing to sacrifice to. And **no modifier is
   rarer than any other**: which ones a dungeon gets is an equal chance across the
