@@ -566,7 +566,16 @@ bool FCataclysmCarriedTypesStartingWeaponTest::RunTest(const FString&)
 		AddError(Reason);
 		return false;
 	}
-	const FCataclysmItem* Created = Carrier.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	// READ AS THE ONE WORN WEAPON, NOT AT Weapon1 (ruled 2026-10-25 after window t88w): `Equip` puts it in the first
+	// free candidate slot, which beside the two-handed Greataxe in Weapon1 is Weapon2, and the Greataxe comes off.
+	const TArray<FCataclysmItem> Worn = Carrier.Equipment->WornWeapons();
+	const FCataclysmItem* InWeapon1 = Carrier.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* InWeapon2 = Carrier.Equipment->EquippedAt(ECataclysmGearSlot::Weapon2);
+	AddInfo(FString::Printf(TEXT("set-up: after the creation choice Weapon1 holds %s and Weapon2 holds %s"),
+							InWeapon1 && !InWeapon1->Base.IsNone() ? *InWeapon1->Base.ToString() : TEXT("nothing"),
+							InWeapon2 && !InWeapon2->Base.IsNone() ? *InWeapon2->Base.ToString() : TEXT("nothing")));
+	const FCataclysmItem* Created = Worn.Num() == 1 ? &Worn[0] : nullptr;
+	TestEqual(TEXT("exactly one weapon is worn"), Worn.Num(), 1);
 	TestTrue(TEXT("a Sword is worn"), Created && Created->Base == FName(TEXT("Weapon_Sword")));
 	TestEqual(TEXT("carrying the chosen type"), Created ? Joined(Created->DamageTypes) : FString(),
 			  FString(TEXT("Demonic")));

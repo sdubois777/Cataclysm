@@ -345,6 +345,30 @@ for.
 
 None.
 
+### WINDOW t88w STOPPED ON TEST 7, AND THE TEST-SIDE CORRECTION (ruled 2026-10-25)
+
+The first window, t88w, at `3021dc952` (lock taken at 9.3 GB free, under the coordinating session's one-time Q-M2
+exception), stopped at the whole suite: "4198 tests performed, 4197 succeeded, 1 failed:
+TheStartingWeaponCarriesTheCreationTypeAndFollowsAChangeOfIt", on 2 assertions in its last part, "a Sword is worn" and
+"carrying the chosen type" (it read ""). The test read the created Sword at `Weapon1`. The coordinating session read
+`Equip` and ruled: it puts an item in the first FREE candidate slot, so beside the two-handed Greataxe in Weapon1 the
+Sword goes to Weapon2 and the Greataxe comes off (read, not measured). Ruled correction, in that test only: the Sword is
+read as the one worn weapon (`WornWeapons()`: exactly one, a Sword, carrying "Demonic"), and an `AddInfo` line records
+which slot holds what, so the slot is measured. No other assertion and no other test changed. That run's memory summary
+ended at 7,729 MB and its suite took 13 min 29 s against t86w's 13 min 20 s (1.01 times): no slowdown.
+
+**A READING, NOT A FIX: A LONE ONE-HANDED CREATION WEAPON LANDS IN WEAPON2 WITH WEAPON1 EMPTY.** What reads `Weapon1`
+specifically (searched over non-test code for `ECataclysmGearSlot::Weapon1`):
+- **The weapon meshes do**, and it shows in play: `Weapon1` is drawn in the right hand and `Weapon2` in the left
+  (`CataclysmPlayerCharacter.cpp` about 300 to 307; the header about 712 says so). So a one-handed weapon chosen at
+  creation, which replaces the two-handed starting Greataxe, would be drawn in the LEFT hand with the right hand empty.
+  This is older than this change.
+- Harmless here: `TwoHandedOccupiesBothWeaponSlots` and the two-two-handed rule (`CataclysmWearing.cpp` about 352) ask
+  about two-handed weapons only; `WeaponsComingOffFor` reads either slot; `WornWeapons()` (so `CarriedDamageTypes` and
+  its "Weapon1's first" order) and `EquippedWeaponType` read the first OCCUPIED slot, so a lone weapon in Weapon2 is
+  first. Layer 2's default fill order is to be written the same way.
+- No basic attack code reads `Weapon1` by name (none in the search).
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
