@@ -254,7 +254,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	FName GetChosenWeaponType() const;
 
-	/** The damage type whose skills and class trees the character has. */
+	/**
+	 * The damage type chosen at creation: whose skills the character has, and the type the starting weapon carries.
+	 * The class trees follow `CarriedDamageTypes` since issue #857 layer 1, which is this alone with nothing worn.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	FName GetChosenDamageType() const;
 
@@ -515,9 +518,22 @@ public:
 	void SetPassiveAllocation(const FCataclysmPassiveAllocation& Allocation,
 							  const TArray<FName>& Bosses);
 
-	/** Which trees this character can spend in, from the damage type it carries. */
+	/** Which trees this character can spend in, from the damage types its worn weapons carry. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	TArray<FString> ReachableTrees() const;
+
+	/**
+	 * The damage types this character carries: the union, in order, of its worn weapons' `DamageTypes`, Weapon1's
+	 * first, a weapon with an empty list counting as the creation type. Issue #857 layer 1, ruled 2026-10-25.
+	 *
+	 * THE CREATION TYPE ALONE WITH NO WEAPON WORN OR NO PAWN, "so the trees screen is never empty". Asked of the
+	 * pawn's equipment, `UCataclysmEquipmentComponent::CarriedDamageTypesOf` doing the work.
+	 *
+	 * WHAT READS IT: which trees are reachable, the one-class rule, the refusal sentence, the passive tree screen and
+	 * the passive console commands. NOT the skills: the weapon slots still take one damage type (layer 2, #837).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	TArray<FName> CarriedDamageTypes() const;
 
 	/**
 	 * Work this character's whole stat line out again and write it.
@@ -574,6 +590,13 @@ protected:
 	 * test and every existing call site expects.
 	 */
 	static constexpr int32 LevelNotYetDecided = 0;
+
+	/**
+	 * The two writers of the creation choice make the weapon creation gave carry the chosen damage type, through
+	 * `UCataclysmEquipmentComponent::CarryCreationDamageType`. Issue #857 layer 1. Nothing without a possessed
+	 * character, and nothing is refreshed: both callers refresh the stat line next.
+	 */
+	void CarryTheChosenTypeOnTheCreationWeapon();
 
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Experience")
 	int32 CharacterLevel = LevelNotYetDecided;

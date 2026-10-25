@@ -691,6 +691,88 @@ TArray<FCataclysmItem> UCataclysmEquipmentComponent::WornWeapons() const
 	return Worn;
 }
 
+TArray<FName> UCataclysmEquipmentComponent::CarriedDamageTypesOf(const TArray<FCataclysmItem>& Weapons,
+																 FName CreationDamageType)
+{
+	TArray<FName> Carried;
+	for (int32 WeaponIndex = 0; WeaponIndex < Weapons.Num(); ++WeaponIndex)
+	{
+		const FCataclysmItem& Weapon = Weapons[WeaponIndex];
+		if (Weapon.Base.IsNone())
+		{
+			continue;
+		}
+		bool bCarriesItsOwn = false;
+		for (const FName& Type : Weapon.DamageTypes)
+		{
+			if (!Type.IsNone())
+			{
+				Carried.AddUnique(Type);
+				bCarriesItsOwn = true;
+			}
+		}
+		// AN EMPTY LIST IS THE CREATION TYPE, which the header says why.
+		if (!bCarriesItsOwn && !CreationDamageType.IsNone())
+		{
+			Carried.AddUnique(CreationDamageType);
+		}
+	}
+
+	// NOTHING WORN IS THE CREATION TYPE ALONE, so the trees screen is never empty.
+	if (Carried.Num() == 0 && !CreationDamageType.IsNone())
+	{
+		Carried.Add(CreationDamageType);
+	}
+	return Carried;
+}
+
+TArray<FName> UCataclysmEquipmentComponent::CarriedDamageTypes(FName CreationDamageType) const
+{
+	// A PLANTED WEAPON STILL CARRIES ITS TYPES. It stays worn and its skills stay, and its class points still count
+	// (ruled 2026-10-09, J5a), so the trees it opens stay open while it stands in the ground. No floor rule switches
+	// a weapon slot off in play (`ACataclysmDungeonGameMode::ChooseTheScarceSlot` draws from the other slots), so
+	// `WornWeapons` is the whole answer and a slot switched off is not asked about.
+	return CarriedDamageTypesOf(WornWeapons(), CreationDamageType);
+}
+
+bool UCataclysmEquipmentComponent::CarryCreationDamageType(FName WeaponType, FName DamageType)
+{
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (WeaponType.IsNone() || DamageType.IsNone() || !BaseTable)
+	{
+		return false;
+	}
+
+	bool bChanged = false;
+	for (const ECataclysmGearSlot HeldWeaponSlot : UCataclysmGearSlots::WeaponSlots())
+	{
+		const int32 Index = static_cast<int32>(HeldWeaponSlot);
+		if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone())
+		{
+			continue;
+		}
+		FCataclysmItem& Weapon = Slots[Index];
+		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Weapon.Base, TEXT("CarryCreationDamageType"), /*bWarnIfMissing=*/false);
+		const bool bTheCreationWeapon = Base && Base->WeaponType == WeaponType.ToString()
+			&& Weapon.Affixes.Num() == 0 && Weapon.EnchantmentCount == 0 && Weapon.Enchantments.Num() == 0
+			&& Weapon.DamageTypes.Num() == 1;
+		if (!bTheCreationWeapon || Weapon.DamageTypes[0] == DamageType)
+		{
+			continue;
+		}
+		Weapon.DamageTypes = {DamageType};
+		bChanged = true;
+	}
+
+	// THE COUNT AND NOT THE DELEGATE, which the header says why.
+	if (bChanged)
+	{
+		++Changes;
+	}
+	return bChanged;
+}
+
 TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
 {
 	// ALWAYS WRITTEN, EVEN WHEN IT IS ZERO. Leaving either entry out would
@@ -822,9 +904,13 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				// buckets. Adding it anywhere else would mean a second place
 				// that has to be re-run whenever anything changes.
 				//
-				// THE DAMAGE TYPE DECIDES WHICH TREES COUNT. Points in a tree no
-				// equipped weapon reaches stay spent and add nothing, which is
-				// the project owner's decision of 2026-08-25.
+				// THE DAMAGE TYPES THE WORN WEAPONS CARRY DECIDE WHICH TREES
+				// COUNT. Points in a tree no equipped weapon reaches stay spent
+				// and add nothing, which is the project owner's decision of
+				// 2026-08-25. Since issue #857 layer 1 the list is the worn
+				// weapons' own (`CarriedDamageTypesOf`), asked of this
+				// component's items so no pawn is needed; it was the creation
+				// type alone before.
 				//
 				// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
 				// which is that rule's sibling. The owner, 2026-10-09, accepted
@@ -850,7 +936,8 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				// that reads the component of the pawn the player state holds,
 				// which is this one in play, and this line must not depend on
 				// that being so.
-				const TArray<FName> Carried = {State->GetChosenDamageType()};
+				const TArray<FName> Carried =
+					CarriedDamageTypesOf(WornWeapons(), State->GetChosenDamageType());
 				const int32 PointsEarned = State->PassivePointsEarnedWith(
 					ClassPointsGrantedAtLastRefresh);
 				const FCataclysmPassiveAllocation Counted =

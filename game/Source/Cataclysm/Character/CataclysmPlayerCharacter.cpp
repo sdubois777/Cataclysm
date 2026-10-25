@@ -2349,6 +2349,14 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 	// type, should not put a second axe in the bag.
 	if (Equipment->EquippedWeaponType() == ChosenWeaponType.ToString())
 	{
+		// AND THE WEAPON ALREADY HELD CARRIES THE CHOSEN DAMAGE TYPE. Issue #857
+		// layer 1. It was put on at `BeginPlay`, before the player state arrived,
+		// with the default type; a changed type changes the trees, so the stat
+		// line that possession wrote a moment ago is written again.
+		if (Equipment->CarryCreationDamageType(ChosenWeaponType, ChosenDamageType))
+		{
+			State->RefreshCharacterStats();
+		}
 		FillAbilitySlotsFromWornWeapon();
 		return true;
 	}
@@ -2360,6 +2368,8 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 	FCataclysmItem Chosen;
 	Chosen.Base = ChosenBase;
 	Chosen.GearLevel = 0;
+	// CARRYING THE CHOSEN TYPE, as the starting weapon does. Issue #857 layer 1.
+	Chosen.DamageTypes = {ChosenDamageType};
 
 	int32 WeaponsWorn = 0;
 	for (const ECataclysmGearSlot WeaponSlot : UCataclysmGearSlots::WeaponSlots())
@@ -2459,6 +2469,14 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 	FCataclysmItem Starting;
 	Starting.Base = StartingWeaponBase;
 	Starting.GearLevel = 0;
+
+	// IT CARRIES THE CREATION TYPE. Ruled 2026-10-25, issue #857 layer 1: "the
+	// starting weapon carries the chosen type in its list". At `BeginPlay` the
+	// player state has usually not arrived, so this is the default type then, and
+	// possession's `ApplyCreationChoice` moves it to the chosen one.
+	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	Starting.DamageTypes = {Chooser ? Chooser->GetChosenDamageType()
+									: UCataclysmCharacterCreation::DefaultDamageType};
 
 	FCataclysmItem CameOff;
 	FCataclysmItem AlsoCameOff;
@@ -3674,7 +3692,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterCreati
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
 	TEXT("Cataclysm.ShowPassives"),
 	TEXT("How many passive points the character has earned and spent, which "
-		 "trees its damage type reaches, and how much is in each."),
+		 "trees its weapons' damage types reach, and how much is in each."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -3741,9 +3759,12 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
 				return;
 			}
 
+			// WHAT THE WORN WEAPONS CARRY, which is what the trees follow since
+			// issue #857 layer 1.
 			const TArray<FString> Reachable = PlayerState->ReachableTrees();
-			Ar.Logf(TEXT("Reachable trees (%s damage): %s"),
-					*PlayerState->GetChosenDamageType().ToString(),
+			Ar.Logf(TEXT("Reachable trees (the weapons carry %s): %s"),
+					*FString::JoinBy(PlayerState->CarriedDamageTypes(), TEXT(", "),
+									 [](const FName& Type) { return Type.ToString(); }),
 					Reachable.Num() > 0
 						? *FString::Join(Reachable, TEXT(", "))
 						: TEXT("none"));

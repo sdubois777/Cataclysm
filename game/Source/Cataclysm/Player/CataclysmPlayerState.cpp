@@ -116,11 +116,15 @@ bool ACataclysmPlayerState::ChooseAtCreation(const UDataTable* WeaponSkillTable,
 
 	CreationChoice = Asked;
 
+	// AND THE WEAPON CREATION GAVE CARRIES IT. Issue #857 layer 1.
+	CarryTheChosenTypeOnTheCreationWeapon();
+
 	// A CHANGED DAMAGE TYPE IS A CHANGED STAT LINE. Issue #1055. The damage type
 	// decides which passive trees apply at all -- points in a tree no equipped
 	// weapon reaches stay spent and grant nothing, which is the project owner's
 	// decision of 2026-08-25 -- and `UCataclysmEquipmentComponent::
-	// RefreshAttributes` reads `GetChosenDamageType()` to enforce it. Writing the
+	// RefreshAttributes` reads what the worn weapons carry to enforce it, the
+	// creation weapon's type among them (issue #857 layer 1). Writing the
 	// choice without re-running the line leaves the old damage type's trees on
 	// the character's stats while the passive tree screen shows the new one's.
 	//
@@ -137,6 +141,11 @@ void ACataclysmPlayerState::SetCreationChoice(FName WeaponType, FName DamageType
 {
 	CreationChoice.WeaponType = WeaponType;
 	CreationChoice.DamageType = DamageType;
+
+	// AND THE WEAPON CREATION GAVE CARRIES IT, on a standing character. Before
+	// possession there is no pawn and nothing to change: possession's
+	// `ACataclysmPlayerCharacter::ApplyCreationChoice` does it then.
+	CarryTheChosenTypeOnTheCreationWeapon();
 
 	// THE SAME REASON, ON THE SAVE-RESTORE PATH. This runs before possession
 	// when a save is being loaded, in which case `RefreshCharacterStats` finds
@@ -377,17 +386,27 @@ bool ACataclysmPlayerState::RecordCataclysmBossDefeat(FName Boss)
 	return true;
 }
 
+TArray<FName> ACataclysmPlayerState::CarriedDamageTypes() const
+{
+	// ASKED OF THE PAWN'S EQUIPMENT, as `PassivePointsFromGear` is and for its
+	// reason: this player state outlives its pawn. With no pawn the creation
+	// type alone, which is also what the component answers for nothing worn.
+	const ACataclysmPlayerCharacter* Character =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	return Equipment ? Equipment->CarriedDamageTypes(GetChosenDamageType())
+					 : TArray<FName>{GetChosenDamageType()};
+}
+
 TArray<FString> ACataclysmPlayerState::ReachableTrees() const
 {
-	// ONE DAMAGE TYPE TODAY, AND THE SHAPE IS ALREADY THE ONE FOR SEVERAL. The
+	// THE DAMAGE TYPES THE WORN WEAPONS CARRY, since issue #857 layer 1. The
 	// design says what a character has access to "is determined by the set of
-	// damage types across ALL equipped weapons", and a weapon can carry up to
-	// eight. The game holds a single damage type on the weapon slots component
-	// as a stand-in until a rolled item carries its own; passing an array of one
-	// means nothing here changes when it does.
-	const TArray<FName> Carried = {GetChosenDamageType()};
+	// damage types across ALL equipped weapons". This passed the creation type
+	// alone until then.
 	return UCataclysmPassiveTree::ReachableTrees(
-		UCataclysmPassiveTree::LoadNodeTable(), Carried);
+		UCataclysmPassiveTree::LoadNodeTable(), CarriedDamageTypes());
 }
 
 bool ACataclysmPlayerState::ReachesTreeOf(const UDataTable* NodeTable,
@@ -406,13 +425,17 @@ bool ACataclysmPlayerState::ReachesTreeOf(const UDataTable* NodeTable,
 		return true;
 	}
 
-	const TArray<FName> Carried = {GetChosenDamageType()};
+	// THE WORN WEAPONS' TYPES, for this check and for the class check below.
+	// Issue #857 layer 1.
+	const TArray<FName> Carried = CarriedDamageTypes();
 	if (!UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
 	{
 		OutReason = FString::Printf(
 			TEXT("No equipped weapon carries a damage type that unlocks the "
-				 "%s tree. This character is %s."),
-			*Tree, *GetChosenDamageType().ToString());
+				 "%s tree. Your weapons carry %s."),
+			*Tree,
+			*FString::JoinBy(Carried, TEXT(" and "),
+							 [](const FName& Type) { return Type.ToString(); }));
 		return false;
 	}
 
@@ -583,4 +606,17 @@ void ACataclysmPlayerState::RefreshCharacterStats() const
 	UCataclysmWearing::ReturnSecondTwoHandedWeapon(
 		Character->GetInventory(), Character->GetEquipment(), Character->GetWorld(),
 		UCataclysmDropSpawner::DropSpotInFrontOf(*Character));
+}
+
+void ACataclysmPlayerState::CarryTheChosenTypeOnTheCreationWeapon()
+{
+	// NOTHING WITHOUT A POSSESSED CHARACTER, for the reason `RefreshCharacterStats`
+	// gives. The caller refreshes the stat line next, so nothing is refreshed here.
+	const ACataclysmPlayerCharacter* Character =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	if (Character && Character->GetEquipment())
+	{
+		Character->GetEquipment()->CarryCreationDamageType(GetChosenWeaponType(),
+														   GetChosenDamageType());
+	}
 }
