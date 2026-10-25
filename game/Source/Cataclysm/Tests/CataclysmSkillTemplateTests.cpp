@@ -18385,7 +18385,9 @@ bool FCataclysmGroundLineGadgetTest::RunTest(const FString&)
 {
 	using namespace CataclysmGroundPatchLineTest;
 
-	UWorld* World = MakeWorld();
+	// A skill gadget needs a world that has begun play, or its attribute set is not registered and setting its
+	// MaxHealth hits the engine's check (window t81w, 2026-10-25).
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
 
