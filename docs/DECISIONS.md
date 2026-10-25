@@ -2,6 +2,57 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — A creature the floor places draws its rarity rung from the floor's seed (#2490)
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmGameMode.h` and `.cpp` (`RarityStepFor` takes an optional stream);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`RarityStreamNow`, `WavePlacementsTried`,
+`RarityStreamForPlacement`; the floor's two population loops and `ApplyDesignedStats`);
+`game/Source/Cataclysm/Tests/CataclysmDungeonGameModeTests.cpp` (one new test). **This closes
+[#2490](https://github.com/sdubois777/Cataclysm/issues/2490)** when it merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **WHAT KEEPS TODAY'S DRAW, a labelled judgement of the dungeon session:** every creature not placed by the floor's
+  population pass. That is every map with no floor plan -- the editor's Play button on any map, and the sandbox --
+  and every creature made during play: summons, reinforcements, the Reaper and its horde, raised and risen
+  creatures, guards and the rest of `SpawnPlacedCreature`'s other callers. Their timing depends on what the player
+  does, so a floor seed cannot make them repeat, and they keep the draw from the creature's identity and the clock.
+- **AT RISK IN THE WINDOW:** a test that builds the same floor of the same seed many times and counts how often each
+  rung comes up now sees one answer, not a spread. A failure comes to the coordinating session as old -> new.
+
+### What changed
+
+`docs/Cataclysm_GDD_v2.md` promises the same seed builds the same floor ("the same seed always produces the same
+floor"). Until this change a creature's rung was drawn from its own identity and the clock, which no seed controls,
+and every map uses that draw (`ACataclysmGameMode::RarityStepFor`). Now, while the dungeon game mode puts down the
+floor's population -- an ordinary floor all at once, or an arriving wave over several frames -- each creature draws
+from a stream made of the floor plan's seed and its place in the population pass's list, as the floor's other seeded
+draws are (`CurrentFloor->GetPlan().Seed ^ (salt + index)`; the salt is "rr", `0x72720000`). An arriving wave counts
+its place across frames, and a creature that fails to spawn still uses up its place, so the creatures after it keep
+theirs. A rung set by the console or fixed by a rule is used as before and draws nothing.
+
+### Tests
+
+New: `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor`. Floors 1 to 6 of one dungeon seed
+are built twice, and each floor's rungs are compared in placement order. Its controls: some rung on the six floors is
+above Common, and the six floors do not all hold the same rungs.
+
+### Proofs
+
+Registered for the window and not yet run: **P1**, `FRandomStream Stream = FromTheFloor != nullptr` ->
+`FRandomStream Stream = false` in `ACataclysmGameMode::RarityStepFor`, so every creature draws from its identity and
+the clock again. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor` fails. Prefix
+`Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungs`.
+
+### Run
+
+Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
+
+Branch `fix/rarity-from-the-floors-seed-1` on `development` at `3c1f3ac5f`.
+
+---
+
 ## 2026-10-24 — A creature that cannot move is given a light under Shadowy Enemies, and Necrotic Ground puts no patch over one (#2334)
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`CreatureCannotMove` and

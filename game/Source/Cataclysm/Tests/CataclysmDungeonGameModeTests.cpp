@@ -3093,4 +3093,89 @@ bool FCataclysmDungeonModeThrallLeavesTheWaveTest::RunTest(const FString& Parame
 	return true;
 }
 
+/**
+ * The same dungeon seed builds the same floors' rarity rungs. Issue #2490.
+ *
+ * `docs/Cataclysm_GDD_v2.md`: "the same seed always produces the same floor". Until #2490 each creature drew its rung
+ * from its own identity and the clock, which no seed controls, so two builds of one floor could differ in what it held.
+ * Now a creature the floor places draws from the floor plan's seed and its place in the floor's list.
+ *
+ * FLOORS 1 TO 6 OF ONE DUNGEON SEED, BUILT TWICE, every creature's rung compared in the order it was placed. THE
+ * CONTROLS: at least one rung is above Common, so the lists are not two lists of nothing but Commons, which would agree
+ * however they were drawn; and the six floors do not all hold the same rungs, so the rung is drawn per floor and not
+ * fixed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityFromTheFloorsSeedTest,
+	"Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityFromTheFloorsSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 7;
+
+	const auto RungsOfFloor = [&](int32 Floor, TArray<int32>& Out) -> bool
+	{
+		Out.Reset();
+		if (!TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			Out.Add(IsValid(Creature) ? Creature->RarityStep : -1);
+		}
+		return TestTrue(FString::Printf(TEXT("set-up: floor %d holds creatures"), Floor), Out.Num() > 0);
+	};
+
+	TArray<TArray<int32>> First;
+	bool bAboveCommon = false;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<int32> Rungs;
+		if (!RungsOfFloor(Floor, Rungs))
+		{
+			return false;
+		}
+		for (const int32 Rung : Rungs)
+		{
+			bAboveCommon = bAboveCommon || Rung > 0;
+		}
+		First.Add(Rungs);
+	}
+
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<int32> Again;
+		if (!RungsOfFloor(Floor, Again))
+		{
+			return false;
+		}
+		TestTrue(FString::Printf(TEXT("floor %d built again holds the same rungs in the same order"), Floor),
+				 Again == First[Floor - 1]);
+	}
+
+	TestTrue(TEXT("CONTROL: some creature on the six floors is above Common"), bAboveCommon);
+	bool bFloorsDiffer = false;
+	for (int32 Index = 1; Index < First.Num(); ++Index)
+	{
+		bFloorsDiffer = bFloorsDiffer || First[Index] != First[0];
+	}
+	TestTrue(TEXT("CONTROL: the six floors do not all hold the same rungs"), bFloorsDiffer);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

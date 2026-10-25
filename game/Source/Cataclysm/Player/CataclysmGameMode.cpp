@@ -171,7 +171,8 @@ bool ACataclysmGameMode::BeginSavingThisRun()
 }
 
 int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
-									   const AActor* Spawned) const
+									   const AActor* Spawned,
+									   const FRandomStream* FromTheFloor) const
 {
 	if (Setting != UCataclysmEnemyRarity::RollTheRarity)
 	{
@@ -190,8 +191,16 @@ int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
 	// same shape ACataclysmEnemyCharacter uses to seed its drop roll, and for
 	// the same reason it gives: creatures made in the same frame must not all
 	// come out the same, and a shared stream would make them do exactly that.
-	FRandomStream Stream(Spawned->GetUniqueID()
-		^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+	//
+	// OR THE FLOOR'S, FOR A CREATURE THE FLOOR ITSELF PLACES, since issue #2490:
+	// a stream made from the floor's seed and the creature's place in the
+	// floor's list, so the same seed builds the same floor, as
+	// `docs/Cataclysm_GDD_v2.md` promises ("the same seed always produces the
+	// same floor"). A COPY, so the caller's stream is not moved by this draw.
+	FRandomStream Stream = FromTheFloor != nullptr
+		? *FromTheFloor
+		: FRandomStream(Spawned->GetUniqueID()
+			  ^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
 
 	// EVERY CREATURE DRAWS ITS OWN, INDEPENDENTLY. See UCataclysmEnemyRarity for
 	// why an independent draw rather than a guaranteed count per floor.
