@@ -93,16 +93,25 @@ The Python check, by `tools/prove_guard.break_and_run` in a `git archive` copy o
 | the trade partner's call removed | 2 failed, 11 passed | 13 passed |
 | the random teleport's call removed | 1 failed, 12 passed | 13 passed |
 
-Unreal, registered for the window and not yet run:
+Unreal, **all three PROVED** in the third window below, each with `unreal_build.prove_cpp_guard`, each break text
+matching its file exactly once:
 
 - **P1**, `NoteSampledAt(LastSampledLocation + Displacement);` -> `NoteSampledAt(LastSampledLocation);` in
   `CataclysmAbilitySystemComponent.cpp`. Predicted: `ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn`
-  and `AnInstantRelocationIsNeitherWalkingNorMoving` fail. Prefix `Cataclysm.Movement.`.
+  and `AnInstantRelocationIsNeitherWalkingNorMoving` fail. Prefix `Cataclysm.Movement.`. Printed: "5 tests performed, 3
+  succeeded, 2 failed: AnInstantRelocationIsNeitherWalkingNorMoving,
+  ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn"; restored "5 tests performed, 5 succeeded, 0
+  failed". The two predicted failures, and no other. The prefix selects five tests, every one in
+  `CataclysmMovementTests.cpp`; the dungeon session told the coordinating session six before the window, from a search
+  that ignored case, which was wrong.
 - **P2**, the call after `PlaceAtEntrance`'s move removed (`UCataclysmMovement::NoteRelocatedInstantly(Pawn, Was);` ->
   a comment). Predicted: `ThePlacementAtAFloorsEntranceIsNotGroundWalked` fails. Prefix
-  `Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntrance`.
+  `Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntrance`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  ThePlacementAtAFloorsEntranceIsNotGroundWalked"; restored "1 tests performed, 1 succeeded, 0 failed".
 - **P3**, the Phasewalker's call removed (`UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);` -> a comment).
-  Predicted: `APhasewalkersPhaseIsNotGroundWalked` fails. Prefix `Cataclysm.EnemyModifiers.APhasewalkersPhase`.
+  Predicted: `APhasewalkersPhaseIsNotGroundWalked` fails. Prefix `Cataclysm.EnemyModifiers.APhasewalkersPhase`. Printed:
+  "1 tests performed, 0 succeeded, 1 failed: APhasewalkersPhaseIsNotGroundWalked"; restored "1 tests performed, 1
+  succeeded, 0 failed".
 
 ### The first window, and a set-up the coordinating session ruled
 
@@ -153,11 +162,26 @@ frame a pawn was placed, is [#2505](https://github.com/sdubois777/Cataclysm/issu
 
 ### Run
 
-Not yet run past the second window above. Predicted Unreal total: `development`'s last measured total plus three, 4154
-(4151 at `74acd5e1c`),
-with no failure. **Step 1b**, ruled by the coordinating session: the second window runs
-`Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing` alone right after the
-build, and stops there if it fails.
+Nothing was built and no Unreal test was run by the writing session. Three windows and one diagnostic run were run by
+the dungeon session, each given by the coordinating session, each with the six conditions checked immediately before
+the lock was taken and the lock released before anything was written here. The first two windows and the diagnostic
+are above.
+
+- **Third window** (lock `dungeon-w47`, `fix/instant-moves-restart-the-still-clock-3` at `3b47aff28`, on `74acd5e1c`,
+  the #2234 B merge, 2026-10-25): both of `development`'s runs at `74acd5e1c` succeeded (its CI run was waited for
+  until it had); none in progress or queued; the lock free; no build or editor process; no open pull request; "free
+  GB: 15.3 of 31.1". The move: `check_resolved_cpp.py` before its commit, "14 files read, 0 with complaints", and by
+  name on its head, the same; every commit's zero-context patch id unchanged.
+  - **Build:** "Build: Succeeded - 40 actions, 37 files compiled".
+  - **Step 1b**, the Vigil test alone: "Tests: 1 tests performed, 1 succeeded, 0 failed".
+  - **The whole Unreal suite:** "4154 tests performed, 4154 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4154 tests in the tree at 3b47aff28; 4154 performed, gap 0; every declared test was reported by the
+    run." Registered 4154 and 0: the 4151 of the #2234 B merge and the three new tests here. Memory:
+    "CataclysmTestMemorySummary: tests=4761 peak_used_virtual_mb=11283 final_used_virtual_mb=11028 collections=3148
+    collection_total_s=107.870 worlds_at_last_collection=1".
+  - **Python:** "6974 passed, 8 skipped"; JUnit tests 6982, failures 0, errors 0, skipped 8 (6969 on `development` and
+    this change's 13). Lint: "All checks passed!".
+  - **The proofs:** as under Proofs above.
 
 Branch `fix/instant-moves-restart-the-still-clock-3` on `development` at `74acd5e1c` (written on `b2b60ebf6` as `-1`,
 moved onto `3830065c5` as `-2`, where its first two windows ran, and then onto `74acd5e1c`, the #2234 B merge; its zero-context patch ids unchanged; the append-append conflict at the end of
