@@ -293,7 +293,48 @@ None.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t84w, under the editor lock as `enchant-t84w`, at `71c90fd81` on
+`fix/no-target-hits-take-spell-damage-1`, in one window with #2498 below (stacked by ruling Q-F4). The branch `fix/no-target-hits-take-spell-damage` (`7cae46cfb`, then `2c7c8f960`, on `489386e89`) was moved onto development `e1a43519d` as `fix/no-target-hits-take-spell-damage-1`: #2498 `811ee118d`, #2499 `71c90fd81`. #2498's commit conflicted in this file only, resolved by placing its entry; its added and removed lines here are identical to the original. #2499's applied with no conflict. Both kept their zero-context patch ids, whole and outside this file, and their removed lines (8 and 8); outside this file the moved branch differs from the original by exactly development's own change. Free
+physical memory before the lock: 14.9 GB.
+
+**Q-F5, RULED 2026-10-25 by the coordinating session, verbatim: A NEW REACH.**
+
+> **Q-F5: ACCEPTED as you recommend.** The mana row reaches a skill gadget's cast, a gadget's ground and a skill trap's
+> cast. A gadget's or trap's cast is the player's skill, priced from the player's line, and every other untagged
+> attack_damage row already reaches it. The row's spell half already reaches those casts through SpellDamageOf, so the
+> two halves now act alike. Damage-over-time ticks staying out is correct, because they do not go through ApplyHit.
+
+So "Your skills deal 10%-30% of your current mana as more damage" now reaches a skill gadget's cast, a gadget's ground
+(test 4 asserts it: 58.45 with the mana share and no maximum health share) and a skill trap's cast, none of which it
+reached before: **a new reach**, by ruling. A damage-over-time tick does not take it: `ApplyDamageOverTime` and
+`ApplyShareOfHealthOverTime` do not go through `ApplyHit` (read, not measured). A trap's cast taking it is not tested.
+
+- **The Echo Chamber Spell copy test alone, first** (brief 83's; its figures are in that entry): passed, 1 of 1.
+- **The whole Unreal suite, as registered:** build already up to date, 0 actions; "4181 tests performed, 4181
+  succeeded, 0 failed" (4172 on development + 5 of #2498 + 4 of #2499); "Declared: 4181 tests in the tree at 71c90fd81;
+  4181 performed, gap 0". 40 tests skipped part of what they check. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4788 peak_used_virtual_mb=7938 final_used_virtual_mb=7587 collections=3170
+  collection_total_s=105.385 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6982 passed, 8 skipped"; JUnit 6990 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **FL-I, the flat the attribute cannot carry left out of a hit and the helper** (both anchors counted once; prefix
+  `Cataclysm.ScaledFlatAttackDamage.`, 4 tests): PROVED, AS REGISTERED. With the break in, 4 performed, 2 succeeded, 2
+  failed, `ASkillsHitTakesTheManaShareOutsideItsPercentAndInsideItsIncreases` and
+  `ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare`; 7 failed assertions, registered 7 (for example
+  "and deals the enemy (250 + 100) x 1.2 = 420", which was 300; the gadget's patch 58.45, which was 41.75). 0 ensures.
+  Restored, 4 performed, 4 succeeded. The file's hash is the same after.
+- **FL-II, the rows naming gadgets not left out of the new lookup** (anchor counted once; same prefix): PROVED, AS
+  REGISTERED. With the break in, 4 performed, 2 succeeded, 2 failed, `AGadgetsBlowTakesItsMaximumHealthShareOnce` and
+  `ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare`; 3 failed assertions, registered 3: the control
+  3250 against 250, the gadget's blow 6250 against 3250, the gadget's ground 559.45 against 58.45. 0 ensures. Restored,
+  4 performed, 4 succeeded. The file's hash is the same after.
+- **NOT RUN UNDER FL-II** (added at the coordinating session's request, 2026-10-25): the four gadget flat tests of other
+  groups named under GUARD PROOFS PROPOSED, which the break might also fail:
+  `Cataclysm.SkillGadgets.TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`,
+  `Cataclysm.SkillGadgets.ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets`,
+  `Cataclysm.Traps.ASkillGadgetsShotLandingAfterTheGadgetIsGoneIsThePlayersAndNoTrapsLateBlow` and
+  `Cataclysm.Enchantments.TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps`. The proof's prefix selects none of them,
+  so whether the break fails them was not measured. All four passed in the whole suite, without the break.
 
 ---
 
@@ -656,7 +697,36 @@ None.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t84w, under the editor lock as `enchant-t84w`, at `71c90fd81` (#2499
+on top of this entry's commit, stacked by ruling Q-F4; the move is recorded in #2499's entry above). This commit is
+`811ee118d` on `fix/no-target-hits-take-spell-damage-1`. Free physical memory before the lock: 14.9 GB.
+
+**THE TWO DEPARTURES FROM BRIEF 83, ACCEPTED 2026-10-25 by the coordinating session:** "EnemiesStruckTogether = -1,
+which keeps the point-blank drawback row out" (the judgement above that passes -1 and not the brief's 0), and "the
+dungeon game mode call site" (`CataclysmDungeonGameMode.cpp`, named by brief 83).
+
+- **The Echo Chamber Spell copy test alone, first, as registered** (registered first because it copies Anathema, an
+  Ultimate, the one Spell strike on the table that fits, and might stop at its control): "Build: Succeeded - 53
+  actions, 46 files compiled"; "1 tests performed, 1 succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** build already up to date, 0 actions; "4181 tests performed, 4181
+  succeeded, 0 failed" (4172 on development + 5 of #2498 + 4 of #2499); "Declared: 4181 tests in the tree at 71c90fd81;
+  4181 performed, gap 0". 40 tests skipped part of what they check. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4788 peak_used_virtual_mb=7938 final_used_virtual_mb=7587 collections=3170
+  collection_total_s=105.385 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6982 passed, 8 skipped"; JUnit 6990 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **SN-I, a Spell's no-target hit without its spell damage** (anchor counted once; prefix
+  `Cataclysm.NoTargetSpellDamage.`, 5 tests): PROVED, AS REGISTERED. With the break in, 5 performed, 0 succeeded, 5
+  failed, all five; 8 failed assertions, registered 8 (for example the backfire "(100 x its percent + 100) / 2", 175,
+  which was 125; the Echo copy 19.11 against at least twice the control's 19.11). 0 ensures. Restored, 5 performed, 5
+  succeeded. The file's hash is the same after.
+- **SN-II, the spell damage inside the skill's percent** (anchor counted once; same prefix): PROVED, AS REGISTERED.
+  With the break in, 5 performed, 1 succeeded, 4 failed: `ASpellsBackfireDealsHalfItsHitWithItsSpellDamage`,
+  `ASpellsGroundTicksWithItsSpellDamageAndAnotherSkillsDoesNot`,
+  `ASpellsSpellDamageIsRaisedByTheLinesIncreasesAndNotByTheSkillsPercent` and
+  `AGadgetsSpellGroundLeavesOutTheSpellDamageRowsNamingGadgets`; the Echo test passed, as registered; 7 failed
+  assertions, registered 7 (for example the backfire 250 against 175; the spell damage's share 20.04 against 8.016). 0
+  ensures. Restored, 5 performed, 5 succeeded. The file's hash is the same after.
 
 ---
 
