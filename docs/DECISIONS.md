@@ -2,6 +2,301 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A flat attack damage row the attribute cannot carry, such as "Your skills deal 10%-30% of your current mana as more damage", reaches a skill's hit, once, whether or not the skill is a Spell: #2499, which closes it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the new public
+`UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry`, beside `FlatOfStatNamingTag`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (`ApplyHit` and `SkillHitWithNoTarget`) and `.h` (the
+comment of `SkillHitWithNoTarget`); `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (four tests and their
+helpers, the new group `Cataclysm.ScaledFlatAttackDamage.`); this file. No data row, no tag, no workbook cell, nothing
+under `game/Data/`, `game/Content/` or `game/Config/Tags/`. **`ApplyHit`'s figure IS changed**, for a skill that is not
+a Spell and whose user wears such a row. Martyr's Ember is untouched. It sits on the #2498 commit below, on one branch,
+by ruling Q-F4. **This closes [#2499](https://github.com/sdubois777/Cataclysm/issues/2499).**
+
+### SAID FIRST
+
+**A PLAY CHANGE, FOR A WEARER OF THE MANA ROW.** `Positive_Your_skills_deal_10_30_of_your_current_mana_as` is written as
+two flat rows, `#1` on `attack_damage` and `#2` on `spell_damage`, both scaled by `mana_held_percent`. The attack damage
+attribute is worked out with no skill in hand and an empty state, where the mana held is unknown and a scale on it
+answers nought, so `#1` folded to nothing in it, and no hit read the line's flat bucket except a gadget's. **A skill
+that is not a Spell took nothing from the sentence; now it takes 10% to 30% of the mana held, added beside its weapon
+part, outside the skill's percent and inside its increases.** A Spell took and still takes the `#2` half through its
+spell damage, and does NOT take `#1` as well, so the sentence counts once for every skill. The no-target hits (a self
+hit, a ground patch, an Echo Chamber copy) take it in the same place.
+
+**THE GADGET ROW IS UNCHANGED.** "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit" is still priced
+once on a gadget's blow by `FlatOfStatNamingTag`, and still never on a gadget's ground (ruling 6 of #2234).
+
+**NOTHING CHANGES FOR A CHARACTER WITH NO SUCH ROW.** The new figure is exactly nought, and both call sites give the
+same float as before (the algebra below).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 84. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- your skills' hits take 10%-30% of your current mana as added damage, once, whether or not the skill is a Spell
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner was not asked. The sentence's reading was ruled on 2026-09-23 under the owner's delegation; its entry's
+judgement table reads, verbatim: ""10%-30% of your current mana as more damage" is flat added damage: 10 to 30 PER CENT
+of the mana held, counted in whole points (a step of 1)", for the reason ""as more damage" means added damage, as the
+genre's "gain X% of mana as extra damage" does, not the more bucket."
+
+The coordinating session's rulings of 2026-10-25, verbatim, as brief 84 gives them:
+
+> Your correction to my summary of #2499 is accepted. The row reaches no skill hit at all, not only the self-hit.
+> **Q-F1: OUTSIDE the skill's percent.** The row's spell twin already sits there, so the two halves of one sentence act
+> alike. This is a judgement specific to this game, so label it as one in the entry. No genre fetch is needed for a
+> placement that copies an existing twin.
+> **Q-F2: YES.** A Spell takes the spell half only. Add the new flat only when the skill lacks Type.Spell, so the sentence
+> counts once.
+> **Q-F3: YES.** Leave rows naming Type.Deployable out of the new lookup.
+> **Q-F4: STACKED in one window, #2498 first, then #2499**, with tests 1-4 and proofs FL-I and FL-II.
+
+And, on reading this commit's plan, the enchantment session (2026-10-25): "The new flat joins SkillHitWithNoTarget's
+non-Spell branch ... the flat must be added outside the percent and inside the bracket: (W/(1+F) x M x D/100 + NewFlat)
+x (1 + A + Extra). Show that with no such row worn the branch is still the old expression's figure (state whether the
+float order changes)." And: "make the spell_damage half present in the line, so the comparison is the real twin. A
+Spell taking neither half must fail it."
+
+**Q-F1 IS A JUDGEMENT SPECIFIC TO THIS GAME**, as the ruling says: the placement copies the row's own `spell_damage`
+twin, which `ApplyHit` adds outside the percent (#2498's entry below). No genre source was fetched.
+
+Ruling 6 of #2234 (path A's entry below), verbatim: "6. YES: a gadget's ground takes "Gadgets deal ..." and the
+gadget-age rows, inside the gadget scope. The flat max-health share stays out."
+
+### WHAT WAS READ FIRST
+
+Line numbers are of `7cae46cfb`, before this change.
+
+1. **The two flat `attack_damage` rows**, by script over `game/Data/EnchantmentEffects.csv` (706 rows) and
+   `PassiveEffects.csv` (325 rows): `Positive_Your_skills_deal_10_30_of_your_current_mana_as#1` (flat 10-30, no tag, no
+   condition, scale `mana_held_percent`, step 1; its twin `#2` on `spell_damage`, the same) and
+   `Positive_Gadgets_deal_bonus_damage_equal_to_3_6_of_your#1` (flat 3-6, `Type.Deployable`, scale `max_health`, step
+   100). No passive row is a flat `attack_damage` row. The other flat `attack_damage` rows in data are plain: the
+   affix `Stat_Flat_damage` and the item implicits (`Affixes.csv`, `ItemBases.csv`), with no tag, condition or scale.
+   The dungeon rules write `attack_damage` only as "more" or "less" (`CataclysmDungeonModifierEffects.cpp` 1567 to 1759).
+2. **`FlatOfStatNamingTag`** (`CataclysmAbilitySystemComponent.cpp` 8107 to 8132, public at `.h` 4480 to 4481; the
+   public section opens at 145 and the next access line is `protected:` at 4830): the rows of the stat whose
+   `RequiredTags` hold `Named` exactly, on a base of nought, with `WithEnemiesInReach(Naming, WithTargetState(Naming,
+   Target, CurrentConditions()))`, and only `Evaluate(...).Flat`, floored at nought. `ApplyHit` asks it for a gadget's
+   blow alone (`CataclysmSkillEffects.cpp` 991 to 993) and adds it beside the spell part (1055).
+3. **The pipeline.** `Evaluate` (`CataclysmStatPipeline.cpp` 2244 to 2265) is `Accumulate`, then `(Base + Flat) x (1 +
+   increases) x more`. `Accumulate` (2145 to 2242) skips a modifier `ModifierApplies` refuses, then adds
+   `ScaledValue(Modifier, State)` to the Flat bucket. `ModifierApplies` (1850 to 1891) asks both conditions first, then
+   every required tag except the global scope tag against the skill's tags with `HasTag`, so an empty container refuses
+   every scoped row. `ScaledValue` (1364 onward) answers `Value` for `Fixed`; `PercentOfManaHeld` (1771 to 1782) answers
+   nought when `ManaHeld` is below nought, else `Value / 100 x floor(ManaHeld / ScaleStep)`; `PerPointOfMaximumHealth`
+   (1597 to 1614) answers nought when `MaximumHealth` is below nought. Both readings default to -1
+   (`CataclysmStatPipeline.h` 3431 and 2908). Every health, window and target condition read refuses an unknown reading
+   (545 onward).
+4. **The attribute** (`CataclysmPlayerClassStats.cpp` 1954 to 1970, pass two from 2005): the whole list is recorded for
+   `StatForSkill`, and the attribute is `Evaluate(Base, ForStat, FGameplayTagContainer())`, the default state. So the
+   mana row's flat is `PercentOfManaHeld` with `ManaHeld` -1: nought, and the gadget row is refused by its tag.
+5. **What the states supply** (`CataclysmAbilitySystemComponent.h` 2427 to 2517): `CurrentConditions` fills the
+   character's own readings, among them `ManaHeld` from the vital set (`.cpp` 1157) and `MaximumHealth` (918), and,
+   while `SkillGadgetBeingPriced` is set, the gadget's age and stillness (1424 to 1429); `WithTargetState` fills the
+   target's ailments and health only when a row asks; `WithEnemiesInReach` the nearby enemies' distances only when a
+   row asks.
+6. **Every test that reads a hit with the mana row or the gadget flat worn**, by two sweeps over
+   `game/Source/Cataclysm/Tests/` (`t84_sweep.py`, 4,049 declarations split as brief 83's second sweep, listing bodies
+   naming `attack_damage`, a Flat bucket, a tag, condition or scale, and something that deals damage, or naming either
+   row; `t84_sweep2.py`, every line that puts a modifier in the Flat bucket, 281, with a mark within 12 lines and
+   `attack_damage` within 40), read by hand:
+   - `Cataclysm.Enchantments.TheCurrentManaRowAddsAShareOfTheManaHeld`: reads `StatAppliedTo` (no blow), so it cannot
+     move.
+   - The gadget flat, all `Type.Deployable` and so left out of the new lookup:
+     `Cataclysm.SkillGadgets.TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`,
+     `Cataclysm.SkillGadgets.ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets`,
+     `Cataclysm.Traps.ASkillGadgetsShotLandingAfterTheGadgetIsGoneIsThePlayersAndNoTrapsLateBlow`,
+     `Cataclysm.Enchantments.TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps`. Unchanged.
+   - `Cataclysm.Skills.APointBlankSwingOnOneEnemyTakesTheDrawbackAndOnTwoDoesNot`,
+     `TheGroundAUseLeavesCarriesTheChargeItSpent` and `AUseRolledToHitItsUserHitsItWithItsOwnConditionedAttackDamage`:
+     the flat in each is the plain weapon row (or none on `attack_damage`), the mark belonging to an increase. Unchanged.
+   - Every other place found puts a flat on another stat (cooldown reduction, the health cost and Fervour stats, a
+     resistance cap, a trap's flags).
+   No test was found whose fighter wears a non-`Type.Deployable` flat `attack_damage` row with a tag, condition or scale
+   and deals a blow. This is a reading, not a measurement; the window's whole run is the measurement.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| The row reaches a skill's hit | `FlatTheAttributeCannotCarry`, `CataclysmAbilitySystemComponent.cpp` 8134 to 8175 (public at `.h` 4483 to 4496); asked by `ApplyHit`, `CataclysmSkillEffects.cpp` 1012 to 1019, and by `SkillHitWithNoTarget`, 552 to 570. |
+| Q-F1, outside the skill's percent | `ApplyHit` 1081: `(BeforeIncreases * DamagePercent / 100 + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat) * (1 + Applying + ...)`; the helper 567 to 569: `(WeaponPart * DamagePercent / 100 + LineFlat) * (1 + IncreasesForSkill(...) + ExtraIncreases)`. |
+| Q-F2, a Spell takes the spell half only | `ApplyHit` 1017: `LinesOwner && !IsSpell(SkillTags)`; the helper's lookup sits inside `if (!IsSpell(SkillTags))`, 552. |
+| Q-F3, rows naming `Type.Deployable` left out | the lookup, `.cpp` 8148 to 8149: `LeavingOut.IsValid() && Modifier.RequiredTags.HasTagExact(LeavingOut)`, `LeavingOut` being `Type.Deployable` at both callers; `HasTagExact`, as `FlatOfStatNamingTag` selects its rows. |
+| Ruling 6 of #2234, no max-health share on a gadget's ground | follows from Q-F3: the ground's only flat is the helper's, which leaves that row out. |
+| Q-F4, stacked after #2498 | this commit sits on `7cae46cfb`. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **"CANNOT CARRY" IS SELECTED ROW BY ROW: a Flat row requiring a tag other than the global scope tag, or stating
+  either condition, or carrying a scale other than `Fixed`** (8146 to 8163). Those are the three things an empty tag
+  container and an empty state can refuse. **AND WHAT THOSE ROWS GAVE THE ATTRIBUTE IS SUBTRACTED** (8168 to 8174): the
+  same rows' Flat bucket with an empty container and the default state, which is how the attribute was worked out, and
+  the Flat bucket is a sum. So a plain row is never selected, and a selected row that somehow held with nothing known
+  is not counted twice. For the shipped rows the subtraction is nought (item 4). The option not taken: the selection
+  alone, which relies on every condition and scale refusing an empty state; or the whole line's flat less the
+  attribute's, which reads the same and does not say what the ruling's words select.
+  **Known limit, read, not hit by any shipped row:** a selected row that held with nothing known but does not hold now
+  would be floored at nought rather than taken off the weapon part.
+- **THE TARGET AS `ApplyHit` PASSES IT TO `FlatOfStatNamingTag` (`AilmentTarget`), AND NO OTHER BLOW FACT**, the lookup
+  using `CurrentConditions()` with no cost, distance, stagger, count or charge, as `FlatOfStatNamingTag` does. The
+  option not taken: hand over every blow fact as `IncreasesForSkill` takes them. No shipped flat row asks for one.
+- **THE HELPER'S NON-SPELL BRANCH RETURNS THE OLD EXPRESSION WHEN THE FLAT IS NOUGHT**, `AttackDamageWithNoTarget(...) *
+  DamagePercent / 100`, and only otherwise the bracket with the flat in it. So with no such row worn the branch gives
+  the same float as #2498's, in the same order, not only the same number. The option not taken: always the bracket,
+  equal by algebra and different in the order of the float operations.
+- **#2498'S SPELL PATH IS UNCHANGED, TEXT AND ALL**, so its guard proofs' anchor (`return (WeaponPart * DamagePercent /
+  100.0f + SpellFlat)`) still stands exactly once in the file (counted by script). The two declarations the branches
+  share (`Cataclysm`, `NamesGadgets`) moved above the first branch.
+- **A GADGET'S GROUND TAKES THE MANA SHARE**, the row naming no tag: it is the gadget's cast of the player's skill, and
+  "Your skills deal ..." reaches it. The maximum health share stays off, by Q-F3 and ruling 6. The option not taken:
+  keep every flat off a gadget's ground, which no ruling says.
+- **THE TESTS ARE A NEW GROUP, `Cataclysm.ScaledFlatAttackDamage.`**, in `CataclysmSkillTemplateTests.cpp` directly
+  after #2498's block, using its rigs, so a proof's prefix with its dot selects exactly these four. The option not
+  taken: #2498's group, whose proofs would then run these four for nothing and lose their registered counts.
+
+### THE GENRE SOURCE
+
+None fetched, by the ruling: "No genre fetch is needed for a placement that copies an existing twin." The 2026-09-23
+entry's reading of the sentence names the genre's "gain X% of mana as extra damage" without a source.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry(FName Stat, const FGameplayTag& LeavingOut, const
+  FGameplayTagContainer& Tags, const AActor* Target) const`**, public, beside `FlatOfStatNamingTag` (`.h` 4483 to 4496,
+  `.cpp` 8134 to 8175): nought with no line; the Flat rows the attribute cannot carry, less those requiring `LeavingOut`
+  exactly; `Holding = Evaluate(0, rows, Tags, WithEnemiesInReach(rows, WithTargetState(rows, Target,
+  CurrentConditions()))).Flat`; `InTheAttribute = Evaluate(0, rows, FGameplayTagContainer()).Flat`; `max(0, Holding -
+  InTheAttribute)`. No parameter or local is named like a field of the class (searched).
+- **`ApplyHit`** (`CataclysmSkillEffects.cpp` 1012 to 1019, a comment and two statements after `GadgetFlat`, inside the
+  gadget's scope; and 1081): `LineFlat = LinesOwner && !IsSpell(SkillTags) ? LinesOwner->FlatTheAttributeCannotCarry(
+  "attack_damage", NamesGadgets, SkillTags, AilmentTarget) : 0`, added after `TrapsEnemyHealthFlat`.
+- **`SkillHitWithNoTarget`** (540 to 594): `Cataclysm` and `NamesGadgets` first (544 to 546); the non-Spell branch (548
+  to 570): `LineFlat` with no target; nought or less, the old expression (558 to 563); else `Folded`, `WeaponPart` and
+  `(WeaponPart * DamagePercent / 100 + LineFlat) * (1 + IncreasesForSkill(...) + ExtraIncreases)`. The Spell path below
+  is #2498's.
+- **`SkillHitWithNoTarget`'s comment** (`.h` 1710 to 1713) gains two sentences on the non-Spell flat.
+
+**THE ALGEBRA.** W the attribute, F the folded increases, M and A the line's "more" and increases for the skill, D the
+skill's percent, X the extra increases, L the new flat, S the spell part, Gf the gadget flat, Tf the trap's share of
+its enemy's health, and the rest of `ApplyHit`'s bracket and multipliers as before.
+
+- `ApplyHit`, not a Spell: before `(W/(1+F) x M x D/100 + 0 + Gf + Tf) x (...)`; now `(... + Tf + L) x (...)`. With
+  no such row L is exactly 0.0f (the lookup returns nought on its first or second test), and adding 0.0f to a float
+  leaves it the same float, so every figure equals #2498's.
+- `ApplyHit`, a Spell: L is 0.0f by Q-F2, the same.
+- The helper, not a Spell: L nought or less gives `AttackDamageWithNoTarget(...) x D/100`, #2498's expression in #2498's
+  order; L above nought gives `(W/(1+F) x M x D/100 + L) x (1 + A + X)`, which is `ApplyHit`'s shape. **The float order
+  does not change when no such row is worn**; it is a different expression only when L is above nought, and then a
+  different figure.
+- The helper, a Spell: #2498's, unchanged.
+
+### Tests
+
+Four Unreal tests in `Cataclysm.ScaledFlatAttackDamage.` (`CataclysmSkillTemplateTests.cpp` 20506 to 20880), sharing
+`CataclysmScaledFlatAttackDamageTest` (20522 to 20619): `AManaShareRow` (flat 20, `PercentOfManaHeld`, step 1),
+`AGadgetHealthShareRow` (flat 3, `PerPointOfMaximumHealth`, step 100, `Type.Deployable`), `RecordTheFlatLines` (the
+weapon's 100 flat and the rows, and a `spell_damage` line when rows are given for it, nothing folded), `HoldMana`,
+`AFlatStrike` (all round of 4 m, no cooldown, no mana) and `UseAndReadTheLoss`. The `Cataclysm.Skills.` fighter:
+attribute 100, every defence nought, 100,000 health (a float steps 0.0078 there; tolerances 0.05), 1,000 maximum mana.
+500 mana held pays 100. **Crit** pinned at 100 after each world is made. **Worlds**: `MakeWorld` for tests 1 and 2,
+`MakeWorldThatHasBegunPlay` where a gadget is placed (3 and 4). **Bodies**: user and enemy 2 m apart; the gadget 10 m
+away. **Teams**: `FScopedFighter`s carry none, as #2498's and path B's rigs (accepted for path B, ruling P2); the ground
+readings strike no team question. **No tick is waited for.**
+
+1. `ASkillsHitTakesTheManaShareOutsideItsPercentAndInsideItsIncreases` (20621), 9 assertions in a passing run. A melee
+   strike, the mana row and 20% increased `WhileStationary`. In order: two set-ups (the roll, the strike); **control,
+   still, no mana: used**; **it deals 300**; **still, 500 mana: used**; **it deals (250 + 100) x 1.2 = 420**; **the
+   share's part is 120**; **moved, 500 mana: used**; **it deals 350**. It fails if the row reaches no hit (300, 0, 250),
+   is multiplied by the percent (600), or sits outside the increases (400 and 100).
+2. `ASpellTakesTheManaShareOnceThroughItsSpellDamageHalf` (20675), 11 assertions. A Spell strike. In order: three
+   set-ups (the roll, the Spell, it carries `Type.Spell`); **control, both halves worn, no mana: used**; **it deals
+   250**; **both halves, 500 mana: used**; **it deals 350, the share once**; **only the `spell_damage` half: used**;
+   **it deals what both halves dealt** (the real twin); **only the `attack_damage` half: used**; **it deals 250**. A Spell
+   taking both halves fails the second figure (450); one taking neither fails it too (250); one taking the
+   `attack_damage` half fails the last (350).
+3. `AGadgetsBlowTakesItsMaximumHealthShareOnce` (20734), 9 assertions. A strike tagged `Type.Melee, Type.Deployable`,
+   the gadget row, a skill gadget. In order: three set-ups (the roll, the strike, `Type.Deployable` is a tag); **set-up:
+   a gadget is placed**; **set-up: it is a skill gadget**; **control, cast by its user: used**; **it deals 250**; **cast
+   by the gadget (`FreeRepeatCastBy`): used**; **it deals 250 + 3,000 = 3,250, today's figure, not 6,250**.
+4. `ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare` (20792), 17 assertions. The mana row and the
+   gadget row; a melee swing (Special) with the "hits you instead" row (share 100) and the use roll pinned at 0; the
+   ground tests' strike (Heavy); a skill gadget. In order: four set-ups (the crit roll, the use roll, the swing, the
+   ground strike); **set-up: a gadget is placed**; **set-up: it is a skill gadget**; **control, no mana: the swing is
+   used**; **it hurts the enemy**; **500 mana: the swing is used**; **it deals 100 more**; **rolled to hit its user:
+   used**; **it deals the enemy nothing**; **it deals its user 100 more than the control's swing**; **the ground strike
+   is used and leaves one patch**; **it ticks (250 + 100) x 16.7% = 58.45**; **tagged `Type.Deployable` and cast by the
+   gadget: used, one patch**; **it ticks 58.45: the mana share and no maximum health share** (ruling 6).
+
+**Every earlier test is expected to pass unchanged**, for the reasons under WHAT WAS READ FIRST, item 6, and the
+algebra; #2498's five included (their lines hold no such row, or are Spells).
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, float, float, float)` only. `TestTrue(const TCHAR*,
+bool)`; `TestNotNull` on `IConsoleVariable*`, `UCataclysmStrikeSkill*` and `ACataclysmMinion*`.
+
+**Not tested:** the real row's rolled value (the tests hand-build it at 20); a flat row with a tag or a condition (none
+ships; the selection's other two marks are read, not run); the subtraction (nought for every row tested); an Echo
+Chamber copy taking the share (priced by the same helper); a trap's blow and a minion's blow with the row; mana spent by
+the use itself before the hit is priced (the strikes cost none); a refreshed player wearing the real row; anything in
+play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as
+LF, as `prove_cpp_guard` reads it), each new text absent before the break. Brackets, round, curly, square:
+`CataclysmSkillEffects.cpp` 1705/1705, 468/468, 15/15 before and after FL-I; `CataclysmAbilitySystemComponent.cpp`
+3358/3358, 1091/1091, 40/40 before and 3359/3359, 1091/1091, 40/40 after FL-II (one pair added, balanced). Each compiles
+alone by reading: FL-I keeps `LineFlat` read twice; FL-II keeps `LeavingOut` read by `IsValid()`, and `FGameplayTag()`
+binds to `HasTagExact(const FGameplayTag&)`, which answers no for an invalid tag. Prefix `Cataclysm.ScaledFlatAttackDamage.`
+(4 tests): no other name begins with it, with or without its dot (searched by script over 4,813 name strings, case
+ignored, with `Cataclysm.NoTargetSpellDamage.AGadgetsSpellGroundLeavesOutTheSpellDamageRowsNamingGadgets` as the
+control, found once). #2498's anchors SN-I and SN-II are each still counted once.
+
+**The events the tests' actors raise, with their depth.** Every use: the skill-used notice in `CommitAndBegin`, depth
+nought, and `skill_end`, depth nought. Tests 1 to 3: each strike's `hit_dealt` on the enemy, depth nought; in test 3 the
+gadget's cast raises `deployable_hit` once dealt, depth nought. Test 4: `ActOnSkillUse` called by the test before the
+rolled use (`TheRowsSeeAUseOf`), depth nought; the self hit, `ApplyDirectDamage(Self, Self)`, depth nought, outside any
+`ActOnEvent`; each patch destroyed before any sweep; placing a gadget raises no event. The user wears no row on any of
+these but the test's use row. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Tests stated to fail | Every other test of the prefix |
+|---|---|---|---|---|---|
+| FL-I, the new flat removed from `ApplyHit` and the helper | `CataclysmSkillEffects.cpp` | `+ TrapsEnemyHealthFlat + LineFlat)` and `return (WeaponPart * DamagePercent / 100.0f + LineFlat)` | `+ TrapsEnemyHealthFlat + 0.0f * LineFlat)` and `return (WeaponPart * DamagePercent / 100.0f + 0.0f * LineFlat)` | `ASkillsHitTakesTheManaShareOutsideItsPercentAndInsideItsIncreases`, `ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare` | pass: `ASpellTakesTheManaShareOnceThroughItsSpellDamageHalf` (a Spell's path is untouched) and `AGadgetsBlowTakesItsMaximumHealthShareOnce` (the gadget flat is `GadgetFlat`) |
+| FL-II, the `Type.Deployable` exclusion removed | `CataclysmAbilitySystemComponent.cpp` | `Modifier.RequiredTags.HasTagExact(LeavingOut)` | `Modifier.RequiredTags.HasTagExact(FGameplayTag())` | `AGadgetsBlowTakesItsMaximumHealthShareOnce`, `ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare` | pass: tests 1 and 2 wear no gadget row |
+
+Failed assertions, by reading:
+
+- **FL-I, 7 in 2 tests.** Test 1: "420" (300), "120" (0), "350" (250). Test 4: "100 more" (the control's), "its user
+  100 more than the control's swing" (the control's), "58.45" (41.75) twice. The controls, the "deals the enemy nothing"
+  and every set-up pass.
+- **FL-II, 3 in 2 tests.** Test 3: the control's "250" (3,250: the row now reaches the user's own strike carrying
+  `Type.Deployable`) and "3,250" (6,250). Test 4: the gadget's patch "58.45" ((250 + 100 + 3,000) x 16.7% = 559.45).
+  **The brief predicted test 3; test 4 fails as well**, its gadget reading being ruling 6's check.
+
+**Tests of other groups expected to fail, to check in the window:** under FL-I, none. **Under FL-II, by reading and
+not certain**, the gadget flat tests that deal a gadget's blow or a blow carrying `Type.Deployable` may read the share
+twice: `Cataclysm.SkillGadgets.TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`,
+`Cataclysm.SkillGadgets.ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets`,
+`Cataclysm.Traps.ASkillGadgetsShotLandingAfterTheGadgetIsGoneIsThePlayersAndNoTrapsLateBlow` and
+`Cataclysm.Enchantments.TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps`. A prefix run selects none of them.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — A Spell's backfire, its burning ground and an Echo Chamber copy of it that hits you include your spell damage, as its hit on an enemy does: #2498, with the shared helper `SkillHitWithNoTarget`
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the new public static

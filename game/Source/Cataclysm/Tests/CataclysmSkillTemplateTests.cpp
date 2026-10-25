@@ -20502,6 +20502,383 @@ bool FCataclysmNoTargetSpellGadgetTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Issue #2499: a flat attack damage row the attribute cannot carry reaches a skill's hit.
+// --------------------------------------------------------------------------
+
+/**
+ * Ruled 2026-10-25 by the coordinating session: "Your skills deal 10%-30% of your current mana as more damage" is a flat
+ * `attack_damage` row scaled by the mana held, with a `spell_damage` twin. The attribute is worked out with no skill and
+ * an empty state, so the scaled row folds to nothing in it, and before #2499 no hit read it. Now
+ * `UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry` prices it, outside the skill's percent and inside the
+ * increases (Q-F1), for a skill that is not a Spell only (Q-F2), never a row naming `Type.Deployable` (Q-F3).
+ *
+ * THE RIGS ARE BRIEF 83'S: the `Cataclysm.Skills.` fighter, attack damage attribute 100 and every defence at nought, so
+ * a blow's figure is the health it takes, maximum health 100,000 and maximum mana 1,000. The row is worn at 20, so 500
+ * mana held pays 100; the control holds no mana. The gadget row is worn at 3 for every 100 of maximum health: 3,000.
+ * The lines are hand-built as `UCataclysmPlayerClassStats::ApplyTo` leaves them: the weapon's 100 flat, nothing folded,
+ * and the rows under test, which the attribute cannot fold.
+ */
+namespace CataclysmScaledFlatAttackDamageTest
+{
+	using namespace CataclysmNoTargetSpellDamageTest;
+
+	/** The mana held when the row pays, and what 20% of it is. */
+	constexpr float ManaHeld = 500.0f;
+	constexpr float ManaShare = 100.0f;
+
+	/** "Your skills deal 10%-30% of your current mana as more damage" at 20: flat 20, `mana_held_percent`, step 1. */
+	FCataclysmStatModifier AManaShareRow()
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 20.0f;
+		Row.Scale = ECataclysmStatScale::PercentOfManaHeld;
+		Row.ScaleStep = 1.0f;
+		return Row;
+	}
+
+	/** "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit" at 3: 3 a 100 of maximum health. */
+	FCataclysmStatModifier AGadgetHealthShareRow()
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 3.0f;
+		Row.Scale = ECataclysmStatScale::PerPointOfMaximumHealth;
+		Row.ScaleStep = 100.0f;
+		Row.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false));
+		return Row;
+	}
+
+	/** The caster's lines: attack damage the weapon's 100 flat and `AttackRows`; spell damage `SpellRows`, if any. */
+	void RecordTheFlatLines(FScopedFighter& Caster, const TArray<FCataclysmStatModifier>& AttackRows,
+							const TArray<FCataclysmStatModifier>& SpellRows = TArray<FCataclysmStatModifier>())
+	{
+		FCataclysmStatModifier Weapon;
+		Weapon.Bucket = ECataclysmStatBucket::Flat;
+		Weapon.Source = ECataclysmModifierSource::GearImplicit;
+		Weapon.Value = WeaponDamage;
+		FCataclysmStatInputs Attack;
+		Attack.Base = 0.0f;
+		Attack.Modifiers.Add(Weapon);
+		Attack.Modifiers.Append(AttackRows);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("attack_damage")), Attack);
+		if (!SpellRows.IsEmpty())
+		{
+			FCataclysmStatInputs SpellLine;
+			SpellLine.Base = 0.0f;
+			SpellLine.Modifiers = SpellRows;
+			Stats.Add(FName(TEXT("spell_damage")), SpellLine);
+		}
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	}
+
+	/** The mana the caster holds. */
+	void HoldMana(FScopedFighter& Caster, float Mana)
+	{
+		Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), Mana);
+	}
+
+	/** A strike all round of 4 m in `Slot`, no cooldown and no mana, carrying the tags `TagCell` names. */
+	UCataclysmStrikeSkill* AFlatStrike(FScopedFighter& Caster, ECataclysmAbilitySlot Slot, const TCHAR* TagCell)
+	{
+		UCataclysmStrikeSkill* Strike =
+			GrantSkill<UCataclysmStrikeSkill>(Caster, Slot, TEXT("Radius=4; Angle=360"), TEXT("A strike"), TagCell);
+		if (Strike)
+		{
+			Strike->CooldownOverride = 0.0f;
+			Strike->ManaCostOverride = 0.0f;
+		}
+		return Strike;
+	}
+
+	/** One use of `Skill`, plain when `Rolled` is null, else rolled by that row; what `Enemy` and the caster lost. */
+	bool UseAndReadTheLoss(FScopedFighter& Caster, FScopedFighter& Enemy, UCataclysmStrikeSkill* Skill,
+						   const FCataclysmPoolAction* Rolled, float& OutEnemyLost, float& OutCasterLost)
+	{
+		if (Rolled)
+		{
+			Caster.AbilitySystem->SetPoolActions({*Rolled});
+			TheRowsSeeAUseOf(Caster, Skill);
+		}
+		else
+		{
+			Caster.AbilitySystem->SetPoolActions({});
+		}
+		const float EnemyBefore = Enemy.Health();
+		const float CasterBefore = Caster.Health();
+		const bool bUsed = Activate(Caster, Skill);
+		OutEnemyLost = EnemyBefore - Enemy.Health();
+		OutCasterLost = CasterBefore - Caster.Health();
+		return bUsed;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScaledFlatHitTest,
+	"Cataclysm.ScaledFlatAttackDamage.ASkillsHitTakesTheManaShareOutsideItsPercentAndInsideItsIncreases",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A melee strike in the Heavy slot on an enemy 2 m off, its user wearing the mana row and "While stationary your
+ * damage is increased by 20%". THE CONTROL FIRST, standing still with no mana: 250 x 1.2 = 300. With 500 mana: (250 +
+ * 100) x 1.2 = 420, the share's own part 100 x 1.2 = 120. Having moved, the 20% not holding: 250 + 100 = 350. Before
+ * #2499 the three were 300, 300 and 250.
+ */
+bool FCataclysmScaledFlatHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmScaledFlatAttackDamageTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike = AFlatStrike(Caster, ECataclysmAbilitySlot::Heavy, TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike))
+	{
+		return false;
+	}
+	RecordTheFlatLines(Caster, {AManaShareRow(), AGroundLineIncrease(20.0f, ECataclysmStatCondition::WhileStationary)});
+
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+	Caster.AbilitySystem->NoteDidNotMove();
+	HoldMana(Caster, 0.0f);
+	if (!TestTrue(TEXT("control: standing still with no mana, the strike is used"),
+				  UseAndReadTheLoss(Caster, Enemy, Strike, nullptr, EnemyLost, CasterLost)))
+	{
+		return false;
+	}
+	const float NoMana = EnemyLost;
+	TestEqual(TEXT("control: and deals the enemy 250 x 1.2 = 300"), NoMana, 300.0f, 0.05f);
+
+	HoldMana(Caster, ManaHeld);
+	TestTrue(TEXT("standing still with 500 mana, the strike is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Strike, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals the enemy (250 + 100) x 1.2 = 420"), EnemyLost, 420.0f, 0.05f);
+	TestEqual(TEXT("the share's part is 100 x 1.2 = 120: the 20% reaches it and the skill's 250% does not"),
+			  EnemyLost - NoMana, ManaShare * 1.2f, 0.05f);
+
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	TestTrue(TEXT("having moved, with 500 mana, the strike is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Strike, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals the enemy 250 + 100 = 350, the 20% not holding"), EnemyLost, 350.0f, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScaledFlatSpellTest,
+	"Cataclysm.ScaledFlatAttackDamage.ASpellTakesTheManaShareOnceThroughItsSpellDamageHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Q-F2: "A Spell takes the spell half only." A Spell strike in the Heavy slot on an enemy 2 m off. THE CONTROL FIRST:
+ * both halves of the sentence worn, the `attack_damage` row and its `spell_damage` twin, and no mana: 250. With 500
+ * mana and both halves: 250 + 100 = 350, the share once. The same Spell wearing only the `spell_damage` half: 350, the
+ * twin it is compared with. Wearing only the `attack_damage` half: 250, which a Spell does not take. A Spell taking both
+ * halves reads 450 in the first; one taking neither reads 250 in the first two.
+ */
+bool FCataclysmScaledFlatSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmScaledFlatAttackDamageTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Spell = AFlatStrike(Caster, ECataclysmAbilitySlot::Heavy, TEXT("Type.Spell"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the Spell"), Spell)
+		|| !TestTrue(TEXT("set-up: it carries Type.Spell"), UCataclysmSkillEffects::IsSpell(Spell->SkillTags)))
+	{
+		return false;
+	}
+
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+	RecordTheFlatLines(Caster, {AManaShareRow()}, {AManaShareRow()});
+	HoldMana(Caster, 0.0f);
+	if (!TestTrue(TEXT("control: both halves worn, no mana, the Spell is used"),
+				  UseAndReadTheLoss(Caster, Enemy, Spell, nullptr, EnemyLost, CasterLost)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and deals the enemy 250"), EnemyLost, 250.0f, 0.05f);
+
+	HoldMana(Caster, ManaHeld);
+	TestTrue(TEXT("both halves worn, 500 mana, the Spell is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Spell, nullptr, EnemyLost, CasterLost));
+	const float BothHalves = EnemyLost;
+	TestEqual(TEXT("and deals the enemy 250 + 100 = 350: the share once, not 450"), BothHalves,
+			  250.0f + ManaShare, 0.05f);
+
+	RecordTheFlatLines(Caster, {}, {AManaShareRow()});
+	TestTrue(TEXT("only the spell_damage half worn, 500 mana, the Spell is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Spell, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals what both halves dealt: the twin it is compared with"), EnemyLost, BothHalves, 0.05f);
+
+	RecordTheFlatLines(Caster, {AManaShareRow()});
+	TestTrue(TEXT("only the attack_damage half worn, 500 mana, the Spell is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Spell, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals the enemy 250: a Spell does not take the attack_damage half"), EnemyLost, 250.0f, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScaledFlatGadgetBlowTest,
+	"Cataclysm.ScaledFlatAttackDamage.AGadgetsBlowTakesItsMaximumHealthShareOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Q-F3: the new lookup leaves out the rows naming `Type.Deployable`, which `FlatOfStatNamingTag` prices on a gadget's
+ * blow. A strike tagged `Type.Melee, Type.Deployable` on an enemy 2 m off, its user wearing the gadget row at 3 for
+ * every 100 of its 100,000 maximum health, and a skill gadget 10 m away. THE CONTROL FIRST: cast by the user, 250, the
+ * row reaching no blow but a gadget's. Cast by the gadget: 250 + 3,000 = 3,250, today's figure, and not 6,250.
+ */
+bool FCataclysmScaledFlatGadgetBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmScaledFlatAttackDamageTest;
+
+	// A skill gadget needs a world that has begun play, as `AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget` found.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike =
+		AFlatStrike(Caster, ECataclysmAbilitySlot::Heavy, TEXT("Type.Melee, Type.Deployable"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: Type.Deployable is in the tag vocabulary"),
+					 FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false).IsValid()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget =
+		ACataclysmMinion::PlaceSkillGadget(Caster.Actor, ECataclysmAbilitySlot::Heavy, FVector(10.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a skill gadget is placed. If not, DT_MinionTypes needs the SkillGadget row: run "
+						  "tools/generate_datatable_assets.py"), Gadget)
+		|| !TestTrue(TEXT("set-up: and it is a skill gadget"), Gadget->IsSkillGadget()))
+	{
+		return false;
+	}
+	RecordTheFlatLines(Caster, {AGadgetHealthShareRow()});
+
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+	if (!TestTrue(TEXT("control: cast by its user, the strike is used"),
+				  UseAndReadTheLoss(Caster, Enemy, Strike, nullptr, EnemyLost, CasterLost)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and deals the enemy 250: the gadget row reaches no blow but a gadget's"), EnemyLost, 250.0f,
+			  0.05f);
+
+	Strike->FreeRepeatCastBy = Gadget;
+	TestTrue(TEXT("cast by the gadget, the strike is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Strike, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals the enemy 250 + 3,000 = 3,250: the share once, today's figure, and not 6,250"), EnemyLost,
+			  3250.0f, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScaledFlatNoTargetTest,
+	"Cataclysm.ScaledFlatAttackDamage.ASelfHitAndAGroundTakeTheManaShareAndAGadgetsGroundNoHealthShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The no-target paths, priced by `UCataclysmSkillEffects::SkillHitWithNoTarget`. The user wears the mana row and the
+ * gadget row; a melee swing in the Special slot, the "hits you instead" row (share 100) hand-built, an enemy 2 m off;
+ * the ground tests' strike in the Heavy slot; a skill gadget 10 m away. THE CONTROL FIRST, no mana: the swing deals the
+ * enemy its plain figure. With 500 mana: the swing deals 100 more, and rolled to hit its user deals its user that
+ * raised hit; the ground ticks (250 + 100) x 16.7% = 58.45; and the gadget's ground, cast by the gadget and carrying
+ * `Type.Deployable`, ticks 58.45 too: the mana share and not the 3,000 of maximum health (ruling 6 of #2234: "per hit").
+ */
+bool FCataclysmScaledFlatNoTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmScaledFlatAttackDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	UCataclysmStrikeSkill* Swing = AFlatStrike(Caster, ECataclysmAbilitySlot::Special, TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Ground = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the use roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the swing"), Swing) || !TestNotNull(TEXT("set-up: the ground strike"), Ground))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget =
+		ACataclysmMinion::PlaceSkillGadget(Caster.Actor, ECataclysmAbilitySlot::Heavy, FVector(10.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a skill gadget is placed. If not, DT_MinionTypes needs the SkillGadget row: run "
+						  "tools/generate_datatable_assets.py"), Gadget)
+		|| !TestTrue(TEXT("set-up: and it is a skill gadget"), Gadget->IsSkillGadget()))
+	{
+		return false;
+	}
+	RecordTheFlatLines(Caster, {AManaShareRow(), AGadgetHealthShareRow()});
+	FCataclysmPoolAction HitsYou = AUseRow(TEXT("Test:self"), 20.0f, /*bNoDamage=*/false, 0.0f, false, TEXT("skill_use"));
+	HitsYou.bUseDealsIncreasedDamage = false;
+	HitsYou.bUseHitsItsUser = true;
+	HitsYou.UseSelfHitSharePercent = 100.0f;
+
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+	HoldMana(Caster, 0.0f);
+	if (!TestTrue(TEXT("control: with no mana, the swing is used"),
+				  UseAndReadTheLoss(Caster, Enemy, Swing, nullptr, EnemyLost, CasterLost)))
+	{
+		return false;
+	}
+	const float NoMana = EnemyLost;
+	if (!TestTrue(TEXT("control: and hurts the enemy"), NoMana > 0.0f))
+	{
+		return false;
+	}
+
+	HoldMana(Caster, ManaHeld);
+	TestTrue(TEXT("with 500 mana, the swing is used"), UseAndReadTheLoss(Caster, Enemy, Swing, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("and deals the enemy 100 more"), EnemyLost, NoMana + ManaShare, 0.05f);
+	TestTrue(TEXT("with 500 mana, the swing rolled to hit its user is used"),
+			 UseAndReadTheLoss(Caster, Enemy, Swing, &HitsYou, EnemyLost, CasterLost));
+	TestEqual(TEXT("it deals the enemy nothing"), EnemyLost, 0.0f, 0.01f);
+	TestEqual(TEXT("and deals its user its hit with the share, 100 more than the control's"), CasterLost,
+			  NoMana + ManaShare, 0.05f);
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	Caster.AbilitySystem->SetPoolActions({});
+	if (!TestTrue(TEXT("with 500 mana, the ground strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Ground, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks (250 + 100) x 16.7% = 58.45"), Tick, GroundTickWith(ManaShare), 0.01f);
+
+	Ground->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic, Type.Deployable"));
+	Ground->FreeRepeatCastBy = Gadget;
+	if (!TestTrue(TEXT("cast by the gadget, with 500 mana, the ground strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Ground, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the gadget's patch ticks 58.45: the mana share, and no maximum health share (ruling 6)"), Tick,
+			  GroundTickWith(ManaShare), 0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackGrantScopeTest,
 	"Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

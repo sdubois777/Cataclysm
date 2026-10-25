@@ -4480,6 +4480,21 @@ public:
 	float FlatOfStatNamingTag(FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags,
 							  const AActor* Target) const;
 
+	/**
+	 * The flat rows of `Stat` that the attribute cannot carry, worked out with `Tags`, `Target` and the character's
+	 * conditions now: the Flat bucket over those rows alone, floored at nothing. Issue #2499, ruled 2026-10-25: "Your
+	 * skills deal 10%-30% of your current mana as more damage" is a flat `attack_damage` row scaled by the mana held,
+	 * which folds to nothing in the attribute (worked out with no skill and an empty state) and reached no hit.
+	 *
+	 * A ROW THE ATTRIBUTE CANNOT CARRY is a Flat row that requires a tag other than the global scope, states a
+	 * condition (either of two) or carries a scale other than `Fixed`. A plain flat row is left out: the attribute
+	 * holds it. AND WHAT THOSE ROWS GAVE THE ATTRIBUTE IS TAKEN BACK OFF, their Flat bucket worked out as the attribute
+	 * was, with no tags and an empty state, so no row is counted twice even if one holds with nothing known. Every row
+	 * requiring `LeavingOut` exactly is left out too (Q-F3, `Type.Deployable`): `FlatOfStatNamingTag` prices those.
+	 */
+	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTag& LeavingOut, const FGameplayTagContainer& Tags,
+									  const AActor* Target) const;
+
 	/** The gadget standing for each converted slot, by slot. Weak: a destroyed gadget is no gadget. */
 	TMap<ECataclysmAbilitySlot, TWeakObjectPtr<class ACataclysmMinion>> SkillGadgets;
 

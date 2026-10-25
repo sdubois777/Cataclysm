@@ -8131,6 +8131,49 @@ float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
 	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State).Flat);
 }
 
+float UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry(
+	FName Stat, const FGameplayTag& LeavingOut, const FGameplayTagContainer& Tags, const AActor* Target) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		return 0.0f;
+	}
+	// THE FLAT ROWS WITH A TAG, A CONDITION OR A SCALE, and not those naming `LeavingOut`. Issue #2499. The global scope
+	// tag constrains nothing (`UCataclysmStatPipeline::ModifierApplies`), so a row requiring only it is plain.
+	const FGameplayTag Global = UCataclysmStatPipeline::GlobalScopeTag();
+	TArray<FCataclysmStatModifier> Uncarried;
+	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+	{
+		if (Modifier.Bucket != ECataclysmStatBucket::Flat
+			|| (LeavingOut.IsValid() && Modifier.RequiredTags.HasTagExact(LeavingOut)))
+		{
+			continue;
+		}
+		bool bScopedByTag = false;
+		for (const FGameplayTag& Required : Modifier.RequiredTags)
+		{
+			bScopedByTag = bScopedByTag || !(Global.IsValid() && Required == Global);
+		}
+		if (bScopedByTag || Modifier.Condition != ECataclysmStatCondition::Always
+			|| Modifier.Condition2 != ECataclysmStatCondition::Always || Modifier.Scale != ECataclysmStatScale::Fixed)
+		{
+			Uncarried.Add(Modifier);
+		}
+	}
+	if (Uncarried.IsEmpty())
+	{
+		return 0.0f;
+	}
+	// NOW, LESS WHAT THE ATTRIBUTE ALREADY HOLDS OF THEM: the attribute is worked out with an empty tag container and
+	// an empty state (`UCataclysmPlayerClassStats`), and the Flat bucket is a sum, so this is those rows' share of it.
+	const FCataclysmStatConditions State =
+		WithEnemiesInReach(Uncarried, WithTargetState(Uncarried, Target, CurrentConditions()));
+	const float Holding = UCataclysmStatPipeline::Evaluate(0.0f, Uncarried, Tags, State).Flat;
+	const float InTheAttribute = UCataclysmStatPipeline::Evaluate(0.0f, Uncarried, FGameplayTagContainer()).Flat;
+	return FMath::Max(0.0f, Holding - InTheAttribute);
+}
+
 // ==========================================================================
 // Skill traps. Ruled 2026-10-19 (T1-T19).
 // ==========================================================================

@@ -1707,7 +1707,10 @@ public:
 	 * `(W / (1 + F) x M x DamagePercent / 100 + SpellFlat) x (1 + A + ExtraIncreases)`, `ApplyHit`'s bracket: the
 	 * spell damage is outside the skill's percent and inside the increases. `SpellFlat` is `SpellDamageOf` with this
 	 * use's health cost and every blow fact "not known", and nought for a skill without `Type.Spell`, for which this
-	 * is `AttackDamageWithNoTarget(...) x DamagePercent / 100` exactly.
+	 * is `AttackDamageWithNoTarget(...) x DamagePercent / 100` exactly. SINCE #2499 A SKILL WITHOUT `Type.Spell` TAKES
+	 * IN ITS PLACE the flat attack damage rows the attribute cannot carry
+	 * (`UCataclysmAbilitySystemComponent::FlatTheAttributeCannotCarry`, no row naming `Type.Deployable`), in the same
+	 * place; with none worn it is still that exact expression.
 	 *
 	 * WHILE A SKILL GADGET'S BLOW IS PRICED (`FPricingASkillGadgetsBlow`), THE SPELL DAMAGE ROWS NAMING
 	 * `Type.Deployable` ARE LEFT OUT (Q-S2), as `ApplyHit` leaves them out of a gadget's blow: "Gadgets deal ..." is

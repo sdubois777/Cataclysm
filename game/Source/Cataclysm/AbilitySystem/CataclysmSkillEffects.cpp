@@ -541,21 +541,38 @@ float UCataclysmSkillEffects::SkillHitWithNoTarget(
 	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags, float DamagePercent,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
 {
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+
 	// A SKILL THAT IS NOT A SPELL ADDS NO SPELL DAMAGE, so its figure is the weapon part's at its percent, the
-	// expression each caller used before #2498.
+	// expression each caller used before #2498. AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, as
+	// `ApplyHit` adds them (#2499): outside the percent and inside the increases (Q-F1), never a row naming gadgets
+	// (Q-F3, which keeps a gadget's ground off "per hit", ruling 6 of #2234). With none, that same expression.
 	if (!IsSpell(SkillTags))
 	{
-		return AttackDamageWithNoTarget(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow, ExtraIncreases)
-			* DamagePercent / 100.0f;
+		const float LineFlat = Cataclysm
+			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags,
+													 /*Target=*/nullptr)
+			: 0.0f;
+		if (LineFlat <= 0.0f)
+		{
+			return AttackDamageWithNoTarget(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
+											ExtraIncreases)
+				* DamagePercent / 100.0f;
+		}
+		const float Folded = IncreasesBehindAttackDamage(Source);
+		const float WeaponPart = WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+			* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow);
+		return (WeaponPart * DamagePercent / 100.0f + LineFlat)
+			* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+			   + ExtraIncreases);
 	}
 
 	// A SPELL'S SPELL DAMAGE, ASKED AS `ApplyHit` ASKS IT, with no target, distance, stagger, count or charge. Without
 	// `Type.Deployable` while a skill gadget's blow is priced (Q-S2): the component's `SkillGadgetBeingPriced` is set
 	// exactly then, by the scope `ApplyHit` and `LeaveZoneAlong` open for a gadget's cast, and `ApplyHit` asks the same
 	// question of its delivery to decide the same removal.
-	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
-	const FGameplayTag NamesGadgets =
-		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
 	FGameplayTagContainer SpellTags = SkillTags;
 	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get() && NamesGadgets.IsValid())
 	{
@@ -992,6 +1009,15 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
+	// AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, issue #2499, ruled 2026-10-25: "Your skills deal
+	// 10%-30% of your current mana as more damage". Beside the spell part and outside the skill's percent (Q-F1), as
+	// its `spell_damage` twin sits; for a skill that is not a Spell only (Q-F2), since a Spell takes that twin through
+	// `SpellDamageOf` and the sentence counts once; and never a row naming gadgets (Q-F3), which `GadgetFlat` prices.
+	const UCataclysmAbilitySystemComponent* const LinesOwner = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float LineFlat = LinesOwner && !IsSpell(SkillTags)
+		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		: 0.0f;
+
 	// A SKILL TRAP'S CAST IS PRICED AS THE TRAP'S, BY ONE ADDED READ, ruled 2026-10-19 (T10) for "Scales off trap
 	// damage": the player's `minion_damage` rows naming `Type.Trap`, their increases into the bucket below and their
 	// "more" on the whole blow. The cast carries `Type.Trap` and not `Type.Deployable`, so no gadget row reaches it and
@@ -1052,7 +1078,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 
 	const float Damage = ModifiedDamage(
 		Source,
-		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat)
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat)
 			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
 			* TrapMore
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
