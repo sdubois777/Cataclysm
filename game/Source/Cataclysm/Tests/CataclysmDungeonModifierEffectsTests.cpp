@@ -58254,4 +58254,790 @@ bool FCataclysmDivineLawsBarrierTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// What a floor holds is drawn from the floor's own seed. Issue #2381, ruled 2026-10-24 by the coordinating session.
+//
+// One test for each of the seven functions that decided something on FMath's shared generator as a floor was
+// populated. Each builds the same dungeon seed and floor twice with the shared generator seeded two different ways
+// before the two builds, and asks for the same answer: so the answer does not rest on the shared generator. Then a
+// CONTROL: the same floor of other dungeon seeds, and at least one of them must answer differently, so the test
+// cannot pass by the draw answering one thing on every floor. Every build leaves the dungeon first, so nothing the
+// last build chose is carried into it, and puts every kind at Common, because a creature's rung is rolled from its
+// identity and the clock and would change which creatures can be chosen.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** What the shared generator is seeded with before the first and the second build of one floor. */
+	constexpr int32 SeededFloorSharedBeforeTheFirstBuild = 11;
+	constexpr int32 SeededFloorSharedBeforeTheSecondBuild = 977;
+
+	/** The dungeon seed built twice, and the last of the seeds the control builds after it (2 to this). */
+	constexpr int32 SeededFloorSeed = 1;
+	constexpr int32 SeededFloorLastControlSeed = 8;
+
+	/** The dungeon left, these rows carried, this seed and sub-type, every kind at Common. Builds nothing. */
+	void SeededFloorCarry(ACataclysmDungeonGameMode* Mode, const TArray<FName>& Rows, int32 Seed,
+						  ECataclysmDungeonSubType SubType)
+	{
+		Mode->LeaveEmpireDungeon();
+		Mode->DungeonModifiers = Rows;
+		Mode->DungeonSeed = Seed;
+		Mode->DungeonSubType = SubType;
+		MakeEveryKindCommon(Mode);
+		Mode->GatekeeperRarityStep = 0;
+	}
+
+	/** Goes to this floor and, on a Horde floor, lets its wave finish arriving: its choices are made only then. */
+	bool SeededFloorReach(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor)
+	{
+		if (!Test.TestTrue(FString::Printf(TEXT("seed %d: floor %d was reached"), Mode->DungeonSeed, Floor),
+						   Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		int32 Ticks = 0;
+		while (Mode->CreaturesStillArriving() > 0 && Ticks < 1000)
+		{
+			Mode->Tick(1.0f / 60.0f);
+			++Ticks;
+		}
+		return Test.TestEqual(FString::Printf(TEXT("seed %d: floor %d's wave finished arriving"), Mode->DungeonSeed, Floor),
+							  Mode->CreaturesStillArriving(), 0);
+	}
+
+	/** Whole numbers joined by commas. */
+	FString SeededFloorJoined(const TArray<int32>& Values)
+	{
+		return FString::JoinBy(Values, TEXT(","), [](int32 Value) { return FString::FromInt(Value); });
+	}
+
+	/** Where in `CurrentWave` each Plague Harbinger stands: the wave is in the order the seeded populator placed it. */
+	FString SeededFloorHarbingersInTheWave(const ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<int32> At;
+		for (int32 Index = 0; Index < Mode->CurrentWave.Num(); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Enemy = Mode->CurrentWave[Index].Get();
+			if (IsValid(Enemy) && Enemy->bPlagueHarbinger)
+			{
+				At.Add(Index);
+			}
+		}
+		return SeededFloorJoined(At);
+	}
+
+	/** Where in `CurrentWave` the Plaguebearer stands, or -1 when none of the wave is. */
+	FString SeededFloorPlaguebearerInTheWave(const ACataclysmDungeonGameMode* Mode)
+	{
+		const ACataclysmEnemyCharacter* Bearer = Mode->PlaguebearerOnTheFloor();
+		for (int32 Index = 0; Index < Mode->CurrentWave.Num(); ++Index)
+		{
+			if (Bearer && Mode->CurrentWave[Index].Get() == Bearer)
+			{
+				return FString::FromInt(Index);
+			}
+		}
+		return FString(TEXT("-1"));
+	}
+
+	/**
+	 * The heading of the line through the first two river marks, in tenths of a degree from 0 to 1799: the first
+	 * river's, unless that river kept a single mark clear of the entrance. -1 with fewer than two marks.
+	 */
+	int32 SeededFloorFirstRiverHeading(const TArray<FVector>& Marks)
+	{
+		if (Marks.Num() < 2)
+		{
+			return -1;
+		}
+		const FVector Along = Marks[1] - Marks[0];
+		float Degrees = FMath::RadiansToDegrees(static_cast<float>(FMath::Atan2(Along.Y, Along.X)));
+		Degrees = Degrees < 0.0f ? Degrees + 180.0f : Degrees;
+		return FMath::RoundToInt(Degrees * 10.0f) % 1800;
+	}
+
+	/** Each river mark's place to the centimetre, in the order the marks were drawn. */
+	FString SeededFloorMarksText(const TArray<FVector>& Marks)
+	{
+		return FString::JoinBy(Marks, TEXT(";"), [](const FVector& Mark)
+		{
+			return FString::Printf(TEXT("%d,%d"), FMath::RoundToInt(Mark.X), FMath::RoundToInt(Mark.Y));
+		});
+	}
+}
+
+// RAW SEWAGE: THE SAME DUNGEON SEED AND FLOOR RUN THEIR RIVERS ON THE SAME HEADINGS, HOWEVER THE SHARED GENERATOR WAS
+// SEEDED; ANOTHER SEED RUNS ANOTHER HEADING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededRiverHeadingsTest,
+	"Cataclysm.DungeonModifierEffects.RawSewageRiverHeadingsComeFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededRiverHeadingsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253: reseeded from the clock, never from a fixed number, and
+	// declared before the first reseed below so every return runs it.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE MARKS ARE PUT DOWN ON THE FIRST BEAT, from the points the rivers were drawn through as the floor was built.
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, TArray<FVector>& Out) -> bool
+	{
+		SeededFloorCarry(Mode, {SewageRow}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		Out.Reset();
+		for (const ACataclysmGroundZone* Mark : Mode->RawSewageMarksNow())
+		{
+			Out.Add(Mark->GetActorLocation());
+		}
+		return TestTrue(FString::Printf(TEXT("seed %d: the floor has river marks"), Seed), Out.Num() >= 2);
+	};
+
+	TArray<FVector> First;
+	TArray<FVector> Second;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor put every river mark in the same place"), SeededFloorMarksText(Second),
+			  SeededFloorMarksText(First));
+	TestEqual(TEXT("and run the first river on the same heading"), SeededFloorFirstRiverHeading(Second),
+			  SeededFloorFirstRiverHeading(First));
+
+	// THE CONTROL, ON THE HEADING ALONE: a heading drawn the same on every floor would answer the same here.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		TArray<FVector> Other;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
+		{
+			return false;
+		}
+		if (SeededFloorFirstRiverHeading(Other) != SeededFloorFirstRiverHeading(First))
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's first river runs at %d tenths of a degree; seeds [%s] run another"),
+							SeededFloorSeed, SeededFloorFirstRiverHeading(First), *SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed runs its first river on another heading"), Differing.Num() > 0);
+	return true;
+}
+
+// QUARANTINE BREACH: THE SAME DUNGEON SEED AND FLOOR QUARANTINE THE SAME KIND, HOWEVER THE SHARED GENERATOR WAS SEEDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededQuarantineKindTest,
+	"Cataclysm.DungeonModifierEffects.QuarantineBreachHeldKindComesFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededQuarantineKindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out) -> bool
+	{
+		SeededFloorCarry(Mode, {QuarantineRow}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		const ACataclysmQuarantineCharacter* Containment = Cast<ACataclysmQuarantineCharacter>(Mode->QuarantineNow());
+		if (!TestNotNull(FString::Printf(TEXT("seed %d: a containment stands"), Seed), Containment))
+		{
+			return false;
+		}
+		Out = Containment->Holds;
+		return true;
+	};
+
+	FString First;
+	FString Second;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor quarantine the same kind"), Second, First);
+
+	// THE CONTROL. The kind is drawn from the floor's own creatures, which differ by seed too, so this says the
+	// answer is not one kind everywhere; it cannot say the draw itself moved. Read, not measured.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's containment holds \"%s\"; seeds [%s] hold another"), SeededFloorSeed, *First,
+							*SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed quarantines another kind"), Differing.Num() > 0);
+	return true;
+}
+
+// LUXURY HOARDERS: THE SAME DUNGEON SEED AND FLOOR PUT THE SAME KIND OF GUARD ON THE SAME CELL BESIDE EACH HOARD,
+// HOWEVER THE SHARED GENERATOR WAS SEEDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededHoardGuardsTest,
+	"Cataclysm.DungeonModifierEffects.LuxuryHoardersGuardKindsAndCellsComeFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededHoardGuardsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// EACH GUARD AS ITS CLASS AND ITS CELL, read before any beat, so nothing has moved.
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out) -> bool
+	{
+		SeededFloorCarry(Mode, {HoardersRow}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Guards = Mode->LuxuryHoardGuardsStanding();
+		Out = FString::JoinBy(Guards, TEXT(";"), [Mode](const ACataclysmEnemyCharacter* Guard)
+		{
+			const FIntPoint Cell = Mode->CurrentFloor->CellOfWorld(Guard->GetActorLocation());
+			return FString::Printf(TEXT("%s@%d,%d"), *Guard->GetClass()->GetName(), Cell.X, Cell.Y);
+		});
+		return TestTrue(FString::Printf(TEXT("seed %d: the hoards have guards"), Seed), Guards.Num() > 0);
+	};
+
+	FString First;
+	FString Second;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor put the same kinds of guard on the same cells"), Second, First);
+
+	// THE CONTROL. The cells beside a hoard and the floor's kinds differ by seed too, so this says the answer is not
+	// one answer everywhere; it cannot say the draw itself moved. Read, not measured.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's guards: %s; seeds [%s] differ"), SeededFloorSeed, *First,
+							*SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed guards its hoards otherwise"), Differing.Num() > 0);
+	return true;
+}
+
+// BATTLEFIELD RELICS: THE SAME DUNGEON SEED AND FLOOR PLACE THE SAME KINDS OF RELIC, HOWEVER THE SHARED GENERATOR WAS
+// SEEDED; ANOTHER SEED PLACES OTHERS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededRelicKindsTest,
+	"Cataclysm.DungeonModifierEffects.BattlefieldRelicKindsComeFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededRelicKindsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	// DRAWN, NOT PINNED: with the console variable empty each kind is drawn.
+	FScopedConsoleString Kinds(TEXT("Cataclysm.BattlefieldRelicKinds"), TEXT(""));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out) -> bool
+	{
+		SeededFloorCarry(Mode, {RelicsRow}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		const TArray<ACataclysmFloorObject*> Relics = Mode->BattlefieldRelicsNow();
+		Out = FString::JoinBy(Relics, TEXT(";"), [](const ACataclysmFloorObject* Relic) { return Relic->DisplayName; });
+		return TestTrue(FString::Printf(TEXT("seed %d: relics stand"), Seed), Relics.Num() > 0);
+	};
+
+	FString First;
+	FString Second;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor place the same kinds in the same order"), Second, First);
+
+	// THE CONTROL. Nothing but the draw names a relic's kind, so a draw answering the same everywhere would fail it.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's relics: %s; seeds [%s] differ"), SeededFloorSeed, *First,
+							*SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed places other kinds"), Differing.Num() > 0);
+	return true;
+}
+
+// PACT OF TEMPTATION: THE SAME DUNGEON SEED AND FLOOR OFFER THE SAME PACTS IN THE SAME ORDER, HOWEVER THE SHARED
+// GENERATOR WAS SEEDED; ANOTHER SEED OFFERS OTHERS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededPactOfferTest,
+	"Cataclysm.DungeonModifierEffects.PactOfTemptationOfferComesFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededPactOfferTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	// DRAWN, NOT PINNED. AND THE DUNGEON IS LEFT BEFORE EACH BUILD (`SeededFloorCarry`), which forgets the offer before,
+	// so each build is asked with no last offer to avoid.
+	FScopedConsoleString Offer(TEXT("Cataclysm.PactOfTemptationOffer"), TEXT(""));
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE OFFER AND THE ALTAR'S BUTTONS IN THEIR ORDER.
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out) -> bool
+	{
+		SeededFloorCarry(Mode, {PactRow}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		const ACataclysmFloorObject* Altar = Mode->PactAltarNow();
+		if (!TestNotNull(FString::Printf(TEXT("seed %d: a pact altar stands"), Seed), Altar))
+		{
+			return false;
+		}
+		Out = SeededFloorJoined(Mode->PactsOfferedNow()) + TEXT("|")
+			+ FString::JoinBy(Altar->Choices, TEXT(","),
+							  [](const FCataclysmFloorObjectChoice& Choice) { return Choice.Key.ToString(); });
+		return TestEqual(FString::Printf(TEXT("seed %d: three are offered"), Seed), Mode->PactsOfferedNow().Num(), 3);
+	};
+
+	FString First;
+	FString Second;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor offer the same pacts in the same order"), Second, First);
+
+	// THE CONTROL. Nothing but the shuffle chooses the three, so a shuffle answering the same everywhere would fail it.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's offer: %s; seeds [%s] differ"), SeededFloorSeed, *First,
+							*SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed offers other pacts"), Differing.Num() > 0);
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * What one of the two plague rules chose on floor 2 of an ordinary dungeon and on each of the first three waves of
+	 * a Horde dungeon of this seed, as `Read` writes it, the shared generator seeded from `Shared` before each. Each
+	 * of the four in `Out`, in that order.
+	 */
+	bool SeededFloorPlagueChoices(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, FName Row, int32 Seed,
+								  int32 Shared, FString (*Read)(const ACataclysmDungeonGameMode*), TArray<FString>& Out)
+	{
+		// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253: this function reseeds it, so it restores it, from the
+		// clock and never from a fixed number, declared before the first reseed so every return runs it.
+		ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+		Out.Reset();
+		SeededFloorCarry(Mode, {Row}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(Test, Mode, 2))
+		{
+			return false;
+		}
+		Out.Add(Read(Mode));
+
+		// A HORDE ARENA IS CARVED ON ITS FIRST WAVE AND EVERY LATER WAVE ARRIVES IN IT, with the same plan and so the
+		// same plan seed; each wave is a floor of its own number.
+		SeededFloorCarry(Mode, {Row}, Seed, ECataclysmDungeonSubType::Horde);
+		for (int32 Wave = 1; Wave <= 3; ++Wave)
+		{
+			FMath::RandInit(Shared + Wave);
+			if (!SeededFloorReach(Test, Mode, Wave))
+			{
+				return false;
+			}
+			Out.Add(Read(Mode));
+		}
+		return true;
+	}
+}
+
+// PLAGUE HARBINGERS: THE SAME DUNGEON SEED AND FLOOR, OR WAVE, CHOOSE THE SAME HARBINGERS, HOWEVER THE SHARED
+// GENERATOR WAS SEEDED; ANOTHER SEED CHOOSES OTHERS, AND A HORDE'S WAVES DO NOT ALL CHOOSE ALIKE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededHarbingersTest,
+	"Cataclysm.DungeonModifierEffects.PlagueHarbingersChosenComeFromTheFloorsSeedOnAFloorAndOnEachHordeWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededHarbingersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives. The reseeds are in
+	// `SeededFloorPlagueChoices`, which has its own.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<FString> First;
+	TArray<FString> Second;
+	if (!SeededFloorPlagueChoices(*this, Mode, HarbingersRow, SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild,
+								  &SeededFloorHarbingersInTheWave, First)
+		|| !SeededFloorPlagueChoices(*this, Mode, HarbingersRow, SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild,
+									 &SeededFloorHarbingersInTheWave, Second))
+	{
+		return false;
+	}
+	const TCHAR* Names[] = {TEXT("floor 2"), TEXT("Horde wave 1"), TEXT("Horde wave 2"), TEXT("Horde wave 3")};
+	for (int32 Which = 0; Which < 4; ++Which)
+	{
+		TestFalse(FString::Printf(TEXT("%s chose Harbingers"), Names[Which]), First[Which].IsEmpty());
+		TestEqual(FString::Printf(TEXT("%s of the same seed chose the same Harbingers"), Names[Which]), Second[Which],
+				  First[Which]);
+	}
+
+	// THE CONTROLS. A Harbinger is named by where it stands in its wave, so a shuffle answering the same everywhere
+	// would choose the same places on every floor and on every wave.
+	TArray<int32> FloorDiffers;
+	TArray<int32> WavesDiffer;
+	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		TArray<FString> Other;
+		if (Seed == SeededFloorSeed)
+		{
+			Other = First;
+		}
+		else if (!SeededFloorPlagueChoices(*this, Mode, HarbingersRow, Seed, SeededFloorSharedBeforeTheFirstBuild,
+										   &SeededFloorHarbingersInTheWave, Other))
+		{
+			return false;
+		}
+		if (Other[0] != First[0])
+		{
+			FloorDiffers.Add(Seed);
+		}
+		if (Other[1] != Other[2] || Other[2] != Other[3])
+		{
+			WavesDiffer.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d chose [%s] on floor 2 and [%s], [%s], [%s] on the waves; seeds [%s] chose "
+								 "otherwise on floor 2, and seeds [%s] chose otherwise on one wave than another"),
+							SeededFloorSeed, *First[0], *First[1], *First[2], *First[3], *SeededFloorJoined(FloorDiffers),
+							*SeededFloorJoined(WavesDiffer)));
+	TestTrue(TEXT("CONTROL: another seed chooses other Harbingers on floor 2"), FloorDiffers.Num() > 0);
+	TestTrue(TEXT("CONTROL: a Horde's waves, which share one plan seed, do not all choose alike"), WavesDiffer.Num() > 0);
+	return true;
+}
+
+// THE PLAGUEBEARER: THE SAME DUNGEON SEED AND FLOOR, OR WAVE, CHOOSE THE SAME CREATURE, HOWEVER THE SHARED GENERATOR WAS
+// SEEDED; ANOTHER SEED CHOOSES ANOTHER, AND A HORDE'S WAVES DO NOT ALL CHOOSE ALIKE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededPlaguebearerTest,
+	"Cataclysm.DungeonModifierEffects.ThePlaguebearerChosenComesFromTheFloorsSeedOnAFloorAndOnEachHordeWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededPlaguebearerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives. The reseeds are in
+	// `SeededFloorPlagueChoices`, which has its own.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// EVERY KIND AT COMMON, so the Plaguebearer is a Common raised to Elite, chosen among every creature of the wave
+	// but a boss.
+	TArray<FString> First;
+	TArray<FString> Second;
+	if (!SeededFloorPlagueChoices(*this, Mode, PlaguebearerRow, SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild,
+								  &SeededFloorPlaguebearerInTheWave, First)
+		|| !SeededFloorPlagueChoices(*this, Mode, PlaguebearerRow, SeededFloorSeed,
+									 SeededFloorSharedBeforeTheSecondBuild, &SeededFloorPlaguebearerInTheWave, Second))
+	{
+		return false;
+	}
+	const TCHAR* Names[] = {TEXT("floor 2"), TEXT("Horde wave 1"), TEXT("Horde wave 2"), TEXT("Horde wave 3")};
+	for (int32 Which = 0; Which < 4; ++Which)
+	{
+		TestNotEqual(FString::Printf(TEXT("%s chose a Plaguebearer of its own wave"), Names[Which]), First[Which],
+					 FString(TEXT("-1")));
+		TestEqual(FString::Printf(TEXT("%s of the same seed chose the same Plaguebearer"), Names[Which]), Second[Which],
+				  First[Which]);
+	}
+
+	// THE CONTROLS, for the reason the Harbingers' give.
+	TArray<int32> FloorDiffers;
+	TArray<int32> WavesDiffer;
+	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		TArray<FString> Other;
+		if (Seed == SeededFloorSeed)
+		{
+			Other = First;
+		}
+		else if (!SeededFloorPlagueChoices(*this, Mode, PlaguebearerRow, Seed, SeededFloorSharedBeforeTheFirstBuild,
+										   &SeededFloorPlaguebearerInTheWave, Other))
+		{
+			return false;
+		}
+		if (Other[0] != First[0])
+		{
+			FloorDiffers.Add(Seed);
+		}
+		if (Other[1] != Other[2] || Other[2] != Other[3])
+		{
+			WavesDiffer.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d chose %s on floor 2 and %s, %s, %s on the waves; seeds [%s] chose otherwise "
+								 "on floor 2, and seeds [%s] chose otherwise on one wave than another"),
+							SeededFloorSeed, *First[0], *First[1], *First[2], *First[3], *SeededFloorJoined(FloorDiffers),
+							*SeededFloorJoined(WavesDiffer)));
+	TestTrue(TEXT("CONTROL: another seed chooses another Plaguebearer on floor 2"), FloorDiffers.Num() > 0);
+	TestTrue(TEXT("CONTROL: a Horde's waves, which share one plan seed, do not all choose alike"), WavesDiffer.Num() > 0);
+	return true;
+}
+
+// ILLUSORY ENEMIES: THE SAME DUNGEON SEED AND FLOOR BUILD THE SAME CREATURES AS ILLUSIONS, HOWEVER THE SHARED GENERATOR
+// WAS SEEDED; ANOTHER SEED MAKES OTHERS ILLUSIONS. Issue #2381, the eighth draw, ruled 2026-10-24.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededIllusionsTest,
+	"Cataclysm.DungeonModifierEffects.IllusoryEnemiesIllusionsComeFromTheFloorsSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededIllusionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PUT THE SHARED GENERATOR BACK ON EVERY EXIT, #2253, for the reason the river test gives.
+	ON_SCOPE_EXIT { FMath::RandInit(static_cast<int32>(FPlatformTime::Cycles())); };
+
+	// DRAWN, NOT PINNED: the roll's console variable at -1, and put back to what it was on every exit. Set here and not
+	// with `FScopedConsoleString`, whose clearing writes an empty string, which a number variable may read as 0.
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.IllusoryEnemiesRoll"));
+	if (!TestNotNull(TEXT("the roll's console variable exists"), Roll))
+	{
+		return false;
+	}
+	const FString RollWas = Roll->GetString();
+	ON_SCOPE_EXIT { Roll->Set(*RollWas, ECVF_SetByConsole); };
+	Roll->Set(TEXT("-1"), ECVF_SetByConsole);
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// WHERE IN THE FLOOR'S OWN CREATURES EACH ILLUSION STANDS, the creatures in the order the seeded populator placed
+	// them, and how many there are.
+	const auto Build = [this, Mode](int32 Seed, int32 Shared, FString& Out, int32& Illusions, int32& Placed) -> bool
+	{
+		SeededFloorCarry(Mode, {IllusoryEnemies}, Seed, ECataclysmDungeonSubType::None);
+		FMath::RandInit(Shared);
+		if (!SeededFloorReach(*this, Mode, 2))
+		{
+			return false;
+		}
+		TArray<int32> At;
+		for (int32 Index = 0; Index < Mode->CurrentWave.Num(); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Enemy = Mode->CurrentWave[Index].Get();
+			if (IsValid(Enemy) && Enemy->IsAnIllusion())
+			{
+				At.Add(Index);
+			}
+		}
+		Out = SeededFloorJoined(At);
+		Illusions = At.Num();
+		Placed = Mode->CurrentWave.Num();
+		return TestTrue(FString::Printf(TEXT("seed %d: the floor placed creatures"), Seed), Placed > 0);
+	};
+
+	FString First;
+	FString Second;
+	int32 Illusions = 0;
+	int32 Placed = 0;
+	int32 IllusionsAgain = 0;
+	int32 PlacedAgain = 0;
+	if (!Build(SeededFloorSeed, SeededFloorSharedBeforeTheFirstBuild, First, Illusions, Placed)
+		|| !Build(SeededFloorSeed, SeededFloorSharedBeforeTheSecondBuild, Second, IllusionsAgain, PlacedAgain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor place as many creatures"), PlacedAgain, Placed);
+	TestEqual(TEXT("and make the same of them illusions"), Second, First);
+
+	// DRAWN AND NOT PINNED: some of the floor's creatures are illusions and some are not, which a pinned roll (all or
+	// none) would not give.
+	TestTrue(FString::Printf(TEXT("some of seed %d's %d creatures are illusions (%d)"), SeededFloorSeed, Placed, Illusions),
+			 Illusions > 0);
+	TestTrue(FString::Printf(TEXT("and some are not (%d of %d are)"), Illusions, Placed), Illusions < Placed);
+
+	// THE CONTROL. The floor's creatures differ by seed too, so this says the answer is not one answer everywhere; it
+	// cannot say the draw itself moved. Read, not measured.
+	TArray<int32> Differing;
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	{
+		FString Other;
+		int32 OtherIllusions = 0;
+		int32 OtherPlaced = 0;
+		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other, OtherIllusions, OtherPlaced))
+		{
+			return false;
+		}
+		if (Other != First)
+		{
+			Differing.Add(Seed);
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seed %d's illusions stand at [%s] of %d; seeds [%s] differ"), SeededFloorSeed, *First,
+							Placed, *SeededFloorJoined(Differing)));
+	TestTrue(TEXT("CONTROL: another seed makes other creatures illusions"), Differing.Num() > 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

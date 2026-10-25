@@ -4468,6 +4468,20 @@ private:
 	/** The stream every gate choice of this floor is drawn on, seeded from the floor's plan. */
 	FRandomStream GatedShortcutStream;
 
+	/**
+	 * The stream Illusory Enemies' roll is drawn on for the creatures a floor is built with, and whether a creature
+	 * placed now is one of them. Issue #2381, ruled 2026-10-24.
+	 *
+	 * SEEDED AT THE TOP OF `PopulateFloor` from the plan's seed, `IllusoryEnemiesSalt` and the floor number, and drawn
+	 * once for each creature `SpawnPlacedCreature` puts down while the flag is set, in the order they are put down. The
+	 * flag is set for the whole of `PopulateFloor` (which places the floor's population, Luxury Hoarders' guards and
+	 * Demonic Guide's guide) and for each call of `ContinueTheWaveArriving` (the rest of a Horde wave, a few a frame).
+	 * Every other caller of `SpawnPlacedCreature` puts a creature down in play, and its roll stays on the shared
+	 * generator with the other in-play draws.
+	 */
+	FRandomStream IllusoryEnemiesStream;
+	bool bIllusionsFromTheFloorsSeed = false;
+
 	/** Added to the floor's seed for that stream, so it is not the stream the floor itself was carved on. */
 	static constexpr int32 GatedShortcutSalt = 0x6A7E;
 

@@ -6368,6 +6368,38 @@ public:
 	static constexpr int32 WarBannerCellsSalt = 0x5CF7;
 	static constexpr int32 GrimTotemsCellsSalt = 0x5CF8;
 
+	/**
+	 * The salts of the seven draws that decide what a floor holds as it is populated, one for each function that
+	 * draws: `PlaceTheRivers` (each river's heading), `PlaceTheQuarantine` (the kind held), `PlaceTheHoards` (each
+	 * guard's kind and cell), `PlaceTheRelics` (each relic's kind), `PlaceThePactAltar` (the shuffle the offer is taken
+	 * from), `ChooseThePlagueHarbingers` and `ChooseThePlaguebearer` (the creatures chosen). Each is mixed with the
+	 * floor's seed as the picker's salts above are, so the same dungeon seed and floor hold the same. Issue #2381,
+	 * ruled 2026-10-24 by the coordinating session; until then each drew on FMath's shared generator, and two builds
+	 * of one floor differed.
+	 *
+	 * FROM 0x5D01, so the picker's run above keeps its next number for the next placing rule. NO TWO ARE EQUAL AND
+	 * NONE EQUALS ANOTHER SALT IN THE GAME'S SOURCE (searched 2026-10-24, in hexadecimal and in decimal).
+	 *
+	 * THE LAST THREE ALSO MIX IN THE FLOOR NUMBER, a labelled judgement of the session that wrote them: those three
+	 * functions run again for every wave of a Horde arena, whose plan, and so whose seed, is the first wave's on every
+	 * wave. A wave is a floor of its own number, so each wave draws its own and the same wave of the same dungeon
+	 * draws the same. The other four are placed once an arena and do not need it.
+	 */
+	static constexpr int32 RawSewageHeadingSalt = 0x5D01;
+	static constexpr int32 QuarantineBreachKindSalt = 0x5D02;
+	static constexpr int32 LuxuryHoardersGuardsSalt = 0x5D03;
+	static constexpr int32 BattlefieldRelicsKindSalt = 0x5D04;
+	static constexpr int32 PactOfTemptationOfferSalt = 0x5D05;
+	static constexpr int32 PlagueHarbingersChoiceSalt = 0x5D06;
+	static constexpr int32 PlaguebearerChoiceSalt = 0x5D07;
+
+	/**
+	 * And the eighth, ruled the same day: Illusory Enemies' roll for the creatures a floor is built with, drawn on
+	 * `ACataclysmDungeonGameMode::IllusoryEnemiesStream`. Mixed with the floor number too, because a Horde wave is
+	 * populated afresh into the first wave's plan. Issue #2381, ruled 2026-10-24.
+	 */
+	static constexpr int32 IllusoryEnemiesSalt = 0x5D08;
+
 	/** Whether a floor of this seed that carries Reality Rifts has a hidden chamber. The same seed, the same answer. */
 	static bool RealityChamberOnFloor(int32 FloorSeed);
 
