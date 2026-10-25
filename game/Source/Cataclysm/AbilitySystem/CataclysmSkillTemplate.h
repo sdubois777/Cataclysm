@@ -437,17 +437,6 @@ public:
 	float SpendHeldNextUseCharges(UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
-	 * What a figure built on the weapon damage attribute is multiplied by to
-	 * carry `LastNextUseIncreasePercent`. Issue #1833, phase 2.
-	 *
-	 * ADDED TO THE INCREASES THE ATTRIBUTE ALREADY FOLDED, not multiplied on top:
-	 * (1 + folded + spent) / (1 + folded). Increases are a sum, the reason
-	 * Fervour's bought damage joins the sum in `ApplyHit`. One when nothing was
-	 * spent. The ground this use leaves is priced with it.
-	 */
-	float WithSpentIncrease(const UAbilitySystemComponent* AbilitySystem) const;
-
-	/**
 	 * The targets that evaded the last set of blows this skill sent.
 	 *
 	 * READ THROUGH `BlowLandedOn`, which is where the reasoning is. Kept as the

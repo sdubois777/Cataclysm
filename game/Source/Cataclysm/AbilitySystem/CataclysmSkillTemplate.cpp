@@ -86,20 +86,6 @@ float UCataclysmSkillTemplate::SpendHeldNextUseCharges(
 	return LastNextUseIncreasePercent;
 }
 
-float UCataclysmSkillTemplate::WithSpentIncrease(
-	const UAbilitySystemComponent* AbilitySystem) const
-{
-	// AND ANY EFFECTIVENESS SPENT, a "more" on the whole figure. Issue #1833.
-	const float More = FMath::Max(0.0f, LastNextUseMoreMultiplier);
-	if (LastNextUseIncreasePercent <= 0.0f)
-	{
-		return More;
-	}
-	const float Folded = UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem);
-	return (1.0f + Folded + LastNextUseIncreasePercent / 100.0f)
-		/ FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER) * More;
-}
-
 float UCataclysmSkillTemplate::GetDamagePercent() const
 {
 	// THE SKILL'S OWN FIGURE FIRST, AND THAT ORDER IS THE WHOLE POINT.
@@ -3351,7 +3337,29 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Self);
-	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem);
+
+	// AND A SKILL TRAP'S GROUND IS PRICED AS THE TRAP'S, WHEN IT IS LAID. Ruled 2026-10-21 by the coordinating session
+	// (Z1 (a)): "A trap's zone is priced as the trap's when it is laid (the Type.Trap minion_damage increases and more),
+	// and its sweeps raise no deployable_hit". The trap standing (a Strike's ground, laid in the cast) or already used up
+	// (a shot's ground, laid where it ends, after the trap is gone), found as `UCataclysmSkillEffects::ApplyHit` finds
+	// it. Its increases join the bucket the caster's own are in, as they join a blow's, and its "more" multiplies the
+	// whole; the zone's target is not known, so none is given. Nothing for every other use.
+	//
+	// WORKED OUT BEFORE THE TICK SINCE #2234 (ruling 7, 2026-10-24): the trap's increases go into the tick's one
+	// bracket below, beside the line's own and the spent charge's, as `ApplyHit` adds `TrapIncreases` beside `Bought`.
+	// `TrapsPartOfTheTick` is left holding the trap's "more" alone.
+	UCataclysmAbilitySystemComponent* const LaysForATrap =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	UCataclysmAbilitySystemComponent::FSpentSkillTrap SpentTrap;
+	float TrapIncreases = 0.0f;
+	float TrapsPartOfTheTick = 1.0f;
+	if (LaysForATrap && !ACataclysmMinion::SkillGadgetCasting(this)
+		&& (ACataclysmMinion::SkillTrapCasting(this) || LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)))
+	{
+		float TrapMore = 1.0f;
+		LaysForATrap->TrapDamageNamingTrap(SkillTags, /*Target=*/nullptr, TrapIncreases, TrapMore);
+		TrapsPartOfTheTick = TrapMore;
+	}
 
 	// PRICED WITH THE CASTER'S MODIFIERS APPLIED, and priced once, when the
 	// ground is created. A patch outlives the skill that left it and can outlive
@@ -3365,37 +3373,31 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 	// skill gadgets stack 2 (P2): while `PerTick` is worked out the caster's conditions read the gadget's age and
 	// stillness, and the scope ends before the zone is laid, so the zone's own rows are judged on the caster. No flat
 	// row and no `deployable_hit`: a tick is not a hit. Nothing for every other use: the gadget is null.
+	//
+	// AND, SINCE #2234, FROM THE CASTER'S WHOLE ATTACK DAMAGE LINE AND NOT THE ATTRIBUTE. The option the owner chose on
+	// 2026-10-23: "A ground patch and a reflected self-hit read the full attack-damage line. Conditions about you are
+	// judged when the patch is laid or the blow copied; conditions about the enemy struck do not apply to a patch."
+	// So the caster's conditioned, scaled and skill-type rows are judged now, with the skill's tags (rulings 1 to 3),
+	// and no row about an enemy reaches it: there is no target and no blow (ruling 5). Inside the gadget's scope, so a
+	// gadget's ground takes "Gadgets deal ..." and the gadget-age rows, judged on the gadget (ruling 6). NOT THE FLAT
+	// SHARE OF MAXIMUM HEALTH a gadget's blow takes: that row says "per hit", and a tick is not a hit. THE SPENT CHARGE
+	// AND THE TRAP'S INCREASES JOIN THE LINE'S IN ONE BRACKET (ruling 7), so they add to it rather than multiply it; the
+	// effectiveness spent and the trap's "more" multiply the whole. For a caster with no line this is the figure it was,
+	// except a patch carrying both a spent charge and a trap's increases, whose two now add instead of multiplying.
 	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)),
 		ACataclysmMinion::SkillGadgetCasting(this));
+	const float WeaponDamage = UCataclysmSkillEffects::AttackDamageWithNoTarget(
+		AbilitySystem, SkillTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+		/*ExtraIncreases=*/FMath::Max(0.0f, LastNextUseIncreasePercent) / 100.0f + TrapIncreases);
 	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
 							AbilitySystem,
 							WeaponDamage * GetDamagePercent() / 100.0f,
 							SkillTags)
 						* PercentPerSweep / 100.0f
-						* WithSpentIncrease(AbilitySystem);
+						// AND ANY EFFECTIVENESS SPENT, a "more" on the whole figure. Issue #1833.
+						* FMath::Max(0.0f, LastNextUseMoreMultiplier);
 	PricedForTheGadget.End();
-
-	// AND A SKILL TRAP'S GROUND IS PRICED AS THE TRAP'S, WHEN IT IS LAID. Ruled 2026-10-21 by the coordinating session
-	// (Z1 (a)): "A trap's zone is priced as the trap's when it is laid (the Type.Trap minion_damage increases and more),
-	// and its sweeps raise no deployable_hit". The trap standing (a Strike's ground, laid in the cast) or already used up
-	// (a shot's ground, laid where it ends, after the trap is gone), found as `UCataclysmSkillEffects::ApplyHit` finds
-	// it. Its increases join the bucket the caster's own are in, as they join a blow's, and its "more" multiplies the
-	// whole; the zone's target is not known, so none is given. Nothing for every other use.
-	UCataclysmAbilitySystemComponent* const LaysForATrap =
-		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
-	UCataclysmAbilitySystemComponent::FSpentSkillTrap SpentTrap;
-	float TrapsPartOfTheTick = 1.0f;
-	if (LaysForATrap && !ACataclysmMinion::SkillGadgetCasting(this)
-		&& (ACataclysmMinion::SkillTrapCasting(this) || LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)))
-	{
-		float TrapIncreases = 0.0f;
-		float TrapMore = 1.0f;
-		LaysForATrap->TrapDamageNamingTrap(SkillTags, /*Target=*/nullptr, TrapIncreases, TrapMore);
-		const float Folded = UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem);
-		TrapsPartOfTheTick =
-			(1.0f + Folded + TrapIncreases) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER) * TrapMore;
-	}
 
 	ACataclysmGroundZone* Zone = LeaveAZoneFor(
 		Self, Start, End, RadiusCm, Seconds, PerTick * TrapsPartOfTheTick, SkillTags,

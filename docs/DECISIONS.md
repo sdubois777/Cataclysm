@@ -2,6 +2,368 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A skill's ground patch is priced from its caster's whole attack damage line, judged when it is laid, so the caster's conditioned, scaled and skill-type attack damage rows reach it, a skill gadget's ground takes the gadget rows, and no row about an enemy does: #2234 path A, which closes it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`UCataclysmSkillTemplate::LeaveZoneAlong`,
+and `WithSpentIncrease` removed); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` (the declaration of
+`WithSpentIncrease` removed); `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (five tests in the new group
+`Cataclysm.GroundPatchLine.`, and a comment in `Cataclysm.Skills.TheGroundAUseLeavesCarriesTheChargeItSpent`);
+`tools/generate_datatables.py` and `tools/tests/test_every_conditioned_stat_has_an_asker.py` (comments only); this file
+(this entry, and a dated line in the entry of 2026-10-16 on skill gadgets). No data row, no tag, no workbook cell,
+nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, nothing of `CataclysmDungeonGameMode.*` (path C), no
+change to path B's self hit, and Martyr's Ember's stored damage is untouched. **This closes
+[#2234](https://github.com/sdubois777/Cataclysm/issues/2234): it is the last of its three paths.**
+
+### SAID FIRST
+
+**A PLAY CHANGE.** The burning ground a skill leaves (its own ground, or the zone a row gives a skill that states none)
+deals each sweep a figure worked out once, when it is laid. Until this change that figure was the attack damage
+ATTRIBUTE times the skill's percent and the ground's percent, then the runtime modifiers, the spent next-use charge and
+a trap's rows. The attribute is worked out with no skill in hand and nothing known about the character, so every
+conditioned, scaled and tag-scoped `attack_damage` row the caster wore was missing from the ground, while the same
+use's hit carried them. **Now the ground carries them, judged at the moment it is laid**: ground laid standing still
+under "While stationary your damage is increased by 20%" deals 20% more for its whole life, ground laid by a melee
+skill takes the melee rows, and ground laid while a drawback row holds ("While moving your skills deal 15%-25% less
+damage") deals less. A condition that changes after the ground is laid does not change the ground.
+
+**A SKILL GADGET'S GROUND TAKES THE GADGET ROWS.** "Gadgets deal 20%-40% increased damage" and the two rows scaled by
+a gadget's age reach the ground a skill gadget's cast leaves, and "While stationary your gadgets deal 20%-40% increased
+damage" is judged on the gadget, which stands still. The flat "Gadgets deal bonus damage equal to 3%-6% of your maximum
+HP per hit" does not: a sweep is not a hit.
+
+**NO ROW ABOUT AN ENEMY REACHES IT.** A patch has no target, so a boss, an enemy's health, its distance, its ailments,
+the first hit on it and how many enemies were struck all refuse.
+
+**ONE BRACKET.** A spent "next skill deals X% increased damage" charge and a trap's increases are now added to the
+line's increases, not multiplied on top of them, as a hit adds them.
+
+**NOTHING CHANGES FOR A CASTER WITH NO SUCH ROW.** With no `attack_damage` line recorded, or a line of plain rows only,
+the figure is what it was, by the algebra below, except on a patch carrying both a spent charge and a trap's increases,
+where the two now add (no such patch was found: see the algebra).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 80. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a ground patch is priced with your conditioned and skill-type attack damage rows as they hold when it is laid, and a gadget's ground with your gadget rows, but no row about an enemy
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner was asked with a multiple-choice question on 2026-10-23. THE OWNER SELECTED the option labelled, verbatim,
+"Reach patches and self-hits (Recommended)". Its description, written by the coordinating session and shown to the
+owner, verbatim:
+
+> A ground patch and a reflected self-hit read the full attack-damage line. Conditions about you are judged when the patch
+> is laid or the blow copied; conditions about the enemy struck do not apply to a patch. Martyr's Ember's stored damage
+> stays as it is: it was kept fixed on purpose earlier.
+
+The owner selected that option; the words are the coordinating session's, and the owner did not type them.
+
+The coordinating session's rulings of 2026-10-24, verbatim (the numbers are its own), as brief 80 gives them:
+
+> 1. YES: unconditioned tag-scoped rows reach too.
+> 2. Tags: the template's SkillTags for patches and self-hits; the copied row's Skill.Tags for Echo.
+> 3. Scaled rows: the stacks held at laying or copying time.
+> 6. YES: a gadget's ground takes "Gadgets deal ..." and the gadget-age rows, inside the gadget scope. The flat max-health
+>    share stays out. This answers the "SEPARATE QUESTION, RECORDED AND NOT BUILT (P2)" at DECISIONS.md about line 18263.
+>    Mark that entry with a dated line pointing to this one.
+> 7. YES: spent and trap increases go into the same bracket on a patch.
+> 9. Order: B, then C, then A, one brief and one window each.
+
+And ruling 5, as the path B entry below records it verbatim: "5. Blow facts for path B only." Brief 80 reads it as "a
+patch passes none".
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `74acd5e1c`, before this change.
+
+1. **`LeaveZoneAlong`** (`CataclysmSkillTemplate.cpp` 3342 to 3442), reached from `LeaveGroundAlong` (3283 to 3318, the
+   skill's own ground, the call at 3316) and `LeaveRowZoneAt` (3320 to 3340, a row's zone, the call at 3338). It read
+   `WeaponDamageOf(AbilitySystem)` (3354); opened `FPricingASkillGadgetsBlow` (3368 to 3370); priced `PerTick =
+   ModifiedDamage(AbilitySystem, WeaponDamage * GetDamagePercent() / 100, SkillTags) * PercentPerSweep / 100 *
+   WithSpentIncrease(AbilitySystem)` (3371 to 3376); ended the scope (3377); then, for a trap's cast, worked out
+   `TrapsPartOfTheTick = (1 + Folded + TrapIncreases) / max(1 + Folded, UE_KINDA_SMALL_NUMBER) * TrapMore` with no target
+   (3385 to 3398); and left the zone with `PerTick * TrapsPartOfTheTick` (3400 to 3405, the figure at 3401).
+2. **`WithSpentIncrease`** (`.cpp` 89 to 101, declared public at `.h` 439 to 448): `More = max(0, LastNextUseMoreMultiplier)`;
+   if `LastNextUseIncreasePercent <= 0` it is `More`, else `(1 + Folded + LastNextUseIncreasePercent / 100) / max(1 + Folded,
+   UE_KINDA_SMALL_NUMBER) * More`. Its only caller was 3376 (searched over the repository: the declaration, the
+   definition and that call, and one historical mention in this file).
+3. **Where the four figures come from.** `LastNextUseIncreasePercent` and `LastNextUseMoreMultiplier` (`.h` 355 and 364,
+   public): written by `SpendHeldNextUseCharges` (`.cpp` 75 to 87, `SpendNextUseCharges` on the ability system) on a paid
+   use, then in `CommitAndBegin` set to nought when the use deals no damage (289 to 290), raised by a rolled increase
+   (297) and multiplied by a free next ability's "more" (311); a use that is not paid for writes nought and its free
+   start's share (450 and 455). `TrapIncreases` and `TrapMore` come from
+   `UCataclysmAbilitySystemComponent::TrapDamageNamingTrap` (`CataclysmAbilitySystemComponent.cpp` 8236, declared at `.h`
+   4527): the increases and "more" of the `minion_damage` rows naming `Type.Trap`, a fraction and a multiplier.
+4. **`LeaveAZoneFor`** (3444 to 3502): spawns the zone with `PerSweep` (3457) and tells it its first sweep, `PerSweep *
+   share / 100` (3497). The zone deals `FirstSweepDamage` on its first sweep and `DamagePerTick` after
+   (`CataclysmGroundZone.cpp` 462 to 466) through `ApplyDirectDamage`. Nothing re-prices a sweep. So the first sweep, and
+   the owner's own hit when a row lets the zone reach its owner, follow `PerSweep`, and need nothing new.
+5. **`FPricingASkillGadgetsBlow`** (`CataclysmAbilitySystemComponent.h` 4456, `.cpp` 8077 to 8101): while alive,
+   `CurrentConditions` reads the gadget's age into `MinionSecondsActive`, `bIsMoving` false and the gadget's seconds since
+   placed into `SecondsSinceMoved` (`.cpp` 1420 to 1429). A gadget's cast carries `Type.Deployable`
+   (`ACataclysmMinion::CastPlayersSkillFromHere`, `CataclysmMinion.cpp` 1014 to 1015), so the rows naming gadgets match
+   its skill's tags.
+6. **The helper**, `UCataclysmSkillEffects::AttackDamageWithNoTarget(const UAbilitySystemComponent* Source, const
+   FGameplayTagContainer& SkillTags, float SkillHealthCostPercent = -1.0f, float MetresMovedBeforeBlow = -1.0f, float
+   ExtraIncreases = 0.0f)`, public static (`CataclysmSkillEffects.h` 1693 to 1697, the public section opening at 959 and
+   the next access line `private:` at 3189; `.cpp` 527 to 538): `WeaponDamageOf / max(1 + Folded,
+   UE_KINDA_SMALL_NUMBER) * MoreForSkill(tags, cost, moved) * (1 + IncreasesForSkill(tags, cost, moved) +
+   ExtraIncreases)`. With no line, `IncreasesForSkill` is the stored folded figure and `MoreForSkill` is 1
+   (`CataclysmAbilitySystemComponent.cpp` 683 to 689 and 826 to 833).
+7. **Every test that reads a ground patch's figure**, by script over `game/Source/Cataclysm/Tests/` (3,952 test names
+   read; 187 test bodies name `LeaveGroundAlong`, `LeaveGroundAt`, `LeaveRowZoneAt`, `LeaveZoneAlong`, `LeaveAZoneFor`,
+   `DamagePerTick`, `FirstSweepDamage`, `ACataclysmGroundZone`, a ground parameter or a zone row), then read by hand
+   where the zone could come from `LeaveZoneAlong`. Most of the 187 are a creature's or a floor rule's zone spawned
+   directly (`ACataclysmGroundZone::Spawn` or `SpawnAlong`), which this does not touch, or a damage over time tick. Of
+   the rest, none has a fighter whose `attack_damage` line holds a row the attribute cannot fold, so no figure can move:
+   - the `Cataclysm.Skills.` ground tests (`BurningGroundHurtsWhoeverIsStandingInItNow`,
+     `BurningGroundIsWhereItWasLeftNotAtTheWorldOrigin`, `BurningGroundCanCoverAPathRatherThanAPoint`,
+     `APiercingProjectileLeavesItsWholeFlightPathBurning`, `AProjectileThatDoesNotPierceLeavesGroundOnlyWhereItLanded`,
+     `AChargeLeavesFireAlongTheWholeRunAndALeapDoesNot`, `BurningGroundIsPricedWithTheBuffThatWasUpWhenItWasLeft`,
+     `APiercingProjectileBurnsThePathItActuallyTravelled`, `AReturningProjectileBurnsItsFlightPathNotTheCastersFeet`,
+     `AreaOfEffectWidensTheGroundASkillLeavesWhateverTheSkillIs`, `BurningGroundStripsResistanceWhenTheSkillNamesACurse`,
+     `PlantingAWeaponLeavesItStandingInBurningGround`, `TheGroundAroundAPlantedWeaponGrowsHotterEverySecond`,
+     `APlantWithNoWindowIsRefusedRatherThanLeftStandingForEver`, `TheFistsTwoRowsThatNameAnImmunityAreActuallyImmune`,
+     `YourOwnBurningGroundDoesYouNoHarm`, `StandingInYourOwnPyreDoublesYourHealthRegeneration`,
+     `AChargeThatSaysItShovesMovesWhatItPassesThrough`, `ASkillsZoneDealsTheFirstSweepShareOnItsFirstSweepAlone`,
+     `TheGroundAUseLeavesCarriesTheChargeItSpent`), and the `Cataclysm.HitCancels.`, `Cataclysm.TeleportWhenHit.` and
+     `Cataclysm.HealingSkills.` ones: the `Cataclysm.Skills.` fighter, with an attribute and no `attack_damage` line (the
+     healing tests record a line of the two healing stats only), so the line's increases are the folded figure and the
+     "more" is 1. `Cataclysm.Teams.BurningGroundIsOnTheSideOfWhoeverLeftIt` spawns its zone directly, and
+     `Cataclysm.SkillShape.BurningGroundCostsExactlyOneHitOverItsWholeLife` reads parameters and the table, pricing no
+     zone;
+   - `Cataclysm.Traps.ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed` and
+     `Cataclysm.Traps.ATrapsZoneSweepBurnsAnEnemyInItAndNeverStrikesItsSelfBlastWearerStandingInIt`: possessed players
+     whose whole stat line is replaced by rows on other stats (`Holds`), so no `attack_damage` line, and no spent
+     charge; the trap's 50% gives `(1 + F + 0.5)` either way, the 1.5 the first asserts;
+   - `Cataclysm.AoeStrikesAllies.AGroundZoneTheSkillLaysStrikesNoAlly`, the two planted-sword tests of `Cataclysm.Death.`,
+     `Cataclysm.Equipment.PullingAPlantedWeaponFreeEruptsWithTheWeaponsDamageNotTheUnarmedBase`, the two Chrono Rift
+     zone tests of `Cataclysm.SetBonus.Chrono10.`, `Cataclysm.StatExemption.ABonusForEnemiesStandingInYourZonesReachesOnlyThoseInAZoneYouOwn`,
+     `ARowGivesAZoneOnlyToASkillThatStatesNoGround` and `AFollowingZoneWalksToItsOwnerAtAShareOfTheirSpeedAndStopsThere`:
+     they assert where a zone is, whether it is laid, whom it strikes or another stat, not its figure against a number a
+     row moves; a refreshed player among them carries a line of plain rows (worn items' flats, no condition), for which
+     the figure is the same by the algebra.
+   This list is a reading, not a measurement; the window's whole run is the measurement.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit, in `CataclysmSkillTemplate.cpp`.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| The owner: a patch reads the full attack damage line; conditions about the caster judged when it is laid; none about the enemy | `LeaveZoneAlong`, 3390 to 3392: `WeaponDamage = AttackDamageWithNoTarget(AbilitySystem, SkillTags, -1, -1, ExtraIncreases)`, inside the pricing, which is once, when the ground is laid. |
+| 1, unconditioned tag-scoped rows reach | the helper asks `IncreasesForSkill` and `MoreForSkill` with the skill's tags. |
+| 2, the template's `SkillTags` | the second argument at 3391. |
+| 3, the stacks held when it is laid | `CurrentConditions`, inside both lookups, reads them at the call. Nothing new. |
+| 5, blow facts for path B only | the cost and the distance moved are passed as -1 (3391), "not known", so Grand Tithe and Headlong refuse; no target, distance, stagger, count or charge is passed. |
+| 6, a gadget's ground takes the gadget rows inside the gadget's scope; the flat share stays out | the call is between the scope's opening (3387 to 3389) and its end (3400); the flat rows are read by nothing here (the helper reads no flat row; `FlatOfStatNamingTag` is `ApplyHit`'s alone). The comment at 3377 to 3386 says why. |
+| 6, the marker | the dated line added to the entry of 2026-10-16 on skill gadgets, under its "A SEPARATE QUESTION, RECORDED AND NOT BUILT (P2)". |
+| 7, spent and trap increases in the same bracket | `ExtraIncreases = max(0, LastNextUseIncreasePercent) / 100 + TrapIncreases` (3392); the trap's figures are worked out before the tick (3341 to 3362), and `TrapsPartOfTheTick` keeps the trap's "more" alone (3361). |
+| 9, the order | B and C came first; this is A. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **`WithSpentIncrease` IS REMOVED, NOT KEPT UNUSED.** Its one caller is gone and what it did is now the helper's
+  `ExtraIncreases` (the increase) and one multiplication by `max(0, LastNextUseMoreMultiplier)` (the effectiveness), at
+  3393 to 3399. The option not taken: keep it with no caller, which leaves a public function stating a bracket the code
+  no longer uses.
+- **`TrapsPartOfTheTick` KEEPS ITS NAME AND NOW HOLDS THE TRAP'S "MORE" ALONE.** The zone is still left with `PerTick *
+  TrapsPartOfTheTick` (3403), the text `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` line 578 asks
+  for, which still says the trap's part reaches the zone. The option not taken: fold the "more" into `PerTick` and change
+  that check, which would change what a check accepts for no gain in play.
+- **THE SPENT INCREASE IS FLOORED AT NOUGHT**, `max(0, LastNextUseIncreasePercent) / 100`, as `ApplyHit` floors
+  `IncreasedDamageSpentPercent`; `WithSpentIncrease` likewise ignored a figure at or below nought. The option not taken:
+  pass it raw.
+- **THE TRAP'S FIGURES ARE WORKED OUT BEFORE THE GADGET'S SCOPE OPENS.** A gadget's cast is never priced as a trap's
+  (the trap branch asks `!SkillGadgetCasting(this)`), so the scope can make no difference to them. The option not taken:
+  inside the scope, beside the tick.
+- **THE TESTS ARE A NEW GROUP, `Cataclysm.GroundPatchLine.`, IN `CataclysmSkillTemplateTests.cpp` DIRECTLY AFTER
+  `TheGroundAUseLeavesCarriesTheChargeItSpent`**, whose rig (the `Cataclysm.Skills.` fighter and its next-use charge)
+  they use, so a proof's prefix with its trailing dot selects exactly the five. No test name begins with another's and no
+  other name begins with `Cataclysm.GroundPatchLine`, case ignored (searched by script over 4,206 name strings, with
+  `Cataclysm.Skills.TheGroundAUseLeavesCarriesTheChargeItSpent` as the control, found once). The option not taken: add
+  them to `Cataclysm.Skills.`, whose prefix selects 200 and more tests.
+- **THE GADGET TEST SETS A GADGET'S CAST BY HAND**: `Type.Deployable` in the strike's tags and the gadget in
+  `FreeRepeatCastBy`, which is what `CastPlayersSkillFromHere` and `UCataclysmTriggeredSkill::Trigger` give a gadget's
+  one-use grant. The option not taken: the `Cataclysm.SkillGadget.` rig, a possessed player whose weapon row would have to
+  leave ground; no weapon row was checked to.
+
+### THE GENRE SOURCE
+
+Brief 80 names none and nothing was fetched. The ruling rests on this game's own rule: a patch is priced once, when it
+is laid, from what its caster's hit is worth then.
+
+### WHAT WAS BUILT
+
+`UCataclysmSkillTemplate::LeaveZoneAlong`, at this commit (`CataclysmSkillTemplate.cpp` 3328 onward):
+
+- **The trap's figures first** (3341 to 3362): the same test of a trap's cast as before; `TrapDamageNamingTrap(SkillTags,
+  nullptr, TrapIncreases, TrapMore)` writes `TrapIncreases` at function scope, and `TrapsPartOfTheTick = TrapMore`.
+- **The comment** (3377 to 3386): the owner's option, rulings 1 to 3, 5, 6 and 7, and why the flat share stays out.
+- **The weapon part** (3390 to 3392): `AttackDamageWithNoTarget(AbilitySystem, SkillTags, -1, -1, max(0,
+  LastNextUseIncreasePercent) / 100 + TrapIncreases)`, inside the gadget's scope, in place of `WeaponDamageOf`.
+- **The tick** (3393 to 3399): `ModifiedDamage(AbilitySystem, WeaponDamage * GetDamagePercent() / 100, SkillTags) *
+  PercentPerSweep / 100 * max(0, LastNextUseMoreMultiplier)`, in place of `* WithSpentIncrease(AbilitySystem)`.
+- **The zone** (3402 to 3403): `PerTick * TrapsPartOfTheTick`, as before.
+- **Removed:** `WithSpentIncrease` (its definition, `.cpp` 89 to 101 at `74acd5e1c`, and its declaration, `.h` 439 to
+  448), and the trap's old bracket `(1 + Folded + TrapIncreases) / max(1 + Folded) * TrapMore`.
+
+**THE ALGEBRA.** Write W for the attribute, F for the folded increases (`IncreasesBehindAttackDamage`), A and M for the
+line's increases and "more" for the skill now (`IncreasesForSkill`, `MoreForSkill`), S for the spent increase as a
+fraction, E for the effectiveness spent, T and Tm for the trap's increases and "more", D for the skill's percent and P
+for the ground's. `ModifiedDamage`'s runtime modifiers are left out of both, being the same call on both sides.
+
+- Before: `W * D * P * [(1 + F + S) / (1 + F) if S > 0, else 1] * E * (1 + F + T) / (1 + F) * Tm`.
+- Now: `W / (1 + F) * M * (1 + A + S + T) * D * P * E * Tm`.
+- **For a caster with no line**, A = F and M = 1, so now is `W * (1 + F + S + T) / (1 + F) * D * P * E * Tm`. With T = 0
+  it is `W * (1 + F + S) / (1 + F) * ...`, the old figure (and with S = 0 as well, `W * D * P * E`); with S = 0 it is `W *
+  (1 + F + T) / (1 + F) * ...`, the old figure. The two differ only when S and T are both above nought: before, `(1 + F +
+  S)(1 + F + T) / (1 + F)^2`; now, `(1 + F + S + T) / (1 + F)`, the single bracket `ApplyHit` uses. No such patch was
+  found: a trap's cast is a free start (`UCataclysmTriggeredSkill::Trigger`), and a use that is not paid for writes nought
+  to `LastNextUseIncreasePercent` (`CataclysmSkillTemplate.cpp` 436 at this commit); this was read, not searched for
+  every path.
+- **For a caster with a line of plain rows only**, A = F (the same sum, worked out by `ApplyTo` and again now) and M = 1
+  (the folded "more" divided by itself), so the same holds.
+- **KEEPING BOTH MULTIPLIERS WOULD HAVE BEEN WRONG** once A differs from F: `(1 + A) * (1 + F + S) / (1 + F)` against
+  `1 + A + S`. With F = 0, A = 0.2 and S = 0.6 that is 1.92 against 1.8, the bracket test's figure.
+
+**THE ROWS A GROUND PATCH NOW REACHES**, from the enchantment session's classification by script of every
+`attack_damage` row in `game/Data/EnchantmentEffects.csv` and `PassiveEffects.csv` (made at `ebe796ea7`, run again by this
+session at `74acd5e1c` and identical):
+
+- **wearer-state conditioned**, 15 enchantment rows and 8 passive rows: "While below 40% HP you deal 30%-60% increased
+  damage", the two stationary and four moving rows, the five windows after a block, a summon, a dodge, a hit taken and
+  an empty resource, "Strike skills deal 25%-40% less damage if you have moved", "Gain 50%-100% increased damage while
+  under the effect of a DoT", the channel row; the Masochist and Ravager nodes on health, health cost windows, foreign
+  damage, full Fervour, enemies in reach, class resource points and a two-handed weapon. On a gadget's ground "while
+  stationary" is judged on the gadget.
+- **wearer-scaled**, 21 enchantment rows (the 23 so classed less the two flat ones) and 18 passive rows: stacks held,
+  seconds stationary or out of combat, class points, kills, bosses defeated, buffs held; health missing or owed, debuffs
+  carried, Bloodlust and Carnage stacks, class resource held, enemies in reach, minions held, damage reduction.
+- **tag-scoped only**, 12 enchantment rows: ultimate, heavy, melee, ranged, spell, charge, projectile and gadget scopes,
+  each reaching only ground whose skill carries its tag; "Gadgets deal 20%-40% increased damage" reaches a gadget's cast.
+- **scaled by a gadget's age**, 2 enchantment rows ("Gadgets deal 5%-10% increased damage for each second ..." and
+  "Gadgets that survive for 15 seconds gain a permanent ..."), on a gadget's ground only, read from the gadget's age.
+
+**STILL NOT REACHED BY A GROUND PATCH:** the enemy-conditioned rows (13 enchantment, 4 passive); the rows scaled by the
+target or the blow (5 enchantment, 1 passive); the three blow-fact rows (`Negative_Point_blank_AOE_skills_deal_15_25_less_damage#1`,
+`Masochist_basic_bt_b2#1` Grand Tithe and `Ravager_capstone_25#4` Headlong), by ruling 5; and the flat rows, which no part
+of the helper reads ([#2499](https://github.com/sdubois777/Cataclysm/issues/2499)), the gadget's share of maximum health
+by ruling 6. The plain rows (2 enchantment, 5 passive) were in the attribute before and still are, once. Spell damage
+does not reach a patch, as before ([#2498](https://github.com/sdubois777/Cataclysm/issues/2498)).
+
+### Tests
+
+Five Unreal tests, `CataclysmSkillTemplateTests.cpp` 18113 to 18511, group `Cataclysm.GroundPatchLine.`, sharing the
+helpers of `CataclysmGroundPatchLineTest` (18131 to 18208). The rig: the `Cataclysm.Skills.` fighter, attack damage
+attribute 100, and a Heavy strike all round of 4 m, no cooldown and no mana, leaving 3 m of ground for 6 seconds at
+16.7% a sweep, so a plain tick is 100 x 250% x 16.7% = 41.75. The caster's line is hand-built as `ApplyTo` would leave
+it: the weapon's 100 flat, nothing folded, and the rows under test. **Crit:** `Cataclysm.CritRoll` pinned at 100 with
+`CataclysmTestWorld::FScopedCritRoll`, after `MakeWorld` (which does not set the roll); no blow is struck. **Bodies:** the
+caster alone, and in the gadget test a skill gadget 10 m from it. **Teams:** no enemy stands anywhere and no blow is
+dealt, so no team is asked about: each patch's figure is read off the zone as it is laid. **No tick is waited for**: no
+clock is run and no sweep is made. Each patch is destroyed once read, so the next use leaves the only one.
+
+1. `Cataclysm.GroundPatchLine.AWearerRowRaisesTheGroundLaidWhileItHoldsAndNotWhileItDoesNot`, 7 assertions in a passing
+   run. Line: 20% increased `WhileStationary`. In order: **set-up: the roll is pinned**; **set-up: the strike**;
+   **control, having just moved (`NoteMovedMetres(1)`): the strike is used and leaves one patch**; **control: it ticks the
+   plain 41.75** (within 0.01); **standing still (`NoteDidNotMove`): used, one patch**; **it ticks 1.2 times the
+   control's** (within 0.001); **its first sweep is told the same raised figure**.
+2. `Cataclysm.GroundPatchLine.ATagScopedRowRaisesTheGroundOfAMatchingSkillOnly`, 9 assertions. Line: 30% increased
+   requiring `Type.Melee`, no condition (ruling 1). In order: **set-up: the roll**; **set-up: the strike**; **set-up:
+   `Type.Melee` is a tag**; **control, the strike with no type tag: used, one patch**; **control: it ticks 41.75**;
+   **tagged `Type.Spell`: used, one patch**; **it ticks as the control's**; **tagged `Type.Melee`: used, one patch**; **it
+   ticks 1.3 times the control's**.
+3. `Cataclysm.GroundPatchLine.ARowAboutTheEnemyStruckDoesNotRaiseTheGround`, 6 assertions. Line: 20% increased
+   `WhileStationary`, 50% increased `TargetIsBoss`, 35% increased `TargetIsStaggered`. In order: **set-up: the roll**;
+   **set-up: the strike**; **control, having moved: used, one patch**; **control: it ticks 41.75, neither enemy row
+   reaching it** (not 1.85 times); **standing still: used, one patch**; **it ticks 1.2 times the control's** (the
+   stationary row alone, not 2.05).
+4. `Cataclysm.GroundPatchLine.AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget`, 11 assertions. Line: 30% increased
+   requiring `Type.Deployable` ("Gadgets deal ...") and 25% increased `WhileStationary` requiring `Type.Deployable` ("While
+   stationary your gadgets deal ..."); the caster has just moved throughout; a skill gadget placed by
+   `ACataclysmMinion::PlaceSkillGadget` for the Heavy slot, 10 m away, outside the strike's 4 m. In order: **set-up: the
+   roll**; **set-up: the strike**; **set-up: `Type.Deployable` is a tag**; **set-up: a gadget is placed** (it needs the
+   `SkillGadget` row of `DT_MinionTypes`); **set-up: it is a skill gadget**; **control, the strike with no
+   `Type.Deployable`, cast by the caster: used, one patch**; **control: it ticks 41.75**; **carrying `Type.Deployable`,
+   cast by the caster: used, one patch**; **it ticks 1.3 times the control's: the 30% and not the stationary 25%, the
+   caster having moved**; **cast by the gadget (`FreeRepeatCastBy`): used, one patch**; **it ticks 1.55 times the
+   control's: both, the stationary row judged on the gadget** (ruling 6).
+5. `Cataclysm.GroundPatchLine.ASpentChargeJoinsTheLinesIncreasesInOneBracket`, 10 assertions. Line: 20% increased
+   `WhileStationary`; the charge is `CataclysmNextUseTest::HoldASkillCharge`, 60% for the next skill, held again before
+   each use that spends it. In order: **set-up: the roll**; **set-up: the strike**; **control, having moved, no charge:
+   used, one patch**; **control: it ticks 41.75**; **still, no charge: used, one patch**; **1.2 times**; **moved, the
+   charge: used, one patch**; **1.6 times**; **still, the charge: used, one patch**; **1.8 times, 1 + 0.2 + 0.6, and not
+   1.2 x 1.6 = 1.92** (ruling 7).
+
+**Every earlier test is expected to pass unchanged**, for the reasons under WHAT WAS READ FIRST, item 7.
+`Cataclysm.Skills.TheGroundAUseLeavesCarriesTheChargeItSpent` (18054) is unchanged in what it asserts; its comment, which
+states the old formula, keeps its words and gains a paragraph opening "SINCE #2234".
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, float, float, float)` throughout. `TestNotNull` on
+`IConsoleVariable*`, `UCataclysmStrikeSkill*` and `ACataclysmMinion*`; `TestTrue(const TCHAR*, bool)`.
+
+**Not tested:** a row's zone (`LeaveRowZoneAt`) with a conditioned row (it is priced by the same `LeaveZoneAlong`); a
+ground left along a path; a scaled row on a patch (judged by the same lookups, as path B's helper test shows); the
+gadget-age rows (the test world's clock does not move, so a gadget's age is nought); a trap's ground with a conditioned
+row, and a patch with both a spent charge and a trap's increases (none was found that can happen); the effectiveness
+spent with a line; a "more" row on a patch; the first sweep row with a line; a patch reaching its owner; a refreshed
+player wearing the real rows; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Both breaks are in `CataclysmSkillTemplate.cpp`. Each old text was counted exactly once in the file by a script
+at this commit's working tree (CRLF read as LF, as `prove_cpp_guard` reads it), and each new text absent before the
+break. Round, curly and square brackets of the whole file: before, 1073/1073, 333/333, 3/3; after GP-I, 1077/1077,
+333/333, 3/3; after GP-II, 1074/1074, 333/333, 3/3. Each compiles alone by reading: GP-I calls `WeaponDamageOf` and
+`IncreasesBehindAttackDamage`, both public statics of `UCataclysmSkillEffects` the file already calls, and
+`UE_KINDA_SMALL_NUMBER`, which the old trap bracket used; GP-II leaves the same names in use. Prefix
+`Cataclysm.GroundPatchLine.` (5 tests) for both.
+
+**The events the tests' actors raise, with their depth.** Each use of the strike: the skill-used notice in
+`CommitAndBegin` (`UCataclysmCombatEvents::NoteSkillUsed`), depth nought; its swing strikes nobody, so no `hit_dealt`;
+`skill_end` when it ends (`EndAbility`), depth nought. The patch is destroyed before any sweep, so it raises nothing.
+Placing the gadget raises no event (`ACataclysmMinion::Spawn` and `PlaceSkillGadget` call no `ActOnEvent`). The caster
+wears no pool action, so no row acts on any of these. Read from the code, not measured.
+
+| Proof | Old text | New text | Tests stated to fail | Every other test of the prefix |
+|---|---|---|---|---|
+| GP-I, the patch priced from the attribute again | tab + `const float WeaponDamage = UCataclysmSkillEffects::AttackDamageWithNoTarget(` + newline + two tabs + `AbilitySystem, SkillTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,` + newline + two tabs + `/*ExtraIncreases=*/` | tab + `const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem)` + newline + two tabs + `/ FMath::Max(1.0f + UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem), UE_KINDA_SMALL_NUMBER)` + newline + two tabs + `* (1.0f + UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem) + ` | all five | none left |
+| GP-II, the spent charge multiplied outside the bracket | `/*ExtraIncreases=*/FMath::Max(0.0f, LastNextUseIncreasePercent) / 100.0f + TrapIncreases);` | `/*ExtraIncreases=*/TrapIncreases) * (1.0f + FMath::Max(0.0f, LastNextUseIncreasePercent) / 100.0f);` | `ASpentChargeJoinsTheLinesIncreasesInOneBracket` | the other four pass: none spends a charge |
+
+GP-I gives `W / (1 + F) * (1 + F + S + T)`, which is today's pricing for every patch in these tests (it differs from
+the old code only when S and T are both above nought). GP-II gives `(1 + A + T) * (1 + S)`, today's spent bracket on
+top of the line's.
+
+Failed assertions, by reading:
+
+- **GP-I, 7 in 5 tests:** the wearer row's "1.2 times" (1.0); the tag row's "1.3 times" (1.0); the enemy row's "1.2
+  times" (1.0); the gadget test's "1.3 times" and "1.55 times" (1.0 each); the bracket test's "1.2 times" (1.0) and "1.8
+  times" (1.6). Every control passes, every figure being the attribute's; the spell's equality, the first sweep's, and
+  the bracket test's "1.6 times" pass.
+- **GP-II, 1 in 1 test:** the bracket test's "1.8 times" (1.92). Its "1.6 times" passes, A being nought when moved.
+
+**Tests of other groups expected to fail, to check in the window:** none under either. Under GP-II,
+`Cataclysm.Skills.TheGroundAUseLeavesCarriesTheChargeItSpent` passes: no line and nothing folded, so `(1 + 0) * 1.6`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` line 578 still finds `PerTick *
+TrapsPartOfTheTick`; what that variable holds is now the trap's "more" alone, and its increases are in `PerTick`.
+
+### Python of record at the starting head
+
+Measured at `74acd5e1c` before any edit: "6962 passed, 7 skipped in 283.51s"; JUnit 6969 tests, 0 failures, 0 errors, 7
+skipped. The run after this commit is in the second session's hand-back.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — The Echo Chamber copy that hits the player is priced from the player's whole attack damage line with the copied row's tags and no target, so the player's conditioned, scaled and skill-type attack damage rows reach it as they hold when the copy is made, and no row about an enemy does: #2234 path C
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (the price of the self hit in
@@ -20890,6 +21252,11 @@ What a player would notice, once the row is worn:
 20%-40% increased damage" and the flat share of maximum health), for the player's own zones as much as a gadget's. A
 zone's tick is priced once, at creation, by `UCataclysmSkillEffects::ModifiedDamage`, which reads the attack damage
 attribute and the running buffs and was not found reading those rows.
+
+**ANSWERED 2026-10-25 BY RULING 6 OF #2234 PATH A** (the entry of 2026-10-25 headed "A skill's ground patch is priced
+from its caster's whole attack damage line"): a skill gadget's ground takes "Gadgets deal ..." and the gadget-age rows,
+inside the gadget's scope; the flat share of maximum health stays out. The rows reach a zone through the skill's tag
+`Type.Deployable`, which a gadget's cast carries (`ACataclysmMinion::CastPlayersSkillFromHere`).
 
 **Two faults found by the reconnaissance and ruled to follow as their own layers, not built here:** a ranged weapon's
 own basic attack reaches only its projectile's width, 40 to 90 cm (P7, `UCataclysmBasicAttack::ReachCmOf`); and rows
