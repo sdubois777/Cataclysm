@@ -2,6 +2,226 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — The save-writer tests wait for a write to finish, not only for its file to exist
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp` only (`CataclysmSaveWriterTest::WaitForSlot` also
+waits for `FCataclysmSaveStorage::HasAWriteInFlight` to be false; two comments brought up to date; one include; one new test in
+the existing group `Cataclysm.SaveWriter.`). No game code, no data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/`
+or `game/Config/Tags/`. **This closes [#2495](https://github.com/sdubois777/Cataclysm/issues/2495).**
+
+### SAID FIRST
+
+- **THIS CHANGES TESTS ONLY. NOTHING IN PLAY LOADS A SLOT YET:** `FCataclysmSaveStorage::ReadFromSlot` has no caller
+  outside the tests and itself. A player notices nothing.
+- **THE SIX READS THE ISSUE NAMES ARE NOT EXPOSED TODAY, BY READING.** Each of the six tests that call `ReadFromSlot` after
+  `WaitForSlot` writes its run record with `NoteTrigger(ECataclysmSaveTrigger::CharacterDied)` directly after `BeginRun`
+  and `Forget`, and that trigger is the one written synchronously (`UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds`,
+  `CataclysmSaveTriggers.cpp` 5 to 12; `UCataclysmSaveWriter::Write`, `CataclysmSaveWriter.cpp` 301 to 321). The file is
+  closed before `NoteTrigger` returns, and since #2494 `WriteToSlot` first waits for every earlier asynchronous write to
+  the slot. So when those tests reach `WaitForSlot`, nothing writes the run slot. Issue #2495 was read, not measured, and
+  this reading narrows it: the callers that DID meet a running write are `Forget`'s, below.
+- **WHERE THE CHANGE DOES MATTER: `Forget` deleting a slot under a write.** `Forget(Writer, true)` calls `WaitForSlot` and
+  then deletes the slot. After an asynchronous write (the tests at old lines 354, 499 and 594) it used to delete as soon as
+  the file existed, which can be while the write is still running; that is the failure the comment on
+  `LongestWaitForAWriteSeconds` records. It now deletes once the write has finished.
+- **NOT COMPILED AND NOT RUN.** A second session wrote the change, the test and this entry under the enchantment session's
+  brief 77. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### WHO RULED
+
+Nothing of the owner's is quoted here. The coordinating session's ruling of 2026-10-24, verbatim as relayed in brief 77:
+
+> P2: YES, file it as its own issue, test-side. WaitForSlot waits for the file to exist, not for the write to finish, so
+> 6 ReadFromSlot calls can collide. Fix: use HasAWriteInFlight once #2494 merges. Mark it read, not measured.
+
+#2494 merged at development `7edf6c0e6` (#2500), which this commit starts from.
+
+### WHAT WAS READ FIRST
+
+Lines are of development `7edf6c0e6`, before this change.
+
+1. **`WaitForSlot`** (`CataclysmSaveWriterTests.cpp` 75 to 93): its comment, "Wait, briefly, for a slot to appear. Returns
+   whether it did."; it returns false for an empty name, then loops until `FPlatformTime::Seconds()` passes now plus
+   `LongestWaitForAWriteSeconds` (2.0, 73), returning true as soon as `UGameplayStatics::DoesSaveGameExist(SlotName,
+   UserIndex)`, sleeping 10 ms between looks.
+2. **Every caller, what it waits for, and why.** Eight calls:
+   - 120, inside `Forget`, when `bWriteWasStarted`: waits so that "the background write cannot arrive afterwards and
+     fail" (its comment, 98 to 103), then deletes the slot. **It waits in order to delete, not to read.** It is reached for
+     both the run slot and the character slot. After an asynchronous write: the tests at 354 (`CreatureDied`), 499 (the
+     clock's write) and 594 (the health threshold's). After only a synchronous death write, or no write: 242, 307, 443,
+     802, 823, 835, 885, 906, 918, 1266, 1280, 1300, 1325, 1521, 1535, 1582, 1665, 1679, 1698, 2046, 2062, 2085.
+   - 435, in `TheRunRecordIsWrittenOncePerFrameUnlessItIsADeath`: waits for the asynchronous `CreatureDied` write "before
+     anything else touched its slot" (its comment, 409 to 433), before a synchronous death write to the same slot. **It
+     waits to let a write finish, not to read.** Since #2494 the synchronous write waits for it too.
+   - 800, 883, 1264, 1519, 1663 and 2044: each waits for the run record written by `NoteTrigger(CharacterDied)` three
+     lines earlier (797, 880, 1261, 1516, 1660, 2041), and then reads it with `ReadFromSlot` (817, 900, 1274, 1529, 1673,
+     2054). **They wait in order to read.** The write they wait for is synchronous (SAID FIRST, second point), so by
+     reading the file is complete before they wait.
+3. **`HasAWriteInFlight`** (`CataclysmSaveStorage.h` 159 to 167, under the class's only access line, `public:` at 78):
+   "Whether an asynchronous write to this slot has been handed over and has not yet finished writing. Issue #2494.
+   "FINISHED" MEANS THE FILE IS WRITTEN AND CLOSED, not that the `WhenDone` callback has run: that waits for the core
+   ticker, a frame later." Defined in `CataclysmSaveStorage.cpp` 382 to 385 as `!LastWriteTo(SlotName).IsCompleted()`;
+   `LastWriteTo` (91 to 98) answers an empty task, which is complete, for a slot with nothing in flight. It knows only the
+   writes handed to `FCataclysmSaveStorage::WriteToSlotAsync`, which is the only asynchronous write in `game/Source`
+   (`UCataclysmSaveWriter::Write`, `CataclysmSaveWriter.cpp` 326).
+4. **#2494's test** (`CataclysmSaveStorageTests.cpp` 373 to 522), for the large record: `ExampleRecordOfSize` builds a
+   `UCataclysmSaveExampleRecord` with a `Label` of `FString::ChrN(LabelLength, 'x')`, 32 * 1024 * 1024 characters, and
+   `WaitUntilNothingIsWriting` loops on `HasAWriteInFlight` for up to 30 s. Its window t75w found its guard in the
+   2-assertion case: the synchronous write got in before the background task had opened the file, microseconds after the
+   32 MB write was handed over.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit, in `CataclysmSaveWriterTests.cpp`.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| the fix | "use HasAWriteInFlight" | `WaitForSlot` (84 to 102) returns true only when `DoesSaveGameExist(SlotName, UserIndex)` AND NOT `FCataclysmSaveStorage::HasAWriteInFlight(SlotName)` (94 to 95), within the same `LongestWaitForAWriteSeconds`. Its comment (76 to 83) keeps its words and adds a paragraph beginning "AND FOR THE LAST WRITE HANDED OVER FOR IT TO FINISH. Issue #2495". |
+| test-side | "file it as its own issue, test-side" | Only this test file changes. |
+| read, not measured | "Mark it read, not measured" | SAID FIRST and the issue both say so. |
+
+**One more comment changed:** `LongestWaitForAWriteSeconds`'s (71 to 72) said "the wait ends as soon as it appears"; it now
+says "as soon as it appears and nothing is still writing it", because the old words became false with this change. And the comment above the wait at 447, in
+`TheRunRecordIsWrittenOncePerFrameUnlessItIsADeath`, which says `Forget` deletes "after waiting only for the file to
+EXIST", gains two lines (429 to 430) saying that describes `WaitForSlot` before #2495. The include of
+`Tests/CataclysmSaveExampleRecord.h` is at 25, in the include list's alphabetical place.
+
+**IS 2 S STILL ENOUGH FOR EVERY CALLER?** Yes, by reading. Every write the existing callers wait for is a run record or a
+character record of the kind the constant's comment calls a two-kilobyte write, plus the cities, dungeons and schedule
+of a run (`UCataclysmSaveWriter::WriteTheRunRecord`, `CataclysmSaveWriter.cpp` 170 to 258), which are lists of a few dozen
+entries. The new wait adds at most the time that write takes to finish, and only when it has not. The new test's 32 MB
+write must also finish inside 2 s; that is expected to take tens of milliseconds and was not measured (Not tested, below).
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE TEST WRITES THE LARGE RECORD TO A SLOT THAT ALREADY HOLDS A FILE.** The brief asked for one asynchronous write of
+  a large record to a slot and an immediate `WaitForSlot`. To an empty slot, a wait that looks only for the file would
+  find nothing on its first look (the window t75w showed the task had not yet opened the file microseconds after being
+  handed over), then sleep 10 ms, by which time a 32 MB write may or may not have finished: the break would be caught or
+  not by timing. With a file already there, the first look ends such a wait at once, microseconds after the write is
+  handed over, so the break is caught unless a 32 MB write finishes in those microseconds. The option not taken: an empty
+  slot, which is closer to the brief's words and makes the proof "may fail".
+- **THE CONTROL IS THE SAME WITH A SMALL RECORD, TO AN EMPTY SLOT**, as the brief says: it shows that the wait, the read
+  and the assertions work, and it passes with the break in on all but a rare timing. The option not taken: a small record
+  to a slot already holding a file, which would fail with the break in as the main case does and so control nothing.
+- **THE TEST IS IN THE EXISTING GROUP `Cataclysm.SaveWriter.`**, the group of every test in this file, because what it
+  tests is this file's own helper. The common brief's "a group of their own" is not followed, by brief 77's narrower
+  instruction. The option not taken: `Cataclysm.SaveStorage.`, which tests `FCataclysmSaveStorage` and cannot reach a
+  `static` helper of another file.
+- **ITS HELPERS ARE IN A NEW NAMESPACE, `CataclysmSaveWriterWaitTest`,** at the end of the file with the test, so the
+  addition is one block. `ExampleRecordOfSize` and `WaitUntilNothingIsWriting` repeat #2494's helpers of the same names in
+  `CataclysmSaveStorageRaceTest` (`CataclysmSaveStorageTests.cpp`); those are `static` in another file and cannot be
+  called from here. The option not taken: moving them to a shared header, which widens the change beyond this file.
+- **THE CALLBACKS ARE UNSET**, as in #2494's test: with the break in, a write can fail (a read holding the old file when
+  the task opens it), and a callback would then log an Error in whichever test is running on the next tick.
+
+### THE GENRE SOURCE
+
+None. This is a fault of this project's own tests; it proposes no formula, affix or mechanic, and brief 77 names no
+source. Nothing was fetched.
+
+### Tests
+
+One Unreal test, `Cataclysm.SaveWriter.TheTestsWaitForAWriteToFinishNotOnlyForItsFile`
+(`CataclysmSaveWriterTests.cpp`, `FCataclysmSaveWriterWaitForSlotWaitsForTheWrite`, 2180 to 2294; helpers in
+`CataclysmSaveWriterWaitTest`, 2130 to 2178). It uses the slots `CataclysmAutomationTest_Writer_WaitForSlotControl` and
+`CataclysmAutomationTest_Writer_WaitForSlotLarge`, each deleted first and, once nothing writes it, after.
+`UCataclysmSaveExampleRecord` records: the control `Gold` 7 with an empty `Label`; the first record of the large slot
+`Gold` 1 with an empty `Label`, written synchronously; the large record `Gold` 2 with a `Label` of 32 MB
+(`LargeLabelLength`). Every record is built before anything is written. Nothing waits on a tick.
+
+**Assertions are counted for a passing run: 13.** In order:
+
+1. control: the small write was handed over;
+2. control: `WaitForSlot` says the slot is there;
+3. control: and no write to it is in flight when it returns;
+4. control: it reads back (`Succeeded` of the result);
+5. control: and it is the record written (`TestEqual`, `int32`, `Gold` 7);
+6. the slot was first written with a small record (the synchronous write);
+7. the large write was handed over;
+8. `WaitForSlot` says the slot is there;
+9. and no write to it is in flight when it returns;
+10. the slot reads back;
+11. and it is the large record, not the one written first (`TestEqual`, `int32`, `Gold` 2);
+12. and its label is whole (`TestEqual`, `int32`, `Label.Len()` against `LargeLabelLength`);
+13. every write to the slot finished within the wait (30 s).
+
+`TestEqual` is used three times, each on two `int32`; the rest are `TestTrue` and `TestFalse`. When the read answers no
+record, 5, 11 and 12 compare -1, so a failure prints a number and not a 32 MB string.
+
+**HOW LIKELY IT IS TO FAIL WITH THE CHANGE REMOVED, BY READING: almost certainly.** `WaitForSlot`'s first look finds the
+first record's file and returns at once, microseconds after the 32 MB write was handed over; assertion 9 then finds that
+write still in flight. The read then meets either the first record, if the task has not yet opened the file (11 and 12
+fail), or a file the task holds open (10, 11 and 12 fail). The one timing in which it would not fail: the 32 MB write
+finishing between being handed over and the first look.
+
+**Every earlier test is unchanged, and expected to pass unchanged, by reading.** `WaitForSlot` now ends later only when a
+write to the slot is still running, which by reading happens only in `Forget` after an asynchronous write.
+
+**Not tested:** that `Forget` no longer deletes a slot under a running write (the case the change matters most for; no
+test makes that race likely); how long a 32 MB write takes on the build machine, and so whether 2 s is enough for the new
+test there; a slot whose file never appears while a write to it is in flight (the wait ends at 2 s as before).
+
+### GUARD PROOFS PROPOSED
+
+Not run.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| WS-I, `WaitForSlot` waits only for the file | `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp` | `UserIndex)` + newline + four tabs + `&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))` | `UserIndex))` | `TheTestsWaitForAWriteToFinishNotOnlyForItsFile` | none |
+
+The anchor was counted by a script in this commit's working tree (CRLF read as LF): the old text once, and
+`&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))` once. `HasAWriteInFlight(` appears 4 times in the file (this
+condition, two calls in the new test and one in its helper); the break touches only this one. Brackets: round 1245/1245
+before and 1244/1244 after; curly 160/160 and square 41/41 unchanged. The broken line reads
+`if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))`, as at `7edf6c0e6`. It compiles alone by reading:
+`FCataclysmSaveStorage` is still used elsewhere in the file, so nothing becomes unused.
+
+**Failed assertions, by reading: 3 or 4, in 1 test.** 9 always; 11 and 12 always; 10 too when the read meets the file
+while the task holds it open. The control's five pass, unless the small write's task has opened the empty slot's file at
+the very first look and not yet closed it, which is rare. **Register it as REQUIRED to fail, with 3 or 4 assertions; the
+other 20 tests of the prefix pass; all 21 pass when restored.** The one timing in which it would not fail is stated under
+Tests.
+
+The prefix is `Cataclysm.SaveWriter.`, with its trailing dot: 21 tests with this one, all in this file. A
+case-insensitive search of `game/Source` for `"cataclysm.savewriter` followed by anything but a dot finds nothing, so no
+other group begins with it.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-25, window t77w, under the editor lock as `enchant-t77w`, at 7fd06ec27 (this
+commit moved from d7c093c6c on 7edf6c0e6 onto development e26af37c9; the move kept its zero-context patch id, whole and
+outside this file, and its 3 removed lines; development's own change to this test file since, 8 lines from 3830065c5, does
+not touch `WaitForSlot`). Free physical memory before the lock: 15.4 GB.
+
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4155 tests performed,
+  4155 succeeded, 0 failed" (4154 on development + this test); "Declared: 4155 tests in the tree at 7fd06ec27; 4155
+  performed, gap 0". 40 tests skipped part of what they check. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4762 peak_used_virtual_mb=11362 final_used_virtual_mb=11076 collections=3148
+  collection_total_s=107.463 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6974 passed, 8 skipped"; JUnit 6982 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **WS-I, `WaitForSlot` waits only for the file again** (the `&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))`
+  line removed, anchor counted once; prefix `Cataclysm.SaveWriter.`, 21 tests): PROVED, ITS STOP CONDITION HELD. With the
+  break in, 21 tests performed, 20 succeeded, 1 failed, `TheTestsWaitForAWriteToFinishNotOnlyForItsFile`, the required
+  test and no other. Restored, 21 performed, 21 succeeded. The file's hash is the same after. The proof's log check printed
+  "can be renamed away and back, so it can be deleted (waited 0 s)".
+- **ITS FAILED-ASSERTION COUNT WAS NOT AS REGISTERED: 1 against the registered 3 or 4.** The one that failed is assertion
+  9, "and no write to it is in flight when it returns", and it is the one the guard rests on: it states what this change
+  does. Assertions 10 to 12 (the slot reads back, it is the large record, its label is whole) PASSED with the break in.
+  They depend on timing: in this run the 32 MB write finished before the read opened the file, so the read found the
+  finished large record. The registration's "9, 11 and 12 always" was wrong for 11 and 12. Ruled by the coordinating
+  session on 2026-10-25 (R1): accepted as proved, with the count recorded as not as registered, handled as TR-XXVI's 12
+  against 13 was earlier.
+
+---
+
 ## 2026-10-24 — An instant relocation is not ground walked, and it starts the standing-still clock again (#2388)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
