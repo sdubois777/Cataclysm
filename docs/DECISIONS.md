@@ -203,7 +203,8 @@ Unreal, registered for the window and not yet run:
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus one (four new tests, three removed).
 
-Branch `feat/defer-days-to-exit-1` on `development` at `b2b60ebf6`.
+Branch `feat/defer-days-to-exit-2` on `development` at `ac6d505a5` (written on `b2b60ebf6` as `-1` and moved, its
+zero-context patch ids unchanged).
 
 ---
 
