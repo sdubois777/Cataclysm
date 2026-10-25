@@ -53,6 +53,7 @@
 #include "Character/CataclysmRiftCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -36646,9 +36647,44 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
-	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
-			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	// THE EXIT'S LIGHT IS THE LAST OF THE ROW'S, AND EVERY LIGHT AFTER IT IS FOR A CREATURE THAT CANNOT MOVE. Since
+	// issue #2334 such a creature that no light reaches gets its own light, on the beat, after the row's and the exit's.
+	// Ruled by the coordinating session on 2026-10-25. The creatures are counted from the floor.
+	int32 ExitLight = INDEX_NONE;
+	for (int32 Index = 0; Index < Lights.Num() && ExitLight == INDEX_NONE; ++Index)
+	{
+		ExitLight = FVector::Dist2D(Lights[Index], Exit) < 1.0f ? Index : INDEX_NONE;
+	}
+	int32 StillAndUnlitByTheRow = 0;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature)
+			|| !ACataclysmDungeonGameMode::CreatureCannotMove(Creature))
+		{
+			continue;
+		}
+		bool bReached = false;
+		for (int32 Index = 0; Index <= ExitLight; ++Index)
+		{
+			bReached = bReached || FVector::Dist2D(Lights[Index], Creature->GetActorLocation())
+				<= Effects::ShadowyEnemiesLightRadiusCm;
+		}
+		StillAndUnlitByTheRow += bReached ? 0 : 1;
+	}
+	TestTrue(TEXT("a light lies on the exit"), ExitLight != INDEX_NONE);
+	TestTrue(TEXT("and it is the row's last: one more than the row's three, or all the floor had room for and one"),
+			 ExitLight + 1 <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	TestEqual(TEXT("after it, one light for each creature that cannot move and that none of the row's lights reaches"),
+			  Lights.Num() - (ExitLight + 1), StillAndUnlitByTheRow);
+
+	// THE CONTROL: with no such creature on the floor, the old figures hold.
+	if (StillAndUnlitByTheRow == 0)
+	{
+		TestTrue(TEXT("CONTROL: with no such creature the last lies on the exit"),
+				 FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
+		TestTrue(TEXT("CONTROL: and there are at most the row's three and one"),
+				 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	}
 	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
 	TestTrue(TEXT("on the exit's light"),
 			 FVector::Dist2D(Gatekeeper->GetActorLocation(), Exit) <= Effects::ShadowyEnemiesLightRadiusCm);
@@ -59156,6 +59192,199 @@ bool FCataclysmEntrancePlacementIsNotWalkedTest::RunTest(const FString& Paramete
 	TestTrue(TEXT("CONTROL: the same jump unannounced is counted as walked"),
 			 Player.AbilitySystem->MetresWalkedTotal() - Total > 30.0f);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A creature that cannot move cannot be made unkillable where it stands. Issue #2334.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmStillCreatureTest
+{
+	/** One creature of `Class` at `Where`, spawned however crowded the spot is. */
+	ACataclysmEnemyCharacter* SpawnStill(UWorld* World, UClass* Class, const FVector& Where)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+	}
+}
+
+// WHICH CREATURES CANNOT MOVE: a Corrupted Sentinel and every floor source, the Heavenly Core included; an Imp can.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWhichCreaturesCannotMoveTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWhichCreaturesCannotMoveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStillCreatureTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Sentinel =
+		SpawnStill(World, ACataclysmCorruptedSentinelCharacter::StaticClass(), FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Core =
+		SpawnStill(World, ACataclysmHeavenlyCoreCharacter::StaticClass(), FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Imp = SpawnStill(World, ACataclysmImpCharacter::StaticClass(), FVector(2000.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a Sentinel"), Sentinel) || !TestNotNull(TEXT("a Heavenly Core"), Core)
+		|| !TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a Corrupted Sentinel cannot move"), ACataclysmDungeonGameMode::CreatureCannotMove(Sentinel));
+	TestTrue(TEXT("nor can the Heavenly Core"), ACataclysmDungeonGameMode::CreatureCannotMove(Core));
+	TestFalse(TEXT("CONTROL: an Imp can"), ACataclysmDungeonGameMode::CreatureCannotMove(Imp));
+	TestFalse(TEXT("and nothing at all is not a creature that cannot move"),
+			  ACataclysmDungeonGameMode::CreatureCannotMove(nullptr));
+	return true;
+}
+
+// UNDER SHADOWY ENEMIES A CREATURE THAT CANNOT MOVE AND NO LIGHT REACHES IS GIVEN A LIGHT, AND IS NOT SHROUDED; AN
+// IMP AS FAR FROM EVERY LIGHT IS SHROUDED AND GIVEN NONE (THE CONTROL). Issue #2334.
+//
+// WHERE EACH STANDS: the player at floor 2's entrance; the Sentinel 2 metres along X from it; the Imp 15 metres along
+// Y. The row's own lights are at least 20 metres from the entrance, which is asserted for both before the beat.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLightsAStillCreatureTest,
+	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShadowyLightsAStillCreatureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using namespace CataclysmStillCreatureTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASightFloor(*this, World, Player, {ShadowyRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FVector> Before = Mode->ShadowyEnemiesLightsNow();
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Sentinel = SpawnStill(World, ACataclysmCorruptedSentinelCharacter::StaticClass(),
+													Feet + FVector(200.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Imp =
+		SpawnStill(World, ACataclysmImpCharacter::StaticClass(), Feet + FVector(0.0f, 1500.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: an Imp"), Imp))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Sentinel);
+	Mode->FloorEnemies.Add(Imp);
+	for (const FVector& Light : Before)
+	{
+		if (!TestTrue(TEXT("set-up: no light of the row reaches the Sentinel"),
+					  FVector::Dist2D(Light, Sentinel->GetActorLocation()) > Effects::ShadowyEnemiesLightRadiusCm)
+			|| !TestTrue(TEXT("set-up: nor the Imp"),
+						 FVector::Dist2D(Light, Imp->GetActorLocation()) > Effects::ShadowyEnemiesLightRadiusCm))
+		{
+			return false;
+		}
+	}
+
+	Beat(Mode, 1);
+	const TArray<FVector> After = Mode->ShadowyEnemiesLightsNow();
+	TestEqual(TEXT("one light more than the row's"), After.Num(), Before.Num() + 1);
+	TestTrue(TEXT("and it reaches the Sentinel"),
+			 After.Num() > Before.Num()
+				 && FVector::Dist2D(After.Last(), Sentinel->GetActorLocation()) <= Effects::ShadowyEnemiesLightRadiusCm);
+	TestFalse(TEXT("so the Sentinel is not shrouded"), Sentinel->bShrouded);
+	TestTrue(TEXT("CONTROL: the Imp is shrouded"), Imp->bShrouded);
+	TestEqual(TEXT("every light is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), After.Num());
+
+	// AND ONCE, NOT ON EVERY BEAT: the Sentinel's light reaches it now.
+	Beat(Mode, 1);
+	TestEqual(TEXT("a second beat adds no light"), Mode->ShadowyEnemiesLightsNow().Num(), After.Num());
+	return true;
+}
+
+// NECROTIC GROUND PUTS NO PATCH WHERE IT WOULD REACH A CREATURE THAT CANNOT MOVE. Issue #2334.
+//
+// THE PLAYER IS RINGED BY SENTINELS 4 METRES APART, out to 16 metres, so every place the first patch can fall -- 3 to
+// 12 metres from the player -- is within a patch's 3 metres of one: the corner of a 4 metre square is 2.83 metres
+// from the nearest of its four. So no patch can appear. THE CONTROL is the same ring of Imps, which can move: the
+// first patch appears on its cadence.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticSparesAStillCreatureTest,
+	"Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNecroticSparesAStillCreatureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using namespace CataclysmStillCreatureTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW IS THE NAMESPACE'S `NecroticGround`, the same key; a local of that name would hide it (C4459).
+	for (UClass* Ringed : {ACataclysmCorruptedSentinelCharacter::StaticClass(), ACataclysmImpCharacter::StaticClass()})
+	{
+		const bool bStill = Ringed == ACataclysmCorruptedSentinelCharacter::StaticClass();
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		const FPossessedPlayer Player(World);
+		if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode) || !TestTrue(TEXT("a player"), Player.IsUsable()))
+		{
+			return false;
+		}
+		Mode->DungeonModifiers = {NecroticGround};
+		Mode->FloorNumber = 1;
+		if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return false;
+		}
+
+		const FVector Feet = Player.Character->GetActorLocation();
+		int32 Ring = 0;
+		for (int32 X = -4; X <= 4; ++X)
+		{
+			for (int32 Y = -4; Y <= 4; ++Y)
+			{
+				const FVector Offset(X * 400.0f, Y * 400.0f, 0.0f);
+				if (Offset.Size2D() > 100.0f && SpawnStill(World, Ringed, Feet + Offset))
+				{
+					++Ring;
+				}
+			}
+		}
+		if (!TestEqual(TEXT("set-up: the ring was placed whole"), Ring, 80))
+		{
+			return false;
+		}
+
+		Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches) * 3);
+		if (bStill)
+		{
+			TestEqual(TEXT("ringed by Sentinels, no patch was put down in three cadences"), ZonesOnTheFloor(World), 0);
+			TestTrue(TEXT("and a patch on a Sentinel's feet is refused"),
+					 Mode->ANecroticPatchHereWouldReachACreatureThatCannotMove(Player.Character,
+																			  Feet + FVector(400.0f, 0.0f, 0.0f)));
+		}
+		else
+		{
+			TestTrue(TEXT("CONTROL: ringed by Imps, the fog spread"), ZonesOnTheFloor(World) > 0);
+			TestFalse(TEXT("CONTROL: and a patch on an Imp's feet is not refused"),
+					  Mode->ANecroticPatchHereWouldReachACreatureThatCannotMove(Player.Character,
+																			   Feet + FVector(400.0f, 0.0f, 0.0f)));
+		}
+	}
 	return true;
 }
 
