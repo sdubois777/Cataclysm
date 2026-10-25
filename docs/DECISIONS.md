@@ -66,8 +66,9 @@ Changed, for the new signature and the ruling:
 - `Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` is renamed
   `...AndStartsTheStandingStillClockAgain`; its two clock assertions read 0 seconds where they read 5.
 - `Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`: its blink is the
-  player's real movement skill, used as the Abstinence tests use it, and not the announcement called by hand, aimed at
-  a point 5 metres away through the skill's clicked target; it asserts the blink moved the player at least a metre,
+  player's real movement skill, used as the Abstinence tests use it, and not the announcement called by hand, aimed
+  through the skill's clicked target along a straight run of floor at least 3 metres long that leaves the entrance
+  (see "The first window" below); it asserts the blink moved the player at least a metre,
   ruled by the coordinating session so that the next check cannot pass by measuring nothing, and then that the blink
   is not counted as ground walked.
 
@@ -103,9 +104,31 @@ Unreal, registered for the window and not yet run:
 - **P3**, the Phasewalker's call removed (`UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);` -> a comment).
   Predicted: `APhasewalkersPhaseIsNotGroundWalked` fails. Prefix `Cataclysm.EnemyModifiers.APhasewalkersPhase`.
 
+### The first window, and a set-up the coordinating session ruled
+
+The first window (lock `dungeon-w45`, `fix/instant-moves-restart-the-still-clock-2` at `4832c839e`, on `3830065c5`,
+2026-10-24), with the six conditions checked immediately before the lock ("free GB: 16.4 of 31.1"): "Build: Succeeded -
+71 actions, 61 files compiled"; "4151 tests performed, 4150 succeeded, 1 failed:
+ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing"; "Declared: 4151 tests in the tree at 4832c839e; 4151
+performed, gap 0"; memory "final_used_virtual_mb=11492"; Python "6974 passed, 8 skipped", JUnit 6982, failures 0. It
+stopped there, and no proof was run. `check_resolved_cpp.py`, before the move's commit and again by name on its head:
+"14 files read, 0 with complaints".
+
+The failure, from the engine log: "Expected 'set-up: the blink moved the player at least a metre' to be true." The
+blink went off and moved the player less than a metre. By reading, not measured: its aim, 5 metres along +X from floor
+2's entrance, is read during the use, and the move is swept, so a wall in that direction stops it. **Changed, as ruled
+by the coordinating session on 2026-10-25, with no code changed and every assertion kept:** old, aimed at a point 5
+metres along +X from where the player stands -> new, aimed at the middle of the far cell of the first of +X, -X, +Y and
+-Y from the entrance's cell whose next cells are all floor for at least 3 metres, with a new set-up assertion "a
+straight run of floor at least 3 m long leaves the entrance". A comment that said an unaimed blink lands where the
+player stands was wrong and is corrected: unaimed, it goes its whole range along the way the player faces.
+
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus three.
+Not yet run past the first window above. Predicted Unreal total: `development`'s last measured total plus three, 4151,
+with no failure. **Step 1b**, ruled by the coordinating session: the second window runs
+`Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing` alone right after the
+build, and stops there if it fails.
 
 Branch `fix/instant-moves-restart-the-still-clock-2` on `development` at `3830065c5` (written on `b2b60ebf6` as `-1`
 and moved, its zero-context patch ids unchanged; the append-append conflict at the end of

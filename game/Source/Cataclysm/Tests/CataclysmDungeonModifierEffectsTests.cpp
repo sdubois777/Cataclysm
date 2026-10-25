@@ -57735,13 +57735,42 @@ bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
 	}
 	Mode->ClearFloorEnemies();
 
-	// A BLINK TWO SECONDS IN, AIMED AT A POINT FIVE METRES AWAY. A test world has no cursor, so with nothing aimed at
-	// the blink would land where the player stands and the walked-ground check below would measure nothing. The
-	// skill aims at a clicked target while one is set (`UCataclysmSkillTemplate::ClickedTarget`).
+	// A BLINK TWO SECONDS IN, AIMED ALONG A STRAIGHT RUN OF FLOOR AT LEAST 3 METRES LONG THAT LEAVES THE ENTRANCE.
+	// A test world has no cursor, and with nothing aimed at the blink goes its whole range along the way the player
+	// faces (`UCataclysmSkillTemplate::AimedPointWithin`), into whatever stands there. The move is swept, so a wall
+	// stops it: the first window of issue #2388 aimed 5 metres along +X and the player moved less than a metre.
+	// Ruled by the coordinating session on 2026-10-25: from the entrance's cell, the first of +X, -X, +Y and -Y whose
+	// next cells are all floor for at least 3 metres, aimed at the far one's middle. The skill aims at a clicked target
+	// while one is set (`UCataclysmSkillTemplate::ClickedTarget`).
 	UCataclysmMovementSkill* Blink = RuleOfChaosGrantStep(Player);
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Entrance = Plan.Entrance;
+	const float CellCm = static_cast<float>(FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Entrance),
+															Mode->CurrentFloor->WorldOfCell(Entrance + FIntPoint(1, 0))));
+	const int32 CellsInARun = CellCm > 0.0f ? FMath::CeilToInt(300.0f / CellCm) : 0;
+	FIntPoint RunEnd(-1, -1);
+	for (const FIntPoint Way : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+	{
+		bool bOpen = CellsInARun > 0;
+		for (int32 Step = 1; bOpen && Step <= CellsInARun; ++Step)
+		{
+			bOpen = Plan.IsFloor(Entrance + Way * Step);
+		}
+		if (bOpen)
+		{
+			RunEnd = Entrance + Way * CellsInARun;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: the blink was granted"), Blink)
+		|| !TestTrue(TEXT("set-up: a straight run of floor at least 3 m long leaves the entrance"), RunEnd.X >= 0))
+	{
+		return false;
+	}
+	const FVector RunEndWorld = Mode->CurrentFloor->WorldOfCell(RunEnd);
 	ATargetPoint* Aimed = World->SpawnActor<ATargetPoint>(
-		Player.Character->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
-	if (!TestNotNull(TEXT("set-up: the blink was granted"), Blink) || !TestNotNull(TEXT("set-up: a point to aim at"), Aimed))
+		FVector(RunEndWorld.X, RunEndWorld.Y, Player.Character->GetActorLocation().Z), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a point to aim at"), Aimed))
 	{
 		return false;
 	}
