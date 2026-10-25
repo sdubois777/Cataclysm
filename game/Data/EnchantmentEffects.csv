@@ -705,3 +705,4 @@ Positive_When_you_die_all_your_active_traps_and_gadgets#2,Positive_When_you_die_
 Positive_When_a_trap_is_triggered_near_an_active_gadget#1,Positive_When_a_trap_is_triggered_near_an_active_gadget,,,100.0,100.0,Type.Trap,,0.0,,0.0,gadget_fires_at_trap_enemy,trap_triggered,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,10.0,,0.0
 Positive_For_every_3_traps_triggered_your_nearest_gadget#1,Positive_For_every_3_traps_triggered_your_nearest_gadget,,,200.0,400.0,Type.Trap,,0.0,,0.0,gadget_fires_at_trap_enemy,trap_triggered,,0,0.0,0.0,0.0,3,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_When_a_trap_triggers_all_enemies_within_4_6_met#1,Positive_When_a_trap_triggers_all_enemies_within_4_6_met,trap_pull_radius,flat,4.0,6.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_This_weapon_has_2_4_damage_types#1,Positive_This_weapon_has_2_4_damage_types,damage_types_carried,flat,2.0,4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

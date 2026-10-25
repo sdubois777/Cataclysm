@@ -272,7 +272,14 @@ UDataTable*`.
 
 **The events the tests raise, with their depth:** none. No actor, no world, no ability; the tests call static functions.
 
-**Not tested:** a character wielding such a weapon opening its trees or skills (issue #857); the real row (the tests build
+**Not tested:** FIRST, AS RULED 2026-10-25 by the coordinating session (Q-D7, option A): the sentence **does not yet
+open each type's class trees and skills; that waits on #857 and #837**. A character's trees follow the one damage type
+chosen at creation (`ACataclysmPlayerState::ReachableTrees`, `CataclysmPlayerState.cpp` about 380 to 417) and its
+skills a type held on `UCataclysmWeaponSlotsComponent`, and nothing in play reads `FCataclysmItem::DamageTypes` but the
+tool tip. So brief 86's test 5 as written, "the extra type's three trees are reachable and its skills available to a
+character wielding it", WAS NOT WRITTEN: it cannot pass until those land. Its tree-rules half is
+`TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`, which asks the rules about the weapon's list, not a
+character. Then: the real row (the tests build
 it); a drop through `SpawnDropsFor` with the row; a saved item loaded (nothing re-rolls it, by reading); the larger count
 winning when two halves state the stat (no sentence does); a row on the stat under a non-weapon sentence.
 
