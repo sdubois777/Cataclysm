@@ -2186,7 +2186,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Up to 3 active; a fourth destroys the oldest, which explodes in 3m. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
 | Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Each thrall reserves 30 Fervour. Bosses cannot be taken. |
-| All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% fire damage. Drains mana. |
+| All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
 
   
 

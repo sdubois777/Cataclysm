@@ -2,6 +2,286 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A self buff's More damage, its copy given to allies, and an aura's ally bonus raise ALL damage, not only the skill's own element's (the owner's "Make them generic")
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmSelfBuffSkill::GrantIncrease`
+and `UCataclysmAuraSkill::HelpAlliesInside` add no element to their modifier's `RequiredTags`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` (the comment on `UCataclysmSelfBuffSkill` and on its
+`GrantedScope`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` (the comment on `AllyIncreasedDamage`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` (the comment on `ElementTag`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.h` (one comment line; `CataclysmSharedBuffs.cpp` is unchanged);
+`game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.cpp` (one comment sentence);
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (three tests, one renamed);
+`game/Source/Cataclysm/Tests/CataclysmSharedBuffsTests.cpp` (one test, two comments);
+`game/Source/Cataclysm/Tests/CataclysmMinionOwnStatsTests.cpp` (two comments, no assertion); the new
+`game/Source/Cataclysm/Tests/CataclysmGenericBuffsTests.cpp` (three tests, the group `Cataclysm.GenericBuffs.`);
+`tools/tests/test_buff_magnitudes.py` (one test removed); `tools/generate_datatables.py` (the description string of the
+`AllyIncreasedDamage` key, no behaviour); `docs/Cataclysm_GDD_v2.md` (Conflagration's line in the Demonic skill table);
+this file. **No data row and nothing under `game/Data/` or `game/Content/`.** The two skill descriptions in
+`docs/All_Things_Cataclysm.xlsx` are the enchantment session's to write, as a second commit on this branch; the cells and
+words are below.
+
+### SAID FIRST
+
+**A PLAY CHANGE: A BUFF THAT USED TO RAISE ONE ELEMENT'S DAMAGE NOW RAISES ALL DAMAGE.** Burning Wrath's More, Butcher's
+Heat's, Unbroken's and Held Fast's (all four are Demonic self buffs, so each reached only Demonic skills and Demonic
+blows), the copy of any of them that "Applying a buff to yourself also applies it to all allies within 8 meters" and
+"Your support ability affects all allies within 15 meters instead of just yourself" give allies, and Conflagration's 8%
+increased damage on the allies inside it. In play today the character's own skills are all Demonic, so what moves is
+everything that is not: a War-typed basic attack or skill once the worn weapons give one (#837), and **a minion's,
+thrall's or other ally's blow, which carries no element and was never raised by a copy or by Conflagration before**.
+
+**THE WORKBOOK STILL SAYS "FIRE" UNTIL THE ENCHANTMENT SESSION'S COMMIT.** Burning Wrath's description reads "4% more fire
+damage" and Conflagration's "8% increased fire damage" in `docs/All_Things_Cataclysm.xlsx` and in
+`game/Data/WeaponSkills.csv` at this commit; the cells below are written in the second commit on this branch.
+**`tools/tests/test_buff_magnitudes.py::test_burning_wrath_carries_the_increase_its_description_states` will fail on
+that cell as it stands**: its pattern at line 101 is `r"(\d+(?:\.\d+)?)% more fire damage for every enemy currently
+burning"`. It must become `r"(\d+(?:\.\d+)?)% more damage for every enemy currently burning"`, and the message at line
+107, "more fire damage per burning enemy", "more damage per burning enemy", in the same commit as the cell.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 93. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a buff that used to raise one element's damage now raises all damage
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-25, relayed by the coordinating session, verbatim: "we shouldn't have anything that says "increased X
+damage". It should all be generic for this reason."
+
+And, asked about Burning Wrath's self-buff and Conflagration's aura on allies, which scoped their bonus to the skill's own
+element, verbatim: "Make them generic".
+
+The coordinating session, 2026-10-25, verbatim, as brief 93 gives it:
+
+> **Q-P2:** Burning Wrath's self-buff and Conflagration's aura on allies each raise ALL damage, not only their
+> element's. ... Their skill text and DECISIONS must change with it. ... Any existing test asserting the element scope
+> changes under this ruling. Name each one with its old and new figure.
+
+> **Q-B1: APPROVED.** The owner's rule covers every self buff and shared buff that GrantIncrease reaches, Butcher's Heat
+> included. "It should all be generic" is not limited to the two skills I named. The sweep must name each buff that
+> changes and each test that changes, with its old and new figure, before registering. Workbook edits: rows 122 and 398
+> of "Weapon Skills" as you proposed. Edit the design document's Conflagration line, "Allies: +8% fire damage",
+> directly. Also fix any other skill text the sweep shows naming an element on a buff.
+
+**The eight "Increased damage against <type> enemies" affixes are kept**, by the owner the same day: they scope by the
+enemy's type. Nothing here touches them.
+
+### THE SWEEP
+
+Read at `1bf218ccb` and checked again on this commit's tree.
+
+**Every place game code scoped a damage increase or More to the skill's own element.** Every write to a modifier's
+`RequiredTags` outside the tests, by script (`AddTag`, `AppendTags`, `AddTagFast` or `=`, in every `.cpp` and `.h` under
+`game/Source` outside `Tests/`, only `//` comments stripped): 11 matches at `1bf218ccb`, of which 3 name an element or a
+scope, the control that the sweep finds what it looks for; 9 on this commit, of which 1. Of the 11, 8 are code and 3 are
+lines of `/* */` comments quoting a row's `RequiredTags=` (`CataclysmCombatAttributeSet.h` 270, `CataclysmFervour.h` 286,
+`CataclysmSkillEffects.h` 2714). The 3:
+
+| Where, at `1bf218ccb` | What it did | Now |
+| :-- | :-- | :-- |
+| `CataclysmSkillTemplates.cpp` 2559 to 2563, `GrantIncrease` | `GrantedScope = ElementTag();` then `Modifier.RequiredTags.AddTag(GrantedScope)` | removed; `GrantedScope` stays the invalid tag `GrantIncrease` resets it to |
+| `CataclysmSkillTemplates.cpp` 5410 to 5414, `HelpAlliesInside` | `const FGameplayTag Scope = ElementTag();` then `Modifier.RequiredTags.AddTag(Scope)` | removed |
+| `CataclysmSharedBuffs.cpp` 198, `UCataclysmSharedBuffs::Step` | adds the copy's `Scope`, which is the buff's `GrantedScope` (129) or, for the nearby row, the invalid tag (140) | unchanged, and now always given an invalid tag, so it adds nothing |
+
+The other 5 code writes put on the tags a data row states (`CataclysmItem.cpp` 956, 1197 and 1644;
+`CataclysmPassiveTree.cpp` 972) or a dungeon rule's own (`CataclysmDungeonModifierEffects.cpp` 683, called with
+`Type.Spell`). **None is the skill's own element and none is touched**: a data row scoped to an `Element.*` tag is the separate count the
+coordinating session holds apart. `ElementTag()` is called at three other places, `CataclysmSkillTemplate.cpp` 502 and
+`CataclysmSkillTemplates.cpp` 575 and 1018: each passes it to `UCataclysmCastEffect::DamageTypeFor`, the colour a hit is
+drawn in, and none scopes a modifier. **The only runtime callers of `AddStatModifier` outside the tests are the three in
+the table** (searched by name). The boundary: a route that scopes damage by a fifth means, not through `RequiredTags`,
+would not appear here.
+
+**The callers.** `GrantIncrease` is called at `CataclysmSkillTemplates.cpp` 2385 (the cast), 2649 (a kill) and 2666 (a
+second); `HelpAlliesInside` at 5170 (each pulse), from `Pulse`. Lines of this commit; at `1bf218ccb` they were 2385,
+2656, 2673 and 5177.
+
+**The skills that reach each.** Every row of `game/Data/WeaponSkills.csv` whose shape reaches them (row numbers are the
+workbook's, the CSV's line numbers):
+
+| Row | Name | Weapon, slot | Reaches | Scope was, is | Its description |
+| --: | :-- | :-- | :-- | :-- | :-- |
+| 38 | Unbroken | Greatsword, Support | `GrantIncrease`, `MoreDamagePer=5`, `ScalingSource=Second` | `Element.Demonic`, none | "you gain 5% more damage every second": names no element, unchanged |
+| 102 | Butcher's Heat | Axe, Support | `GrantIncrease`, `MoreDamagePer=1`, `ScalingSource=Kill` | `Element.Demonic`, none | "grants 1% more damage": names no element, unchanged |
+| 122 | Burning Wrath | Greataxe, Support | `GrantIncrease`, `MoreDamagePer=4`, `ScalingSource=Burning` | `Element.Demonic`, none | "4% more fire damage": **changes** |
+| 301 | Held Fast | Spear, Support | `GrantIncrease`, `MoreDamagePer=10`, `ScalingSource=Pinned` | `Element.Demonic`, none | "You deal 10% more damage": names no element, unchanged |
+| 398 | Conflagration | All, Aura | `HelpAlliesInside`, `AllyIncreasedDamage=8` | `Element.Demonic`, none | "8% increased fire damage": **changes** |
+
+`MoreDamagePer` on a Strike, Movement or Aura row (Quench, The Whole Weight, Inexorable, Buried Fire, Living Pyre) sizes
+that skill's own blow and never reaches `GrantIncrease`, so it is not a buff and nothing there changes. **No other scope
+was carried by either modifier**: no slot and no skill type, before or after.
+
+**The enchantment and passive rows that grant a buff through them**, every row of `game/Data/` naming their stats
+(searched by stat name over every file there; only `EnchantmentEffects.csv` does): `self_buff_shared_within_metres`
+("Applying a buff to yourself also applies it to all allies within 8 meters"), `support_buff_shared_within_metres` ("Your
+support ability affects all allies within 15 meters instead of just yourself"), both of which copy `GrantedScope` and so
+now copy no scope; `buff_potency` ("Buff effects you apply are 20%-40% more potent") and `aura_effect` ("Your auras are
+20%-50% more effective"), which size the figure and never carried a scope; and `nearby_allies_more_damage` ("Nearby
+allies gain 10-20% more damage"), which was always unscoped. No passive node names any of them.
+
+**Skill text naming an element on a damage buff.** Burning Wrath and Conflagration, below. Two more name one and are
+**not changed, because they are War skills and this brief does no War work**: workbook row 5, Blood and Iron, column 5,
+"Allies within the aura deal 8% increased physical damage", with the design document's "Allies: +8% physical damage" in
+the War skill table; and row 238, Fortify (2H Crossbow, Support), "increasing your armor by 25% and your physical damage
+by 20% for 10 seconds". Neither has a shape, so no code grants either. The words proposed for them, when War is worked:
+"Allies within the aura deal 8% increased damage", "Allies: +8% damage", and "increasing your armor by 25% and your damage
+by 20% for 10 seconds". Martyr's Ember ("spends part of the store as bonus fire damage") and Living Pyre ("raises the
+pyre's fire damage by 8%") name the type of damage the skill itself deals, not a buff to the character's damage, and are
+not changed: a judgement, below.
+
+### THE CHANGE, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| Q-P2, Q-B1: a self buff's More raises all damage | `GrantIncrease`, `CataclysmSkillTemplates.cpp` 2552 to 2558: the comment, then `IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);` with no `RequiredTags` written. `GrantedScope` is reset to the invalid tag at 2506 and nothing sets it again. |
+| Q-B1: the copy given to allies raises all damage | unchanged `UCataclysmSharedBuffs::Step`, `CataclysmSharedBuffs.cpp` 129, copies `Buff->GrantedScope`, now invalid, and 196 to 199 add it only when valid. |
+| Q-P2: an aura's ally bonus raises all damage | `HelpAlliesInside`, `CataclysmSkillTemplates.cpp` 5398 to 5402: the comment, then `const int32 Handle = Abilities->AddStatModifier(Modifier);` with no `RequiredTags` written. |
+| The skill text | the design document below; the workbook cells below, for the enchantment session. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **`GrantedScope` IS KEPT, ALWAYS INVALID, AND SO IS THE SHARED COPY'S `Scope`.** The copy still reads it, a test reads
+  that it is empty, and nothing else in the shared-buff step changes. The option not taken: delete `GrantedScope` and
+  `FCataclysmSharedBuffCopy::Scope`, which would touch the header, the copy struct, `IsTheSame` and the step, in files
+  other second sessions are editing, for no change in play.
+- **THE TEST `ABuffsIncreaseDoesNotReachAnotherDamageType` IS RENAMED** `ABuffsIncreaseReachesAnotherDamageTypeToo`, and
+  its class `FCataclysmBuffIncreaseIsScopedTest` to `FCataclysmBuffIncreaseIsUnscopedTest`: the old name states what the
+  ruling made false. The option not taken: keep the name over an assertion that says the opposite. It keeps its War
+  strike: the tag was already in the test, no War row or skill is written, and only the figure moves.
+- **THE PYTHON TEST `test_every_skill_with_an_increase_carries_an_element_tag` IS REMOVED**, with a comment in its place.
+  It held every workbook row with `MoreDamagePer` or `IncreasedDamagePer` to an `Element.*` tag, and its own docstring
+  gave the reason: `GrantIncrease` scoped the modifier to it. The reason is gone. Every named row is still held to
+  exactly its one element by `tools/tests/test_weapon_skill_rows_carry_one_element_tag.py`. The option not taken: keep it
+  with a new reason, which would leave a second check of the same property whose stated purpose no longer exists.
+- **MARTYR'S EMBER AND LIVING PYRE KEEP "FIRE"**: their sentences name the damage the skill itself deals (a store spent as
+  bonus damage on the holder's hits, the pyre's own burning), which is the skill's damage type, not an increase the
+  character carries. The option not taken: reword them too, which the owner's sentence, about "increased X damage", does
+  not ask for.
+- **THE NEW TESTS MEASURE `UCataclysmSkillEffects::ModifiedDamage` WITH A SKILL'S TAGS, NOT A WHOLE SWING.** It is the
+  function a skill's hit (`CataclysmSkillTemplate.cpp` 1639 and 1740), a damage-over-time tick and a minion's blow price
+  their damage through, and the tags are what decide whether a modifier applies. The renamed War-strike test above lands
+  a real blow, so both are covered. The option not taken: a strike per case, which needs a weapon, a clip and a target,
+  and three more ways for a test of a scope to fail for another reason.
+- **THE OTHER ELEMENT IN THE NEW TESTS IS VOID**, neither the buffs' Demonic nor War.
+- **THE NEW TESTS ARE A NEW FILE**, so nothing is appended to the 35,000-line `CataclysmSkillTemplateTests.cpp` that other
+  sessions edit; their helpers are prefixed `GenericBuffs` after the file's subject, as
+  `CataclysmAllyBuffsRefusedTests.cpp`'s are.
+
+### THE GENRE SOURCE
+
+None. This is the owner's ruling on what this game's buffs reach, not a formula, and no source was fetched.
+
+### WHAT WAS CHANGED IN THE DESIGN DOCUMENT, OLD AND NEW
+
+The Demonic skill table, Conflagration's line. Old: "Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic
+resistance. Allies: +8% fire damage. Drains mana." New: "Hellfire aura in 10m. Enemies burn continuously and lose 15%
+Demonic resistance. Allies: +8% damage. Drains mana." Burning Wrath has no line in that table.
+
+### THE WORKBOOK CELLS, FOR THE ENCHANTMENT SESSION TO WRITE
+
+Sheet "Weapon Skills", column 5, "Skill Description". Every other word kept.
+
+| Row | Skill | Old | New |
+| --: | :-- | :-- | :-- |
+| 122 | Burning Wrath | Stoke your fury into open flame for 10 seconds, gaining 4% more fire damage for every enemy currently burning within 15 meters. While it lasts, any enemy that strikes you in melee is set alight. | Stoke your fury into open flame for 10 seconds, gaining 4% more damage for every enemy currently burning within 15 meters. While it lasts, any enemy that strikes you in melee is set alight. |
+| 398 | Conflagration | Emanate a ring of hellfire in a 10 meter radius. Enemies within it are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased fire damage. Drains mana per second while active. | Emanate a ring of hellfire in a 10 meter radius. Enemies within it are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased damage. Drains mana per second while active. |
+
+With the cell of row 122, `tools/tests/test_buff_magnitudes.py` lines 101 and 107 change as **SAID FIRST** gives, or
+`test_burning_wrath_carries_the_increase_its_description_states` fails.
+
+### Tests
+
+**The existing tests the ruling changes**, every one found, with its old and new figure. Found two ways and read one by
+one. By script: every test registered with `IMPLEMENT_SIMPLE_AUTOMATION_TEST` whose body grants a self buff with a
+`MoreDamagePer` or an aura with an `AllyIncreasedDamage`, or names `GrantedScope`, `HelpAlliesInside` or a shared-buff
+stat: 49 (`CataclysmSkillTemplateTests.cpp` 43, `CataclysmEnchantmentEffectTests.cpp` 4, `CataclysmDeathTests.cpp` 1,
+`CataclysmEquipmentTests.cpp` 1). By reading, the files the script cannot see into, which register through a wrapper
+macro or keep the row in a constant outside the test: `CataclysmSharedBuffsTests.cpp`, `CataclysmAllyBuffsRefusedTests.cpp`,
+`CataclysmBuffPotencySharedTests.cpp`, `CataclysmMinionOwnStatsTests.cpp`, the `Cataclysm.AuraEffect.` and
+`Cataclysm.BuffPotency.` helpers of `CataclysmSkillTemplateTests.cpp`, the nine-rows helpers of
+`CataclysmEnchantmentEffectTests.cpp`, and the `aura_effect` and `buff_potency` probes of `CataclysmStatExemptionTests.cpp`.
+An assertion moves only where a buff granted WITH an element tag is measured on a blow or a modifier WITHOUT that element,
+or its scope is read. A buff granted with no element tag was unscoped before as well, and most of these tests grant one;
+the tests that read only a bonus's value, its bucket or a count do not move.
+
+| Test | Assertion | Old | New |
+| :-- | :-- | :-- | :-- |
+| `Cataclysm.Skills.ABuffsIncreaseRaisesTheDamageOfSkillsItScopesTo` (3646) | the buff's `GrantedScope` | `TestEqual`, "Element.Demonic", "Scoped to the skill's own element" | `TestFalse(GrantedScope.IsValid())`, "Scoped to no tag, so it raises all damage" |
+| `Cataclysm.Skills.ABuffsIncreaseDoesNotReachAnotherDamageType`, renamed `Cataclysm.Skills.ABuffsIncreaseReachesAnotherDamageTypeToo` (3812) | a War strike's 250% while a Demonic Burning Wrath grants 4% | 250, "The War strike dealt the plain 250%, unraised" | 260 (250 x 1.04, within 0.01), "The War strike dealt 250% raised by the buff's 4%" |
+| `Cataclysm.Skills.AnAuraGivesAlliesInsideTheIncreasedDamageItsRowStates` (11656) | the ally's modifier from Conflagration | requires `Element.Demonic`, "and scoped to the aura's own element, so it is FIRE damage" | `RequiredTags.IsEmpty()`, "and scoped to no tag, so it raises all damage" |
+| `Cataclysm.SharedBuffs.TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds` (216) | the ally's copy of a Demonic buff | one modifier requiring `Element.Demonic`, "scoped to Demonic damage, as the wearer's own is" | one modifier, `RequiredTags.IsEmpty()`, "scoped to no tag, as the wearer's own is" |
+
+`Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem` keeps its assertions: its fire-scoped modifier is
+built by hand, and only its comments, which said Conflagration writes it, change.
+
+**The new tests**, `Cataclysm.GenericBuffs.` (`CataclysmGenericBuffsTests.cpp`), three, each in a world that has begun
+play, with player pawns whose ability system is on a player state, nobody refreshed; a blow of 100 is asked of
+`ModifiedDamage` with the tags `Element.Void, Type.Strike` and `Element.Demonic, Type.Strike`. Burning Wrath is granted
+with its row's number (`Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning`) and the sheet's tags;
+Conflagration with its row and the sheet's tags. The creature Burning Wrath counts burns 10 m along -X. Assertion counts
+include set-up checks, by reading.
+
+1. `ASelfBuffOfOneElementRaisesABlowOfAnother`, 12. Set-up: a world, a caster at the origin, a character without the buff
+   20 m along Y, something burning. **Control, read first: before the cast the caster's Void blow comes to the other
+   character's.** Set-up: Burning Wrath runs and grants 4. **Its `GrantedScope` is not valid**; **the one modifier on its
+   caster requires no tag**; **the caster's Void blow is the control's times 1.04** (it was the control's before this
+   change); **its Demonic blow is the control's times 1.04**; **control: the character without the buff still deals its
+   Void blow unraised**.
+2. `AnAurasAllyBonusRaisesAnAllysBlowOfAnotherElement`, 9. Set-up: a world, a caster, an ally 3 m along X, Conflagration
+   runs. **Control, read first: before the first pulse the aura helps nobody**, and the ally's two blows are read. Set-up:
+   the pulse helps the ally. **The ally carries one modifier requiring no tag**; **its Void blow is its blow before times
+   1.08** (it was unchanged before this change); **its Demonic blow is its blow before times 1.08**.
+3. `ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`, 10. Set-up: a world, a wearer holding
+   `self_buff_shared_within_metres` at 8, an ally 3 m along X, something burning; Burning Wrath runs and grants 4.
+   **Control, read first: before the step the wearer holds no copy**, and the ally's two blows are read. **The ally carries
+   one copy requiring no tag**; **its Void blow is its blow before times 1.04** (it was unchanged before this change); **its
+   Demonic blow is its blow before times 1.04**.
+
+### Not tested
+
+A Burning Wrath, Butcher's Heat, Unbroken or Held Fast cast in play on a character whose skills are of two damage types
+(no character has two yet, #837); a real minion's blow under a Demonic aura or a Demonic buff's copy (the minion's blow is
+priced by the same `ModifiedDamage`, and `Cataclysm.SharedBuffs.ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond`
+measures an imp's untagged blow under an element-free buff); the War skills' text, not changed; the workbook cells and the
+pattern of `test_buff_magnitudes.py`, which the enchantment session's commit changes.
+
+### GUARD PROOFS PROPOSED
+
+Three. Not run. Prefix `Cataclysm.GenericBuffs.`, which selects the three tests above and no other (every name string
+beginning with it, case ignored, counted over `game/`: 3). Each anchor counted exactly once in its file by a script (CRLF
+read as LF); each new text's round and curly brackets balance, and the file's balance is the same after the break.
+
+| Proof | File | Old text | New text | Stated to fail | Every other test of the prefix |
+|---|---|---|---|---|---|
+| GB-I, the element scope put back in `GrantIncrease` | `CataclysmSkillTemplates.cpp` | `IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);` | `GrantedScope = ElementTag(); if (GrantedScope.IsValid()) { Modifier.RequiredTags.AddTag(GrantedScope); } IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);` | `ASelfBuffOfOneElementRaisesABlowOfAnother`, 3 assertions: the scope not valid, the caster's modifier unscoped, the Void blow 1.04 (100 against 104); and `ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`, 2: the copy unscoped, the ally's Void blow 1.04 | `AnAurasAllyBonusRaisesAnAllysBlowOfAnotherElement` passes |
+| GB-II, the element scope put back in `HelpAlliesInside` | `CataclysmSkillTemplates.cpp` | `const int32 Handle = Abilities->AddStatModifier(Modifier);` | `if (ElementTag().IsValid()) { Modifier.RequiredTags.AddTag(ElementTag()); } const int32 Handle = Abilities->AddStatModifier(Modifier);` | `AnAurasAllyBonusRaisesAnAllysBlowOfAnotherElement`, 2 assertions: the ally's modifier unscoped, its Void blow 1.08 (100 against 108) | the other two pass |
+| GB-III, the shared copy scoped to its buff's element on its own | `CataclysmSharedBuffs.cpp` | `Wanted.Add({Ally, Buff, /*bNearbyRow=*/false, Buff->GrantedScope, Buff->GrantedIncrease});` | `Wanted.Add({Ally, Buff, /*bNearbyRow=*/false, Buff->ElementTag(), Buff->GrantedIncrease});` | `ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`, 2 assertions: the copy unscoped, the ally's Void blow 1.04 | the other two pass |
+
+Each break compiles alone, by reading: `ElementTag()` is a public `const` member of `UCataclysmSkillTemplate`
+(`CataclysmSkillTemplate.h` 479, under `public:` at 36), so it is callable on `this` in both templates and on the `const
+UCataclysmSelfBuffSkill*` the step holds; `GrantedScope` is a public field of `UCataclysmSelfBuffSkill`
+(`CataclysmSkillTemplates.h` 927); `FGameplayTagContainer::AddTag` takes the tag. GB-III is a separate line from GB-I: a
+copy can carry a scope the caster's own does not.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+`tools/tests/test_buff_magnitudes.py::test_every_skill_with_an_increase_carries_an_element_tag` is removed (judgement
+above): a workbook row with `MoreDamagePer` or `IncreasedDamagePer` and no `Element.*` tag is no longer refused by it. A
+NAMED row of that kind is still refused by `test_weapon_skill_rows_carry_one_element_tag.py`; an unnamed one is not, and
+under the ruling it would grant nothing scoped anyway. The four Unreal assertions in the table above, by the ruling.
+Nothing else.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — A character's six skills come from every combination of its worn weapon types and the damage types they carry, filled by default with the creation type first (#837, layer 2)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.h` and `.cpp` (the new public statics

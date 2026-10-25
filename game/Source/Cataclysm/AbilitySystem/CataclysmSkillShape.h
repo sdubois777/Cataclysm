@@ -615,10 +615,9 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * of a `ScalingSource` and sizes one blow; this is a flat grant to somebody
 	 * else, for as long as they stand in the ring.
 	 *
-	 * SCOPED TO THE SKILL'S OWN ELEMENT, so "increased FIRE damage" is data
-	 * rather than code: Conflagration carries `Element.Demonic`, which is this
-	 * project's fire, and a War aura written the same way would scope to
-	 * `Element.War` with nothing changing here.
+	 * SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on the
+	 * owner's "Make them generic": until then the bonus required the aura's own
+	 * element, so Conflagration's reached Demonic blows only.
 	 *
 	 * IT REACHES ALLIES AND NOT THE CASTER.
 	 * `UCataclysmTargeting::FindAlliesInSphere` excludes the caster, and its

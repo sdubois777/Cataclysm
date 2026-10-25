@@ -22,7 +22,8 @@ class UCataclysmAbilitySystemComponent;
  *       `nearby_allies_more_damage`, within the 5 m every "nearby" row reads
  *
  * WHAT IS COPIED IS THE MORE DAMAGE A SELF BUFF GRANTS, AND NOTHING ELSE. A
- * running self buff's `GrantedIncrease`, with its `GrantedScope`. Its status
+ * running self buff's `GrantedIncrease`, with its `GrantedScope`, which is
+ * empty since 2026-10-25 (Q-P2, Q-B1), so the copy raises all damage. Its status
  * tag, its immunities and its own machinery -- Martyr's Ember's store, Coil of
  * Embers' reach, Slipstream's refund -- act on the caster and are not stats,
  * so they stay with the caster. Five of the nine built support buffs grant no

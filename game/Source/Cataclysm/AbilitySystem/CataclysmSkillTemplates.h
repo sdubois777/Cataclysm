@@ -848,8 +848,9 @@ private:
  * UCataclysmAbilitySystemComponent, and taken out again when the duration
  * expires. Burning Wrath's "4% more fire damage for every enemy currently
  * burning within 15 meters" becomes one Increased modifier of 4 times the count,
- * scoped to the skill's own Element tag so it reaches Demonic skills and no
- * others. Issue #166.
+ * scoped to no tag, so it reaches skills of every element: ruled 2026-10-25
+ * (Q-P2, Q-B1), where it had been scoped to the skill's own Element tag.
+ * Issue #166.
  *
  * MARTYR'S EMBER DOES NOT GO THROUGH THAT ROUTE. "Store 40% of all damage you
  * take and spend it as bonus fire damage on your hits" is a store rather than a
@@ -916,9 +917,11 @@ public:
 	/**
 	 * Which tag the granted increase is scoped to, or an invalid tag for none.
 	 *
-	 * The skill's own Element tag. Burning Wrath carries Element.Demonic, so its
-	 * increase reaches Demonic skills; a War self buff written the same way
-	 * would scope to Element.War without any code changing.
+	 * ALWAYS AN INVALID TAG SINCE 2026-10-25: the increase raises all damage.
+	 * Ruled (Q-P2, Q-B1) on the owner's "Make them generic". It was the skill's
+	 * own Element tag, so Burning Wrath's increase reached Demonic skills only.
+	 * Kept, and still copied to allies by `UCataclysmSharedBuffs::Step`, so a
+	 * test can read that no scope is granted.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FGameplayTag GrantedScope;

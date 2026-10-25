@@ -277,9 +277,9 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
 		// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
 		// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
 		// skill in hand carries every tag a modifier requires, and every gear
-		// increase the design has is scoped to an element. Burning Wrath grants
-		// increased damage scoped to Element.Demonic; untagged, the basic attack
-		// would be the only one of the seven granted skills it did not increase,
+		// increase the design has is scoped to an element. Untagged, the basic
+		// attack would be the only one of the seven granted skills such an
+		// increase did not reach (Burning Wrath's was one until 2026-10-25),
 		// and it is the 100% weapon damage anchor the other six are percentages
 		// of. Nothing reports that: ModifierApplies simply returns false.
 		//

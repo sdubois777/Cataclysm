@@ -151,33 +151,9 @@ def test_burning_wrath_lasts_as_long_as_its_description_states() -> None:
     )
 
 
-def test_every_skill_with_an_increase_carries_an_element_tag() -> None:
-    """A damage modifier is scoped to the skill's damage type, so there must be one.
-
-    `UCataclysmSelfBuffSkill::GrantIncrease` scopes the modifier it adds to the
-    skill's own `Element.*` tag. A row carrying a scaling magnitude and no
-    element would grant a modifier that applied to every skill the character
-    owns, which is not what any description says.
-
-    THIS GUARDED NOTHING BETWEEN THE REWRITE OF 2026-09-01 AND ITS REPAIR. It
-    filtered on `IncreasePerBurning`, a key that rewrite renamed, so no row
-    matched. The offender list was empty because the filter was dead rather
-    than because the data was right, and the assertion below could not fail.
-    Both spellings of the magnitude are named now: `MoreDamagePer` for the
-    multiplicative bucket and `IncreasedDamagePer` for the additive one.
-    """
-    magnitudes = ("MoreDamagePer", "IncreasedDamagePer")
-    offenders = [
-        row["Skill Name"]
-        for row in weapon_skill_rows()
-        if any(key in shape_params(row) for key in magnitudes)
-        and not any(
-            tag.strip().startswith("Element.")
-            for tag in row.get("Tags", "").split(",")
-        )
-    ]
-    assert not offenders, (
-        "These skills grant a damage modifier but carry no Element tag to scope "
-        "it to, "
-        f"so it would apply to everything: {', '.join(offenders)}"
-    )
+# `test_every_skill_with_an_increase_carries_an_element_tag` WAS HERE until
+# 2026-10-25. It held every row with `MoreDamagePer` or `IncreasedDamagePer` to an
+# `Element.*` tag because `UCataclysmSelfBuffSkill::GrantIncrease` scoped the
+# modifier to it. The owner's "Make them generic" (ruled Q-P2, Q-B1) took that
+# scope away, so the reason went with it; every named row is still held to its
+# one element by `test_weapon_skill_rows_carry_one_element_tag.py`.
