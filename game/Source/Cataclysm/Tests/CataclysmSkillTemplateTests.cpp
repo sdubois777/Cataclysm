@@ -20130,6 +20130,378 @@ bool FCataclysmRolledUseHitsItsUserWithItsRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Issue #2498: a Spell's self hit, its ground and its Echo Chamber copy take its spell damage, as its hit does.
+// --------------------------------------------------------------------------
+
+/**
+ * Settled 2026-10-25 by the coordinating session (Q-S1): "The ground costs one hit of the skill. The backfire row
+ * exists only for Spells and deals "half damage". The Echo Chamber ruling says "a tenth of what it would deal an
+ * enemy". All three name the Spell's own hit, and a Spell's hit includes its spell damage." So each is priced by
+ * `UCataclysmSkillEffects::SkillHitWithNoTarget`: `(W x D / 100 + S) x (1 + A)`, the spell damage S outside the skill's
+ * percent and inside the increases, as `ApplyHit` adds it. Before #2498 each read `(W x D / 100) x (1 + A)`.
+ *
+ * THE RIGS ARE THE NEIGHBOURS': the `Cataclysm.Skills.` fighter, attack damage attribute 100 and every defence at
+ * nought, so a blow's figure is the health it takes; the ground tests' Heavy strike, whose plain tick is 100 x 250% x
+ * 16.7% = 41.75; and the self hit tests' rolled row. The spell damage is the attribute, set by hand, with no
+ * `spell_damage` line recorded, so `SpellDamageOf` answers the attribute; the gadget test records a line, for its row
+ * naming gadgets. EVERY READING WITH SPELL DAMAGE HAS A CONTROL WITH NONE, READ FIRST. The critical strike roll is
+ * pinned at 100 after each world is made. The Echo Chamber test of this group is in
+ * `CataclysmDungeonModifierEffectsTests.cpp`, with the rig of the Echo Chamber tests.
+ */
+namespace CataclysmNoTargetSpellDamageTest
+{
+	using namespace CataclysmGroundPatchLineTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	/** The spell damage the ground tests give the caster. */
+	constexpr float GroundSpellDamage = 40.0f;
+
+	/** What one sweep of the rig's ground deals with this spell damage and these increases: (250 + S) x (1 + A) x 16.7%. */
+	constexpr float GroundTickWith(float Spell, float Increases = 0.0f)
+	{
+		return (WeaponDamage * 250.0f / 100.0f + Spell) * (1.0f + Increases) * 16.7f / 100.0f;
+	}
+
+	/** The caster's spell damage, as the attribute, with no `spell_damage` line recorded. */
+	void GiveSpellDamage(FScopedFighter& Caster, float Spell)
+	{
+		Caster.Set(UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), Spell);
+	}
+
+	/**
+	 * The caster's lines, as `UCataclysmPlayerClassStats::ApplyTo` would leave them: attack damage the weapon's 100
+	 * flat and nothing folded; spell damage `Spell` flat, which the attribute holds too, and `SpellRows`, which it
+	 * cannot fold.
+	 */
+	void RecordTheSpellLine(FScopedFighter& Caster, float Spell, const TArray<FCataclysmStatModifier>& SpellRows)
+	{
+		FCataclysmStatModifier Weapon;
+		Weapon.Bucket = ECataclysmStatBucket::Flat;
+		Weapon.Source = ECataclysmModifierSource::GearImplicit;
+		Weapon.Value = WeaponDamage;
+		FCataclysmStatInputs Attack;
+		Attack.Base = 0.0f;
+		Attack.Modifiers.Add(Weapon);
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = Spell;
+		FCataclysmStatInputs SpellLine;
+		SpellLine.Base = 0.0f;
+		SpellLine.Modifiers.Add(Flat);
+		SpellLine.Modifiers.Append(SpellRows);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("attack_damage")), Attack);
+		Stats.Add(FName(TEXT("spell_damage")), SpellLine);
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+		GiveSpellDamage(Caster, Spell);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoTargetSpellBackfireTest,
+	"Cataclysm.NoTargetSpellDamage.ASpellsBackfireDealsHalfItsHitWithItsSpellDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spells have a 15%-25% chance to backfire dealing half damage to you", hand-built as the self hit tests build it,
+ * beside "Melee skills have a 10%-20% chance to hit you instead of the enemy". A Spell strike in the Heavy slot and a
+ * melee swing in the Special slot, both all round of 4 m, an enemy fighter 2 m away. THE CONTROL FIRST, with no spell
+ * damage: the Spell deals the enemy 100 x its percent and its backfire half of that; the swing's self hit is its hit.
+ * Then with 100 spell damage: the Spell's hit on the enemy is 100 more, and its backfire is half of THAT hit, 50 more;
+ * the swing and its self hit are unchanged. Before #2498 the backfire stayed at the control's half.
+ */
+bool FCataclysmNoTargetSpellBackfireTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoTargetSpellDamageTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	UCataclysmStrikeSkill* Spell = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("A spell"), TEXT("Type.Spell"));
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"), TEXT("A swing"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the use roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the Spell"), Spell) || !TestNotNull(TEXT("set-up: the swing"), Swing)
+		|| !TestTrue(TEXT("set-up: the Spell carries Type.Spell"), UCataclysmSkillEffects::IsSpell(Spell->SkillTags))
+		|| !TestFalse(TEXT("set-up: and the swing does not"), UCataclysmSkillEffects::IsSpell(Swing->SkillTags)))
+	{
+		return false;
+	}
+	for (UCataclysmStrikeSkill* Each : {Spell, Swing})
+	{
+		Each->CooldownOverride = 0.0f;
+		Each->ManaCostOverride = 0.0f;
+	}
+	const float SpellPercent = Spell->GetDamagePercent();
+
+	FCataclysmPoolAction Backfire =
+		AUseRow(TEXT("Test:backfire"), 20.0f, /*bNoDamage=*/false, 0.0f, false, TEXT("skill_use"));
+	Backfire.bUseDealsIncreasedDamage = false;
+	Backfire.bUseHitsItsUser = true;
+	Backfire.UseSelfHitSharePercent = UCataclysmAbilitySystemComponent::BackfireSharePercent;
+	FCataclysmPoolAction HitsYou = Backfire;
+	HitsYou.TriggerKey = FName(TEXT("Test:self"));
+	HitsYou.UseSelfHitSharePercent = 100.0f;
+
+	// ONE USE: plain when `Rolled` is null, else rolled by that row. What the enemy and the caster lost.
+	const auto Use = [&](UCataclysmStrikeSkill* Skill, const FCataclysmPoolAction* Rolled, float& OutEnemyLost,
+						 float& OutCasterLost)
+	{
+		if (Rolled)
+		{
+			Caster.AbilitySystem->SetPoolActions({*Rolled});
+			TheRowsSeeAUseOf(Caster, Skill);
+		}
+		else
+		{
+			Caster.AbilitySystem->SetPoolActions({});
+		}
+		const float EnemyBefore = Enemy.Health();
+		const float CasterBefore = Caster.Health();
+		const bool bUsed = Activate(Caster, Skill);
+		OutEnemyLost = EnemyBefore - Enemy.Health();
+		OutCasterLost = CasterBefore - Caster.Health();
+		return bUsed;
+	};
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+
+	// THE CONTROL, NO SPELL DAMAGE.
+	if (!TestTrue(TEXT("control: the plain Spell is used"), Use(Spell, nullptr, EnemyLost, CasterLost)))
+	{
+		return false;
+	}
+	const float SpellHitBefore = EnemyLost;
+	TestEqual(TEXT("control: and deals the enemy 100 x its percent"), SpellHitBefore, WeaponDamage * SpellPercent / 100.0f,
+			  0.05f);
+	TestTrue(TEXT("control: the backfiring Spell is used"), Use(Spell, &Backfire, EnemyLost, CasterLost));
+	TestEqual(TEXT("control: and deals its user half its hit"), CasterLost, SpellHitBefore * 0.5f, 0.05f);
+	TestTrue(TEXT("control: the plain swing is used"), Use(Swing, nullptr, EnemyLost, CasterLost));
+	const float SwingHit = EnemyLost;
+	if (!TestTrue(TEXT("control: and hurts the enemy"), SwingHit > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: the swing rolled to hit its user is used"), Use(Swing, &HitsYou, EnemyLost, CasterLost));
+	const float SwingSelfHit = CasterLost;
+	TestEqual(TEXT("control: and deals its user its whole hit"), SwingSelfHit, SwingHit, 0.05f);
+
+	// 100 SPELL DAMAGE.
+	GiveSpellDamage(Caster, 100.0f);
+	TestTrue(TEXT("with spell damage, the plain Spell is used"), Use(Spell, nullptr, EnemyLost, CasterLost));
+	const float SpellHitAfter = EnemyLost;
+	TestEqual(TEXT("set-up: and its hit on the enemy is 100 more, as ApplyHit adds it"), SpellHitAfter,
+			  WeaponDamage * SpellPercent / 100.0f + 100.0f, 0.05f);
+	TestTrue(TEXT("the backfiring Spell is used"), Use(Spell, &Backfire, EnemyLost, CasterLost));
+	TestEqual(TEXT("it deals the enemy nothing"), EnemyLost, 0.0f, 0.01f);
+	TestEqual(TEXT("and its user half its hit with the spell damage, (100 x its percent + 100) / 2"), CasterLost,
+			  SpellHitAfter * 0.5f, 0.05f);
+	TestTrue(TEXT("the plain swing is used again"), Use(Swing, nullptr, EnemyLost, CasterLost));
+	TestEqual(TEXT("set-up: and its hit is unchanged: it is not a Spell"), EnemyLost, SwingHit, 0.05f);
+	TestTrue(TEXT("the swing rolled to hit its user is used again"), Use(Swing, &HitsYou, EnemyLost, CasterLost));
+	TestEqual(TEXT("and its self hit is unchanged under the same spell damage"), CasterLost, SwingSelfHit, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoTargetSpellGroundTest,
+	"Cataclysm.NoTargetSpellDamage.ASpellsGroundTicksWithItsSpellDamageAndAnotherSkillsDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Standing in burning ground for its whole life costs one hit of the skill that left it." The rig's strike as a
+ * Spell. THE CONTROL FIRST, with no spell damage: the plain 41.75. With 40 spell damage the Spell's ground ticks (250 +
+ * 40) x 16.7% = 48.43, its first sweep told the same; the same strike untagged, under the same 40, ticks 41.75.
+ */
+bool FCataclysmNoTargetSpellGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoTargetSpellDamageTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic, Type.Spell"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: the strike carries Type.Spell"), UCataclysmSkillEffects::IsSpell(Strike->SkillTags)))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	if (!TestTrue(TEXT("control: with no spell damage, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75"), Tick, GroundTickWith(0.0f), 0.01f);
+
+	GiveSpellDamage(Caster, GroundSpellDamage);
+	if (!TestTrue(TEXT("with 40 spell damage, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks (250 + 40) x 16.7% = 48.43: the spell damage is in it"), Tick,
+			  GroundTickWith(GroundSpellDamage), 0.01f);
+	TestEqual(TEXT("and its first sweep is told the same figure"), FirstSweep, Tick, 0.001f);
+
+	Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic"));
+	if (!TestTrue(TEXT("the strike with no Type.Spell, under the same 40, is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks the plain 41.75: it is not a Spell"), Tick, GroundTickWith(0.0f), 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoTargetSpellBracketTest,
+	"Cataclysm.NoTargetSpellDamage.ASpellsSpellDamageIsRaisedByTheLinesIncreasesAndNotByTheSkillsPercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `ApplyHit`'s bracket, `(W x D / 100 + S) x (1 + A)`: the spell damage is outside the skill's 250% and inside the
+ * line's increases. "While stationary your damage is increased by 20%", hand-built. Standing still, THE CONTROL FIRST,
+ * with no spell damage: 250 x 1.2 x 16.7% = 50.1. With 40: (250 + 40) x 1.2 x 16.7% = 58.116, the spell damage's own
+ * share 40 x 1.2 x 16.7% = 8.016, and not 40 x 250% x 1.2 x 16.7%. Having moved, the row not holding: (250 + 40) x
+ * 16.7% = 48.43.
+ */
+bool FCataclysmNoTargetSpellBracketTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoTargetSpellDamageTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic, Type.Spell"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike))
+	{
+		return false;
+	}
+	RecordTheGroundLine(Caster, {AGroundLineIncrease(20.0f, ECataclysmStatCondition::WhileStationary)});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	Caster.AbilitySystem->NoteDidNotMove();
+	if (!TestTrue(TEXT("control: standing still with no spell damage, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float NoSpellDamage = Tick;
+	TestEqual(TEXT("control: and the patch ticks 250 x 1.2 x 16.7% = 50.1"), NoSpellDamage, GroundTickWith(0.0f, 0.2f),
+			  0.01f);
+
+	GiveSpellDamage(Caster, GroundSpellDamage);
+	if (!TestTrue(TEXT("standing still with 40 spell damage, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks (250 + 40) x 1.2 x 16.7% = 58.116"), Tick, GroundTickWith(GroundSpellDamage, 0.2f),
+			  0.01f);
+	TestEqual(TEXT("the spell damage's share is 40 x 1.2 x 16.7% = 8.016: the 20% reaches it and the 250% does not"),
+			  Tick - NoSpellDamage, GroundSpellDamage * 1.2f * 16.7f / 100.0f, 0.01f);
+
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	if (!TestTrue(TEXT("having moved, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks (250 + 40) x 16.7% = 48.43, the row not holding"), Tick,
+			  GroundTickWith(GroundSpellDamage), 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoTargetSpellGadgetTest,
+	"Cataclysm.NoTargetSpellDamage.AGadgetsSpellGroundLeavesOutTheSpellDamageRowsNamingGadgets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Q-S2, 2026-10-25: "On a gadget's ground, ask SpellDamageOf with Type.Deployable removed, as ApplyHit does." The
+ * caster's spell damage line: 40 flat, and 50% increased requiring `Type.Deployable` (the spell damage half of
+ * "Gadgets deal 20%-40% increased damage"). A skill gadget placed by `ACataclysmMinion::PlaceSkillGadget` for the Heavy
+ * slot, 10 m away. THE CONTROL FIRST: the Spell with no `Type.Deployable`, cast by the caster, ticks (250 + 40) x 16.7% =
+ * 48.43. Carrying `Type.Deployable` and cast by the caster, the row reaches it: (250 + 60) x 16.7% = 51.77. Cast by the
+ * gadget, the row is left out: 48.43 again.
+ */
+bool FCataclysmNoTargetSpellGadgetTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoTargetSpellDamageTest;
+
+	// A skill gadget needs a world that has begun play, as `AGadgetsGroundTakesTheGadgetRowsJudgedOnTheGadget` found.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic, Type.Spell"));
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: Type.Deployable is in the tag vocabulary"), NamesGadgets.IsValid()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget =
+		ACataclysmMinion::PlaceSkillGadget(Caster.Actor, ECataclysmAbilitySlot::Heavy, FVector(10.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a skill gadget is placed. If not, DT_MinionTypes needs the SkillGadget row: run "
+						  "tools/generate_datatable_assets.py"), Gadget)
+		|| !TestTrue(TEXT("set-up: and it is a skill gadget"), Gadget->IsSkillGadget()))
+	{
+		return false;
+	}
+	RecordTheSpellLine(Caster, GroundSpellDamage,
+					   {AGroundLineIncrease(50.0f, ECataclysmStatCondition::Always, TEXT("Type.Deployable"))});
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	if (!TestTrue(TEXT("control: the Spell with no Type.Deployable, cast by the caster, is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float Plain = Tick;
+	TestEqual(TEXT("control: and the patch ticks (250 + 40) x 16.7% = 48.43: the gadget row does not reach it"), Plain,
+			  GroundTickWith(GroundSpellDamage), 0.01f);
+
+	Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Element.Demonic, Type.Spell, Type.Deployable"));
+	if (!TestTrue(TEXT("carrying Type.Deployable and cast by the caster, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks (250 + 60) x 16.7% = 51.77: the row naming gadgets raises the caster's own"), Tick,
+			  GroundTickWith(GroundSpellDamage * 1.5f), 0.01f);
+
+	Strike->FreeRepeatCastBy = Gadget;
+	if (!TestTrue(TEXT("cast by the gadget, the Spell is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the gadget's patch leaves the row out, as ApplyHit does: the control's 48.43"), Tick, Plain,
+			  0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackGrantScopeTest,
 	"Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

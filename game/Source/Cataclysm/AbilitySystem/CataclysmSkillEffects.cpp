@@ -537,6 +537,45 @@ float UCataclysmSkillEffects::AttackDamageWithNoTarget(
 		   + ExtraIncreases);
 }
 
+float UCataclysmSkillEffects::SkillHitWithNoTarget(
+	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags, float DamagePercent,
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
+{
+	// A SKILL THAT IS NOT A SPELL ADDS NO SPELL DAMAGE, so its figure is the weapon part's at its percent, the
+	// expression each caller used before #2498.
+	if (!IsSpell(SkillTags))
+	{
+		return AttackDamageWithNoTarget(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow, ExtraIncreases)
+			* DamagePercent / 100.0f;
+	}
+
+	// A SPELL'S SPELL DAMAGE, ASKED AS `ApplyHit` ASKS IT, with no target, distance, stagger, count or charge. Without
+	// `Type.Deployable` while a skill gadget's blow is priced (Q-S2): the component's `SkillGadgetBeingPriced` is set
+	// exactly then, by the scope `ApplyHit` and `LeaveZoneAlong` open for a gadget's cast, and `ApplyHit` asks the same
+	// question of its delivery to decide the same removal.
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	FGameplayTagContainer SpellTags = SkillTags;
+	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get() && NamesGadgets.IsValid())
+	{
+		SpellTags.RemoveTag(NamesGadgets);
+	}
+	const float SpellFlat = SpellDamageOf(Source, SpellTags, SkillHealthCostPercent,
+										  /*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false,
+										  /*Target=*/nullptr, /*EnemiesStruckTogether=*/-1,
+										  /*MetresCharged=*/-1.0f, /*ChargeRangeMetres=*/-1.0f);
+
+	// AND `ApplyHit`'S BRACKET: the weapon part at the skill's percent, the spell damage beside it, and one plus the
+	// line's increases on both, each lookup asked once.
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	const float WeaponPart = WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow);
+	return (WeaponPart * DamagePercent / 100.0f + SpellFlat)
+		* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		   + ExtraIncreases);
+}
+
 float UCataclysmSkillEffects::DamageAgainstTypeOf(
 	const UAbilitySystemComponent* Source, const AActor* Target)
 {

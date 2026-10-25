@@ -1674,7 +1674,8 @@ public:
 	 * FOR THE DAMAGE PRICED OUTSIDE `ApplyHit`: a self hit ("hits you instead",
 	 * "backfire"), and next a copied blow and a ground patch. It is `ApplyHit`'s own
 	 * weapon part -- the attribute with its folded increases undone, times
-	 * `MoreForSkill`, times one plus `IncreasesForSkill` -- with no enemy in it.
+	 * `MoreForSkill`, times one plus `IncreasesForSkill` -- with no enemy in it. SINCE #2498 THE THREE ARE PRICED BY
+	 * `SkillHitWithNoTarget` below, which is this at the skill's percent and, for a Spell, adds its spell damage.
 	 *
 	 * NO TARGET AND NO BLOW BEYOND THE TWO USE FACTS. The target is null and every
 	 * other blow fact is "not known", so a row about the enemy struck (a boss, its
@@ -1695,6 +1696,29 @@ public:
 										  float SkillHealthCostPercent = -1.0f,
 										  float MetresMovedBeforeBlow = -1.0f,
 										  float ExtraIncreases = 0.0f);
+
+	/**
+	 * What one hit of a skill with these tags and this percent is worth when no enemy is being struck: the weapon
+	 * part above at `DamagePercent`, AND A SPELL'S SPELL DAMAGE, as `ApplyHit` adds it. Issue #2498, settled
+	 * 2026-10-25 by the coordinating session (Q-S1): a Spell's backfire ("half damage"), its Echo Chamber copy ("a
+	 * tenth of what it would deal an enemy") and its ground ("one hit of the skill that left it") all name the
+	 * Spell's own hit, and a Spell's hit includes its spell damage.
+	 *
+	 * `(W / (1 + F) x M x DamagePercent / 100 + SpellFlat) x (1 + A + ExtraIncreases)`, `ApplyHit`'s bracket: the
+	 * spell damage is outside the skill's percent and inside the increases. `SpellFlat` is `SpellDamageOf` with this
+	 * use's health cost and every blow fact "not known", and nought for a skill without `Type.Spell`, for which this
+	 * is `AttackDamageWithNoTarget(...) x DamagePercent / 100` exactly.
+	 *
+	 * WHILE A SKILL GADGET'S BLOW IS PRICED (`FPricingASkillGadgetsBlow`), THE SPELL DAMAGE ROWS NAMING
+	 * `Type.Deployable` ARE LEFT OUT (Q-S2), as `ApplyHit` leaves them out of a gadget's blow: "Gadgets deal ..." is
+	 * written on attack damage and spell damage both, and the attack damage row already reaches the whole hit.
+	 */
+	static float SkillHitWithNoTarget(const UAbilitySystemComponent* Source,
+									  const FGameplayTagContainer& SkillTags,
+									  float DamagePercent,
+									  float SkillHealthCostPercent = -1.0f,
+									  float MetresMovedBeforeBlow = -1.0f,
+									  float ExtraIncreases = 0.0f);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;
