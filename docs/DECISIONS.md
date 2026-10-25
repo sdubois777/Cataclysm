@@ -436,7 +436,35 @@ other tick's ratio is 1, because no other test's applier holds a target-conditio
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-24, window t73w, under the editor lock as `enchant-t73w`, at a38f41ce2 (the
+branch's three commits moved from 439786ca3 onto development b2b60ebf6, #2491; each kept its zero-context patch id, whole
+and outside this file, and its removed lines). Four steps, as the coordinating session accepted: no old-asset step,
+because the real-row test reads the CSVs and no test's failure on the old assets could be named in advance ("A step whose
+failure cannot be named in advance is not a prediction"). Every figure was registered before the run, and every one is as
+registered. Free physical memory before the lock and before the suite: 15.9 GB.
+
+- **The asset rebuild** (`tools/run_editor_python.py tools/generate_datatable_assets.py`): exit 0; it changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset`, `game/Content/Data/DT_EnchantmentsPositive.uasset` and
+  `game/Data/datatable_asset_sources.json`, which this record commit carries.
+- **The whole Unreal suite:** "Build: Succeeded - 40 actions, 37 files compiled"; "4136 tests performed, 4136 succeeded,
+  0 failed" (4131 on development + this group's 5); "Declared: 4136 tests in the tree at a38f41ce2; 4136 performed, gap 0".
+  40 tests skipped part of what they check.
+- **Python of record:** "6946 passed, 8 skipped"; JUnit 6954 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test
+  passes on the rebuilt assets). `ruff check .`: "All checks passed!".
+- **G-I, the per-tick multiply removed** (`CataclysmDamageCalculation.cpp`, `Damage *= FMath::Max(0.0f,
+  Hit.TargetConditionedDotDamageMultiplier);` to `Damage *= FMath::Max(0.0f, 1.0f);`, anchor counted once): PROVED. With the
+  break in, 5 tests performed, 5 failed, the five registered; 6 failed assertions, 6 registered (every 1.3 read 1.0; the
+  baked test's 1.625 read 1.25). Restored, 5 performed, 5 succeeded. The file's hash is the same after.
+- **G-II, the marker check removed** (`CataclysmVitalAttributeSet.cpp`, `if (Hit.bIsDamageOverTime &&
+  bPricedFromItsAppliersStats)` to `... && (bPricedFromItsAppliersStats || Hit.bIsDamageOverTime))`, anchor counted once):
+  PROVED. With the break in, 5 performed, 4 succeeded, 1 failed, `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes`;
+  1 failed assertion, 1 registered (the spread copy's tick read 1.3 against 1.0). Restored, 5 performed, 5 succeeded. The
+  file's hash is the same after.
+- **SEEN ONCE, NOT REPEATED, CAUSE UNKNOWN** (ruled to be recorded here): in the enchantment session's Python of record on
+  a38f41ce2 before this window, `tools/tests/test_what_a_run_ending_costs.py::test_the_guards_fail_when_the_document_regresses`
+  [the Ending a Run section is deleted] failed with "OSError: [Errno 22] Invalid argument" on writing its break into
+  `docs/Cataclysm_GDD_v2.md`. The file alone passed ("27 passed"), the document was unchanged afterwards, a second full run
+  did not show it, and nor did this window's run. If it appears again in any window, it is filed as an issue.
 
 ---
 
