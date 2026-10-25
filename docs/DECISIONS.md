@@ -80,7 +80,10 @@ days through `_empire_day` with the walked dungeon still counted as the one the 
 what it was. **Two details, labelled judgements of the dungeon session:** a win or a loss does not stop the owed days,
 because both are set at the end of a walk of the Cataclysm dungeon, after every one of its days had run when they ran as
 the walk went, so a campaign ends on the day it ended on before; and a campaign whose `max_days` falls inside a walk runs
-the owed days then, so it stops on the same day as before.
+the owed days then, so it stops on the same day as before. Both accepted by the coordinating session on 2026-10-24. The
+first version stopped the owed days on a loss, and `sim/tests/test_analysis_scripts.py`'s
+`test_the_day_ledger_accounts_for_every_day` caught it: a campaign lost at the end of a Last Stand walk counted 1,664
+days of steps against 1,494 days survived.
 
 ### Tests changed, as ruled one by one
 
