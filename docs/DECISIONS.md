@@ -84,7 +84,15 @@ same move unannounced, counted), `Cataclysm.DungeonModifierEffects.ThePlacementA
 
 ### Proofs
 
-Registered for the window and not yet run:
+The Python check, by `tools/prove_guard.break_and_run` in a `git archive` copy of `60c4c97d2`, on its own file:
+
+| break | with it in | restored |
+|---|---|---|
+| the respawn's call commented out with `//` | 2 failed, 11 passed | 13 passed |
+| the trade partner's call removed | 2 failed, 11 passed | 13 passed |
+| the random teleport's call removed | 1 failed, 12 passed | 13 passed |
+
+Unreal, registered for the window and not yet run:
 
 - **P1**, `NoteSampledAt(LastSampledLocation + Displacement);` -> `NoteSampledAt(LastSampledLocation);` in
   `CataclysmAbilitySystemComponent.cpp`. Predicted: `ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn`
