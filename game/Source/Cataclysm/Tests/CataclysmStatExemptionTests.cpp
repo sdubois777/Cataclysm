@@ -39,6 +39,8 @@
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
+// For damage_types_carried, which the drop reads off an item. Ruled 2026-10-25.
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -10242,6 +10244,33 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmDamageCalculation::TypedResistanceOf(Fighter.AbilitySystem, Type), 60.0f, 0.001f);
 	}
 
+	/**
+	 * `damage_types_carried`, read off an ITEM's drawn enchantments by `UCataclysmDropRoll::DamageTypesCarriedBy` when it
+	 * drops, and off no character. Ruled 2026-10-25 (Q-D5). ONE ITEM'S ENCHANTMENT. THE CONTROL IS THE SAME ENCHANTMENT WITH
+	 * NO ROW STATING THE STAT: nought. With a flat 3, three.
+	 *
+	 * WHAT THIS DOES NOT REACH. The damage types a drop then adds: `Cataclysm.ExtraDamageTypes.`.
+	 */
+	void ProbeDamageTypesCarried(FAutomationTestBase& Test)
+	{
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(TEXT("Probe_damage_types_carried"));
+		Rolled.PositiveRoll = 1.0f;
+		UDataTable* Effects = NewObject<UDataTable>();
+		Effects->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
+		Test.TestEqual(TEXT("control: with no row stating damage_types_carried the item asks for none"),
+					   UCataclysmDropRoll::DamageTypesCarriedBy({Rolled}, Effects), 0);
+		FCataclysmEnchantmentEffectRow Row;
+		Row.Enchantment = Rolled.Positive.ToString();
+		Row.Stat = UCataclysmDropRoll::DamageTypesCarriedStat;
+		Row.ValueKind = TEXT("flat");
+		Row.ValueLow = 3.0f;
+		Row.ValueHigh = 3.0f;
+		Effects->AddRow(FName(TEXT("Probe_damage_types_carried#1")), Row);
+		Test.TestEqual(TEXT("with a flat 3 it asks for three, so DamageTypesCarriedBy really reads it"),
+					   UCataclysmDropRoll::DamageTypesCarriedBy({Rolled}, Effects), 3);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -10478,6 +10507,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_damage_over_time_share"),
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapDamageOverTimeShareStat); }},
 			{TEXT("trap_pull_radius"), &ProbeTrapPullRadius},
+			{TEXT("damage_types_carried"), &ProbeDamageTypesCarried},
 		};
 		return Made;
 	}

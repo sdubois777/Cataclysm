@@ -1221,6 +1221,72 @@ TArray<FName> UCataclysmDropRoll::RollDamageTypes(
 	return Rolled;
 }
 
+const TCHAR* UCataclysmDropRoll::DamageTypesCarriedStat = TEXT("damage_types_carried");
+
+int32 UCataclysmDropRoll::DamageTypesCarriedBy(
+	const TArray<FCataclysmRolledEnchantment>& Enchantments,
+	const UDataTable* EnchantmentEffectTable)
+{
+	if (!EnchantmentEffectTable || Enchantments.Num() == 0)
+	{
+		return 0;
+	}
+
+	int32 Most = 0;
+	const auto Read = [EnchantmentEffectTable, &Most](FName Half, float Roll)
+	{
+		if (Half.IsNone())
+		{
+			return;
+		}
+		const FString Named = Half.ToString();
+		for (const TPair<FName, uint8*>& Row : EnchantmentEffectTable->GetRowMap())
+		{
+			const FCataclysmEnchantmentEffectRow* Effect =
+				reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+			if (!Effect || Effect->Enchantment != Named
+				|| !Effect->Stat.Equals(DamageTypesCarriedStat, ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+			// THE SAME ROUNDING AS THE DEPLOYABLE CAP'S "+1-3". Ruled 2026-10-25 (Q-D2).
+			Most = FMath::Max(Most, FMath::RoundToInt(UCataclysmItemValues::EnchantmentValue(
+				Effect->ValueLow, Effect->ValueHigh, Roll)));
+		}
+	};
+	for (const FCataclysmRolledEnchantment& Rolled : Enchantments)
+	{
+		Read(Rolled.Positive, Rolled.PositiveRoll);
+		Read(Rolled.Negative, Rolled.NegativeRoll);
+	}
+	return Most;
+}
+
+void UCataclysmDropRoll::TopUpDamageTypes(const UDataTable* WeaponSkillTable,
+										  const FCataclysmItemBaseRow& BaseRow, int32 Count,
+										  FRandomStream& Stream, TArray<FName>& InOutDamageTypes)
+{
+	if (Count <= InOutDamageTypes.Num() || BaseRow.MaxDamageTypes <= 0)
+	{
+		return;
+	}
+
+	TArray<FName> Pool = DamageTypesAvailableTo(WeaponSkillTable, BaseRow.WeaponType);
+	const int32 Ceiling = MaxDamageTypesFor(BaseRow, Pool.Num());
+	const int32 Wanted = FMath::Min(Count, Ceiling);
+
+	Pool.RemoveAll([&InOutDamageTypes](const FName& Type)
+	{
+		return InOutDamageTypes.Contains(Type);
+	});
+	while (InOutDamageTypes.Num() < Wanted && Pool.Num() > 0)
+	{
+		const int32 Index = Stream.RandRange(0, Pool.Num() - 1);
+		InOutDamageTypes.Add(Pool[Index]);
+		Pool.RemoveAt(Index);
+	}
+}
+
 float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
 {
 	// THE SHEET'S NUMBER MUST BE A WHOLE ONE FROM 1 TO 4. Anything else is a row
@@ -1948,7 +2014,8 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 								  const UDataTable* NegativeEnchantmentTable,
 								  const FString& Slot, int32 DifficultyTier,
 								  float MagicFind, FRandomStream& Stream,
-								  FCataclysmItem& OutItem, bool bChaoticTiers)
+								  FCataclysmItem& OutItem, bool bChaoticTiers,
+								  const UDataTable* EnchantmentEffectTable)
 {
 	OutItem = FCataclysmItem();
 
@@ -2033,6 +2100,16 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 						  OutItem.Enchantments))
 	{
 		return false;
+	}
+
+	// AND LAST OF ALL, THE DAMAGE TYPES AN ENCHANTMENT ADDS: "This weapon has 2-4
+	// damage types". Ruled 2026-10-25 (Q-D2 to Q-D6). After the enchantments,
+	// because it reads what they drew, and on the end for the reason above: a
+	// drop without such a row draws nothing more, so it is today's item.
+	const int32 Carried = DamageTypesCarriedBy(OutItem.Enchantments, EnchantmentEffectTable);
+	if (Carried > 0)
+	{
+		TopUpDamageTypes(WeaponSkillTable, *BaseRow, Carried, Stream, OutItem.DamageTypes);
 	}
 
 	return true;

@@ -12531,6 +12531,60 @@ def refuse_a_trap_pull_row_the_game_cannot_read(
                     f"and at most {MAX_TRAP_PULL_RADIUS_METRES:g}.")
     return problems
 
+#: "This weapon has 2-4 damage types", ruled 2026-10-25 by the coordinating
+#: session (Q-D2 to Q-D6): an effect row with an item-level stat,
+#: `damage_types_carried`, flat 2 to 4, READ BY THE DROP and not by any
+#: character. `UCataclysmDropRoll::DamageTypesCarriedBy` finds the item's drawn
+#: enchantments' rows on it, works out the figure at the item's own roll and
+#: rounds it; `TopUpDamageTypes` then adds damage types until the weapon holds
+#: that many. `UCataclysmDropRoll::DamageTypesCarriedStat` holds the name.
+DAMAGE_TYPES_CARRIED_STAT = "damage_types_carried"
+
+#: The most a row may state: eight, the most damage types any weapon base holds
+#: and the number there are. The one sentence says 2 to 4.
+MAX_DAMAGE_TYPES_CARRIED = 8
+
+
+def refuse_a_damage_types_carried_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DAMAGE_TYPES_CARRIED_STAT` is one the drop reads.
+
+    THE DROP READS ITS TWO ENDS AND NOTHING ELSE: the figure at the item's roll,
+    rounded to a whole number of damage types. So the row is flat; it requires
+    no tag, since the drop matches none; it has no action, condition or scale,
+    none of which the drop reads; and each end is a whole number from 1 to
+    `MAX_DAMAGE_TYPES_CARRIED`. A PASSIVE NODE'S ROW IS LEFT ALONE.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat != DAMAGE_TYPES_CARRIED_STAT or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"drop reads the row's figure itself, so the row must be "
+                f"'flat'.")
+        for column, said in (("RequiredTags", "required tags"), ("Action", "action"),
+                             ("Condition", "condition"), ("Condition2", "second condition"),
+                             ("Scale", "scale")):
+            written = str(row.get(column) or "").strip()
+            if written:
+                problems.append(
+                    f"{who}: states {stat!r} with the {said} {written!r}. The "
+                    f"drop reads the row's two ends and nothing else, so the "
+                    f"cell must be empty.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not (value == int(value) and 1 <= value <= MAX_DAMAGE_TYPES_CARRIED):
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}. A count of damage "
+                    f"types is a whole number from 1 to "
+                    f"{MAX_DAMAGE_TYPES_CARRIED}.")
+    return problems
+
 
 #: The scales that count bodies standing inside a radius.
 #:
@@ -13015,6 +13069,10 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE TRAP'S PULL RADIUS IS FLAT, REQUIRING NOTHING OR `Type.Trap`,
     # WITHIN ITS BOUND. Ruled 2026-10-22 (J7, J8).
     problems.extend(refuse_a_trap_pull_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE COUNT OF DAMAGE TYPES A WEAPON'S ENCHANTMENT ADDS IS FLAT, A WHOLE
+    # NUMBER FROM 1 TO 8, WITH NOTHING ELSE STATED. Ruled 2026-10-25 (Q-D5).
+    problems.extend(refuse_a_damage_types_carried_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
