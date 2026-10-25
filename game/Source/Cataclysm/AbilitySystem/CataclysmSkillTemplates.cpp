@@ -2321,7 +2321,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		return;
 	}
 
-	// Burning Wrath is "4% more fire damage for every enemy currently
+	// Burning Wrath is "4% more damage for every enemy currently
 	// burning within 15 meters", so the count is taken once, when it goes up,
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
@@ -2531,7 +2531,7 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	}
 
 	// THE MULTIPLICATIVE BUCKET, CHANGED 2026-09-01. Burning Wrath reads "4%
-	// more fire damage for every enemy currently burning", and "more" is this
+	// more damage for every enemy currently burning", and "more" is this
 	// project's word -- section VI's -- for a multiplier that applies separately
 	// rather than joining the additive sum. In the additive bucket the buff
 	// competed with every gear affix the character wore, which is what made a

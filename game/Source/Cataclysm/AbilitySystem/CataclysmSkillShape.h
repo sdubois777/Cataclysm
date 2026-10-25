@@ -293,7 +293,7 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * passive node is chosen, so it may use the wording section VI reserves for
 	 * things a drop cannot hand you by accident.
 	 *
-	 * Burning Wrath is now "4% more fire damage for every enemy currently
+	 * Burning Wrath is now "4% more damage for every enemy currently
 	 * burning within 15 meters": this is 4, ScalingSource is Burning, and the
 	 * count is taken once when the buff goes up.
 	 */

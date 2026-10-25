@@ -1,6 +1,6 @@
 """A self buff's magnitude is written twice, and the two must agree.
 
-WHY THIS FILE EXISTS. Burning Wrath's description says "4% more fire damage
+WHY THIS FILE EXISTS. Burning Wrath's description says "4% more damage
 for every enemy currently burning within 15 meters". Three of those numbers are
 now also machine-readable, in the same row's Shape Params cell, because
 `UCataclysmSelfBuffSkill` has to be given them as numbers rather than prose:
@@ -98,13 +98,13 @@ def test_burning_wrath_carries_the_increase_its_description_states() -> None:
         )
 
     match = re.search(
-        r"(\d+(?:\.\d+)?)% more fire damage for every enemy currently burning",
+        r"(\d+(?:\.\d+)?)% more damage for every enemy currently burning",
         row.get("Skill Description", ""),
     )
     if match is None:
         pytest.fail(
             f"{BURNING_WRATH}'s description no longer states a percent of "
-            "more fire damage per burning enemy. It reads:\n"
+            "more damage per burning enemy. It reads:\n"
             f"{row.get('Skill Description')}"
         )
 
