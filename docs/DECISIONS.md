@@ -54,6 +54,18 @@ owner's own typed words:
 > #2234: conditioned and scaled attack-damage rows REACH ground patches and self-hits (the recommended option). A ground
 > patch and a reflected self-hit (backfire, "hits you instead", Echo Chamber) read the full attack-damage line.
 
+**SUPERSEDED BY THE EXACT TEXT**, given by the coordinating session on 2026-10-24 (ruling P1 on this commit), which is
+more exact than the memory note. The owner was asked with AskUserQuestion on 2026-10-23. The question began, verbatim:
+"#2234. Enchantments and passive nodes that raise attack damage under a condition (e.g. 'while moving', 'per Fervour')
+reach direct hits only." THE OWNER SELECTED the option labelled, verbatim, "Reach patches and self-hits (Recommended)".
+Its description, written by the coordinating session and shown to the owner, verbatim:
+
+> A ground patch and a reflected self-hit read the full attack-damage line. Conditions about you are judged when the patch
+> is laid or the blow copied; conditions about the enemy struck do not apply to a patch. Martyr's Ember's stored damage
+> stays as it is: it was kept fixed on purpose earlier.
+
+The owner selected that option; the words are the coordinating session's, and the owner did not type them.
+
 The coordinating session's rulings of 2026-10-24, verbatim (the numbers are its own):
 
 > 1. YES: unconditioned tag-scoped rows reach too. The owner's chosen option said a patch and a self-hit "read the full
@@ -210,6 +222,9 @@ world is made (`MakeWorld`, which does not set the roll), as the test it extends
 self hit test's two fighters 2 m apart; the helper tests have one caster and no body. **Teams:** the self hit test's
 `FScopedFighter`s carry no team, as in the existing test, which `UCataclysmTeams::AttitudeBetween` answers as hostile; the
 self hit itself is dealt by the user to the user. No wait on a tick: no clock is run in any of the three.
+**A KNOWN DEPARTURE, ACCEPTED** by the coordinating session on 2026-10-24 (ruling P2), verbatim: "P2: ACCEPTED as a known
+departure, with your reason: a self-hit strikes its user, so the team question does not arise, and the test matches the
+rig it extends." The common brief asks for real teams; this test's fighters have none, for that reason.
 
 1. `Cataclysm.ConditionalDamage.AttackDamageWithNoTargetIsTheAttributeForACharacterWithNoLine`, 5 assertions in a
    passing run. The control of the pair. In order: a world; **set-up: no attack damage line is recorded**; **control: the
@@ -293,7 +308,29 @@ skipped. The run after this commit is in the second session's hand-back.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t76w, under the editor lock as `enchant-t76w`, at 0c5793e4c (this
+commit moved from 8ebee3dc9 on ebe796ea7 onto development 3830065c5; the move kept its zero-context patch id, whole and
+outside this file, and its 3 removed lines). This was the code's first compile. Every figure was registered with the
+coordinating session before the run, and every one is as registered. Free physical memory before the lock: 15.6 GB.
+
+- **The whole Unreal suite:** "Build: Succeeded - 49 actions, 44 files compiled"; "4151 tests performed, 4151 succeeded,
+  0 failed" (4148 on development + this commit's 3); "Declared: 4151 tests in the tree at 0c5793e4c; 4151 performed, gap
+  0". 40 tests skipped part of what they check. The memory summary line (#2485), quoted: "CataclysmTestMemorySummary:
+  tests=4758 peak_used_virtual_mb=11279 final_used_virtual_mb=11061 collections=3145 collection_total_s=107.684
+  worlds_at_last_collection=1".
+- **Python of record:** "6961 passed, 8 skipped"; JUnit 6969 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **SH-I, the self hit priced from the attribute again** (`CataclysmSkillTemplate.cpp`, the three-line
+  `AttackDamageWithNoTarget(...)` call to `WeaponDamageOf(Cataclysm)`, anchor counted once; prefix
+  `Cataclysm.Skills.AUseRolledToHitItsUser`, 1 test): PROVED. With the break in, 1 performed, 1 failed; 1 failed assertion,
+  1 registered (its user took 250 against the still figure of 300). Restored, 1 performed, 1 succeeded. The file's hash is
+  the same after.
+- **SH-II, the helper takes the folded increases, not the line's** (`CataclysmSkillEffects.cpp`, `IncreasesForSkill(...)`
+  to `IncreasesBehindAttackDamage(Source)`, anchor counted once; prefix
+  `Cataclysm.ConditionalDamage.AttackDamageWithNoTarget`, 2 tests): PROVED. With the break in, 2 performed, 1 succeeded,
+  1 failed, `AttackDamageWithNoTargetTakesTheWearersAndTheSkillsRowsAndNoEnemysRow`; 5 failed assertions, 5 registered
+  (the melee, still, still-and-melee, cost and extra-increase readings). The control test passed. Restored, 2 performed,
+  2 succeeded. The file's hash is the same after.
 
 ---
 
