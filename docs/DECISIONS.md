@@ -317,7 +317,38 @@ scale, or an end that is not a whole number from 1 to 8. No such row exists. Not
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t86w, under the editor lock as `enchant-t86w`, at `b9704cca6` on
+`feat/weapon-carries-2-4-damage-types` (three commits on development `357fa7b61`: layer 1 `5a16d6e07`, layer 2
+`2b4685b63`, and the data half `b9704cca6`, the workbook row written by the enchantment session under the coordinating
+session's grant). **Free physical memory: 10.3 GB before the lock, under the threshold the coordinating session set at
+10 GB that day (Q-M1, lowered from 12 GB), and 8.8 GB after the asset rebuild, before the suite.**
+
+- **The asset rebuild:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset` and `game/Data/datatable_asset_sources.json`, as registered; both are
+  in the commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4187 tests performed,
+  4187 succeeded, 0 failed" (4181 on development + 6 of layer 2); "Declared: 4187 tests in the tree at b9704cca6; 4187
+  performed, gap 0". 40 tests skipped part of what they check. The two seeded drop tests the ruling could move,
+  `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` and `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier`,
+  passed. The memory summary line, quoted (read from the run's editor log, the window's script not printing it):
+  "CataclysmTestMemorySummary: tests=4794 peak_used_virtual_mb=7947 final_used_virtual_mb=7604 collections=3170
+  collection_total_s=114.982 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!". (At `b9704cca6` before the rebuild it was "1
+  failed, 6987 passed, 8 skipped", the one failure the asset hash check, as registered.)
+- **DT-I, the top-up removed** (anchor counted once; prefix `Cataclysm.ExtraDamageTypes.`, 6 tests): PROVED, AS
+  REGISTERED. With the break in, 6 performed, 1 succeeded, 5 failed:
+  `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`, `AWeaponAlreadyHoldingTheCountIsUnchanged`,
+  `AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`, `TheTooltipListsEveryTypeTheWeaponHolds` and
+  `TheTreeRulesOpenTheAddedTypesThreeTreesForTheWeaponsList`; `WithoutTheSentenceASeedGivesTheSameItem` passed. 8 failed
+  assertions, registered "at least 8, measured" (for example "a Sword topped up to 4 holds 4", which held 1). 0 ensures.
+  Restored, 6 performed, 6 succeeded. The file's hash is the same after.
+- **DT-II', the top-up allowed past the designed types** (anchor counted once; same prefix): PROVED, AS REGISTERED. With
+  the break in, 6 performed, 5 succeeded, 1 failed, `AShieldWithThreeDesignedTypesHoldsThreeAtACountOfFour`; 2 failed
+  assertions, registered 2 ("a Shield holding one and asked for four holds three", which held 4; "and they are its three
+  designed types"). The rounded count test, registered as one that MAY fail by seed, passed. 0 ensures. Restored, 6
+  performed, 6 succeeded. The file's hash is the same after.
+- Layer 1's proof, TC-I, ran in the same window and is recorded in layer 1's entry below.
 
 ---
 
@@ -529,7 +560,31 @@ The tier cap's tests, all listed above, by the ruling. Nothing else.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t86w, under the editor lock as `enchant-t86w`, at `b9704cca6` on
+`feat/weapon-carries-2-4-damage-types` (three commits on development `357fa7b61`: layer 1 `5a16d6e07`, layer 2
+`2b4685b63`, and the data half `b9704cca6`, the workbook row written by the enchantment session under the coordinating
+session's grant). **Free physical memory: 10.3 GB before the lock, under the threshold the coordinating session set at
+10 GB that day (Q-M1, lowered from 12 GB), and 8.8 GB after the asset rebuild, before the suite.**
+
+- **The asset rebuild:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset` and `game/Data/datatable_asset_sources.json`, as registered; both are
+  in the commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4187 tests performed,
+  4187 succeeded, 0 failed" (4181 on development + 6 of layer 2); "Declared: 4187 tests in the tree at b9704cca6; 4187
+  performed, gap 0". 40 tests skipped part of what they check. The two seeded drop tests the ruling could move,
+  `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` and `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier`,
+  passed. The memory summary line, quoted (read from the run's editor log, the window's script not printing it):
+  "CataclysmTestMemorySummary: tests=4794 peak_used_virtual_mb=7947 final_used_virtual_mb=7604 collections=3170
+  collection_total_s=114.982 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!". (At `b9704cca6` before the rebuild it was "1
+  failed, 6987 passed, 8 skipped", the one failure the asset hash check, as registered.)
+- **TC-I, the tier term put back in the damage type draw** (anchor `const int32 Most = MaxDamageTypesFor(BaseRow,
+  Pool.Num());` counted once; prefix `Cataclysm.Drop.`, 29 tests): PROVED, AS REGISTERED. With the break in, 29
+  performed, 28 succeeded, 1 failed, `ADroppedWeaponCarriesDamageTypesItIsAllowedToHold`, on 1 assertion, registered 1:
+  "some weapon carries more damage types than its tier (0 did)". 0 ensures. Restored, 29 performed, 29 succeeded. The
+  file's hash is the same after.
+- Layer 2's proofs, DT-I and DT-II', are recorded in layer 2's entry above.
 
 ---
 
