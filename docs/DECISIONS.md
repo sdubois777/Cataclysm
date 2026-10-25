@@ -103,10 +103,13 @@ random light zone reaches the Gatekeeper" are unchanged.
 
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus three, 4157 (4154 at `e26af37c9`).
+Not yet run past the windows above. Predicted Unreal total: `development`'s last measured total plus three, 4158
+(4155 at `010461d7f`), with no failure. **Step 1b**: the third window runs
+`Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsTheExitWhereTheBossStands` alone right after the build, and stops
+there if it fails.
 
-Branch `fix/floors-a-still-creature-cannot-block-2` on `development` at `e26af37c9` (written on `b2b60ebf6` as `-1`
-and moved, its zero-context patch ids unchanged; the append-append conflict at the end of
+Branch `fix/floors-a-still-creature-cannot-block-3` on `development` at `010461d7f` (written on `b2b60ebf6` as `-1`,
+moved onto `e26af37c9` as `-2`, where its first two windows ran, and then onto `010461d7f`, the #2495 merge; its zero-context patch ids unchanged; the append-append conflict at the end of
 `CataclysmDungeonModifierEffectsTests.cpp` was resolved by taking `development`'s file and re-applying this change's
 own edit script, each edit asserted to match once, which gave the original's 194 lines added).
 
