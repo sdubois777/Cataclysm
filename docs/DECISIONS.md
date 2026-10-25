@@ -262,7 +262,8 @@ P3's risk of passing by chance with its break in is registered and ACCEPTED by t
 
 Not yet run.
 
-Branch `feat/game-seeded-floor-draws-1` on `development` at `439786ca3`. This entry adds lines to `docs/DECISIONS.md`
+Branch `feat/game-seeded-floor-draws-2` on `development` at `b83230b44` (written on `439786ca3` as `-1` and moved,
+its zero-context patch ids unchanged). This entry adds lines to `docs/DECISIONS.md`
 and removes none of development's.
 
 ---
