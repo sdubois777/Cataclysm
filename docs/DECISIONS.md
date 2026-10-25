@@ -96,8 +96,15 @@ taken from `ModifierStream`, predicted to fail `TheModifierDrawTakesTheSlotCount
 
 ### Run
 
-Not run yet. The whole Unreal suite is registered at the base's last measured total plus 4: the three grant tests
-and the diagnostic. The diagnostic's "ENEMY CAST:" line is quoted from the engine log as it prints.
+Not run yet. Registered before the run, on `64811044d` (the #2488 merge, measured at 4168):
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4168 + 3 grant tests + 1 diagnostic = **4172**, 0 failed |
+| `final_used_virtual_mb` | about 7,700, the last window's 7,733 |
+| P1, `Dungeon.Modifiers.Add(Stalker->RowKey);` removed | `AboutOneDungeonInTwentyCarriesTheCorruptedStalkerWorthItsWeight` fails |
+| P2, the roll taken from `ModifierStream` | `TheModifierDrawTakesTheSlotCountAndNoMoreWithTheCorruptedStalkerGranted` fails |
+| The enemy-cast diagnostic | **measured, either outcome reported**: its "ENEMY CAST:" line is quoted from the engine log as it prints. Not predicted |
 
 ---
 
