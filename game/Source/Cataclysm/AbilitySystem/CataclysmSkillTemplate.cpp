@@ -316,12 +316,19 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// themselves with that rule's delivery, so their own defences reduce it and it neither critically strikes,
 		// leeches nor is retaliated against. Here, when the use is paid for, and not when its blow would have landed.
 		// A use with no damage of its own deals its user nothing.
+		// AND FROM THE WHOLE ATTACK DAMAGE LINE, ruled 2026-10-23 for #2234: the user's own conditioned, scaled and
+		// skill-type rows are judged now, with this use's health cost and the metres walked before it, and no row
+		// about an enemy reaches it, since no enemy is struck.
 		if (RolledSelfHitSharePercent > 0.0f && GetDamagePercent() > 0.0f)
 		{
 			if (AActor* Self = Avatar())
 			{
 				const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
-					Cataclysm, UCataclysmSkillEffects::WeaponDamageOf(Cataclysm) * GetDamagePercent() / 100.0f,
+					Cataclysm,
+					UCataclysmSkillEffects::AttackDamageWithNoTarget(Cataclysm, SkillTags,
+						/*SkillHealthCostPercent=*/LastHealthCostPercentOfMaximum,
+						/*MetresMovedBeforeBlow=*/LastMetresMovedBeforeUse)
+						* GetDamagePercent() / 100.0f,
 					SkillTags);
 				FCataclysmHitDelivery Delivery;
 				Delivery.bIsArea = true;

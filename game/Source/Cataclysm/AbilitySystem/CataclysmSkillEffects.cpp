@@ -524,6 +524,19 @@ float UCataclysmSkillEffects::MoreForSkill(
 		: 1.0f;
 }
 
+float UCataclysmSkillEffects::AttackDamageWithNoTarget(
+	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags,
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
+{
+	// `ApplyHit`'S WEAPON PART, WITH THE SAME FLOOR ON THE DIVISOR, and with no target, no target distance, no
+	// stagger, no enemy count and no charge: each is left at its "not known" default, which refuses. Issue #2234.
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	return WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		   + ExtraIncreases);
+}
+
 float UCataclysmSkillEffects::DamageAgainstTypeOf(
 	const UAbilitySystemComponent* Source, const AActor* Target)
 {
