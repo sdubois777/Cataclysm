@@ -366,6 +366,44 @@ public:
 	TArray<FCataclysmItem> WornWeapons() const;
 
 	/**
+	 * The damage types these weapons carry, which is what decides the class trees a character can spend in and
+	 * whose effects apply. Issue #857, layer 1.
+	 *
+	 * THE UNION, IN ORDER: the first weapon's `DamageTypes` in their own order, then each of the second weapon's not
+	 * already listed. `docs/Cataclysm_GDD_v2.md`: "What the player has access to is determined by the set of damage
+	 * types across all equipped weapons, not by either weapon alone." Ruled 2026-10-25 (Q3).
+	 *
+	 * A WEAPON WITH AN EMPTY LIST COUNTS AS CARRYING `CreationDamageType`. Every dropped weapon rolls at least one
+	 * type and the weapon creation gives carries the chosen one, so an empty list is an item built before the list
+	 * existed, or by a test. Counting it as carrying nothing would strip every tree from such a character.
+	 *
+	 * NOTHING WORN IS `CreationDamageType` ALONE, ruled 2026-10-25, "so the trees screen is never empty".
+	 *
+	 * STATIC AND HANDED THE WEAPONS, so the refresh can ask it of this component's own items without a pawn.
+	 */
+	static TArray<FName> CarriedDamageTypesOf(const TArray<FCataclysmItem>& Weapons, FName CreationDamageType);
+
+	/** `CarriedDamageTypesOf` the weapons worn here, a weapon planted in the ground by a skill among them. */
+	TArray<FName> CarriedDamageTypes(FName CreationDamageType) const;
+
+	/**
+	 * Make the weapon creation gave carry `DamageType`, when the creation choice has moved to another damage type
+	 * and not to another weapon type. Issue #857, layer 1.
+	 *
+	 * WHICH WEAPON THAT IS: a worn weapon marked `FCataclysmItem::bMadeAtCreation` whose weapon type is `WeaponType`.
+	 * Ruled 2026-10-25 (Q-L1): the marker, not the item's contents, so a player's own drop of the same weapon type is
+	 * never rewritten. A marked weapon of another weapon type is left alone, since a choice that moved the weapon
+	 * type puts a new weapon on.
+	 *
+	 * NOTHING IS ANNOUNCED, and the count `ChangeCount` reads rises. The callers write the stat line themselves, which
+	 * is what `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` asks of them, and the weapon slots do
+	 * not read the list yet (layer 2, issue #837). The count rises so a screen drawing the weapon draws it again.
+	 *
+	 * @return whether a weapon was changed
+	 */
+	bool CarryCreationDamageType(FName WeaponType, FName DamageType);
+
+	/**
 	 * Stat bases that come from the worn weapons rather than from a class line.
 	 *
 	 * ONE ENTRY TODAY AND IT IS EXPECTED TO STAY ONE: `attack_speed`. A

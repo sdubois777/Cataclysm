@@ -813,9 +813,11 @@ FString UCataclysmPassiveTreeWidget::ClassRefusalFor(const FString& Tree) const
 	{
 		return FString();
 	}
+	// THE WORN WEAPONS' TYPES, as `ACataclysmPlayerState::ReachesTreeOf` asks.
+	// Issue #857 layer 1.
 	return UCataclysmPassiveTree::RefusalForClassChoice(
 		NodeTable(), Player->GetPassiveAllocation(), Tree,
-		{Player->GetChosenDamageType()});
+		Player->CarriedDamageTypes());
 }
 
 void UCataclysmPassiveTreeWidget::BuildGraph()

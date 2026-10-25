@@ -458,8 +458,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExtraDamageTypesTreesTest,
 /**
  * The added type's three class trees are reachable for the weapon's own list of types, and were not before it.
  *
- * THE TREE RULES ONLY, NOT A CHARACTER. Nothing in play hands a worn weapon's `DamageTypes` to the trees or the
- * skills yet; they follow the damage type chosen at creation (`ACataclysmPlayerState::ReachableTrees`, issue #857).
+ * THE TREE RULES ONLY, NOT A CHARACTER. Since issue #857 layer 1 a worn weapon's `DamageTypes` reach the trees
+ * (`ACataclysmPlayerState::CarriedDamageTypes`), and `Cataclysm.Passives.CarriedTypes.` tests that on a character.
  * Fails if the top-up adds a name the tree rules do not know.
  */
 bool FCataclysmExtraDamageTypesTreesTest::RunTest(const FString&)

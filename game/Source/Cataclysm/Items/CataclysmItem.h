@@ -189,11 +189,18 @@ struct CATACLYSM_API FCataclysmItem
 	 * UCataclysmDropRoll::RollDamageTypes does it and carries the design
 	 * document's wording for the rule.
 	 *
-	 * NOTHING READS IT YET, AND THAT IS THE REST OF ISSUE #857.
-	 * UCataclysmWeaponSlotsComponent still picks a character's skills from a
-	 * single damage type held on the component as a stand-in. Moving that
-	 * onto the worn weapon needs a rule for which six of many skills fill the
-	 * slots, and that chooser is issue #837.
+	 * THE CLASS TREES READ IT, AND THE SKILLS DO NOT YET. Since issue #857
+	 * layer 1 the worn weapons' lists decide which class trees can be spent in
+	 * and whose effects apply (`UCataclysmEquipmentComponent::
+	 * CarriedDamageTypesOf`). UCataclysmWeaponSlotsComponent still picks a
+	 * character's skills from a single damage type held on the component as a
+	 * stand-in; moving that onto the worn weapon needs a rule for which six of
+	 * many skills fill the slots, and that chooser is issue #837.
+	 *
+	 * AND THE WEAPON CREATION GIVES CARRIES THE CHOSEN TYPE, not a roll. Ruled
+	 * 2026-10-25. A changed creation choice changes it in place
+	 * (`UCataclysmEquipmentComponent::CarryCreationDamageType`), on a weapon
+	 * marked `bMadeAtCreation` and on no other (Q-L1).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	TArray<FName> DamageTypes;
@@ -267,6 +274,22 @@ struct CATACLYSM_API FCataclysmItem
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 Kills = 0;
+
+	/**
+	 * Whether this is the weapon character creation gave: the starting weapon, or the weapon a creation choice put
+	 * on. Issue #857 layer 1, ruled 2026-10-25 (Q-L1).
+	 *
+	 * WHY A MARKER AND NOT THE ITEM'S CONTENTS. A change of the creation choice's damage type rewrites the creation
+	 * weapon's `DamageTypes` (`UCataclysmEquipmentComponent::CarryCreationDamageType`). Recognising that weapon by
+	 * what it holds would also rewrite a player's own drop of the same weapon type carrying one type, once saves load
+	 * (#753). Only this flag says which weapon it is.
+	 *
+	 * SET ONLY BY `ACataclysmPlayerCharacter::GiveStartingWeapon` AND `ApplyCreationChoice`. False on every drop and
+	 * every item built elsewhere. SAVED WITH THE ITEM; a field with a default is not a schema version bump, and a file
+	 * without it reads as false. Nothing loads a save yet (#753).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	bool bMadeAtCreation = false;
 };
 
 /**
