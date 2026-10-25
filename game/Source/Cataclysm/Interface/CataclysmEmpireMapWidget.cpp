@@ -222,9 +222,16 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// `ProgressLine` is the only one that describes progress. Issue #1324
 		// slice 5, and it lives on the layout class because a headless test
 		// cannot read a label. See `UCataclysmEmpireMapLayout::ProgressLine`.
+		//
+		// AND THE DAYS A WALK OWES, after the day they will be added to, since
+		// 2026-10-24: nothing resolves while the player is inside a dungeon, so
+		// the day shown does not move during a walk. Empty outside one. See
+		// `UCataclysmEmpireMapLayout::DaysOwedLine`.
+		const FString Owed = UCataclysmEmpireMapLayout::DaysOwedLine(Run);
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d   %d cities lost of 24   %d dungeons standing   %s"),
-			Run->Day(), Run->Map->FallenCityCount(), Run->DungeonCount(),
+			TEXT("Day %d%s   %d cities lost of 24   %d dungeons standing   %s"),
+			Run->Day(), Owed.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Owed),
+			Run->Map->FallenCityCount(), Run->DungeonCount(),
 			*UCataclysmEmpireMapLayout::ProgressLine(Run))));
 	}
 

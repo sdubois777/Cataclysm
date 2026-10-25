@@ -8107,4 +8107,78 @@ bool FCataclysmEmpireRunLeftEdictCarriedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A walk's days run when the player leaves, 2026-10-24
+// ---------------------------------------------------------------------------
+
+/**
+ * Inside a dungeon a floor's time is owed and not run; `SettleDaysOwed` runs it, in order.
+ *
+ * THE OWNER'S DECISION OF 2026-10-24, verbatim: "all of the resolutions and day/timer updates happen once a player
+ * leaves a dungeon". `UCataclysmEmpireRun::SpendFloorTime` owes each whole day while the clock names a dungeon, and
+ * the part of a day stays on the clock as it always has.
+ *
+ * THE CONTROL is the same call with the clock naming no dungeon, which runs the day at once.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDaysOwedTest,
+	"Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDaysOwedTest::RunTest(const FString& Parameters)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->DungeonCount() > 0))
+	{
+		return false;
+	}
+
+	const int32 Walked = Run->Dungeons[0].DungeonId;
+	const int32 Started = Run->Day();
+
+	TestFalse(TEXT("CONTROL: before entering no walk is under way"), Run->IsAWalkUnderWay());
+	Run->Clock->EnterDungeon(Walked);
+	TestTrue(TEXT("with the clock naming a dungeon a walk is under way"), Run->IsAWalkUnderWay());
+
+	// HALF A DAY, TWICE, IS ONE WHOLE DAY OWED, and the part of a day works as it did.
+	TestEqual(TEXT("half a day runs nothing"), Run->SpendFloorTime(0.5f).Num(), 0);
+	TestEqual(TEXT("and owes no whole day"), Run->DaysOwed(), 0);
+	TestEqual(TEXT("the second half runs nothing either"), Run->SpendFloorTime(0.5f).Num(), 0);
+	TestEqual(TEXT("and owes one whole day"), Run->DaysOwed(), 1);
+
+	// A FLOOR COSTING TWO DAYS OWES BOTH.
+	TestEqual(TEXT("a floor costing two days runs nothing"), Run->SpendFloorTime(2.0f).Num(), 0);
+	TestEqual(TEXT("and owes three days in all"), Run->DaysOwed(), 3);
+	TestEqual(TEXT("the run's day has not moved"), Run->Day(), Started);
+
+	// SETTLING RUNS THEM, ONE REPORT A DAY, OLDEST FIRST, and owes none after.
+	const TArray<FCataclysmDayReport> Settled = Run->SettleDaysOwed();
+	if (TestEqual(TEXT("settling runs the three days owed"), Settled.Num(), 3))
+	{
+		for (int32 Index = 0; Index < Settled.Num(); ++Index)
+		{
+			TestEqual(*FString::Printf(TEXT("report %d is for day %d"), Index, Started + 1 + Index),
+					  Settled[Index].Day, Started + 1 + Index);
+		}
+	}
+	TestEqual(TEXT("the run's day moved by the three"), Run->Day(), Started + 3);
+	TestEqual(TEXT("nothing is owed after settling"), Run->DaysOwed(), 0);
+	TestEqual(TEXT("and settling again runs nothing"), Run->SettleDaysOwed().Num(), 0);
+
+	// THE CONTROL: OUTSIDE A DUNGEON THE SAME CALL RUNS THE DAY AT ONCE.
+	Run->Clock->LeaveDungeon();
+	TestFalse(TEXT("CONTROL: after leaving no walk is under way"), Run->IsAWalkUnderWay());
+	TestEqual(TEXT("CONTROL: outside a dungeon a whole day runs at once"), Run->SpendFloorTime(1.0f).Num(), 1);
+	TestEqual(TEXT("CONTROL: and is not owed"), Run->DaysOwed(), 0);
+	TestEqual(TEXT("CONTROL: the day moved by one"), Run->Day(), Started + 4);
+
+	// A FRESH RUN OWES NOTHING, whatever the last one owed.
+	Run->OwedDays = 5;
+	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
+	TestEqual(TEXT("Begin starts a run owing nothing"), Run->DaysOwed(), 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

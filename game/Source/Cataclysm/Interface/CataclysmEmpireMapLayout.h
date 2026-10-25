@@ -227,6 +227,20 @@ public:
 	static FString ProgressLine(const UCataclysmEmpireRun* Run);
 
 	/**
+	 * The days a walk under way has spent and the empire has not yet run, as a line: "3 days pass when you
+	 * leave", "1 day passes when you leave", or empty when none are owed.
+	 *
+	 * WHY THE SCREEN NEEDS IT. Since 2026-10-24 nothing resolves while the player is inside a dungeon, by the
+	 * owner's decision, so the day this screen shows does not move during a walk. Without this line a player who
+	 * opens the map mid-walk reads a day that is not the one their walk has reached, and nothing that says the
+	 * days are coming. `UCataclysmEmpireRun::DaysOwed` is the count.
+	 *
+	 * @param Run the run to describe. Null, or one owing nothing, answers an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString DaysOwedLine(const UCataclysmEmpireRun* Run);
+
+	/**
 	 * The last hit a city took from a dungeon's timer, as one line: "Day 37: a
 	 * dungeon hit Outpost (-3,0) and left." or "Day 37: a Quest dungeon's
 	 * timer hit Outpost (-3,0)." with the city's own name.

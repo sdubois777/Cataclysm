@@ -154,6 +154,19 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 	return FString::Printf(TEXT("%s, %s"), *ClearedPart, *ObjectivePart);
 }
 
+FString UCataclysmEmpireMapLayout::DaysOwedLine(const UCataclysmEmpireRun* Run)
+{
+	const int32 Owed = Run != nullptr ? Run->DaysOwed() : 0;
+	if (Owed <= 0)
+	{
+		return FString();
+	}
+
+	return Owed == 1
+		? FString(TEXT("1 day passes when you leave"))
+		: FString::Printf(TEXT("%d days pass when you leave"), Owed);
+}
+
 FString UCataclysmEmpireMapLayout::LastHitLine(const UCataclysmEmpireRun* Run)
 {
 	// NOTHING TO SAY: no run, a run that has not begun, or no hit and no move

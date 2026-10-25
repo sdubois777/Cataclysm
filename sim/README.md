@@ -10,6 +10,51 @@ python experiments.py
 
 Pure standard-library Python. No dependencies.
 
+## A walk's days run when the player leaves, since 2026-10-24
+
+**Nothing happens in the empire while the player is inside a dungeon.** The owner, 2026-10-24, verbatim: "all of the
+resolutions and day/timer updates happen once a player leaves a dungeon." A walk still costs its days; they are owed,
+and when the walk ends the clear is credited (or the death resolves) and then they run in order.
+`TuningConfig.days_resolve_on_exit` carries it and defaults to on; off is the model as it was. `docs/DECISIONS.md`,
+2026-10-24, has the rulings.
+
+**Every other table and figure in this file was measured with it off.** `python measure_days_on_exit.py` measures both
+halves on the same seeds: 0 to 499 for the guard cell and the undefended control, 0 to 299 for the triage
+table. Measured on 2026-10-24, raw `TuningConfig()` but for the tier, the tree and the day cap;
+"change" is the mean over seeds of on minus off in cities lost, with 1.96 standard errors of that paired difference.
+
+The guard cell, Explorer on `triage` at tier 1, 500 campaigns, the default day cap:
+
+| switch | won (95% interval) | cities lost | change in cities lost |
+|---|---|---:|---|
+| off | 51.6% (47.2 to 56.0) | 1.33 |  |
+| on | 54.0% (49.6 to 58.3) | 1.33 | +0.00 +/- 0.19 |
+
+A player on `triage`, 300 campaigns a cell, a day cap of 2,500:
+
+| tree | tier | switch | won (95% interval) | lost | cities lost | change in cities lost | cleared | deaths | surges | from an empty board | days | Last Stand reached |
+|---|---:|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| Explorer | 1 | off | 51.3% (45.7 to 56.9) | 48.7% | 1.37 |  | 24.62 | 4.52 | 8.46 | 0.09 | 628 | 0.3% |
+| Explorer | 1 | on | 55.3% (49.7 to 60.9) | 44.7% | 1.43 | +0.07 +/- 0.28 | 24.53 | 4.56 | 8.61 | 0.32 | 604 | 0.3% |
+| Explorer | 2 | off | 13.3% (9.9 to 17.6) | 86.7% | 6.76 |  | 20.60 | 9.84 | 9.21 | 0.00 | 559 | 31.7% |
+| Explorer | 2 | on | 15.0% (11.4 to 19.5) | 85.0% | 6.12 | -0.64 +/- 0.52 | 20.05 | 9.59 | 8.76 | 0.00 | 540 | 31.7% |
+| Explorer | 3 | off | 1.3% (0.5 to 3.4) | 97.7% | 13.39 |  | 15.51 | 8.30 | 11.62 | 0.00 | 646 | 95.0% |
+| Explorer | 3 | on | 0.3% (0.1 to 1.9) | 98.3% | 13.54 | +0.15 +/- 0.66 | 16.11 | 8.23 | 11.86 | 0.00 | 648 | 94.7% |
+| Explorer | 4 | off | 0.3% (0.1 to 1.9) | 99.3% | 15.57 |  | 4.23 | 3.06 | 10.30 | 0.00 | 524 | 99.7% |
+| Explorer | 4 | on | 0.0% (0.0 to 1.3) | 99.7% | 15.55 | -0.02 +/- 0.34 | 4.29 | 3.11 | 10.32 | 0.00 | 528 | 100.0% |
+| none | 1 | off | 40.7% (35.3 to 46.3) | 59.3% | 5.11 |  | 16.35 | 3.04 | 10.75 | 3.46 | 591 | 13.7% |
+| none | 1 | on | 47.3% (41.8 to 53.0) | 52.7% | 4.63 | -0.48 +/- 0.37 | 15.30 | 2.86 | 10.93 | 4.56 | 528 | 8.3% |
+| none | 2 | off | 23.7% (19.2 to 28.8) | 76.3% | 8.73 |  | 14.23 | 3.72 | 9.59 | 1.09 | 545 | 25.3% |
+| none | 2 | on | 25.7% (21.1 to 30.9) | 74.3% | 8.49 | -0.24 +/- 0.58 | 13.46 | 3.74 | 9.59 | 1.68 | 505 | 25.3% |
+| none | 3 | off | 4.0% (2.3 to 6.9) | 96.0% | 19.58 |  | 20.62 | 6.32 | 14.27 | 0.59 | 892 | 81.7% |
+| none | 3 | on | 5.3% (3.3 to 8.5) | 94.7% | 19.98 | +0.40 +/- 0.69 | 21.73 | 6.99 | 15.05 | 0.96 | 946 | 79.0% |
+| none | 4 | off | 1.7% (0.7 to 3.8) | 98.3% | 21.46 |  | 18.14 | 5.92 | 13.16 | 0.17 | 848 | 90.7% |
+| none | 4 | on | 3.3% (1.8 to 6.0) | 96.7% | 21.95 | +0.50 +/- 0.54 | 19.47 | 6.42 | 13.88 | 0.45 | 890 | 90.0% |
+
+With nobody entering any dungeon the two halves are identical campaign by campaign, so the undefended table below does
+not move. **The triage table below was measured on 2026-10-13**, before the 2026-10-16 retune as well as before this
+switch, which is why its rows differ from the switch-off rows above.
+
 ## An ordinary dungeon leaves after it hits its city, and nothing has been retuned for it
 
 **Since 2026-10-12 an ordinary dungeon that hits its city undefeated leaves the
@@ -58,7 +103,9 @@ took from a city.
 
 **A player on the `triage` policy.** 300 campaigns a cell, seeds 0 to 299, raw
 `TuningConfig()` defaults but for the tier and the tree, the day cap of 2,500.
-Explorer is `TREE_EXPLORER_AS_DESIGNED`. These are not the settings
+**Measured on 2026-10-13, before the 2026-10-16 retune and before the 2026-10-24
+switch that runs a walk's days when the player leaves**; the section above has
+that switch measured off and on. Explorer is `TREE_EXPLORER_AS_DESIGNED`. These are not the settings
 `experiments.py` calibrates, so the rows cannot be set beside the report's
 tables. "Lost" includes a death in the earned Cataclysm dungeon.
 

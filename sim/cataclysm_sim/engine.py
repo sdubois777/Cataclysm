@@ -316,6 +316,13 @@ class Simulation:
         self.crafting = False
         self.dying = False
         self.days_remaining = 0
+        #: The days the walk under way has spent and the empire has not yet
+        #: run, with `days_resolve_on_exit` on. See `_walk_day`.
+        self.owed_days = 0
+        #: The dungeon whose walk's days are running, while `_settle_owed`
+        #: runs them: it still counts as the one the player is inside, so its
+        #: timer and its Hollow shrink stay paused. `None` otherwise.
+        self.settling_inside: int | None = None
 
         # Active Cataclysms pool their modifiers together, plus the Generic
         # ones, which every Cataclysm can draw. `modifiers.pool_for` owns that
@@ -1206,7 +1213,7 @@ class Simulation:
         for d in self.dungeons.values():
             if d.subtype != "Hollow" or not d.hollow_from or self.day <= d.spawned_day:
                 continue
-            if self.current is not None and d.did == self.current.did:
+            if d.did == self._inside_did():
                 continue
             # NEVER BELOW ONE FLOOR: a tree that removes floors leaves a Hollow
             # fewer floors than its natural depth, and a dungeon of none
@@ -1782,7 +1789,75 @@ class Simulation:
 
     # -- main loop -------------------------------------------------------
 
+    def _inside_did(self) -> int | None:
+        """The dungeon the player counts as inside: the one being walked, or,
+        while a finished walk's days run, the one that walk was in."""
+        if self.current is not None:
+            return self.current.did
+        return self.settling_inside
+
+    def _walk_day(self) -> None:
+        """A day of a walk, with `days_resolve_on_exit` on: owed, not run.
+
+        WHEN THE WALK ENDS, the clear is credited or the death resolves first,
+        in `_finish_current`, and then `_settle_owed` runs every day the walk
+        spent, in order. The owner's decision of 2026-10-24; see the config.
+        """
+        walked = self.current
+        assert walked is not None
+        self.owed_days += 1
+        self.days_remaining -= 1
+        if self.days_remaining <= 0:
+            self._finish_current()
+            self._settle_owed(walked.did)
+            return
+
+        # THE CAMPAIGN ENDS INSIDE THE WALK. Its days run now, so a campaign
+        # stopped by `max_days` covers the same days it did when they ran as
+        # the walk went, and `run` stops on the day it always stopped on.
+        if self.day + self.owed_days >= self.cfg.max_days:
+            self._settle_owed(walked.did)
+
+    def _settle_owed(self, walked_did: int) -> None:
+        """Runs the days the walk just ended spent, oldest first.
+
+        THE WALKED DUNGEON STILL COUNTS AS THE ONE THE PLAYER IS INSIDE through
+        them, ruled by the coordinating session on 2026-10-24: they were spent
+        inside it. A cleared one is off the board already.
+
+        A WIN OR A LOSS DOES NOT STOP THEM. Both are set by `_finish_current`
+        at the end of a walk of the Cataclysm dungeon, before this runs, and
+        when the days ran as the walk went they had all run by then; nothing
+        in a day of the empire sets either. So the day a campaign ends on is
+        the day it ended on before 2026-10-24. Only `max_days` stops them,
+        which `_walk_day` reaches exactly.
+        """
+        owed, self.owed_days = self.owed_days, 0
+        self.settling_inside = walked_did
+        try:
+            for _ in range(owed):
+                if self.day >= self.cfg.max_days:
+                    break
+                self._empire_day()
+        finally:
+            self.settling_inside = None
+
     def step(self, policy) -> None:
+        cfg = self.cfg
+
+        # A WALK UNDER WAY, WITH ITS DAYS RUNNING WHEN IT ENDS. Since
+        # 2026-10-24 nothing happens in the empire while the player is inside
+        # a dungeon; see `days_resolve_on_exit`.
+        if cfg.days_resolve_on_exit and self.current is not None:
+            self._walk_day()
+            return
+
+        self._empire_day()
+        self._player_day(policy)
+
+    def _empire_day(self) -> None:
+        """One day in the empire: surges, sieges, Hollows, timers, resolves,
+        the Last Stand and the empty-board surge, in that order."""
         cfg = self.cfg
         self.day += 1
 
@@ -1800,7 +1875,7 @@ class Simulation:
         # Timers tick. Whether the dungeon the player is currently inside also
         # ticks is a rules question with real design weight -- see config.
         for d in list(self.dungeons.values()):
-            inside = self.current is not None and d.did == self.current.did
+            inside = d.did == self._inside_did()
             if inside and not cfg.timer_ticks_while_running:
                 continue
             d.resolve_in -= 1.0
@@ -1831,12 +1906,18 @@ class Simulation:
         # no wave is added to it.
         #
         # AFTER EVERY REMOVAL THIS DAY HAS. `_resolve` above pops a detonated
-        # dungeon and `_fall` absorbs the ones on a lost city; a dungeon the
-        # player CLEARS is popped by `_finish_current` at the bottom of this
-        # method, so a clear on day N is seen here on day N+1 -- before the
-        # player is asked to choose, which is what matters. Either way the
-        # player is never asked to choose from an empty board.
+        # dungeon and `_fall` absorbs the ones on a lost city. A dungeon the
+        # player CLEARS is popped by `_finish_current`: with
+        # `days_resolve_on_exit` on, before the walk's days run, so the first
+        # of them sees the board without it; with it off, at the bottom of
+        # `_player_day`, so a clear on day N is seen here on day N+1. Either
+        # way it is seen before the player is asked to choose, which is what
+        # matters, and the player is never asked to choose from an empty board.
         self._maybe_surge_on_empty_board()
+
+    def _player_day(self, policy) -> None:
+        """What the player does with a day the empire has already run."""
+        cfg = self.cfg
 
         # -- player action ------------------------------------------------
 
@@ -1854,7 +1935,7 @@ class Simulation:
                 self._finish_craft()
             return
 
-        # Inside a dungeon.
+        # Inside a dungeon, with `days_resolve_on_exit` off: the day ran above.
         if self.current is not None:
             self.days_remaining -= 1
             if self.days_remaining <= 0:

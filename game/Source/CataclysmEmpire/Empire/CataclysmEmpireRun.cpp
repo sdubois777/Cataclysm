@@ -47,6 +47,7 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	LastMoveFromCityId = INDEX_NONE;
 	LastMoveToCityId = INDEX_NONE;
 	SurgesFromEmptyBoard = 0;
+	OwedDays = 0;
 
 	Stream.Initialize(InSeed);
 
@@ -326,9 +327,20 @@ TArray<FCataclysmDayReport> UCataclysmEmpireRun::SpendFloorTime(float Days)
 	// whole day goes through `AdvanceDay` below, so a day that accumulated out
 	// of twenty-five floors fires its surge, repairs its cities and resolves its
 	// dungeons exactly as a day spent in one go would.
+	//
+	// INSIDE A DUNGEON THE WHOLE DAY IS OWED AND NOT RUN, the owner's decision of 2026-10-24: nothing resolves
+	// until the player leaves, and `SettleDaysOwed` runs these then, in order.
+	const bool bInsideADungeon = IsAWalkUnderWay();
 	while (Clock->TakeAWholeDay(Days))
 	{
-		Reports.Add(AdvanceDay());
+		if (bInsideADungeon)
+		{
+			++OwedDays;
+		}
+		else
+		{
+			Reports.Add(AdvanceDay());
+		}
 
 		// THE COST IS ADDED ONCE. Asking again with zero drains whatever is left
 		// in the carry -- a floor costing three days would otherwise leave two
@@ -337,6 +349,25 @@ TArray<FCataclysmDayReport> UCataclysmEmpireRun::SpendFloorTime(float Days)
 	}
 
 	return Reports;
+}
+
+int32 UCataclysmEmpireRun::DaysOwed() const
+{
+	return OwedDays;
+}
+
+TArray<FCataclysmDayReport> UCataclysmEmpireRun::SettleDaysOwed()
+{
+	// OWED NONE BEFORE THE FIRST OF THEM RUNS, so nothing those days do can see a debt that is being paid.
+	const int32 Owed = OwedDays;
+	OwedDays = 0;
+
+	return AdvanceDays(Owed);
+}
+
+bool UCataclysmEmpireRun::IsAWalkUnderWay() const
+{
+	return Clock != nullptr && Clock->CurrentDungeonId != INDEX_NONE;
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,12 +1133,12 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 		// timer and its sub-type. Only `CityId` moves and `CityTier` does not,
 		// as on the timer's move; see `RelocateQuestDungeon`.
 		//
-		// THE WALKED ONE MOVES TOO AND THE WALK GOES ON, ruled by the
-		// coordinating session on 2026-10-21. Nothing here touches the clock,
-		// so `UCataclysmDayClock::CurrentDungeonId` still names it, and its
-		// clear counts when the player reaches the bottom. The ordinary
-		// dungeon the player is walking is still absorbed below, which is the
-		// recorded difference from the model, issue #2399.
+		// NO CITY FALLS WHILE THE PLAYER IS INSIDE A DUNGEON, since
+		// 2026-10-24: the walk's days are run when the player leaves,
+		// `SettleDaysOwed`. Nothing here touches the clock, so a Quest dungeon
+		// a death left on the map, still named by
+		// `UCataclysmDayClock::CurrentDungeonId` while those days run, moves
+		// like any other.
 		//
 		// NOT COUNTED INTO THE DUNGEON CITY. The design's Dungeon City carries
 		// "one boss per dungeon that was standing on the city when it fell and

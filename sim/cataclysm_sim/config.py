@@ -545,6 +545,26 @@ class TuningConfig:
     # one. The two are separate so they can be measured apart.
     death_resolves_dungeon: bool = True
 
+    # Do the days a walk spends run as the walk goes, or all at once when the
+    # player leaves the dungeon?
+    #
+    # WHEN THE PLAYER LEAVES, SINCE 2026-10-24. The owner, verbatim: "all of
+    # the resolutions and day/timer updates happen once a player leaves a
+    # dungeon. So it's not like it will just end their run in the middle of a
+    # dungeon if another dungeon was set to resolve in the middle of the run."
+    # And on what comes first: "Clear counts, city still falls". So a walk
+    # still costs its days, one a floor to begin with, but nothing happens in
+    # the empire while it lasts; when it ends the clear is credited (or a death
+    # resolves) and then the walk's days run in order, with the walked
+    # dungeon's own timer and its Hollow shrink still paused through them. A
+    # death's own `death_day_cost` days come after. The game does the same:
+    # `UCataclysmEmpireRun::SettleDaysOwed`.
+    #
+    # False is the model as it was before 2026-10-24, the days running as the
+    # walk went. EVERY CAMPAIGN FIGURE RECORDED BEFORE THAT DATE WAS MEASURED
+    # THAT WAY, so set this False to reproduce one.
+    days_resolve_on_exit: bool = True
+
     # =====================================================================
     # Power and the forge
     # =====================================================================

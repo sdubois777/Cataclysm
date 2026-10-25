@@ -152,15 +152,21 @@ class TestTheTriggerFires:
         sim.current = d
         sim.days_remaining = 1
 
-        sim.step(do_nothing)          # the walk finishes; the board empties
+        # THE WALK FINISHES AND ITS DAY RUNS AFTER THE CLEAR, since 2026-10-24
+        # (`days_resolve_on_exit`): the clear is credited first, so that day
+        # already sees the board empty. Until then the clear was seen on the
+        # next day.
+        sim.step(do_nothing)
         assert not any(x.did == d.did for x in sim.dungeons.values())
-        assert sim.surges_from_empty_board == 0, (
-            "the clear is only seen on the next day, by design; see the "
-            "comment in Simulation.step")
+        assert sim.surges_from_empty_board == 1, (
+            "clearing the last dungeon did not fire a surge in the walk's own "
+            "day, which runs after the clear; see the comment in "
+            "Simulation._empire_day")
 
         sim.step(do_nothing)
         assert sim.surges_from_empty_board == 1, (
-            "clearing the last dungeon did not fire a surge")
+            "a second surge fired the next day, on a board the first one "
+            "had filled")
 
     def test_a_dungeon_detonating_undefeated_fires_it_too(self):
         """The other way a board can empty, and the half the owner overruled a
@@ -615,7 +621,7 @@ class TestOverWholeCampaigns:
             assert sim.cleared == 1, "set-up: the walk did not end in a clear"
             assert d.did not in sim.dungeons, (
                 "set-up: the cleared dungeon is still on the board")
-            sim.step(do_nothing)      # the clear is seen the next day
+            sim.step(do_nothing)      # nothing more: the walk's day ran after the clear
             return sim.surges_from_empty_board
 
         emptied = fired_after_a_clear(leave_one_standing=False)

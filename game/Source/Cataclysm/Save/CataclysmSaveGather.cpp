@@ -249,6 +249,7 @@ bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
 
 	Record.Day = Clock->Day;
 	Record.PartialDay = Clock->PartialDay;
+	Record.DaysOwed = Run.DaysOwed();
 
 	return true;
 }

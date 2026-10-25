@@ -463,17 +463,25 @@ class TestWhatAnEmptyBoardDoes:
 
         from cataclysm_sim.engine import Simulation
 
-        step = inspect.getsource(Simulation.step)
-        last_stand = step.index("self._open_last_stand()")
-        asked = step.index("self._maybe_surge_on_empty_board()")
-        ticked = step.index("d.resolve_in -= 1.0")
-        player = step.index("# -- player action")
+        # THE DAY'S EVENTS ARE IN `_empire_day` SINCE 2026-10-24, when a
+        # walk's days began to run as the walk ends; `step` calls it before
+        # `_player_day`, which is the player's turn.
+        day = inspect.getsource(Simulation._empire_day)
+        last_stand = day.index("self._open_last_stand()")
+        asked = day.index("self._maybe_surge_on_empty_board()")
+        ticked = day.index("d.resolve_in -= 1.0")
 
-        assert ticked < last_stand < asked < player, (
-            "Simulation.step no longer asks the empty-board rule after the "
-            "timers and the Last Stand and before the player's turn. The "
-            "game's AdvanceDay asks it last; if the model moved, the game "
-            "has to move with it")
+        assert ticked < last_stand < asked, (
+            "Simulation._empire_day no longer asks the empty-board rule after "
+            "the timers and the Last Stand. The game's AdvanceDay asks it "
+            "last; if the model moved, the game has to move with it")
+
+        step = inspect.getsource(Simulation.step)
+        assert ("self._empire_day()" in step and "self._player_day(policy)" in step
+                and step.index("self._empire_day()") < step.index("self._player_day(policy)")), (
+            "Simulation.step no longer runs the empire's day before the "
+            "player's turn, so the empty-board rule is no longer asked before "
+            "the player chooses")
 
         fired = inspect.getsource(Simulation._maybe_surge_on_empty_board)
         assert "self.trigger_surge()" in fired, (

@@ -2,6 +2,255 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — A walk's days run when the player leaves the dungeon, and a clear is credited before them
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp` (`OwedDays`, `DaysOwed`,
+`SettleDaysOwed`, `IsAWalkUnderWay`; `SpendFloorTime` owes whole days while the clock names a dungeon);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`LeaveEmpireDungeon` runs the days owed;
+`EnterEmpireDungeon` leaves a walk under way first; the #2414 depth and rate recorded on entry, the absorbed-walk branch
+and its log line removed; the death's log line); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(`Cataclysm.EmpireAdvance` refuses mid-walk); `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h`, `.cpp` and
+`CataclysmEmpireMapWidget.cpp` (`DaysOwedLine` on the status line); `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`
+and `CataclysmSaveGather.cpp` (`UCataclysmRunSave::DaysOwed`, no schema bump); `game/Tests/SaveFixtures/Run_v1.json`
+and its `README.md`; `game/README.md`; seven Unreal test files; `sim/cataclysm_sim/config.py`
+(`days_resolve_on_exit`, on) and `engine.py` (`step` split into `_empire_day`, `_player_day` and `_walk_day`;
+`_settle_owed`; `_inside_did`); `sim/measure_days_on_exit.py` (new); three simulation test files, one new; `sim/README.md`.
+**It supersedes** "2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for
+nothing (#2414)" below, and makes issue [#2399](https://github.com/sdubois777/Cataclysm/issues/2399) moot, to be closed
+when this merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** The C++ and the Unreal tests were written and read. The Run section
+  below is filled when the window has run.
+- **THE SIMULATION FIGURES BELOW ARE MEASURED**, by `sim/measure_days_on_exit.py`, the switch off and on on the same
+  seeds. The README's triage table of 2026-10-13 is not reproduced by the switch off, because the 2026-10-16 retune came
+  between; see "Measured".
+
+### What the owner said
+
+The owner, 2026-10-24, verbatim as relayed by the coordinating session: "to be clear, all of the resolutions and
+day/timer updates happen once a player leaves a dungeon. So it's not like it will just end their run in the middle of a
+dungeon if another dungeon was set to resolve in the middle of the run."
+
+And the owner's two answers that day, as relayed:
+
+1. **"Defer to exit".** Days still accrue, one a floor, during the walk, but nothing resolves until the player leaves.
+   On exit, all the days spent are processed in order. Game and simulation both change, and the balance figures are
+   re-measured.
+2. **"Clear counts, city still falls".** On exit, the clear is credited first (`DungeonsCleared`,
+   `BasicDungeonsCleared`), then the days are processed. A fall caused by another dungeon still happens.
+
+### What the coordinating session ruled, 2026-10-24
+
+Seven judgements under those answers, each the dungeon session's recommendation:
+
+1. On a death: the death's resolve, then the owed days, then the death's own day cost.
+2. The walked dungeon's own timer and the Hollow's shrink stay paused during its owed days, which were spent inside it.
+3. "Credited first" is all of `ClearDungeon`, as one call. **Its consequence:** a city's defence the clear restores is
+   restored before the owed days' Siege bites, and an empty-board surge can fire inside the owed days -- the first of
+   them, when the clear emptied the board.
+4. `Cataclysm.EmpireAdvance` refuses while a walk is under way; the #2414 fields, branch, log line and three tests are
+   deleted; the 2026-10-15 entry is superseded; #2399 is closed when this merges.
+5. The empire map's status line says "N days pass when you leave".
+6. `Cataclysm.WalkDungeon` while inside leaves first, which settles the owed days.
+7. A simulation switch, on by default, and a committed script that re-measures the guard cell and the README's tables on
+   the same seeds, switch off and on.
+
+### What the game does now
+
+A floor's cost still goes through `UCataclysmEmpireRun::SpendFloorTime`, and the part of a day still waits on
+`UCataclysmDayClock::PartialDay`. While the clock names a dungeon, each whole day is added to `OwedDays` and nothing
+else happens. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls `SettleDaysOwed`, which runs them through
+`AdvanceDays`, before it tells the clock the player has left. Every way out goes through it: `ClearEmpireDungeon` after
+`ClearDungeon`, `EndTheDungeonForADeath` between the resolve and the death's `AdvanceDays`, `Cataclysm.LeaveDungeon`,
+and `EnterEmpireDungeon` when a walk is already under way. The death's two Python port checks still find exactly one
+`->AdvanceDays(` in that function, in resolve, leave, charge order.
+
+**Every non-test caller that moves the day, read on 2026-10-24** (searched for `SpendFloorTimeInTheEmpire(`,
+`->SpendFloorTime(` and `->AdvanceDays?(` outside the tests): `GoDownOneFloor` and `EnterEmpireDungeon` (the floor's
+cost); `EndTheDungeonForADeath` (the death's days); the console's `Cataclysm.EmpireAdvance` and `Cataclysm.WalkDungeon`
+(one day before entering, only when the map holds no dungeon). `GoToFloor` moves no day; its whole body was read.
+
+### What the simulation does now
+
+`TuningConfig.days_resolve_on_exit`, on. With it on, a day inside a dungeon is `_walk_day`: it is owed and nothing else
+happens. When the walk ends, `_finish_current` credits the clear or resolves the death, and `_settle_owed` runs the owed
+days through `_empire_day` with the walked dungeon still counted as the one the player is inside. Off, the model is
+what it was. **Two details, labelled judgements of the dungeon session:** a win or a loss does not stop the owed days,
+because both are set at the end of a walk of the Cataclysm dungeon, after every one of its days had run when they ran as
+the walk went, so a campaign ends on the day it ended on before; and a campaign whose `max_days` falls inside a walk runs
+the owed days then, so it stops on the same day as before. Both accepted by the coordinating session on 2026-10-24. The
+first version stopped the owed days on a loss, and `sim/tests/test_analysis_scripts.py`'s
+`test_the_day_ledger_accounts_for_every_day` caught it: a campaign lost at the end of a Last Stand walk counted 1,664
+days of steps against 1,494 days survived.
+
+### Tests changed, as ruled one by one
+
+Unreal, `CataclysmDungeonCostsDaysTests.cpp`: `WalkingDownAFloorSpendsADayOfTheEmpire` (owed per floor, the day moves
+by the floors walked on leaving); `TheDungeonBeingWalkedIsTheOneTimerThatStops` (both timers read after leaving; the
+other loses the five descents' days and the arrival's); `ReachingTheBottomTakesTheDungeonOffTheMap` (no report during
+the descents; the clear runs the owed days); `WalkingADungeonCarriesItsSubTypeIn` (day plus days owed);
+`ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk` (the absorbed-while-walked count removed; each walked dungeon is still
+on the map at its bottom; the wave tracked by identifier, so surge-added dungeons are excluded). **The death tests'
+day inside counts the days owed**, so a death's days are its own: the change is on five lines, one in each of the scene
+helper (used by `ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing`), the Heretic helper
+(`OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged`),
+`ADeathInAnEmpireDungeonCostsTheDaysOfItsLethalityMode`, `ADeathInAnOrdinaryDungeonHitsItsCityOnceAndTheDungeonLeavesTheMap`
+and `ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone`; `ThePlaytestSwitchKeepsADeadPlayerInTheDungeonAndWithoutItTheDeathEndsTheWalk`
+adds the days owed to its default half only, and the no-death control is unchanged. **Removed**, because a city can no
+longer fall while the player is inside: `AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing`,
+`AWalkWhoseCityFallsToItsOwnSiegeEndsAtTheBottomAndCountsForNothing`,
+`ACityThatFallsWhenThePlayerReachesTheLastFloorEndsTheWalkThere`. `CataclysmDungeonModifierEffectsTests.cpp`: the two
+dark-floor fall tests measure days owed; the dark-floor death test's day counts the days owed.
+
+Python: `test_surge_when_the_board_empties.py`, the clear-empties test (the surge fires in the walk's own day, which runs
+after the clear), and a comment in the persists test; `test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py`, the
+walked-timer test runs with the switch off, so it still tests the pause it is named for.
+
+New: Unreal `Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder`,
+`Cataclysm.EmpireScreen.TheScreenSaysHowManyDaysPassWhenThePlayerLeaves`,
+`Cataclysm.DungeonMode.AClearIsCreditedBeforeTheWalksDaysRunAndACityFelledInThemStillFalls`,
+`Cataclysm.DungeonMode.EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes`, and two checks added to the save
+tests; Python `sim/tests/test_a_walks_days_run_when_the_player_leaves.py` (7).
+
+### Measured
+
+`sim/measure_days_on_exit.py`, raw `TuningConfig()` but for the tier, the tree, the day cap and the switch.
+"Change" is the mean over seeds of on minus off, with 1.96 standard errors of that paired difference.
+
+**The guard cell of the 2026-10-16 retune** (won at least 47.2%, cities lost at most 1.86); both halves meet it:
+
+| switch | won (95% interval) | cities lost | change in cities lost |
+|---|---|---:|---|
+| off | 51.6% (47.2 to 56.0) | 1.33 |  |
+| on | 54.0% (49.6 to 58.3) | 1.33 | +0.00 +/- 0.19 |
+
+**A player on `triage`**, 300 campaigns a cell, a day cap of 2,500:
+
+| tree | tier | switch | won (95% interval) | lost | cities lost | change in cities lost | cleared | deaths | surges | from an empty board | days | Last Stand reached |
+|---|---:|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| Explorer | 1 | off | 51.3% (45.7 to 56.9) | 48.7% | 1.37 |  | 24.62 | 4.52 | 8.46 | 0.09 | 628 | 0.3% |
+| Explorer | 1 | on | 55.3% (49.7 to 60.9) | 44.7% | 1.43 | +0.07 +/- 0.28 | 24.53 | 4.56 | 8.61 | 0.32 | 604 | 0.3% |
+| Explorer | 2 | off | 13.3% (9.9 to 17.6) | 86.7% | 6.76 |  | 20.60 | 9.84 | 9.21 | 0.00 | 559 | 31.7% |
+| Explorer | 2 | on | 15.0% (11.4 to 19.5) | 85.0% | 6.12 | -0.64 +/- 0.52 | 20.05 | 9.59 | 8.76 | 0.00 | 540 | 31.7% |
+| Explorer | 3 | off | 1.3% (0.5 to 3.4) | 97.7% | 13.39 |  | 15.51 | 8.30 | 11.62 | 0.00 | 646 | 95.0% |
+| Explorer | 3 | on | 0.3% (0.1 to 1.9) | 98.3% | 13.54 | +0.15 +/- 0.66 | 16.11 | 8.23 | 11.86 | 0.00 | 648 | 94.7% |
+| Explorer | 4 | off | 0.3% (0.1 to 1.9) | 99.3% | 15.57 |  | 4.23 | 3.06 | 10.30 | 0.00 | 524 | 99.7% |
+| Explorer | 4 | on | 0.0% (0.0 to 1.3) | 99.7% | 15.55 | -0.02 +/- 0.34 | 4.29 | 3.11 | 10.32 | 0.00 | 528 | 100.0% |
+| none | 1 | off | 40.7% (35.3 to 46.3) | 59.3% | 5.11 |  | 16.35 | 3.04 | 10.75 | 3.46 | 591 | 13.7% |
+| none | 1 | on | 47.3% (41.8 to 53.0) | 52.7% | 4.63 | -0.48 +/- 0.37 | 15.30 | 2.86 | 10.93 | 4.56 | 528 | 8.3% |
+| none | 2 | off | 23.7% (19.2 to 28.8) | 76.3% | 8.73 |  | 14.23 | 3.72 | 9.59 | 1.09 | 545 | 25.3% |
+| none | 2 | on | 25.7% (21.1 to 30.9) | 74.3% | 8.49 | -0.24 +/- 0.58 | 13.46 | 3.74 | 9.59 | 1.68 | 505 | 25.3% |
+| none | 3 | off | 4.0% (2.3 to 6.9) | 96.0% | 19.58 |  | 20.62 | 6.32 | 14.27 | 0.59 | 892 | 81.7% |
+| none | 3 | on | 5.3% (3.3 to 8.5) | 94.7% | 19.98 | +0.40 +/- 0.69 | 21.73 | 6.99 | 15.05 | 0.96 | 946 | 79.0% |
+| none | 4 | off | 1.7% (0.7 to 3.8) | 98.3% | 21.46 |  | 18.14 | 5.92 | 13.16 | 0.17 | 848 | 90.7% |
+| none | 4 | on | 3.3% (1.8 to 6.0) | 96.7% | 21.95 | +0.50 +/- 0.54 | 19.47 | 6.42 | 13.88 | 0.45 | 890 | 90.0% |
+
+**A PLAYER WHO DEFENDS WINS MORE WITH THE SWITCH ON.** The guard cell goes from 51.6% won and 1.33 cities lost (off)
+to 54.0% and 1.33 (on), inside the guard both times. No tree at tier 1 goes from 40.7% won to 47.3%. Two of the eight
+paired changes in cities lost lie outside their interval, both downward: Explorer tier 2, -0.64 +/- 0.52, and no tree
+tier 1, -0.48 +/- 0.37, so in those two cells a player loses about half a city less.
+
+**AN UNDEFENDED EMPIRE STILL LOSES, UNTOUCHED.** With nobody entering any dungeon the two halves are identical campaign
+by campaign, so the owner's ruling of 2026-10-12 that an empire nobody defends must lose is not moved by this change.
+
+**Nobody enters any dungeon** (500 campaigns a tier, 2,000 days): the two halves are identical campaign by
+campaign, which is the control on the script; tier 1 lost its path to the Pillar in every campaign, median day 783.
+
+### Changes to what a check accepts
+
+Each of these checks now reads a different function, because `Simulation.step`'s day was split; ruled one by one by
+the coordinating session on 2026-10-24.
+
+- `tools/tests/test_surge_port.py`, `test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge`: it read the
+  timers, the Last Stand, the empty-board rule and "# -- player action" in that order in `Simulation.step`; it reads the
+  first three in `Simulation._empire_day`, and asserts `step` calls `_empire_day()` before `_player_day(policy)`.
+- `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py`, `test_both_halves_shrink_after_the_siege_and_before_the_resolves`:
+  it read the Siege bite, the shrink and the resolve in `Simulation.step`; it reads them in `Simulation._empire_day`.
+- The same file, `test_both_halves_leave_a_new_hollow_and_the_walked_one_alone`: it looked for
+  `if self.current is not None and d.did == self.current.did: continue` in `_hollow_shrink`; it looks for
+  `if d.did == self._inside_did(): continue`.
+- The same file, its stand-in for the model (`the_model`), used by `test_the_games_shrink_is_the_models`,
+  `test_the_shrink_comparison_sees_a_hollow_shrunk_to_nothing` and `test_the_models_skips_are_real`: it gains
+  `_inside_did` and `settling_inside = None`, with no assertion changed. `test_the_models_skips_are_real` gains one case:
+  with `settling_inside` naming the Hollow and nobody walking, the Hollow keeps its floors (ruling 2).
+
+### Proofs
+
+Python, each by `tools/prove_guard.break_and_run` in a `git archive` copy of `98b8b2349`, on
+`sim/tests/test_a_walks_days_run_when_the_player_leaves.py`:
+
+| break in `engine.py` | with it in | restored |
+|---|---|---|
+| a walk's days run as it goes (`if False and ...` on the switch) | 1 failed, 6 passed | 7 passed |
+| no pause while a finished walk's days run (`_inside_did` answers `None` after a walk) | 1 failed, 6 passed | 7 passed |
+| the owed days never run (`pass` for `_empire_day()` in `_settle_owed`) | 3 failed, 4 passed | 7 passed |
+
+Unreal, **all three PROVED** in the second window below, each with `unreal_build.prove_cpp_guard`, each break text
+matching its file exactly once, each narrowed to the one test it names:
+
+- **P1**, `++OwedDays;` -> `Reports.Add(AdvanceDay());` in `CataclysmEmpireRun.cpp`. Predicted:
+  `InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder` fails. Prefix
+  `Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwed`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder"; restored "1 tests performed, 1 succeeded, 0 failed".
+- **P2**, `DaysSpentWalking.Append(Run->SettleDaysOwed());` -> a comment in `CataclysmDungeonGameMode.cpp`. Predicted:
+  `AClearIsCreditedBeforeTheWalksDaysRunAndACityFelledInThemStillFalls` fails. Prefix
+  `Cataclysm.DungeonMode.AClearIsCreditedBeforeTheWalksDaysRun`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  AClearIsCreditedBeforeTheWalksDaysRunAndACityFelledInThemStillFalls"; restored "1 tests performed, 1 succeeded, 0
+  failed".
+- **P3**, `if (EmpireDungeonId != INDEX_NONE)` -> `if (false && EmpireDungeonId != INDEX_NONE)` in
+  `EnterEmpireDungeon`. Predicted: `EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes` fails. Prefix
+  `Cataclysm.DungeonMode.EnteringADungeonWhileAnotherIsWalked`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes"; restored "1 tests performed, 1 succeeded, 0
+  failed".
+
+### The first window, and a test the coordinating session ruled
+
+The first window (lock `dungeon-w43`, `feat/defer-days-to-exit-2` at `86573e10f`, on `ac6d505a5`, 2026-10-24), with the
+six conditions checked immediately before the lock ("free GB: 16.5 of 31.1"): "Build: Succeeded - 71 actions, 61 files
+compiled"; "4148 tests performed, 4147 succeeded, 1 failed: ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor";
+"Declared: 4148 tests in the tree at 86573e10f; 4148 performed, gap 0"; memory "final_used_virtual_mb=11501"; Python
+"6961 passed, 8 skipped", JUnit 6969, failures 0. It stopped there, and no proof was run.
+
+The failure, from the engine log: "Expected 'entering is told to the save as one change of floor' to be 3, but it was
+4." The test falls to the dark floor and then enters the same dungeon while its walk is still bound. By ruling 6,
+entering now leaves that walk first, and `LeaveEmpireDungeon` tells the save one change of floor when the walk is left
+from the dark floor. So the save hears two. Its other three assertions passed. **Changed, as ruled by the coordinating
+session, with no code changed:** `Cataclysm.DungeonModifierEffects.ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`,
+old "entering is told to the save as one change of floor", `NotedBeforeEntering + 1` -> new "entering from a walk still
+under way is told to the save as two changes of floor: leaving the dark floor, then entering", `NotedBeforeEntering +
+2`, with a comment saying why.
+
+### Run
+
+Nothing was built and no Unreal test was run by the writing session. Two windows were run by the dungeon session, each
+given by the coordinating session, each with the six conditions checked immediately before the lock was taken and the
+lock released before anything was written here. The first is under "The first window, and a test the coordinating
+session ruled" above.
+
+- **Second window** (lock `dungeon-w44`, `feat/defer-days-to-exit-2` at `55da04caa`, on `ac6d505a5`, 2026-10-24):
+  both of `development`'s runs at `ac6d505a5` succeeded; none in progress or queued; the lock free; no build or editor
+  process; no open pull request; "free GB: 16.5 of 31.1".
+  - **Build:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.33.cpp" (only the test file had
+    changed since the first window's build).
+  - **The whole Unreal suite:** "4148 tests performed, 4148 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4148 tests in the tree at 55da04caa; 4148 performed, gap 0; every declared test was reported by the
+    run." Registered 4148 and 0: the 4147 of the #2381 merge, four new tests and three removed. Memory:
+    "CataclysmTestMemorySummary: tests=4755 peak_used_virtual_mb=11275 final_used_virtual_mb=11025 collections=3142
+    collection_total_s=106.430 worlds_at_last_collection=1".
+  - **Python:** "6961 passed, 8 skipped"; JUnit tests 6969, failures 0, errors 0, skipped 8 (6962 on `development` and
+    this change's 7 simulation tests). Lint: "All checks passed!".
+  - **The proofs:** as under Proofs above.
+- **The simulation figures above were measured again on the moved branch** (`86573e10f`, before the first window):
+  `sim/measure_days_on_exit.py`'s output is identical, line for line, to the one recorded above. The only simulation
+  file `development` changed since `b2b60ebf6` is a docstring in `sim/cataclysm_sim/modifiers.py`.
+
+Branch `feat/defer-days-to-exit-2` on `development` at `ac6d505a5` (written on `b2b60ebf6` as `-1` and moved, its
+zero-context patch ids unchanged).
+
+---
+
 ## 2026-10-24 — What a dungeon floor holds is drawn from the floor's own seed: rivers, quarantines, hoard guards, relics, pacts, plague picks and illusions no longer use the shared random generator
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (seven functions, Illusory Enemies' roll
@@ -22817,6 +23066,10 @@ Each layer was run as part of the stack, at the stack's head, and not alone. The
 ---
 
 ## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
+
+**SUPERSEDED ON 2026-10-24** by "2026-10-24 — A walk's days run when the player leaves the dungeon, and a clear is
+credited before them": no city falls while the player is inside, so the case below cannot happen in play, and its fields,
+branch, log line and three tests were removed.
 
 **Not built and not run, when written; the Run section below has the run.** Nothing was compiled and nothing was run in Unreal. The C++ change and its one new
 Unreal test were written and read, not built. Every floor and day figure below is arithmetic done by hand from

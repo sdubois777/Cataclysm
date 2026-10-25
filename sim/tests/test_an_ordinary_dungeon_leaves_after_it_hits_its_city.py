@@ -218,8 +218,13 @@ class TestAnOrdinaryDungeonOnAStandingCity:
 
     def test_the_dungeon_being_walked_does_not_leave_by_its_timer(self):
         """Its timer is paused while the player is inside, so it cannot run
-        out, hit and leave underneath them."""
-        sim = simulation(LEAVES)
+        out, hit and leave underneath them.
+
+        WITH `days_resolve_on_exit` OFF, ruled by the coordinating session on
+        2026-10-24. With it on, no day runs during a walk at all, so nothing
+        here could move whether or not the timer is paused; off, the walk's
+        days run as it goes, and the pause is what keeps the timer still."""
+        sim = simulation(LEAVES, days_resolve_on_exit=False)
         city = an_outpost(sim)
         d = a_dungeon(sim, DungeonType.BASIC, city)
         d.resolve_in = 1.0

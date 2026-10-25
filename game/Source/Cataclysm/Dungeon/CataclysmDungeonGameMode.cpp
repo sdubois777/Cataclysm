@@ -14150,20 +14150,13 @@ const FCataclysmDungeon* ACataclysmDungeonGameMode::BoundDungeon() const
 
 int32 ACataclysmDungeonGameMode::EmpireDungeonFloors() const
 {
-	const FCataclysmDungeon* Dungeon = BoundDungeon();
-	if (Dungeon != nullptr)
-	{
-		return Dungeon->Floors;
-	}
-
-	// A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON: the dungeon's city fell while the player was inside
-	// it, and `UCataclysmEmpireRun::CityFell` took it off the map. The player still finishes the dungeon they
-	// entered, so its depth is the one recorded on entry. Issue #2414; a labelled judgement by the coordinating
-	// session under the owner's delegation, 2026-10-15.
+	// NOUGHT WHEN NOTHING IS BOUND, which is the sandbox and has no bottom.
 	//
-	// NO NUMBER BOUND IS STILL NOUGHT, which is the sandbox and has no bottom. The two cases are told apart by
-	// `EmpireDungeonId`, not by whether the run has the dungeon.
-	return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;
+	// THE RUN CANNOT LOSE THE BOUND DUNGEON WHILE THE PLAYER IS INSIDE IT, since 2026-10-24: the walk's days run when
+	// the player leaves, so no city falls and nothing resolves underneath them. The depth recorded on entry that
+	// issue #2414 kept for that case was removed with it.
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	return Dungeon != nullptr ? Dungeon->Floors : 0;
 }
 
 bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
@@ -14172,9 +14165,6 @@ bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
 
 	// NO DUNGEON MEANS NO BOTTOM, which is what keeps the stairs descending for
 	// ever in the sandbox.
-	//
-	// A DUNGEON A CITY'S FALL ABSORBED STILL HAS ITS BOTTOM. `EmpireDungeonFloors` answers the floors recorded on
-	// entry while a number is bound, whether or not the run still has the dungeon. Issue #2414.
 	//
 	// AND NEVER THE DARK FLOOR A FALL LEADS TO, which carries the number of the floor its stairs lead to and may
 	// carry the final floor's. Its stairs lead to that floor and do not clear the dungeon. Issues #1820 and #41.
@@ -14191,30 +14181,21 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 
 	const FCataclysmDungeon* Dungeon = BoundDungeon();
 
-	// THE RATE RECORDED ON ENTRY WHEN A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON, because its city fell
-	// while the player was inside. Each floor then costs what it cost before the fall, and not a whole day. Issue
-	// #2414; a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15.
-	//
-	// ONLY WHEN A RATE WAS RECORDED. A number written onto `EmpireDungeonId` by hand, as two test files do, was
-	// never entered and has none, and its floor costs the whole day it cost before.
-	const bool bBoundToAnAbsorbedDungeon =
-		Dungeon == nullptr && EmpireDungeonId != INDEX_NONE && EmpireDungeonWalkDaysPerFloorOnEntry > 0.0f;
-
 	// A WHOLE DAY WHEN NOTHING IS BOUND. Pressing Play puts the player on a
 	// generated floor with no empire dungeon behind it, and there is then no
 	// rate to read; a floor costs the ordinary day.
-	if ((Dungeon == nullptr && !bBoundToAnAbsorbedDungeon) || Run->Clock == nullptr)
+	if (Dungeon == nullptr || Run->Clock == nullptr)
 	{
 		DaysSpentWalking.Add(Run->AdvanceDay());
 		return;
 	}
 
 	// OTHERWISE THE DUNGEON'S OWN RATE, which is one day a floor unless a city
-	// upgrade lowered it. `SpendDays` advances a whole day for each whole day
-	// that accumulates, so timers move and dungeons resolve exactly as they
-	// would have.
-	DaysSpentWalking.Append(
-		Run->SpendFloorTime(Dungeon != nullptr ? Dungeon->WalkDaysPerFloor() : EmpireDungeonWalkDaysPerFloorOnEntry));
+	// upgrade lowered it. `SpendFloorTime` turns the cost into whole days, and
+	// while the player is inside the dungeon it OWES them rather than running
+	// them: nothing resolves until the player leaves, the owner's decision of
+	// 2026-10-24. `LeaveEmpireDungeon` runs them, and adds their reports here.
+	DaysSpentWalking.Append(Run->SpendFloorTime(Dungeon->WalkDaysPerFloor()));
 }
 
 bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
@@ -14223,6 +14204,15 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	if (!Run)
 	{
 		return false;
+	}
+
+	// A WALK ALREADY UNDER WAY IS LEFT FIRST, which runs the days it owes. Ruled by the coordinating session on
+	// 2026-10-24, under the owner's decision that a walk's days run when the player leaves: otherwise the days owed
+	// by one dungeon would be carried into the next walk. Only `Cataclysm.WalkDungeon` typed mid-walk, and a test,
+	// reach this. Asked before the dungeon is looked up, because those days can take it off the map.
+	if (EmpireDungeonId != INDEX_NONE)
+	{
+		LeaveEmpireDungeon();
 	}
 
 	const FCataclysmDungeon* Dungeon = Run->FindDungeon(DungeonId);
@@ -14246,11 +14236,6 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	DungeonSeed = Dungeon->WalkSeed();
 	TotalFloors = FMath::Max(1, Dungeon->Floors);
 	DungeonType = Dungeon->Type;
-
-	// AND ITS DEPTH AND ITS RATE KEPT, for a walk whose dungeon the run loses while the player is inside: a city
-	// that falls absorbs the dungeons standing on it, the walked one included. Issue #2414.
-	EmpireDungeonFloorsOnEntry = Dungeon->Floors;
-	EmpireDungeonWalkDaysPerFloorOnEntry = Dungeon->WalkDaysPerFloor();
 
 	// AND WHAT IT DOES DIFFERENTLY. `UCataclysmEnemyScore` reads this back off
 	// the game mode and adds the sub-type's weight to every creature on the
@@ -14343,6 +14328,15 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 {
 	if (UCataclysmEmpireRun* Run = EmpireRun())
 	{
+		// THE DAYS THE WALK SPENT RUN NOW, IN ORDER, the owner's decision of 2026-10-24: "all of the resolutions and
+		// day/timer updates happen once a player leaves a dungeon". Every way out comes through here: a clear,
+		// after `ClearDungeon` credited it, so the clear counts first; a death, after its resolve and before its own
+		// days; and `Cataclysm.LeaveDungeon`.
+		//
+		// BEFORE THE CLOCK IS TOLD, so the dungeon walked keeps its timer paused and a Hollow walked keeps its
+		// floors through days that were spent inside it. Ruled by the coordinating session, 2026-10-24.
+		DaysSpentWalking.Append(Run->SettleDaysOwed());
+
 		if (Run->Clock)
 		{
 			Run->Clock->LeaveDungeon();
@@ -14350,8 +14344,6 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	}
 
 	EmpireDungeonId = INDEX_NONE;
-	EmpireDungeonFloorsOnEntry = 0;
-	EmpireDungeonWalkDaysPerFloorOnEntry = 0.0f;
 
 	// AND THE DUNGEON'S MODIFIERS GO WITH IT. `EnterEmpireDungeon` overwrites
 	// `TotalFloors`, `DungeonType` and `DungeonSubType` on the way in, so those
@@ -22311,31 +22303,18 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 		return false;
 	}
 
-	// ASKED BEFORE THE CLEAR: WHETHER THE RUN STILL HAS IT. A city that fell while the player was inside absorbed
-	// it, and then `ClearDungeon` answers false and counts nothing, which is the ruling: the clear credits nothing
-	// to the empire, the loot already taken stays with the player, and the player leaves as after any clear. Issue
-	// #2414; a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15.
-	const int32 Walked = EmpireDungeonId;
-	const bool bAbsorbedWhileInside = Run->FindDungeon(Walked) == nullptr;
-
 	// CLEARED FIRST AND LEFT SECOND. `ClearDungeon` takes it off the clock as
 	// well as off the map, and it reads `CurrentDungeonId` to notice it was the
 	// one being stood in; leaving first would make it forget.
+	//
+	// AND SO THE CLEAR IS CREDITED BEFORE THE WALK'S DAYS RUN, the owner's decision of 2026-10-24, "Clear counts,
+	// city still falls": all of `ClearDungeon` -- the counts, a Quest objective, a Fallen City retaken, the
+	// defence it restores -- and then `LeaveEmpireDungeon` runs the days owed. A city another dungeon fells in those
+	// days still falls. The run cannot have lost this dungeon while the player was inside it, so the case issue
+	// #2414 handled here, a clear that credited nothing, was removed.
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
 
 	LeaveEmpireDungeon();
-
-	// ONE LINE, AND IT IS A LOG LINE. Nothing in the game draws a free sentence on the dungeon screen: the HUD
-	// draws numbers, names and status lines over creatures, and the floor panel lists modifier rows by key and is
-	// hidden once the dungeon is left. A log line is the smallest surface that exists, and the death's cost is
-	// told the same way in `EndTheDungeonForADeath`. No new interface was built, by ruling.
-	if (bAbsorbedWhileInside)
-	{
-		UE_LOG(LogCataclysm, Log,
-			   TEXT("The city of dungeon %d fell while you were inside it. You reached its bottom, and the clear "
-					"counts for nothing."),
-			   Walked);
-	}
 
 	return bCleared;
 }
@@ -22395,12 +22374,16 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// READ BEFORE THE RESOLVE, FOR THE LOG LINE BELOW. `DungeonDiedIn` is not
 	// read after it: a resolve can fell the city, which removes the dungeon.
 	//
-	// NULL IS A REAL CASE AND IS STILL CHARGED. A city that falls while the
-	// player is underground absorbs the dungeon being walked, and this game
-	// mode stays bound to its number. Nothing can resolve then; the walk still
-	// ends and the days are still paid.
+	// NULL IS STILL CHARGED, for a number bound by hand with no dungeon behind
+	// it, as two test files do. Nothing can resolve then; the walk still ends
+	// and the days are still paid.
+	//
+	// THE DAY OF THE DEATH IS THE DAY THE WALK HAS REACHED, the run's day and
+	// the days the walk owes, since 2026-10-24: the run's own day does not move
+	// while the player is inside.
 	const bool bItResolves = DungeonDiedIn != nullptr && DungeonDiedIn->Resolves();
-	const int32 DayOfTheDeath = Run->Day();
+	const int32 DaysTheWalkOwed = Run->DaysOwed();
+	const int32 DayOfTheDeath = Run->Day() + DaysTheWalkOwed;
 
 	// 1. IT RESOLVES, IF IT IS THE KIND THAT DOES, WHILE THE PLAYER IS STILL
 	// INSIDE. Every part of that is the empire's: the consequence on the city,
@@ -22409,10 +22392,14 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	const FCataclysmDayReport WhatTheDeathResolved =
 		Run->ResolveDungeonOnDeath(DiedInDungeon);
 
-	// 2. THE WALK ENDS, as clearing the last floor ends it. An ordinary
+	// 2. THE WALK ENDS, as clearing the last floor ends it, AND THE DAYS IT
+	// SPENT RUN, in order, after the resolve and before the death's own days.
+	// Ruled by the coordinating session on 2026-10-24 under the owner's
+	// decision that a walk's days run when the player leaves. An ordinary
 	// dungeon is off the map already: it hit its city in step 1 and left, and
 	// the empire told the clock the player was out of it. A Quest dungeon or a
-	// Dungeon City is still on the map and its timer counts again from here.
+	// Dungeon City is still on the map; its timer stays paused through the
+	// walk's days, which were spent inside it, and counts again from here.
 	LeaveEmpireDungeon();
 
 	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
@@ -22433,14 +22420,14 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// it.
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("The death on day %d ended the walk of dungeon %d. %s Cities "
-				"it felled: %d. Days charged: %d, and it is now day %d. The "
-				"dungeon is %s."),
+				"it felled: %d. The walk's %d days ran, then the death charged %d, "
+				"and it is now day %d. The dungeon is %s."),
 		   DayOfTheDeath, DiedInDungeon,
 		   bItResolves
 			   ? TEXT("It resolved at once.")
 			   : TEXT("Nothing resolved: it is not a kind that resolves, or it was "
 					  "already off the map."),
-		   WhatTheDeathResolved.Fallen.Num(), DaysTheDeathCost, Run->Day(),
+		   WhatTheDeathResolved.Fallen.Num(), DaysTheWalkOwed, DaysTheDeathCost, Run->Day(),
 		   Run->FindDungeon(DiedInDungeon) != nullptr
 			   ? TEXT("still on the map") : TEXT("no longer on the map"));
 

@@ -146,11 +146,13 @@ def the_model():
         _hollow_stacks_for = Simulation._hollow_stacks_for
         hollow_hit_stacks = Simulation.hollow_hit_stacks
         _hollow_shrink = Simulation._hollow_shrink
+        _inside_did = Simulation._inside_did
 
         def __init__(self):
             self.dungeons = {}
             self.day = 1
             self.current = None
+            self.settling_inside = None
 
         def _walk_days(self, floors, subtype):
             return floors
@@ -435,15 +437,17 @@ def day_order_problems(game_source: str) -> list[str]:
         problems.append("UCataclysmEmpireRun::AdvanceDay no longer shrinks the "
                         "Hollows after the Siege bites and before the resolves")
 
-    model = python_code_of(Simulation.step)
+    # `_empire_day` SINCE 2026-10-24, which holds the day's events that
+    # `step` held before a walk's days began to run as the walk ends.
+    model = python_code_of(Simulation._empire_day)
     marks = ("self._apply_siege_damage()", "self._hollow_shrink()",
              "self._resolve(d)")
     if any(model.count(mark) != 1 for mark in marks):
-        problems.append("Simulation.step does not hold the Siege bite, the "
-                        "shrink and the resolve once each")
+        problems.append("Simulation._empire_day does not hold the Siege bite, "
+                        "the shrink and the resolve once each")
     elif [model.index(m) for m in marks] != sorted(model.index(m) for m in marks):
-        problems.append("Simulation.step no longer shrinks the Hollows after "
-                        "the Siege bites and before the resolves")
+        problems.append("Simulation._empire_day no longer shrinks the Hollows "
+                        "after the Siege bites and before the resolves")
 
     return problems
 
@@ -473,8 +477,9 @@ def left_alone_problems(game_source: str) -> list[str]:
     if "self.day <= d.spawned_day" not in model:
         problems.append("Simulation._hollow_shrink no longer skips a Hollow "
                         "made today")
-    if ("if self.current is not None and d.did == self.current.did: continue"
-            not in model):
+    # `_inside_did` SINCE 2026-10-24: the dungeon walked, or the one a
+    # finished walk was in while its days run.
+    if "if d.did == self._inside_did(): continue" not in model:
         problems.append("Simulation._hollow_shrink no longer skips the dungeon "
                         "the player is inside")
     for timer in ("resolve_in", "resolve_max"):
@@ -528,7 +533,16 @@ def test_the_models_skips_are_real() -> None:
     model._hollow_shrink()
     assert hollow.floors == 20, "the model shrank the Hollow the player is inside"
 
+    # AND WHILE A FINISHED WALK'S DAYS RUN, nobody walking: the Hollow that
+    # walk was in still counts as the one the player is inside. Ruled by the
+    # coordinating session on 2026-10-24.
     model.current = None
+    model.settling_inside = hollow.did
+    model._hollow_shrink()
+    assert hollow.floors == 20, (
+        "the model shrank the Hollow whose walk's days were running")
+
+    model.settling_inside = None
     model._hollow_shrink()
     assert hollow.floors == 19, "CONTROL: the model did not shrink the Hollow at all"
 
