@@ -173,6 +173,30 @@ def test_a_refused_delete_is_retried_on_any_platform() -> None:
     assert waited == 2 * unreal_build.HELD_FILE_RETRY_SECONDS
 
 
+class _AdvancingClock(_Waits):
+    """`_Waits` with a clock that also moves on a little at every reading, as a real clock does, so the time read
+    after a refused attempt is never exactly the time read before it."""
+
+    def clock(self) -> float:
+        self.now += 0.001
+        return self.now
+
+
+def test_the_first_wait_is_announced_once_with_a_clock_that_advances(capsys) -> None:
+    """The line that makes a delay visible is printed on the first wait and only then, with a clock that advances
+    between readings. Before review (2026-10-24, #2459) it printed only when the time waited read exactly 0, which a
+    real clock almost never does; this test fails on that comparison."""
+    path = _HeldPath(refusals=3)
+    waits = _AdvancingClock()
+
+    delete_when_released(path, wait=waits.wait, clock=waits.clock)
+
+    printed = capsys.readouterr().out
+    assert path.deleted and len(waits.waits) == 3
+    assert printed.count("is held open by another process") == 1, printed
+    assert "#2459" in printed
+
+
 def test_a_delete_refused_past_the_limit_raises_on_any_platform() -> None:
     """The limit, with `_HeldPath` refusing every attempt."""
     path = _HeldPath(refusals=10**6)

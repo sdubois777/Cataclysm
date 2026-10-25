@@ -828,6 +828,7 @@ def delete_when_released(path: pathlib.Path,
     @param clock  where the time waited is read from; ONLY EVER PASSED BY TESTS
     """
     started = clock()
+    announced = False
     while True:
         try:
             path.unlink(missing_ok=True)
@@ -839,7 +840,10 @@ def delete_when_released(path: pathlib.Path,
                     f"{path} could not be deleted: another process held it open "
                     f"for {waited:g} seconds, the limit, and Windows refuses to "
                     f"delete a file held open ({error}). Issue #2459.") from error
-            if waited == 0:
+            # THE FIRST WAIT, BY A FLAG AND NOT BY `waited == 0`, which a real clock almost never reads after a
+            # refused attempt, so the line would rarely print (found in review, 2026-10-24, #2459).
+            if not announced:
+                announced = True
                 print(f"{path} is held open by another process; trying again every "
                       f"{retry_seconds:g} seconds for up to {limit_seconds:g} "
                       "seconds. Issue #2459.", flush=True)

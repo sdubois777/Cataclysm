@@ -161,9 +161,39 @@ command: `python -m pytest tools/tests/test_unreal_build_held_log.py tools/tests
 
 None.
 
-### THE WINDOW'S RUN
+### THE MEASUREMENT
 
-Not run. The enchantment session records its window here.
+No Unreal window applies: the change is to `tools/unreal_build.py` and its tests only, and its proofs are Python guard
+proofs, run by the enchantment session in its own worktree with nothing else running there.
+
+**A DEFECT FOUND IN REVIEW, AND FIXED IN A SECOND COMMIT (D1).** The first commit printed its "held open" line only
+`if waited == 0`, where `waited` is read after the first refused delete; a real monotonic clock almost never reads exactly
+the starting time then, so the line meant to make a delay visible would rarely print. The tests could not see it, because
+their clock did not advance between readings. The coordinating session's ruling of 2026-10-24, verbatim: "#2459 D1: FIX IT
+in a second commit on this branch, as you recommend. This change should not ship with a defect it already knows about. Use
+a first-wait flag. In the held test, assert that the line is printed, using a clock that DOES advance, so the test would
+have caught the old comparison." The second commit:
+- `delete_when_released` keeps an `announced` flag and prints the line on the first wait;
+- a new test, `test_the_first_wait_is_announced_once_with_a_clock_that_advances`, runs on every platform with
+  `_HeldPath` refusing three times and a clock that also moves on 0.001 s at every reading, and asserts the line is
+  printed exactly once and names #2459.
+
+**The proofs**, by `tools/prove_guard.py`'s `break_and_run`, command `python -m pytest -p no:cacheprovider
+tools/tests/test_unreal_build_held_log.py tools/tests/test_unreal_build.py`, each anchor counted once:
+- **AN-I, the first-wait flag put back to `if waited == 0:`**: "PROVED: 1 failed, 97 passed in 0.93s | restored: 98
+  passed in 0.93s"; named failure `test_the_first_wait_is_announced_once_with_a_clock_that_advances`.
+- **RT-I, the retry removed** (`except PermissionError as error:` to `except FileNotFoundError as error:`), run again on
+  the second commit: "PROVED: 6 failed, 92 passed in 0.99s | restored: 98 passed in 0.90s"; named failures the five
+  retry tests of the first commit and the new one.
+- On the first commit, before D1, the same RT-I gave "PROVED: 5 failed, 92 passed in 1.22s | restored: 97 passed in
+  0.81s", in the enchantment session's run and the writing session's alike.
+- Each proof reported crashed False and nothing disturbed.
+
+**Python of record** on the second commit's files, by the enchantment session (no `-q`, JUnit outside the repository): "6954 passed, 8 skipped"; JUnit 6962 tests, 0 failures, 0 errors, 8 skipped (development b83230b44's 6954 and this change's 8). `ruff check .`: "All checks passed!". Three of the eight new tests need Windows and are skipped on continuous integration, which runs on Linux; the `_HeldPath` tests run the same retry logic there.
+
+**The other two deletes** (`forget_the_saved_originals` and `restore_an_interrupted_proof`, of the recovery file
+`cpp_guard_originals.json`) are left as they are, with the reason above; the coordinating session accepted that reasoning
+on 2026-10-24.
 
 ---
 
