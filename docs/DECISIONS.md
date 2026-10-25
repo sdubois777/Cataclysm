@@ -107,7 +107,10 @@ Unreal, registered for the window and not yet run:
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus three.
 
-Branch `fix/instant-moves-restart-the-still-clock-1` on `development` at `b2b60ebf6`.
+Branch `fix/instant-moves-restart-the-still-clock-2` on `development` at `3830065c5` (written on `b2b60ebf6` as `-1`
+and moved, its zero-context patch ids unchanged; the append-append conflict at the end of
+`CataclysmDungeonModifierEffectsTests.cpp` was resolved by taking `development`'s file and re-applying this change's
+own edit scripts, each asserted to match once, which gave the original's 63 lines added and 2 removed).
 
 ---
 
