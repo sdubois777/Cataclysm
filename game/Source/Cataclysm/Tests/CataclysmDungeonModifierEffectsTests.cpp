@@ -36647,9 +36647,44 @@ bool FCataclysmShadowyExitTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestTrue(TEXT("the last lies on the exit"), FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
-	TestTrue(TEXT("one more than the row's three, or all the floor had room for and one"),
-			 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	// THE EXIT'S LIGHT IS THE LAST OF THE ROW'S, AND EVERY LIGHT AFTER IT IS FOR A CREATURE THAT CANNOT MOVE. Since
+	// issue #2334 such a creature that no light reaches gets its own light, on the beat, after the row's and the exit's.
+	// Ruled by the coordinating session on 2026-10-25. The creatures are counted from the floor.
+	int32 ExitLight = INDEX_NONE;
+	for (int32 Index = 0; Index < Lights.Num() && ExitLight == INDEX_NONE; ++Index)
+	{
+		ExitLight = FVector::Dist2D(Lights[Index], Exit) < 1.0f ? Index : INDEX_NONE;
+	}
+	int32 StillAndUnlitByTheRow = 0;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature)
+			|| !ACataclysmDungeonGameMode::CreatureCannotMove(Creature))
+		{
+			continue;
+		}
+		bool bReached = false;
+		for (int32 Index = 0; Index <= ExitLight; ++Index)
+		{
+			bReached = bReached || FVector::Dist2D(Lights[Index], Creature->GetActorLocation())
+				<= Effects::ShadowyEnemiesLightRadiusCm;
+		}
+		StillAndUnlitByTheRow += bReached ? 0 : 1;
+	}
+	TestTrue(TEXT("a light lies on the exit"), ExitLight != INDEX_NONE);
+	TestTrue(TEXT("and it is the row's last: one more than the row's three, or all the floor had room for and one"),
+			 ExitLight + 1 <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	TestEqual(TEXT("after it, one light for each creature that cannot move and that none of the row's lights reaches"),
+			  Lights.Num() - (ExitLight + 1), StillAndUnlitByTheRow);
+
+	// THE CONTROL: with no such creature on the floor, the old figures hold.
+	if (StillAndUnlitByTheRow == 0)
+	{
+		TestTrue(TEXT("CONTROL: with no such creature the last lies on the exit"),
+				 FVector::Dist2D(Lights.Last(), Exit) < 1.0f);
+		TestTrue(TEXT("CONTROL: and there are at most the row's three and one"),
+				 Lights.Num() <= Effects::ShadowyEnemiesLightZonesPerFloor + 1);
+	}
 	TestEqual(TEXT("every one is drawn"), Mode->ShadowyEnemiesLightZonesDrawn(), Lights.Num());
 	TestTrue(TEXT("on the exit's light"),
 			 FVector::Dist2D(Gatekeeper->GetActorLocation(), Exit) <= Effects::ShadowyEnemiesLightRadiusCm);

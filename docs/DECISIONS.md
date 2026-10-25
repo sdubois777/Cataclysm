@@ -70,6 +70,37 @@ Registered for the window and not yet run:
   `NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove` fails. Prefix
   `Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatch`.
 
+### The windows, a compile error, and a test the coordinating session ruled
+
+- **First** (lock `dungeon-w48`, `fix/floors-a-still-creature-cannot-block-2` at `9df481de5`, on `e26af37c9`, 2026-10-25,
+  "free GB: 15.1 of 31.1"): "Build: Failed - 71 actions, 61 files compiled", one error,
+  "CataclysmDungeonModifierEffectsTests.cpp(59295,14): error C4459: declaration of 'NecroticGround' hides global
+  declaration". This change's Necrotic Ground test declared a local `NecroticGround`, hiding the namespace's
+  `const FName NecroticGround(UCataclysmDungeonModifierEffects::NecroticGroundKey);`, which commit `452a0c794`
+  (2026-09-17, #1947) had added and which was already in the file at `b2b60ebf6`: the move did not bring it in, and the
+  branch had never been built. The local was removed and the test uses the namespace's, the same key (`1fe47be80`),
+  under the coordinating session's standing leave to correct a compile error.
+- **Second** (lock `dungeon-w49`, at `1fe47be80`, the same conditions): "Build: Succeeded - 5 actions, 1 file compiled";
+  "4157 tests performed, 4156 succeeded, 1 failed: ShadowyEnemiesLightsTheExitWhereTheBossStands"; "Declared: 4157
+  tests in the tree at 1fe47be80; 4157 performed, gap 0"; memory "final_used_virtual_mb=11530"; Python "6974 passed, 8
+  skipped", JUnit 6982, failures 0. No proof was run.
+
+The failures, from the engine log: "Expected 'the last lies on the exit' to be true." (line 36651) and "Expected 'one
+more than the row's three, or all the floor had room for and one' to be true." (line 36653). The case named as at
+risk above: the floor holds a creature that cannot move that no light reached, and its light is added after the exit's.
+**Changed, as ruled by the coordinating session on 2026-10-25,** in
+`Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsTheExitWhereTheBossStands`:
+
+| old | new |
+|---|---|
+| "the last lies on the exit" | "a light lies on the exit" |
+| "one more than the row's three, or all the floor had room for and one": at most four lights | the exit's light is the row's last, at most the row's three plus one |
+| -- | after it, exactly one light for each creature that cannot move and that none of the row's lights reaches, counted from the floor's creatures |
+| -- | the control: with no such creature on the floor, the old two checks still hold |
+
+The three checks after them ("every one is drawn", "on the exit's light", "so it is exposed") and the set-up check "no
+random light zone reaches the Gatekeeper" are unchanged.
+
 ### Run
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus three, 4157 (4154 at `e26af37c9`).
