@@ -19,7 +19,8 @@ and when the walk ends the clear is credited (or the death resolves) and then th
 2026-10-24, has the rulings.
 
 **Every other table and figure in this file was measured with it off.** `python measure_days_on_exit.py` measures both
-halves on the same seeds. Measured on 2026-10-24, raw `TuningConfig()` but for the tier, the tree and the day cap;
+halves on the same seeds: 0 to 499 for the guard cell and the undefended control, 0 to 299 for the triage
+table. Measured on 2026-10-24, raw `TuningConfig()` but for the tier, the tree and the day cap;
 "change" is the mean over seeds of on minus off in cities lost, with 1.96 standard errors of that paired difference.
 
 The guard cell, Explorer on `triage` at tier 1, 500 campaigns, the default day cap:
@@ -102,7 +103,9 @@ took from a city.
 
 **A player on the `triage` policy.** 300 campaigns a cell, seeds 0 to 299, raw
 `TuningConfig()` defaults but for the tier and the tree, the day cap of 2,500.
-Explorer is `TREE_EXPLORER_AS_DESIGNED`. These are not the settings
+**Measured on 2026-10-13, before the 2026-10-16 retune and before the 2026-10-24
+switch that runs a walk's days when the player leaves**; the section above has
+that switch measured off and on. Explorer is `TREE_EXPLORER_AS_DESIGNED`. These are not the settings
 `experiments.py` calibrates, so the rows cannot be set beside the report's
 tables. "Lost" includes a death in the earned Cataclysm dungeon.
 

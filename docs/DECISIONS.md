@@ -144,9 +144,34 @@ tests; Python `sim/tests/test_a_walks_days_run_when_the_player_leaves.py` (7).
 | none | 4 | off | 1.7% (0.7 to 3.8) | 98.3% | 21.46 |  | 18.14 | 5.92 | 13.16 | 0.17 | 848 | 90.7% |
 | none | 4 | on | 3.3% (1.8 to 6.0) | 96.7% | 21.95 | +0.50 +/- 0.54 | 19.47 | 6.42 | 13.88 | 0.45 | 890 | 90.0% |
 
-Two of the eight paired changes in cities lost lie outside their interval, both downward: Explorer tier 2 and no tree
-tier 1. **Nobody enters any dungeon** (500 campaigns a tier, 2,000 days): the two halves are identical campaign by
+**A PLAYER WHO DEFENDS WINS MORE WITH THE SWITCH ON.** The guard cell goes from 51.6% won and 1.33 cities lost (off)
+to 54.0% and 1.33 (on), inside the guard both times. No tree at tier 1 goes from 40.7% won to 47.3%. Two of the eight
+paired changes in cities lost lie outside their interval, both downward: Explorer tier 2, -0.64 +/- 0.52, and no tree
+tier 1, -0.48 +/- 0.37, so in those two cells a player loses about half a city less.
+
+**AN UNDEFENDED EMPIRE STILL LOSES, UNTOUCHED.** With nobody entering any dungeon the two halves are identical campaign
+by campaign, so the owner's ruling of 2026-10-12 that an empire nobody defends must lose is not moved by this change.
+
+**Nobody enters any dungeon** (500 campaigns a tier, 2,000 days): the two halves are identical campaign by
 campaign, which is the control on the script; tier 1 lost its path to the Pillar in every campaign, median day 783.
+
+### Changes to what a check accepts
+
+Each of these checks now reads a different function, because `Simulation.step`'s day was split; ruled one by one by
+the coordinating session on 2026-10-24.
+
+- `tools/tests/test_surge_port.py`, `test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge`: it read the
+  timers, the Last Stand, the empty-board rule and "# -- player action" in that order in `Simulation.step`; it reads the
+  first three in `Simulation._empire_day`, and asserts `step` calls `_empire_day()` before `_player_day(policy)`.
+- `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py`, `test_both_halves_shrink_after_the_siege_and_before_the_resolves`:
+  it read the Siege bite, the shrink and the resolve in `Simulation.step`; it reads them in `Simulation._empire_day`.
+- The same file, `test_both_halves_leave_a_new_hollow_and_the_walked_one_alone`: it looked for
+  `if self.current is not None and d.did == self.current.did: continue` in `_hollow_shrink`; it looks for
+  `if d.did == self._inside_did(): continue`.
+- The same file, its stand-in for the model (`the_model`), used by `test_the_games_shrink_is_the_models`,
+  `test_the_shrink_comparison_sees_a_hollow_shrunk_to_nothing` and `test_the_models_skips_are_real`: it gains
+  `_inside_did` and `settling_inside = None`, with no assertion changed. `test_the_models_skips_are_real` gains one case:
+  with `settling_inside` naming the Hollow and nobody walking, the Hollow keeps its floors (ruling 2).
 
 ### Proofs
 
