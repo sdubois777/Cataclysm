@@ -2,6 +2,53 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — The modifier tests' console-variable helper puts back the value it found (#2493)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only: `FScopedConsoleString` and one
+new test. No game code changes. **This closes [#2493](https://github.com/sdubois777/Cataclysm/issues/2493)** when it
+merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN WHEN WRITTEN. THE EFFECT IS READ, AND THE NEW TEST IS ITS MEASUREMENT.** The coordinating
+  session asked for a measurement first; one needs an Unreal run, so the measurement is the new test's failing half
+  in the window's guard proof.
+- **WHAT THE ENGINE DOES, read in Unreal Engine 5.8's `Runtime/Core/Private/HAL/ConsoleManager.cpp`:** a typed
+  console variable's `Set` passes the text to `GetValueFromString<T>`, which for a float calls `LexFromString`, which
+  is `Atof`; `Atof("")` is 0. The history check before it (`TrackHistory`) records the write and refuses only a write
+  of a lower priority than the last, and the helper writes at the console's priority.
+- **AT RISK IN THE WINDOW:** any test that passed only because an earlier test left a roll pinned at 0. Such a test is
+  order-dependent today, and now sees the roll it asked for. A failure comes to the coordinating session as old -> new.
+
+### What changed
+
+The helper wrote an empty string when it went. That is a string variable's default and 0 for a number variable, and
+most of the 142 places in the file that made one before this change (counted by searching for a helper
+being declared with a name, 2026-10-24) pin rolls whose default -1 means "not pinned". It now records the value the
+variable held when the helper was made and writes that back, as the helper of the same name in
+`CataclysmDungeonGameModeTests.cpp` already did.
+
+New test: `Cataclysm.DungeonModifierEffects.AScopedConsolePinPutsBackTheValueItFound`. It puts Illusory Enemies' roll
+at its default -1 first, so a value an earlier test left cannot make the comparison agree with itself; pins it at a
+quarter through the helper; and asserts it reads -1 again once the helper goes, and again after a second value set
+through the helper while held.
+
+### Proofs
+
+Registered for the window and not yet run: **P1**, `Set(*Previous);` -> `Set(TEXT(""));` in the helper's destructor
+(the code as it was). Predicted: `AScopedConsolePinPutsBackTheValueItFound` fails, reading 0 where it expects -1. Prefix
+`Cataclysm.DungeonModifierEffects.AScopedConsolePin`.
+
+### Run
+
+Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
+
+Branch `fix/rarity-seed-and-console-pins-1` on `development` at `3c1f3ac5f`, stacked with #2490 at the coordinating
+session's ruling of 2026-10-24 so the two share one window; the stacked branch is registered as `development`'s last
+measured total plus two.
+
+---
+
 ## 2026-10-24 — A creature the floor places draws its rarity rung from the floor's seed (#2490)
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmGameMode.h` and `.cpp` (`RarityStepFor` takes an optional stream);
@@ -49,7 +96,7 @@ the clock again. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFlo
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
 
-Branch `fix/rarity-from-the-floors-seed-1` on `development` at `3c1f3ac5f`.
+Branch `fix/rarity-seed-and-console-pins-1` on `development` at `3c1f3ac5f`, stacked with #2493 (the entry above).
 
 ---
 
