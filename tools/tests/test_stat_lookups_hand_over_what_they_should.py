@@ -226,6 +226,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: `UCataclysmGameplayAbility::ApplyCost` with the skill's tags once mana has
 #: been taken; and the flag by which a critical strike deals no extra damage,
 #: asked beside the critical multiplier in `CataclysmVitalAttributeSet.cpp`.
+#: A damage over time tick worth more while its target moves added two more on
+#: 2026-10-23 (#2235): the applier's `dot_damage` asked on a tick with the
+#: character it lands on, and the same asked with no target, in
+#: `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1147,6 +1151,17 @@ INVENTORY = {
         "with the skill's own tags once, when BeginEmptyingTheRack starts "
         "the rack, the attribute the fallback; the throws have not landed, "
         "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("dot_damage")), TickTags, 100.0f, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(Ticked), Ticked'):
+        "the applier's dot_damage on each tick its stats priced, with the "
+        "character the tick lands on, the distance to it and its stagger "
+        "(ruled 2026-10-23, #2235, Q2 (a)); a tick is not a blow, so no blow, "
+        "no metres moved before it and no count of enemies struck",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("dot_damage")), TickTags, 100.0f'):
+        "the same dot_damage on the same tick with no target, the denominator "
+        "of the ratio (#2235, Q2 (a)): every row that holds without a target "
+        "cancels, so what the application baked in is not counted twice",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

@@ -3530,7 +3530,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("hit_dealt_is_not_spell")
 			// RULED 2026-10-17, THE NULL EMPEROR'S "A SILENCED ENEMY": the character struck is silenced. It names a
 			// state, so it compares nothing.
-			|| Name == TEXT("target_is_silenced");
+			|| Name == TEXT("target_is_silenced")
+			// RULED 2026-10-23 (#2235), "WHILE THE ENEMY IS MOVING": the character struck is moving. It names a
+			// state, so it compares nothing.
+			|| Name == TEXT("target_is_moving");
 	}
 }
 

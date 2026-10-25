@@ -2,6 +2,472 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — A damage over time tick priced from its applier's stats asks the applier's `dot_damage` again with the character it lands on, so a row under the new condition `target_is_moving` makes each tick on a moving enemy worth more and each tick on a standing one the usual amount, and the owner's reworded row "While the enemy is moving, your DoTs on them deal 20%-40% more damage" is that row: #2235, the engine half, the data half and a real-row test
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the condition `target_is_moving`,
+`FCataclysmStatConditions::bTargetIsMoving`, and the three count sentences); `CataclysmAbilitySystemComponent.cpp` (the
+moving read in `WithTargetState`); `CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::bPricedFromItsAppliersStats`,
+`UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName`, the marker set in `ApplyDamageOverTime` and stamped in
+`ApplyTypedSpec`); `CataclysmVitalAttributeSet.cpp` (the per-tick ask in `PostGameplayEffectExecute`);
+`CataclysmDamageCalculation.h` and `.cpp` (`FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier`, multiplied in
+`Resolve`'s tick branch), all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Tests/CataclysmDotOnAMovingTargetTests.cpp`
+(new, four tests in `Cataclysm.DotOnAMovingTarget.`); `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`
+(`ComparesNothing` gains the condition); `tools/generate_datatables.py` (the condition, `dot_damage`'s asker, and
+`CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS`); `tools/tests/test_dot_damage_on_a_moving_target_rows.py` (new);
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (the condition built ahead of its row, then
+taken out); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two `StatForSkill` calls). THE DATA HALF,
+`26938fe7f`: `docs/All_Things_Cataclysm.xlsx` (five cells and one tag cell), `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentEffects.csv` (one line each), `tools/tests/enchantment_row_names.txt` (the pin line),
+`game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` (the alias pair). THE FOLLOW-UP: the real-row test in
+`CataclysmDotOnAMovingTargetTests.cpp`, and two comments (`CataclysmSkillEffects.cpp`, `tools/generate_datatables.py`).
+Nothing under `game/Content/` or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or
+`tools/unreal_build.py` is changed. **This closes [#2235](https://github.com/sdubois777/Cataclysm/issues/2235).**
+
+### SAID FIRST
+
+- **THE ROW IS WRITTEN.** The data half (`26938fe7f`) rewords "While moving, your DoTs deal 20%-40% increased damage"
+  to "While the enemy is moving, your DoTs on them deal 20%-40% more damage", `dot_damage` more 20 to 40 under
+  `target_is_moving`. The row is renamed; a save holding the old name loads under the new one through the alias (#1799),
+  and the same roll now means the same place in 20 to 40 MORE on each tick the enemy moves. Its tags lose
+  `Scope.WhileMoving` (Q3).
+- **EACH TICK OF THE WEARER'S DAMAGE OVER TIME ON A MOVING ENEMY DEALS 20%-40% MORE, AND EACH
+  TICK ON A STANDING ONE THE USUAL AMOUNT.** It is judged on every tick, against the enemy the tick lands on, at that
+  tick. An enemy that stops takes the usual amount on its next tick, and the more again when it walks. "Moving" is the
+  enemy's own movement sample, the one `while_moving` reads for the wearer: it moved at least 5 cm in the last quarter
+  of a second.
+- **ONLY A DAMAGE OVER TIME PRICED FROM THE WEARER'S OWN STATS GAINS IT** (point 3). Every burn, bleed, poison and other
+  ailment the wearer applies does: from a skill, a projectile, a tether, a buried axe, an ailment chance, a Masochist
+  spread or the bleed on a critical strike. **A spread copy, the trap's damage over time share, a minion's burn, the Masochist's converted bleed,
+  a ground zone, a dungeon hazard and a share of current health (Void Splinter) do not**, and nor does a damage over time
+  the wearer lays on itself. A burst of an effect's remaining damage does not either. The list with reasons is below.
+- **A "MORE" ROW ALREADY BAKED INTO A TICK IS NOT COUNTED TWICE.** Plague Doctor's two-piece (25% more) and "Your
+  damage over time effects deal 50%-100% more" stay in the figure fixed at application; the tick adds only what the
+  enemy's state adds.
+- **AN INCREASED ROW JUDGED AGAINST THE TARGET WOULD BE JUDGED AGAINST THE WEARER'S STATE AT THE TICK, NOT AT
+  APPLICATION** (Q2's limit). No such row exists. Its share is divided by the wearer's other increases as they stand at
+  the tick, which can differ from those the figure was fixed with.
+- **A WEARER'S OWN-STATE ROW ON `dot_damage` IS STILL JUDGED ONCE, AT APPLICATION**, as before: this change re-asks only
+  what depends on the target.
+- **NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+  brief 73 and its follow-up; the enchantment session wrote the data half. Nothing was compiled and no Unreal test was
+  run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a damage over time effect deals 20%-40% more on each tick its target is moving, and the usual amount on a tick it
+  stands still
+- a spread copy, a trap's share or a minion's burn on a moving enemy does not gain the 20-40% more; only a DoT priced from your own stats does
+
+If play shows the second line is wrong, it goes to the owner (the coordinating session, 2026-10-23).
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's words, 2026-10-23: "Pretty sure this was originally meant to be while the enemy is moving your dots on them
+deal 20-40% MORE damage."
+
+The old sentence: "While moving, your DoTs deal 20%-40% increased damage". The new sentence: "While the enemy is moving,
+your DoTs on them deal 20%-40% more damage". The condition is the target moving, judged on each tick on the defender
+side; the bucket is MORE; the old name loads under the new one through the renamed-row alias
+([#1799](https://github.com/sdubois777/Cataclysm/issues/1799)).
+
+The coordinating session's rulings of 2026-10-23, its words and not the owner's, verbatim:
+
+> - Q1: the condition is target_is_moving. It takes no value, and its subject is the blow or skill, after
+>   target_is_silenced.
+> - Q2: (a), the ratio StatForSkill(dot_damage, tags, Target=defender) / StatForSkill(dot_damage, tags), both asked at the
+>   tick. Record its limit in the entry: an INCREASED target-conditioned row is judged against the wearer's state at the
+>   tick, not at application. Add one test for the trap you named, showing that Plague Doctor's baked MORE is not counted
+>   twice.
+> - Q3: drop Scope.WhileMoving from Enchantments!D266, and keep Keyword.DoT.Generic.
+> - Q4: (a). One branch, one pull request and one run. The engine commit is written now; the data commit follows when the
+>   workbook is free, after G7c's rows.
+> - Point 3, the scaling-tick marker, is ACCEPTED. It is required by the owner's per-tick ruling. Only ticks whose figure
+>   was priced from the applier's stats read the attacker. In the entry, list which DoTs are marked and which are not (the
+>   trap's DoT share, spread and refresh copies, minion burns), with the reason for each. One test with a control: a spread
+>   copy does not gain the bonus.
+
+And on the engine commit's hand-back, the coordinating session's rulings of 2026-10-23, verbatim:
+
+> #2235 ENGINE COMMIT (b9a4b6541): C1-C5 ACCEPTED as you recommend.
+> - C1, a fact about the code: refreshes keep the marker they were made with.
+> - C2, all three judgements: a DoT on oneself is unmarked; the remaining-damage burst is unmarked; the tick asks with the
+>   tick's own tags. Record each as the coordinating session's judgement.
+> - C3: accept the widening and the four-condition exclusion. Record both under "changes to what a check accepts", with
+>   the four names.
+> - C4: keep the test-only row, and add the real-row test in the data commit.
+> - C5: correct the CataclysmSkillEffects.cpp 2194 comment with "SINCE #2235" in the data commit.
+
+Where each is: C1 is recorded below as a fact about the code; C2's three under the judgements, each as the coordinating
+session's; C3 under "CHANGES TO WHAT A CHECK ACCEPTS"; C4 is test 5; C5 is the comment at `CataclysmSkillEffects.cpp`
+2200 to 2207, in the follow-up commit (the data half was already written).
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `c514b6746`, before this change. The enchantment session's reading (`q73_plan_2235.md`)
+was checked line by line; where it differs it is said.
+
+1. **The condition machinery as `target_is_silenced` uses it.** C++: the enumerator, `CataclysmStatPipeline.h` 1692; its
+   state field `bTargetIsSilenced`, 3258; the name table, `CataclysmStatPipeline.cpp` 146; `ConditionTakesAValue`'s
+   value-less run, 311, ending in the sentence "Each of the thirty-three" at 313; `WhatConditionDependsOn`, its own case
+   returning `EOn::TheBlowOrSkill`, 511; `ConditionHolds`, 1227 to 1230; `WithTargetState`'s want-flag and fill,
+   `CataclysmAbilitySystemComponent.cpp` 1622 and 1661; `ComparesNothing`, `CataclysmPassiveTreeTests.cpp` 3533. Python:
+   `CONDITIONS` (`tools/generate_datatables.py` 4165; the reading said 3406, which is where the dict opens),
+   `CONDITIONS_OF_A_HIT_DEALT` (8968; the reading said 8949, where the set opens), and
+   `BUILT_AHEAD_OF_THEIR_ROWS`'s history. The header's two count sentences, 4955 ("a seventy-third") and 4964
+   ("THIRTY-THREE OF THE SEVENTY-TWO"), are held by `test_the_condition_count_sentences_agree_with_the_code.py`.
+   Searched by `target_is_silenced`, `TargetIsSilenced` and `bTargetIsSilenced` over `game/Source` and `tools`, and by
+   `TargetStandsInYourZone` and `HitDealtIsNotSpell` for any switch the first search missed: none.
+2. **`WithTargetState`** (1550 to 1760): six want-flags (ailments, health, boss, history, zone, silence), set from both of
+   a modifier's conditions, an early return when no row asks or there is no target, then one fill per flag. Every
+   character's ability system answers `IsMoving()` (`CataclysmAbilitySystemComponent.h` 2624, public), set by the
+   movement sampler `UCataclysmMovement::SampleStep` every 0.25 s on the regeneration step
+   (`CataclysmCharacterBase.cpp` 437). `while_moving` reads the asker's own `State.bIsMoving` (`ConditionHolds`, 1046;
+   the reading said 1043).
+3. **The tick's path.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` (360) builds `FCataclysmIncomingHit`,
+   reads `bIsDamageOverTime` off the asset tags (433), fills the tick's granted `Keyword.DoT.*` tags (441 to 462), the
+   distance from the causer (646), and calls `UCataclysmDamageCalculation::Resolve` (1168). `Resolve`'s tick branch
+   (`CataclysmDamageCalculation.cpp` 1226 to 1261) zeroes a suppressed tick or multiplies by the defender's
+   `damage_over_time_taken` asked with `TagsOfTick` (203). **On a tick the instigator's ability system is the applier's**:
+   `ApplyDamageOverTime` builds the context with `Context.AddInstigator(Instigator, Instigator)` (2534), so
+   `GetInstigatorAbilitySystemComponent()` is the applier's, a player's on its player state, and null once the applier is
+   gone. The penetration asks in the same function already ask the instigator with the defender as the target (723 to
+   836).
+4. **Every maker of a damage over time spec, and whether its figure was priced from the applier's stats.** HOW IT WAS
+   SEARCHED: `ApplyDamageOverTime(`, `ApplyBurn(`, `ApplyShareOfHealthOverTime(`, `bIsDamageOverTime = true`,
+   `AppendDynamicAssetTags`, `DamageOverTimeTag()`, `ApplySpreadCopy(`, `UCataclysmAilments::Apply(` and
+   `UCataclysmContagion::` over `game/Source` outside `Tests`. Only `ApplyTypedSpec` puts the damage over time tag on a
+   spec (`CataclysmSkillEffects.cpp` 1738), and only `DealRemainingDamageOverTime` copies one (3108). And
+   **`dot_damage` is read in exactly one place, `DamageOverTimeNumbers` (2227)**, which `ApplyDamageOverTime` hands the
+   applier only when `bScalesWithInstigator` is set (2352) and null otherwise. So "priced from the applier's stats" is
+   `bScalesWithInstigator` in `ApplyDamageOverTime`, for every DoT, and no DoT's pricing was left undecided by the code.
+
+   | Maker | Where | `bScalesWithInstigator` | Marked |
+   | :-- | :-- | :-- | :-- |
+   | A skill's or a projectile's designed burn | `ApplyBurn` from `CataclysmSkillTemplate.cpp` 1677, 1766, 2413; `CataclysmSkillTemplates.cpp` 2734, 2853; `CataclysmProjectile.cpp` 745; `CataclysmTether.cpp` 220; `CataclysmBuriedWeapon.cpp` 122 | true | yes |
+   | An enemy modifier's burn (Hellfire Aura) | `CataclysmEnemyModifiers.cpp` 506 | true | yes: the creature's own stats priced it; a creature holds no stat line, so its ratio is 1 |
+   | An ailment by its kind (a chance on hit, a row's apply) | `UCataclysmAilments::Apply`, `CataclysmAilments.cpp` 635 | true | yes |
+   | A spread the Masochist's nodes make (`SpreadOne`, the aura, Contagious Torment, the corpse spread) | `CataclysmContagion.cpp` 78 | true (left as the default, "the spreader's own damage over time stats decide what each tick deals") | yes |
+   | The bleed on a melee critical strike | `CataclysmVitalAttributeSet.cpp` 2569 | true | yes |
+   | **A spread copy** (on application, at a death) | `ApplySpreadCopy`, `CataclysmSkillEffects.cpp` 3039, from 2881 and `CataclysmContagion.cpp` 422 and 576 | false: "the figure copied already holds them" | **no** |
+   | **The trap's damage over time share** | `ACataclysmMinion::LaySkillTrapsDamageOverTime`, `CataclysmMinion.cpp` 2774 | false: "the blow it is a share of was priced with the player's numbers already" | **no** |
+   | **A minion's burn** | `CataclysmMinion.cpp` 1614 and 1877, instigator the minion | false | **no** |
+   | **The Masochist's converted bleed** | `CataclysmDamageConversion.cpp` 147 | false: the wearer's own damage taken | **no** |
+   | **A share of current health** (Void Splinter) | `ApplyShareOfHealthOverTime`, 2628, its delivery 2801 | does not read `dot_damage` at all (the owner's answer on #915) | **no**: it never comes through `ApplyDamageOverTime` |
+   | **A ground zone's sweep** | `CataclysmGroundZone.cpp` 448, through `ApplyDirectDamage` | none: not priced from `dot_damage` | **no** |
+   | **A dungeon hazard** | eight deliveries in `CataclysmDungeonGameMode.cpp` (3150, 5899, 8136, 8477, 9064, 10699, 12540, 20834), through `ApplyDirectDamage`, read and not changed | none | **no** |
+   | **A burst of an effect's remaining damage** | `DealRemainingDamageOverTime`, 3108 | copies the effect's tags and not its set-by-caller numbers | **no**: see the judgements |
+
+   **"Refresh copies" do not exist as specs.** A weaker or equal application only moves the running effect's start
+   (`RefreshRunningApplication`, from 2471), and Plague Doctor's six-piece only moves the others' starts
+   (`RefreshOtherDamageOverTime`, 2808). Neither makes a new spec, so a refreshed effect keeps the marker it was made
+   with: **A FACT ABOUT THE CODE, ACCEPTED AS SUCH (C1).** The reading cited 3037 and 3040 for refresh copies; those are `ApplySpreadCopy`'s two branches.
+5. **Application.** `DamageOverTimeNumbers` (2183 to 2229) multiplies the per-tick figure by `AsMultiplierForSkill(Source,
+   dot_damage, AskedWith)`, a `StatForSkill` with no target, and that figure goes onto the effect (2529) and into the
+   strongest-application comparison (`Stated`, 2380). A target condition with no target in hand refuses, so the new row
+   is never counted there: the application figure is unchanged by this change.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Q1 | `target_is_moving`, no value, depends on the blow or skill, after `target_is_silenced` | `ECataclysmStatCondition::TargetIsMoving`, `CataclysmStatPipeline.h` 1694 to 1712; `bTargetIsMoving`, 3279 to 3285; the name, `CataclysmStatPipeline.cpp` 147; value-less, 313; `EOn::TheBlowOrSkill`, 515 to 519; `ConditionHolds`, 1239 to 1243; read in `WithTargetState`, `CataclysmAbilitySystemComponent.cpp` 1576, 1626 to 1630 and 1672 to 1681, from the target's own `IsMoving()` |
+| Q2 (a) | the ratio of two asks at the tick | `CataclysmVitalAttributeSet.cpp` 650 to 699: on a marked tick, the instigator's `StatForSkill(dot_damage, TickTags, 100, ..., distance, stagger, Target=the defender's body)` over `StatForSkill(dot_damage, TickTags, 100)`, stamped on `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier` (`CataclysmDamageCalculation.h` 390 to 408, default 1); `Resolve` multiplies by it beside `damage_over_time_taken`, `CataclysmDamageCalculation.cpp` 1262 to 1266 |
+| Q2's test | Plague Doctor's baked more is not counted twice | `ABakedUnconditionedMoreIsNotCountedTwiceOnAMovingEnemy` |
+| Q3 | the tag | the data commit's (D266) |
+| Q4 (a) | one branch, the engine commit now | this commit, on `feat/dot-target-moving` |
+| Point 3 | only ticks priced from the applier's stats read the attacker | `FCataclysmHitDelivery::bPricedFromItsAppliersStats`, `CataclysmSkillEffects.h` 755 to 768, set in `ApplyDamageOverTime` as `bScalesWithInstigator && Instigator != Target`, `CataclysmSkillEffects.cpp` 2566 to 2571; stamped by `ApplyTypedSpec` under `PricedFromItsAppliersStatsDataName` (`.h` 2201 to 2209, `.cpp` 2602 and 2603), 1926 to 1932; read at `CataclysmVitalAttributeSet.cpp` 668 to 671; the control test `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes` |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE MARKER IS A SET-BY-CALLER NUMBER UNDER A PLAIN NAME, NOT A DYNAMIC ASSET TAG.** As `bIsConvertedDamage`,
+  `bCannotBeEvaded` and `bCannotBeMitigated` ride. A tag would need a new entry under `game/Config/Tags/`, which this
+  commit may not touch, and a tag requested by name but not registered is invalid and would never be put on a spec. The
+  option not taken: a tag, as `bCannotPenetrate` rides, which the reading suggested.
+- **THE MARKER IS `bScalesWithInstigator`, AND NOT A LIST OF CALLERS.** It is exactly whether `DamageOverTimeNumbers` was
+  handed the applier, the one reader of `dot_damage`. The option not taken: marking at each caller, which a new caller
+  would forget.
+- **A DAMAGE OVER TIME A CHARACTER LAYS ON ITSELF IS NOT MARKED. THE COORDINATING SESSION'S JUDGEMENT (C2)**, proposed
+  by the writing session. The sentence says "the enemy" and "them"; and
+  `ApplyDamageOverTime` already treats one laid on oneself as not applied to an enemy (`dot_applied`, the riders). The
+  option not taken: mark it, which would let a wearer's self-laid burn tick harder while the wearer walks.
+- **A BURST OF REMAINING DAMAGE IS NOT RAISED. THE COORDINATING SESSION'S JUDGEMENT (C2)**, proposed by the writing
+  session. `DealRemainingDamageOverTime` deals what the effect's ticks have left
+  at once, from the effect's fixed per-tick figure; it is not a tick, and the ruling is per tick. It copies the effect's
+  tags and not its set-by-caller numbers, so it does not carry the marker. The option not taken: copy the marker onto
+  the burst, which would judge the enemy's movement once for all the ticks it replaces.
+- **THE TICK IS ASKED WITH ITS OWN TAGS. THE COORDINATING SESSION'S JUDGEMENT (C2)**, proposed by the writing
+  session: what its effect grants under `Keyword.DoT` (the ailment) and that parent, as
+  `TagsOfTick` gives the defender. Application asks with the ailment's tag and the applying skill's tags; the skill's
+  tags are not carried on the effect. Both asks of the ratio use the same tags, so an unconditioned or wearer-state row
+  cancels whatever its tags. The cost: a target-conditioned row that also requires a skill tag would not reach a tick.
+  No such row exists or is proposed. The option not taken: read the skill instance off the context
+  (`GetAbilityInstance_NotReplicated`), which may be gone by a late tick.
+- **THE TARGET HANDED OVER IS THE DEFENDER'S BODY** (`CataclysmDefendingBody`), with the distance from the causer
+  (`Hit.OpponentDistanceMetres`) and the body's stagger, so `target_within_metres` and `target_is_staggered` are
+  answered on a tick too. The option not taken: `GetOwningActor()`, as the penetration asks pass, which for a player is
+  the player state at the world's origin (#1755); for an enemy the two are the same actor.
+- **THE FALLBACK IS 100 IN BOTH ASKS.** An applier with no stat line for `dot_damage` (a creature, a minion) answers
+  100 over 100, which is 1. **A DENOMINATOR OF NOUGHT OR LESS ANSWERS 1**, the tick as it was applied: the application
+  clamped its own multiplier at nought, and there is no share of nothing to take. A negative ratio is clamped at nought.
+- **THE STRONGEST-APPLICATION COMPARISON DOES NOT READ IT.** It compares what each application states at application,
+  with the target's resistances that meet every tick alike left out; the enemy's movement is the same kind of thing,
+  met at the tick. The option not taken: compare with the ratio at application, which would let a walking enemy's
+  weaker new burn replace a standing one's stronger.
+- **`dot_damage` IS GIVEN THE ASKER KIND "HIT DEALT"** (`ASKER_PASSES_A_HIT_DEALT`), the kind every `target_` condition
+  needs (`test_every_conditioned_stat_has_an_asker.py` classes every `target_` name as a hit dealt's). It is right for a
+  tick because the tick's ask hands over the character struck, its distance and its stagger. It is not a blow, so
+  `enemies_hit_at_least`, `enemies_hit_at_most`, `metres_moved_before_attack` and `skill_health_cost_above` are never
+  handed over; **`CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS` keeps those four refused on `dot_damage`**, as they
+  were. The option not taken: a new asker kind for a tick, which would change what `what_a_condition_needs` returns for
+  every `target_` condition and the checks that read it.
+- **NO SECOND PROBE IN `ConditionedProbes`.** `test_every_conditioned_stat_has_an_asker.py` asks that each listed stat
+  have a probe, and `dot_damage` has one (`ProbeConditionedDotDamage`); the table is keyed by stat, so a second entry
+  for it cannot be added. The four tests below measure the tick's ask.
+
+### THE GENRE SOURCE
+
+None. Brief 73 names none and nothing was fetched. The ruling rests on this game's own rule for this sentence: a
+condition about the enemy is judged on each tick against the enemy, as "DoTs on you tick twice as fast while moving"
+(2026-10-07) is judged on each tick against the wearer.
+
+### WHAT WAS BUILT
+
+Line numbers are of this commit's working tree.
+
+- `CataclysmStatPipeline.h`: the enumerator `TargetIsMoving` (1694 to 1712); `FCataclysmStatConditions::bTargetIsMoving`
+  (3279 to 3285); "a seventy-fourth" (4981); "THIRTY-FOUR OF THE SEVENTY-THREE" (4990).
+- `CataclysmStatPipeline.cpp`: the name (147); value-less (313) and "Each of the thirty-four" (315); depends on the blow
+  or skill (515 to 519); judged from the field (1239 to 1243).
+- `CataclysmAbilitySystemComponent.cpp`, `WithTargetState`: `bWantsMoving` (1576), its case (1626 to 1630), the two
+  early-out tests (1645 and 1646, 1659 and 1660), the fill (1672 to 1681).
+- `CataclysmSkillEffects.h`: `FCataclysmHitDelivery::bPricedFromItsAppliersStats` (755 to 768);
+  `PricedFromItsAppliersStatsDataName` (2201 to 2209). `CataclysmSkillEffects.cpp`: the stamp in `ApplyTypedSpec` (1926
+  to 1932); the marker in `ApplyDamageOverTime` (2566 to 2571); the name's text, `Cataclysm.PricedFromItsAppliersStats`
+  (2602 and 2603).
+- `CataclysmVitalAttributeSet.cpp`, `PostGameplayEffectExecute`: the per-tick ask (650 to 699).
+- `CataclysmDamageCalculation.h`: `FCataclysmIncomingHit::TargetConditionedDotDamageMultiplier` (390 to 408).
+  `CataclysmDamageCalculation.cpp`, `Resolve`: the multiply (1262 to 1266).
+- `CataclysmPassiveTreeTests.cpp`: `ComparesNothing` holds `target_is_moving` (3533 to 3536).
+- `tools/generate_datatables.py`: `CONDITIONS["target_is_moving"] = None` (4166 to 4173);
+  `CONDITIONS_OF_A_HIT_DEALT` (8977); `dot_damage` asks with a hit dealt (9044 to 9053);
+  `CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS` (9088 to 9103), read in `refuse_a_condition_nothing_asks_for`
+  (9166 to 9175).
+- `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`: `target_is_moving` in
+  `BUILT_AHEAD_OF_THEIR_ROWS` (106 to 110), naming #2235 and saying the data commit on this branch removes it.
+- `tools/tests/test_stat_lookups_hand_over_what_they_should.py`: the dated line (224 to 227) and the two `INVENTORY`
+  entries (1128 to 1138).
+- `tools/tests/test_dot_damage_on_a_moving_target_rows.py` (new) and `CataclysmDotOnAMovingTargetTests.cpp` (new).
+
+### THE DATA HALF, AND THE FOLLOW-UP
+
+**The data half, `26938fe7f`, written by the enchantment session** after G7c's rows, the workbook then released. One
+change, because `test_a_reword_must_not_rename_a_row.py` and `test_every_enchantment_alias_points_at_a_current_row.py`
+hold the CSV rename, the pin and the alias together. Quoted before and after:
+
+| Where | Before | After |
+| :-- | :-- | :-- |
+| Enchantments!A266 | While moving, your DoTs deal 20%-40% increased damage | While the enemy is moving, your DoTs on them deal 20%-40% more damage |
+| Enchantments!D266 | Scope.WhileMoving, Keyword.DoT.Generic | Keyword.DoT.Generic (Q3) |
+| Enchantment Effects!A118 | `Positive_While_moving_your_DoTs_deal_20_40_increased_d` | `Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea` |
+| Enchantment Effects!B118 | the old sentence | the new sentence |
+| Enchantment Effects!D118 | increased | more |
+| Enchantment Effects!H118 | while_moving | target_is_moving |
+| Enchantment Effects!C118, E118, F118, G118 | dot_damage, 20, 40, empty | unchanged |
+| `game/Data/EnchantmentsPositive.csv` 265 | `Positive_While_moving_your_DoTs_deal_20_40_increased_d,"While moving, your DoTs deal 20%-40% increased damage",Generic,4.0,"Scope.WhileMoving, Keyword.DoT.Generic",False,` | `Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea,"While the enemy is moving, your DoTs on them deal 20%-40% more damage",Generic,4.0,Keyword.DoT.Generic,False,` |
+| `game/Data/EnchantmentEffects.csv` 118 | `Positive_While_moving_your_DoTs_deal_20_40_increased_d#1,Positive_While_moving_your_DoTs_deal_20_40_increased_d,dot_damage,increased,20.0,40.0,,while_moving,0.0,...` | `Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea#1,Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea,dot_damage,more,20.0,40.0,,target_is_moving,0.0,...` (the remaining cells unchanged) |
+| `tools/tests/enchantment_row_names.txt` | line 498, `Positive_While_moving_your_DoTs_deal_20_40_increased_d` | line 506, after `Positive_While_stationary_your_gadgets_deal_20_40_incr`: `Positive_While_moving_your_DoTs_deal_20_40_increased_d -> Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea` |
+| `FCataclysmEnchantmentRenames::Aliases()`, `CataclysmEnchantmentRenames.cpp` | no pair | 114 and 115, `{TEXT("Positive_While_moving_your_DoTs_deal_20_40_increased_d"), TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea")}`, with its dated comment at 35 to 39 |
+| `BUILT_AHEAD_OF_THEIR_ROWS`, `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` | `"target_is_moving",` | 110, `# TAKEN OUT ON 2026-10-24 by that data commit: the row names it now.` |
+
+The DataTable assets under `game/Content/` are not regenerated by either commit: that is the editor's, in the window.
+
+**The follow-up commit**, by the second session (line numbers of its working tree):
+
+- `game/Source/Cataclysm/Tests/CataclysmDotOnAMovingTargetTests.cpp`: five includes (16, 17, 21, 23 and 24), the
+  real-row helpers (469 to 505) and test 5 (507 to 588), C4. The test-only row's four tests are as they were.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` 2202 to 2207, C5: the comment keeps its words ("While
+  moving, your DoTs deal 20%-40% increased damage" was dropped in silence) and adds "SINCE #2235 (ruled 2026-10-23, the
+  owner's reword) that row reads "While the enemy is moving, your DoTs on them deal 20%-40% more damage", under
+  `target_is_moving`, and is judged on each tick against the enemy the tick lands on ...".
+- `tools/generate_datatables.py` 9006 to 9014: the comment above `ASKER_PASSES_NOTHING_MORE` named `dot_damage` judged
+  once at application (#2235) as a known gap; it now says the case is BUILT since #2235, and that a condition about the
+  wearer's own state is still judged once, at application.
+- This entry.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **ACCEPTED BY THE COORDINATING SESSION (C3): THE WIDENING AND THE FOUR-CONDITION EXCLUSION.**
+- **The widening.** The generator accepts the condition `target_is_moving`, which compares nothing, on any stat row whose
+  asker passes a hit dealt; and `dot_damage` is now asked with a hit dealt, so on it every condition of a hit dealt is
+  accepted but four.
+- **The exclusion.** `CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS` keeps those four refused on `dot_damage`:
+  `enemies_hit_at_least`, `enemies_hit_at_most`, `metres_moved_before_attack` and `skill_health_cost_above`. **It refuses** a value beside
+  the condition; the condition on a stat asked with no target (`movement_speed`); and on `dot_damage` the four
+  conditions about a blow (`enemies_hit_at_least`, `enemies_hit_at_most`, `metres_moved_before_attack`,
+  `skill_health_cost_above`), which it refused before as well.
+- **`test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`** listed `target_is_moving` in the engine commit,
+  the route its own failure message gives, and the data half took it out with the row.
+- **`tools/tests/enchantment_row_names.txt`** holds the rename as `old -> new` (the data half), and the alias table holds
+  the pair, which `test_a_reword_must_not_rename_a_row.py` and `test_every_enchantment_alias_points_at_a_current_row.py`
+  require together.
+- **`test_stat_lookups_hand_over_what_they_should.py`** holds the two new calls.
+- **`Cataclysm.Passives.EveryConditionNameASheetMayWriteReachesAPassiveModifier`** reads the new name; `ComparesNothing`
+  gains it.
+
+No other merged test asserts anything different, by reading: no test outside this group wears a target-conditioned
+`dot_damage` row, so on every other tick both asks run the same modifiers through the same state and their ratio is
+exactly 1 (a float divided by itself), and the multiply by 1 is exact. A hit, and every `FCataclysmIncomingHit` a test builds by
+hand, keeps the default of 1.
+
+### Tests
+
+Five Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmDotOnAMovingTargetTests.cpp`, group
+`Cataclysm.DotOnAMovingTarget.`, beside `Cataclysm.DamageOverTime.` and modelled on `Cataclysm.BurnExplodes.`'s rig: a
+player character on a player state at the origin, its stat line written by hand with the test-only row (`dot_damage`,
+more, 30, `target_is_moving`) and, in test 3, Plague Doctor's shape (`dot_damage`, more, 25, no condition);
+`dot_frequency` and `dot_duration` at 100 with nothing on them; creatures of the monsters' team 20, 25 and 30 m along +X,
+each with a thousand health, no regeneration and no energy shield; burns of ten a tick for ten seconds laid by
+`ApplyDamageOverTime` 1.1 s after the world begins; the crit roll pinned at 100 after the world is made (a tick cannot
+critically strike anyway). The clock moves in steps of 0.05 s through `RunClock`, firing the engine's period timers and
+the creatures' own movement samples. **A creature is moved by the means the moving-row tests use and by the sampler's
+own means together**: on every step a walker is put 10 cm further along +Y and told `NoteMovedMetres`, and a stander is
+told `NoteDidNotMove`. Each window runs from half a second before a tick to half a second after it and asserts at its end
+what the creature reads as, so a test that cannot make its target read as moving fails at a set-up line. Every figure is
+a ratio of a creature's loss to a control creature's loss over the same window. Assertions are counted for a passing
+run, 70 in all: 53 in the four tests of the test-only row and 17 in test 5.
+
+1. `AMarkedTickOnAMovingEnemyIsWorthThirtyPerCentMoreThanOnAStillOne` (10). Set-up: a world, the wearer, two creatures,
+   two burns laid; the walker reads as moving and the control as standing at the window's end; control: the still one
+   lost a tick; the moving one's tick is 1.3 times the still one's.
+2. `AnEnemyThatStopsTakesTheStillFigureOnItsNextTickAndTheMoreAgainWhenItWalks` (15). Set-up: a world, the wearer, two
+   creatures, two burns laid, the walker's while it stands. First tick: reads as moving; control lost a tick; 1.3 times.
+   Second tick: reads as standing; control lost a tick; the control's figure. Third tick: reads as moving; control lost
+   a tick; 1.3 times.
+3. `ABakedUnconditionedMoreIsNotCountedTwiceOnAMovingEnemy` (13), Q2's trap. Set-up: a world, the wearer, three
+   creatures, the base's burn laid unpriced and the other two priced; the walker reads as moving; control: the base lost
+   a tick; control: the still one's priced tick is 1.25 times the base; the walker's is 1.625 times; and not 2.03125.
+4. `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes` (15), point 3's control. Set-up: a world, the wearer,
+   three creatures, the control's and the original's burns laid, the original reads as a running burn, the copy is put
+   on the third creature in the wearer's name by `ApplySpreadCopy`, the copy's carrier burns; both carriers read as
+   moving; control: the still one lost a tick; the original's tick is 1.3 times the control's; the copy's is the
+   control's.
+5. `TheRealRowAtAPinnedRollMakesATickOnAMovingEnemyWorthThirtyPerCentMore` (17), C4, THE REAL ROW. The three generated
+   enchantment tables are read from `game/Data` by `FFileHelper::LoadFileToString` and
+   `UDataTable::CreateTableFromCSVString`, as `Cataclysm.Enchantments.`'s `LoadCsv` reads them; the row is put on a
+   `Head_Helm` beside `Negative_Can_t_use_a_basic_attack`, a drawback with no effect row, with `PositiveRoll` PINNED AT
+   0.5, and `UCataclysmItemModifiers::AccumulateEnchantmentsInto` turns it into the wearer's `dot_damage` modifier, put on
+   a base of 100. THE FIGURE: `UCataclysmItemValues::EnchantmentValue` gives 20 to 40 twenty-one written values, each
+   owning an equal share of the roll; 0.5 x 21 = 10.5 falls in share 10, so the row is 30, and a tick on a moving enemy
+   is exactly 1.3 times a still one's, inside the sentence's 1.2 to 1.4. In order: set-up, a world; the three tables are
+   read; the real row is a row of `EnchantmentsPositive.csv`; the drawback is a row of `EnchantmentsNegative.csv`; the
+   row gives exactly one `dot_damage` modifier; it is a "more"; at the pinned roll it is 30; under `target_is_moving`;
+   the wearer; two creatures; two burns laid; the walker reads as moving and the control as standing at the window's
+   end; control: the still one lost a tick; the moving one's tick is 1.3 times the still one's. No proof of its own: G-I
+   below fails it (the ratio is 1), and nothing but a break of the data fails it alone.
+
+Python: `tools/tests/test_dot_damage_on_a_moving_target_rows.py`, 14 tests on a made-up workbook holding the new
+sentence typed Generic with `Keyword.DoT.Generic`: the reword renames the row, old and new names as computed; the row is
+carried through as written; the condition compares nothing and a value beside it is refused; it is a condition of a hit
+dealt and of nothing else; on `dot_damage` `target_is_moving` and `target_is_boss` pass; the control, `while_moving`
+still passes there; on `movement_speed` the condition is refused; a blow-taken condition is still refused on
+`dot_damage`; each of the four blow conditions is refused on `dot_damage` (four cases); the control, the same table names
+only `dot_damage` and the blow conditions still pass on `attack_damage` and `armor_penetration`; and every name in it is
+a condition of a hit dealt.
+
+**Every earlier test is unchanged, by reading** (the ratio is exactly 1 for every applier holding no target-conditioned
+`dot_damage` row, which is every applier in every merged test). The tests that read a real tick's figure, found by script
+as every test whose body lays a damage over time and runs the clock (a search, so a test laying one through a helper of
+another name is missed; a test is cut at the next test's name): `Cataclysm.BlockShare.AGrantedImmunityEmptiesEveryBlowAndTickUntilItsLaterEnd`, the nine of `Cataclysm.BurnExplodes.`,
+`Cataclysm.Contagion.ASpreadVoidSplinterTakesItsShareOfHealth`, `Cataclysm.DebuffImmune.ARefusedDamageOverTimeTakesNothing`,
+`Cataclysm.Debuffs.ABleedAppliedAgainAtTheSameStrengthStillTicks`, four of `Cataclysm.Enchantments.` (the death row's
+remaining damage, the necrosis row, the leech row scoped to an ailment, the burn-explodes row), two of `Cataclysm.Enemy.`
+(Cripple's magnitude, Weaken's share), the eight of `Cataclysm.RemainingDamage.` that run the clock,
+`Cataclysm.SetBonus.Chrono10.ADamageOverTimeTickOnACaughtEnemyIsSixTimesTheTickOnOneNotCaught`,
+`Cataclysm.SetBonus.Reaper10.ACullsDeathIsTheWearersKillAndADamageOverTimeTickNeverCulls` and three of
+`Cataclysm.VoidSplinter.`: 32 tests in 11 files.
+
+**Not tested:** the real row through the editor's imported DataTable asset (test 5 reads the CSV, as the earlier
+real-row tests do); the old name loading under the new through the alias in a save (the alias tests cover the table); a
+roll other than 0.5; a ratio for an INCREASED target-conditioned
+row (Q2's limit, stated, with no row to wear); a tick from a skill, a projectile or an ailment chance rather than a direct
+`ApplyDamageOverTime` (each comes through the same function with `bScalesWithInstigator` true, read and not run); the
+trap's share, a minion's burn, converted damage, a zone, a hazard and a burst staying unraised (read, not run: the spread
+copy is the one control the ruling asked for); a self-laid DoT staying unraised; `target_within_metres`,
+`target_is_staggered` or another target condition on a tick; a denominator of nought; an applier gone before its tick; a
+player as the target of a moving enemy's marked tick.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF),
+each new text absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (comments and strings removed): `CataclysmDamageCalculation.cpp` 357/357, 95/95, 1/1 before and after G-I;
+`CataclysmVitalAttributeSet.cpp` 798/798, 130/130, 1/1 before and 799/799, 130/130, 1/1 after G-II. Each compiles alone by
+reading: G-I multiplies by a literal, and `Hit` is still read throughout `Resolve`; G-II still reads
+`bPricedFromItsAppliersStats`, and `Hit.bIsDamageOverTime` is a `bool`. The prefix is `Cataclysm.DotOnAMovingTarget.`,
+with its trailing dot, five tests.
+
+**The events the tests' actors raise, listed before counting, each with its depth.** Every burn is laid and the copy
+made by the test, outside any `ActOnEvent`, and every tick lands from the engine's period timer, so each event is raised
+at depth nought. On the wearer: `dot_applied` at each `ApplyDamageOverTime` that is not a spread copy (2, 2, 3, 2 and 2
+in the five tests); none for the copy; no `hit_dealt`, because `OnSomethingWasHit` returns for a tick. On a creature:
+`hit_taken` at each tick (`NoteHitTaken`). No kill (at most three ticks of at most 16.25 on a thousand health), no burn ends by time
+inside a test (ten-second burns, at most 4.6 s run), no crit. **WHAT HANGS ON AN EVENT:** nothing; no actor holds an
+action row. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| G-I, the per-tick multiply is gone (Q2 (a)) | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `Damage *= FMath::Max(0.0f, Hit.TargetConditionedDotDamageMultiplier);` | `Damage *= FMath::Max(0.0f, 1.0f);` | `AMarkedTickOnAMovingEnemyIsWorthThirtyPerCentMoreThanOnAStillOne` | `AnEnemyThatStopsTakesTheStillFigureOnItsNextTickAndTheMoreAgainWhenItWalks`, `ABakedUnconditionedMoreIsNotCountedTwiceOnAMovingEnemy`, `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes`, `TheRealRowAtAPinnedRollMakesATickOnAMovingEnemyWorthThirtyPerCentMore` |
+| G-II, every tick reads the attacker, the marker unchecked (point 3) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (Hit.bIsDamageOverTime && bPricedFromItsAppliersStats)` | `if (Hit.bIsDamageOverTime && (bPricedFromItsAppliersStats \|\| Hit.bIsDamageOverTime))` | `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes` | none |
+
+Failed assertions, by reading:
+
+- **G-I, 6 in 5 tests.** Every ratio is 1. Test 1: "the same tick on the moving creature is 1.3 times" (1). Test 2:
+  "first tick, walking" and "third tick, walking again" (2); "second tick, stopped" passes. Test 3: "the walker's tick is
+  1.25 x 1.3 = 1.625 times the base" (1.25 against 1.625) (1); the control's 1.25 and "and not 2.03125" pass. Test 4:
+  "the original's tick ... is 1.3 times" (1); the copy's passes. Test 5: "the real row at the pinned roll: the moving
+  creature's tick is 1.3 times the still one's" (1). Every set-up line passes.
+- **G-II, 1 in 1 test.** Test 4: "the spread copy's tick on its moving carrier is the control's" (1.3 against 1). Test 3's
+  base is laid unpriced and now asks, but it stands, so it is 1. Tests 1, 2 and 5 lay only priced burns.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. Under G-I and G-II alike every
+other tick's ratio is 1, because no other test's applier holds a target-conditioned `dot_damage` row.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-24, window t73w, under the editor lock as `enchant-t73w`, at a38f41ce2 (the
+branch's three commits moved from 439786ca3 onto development b2b60ebf6, #2491; each kept its zero-context patch id, whole
+and outside this file, and its removed lines). Four steps, as the coordinating session accepted: no old-asset step,
+because the real-row test reads the CSVs and no test's failure on the old assets could be named in advance ("A step whose
+failure cannot be named in advance is not a prediction"). Every figure was registered before the run, and every one is as
+registered. Free physical memory before the lock and before the suite: 15.9 GB.
+
+- **The asset rebuild** (`tools/run_editor_python.py tools/generate_datatable_assets.py`): exit 0; it changed exactly
+  `game/Content/Data/DT_EnchantmentEffects.uasset`, `game/Content/Data/DT_EnchantmentsPositive.uasset` and
+  `game/Data/datatable_asset_sources.json`, which this record commit carries.
+- **The whole Unreal suite:** "Build: Succeeded - 40 actions, 37 files compiled"; "4136 tests performed, 4136 succeeded,
+  0 failed" (4131 on development + this group's 5); "Declared: 4136 tests in the tree at a38f41ce2; 4136 performed, gap 0".
+  40 tests skipped part of what they check.
+- **Python of record:** "6946 passed, 8 skipped"; JUnit 6954 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test
+  passes on the rebuilt assets). `ruff check .`: "All checks passed!".
+- **G-I, the per-tick multiply removed** (`CataclysmDamageCalculation.cpp`, `Damage *= FMath::Max(0.0f,
+  Hit.TargetConditionedDotDamageMultiplier);` to `Damage *= FMath::Max(0.0f, 1.0f);`, anchor counted once): PROVED. With the
+  break in, 5 tests performed, 5 failed, the five registered; 6 failed assertions, 6 registered (every 1.3 read 1.0; the
+  baked test's 1.625 read 1.25). Restored, 5 performed, 5 succeeded. The file's hash is the same after.
+- **G-II, the marker check removed** (`CataclysmVitalAttributeSet.cpp`, `if (Hit.bIsDamageOverTime &&
+  bPricedFromItsAppliersStats)` to `... && (bPricedFromItsAppliersStats || Hit.bIsDamageOverTime))`, anchor counted once):
+  PROVED. With the break in, 5 performed, 4 succeeded, 1 failed, `ASpreadCopyOnAMovingEnemyGainsNothingWhileTheOriginalDoes`;
+  1 failed assertion, 1 registered (the spread copy's tick read 1.3 against 1.0). Restored, 5 performed, 5 succeeded. The
+  file's hash is the same after.
+- **SEEN ONCE, NOT REPEATED, CAUSE UNKNOWN** (ruled to be recorded here): in the enchantment session's Python of record on
+  a38f41ce2 before this window, `tools/tests/test_what_a_run_ending_costs.py::test_the_guards_fail_when_the_document_regresses`
+  [the Ending a Run section is deleted] failed with "OSError: [Errno 22] Invalid argument" on writing its break into
+  `docs/Cataclysm_GDD_v2.md`. The file alone passed ("27 passed"), the document was unchanged afterwards, a second full run
+  did not show it, and nor did this window's run. If it appears again in any window, it is filed as an issue.
+
+---
+
 ## 2026-10-23 — The player's death, hit and skill-use listeners are replaced rather than added, so a second set-up of one pawn hears each death, hit and skill use once
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` (three `FDelegateHandle` members; two comments

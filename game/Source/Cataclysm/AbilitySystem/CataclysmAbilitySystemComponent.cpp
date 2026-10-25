@@ -1573,6 +1573,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsHistory = false;
 	bool bWantsZone = false;
 	bool bWantsSilence = false;
+	bool bWantsMoving = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1622,6 +1623,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetIsSilenced:
 				bWantsSilence = true;
 				break;
+			// AND WHETHER THE TARGET IS MOVING, LISTED HERE FOR THE REASON THE AILMENT COMMENT ABOVE GIVES. Ruled
+			// 2026-10-23 (#2235), for a damage over time tick worth more while the enemy it lands on moves.
+			case ECataclysmStatCondition::TargetIsMoving:
+				bWantsMoving = true;
+				break;
 			default:
 				break;
 			}
@@ -1636,7 +1642,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
-		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence)
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
+			&& bWantsMoving)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1649,7 +1656,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
 	if (!Target
-		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence))
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
+			&& !bWantsMoving))
 	{
 		return State;
 	}
@@ -1659,6 +1667,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (bWantsSilence)
 	{
 		State.bTargetIsSilenced = UCataclysmSilence::IsSilenced(Target);
+	}
+
+	// WHETHER THE TARGET IS MOVING NOW. Ruled 2026-10-23 (#2235). What its own ability system's last movement sample
+	// saw, the reading `while_moving` takes from the asker's; a target with no ability system of this project's is
+	// read as standing, which refuses.
+	if (bWantsMoving)
+	{
+		const UCataclysmAbilitySystemComponent* Walking =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+		State.bTargetIsMoving = Walking && Walking->IsMoving();
 	}
 
 	// WHETHER "YOU" HAVE STRUCK IT YET. Issue #1815, the first hit against each
