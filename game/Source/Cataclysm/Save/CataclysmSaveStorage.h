@@ -60,9 +60,14 @@ enum class ECataclysmSaveLoadResult : uint8
  * cannot be relaxed: section 6 requires death to be written in the same frame
  * health reaches zero. The clock-driven and event-driven writes should not stall
  * the frame, and the route for those is to build the JSON on the game thread and
- * hand the bytes to `ISaveGameSystem::SaveGameAsync`. NOTHING CALLS ANY OF THIS
+ * hand the bytes to a background task. NOTHING CALLS ANY OF THIS
  * YET: the triggers, the clock and the death write are the next piece of issue
  * #529 and are not built.
+ *
+ * SINCE #2494 THAT TASK IS THIS FILE'S OWN, on its own pipe, and not
+ * `ISaveGameSystem::SaveGameAsync`, so that the synchronous write can wait for
+ * the asynchronous writes to its slot. The sentence above saying nothing calls
+ * this was already out of date: `UCataclysmSaveWriter` does.
  *
  * WHERE FILES GO is `ISaveGameSystem`'s business and not this file's. In the
  * editor that is `game/Saved/SaveGames/`; in a packaged build it is the
@@ -115,6 +120,9 @@ public:
 	 * THE ROUTE FOR THE DEATH WRITE, which section 6 says must happen in the
 	 * same frame health reaches zero. Every other write should use
 	 * `WriteToSlotAsync` below.
+	 *
+	 * IT WAITS FOR THE ASYNCHRONOUS WRITES TO THE SAME SLOT FIRST. Issue #2494:
+	 * one still writing holds the file open, and the open here would fail.
 	 */
 	static bool WriteToSlot(const UCataclysmSaveRecord* Record, const FString& SlotName,
 							int32 UserIndex, FString& OutError);
@@ -130,6 +138,11 @@ public:
 	 * handing `ISaveGameSystem::SaveGameAsync` a byte array is the same call
 	 * `AsyncSaveGameToSlot` makes once it has finished serialising.
 	 *
+	 * SINCE #2494 THE BYTES GO TO THIS FILE'S OWN PIPE INSTEAD, whose task does
+	 * what `SaveGameAsync` does: the blocking `ISaveGameSystem::SaveGame`, then
+	 * `WhenDone` on the core ticker. The engine returns no task to wait on, and
+	 * `WriteToSlot` must wait for this slot's writes before it writes.
+	 *
 	 * IT ALSO MEANS THE RECORD IS READ BEFORE THIS RETURNS, so the caller may
 	 * change or discard it immediately. A record handed to a background thread
 	 * and read there would be a race against the next frame's gather.
@@ -142,6 +155,16 @@ public:
 	static bool WriteToSlotAsync(const UCataclysmSaveRecord* Record,
 								 const FString& SlotName, int32 UserIndex,
 								 TFunction<void(bool)> WhenDone, FString& OutError);
+
+	/**
+	 * Whether an asynchronous write to this slot has been handed over and has not
+	 * yet finished writing. Issue #2494.
+	 *
+	 * "FINISHED" MEANS THE FILE IS WRITTEN AND CLOSED, not that the `WhenDone`
+	 * callback has run: that waits for the core ticker, a frame later.
+	 * `WriteToSlot` waits for this to be false before it writes.
+	 */
+	static bool HasAWriteInFlight(const FString& SlotName);
 
 	/**
 	 * Read a record from a slot, migrating it if it is older than this build.

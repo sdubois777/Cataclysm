@@ -370,4 +370,155 @@ bool FCataclysmSaveBackupNamesTheVersion::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmSaveStorageRaceTest
+{
+	/**
+	 * How long the first queued write's label is, in characters, and so roughly
+	 * its size on disk in bytes: 32 MB.
+	 *
+	 * LARGE SO THAT IT IS STILL WRITING WHEN THE SYNCHRONOUS WRITE COMES. Every
+	 * record is built before the first is queued, so between that write being
+	 * handed over and the synchronous write opening the file the game thread
+	 * builds only three small records and one more. A 32 MB write takes
+	 * milliseconds; that gap is microseconds. Read, not measured.
+	 */
+	static constexpr int32 LargeLabelLength = 32 * 1024 * 1024;
+
+	/** How many small writes are queued behind the large one. */
+	static constexpr int32 SmallWritesQueued = 3;
+
+	/** How long to let queued writes finish before giving up. */
+	static constexpr double LongestWaitSeconds = 30.0;
+
+	static UCataclysmSaveExampleRecord* ExampleRecordOfSize(int32 Gold, int32 LabelLength)
+	{
+		UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
+		Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
+		Record->Label = FString::ChrN(LabelLength, TEXT('x'));
+		Record->Gold = Gold;
+		return Record;
+	}
+
+	/** Wait for every write to a slot to finish. Returns whether they did. */
+	static bool WaitUntilNothingIsWriting(const FString& SlotName)
+	{
+		const double GiveUpAt = FPlatformTime::Seconds() + LongestWaitSeconds;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(SlotName))
+		{
+			if (FPlatformTime::Seconds() >= GiveUpAt)
+			{
+				return false;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+		return true;
+	}
+}
+
+/**
+ * A synchronous write to a slot waits for the asynchronous writes queued to it,
+ * then succeeds, and its bytes are what stays in the file. Issue #2494.
+ *
+ * THE PLAY EFFECT: a character that dies just after picking something up keeps
+ * its death record. A pickup writes the character asynchronously and a death
+ * writes it synchronously; with the pickup's write still holding the file open,
+ * the death's write was refused.
+ *
+ * THE CONTROL COMES FIRST: the same synchronous write with nothing queued.
+ *
+ * WITHOUT THE WAIT, BY READING, IT FAILS EITHER WAY ROUND. If the large write
+ * has opened the file first, the synchronous open is refused; if the
+ * synchronous write gets in first, the queued writes land after it and the
+ * file ends holding the last of them. In both, a write is still in flight when
+ * the synchronous call returns. The callbacks are unset on purpose: a write
+ * refused while the guard is in would otherwise log an error in a later test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWaitsForItsSlot,
+	"Cataclysm.SaveStorage.ASynchronousWriteWaitsForTheAsynchronousWritesToItsSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWaitsForItsSlot::RunTest(const FString&)
+{
+	using namespace CataclysmSaveStorageTest;
+	using namespace CataclysmSaveStorageRaceTest;
+
+	const FString SlotName = Slot(TEXT("SynchronousAfterAsynchronous"));
+	Cleanup(SlotName);
+
+	UCataclysmSaveExampleRecord* Synchronous = ExampleRecordOfSize(99, 0);
+	FString Expected;
+	FString JsonError;
+	if (!FCataclysmSaveStorage::ToJson(Synchronous, Expected, JsonError))
+	{
+		AddError(FString::Printf(TEXT("the synchronous record would not turn into JSON: %s"),
+			*JsonError));
+		return false;
+	}
+
+	// THE CONTROL: nothing queued.
+	{
+		FString Error;
+		const bool bWritten =
+			FCataclysmSaveStorage::WriteToSlot(Synchronous, SlotName, UserIndex, Error);
+		const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(SlotName);
+		FString OnDisk;
+		TextInSlot(SlotName, OnDisk);
+
+		TestTrue(FString::Printf(TEXT("control: with nothing queued the synchronous write succeeds (%s)"),
+			*Error), bWritten);
+		TestFalse(TEXT("control: and nothing is in flight when it returns"), bStillWriting);
+		TestTrue(TEXT("control: and the file holds the synchronous record's bytes"),
+			OnDisk == Expected);
+	}
+
+	// EVERY RECORD IS BUILT BEFORE ANY WRITE IS QUEUED, so the gap between the
+	// first write being handed over and the synchronous one is as short as it
+	// can be made.
+	TArray<UCataclysmSaveExampleRecord*> Queued;
+	Queued.Add(ExampleRecordOfSize(1, LargeLabelLength));
+	for (int32 Index = 0; Index < SmallWritesQueued; ++Index)
+	{
+		Queued.Add(ExampleRecordOfSize(2 + Index, 0));
+	}
+
+	int32 Started = 0;
+	FString QueueError;
+	for (const UCataclysmSaveExampleRecord* Record : Queued)
+	{
+		if (FCataclysmSaveStorage::WriteToSlotAsync(Record, SlotName, UserIndex, nullptr, QueueError))
+		{
+			++Started;
+		}
+	}
+
+	// AT ONCE. Nothing between the queuing above and this call.
+	FString Error;
+	const bool bWritten =
+		FCataclysmSaveStorage::WriteToSlot(Synchronous, SlotName, UserIndex, Error);
+	const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(SlotName);
+
+	// AND THEN EVERYTHING IS LET FINISH, so a queued write that would land after
+	// the synchronous one has landed before the file is read.
+	const bool bDrained = WaitUntilNothingIsWriting(SlotName);
+	FString OnDisk;
+	if (bDrained)
+	{
+		TextInSlot(SlotName, OnDisk);
+	}
+
+	TestEqual(TEXT("every queued write was handed over"), Started, SmallWritesQueued + 1);
+	TestTrue(FString::Printf(TEXT("with writes queued the synchronous write still succeeds (%s)"),
+		*Error), bWritten);
+	TestFalse(TEXT("and no write to the slot is in flight when it returns"), bStillWriting);
+	TestTrue(TEXT("every queued write finished within the wait"), bDrained);
+	TestTrue(TEXT("and the file holds the synchronous record's bytes, not a queued one's"),
+		OnDisk == Expected);
+
+	if (bDrained)
+	{
+		Cleanup(SlotName);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

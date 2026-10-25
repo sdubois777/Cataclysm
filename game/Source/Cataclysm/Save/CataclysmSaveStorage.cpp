@@ -2,11 +2,13 @@
 
 #include "Save/CataclysmSaveStorage.h"
 
+#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Items/CataclysmEnchantmentRenames.h"
 #include "JsonObjectConverter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "Misc/ScopeLock.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
 #include "Save/CataclysmSaveMigration.h"
@@ -14,6 +16,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Tasks/Pipe.h"
 
 const TCHAR* FCataclysmSaveStorage::BackupInfix = TEXT("_BackupOfVersion");
 
@@ -37,6 +40,61 @@ namespace
 		const FTCHARToUTF8 Converted(*Json);
 		OutBytes.Reset(Converted.Length());
 		OutBytes.Append(reinterpret_cast<const uint8*>(Converted.Get()), Converted.Length());
+	}
+
+	/**
+	 * THE ASYNCHRONOUS WRITES' OWN PIPE, AND THE LAST WRITE HANDED TO IT FOR EACH
+	 * SLOT. Issue #2494: a death written synchronously while an item pickup's
+	 * asynchronous write still held the same file open was refused, because the
+	 * engine opens a file to write with no sharing. The synchronous write now
+	 * waits for that slot's last task first.
+	 *
+	 * OUR OWN PIPE AND NOT THE ENGINE'S. `ISaveGameSystem::AsyncTaskPipe` is
+	 * protected, and `SaveGameAsync` returns no task, so nothing could wait on a
+	 * write handed to it. A pipe runs its tasks one after another in the order
+	 * they were launched, so the last task for a slot finishing means every
+	 * earlier one, for any slot, has finished too.
+	 *
+	 * THE RECORD DOES NOT GROW. Every finished task is dropped from it whenever it
+	 * is read or added to, so it holds at most the slots with a write still in
+	 * flight, which in play is the run and the character.
+	 *
+	 * STATIC, AS THE ENGINE'S PIPE IS. A pipe must outlive its last task, and the
+	 * engine's own is a static of the same kind.
+	 */
+	struct FWritesInFlight
+	{
+		UE::Tasks::FPipe Pipe{ TEXT("CataclysmSavePipe") };
+		FCriticalSection Lock;
+		TMap<FString, UE::Tasks::FTask> LastBySlot;
+	};
+
+	FWritesInFlight& WritesInFlight()
+	{
+		static FWritesInFlight Writes;
+		return Writes;
+	}
+
+	/** Drop every finished write from the record. Called with the lock held. */
+	void ForgetFinishedWrites(FWritesInFlight& Writes)
+	{
+		for (auto It = Writes.LastBySlot.CreateIterator(); It; ++It)
+		{
+			if (It.Value().IsCompleted())
+			{
+				It.RemoveCurrent();
+			}
+		}
+	}
+
+	/** The last write handed over for a slot and not yet finished, or an empty task. */
+	UE::Tasks::FTask LastWriteTo(const FString& SlotName)
+	{
+		FWritesInFlight& Writes = WritesInFlight();
+		FScopeLock Guard(&Writes.Lock);
+		ForgetFinishedWrites(Writes);
+		const UE::Tasks::FTask* Last = Writes.LastBySlot.Find(SlotName);
+		return Last != nullptr ? *Last : UE::Tasks::FTask();
 	}
 }
 
@@ -231,6 +289,13 @@ bool FCataclysmSaveStorage::WriteToSlot(const UCataclysmSaveRecord* Record, cons
 	TArray<uint8> Bytes;
 	ToUtf8(Json, Bytes);
 
+	// AND THE ASYNCHRONOUS WRITES TO THIS SLOT FINISH FIRST. Issue #2494: one
+	// still holding the file open makes the open below fail, and the death went
+	// unrecorded. This cannot deadlock: the task waited on only writes the file
+	// and queues its callback on the core ticker; it never waits for the game
+	// thread, and the callback is not part of the task.
+	LastWriteTo(SlotName).Wait();
+
 	if (!UGameplayStatics::SaveDataToSlot(Bytes, SlotName, UserIndex))
 	{
 		OutError = FString::Printf(TEXT("the save system would not write to slot '%s'"), *SlotName);
@@ -278,21 +343,45 @@ bool FCataclysmSaveStorage::WriteToSlotAsync(const UCataclysmSaveRecord* Record,
 		return false;
 	}
 
-	const FPlatformUserId User = FPlatformMisc::GetPlatformUserForUserIndex(UserIndex);
-	SaveSystem->SaveGameAsync(/*bAttemptToUseUI=*/false, *SlotName, User, Bytes,
-		[WhenDone](const FString&, FPlatformUserId, bool bSucceeded)
+	// ON THIS FILE'S OWN PIPE, SO `WriteToSlot` CAN WAIT FOR IT. Issue #2494. The
+	// task does what `ISaveGameSystem::SaveGameAsync` does on the engine's pipe:
+	// the blocking `SaveGame`, then the callback handed to the core ticker, with
+	// the same flags. `OnAsyncComplete`, the engine's helper for that last step,
+	// is protected, so its one line is repeated here.
+	FWritesInFlight& Writes = WritesInFlight();
+	FScopeLock Guard(&Writes.Lock);
+	ForgetFinishedWrites(Writes);
+	Writes.LastBySlot.Add(SlotName, Writes.Pipe.Launch(UE_SOURCE_LOCATION,
+		[SaveSystem, SlotName, UserIndex, Bytes, WhenDone]()
 		{
-			// THE ENGINE PROMISES THIS RUNS ON THE GAME THREAD, and
-			// UGameplayStatics::AsyncSaveGameToSlot checks it with the same
-			// assertion. A caller may therefore touch the world from here.
-			check(IsInGameThread());
-			if (WhenDone)
-			{
-				WhenDone(bSucceeded);
-			}
-		});
+			const bool bSucceeded =
+				SaveSystem->SaveGame(/*bAttemptToUseUI=*/false, *SlotName, UserIndex, *Bytes);
+
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[WhenDone, bSucceeded](float) -> bool
+				{
+					// THE CORE TICKER RUNS ON THE GAME THREAD, as it did when the
+					// engine queued this, and UGameplayStatics::AsyncSaveGameToSlot
+					// checks it with the same assertion. A caller may therefore
+					// touch the world from here.
+					check(IsInGameThread());
+					if (WhenDone)
+					{
+						WhenDone(bSucceeded);
+					}
+					return false;
+				}));
+		},
+		UE::Tasks::ETaskPriority::Default,
+		UE::Tasks::EExtendedTaskPriority::None,
+		UE::Tasks::ETaskFlags::DoNotRunInsideBusyWait));
 
 	return true;
+}
+
+bool FCataclysmSaveStorage::HasAWriteInFlight(const FString& SlotName)
+{
+	return !LastWriteTo(SlotName).IsCompleted();
 }
 
 UCataclysmSaveRecord* FCataclysmSaveStorage::ReadFromSlot(
