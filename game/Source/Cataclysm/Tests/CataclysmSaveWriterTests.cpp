@@ -22,6 +22,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "Tests/CataclysmSaveExampleRecord.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -68,11 +69,18 @@ namespace CataclysmSaveWriterTest
 	 *
 	 * TWO SECONDS IS FAR MORE THAN A TWO-KILOBYTE WRITE NEEDS and costs nothing
 	 * when the file is already there, which is the ordinary case: the wait ends
-	 * as soon as it appears.
+	 * as soon as it appears and nothing is still writing it.
 	 */
 	static constexpr float LongestWaitForAWriteSeconds = 2.0f;
 
-	/** Wait, briefly, for a slot to appear. Returns whether it did. */
+	/**
+	 * Wait, briefly, for a slot to appear. Returns whether it did.
+	 *
+	 * AND FOR THE LAST WRITE HANDED OVER FOR IT TO FINISH. Issue #2495: a file
+	 * exists from the moment a write opens it, before that write has finished,
+	 * so a test that read or deleted the slot as soon as it appeared could meet
+	 * a write that was still running.
+	 */
 	static bool WaitForSlot(const FString& SlotName)
 	{
 		if (SlotName.IsEmpty())
@@ -83,7 +91,8 @@ namespace CataclysmSaveWriterTest
 		const double GiveUpAt = FPlatformTime::Seconds() + LongestWaitForAWriteSeconds;
 		while (FPlatformTime::Seconds() < GiveUpAt)
 		{
-			if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+			if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex)
+				&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))
 			{
 				return true;
 			}
@@ -416,6 +425,9 @@ bool FCataclysmSaveWriterRunRecordOncePerFrame::RunTest(const FString&)
 	// out from under a write that was still running, the write failed, and its
 	// callback logged an Error that the automation framework charged to
 	// whichever test was running when it arrived.
+	//
+	// SINCE #2495 `WaitForSlot` WAITS FOR THE WRITE AS WELL AS THE FILE, so the
+	// words "waiting only for the file to EXIST" describe it before that change.
 	//
 	// THAT IS THE FAILURE MODE `LongestWaitForAWriteSeconds` ABOVE ALREADY
 	// DESCRIBES. It was intermittent -- the comment records it passing four
@@ -2120,6 +2132,172 @@ bool FCataclysmSaveWriterGathersLeftEdict::RunTest(const FString&)
 	TestEqual(TEXT("and the day it ends"), Record->Cities[0].LeftEdictUntilDay, 35);
 	TestTrue(TEXT("CONTROL: a city carrying none carries none in the record"), Record->Cities[1].LeftEdict.IsNone());
 	TestEqual(TEXT("CONTROL: and no day"), Record->Cities[1].LeftEdictUntilDay, 0);
+	return true;
+}
+
+namespace CataclysmSaveWriterWaitTest
+{
+	/**
+	 * How long the large record's label is, in characters, and so roughly its
+	 * size on disk in bytes: 32 MB, as in the test of issue #2494.
+	 *
+	 * LARGE SO THAT ITS WRITE IS STILL RUNNING WHEN `WaitForSlot` FIRST LOOKS.
+	 * The record is built and turned into bytes before it is handed over, so
+	 * the background task has only the file to write, and 32 MB takes
+	 * milliseconds against the microseconds between handing it over and the
+	 * first look. Read, not measured.
+	 */
+	static constexpr int32 LargeLabelLength = 32 * 1024 * 1024;
+
+	/** How long to let a write finish before the slot is deleted. */
+	static constexpr double LongestDrainSeconds = 30.0;
+
+	static UCataclysmSaveExampleRecord* ExampleRecordOfSize(int32 Gold, int32 LabelLength)
+	{
+		UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
+		Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
+		Record->Label = FString::ChrN(LabelLength, TEXT('x'));
+		Record->Gold = Gold;
+		return Record;
+	}
+
+	/** Wait, for longer than `WaitForSlot` does, until nothing writes a slot. */
+	static bool WaitUntilNothingIsWriting(const FString& Slot)
+	{
+		const double GiveUpAt = FPlatformTime::Seconds() + LongestDrainSeconds;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Slot))
+		{
+			if (FPlatformTime::Seconds() >= GiveUpAt)
+			{
+				return false;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+		return true;
+	}
+
+	static void DeleteSlot(const FString& Slot)
+	{
+		if (UGameplayStatics::DoesSaveGameExist(Slot, CataclysmSaveWriterTest::UserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Slot, CataclysmSaveWriterTest::UserIndex);
+		}
+	}
+}
+
+/**
+ * `WaitForSlot` returns only once the write to the slot has finished, not as
+ * soon as its file exists, so the record it waited for reads back. Issue #2495.
+ *
+ * WHAT THIS GUARDS. Six tests above read a slot with
+ * `FCataclysmSaveStorage::ReadFromSlot` once `WaitForSlot` returns, and
+ * `Forget` deletes a slot once it does. A file exists from the moment a write
+ * opens it; a read of it while the write still holds it open is refused, and a
+ * delete under it makes the write fail.
+ *
+ * THE CONTROL COMES FIRST: a small record to an empty slot, which reads back
+ * whether or not the wait looks at the write.
+ *
+ * THE LARGE RECORD GOES TO A SLOT THAT ALREADY HOLDS A FILE, so that a wait
+ * which looked only for a file would end on its first look, while the large
+ * write is still running. Without the wait for the write, by reading, no write
+ * is finished at that moment and the read meets either the old record or a
+ * file that is being written. The callbacks are unset on purpose: a write that
+ * fails while the guard is in would otherwise log an error in a later test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWaitForSlotWaitsForTheWrite,
+	"Cataclysm.SaveWriter.TheTestsWaitForAWriteToFinishNotOnlyForItsFile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWaitForSlotWaitsForTheWrite::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterWaitTest;
+
+	// THE CONTROL: a small record queued to an empty slot.
+	{
+		const FString ControlSlot = FString(SlotPrefix) + TEXT("WaitForSlotControl");
+		DeleteSlot(ControlSlot);
+
+		const UCataclysmSaveExampleRecord* Small = ExampleRecordOfSize(7, 0);
+		FString Error;
+		const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(
+			Small, ControlSlot, UserIndex, nullptr, Error);
+		const bool bThere = WaitForSlot(ControlSlot);
+		const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(ControlSlot);
+
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+		FString Message;
+		const UCataclysmSaveExampleRecord* Read = Cast<UCataclysmSaveExampleRecord>(
+			FCataclysmSaveStorage::ReadFromSlot(
+				ControlSlot, UserIndex, UCataclysmSaveExampleRecord::StaticClass(),
+				GetTransientPackage(), Result, Message));
+		const bool bDrained = WaitUntilNothingIsWriting(ControlSlot);
+
+		TestTrue(FString::Printf(TEXT("control: the small write was handed over (%s)"), *Error),
+			bQueued);
+		TestTrue(TEXT("control: WaitForSlot says the slot is there"), bThere);
+		TestFalse(TEXT("control: and no write to it is in flight when it returns"), bStillWriting);
+		TestTrue(FString::Printf(TEXT("control: it reads back (%s: %s)"),
+			FCataclysmSaveStorage::Describe(Result), *Message),
+			FCataclysmSaveStorage::Succeeded(Result));
+		TestEqual(TEXT("control: and it is the record written"), Read ? Read->Gold : -1, 7);
+
+		if (bDrained)
+		{
+			DeleteSlot(ControlSlot);
+		}
+	}
+
+	const FString LargeSlot = FString(SlotPrefix) + TEXT("WaitForSlotLarge");
+	DeleteSlot(LargeSlot);
+
+	// EVERY RECORD IS BUILT BEFORE ANYTHING IS WRITTEN, so the gap between the
+	// large write being handed over and the wait is as short as it can be made.
+	const UCataclysmSaveExampleRecord* First = ExampleRecordOfSize(1, 0);
+	const UCataclysmSaveExampleRecord* Large = ExampleRecordOfSize(2, LargeLabelLength);
+
+	FString FirstError;
+	const bool bFirstWritten =
+		FCataclysmSaveStorage::WriteToSlot(First, LargeSlot, UserIndex, FirstError);
+
+	FString QueueError;
+	const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(
+		Large, LargeSlot, UserIndex, nullptr, QueueError);
+
+	// AT ONCE. Nothing between the handing over above and this call.
+	const bool bThere = WaitForSlot(LargeSlot);
+	const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(LargeSlot);
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmSaveExampleRecord* Read = Cast<UCataclysmSaveExampleRecord>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			LargeSlot, UserIndex, UCataclysmSaveExampleRecord::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	// AND THEN EVERYTHING IS LET FINISH BEFORE THE SLOT IS DELETED, so a write
+	// still running when the guard is broken does not fail under the delete.
+	const bool bDrained = WaitUntilNothingIsWriting(LargeSlot);
+
+	TestTrue(FString::Printf(TEXT("the slot was first written with a small record (%s)"),
+		*FirstError), bFirstWritten);
+	TestTrue(FString::Printf(TEXT("the large write was handed over (%s)"), *QueueError),
+		bQueued);
+	TestTrue(TEXT("WaitForSlot says the slot is there"), bThere);
+	TestFalse(TEXT("and no write to it is in flight when it returns"), bStillWriting);
+	TestTrue(FString::Printf(TEXT("the slot reads back (%s: %s)"),
+		FCataclysmSaveStorage::Describe(Result), *Message),
+		FCataclysmSaveStorage::Succeeded(Result));
+	TestEqual(TEXT("and it is the large record, not the one written first"),
+		Read ? Read->Gold : -1, 2);
+	TestEqual(TEXT("and its label is whole"), Read ? Read->Label.Len() : -1, LargeLabelLength);
+	TestTrue(TEXT("every write to the slot finished within the wait"), bDrained);
+
+	if (bDrained)
+	{
+		DeleteSlot(LargeSlot);
+	}
 	return true;
 }
 
