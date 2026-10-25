@@ -35,13 +35,39 @@ through the helper while held.
 
 ### Proofs
 
-Registered for the window and not yet run: **P1**, `Set(*Previous);` -> `Set(TEXT(""));` in the helper's destructor
-(the code as it was). Predicted: `AScopedConsolePinPutsBackTheValueItFound` fails, reading 0 where it expects -1. Prefix
-`Cataclysm.DungeonModifierEffects.AScopedConsolePin`.
+**PROVED**, by `unreal_build.prove_cpp_guard`, in the stacked window below, as that window's P2: `Set(*Previous);` ->
+`Set(TEXT(""));` in the helper's destructor (the code as it was), the break text matching once. Predicted:
+`AScopedConsolePinPutsBackTheValueItFound` fails, reading 0 where it expects -1. Printed: "1 tests performed, 0
+succeeded, 1 failed: AScopedConsolePinPutsBackTheValueItFound"; restored "1 tests performed, 1 succeeded, 0 failed".
+
+**THIS IS THE MEASUREMENT** the coordinating session asked for, and it settles what was only read above: with the
+helper writing an empty string, the engine log printed "Expected 'once it goes, the roll reads its default again and
+not 0' to be -1.000000, but it was 0.000000" and "Expected 'and once it goes the default is back' to be -1.000000, but
+it was 0.000000". An empty string set on a float console variable reads as 0.
+
+**AND NO OTHER TEST HAD LEANT ON IT.** The whole suite below, with the helper now putting back what it found, passed
+every test: none had passed only because an earlier test left a roll pinned at 0.
 
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
+One window for the two, stacked as ruled, run by the dungeon session and given by the coordinating session (lock
+`dungeon-w51`, `fix/rarity-seed-and-console-pins-2` at `00a925dc7`, on `5317410f1`, the #2334 merge #2509, 2026-10-25),
+with the six conditions checked immediately before the lock was taken: both of `development`'s runs at `5317410f1`
+succeeded (its CI run was waited for until it had); none in progress or queued; the lock free; no build or editor
+process; no open pull request; "free GB: 15.8 of 31.1". The lock was released before anything was written here. The
+move: `check_resolved_cpp.py`, "6 files read, 0 with complaints"; both commits' zero-context patch ids unchanged; the
+append-append conflict at the end of `CataclysmDungeonModifierEffectsTests.cpp` resolved by taking `development`'s
+file and re-applying #2493's own edit script, each edit asserted to match once, which gave the original's 60 lines
+added and 3 removed.
+
+- **Build:** "Build: Succeeded - 71 actions, 61 files compiled".
+- **The whole Unreal suite:** "4160 tests performed, 4160 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4160 tests in the tree at 00a925dc7; 4160 performed, gap 0; every declared test was reported by the run."
+  Registered 4160 and 0: the 4158 of the #2334 merge and one new test for each issue. Memory:
+  "CataclysmTestMemorySummary: tests=4767 peak_used_virtual_mb=11691 final_used_virtual_mb=11421 collections=3152
+  collection_total_s=106.788 worlds_at_last_collection=1".
+- **Python:** "6974 passed, 8 skipped"; JUnit tests 6982, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **The proofs:** as under Proofs above, both PROVED.
 
 Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1` (moved from `3c1f3ac5f` as `-1`, its
 zero-context patch ids unchanged), stacked with #2490 at the coordinating
@@ -88,14 +114,17 @@ above Common, and the six floors do not all hold the same rungs.
 
 ### Proofs
 
-Registered for the window and not yet run: **P1**, `FRandomStream Stream = FromTheFloor != nullptr` ->
-`FRandomStream Stream = false` in `ACataclysmGameMode::RarityStepFor`, so every creature draws from its identity and
-the clock again. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor` fails. Prefix
-`Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungs`.
+**PROVED**, by `unreal_build.prove_cpp_guard`, in the stacked window (its P1, recorded in full in the entry above):
+`FRandomStream Stream = FromTheFloor != nullptr` -> `FRandomStream Stream = false` in
+`ACataclysmGameMode::RarityStepFor`, so every creature draws from its identity and the clock again, the break text
+matching once. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor` fails. Printed: "1 tests performed,
+0 succeeded, 1 failed: TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor"; restored "1 tests performed, 1 succeeded,
+0 failed".
 
 ### Run
 
-Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
+In the one window shared with #2493, recorded under "Run" in the entry above: 4160 tests performed, 4160 succeeded, 0
+failed.
 
 Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1`, stacked with #2493 (the entry above).
 
