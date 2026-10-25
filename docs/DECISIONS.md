@@ -253,14 +253,40 @@ reseeds, the one before and the eight added, and accepts every one.
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code.
+**All three PROVED** in the window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon session
+after reading the code, each break text matching `CataclysmDungeonGameMode.cpp` exactly once, each narrowed to the one
+test it names. Each puts one draw back on the global stream.
 
-P3's risk of passing by chance with its break in is registered and ACCEPTED by the coordinating session:
-"registered; if P3's broken run passes it is recorded as "not detected on this run", not a stop".
+- **P1**, `Headings.FRandRange(0.0f, PI)` -> `FMath::FRandRange(0.0f, PI)`. Predicted:
+  `RawSewageRiverHeadingsComeFromTheFloorsSeed` fails. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  RawSewageRiverHeadingsComeFromTheFloorsSeed"; restored "1 tests performed, 1 succeeded, 0 failed".
+- **P2**, `Offers.RandRange(0, Index)` -> `FMath::RandRange(0, Index)`. Predicted:
+  `PactOfTemptationOfferComesFromTheFloorsSeed` fails. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  PactOfTemptationOfferComesFromTheFloorsSeed"; restored "1 tests performed, 1 succeeded, 0 failed".
+- **P3**, `From[Choice.RandRange(0, From.Num() - 1)]` -> `From[FMath::RandRange(0, From.Num() - 1)]`. Predicted: its test
+  fails, with a registered and accepted risk of passing by chance ("registered; if P3's broken run passes it is
+  recorded as "not detected on this run", not a stop"). Printed: "1 tests performed, 0 succeeded, 1 failed:
+  ThePlaguebearerChosenComesFromTheFloorsSeedOnAFloorAndOnEachHordeWave"; restored "1 tests performed, 1 succeeded, 0
+  failed". Detected on this run.
 
 ### Run
 
-Not yet run.
+Nothing was built and no Unreal test was run by the writing session. One window, run by the dungeon session, given by
+the coordinating session on 2026-10-24 (lock `dungeon-w42`, `feat/game-seeded-floor-draws-2` at `2d5f13e99`, on
+`b83230b44`, the #2485 merge #2501), with the six conditions checked immediately before the lock was taken: both of
+`development`'s runs at `b83230b4` succeeded; none in progress or queued; the lock free; no build or editor process; no
+open pull request; "free GB: 16.6 of 31.1". The lock was released before anything was written here.
+
+- **Build:** "Build: Succeeded - 71 actions, 61 files compiled".
+- **The whole Unreal suite:** "4147 tests performed, 4147 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4147 tests in the tree at 2d5f13e99; 4147 performed, gap 0; every declared test was reported by the run."
+  Registered 4147 and 0: the 4139 of the #2485 merge and the eight new tests here. Memory, from the run's summary line:
+  "CataclysmTestMemorySummary: tests=4754 peak_used_virtual_mb=11595 final_used_virtual_mb=11359 collections=3143
+  collection_total_s=106.920 worlds_at_last_collection=1".
+- **Python:** "6946 passed, 8 skipped"; JUnit tests 6954, failures 0, errors 0, skipped 8. Before the build, on the same
+  head: "6947 passed, 7 skipped", JUnit 6954; the one more skipped is the test that runs only where no binaries are
+  built. Lint: "All checks passed!".
+- **The proofs:** as under Proofs above.
 
 Branch `feat/game-seeded-floor-draws-2` on `development` at `b83230b44` (written on `439786ca3` as `-1` and moved,
 its zero-context patch ids unchanged). This entry adds lines to `docs/DECISIONS.md`
