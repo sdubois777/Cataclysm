@@ -17,7 +17,11 @@ and `.cpp` (the field `DamageType` becomes `DamageTypes`, a list, with `bDamageT
 (`FindTheSkillUsed`); comments only in `game/Source/Cataclysm/Items/CataclysmItem.h`,
 `game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `game/Source/Cataclysm/Tests/CataclysmCarriedDamageTypesTests.cpp`;
 the new `game/Source/Cataclysm/Tests/CataclysmSkillPoolTests.cpp` (eight tests, the group `Cataclysm.SkillPool.`); this
-file. One commit. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill assignment,
+file. **A second commit (Q-P1):** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, allowed by name for three
+readers only (`DungeonGameModeEchoChamberSkill`, `DungeonGameModeWildMagicPoolOf` and the Wild Magic panel line);
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (three tests in `Cataclysm.SkillPool.`, one block
+at its end); a comment in `game/Source/Cataclysm/Tests/CataclysmWeaponSlotsTests.cpp`; and a dated line on the
+2026-08-25 entry "A Cataclysm type other than Demonic". **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill assignment,
 no save field, no screen** (layers 3 and 4). **It does not close #837**, and it does not change `Equip`.
 
 ### SAID FIRST
@@ -28,7 +32,7 @@ created Demonic now casts War Greataxe skills (layer 1 opened the War trees and 
 carrying Demonic and War fills the Demonic six, because Demonic is the creation type; the War six are in the pool
 (`GetSkillPool`) and nothing can put them in a slot until layer 3.
 
-**A WEAPON CARRYING ONLY TYPES WITH NO DESIGNED SKILL GRANTS ONLY ITS BASIC ATTACK.** Only Demonic and War have designed
+**A WEAPON CARRYING ONLY TYPES WITH NO DESIGNED SKILL GRANTS ONLY ITS BASIC ATTACK (recorded under Q-P4).** Only Demonic and War have designed
 rows (117 of 403). So a Sword carrying Void and Famine now swings and casts nothing else, where before layer 2 it cast
 the creation type's Sword skills; about 40% of Swords, Daggers, Fists and Whips drop carrying neither Demonic nor War
 (worked from the roll's rule in the reading of 2026-10-25, not counted from drops). That follows from the owner's
@@ -44,11 +48,11 @@ Sword's and the Demonic Axe's rows as well as their own: 22 entries. Within one 
 every slot it has a row for, which today is all five, so the second weapon of the same type adds to the pool and not to
 the slots.
 
-**THREE READERS OF A CHARACTER'S "OWN" DAMAGE TYPE WERE NOT MOVED**, because they are in
-`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, which the writing session's brief forbids: Echo Chamber's
-lookup of the skill to copy, Wild Magic's pool, and the Wild Magic panel line. They still ask `DamageTypeOf`, which now
-answers the first carried type in fill order (the creation type when it is carried). For a character carrying one type
-nothing differs. The change proposed for them is below, under "NOT BUILT".
+**ALL FIVE READERS OF A CHARACTER'S "OWN" DAMAGE TYPE ASK EVERY CARRIED TYPE.** The first commit moved two (the
+foreign-damage window and a triggered skill's lookup); the second, under Q-P1, moved the three in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: Echo Chamber copies a skill of any carried type, Wild
+Magic draws from every carried type's pool, and its panel line names every carried type ("pool of N War and Demonic
+skills"). For a character carrying one type nothing differs.
 
 **NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
 brief 91, from development `1bf218ccb`. Nothing was compiled and no Unreal test was run by the session that wrote it.
@@ -70,6 +74,18 @@ The coordinating session, 2026-10-25, verbatim:
 > **Q8:** "own type" means any carried type. YES.
 > **Q11:** the default fill order is the creation type first, then Weapon1's types, then Weapon2's. YES.
 > Layer 2's fill order should read the first occupied slot, as you say. Note that in its brief.
+
+The coordinating session, 2026-10-25, after reading the first commit, verbatim:
+
+> - **Q-P1: YES.** Add a second commit on this branch, allowing CataclysmDungeonGameMode.cpp by name for those three
+>   readers: Echo Chamber's skill lookup, the Wild Magic pool and the Wild Magic panel line, with a test each.
+> - **Q-P3: YES.** Record it, with a dated line on the 2026-08-25 Cataclysmic Resonance entry saying Q8 makes "other
+>   than own type" diverge from "other than Demonic" for a character carrying several types.
+> - Record in the entry that a weapon carrying only types with no designed skills grants only its basic attack. (Q-P4,
+>   as the enchantment session relayed it.)
+
+**Q-P2**, the owner's answer of 2026-10-25 on Burning Wrath and Conflagration, "Make them generic", is not built on
+this branch: see the judgement on the basic attack's tag below.
 
 Ruled by the coordinating session the same day, on building this beside the branch that moves a lone one-handed weapon to
 Weapon1: "start A and layer 2 from that merge, built side by side. A goes to the machine first, because it is small and
@@ -126,6 +142,7 @@ Line numbers are of this commit.
 | Weapon1 read as the first OCCUPIED slot | `UCataclysmEquipmentComponent::WornWeaponTypes`, `CataclysmEquipmentComponent.cpp` 740 to 759, in `WornWeapons` order; handed to `EquipWeaponTypes` at `CataclysmPlayerCharacter.cpp` 2279 to 2285. |
 | The default fill | `UCataclysmWeaponSkills::DefaultFillFrom`, `CataclysmWeaponSkills.cpp` 455 to 469; `FillSlotsFromWeaponTypes`, `CataclysmWeaponSlotsComponent.cpp` 332 to 337. |
 | Q8, "own" is any carried type | `CarriesDamageType` and `DamageTypesOf`, `CataclysmWeaponSlotsComponent.cpp` 142 to 158; read by the foreign-damage window, `CataclysmVitalAttributeSet.cpp` 2264 to 2268, and `FindTheSkillUsed`, `CataclysmTriggeredSkill.cpp` 54 to 68. |
+| Q8 and Q-P1, the three Dungeon readers | `CataclysmDungeonGameMode.cpp`: `DungeonGameModeEchoChamberSkill` 1078 to 1097 and `DungeonGameModeWildMagicPoolOf` 1112 to 1126, each over `DamageTypesOf` in fill order; the panel line 19690 to 19693, the types joined by " and ". Lines of the second commit. |
 | Q9, moot: one Element tag on the basic attack | `CataclysmWeaponSlotsComponent.cpp` 290 to 307: the first carried type in fill order, read at 301. |
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
@@ -146,9 +163,12 @@ Line numbers are of this commit.
   increase the same way, so a Demonic basic attack is reached by Burning Wrath. A tag per carried type would let a
   two-type basic attack take both elements' bonuses; no tag would take Burning Wrath's bonus off it. The options not
   taken: a tag per type (the plan's first reading of the design's "enhanced by all damage types present") and none.
-  **FOR THE COORDINATING SESSION:** those two skills are increases scoped to a damage type, which the owner's Q9
+  **ASKED AND ANSWERED (Q-P2):** those two skills are increases scoped to a damage type, which the owner's Q9
   sentence ("we shouldn't have anything that says "increased X damage"") may reach; the count of 2026-10-25 searched
-  data rows, and these two scopes are written in C++ from the skill's own tag. Nothing was changed.
+  data rows, and these two scopes are written in C++ from the skill's own tag. The owner answered "Make them
+  generic". **Not built on this branch:** the writing session judged it its own small branch, because the code is a
+  few lines but existing assertions of the scope change with it and the two skills' words are workbook cells. Until
+  it lands the basic attack's one tag still lets Burning Wrath reach it.
 - **THE BASIC ATTACK, THE SUB-TYPE AND THE HANDS STILL COME FROM THE FIRST WORN WEAPON** (`GetEquippedWeaponType`), as
   before. The rule for two swung weapons (2026-08-16) is not built here.
 - **A CHANGE OF ONLY THE CREATION TYPE ON A STANDING CHARACTER DOES NOT REFILL THE SLOTS** until the next change of gear
@@ -163,8 +183,8 @@ Line numbers are of this commit.
 - **THE CHANGE OF Q8 FOR THE FOREIGN-DAMAGE WINDOW.** The entry of 2026-08-25 that read Cataclysmic Resonance's "other
   than Demonic" as "other than the character's own type" said the two readings "cannot diverge for any character that can
   take this node". With several carried types they can: a Masochist carrying Demonic and War now opens nothing on a War
-  hit, where the literal "other than Demonic" would open it. Q8 rules "own" as any carried type, so that is built; the
-  divergence is said here so the coordinating session can see it.
+  hit, where the literal "other than Demonic" would open it. Q8 rules "own" as any carried type, so that is built.
+  Recorded under Q-P3, with a dated line on that entry, its own text left as it was.
 
 ### THE GENRE SOURCE
 
@@ -192,10 +212,10 @@ None. The design and the rulings settle the mechanism; no formula was proposed a
 - **The two readers moved:** the foreign-damage window asks `CarriesDamageType(body, hit's type)`; `FindTheSkillUsed`
   looks the name up among the skills of every carried type, in fill order.
 
-### NOT BUILT, AND THE CHANGE PROPOSED FOR IT
+### THE THREE DUNGEON READERS, BUILT IN THE SECOND COMMIT (Q-P1)
 
-The three readers in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, outside the writing session's brief.
-Each is one call:
+First proposed as not built, outside the writing session's brief; the file was then allowed by name for these three.
+Each is one call, as proposed:
 
 - `DungeonGameModeEchoChamberSkill` (1079 to 1091): loop over `UCataclysmWeaponSlotsComponent::DamageTypesOf(Character)`
   and look in `SkillsOfDamageType(table, type)` for each, as `FindTheSkillUsed` now does.
@@ -203,6 +223,8 @@ Each is one call:
   for each carried type. The 2026-10-04 Wild Magic entry reads "your class tree" as "the skills of the player's damage
   type"; with Q8 the reading would be every carried type's.
 - The panel line (19675): name `FString::Join(DamageTypesOf(PanelPlayer), TEXT(" and "))`.
+
+Line numbers in this list are of `1bf218ccb`. Nothing else in that file was changed.
 
 ### Tests
 
@@ -250,7 +272,23 @@ helpers' set-up checks, by reading.
    nothing pinned; **control, the slots carry "Demonic, Void"**; in a second world, set-up two, `SetDamageType("War")`,
    set-up, the same Sword; **the slots keep "War"**, **and fill the War Sword's six**.
 
-112 assertions in all, by reading.
+And three in the second commit, in one block at the end of `CataclysmDungeonModifierEffectsTests.cpp`, using its
+floor helpers (`FPossessedPlayer`, `AnObstacleFloor`, `ThePlayerUses`, `FWildMagicPinned`, `FEchoChamberAnglePinned`,
+`EverySkillOf`, `AStrikeEchoChamberCopies`, `TheWildMagicPool`); the types are handed to the player's slots with
+`UseDamageTypes` after the floor is built, and nothing is worn after:
+
+9. `EchoChamberCopiesASkillOfTheSecondCarriedType`, 7: set-up four (the world, the slots, a Demonic strike Echo Chamber
+   copies, the angle pinned); carrying War: **control, the strike is not drawn**; carrying War then Demonic: **the strike
+   is the one to copy**, **the copy is fired**.
+10. `WildMagicDrawsFromEveryCarriedType`, 7: set-up five (the world, the slots, War's pool is one skill, Demonic's
+    holds skills, the pins); carrying War: **control, using War's one skill draws nothing**; carrying War then Demonic,
+    the pick pinned to 0: **the draw is Demonic's first skill**.
+11. `TheWildMagicPanelNamesEveryCarriedTypeAndCountsTheirPool`, 4: set-up two; carrying War: **control, "wild magic: 0
+    triggered; pool of 1 War skill"**; carrying War then Demonic: **"pool of N War and Demonic skills"**, N the two
+    pools' sizes added.
+
+130 assertions in all, by reading (112 in the first commit, 18 in the second), not counting the set-up checks inside
+the floor helpers `AnObstacleFloor` and what it calls, which these three share with every floor test of that file.
 
 **Every earlier test is expected to pass unchanged, by reading, and none was changed.** From the plan's list of
 2026-10-25: the tree tests (`Cataclysm.Passives.*`, `ClassPointsFromGear.`, `OneClass.`, `CarriedTypes.`,
@@ -275,14 +313,22 @@ FString&)`, `(const TCHAR*, float, float, float)` and `(const TCHAR*, FName, FNa
 `UCataclysmCombatEvents::NoteSkillUsed` at depth one, and one free start of Carom by `MakePendingRepeat`, which sends no
 skill-used notice. Everything else is `EquipmentChanged`, a delegate and not a combat event.
 
-**Not tested:** the three Dungeon game mode readers (not moved); a weapon carrying a type with no designed skill swinging
+**Not tested:** a weapon carrying a type with no designed skill swinging
 only its basic attack (by reading, `PoolFor` of such a type is empty); a refill after `ChooseAtCreation` alone (none, by
 reading); the skill bar drawing a second weapon's skill; a planted weapon's type in the pool (it stays worn, by
 reading); the log line for two weapons.
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Three, prefix `Cataclysm.SkillPool.` with its dot: 8 tests, the same 8 without the dot, by a script over the
+**THE THREE FOR THE BRANCH, KEPT AFTER THE SECOND COMMIT:** L2-G1 (the cross product, Q4), L2-G2 (the creation type
+first, Q11) and L2-G3 (the one reader whose ruled meaning moved, Q8 and Q-P3). **Dropped:** a proof on a Dungeon reader
+(Wild Magic's pool reading only the first carried type would fail test 10's draw and test 11's count, 2 assertions), because it guards the
+same one-line pattern L2-G3 guards and its test leans on the floor helpers; and none for Q-P2, which is not on this
+branch. The second commit's three tests make the prefix 11 tests; L2-G1, L2-G2 and L2-G3 fail none of them (each lands no
+blow, wears one weapon type and hands its types in fill order), so their predictions below are unchanged.
+
+Not run. Three, prefix `Cataclysm.SkillPool.` with its dot: 8 tests at the first commit and 11 at the second, the same
+11 without the dot (re-counted at the second commit, 4,372 distinct name strings), by a script over the
 test name strings in `game/Source` (4,369 distinct; `Cataclysm.Passives.CarriedTypes.` found 11 as the control). Each old
 text counted exactly once in its file by that script (CRLF read as LF) and each new text absent before the break.
 Brackets before and after, round, curly, square, each pair balanced: L2-G1 158 and 159, 54 and 54, 10 and 10; L2-G2 183
@@ -122128,6 +122174,11 @@ Sources:
 `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
 `tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx`.
 **Applied.** Issues #975, #939.
+
+**2026-10-25, issue #837 layer 2 (Q8, recorded under Q-P3):** "own type" is now any damage type the character carries,
+so for a character carrying several types "other than own type" diverges from "other than Demonic": a Masochist carrying
+Demonic and War opens no window on a War hit, which "other than Demonic" would open. The reading below, that the two
+"cannot diverge", held while a character carried one type. See the layer 2 entry of 2026-10-25.
 
 `Masochist_basic_spine_003`, Cataclysmic Resonance, reads "+1% increased damage
 per point for 5 seconds after you take damage of a Cataclysm type other than
