@@ -187,17 +187,23 @@ Python, each by `tools/prove_guard.break_and_run` in a `git archive` copy of `98
 | no pause while a finished walk's days run (`_inside_did` answers `None` after a walk) | 1 failed, 6 passed | 7 passed |
 | the owed days never run (`pass` for `_empire_day()` in `_settle_owed`) | 3 failed, 4 passed | 7 passed |
 
-Unreal, registered for the window and not yet run:
+Unreal, **all three PROVED** in the second window below, each with `unreal_build.prove_cpp_guard`, each break text
+matching its file exactly once, each narrowed to the one test it names:
 
 - **P1**, `++OwedDays;` -> `Reports.Add(AdvanceDay());` in `CataclysmEmpireRun.cpp`. Predicted:
   `InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder` fails. Prefix
-  `Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwed`.
+  `Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwed`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder"; restored "1 tests performed, 1 succeeded, 0 failed".
 - **P2**, `DaysSpentWalking.Append(Run->SettleDaysOwed());` -> a comment in `CataclysmDungeonGameMode.cpp`. Predicted:
   `AClearIsCreditedBeforeTheWalksDaysRunAndACityFelledInThemStillFalls` fails. Prefix
-  `Cataclysm.DungeonMode.AClearIsCreditedBeforeTheWalksDaysRun`.
+  `Cataclysm.DungeonMode.AClearIsCreditedBeforeTheWalksDaysRun`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  AClearIsCreditedBeforeTheWalksDaysRunAndACityFelledInThemStillFalls"; restored "1 tests performed, 1 succeeded, 0
+  failed".
 - **P3**, `if (EmpireDungeonId != INDEX_NONE)` -> `if (false && EmpireDungeonId != INDEX_NONE)` in
   `EnterEmpireDungeon`. Predicted: `EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes` fails. Prefix
-  `Cataclysm.DungeonMode.EnteringADungeonWhileAnotherIsWalked`.
+  `Cataclysm.DungeonMode.EnteringADungeonWhileAnotherIsWalked`. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  EnteringADungeonWhileAnotherIsWalkedLeavesItAndRunsTheDaysItOwes"; restored "1 tests performed, 1 succeeded, 0
+  failed".
 
 ### The first window, and a test the coordinating session ruled
 
@@ -218,8 +224,27 @@ under way is told to the save as two changes of floor: leaving the dark floor, t
 
 ### Run
 
-Not yet run past the first window above. Predicted Unreal total: `development`'s last measured total plus one (four new
-tests, three removed), 4148, with no failure.
+Nothing was built and no Unreal test was run by the writing session. Two windows were run by the dungeon session, each
+given by the coordinating session, each with the six conditions checked immediately before the lock was taken and the
+lock released before anything was written here. The first is under "The first window, and a test the coordinating
+session ruled" above.
+
+- **Second window** (lock `dungeon-w44`, `feat/defer-days-to-exit-2` at `55da04caa`, on `ac6d505a5`, 2026-10-24):
+  both of `development`'s runs at `ac6d505a5` succeeded; none in progress or queued; the lock free; no build or editor
+  process; no open pull request; "free GB: 16.5 of 31.1".
+  - **Build:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.33.cpp" (only the test file had
+    changed since the first window's build).
+  - **The whole Unreal suite:** "4148 tests performed, 4148 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4148 tests in the tree at 55da04caa; 4148 performed, gap 0; every declared test was reported by the
+    run." Registered 4148 and 0: the 4147 of the #2381 merge, four new tests and three removed. Memory:
+    "CataclysmTestMemorySummary: tests=4755 peak_used_virtual_mb=11275 final_used_virtual_mb=11025 collections=3142
+    collection_total_s=106.430 worlds_at_last_collection=1".
+  - **Python:** "6961 passed, 8 skipped"; JUnit tests 6969, failures 0, errors 0, skipped 8 (6962 on `development` and
+    this change's 7 simulation tests). Lint: "All checks passed!".
+  - **The proofs:** as under Proofs above.
+- **The simulation figures above were measured again on the moved branch** (`86573e10f`, before the first window):
+  `sim/measure_days_on_exit.py`'s output is identical, line for line, to the one recorded above. The only simulation
+  file `development` changed since `b2b60ebf6` is a docstring in `sim/cataclysm_sim/modifiers.py`.
 
 Branch `feat/defer-days-to-exit-2` on `development` at `ac6d505a5` (written on `b2b60ebf6` as `-1` and moved, its
 zero-context patch ids unchanged).
