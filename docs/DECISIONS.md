@@ -43,7 +43,8 @@ Registered for the window and not yet run: **P1**, `Set(*Previous);` -> `Set(TEX
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
 
-Branch `fix/rarity-seed-and-console-pins-1` on `development` at `3c1f3ac5f`, stacked with #2490 at the coordinating
+Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1` (moved from `3c1f3ac5f` as `-1`, its
+zero-context patch ids unchanged), stacked with #2490 at the coordinating
 session's ruling of 2026-10-24 so the two share one window; the stacked branch is registered as `development`'s last
 measured total plus two.
 
@@ -96,7 +97,7 @@ the clock again. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFlo
 
 Not yet run. Predicted Unreal total: `development`'s last measured total plus one.
 
-Branch `fix/rarity-seed-and-console-pins-1` on `development` at `3c1f3ac5f`, stacked with #2493 (the entry above).
+Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1`, stacked with #2493 (the entry above).
 
 ---
 
