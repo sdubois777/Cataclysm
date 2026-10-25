@@ -2244,4 +2244,150 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageHearsTheCountTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// ISSUE #2234: the attack damage a blow with no enemy reads. Ruled 2026-10-23:
+// a self hit reads the full attack damage line; rows about the wearer and the
+// skill's tags reach it and rows about the enemy struck do not.
+// `UCataclysmSkillEffects::AttackDamageWithNoTarget` is that reading, and the
+// self hit in `UCataclysmSkillTemplate::CommitAndBegin` is its first caller.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmNoTargetAttackDamageWithNoLineTest,
+	"Cataclysm.ConditionalDamage.AttackDamageWithNoTargetIsTheAttributeForACharacterWithNoLine")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE CONTROL OF THE PAIR: no attack damage line recorded, the ordinary case
+	// for an enemy and for a player before its first refresh. The self hit read
+	// the attribute before #2234, and must read the same figure now.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+	if (!TestNull(TEXT("set-up: no attack damage line is recorded"),
+			Caster.AbilitySystem->GetStatInputs(FName(TEXT("attack_damage")))))
+	{
+		return false;
+	}
+
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	const float Attribute = UCataclysmSkillEffects::WeaponDamageOf(Caster.AbilitySystem);
+	TestEqual(TEXT("control: the attribute is the caster's 1000"), Attribute, 1000.0f, 0.01f);
+	TestEqual(TEXT("with no line and no folded increases it is the attribute"),
+		UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, FGameplayTagContainer()),
+		Attribute, 0.01f);
+
+	// AND WITH A FOLDED BRACKET REMEMBERED, which is taken out and put back by the
+	// same figure, so the attribute is still the answer.
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.25f);
+	TestEqual(TEXT("with 25% folded increases and no line it is still the attribute"),
+		UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, SpellTags(),
+			/*SkillHealthCostPercent=*/20.0f, /*MetresMovedBeforeBlow=*/6.0f),
+		Attribute, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmNoTargetAttackDamageReadsTheLineTest,
+	"Cataclysm.ConditionalDamage.AttackDamageWithNoTargetTakesTheWearersAndTheSkillsRowsAndNoEnemysRow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+
+	// THE LINE AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE IT: 1000 flat
+	// from the weapon and nothing unconditional, so the attribute holds 1000 and
+	// the folded bracket is nothing. Then four rows ApplyTo cannot fold:
+	//   "While stationary your damage is increased by 20%" (the wearer's state);
+	//   30% increased scoped to Type.Melee, "Melee skills deal 20%-40% increased";
+	//   50% increased against a boss (the enemy struck);
+	//   Grand Tithe's 24% for a skill costing above 10% of maximum health (a use fact).
+	Caster.Combat->SetAttackDamage(1000.0f);
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier Stationary;
+	Stationary.Bucket = ECataclysmStatBucket::Increased;
+	Stationary.Source = ECataclysmModifierSource::Enchantment;
+	Stationary.Value = 20.0f;
+	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
+
+	FCataclysmStatModifier Melee;
+	Melee.Bucket = ECataclysmStatBucket::Increased;
+	Melee.Source = ECataclysmModifierSource::Enchantment;
+	Melee.Value = 30.0f;
+	Melee.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+
+	FCataclysmStatModifier Boss;
+	Boss.Bucket = ECataclysmStatBucket::Increased;
+	Boss.Source = ECataclysmModifierSource::Enchantment;
+	Boss.Value = 50.0f;
+	Boss.Condition = ECataclysmStatCondition::TargetIsBoss;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1000.0f));
+	Inputs.Modifiers.Add(Stationary);
+	Inputs.Modifiers.Add(Melee);
+	Inputs.Modifiers.Add(Boss);
+	Inputs.Modifiers.Add(GrandTithe());
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	FGameplayTagContainer MeleeTags;
+	MeleeTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+	if (!TestEqual(TEXT("set-up: Type.Melee is in the vocabulary"), MeleeTags.Num(), 1))
+	{
+		return false;
+	}
+	const auto Read = [&Caster](const FGameplayTagContainer& Tags, float CostPercent = -1.0f, float Extra = 0.0f)
+	{
+		return UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, Tags,
+			/*SkillHealthCostPercent=*/CostPercent, /*MetresMovedBeforeBlow=*/-1.0f, /*ExtraIncreases=*/Extra);
+	};
+
+	// THE CONTROL, READ FIRST: just moved, no tag, no cost. None of the four holds.
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	const float Plain = Read(FGameplayTagContainer());
+	TestEqual(TEXT("control: having just moved, an untagged use reads the plain 1000"), Plain, 1000.0f, 0.01f);
+
+	// A WEARER-STATE ROW THAT DOES NOT HOLD, ON A TAGGED SKILL: only the tag row reaches.
+	TestEqual(TEXT("moved, a melee use reads 30% more than the control: the tag row, not the stationary one"),
+		Read(MeleeTags) - Plain, 300.0f, 0.01f);
+	TestEqual(TEXT("moved, a spell reads the control: the melee row keeps to melee"),
+		Read(SpellTags()) - Plain, 0.0f, 0.01f);
+
+	// STANDING STILL: the wearer-state row holds, judged now.
+	Caster.AbilitySystem->NoteDidNotMove();
+	TestEqual(TEXT("still, an untagged use reads 20% more than the control"),
+		Read(FGameplayTagContainer()) - Plain, 200.0f, 0.01f);
+	TestEqual(TEXT("still, a melee use reads both, 50% more, added into one bracket"),
+		Read(MeleeTags) - Plain, 500.0f, 0.01f);
+
+	// THE ENEMY ROW NEVER: the boss row's 50% is in no figure above, and none below.
+	// A USE FACT IS JUDGED: a cost above 10% adds Grand Tithe's 24%; one below it and
+	// "not known" do not.
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("moved, untagged, costing 20%: Grand Tithe's 24% and no boss row"),
+		Read(FGameplayTagContainer(), 20.0f) - Plain, 240.0f, 0.01f);
+	TestEqual(TEXT("costing 5%: nothing"), Read(FGameplayTagContainer(), 5.0f) - Plain, 0.0f, 0.01f);
+
+	// AND AN EXTRA INCREASE JOINS THE SAME BRACKET RATHER THAN MULTIPLYING.
+	TestEqual(TEXT("an extra 10% with Grand Tithe's 24% is 34% more, not 1.1 x 1.24"),
+		Read(FGameplayTagContainer(), 20.0f, 0.1f) - Plain, 340.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2,6 +2,301 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — A self hit ("hits you instead", "backfire") is priced from the user's whole attack damage line with no target, so the user's conditioned, scaled and skill-type attack damage rows reach it and no row about an enemy does: #2234 path B, with the shared helper `AttackDamageWithNoTarget`
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the new public static
+`UCataclysmSkillEffects::AttackDamageWithNoTarget`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`
+(the self hit in `UCataclysmSkillTemplate::CommitAndBegin`); `game/Source/Cataclysm/Tests/CataclysmConditionalDamageTests.cpp`
+(two tests at the end, group `Cataclysm.ConditionalDamage.`); `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`
+(one test, group `Cataclysm.Skills.`, after the existing self hit test); `tools/generate_datatables.py` and
+`tools/tests/test_every_conditioned_stat_has_an_asker.py` (comments only). No data row, no tag, no workbook cell, nothing
+under `game/Data/`, `game/Content/` or `game/Config/Tags/`, nothing of `CataclysmDungeonGameMode.*` (path C), and neither
+`UCataclysmSkillTemplate::LeaveZoneAlong` nor the ground patch's pricing (path A) is changed. **This does NOT close
+[#2234](https://github.com/sdubois777/Cataclysm/issues/2234): path A closes it.**
+
+### SAID FIRST
+
+**A PLAY CHANGE.** A use that a worn row rolled to hit its own user -- "Melee skills have a 10%-20% chance to hit you
+instead of the enemy" (`Negative_Melee_skills_have_a_10_20_chance_to_hit_you_in#1`) and "Spells have a 15%-25% chance
+to backfire dealing half damage to you" (`Negative_Spells_have_a_15_25_chance_to_backfire_dealing#1`) -- deals its user
+the use's own hit, or half of it. Until this change that hit was the attack damage ATTRIBUTE times the skill's percent,
+then the runtime modifiers. The attribute is worked out with no skill in hand and nothing known about the character, so
+every conditioned, scaled and tag-scoped `attack_damage` row the user wore was missing from it, while the same use's hit
+on an enemy carried them. **Now the self hit carries them, judged at the moment the use is paid for**, and so a self hit
+is larger for a user whose damage rows hold (standing still, wounded, a melee skill under a melee row) and smaller for
+one whose drawback rows hold ("While moving your skills deal 15%-25% less damage" while moving).
+
+**NO ROW ABOUT AN ENEMY REACHES IT.** No enemy is struck, so the target is null and every enemy-side condition refuses:
+a boss, an enemy's health, its distance, its ailments, the first hit on it, and how many enemies were struck.
+
+**NOTHING CHANGES FOR A USER WITH NO SUCH ROW.** With no `attack_damage` line recorded, or a line of plain rows only, the
+figure is the attribute exactly as before (the helper's own control test, below).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 76. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a self hit from "hits you instead" or "backfire" takes your conditioned and skill-type attack damage rows as the skill's own hit does, but no row about an enemy
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-23, as relayed by the coordinating session: "Reach patches and self-hits". The coordinating session's
+record of that answer: conditioned and scaled attack-damage rows reach ground patches and self-hits (backfire, "hits you
+instead", Echo Chamber). Conditions about the wearer are judged when the patch is laid or the blow is copied. Conditions
+about the enemy struck do not apply to a patch. Martyr's Ember's stored damage stays as it is.
+
+**THE OPTION THE OWNER CHOSE**, recorded by the coordinating session in its memory note `owner-decisions-2026-10-23.md`,
+item 2 (the owner was asked with a multiple-choice question on 2026-10-23 and picked the recommended option). It is not in
+`docs/` or on the issue before this entry; the text is the coordinating session's record of the option, and not the
+owner's own typed words:
+
+> #2234: conditioned and scaled attack-damage rows REACH ground patches and self-hits (the recommended option). A ground
+> patch and a reflected self-hit (backfire, "hits you instead", Echo Chamber) read the full attack-damage line.
+
+The coordinating session's rulings of 2026-10-24, verbatim (the numbers are its own):
+
+> 1. YES: unconditioned tag-scoped rows reach too. The owner's chosen option said a patch and a self-hit "read the full
+>    attack-damage line", and tag-scoped rows are part of that line. Quote that option text in the entry.
+> 2. Tags: the template's SkillTags for patches and self-hits; the copied row's Skill.Tags for Echo.
+> 3. Scaled rows: the stacks held at laying or copying time.
+> 4. A self-hit's "enemy struck" is nobody (Target = nullptr).
+> 5. Blow facts for path B only.
+> 9. Order: B, then C, then A, one brief and one window each. The shared helper and its test come with B.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `ebe796ea7`, before this change.
+
+1. **The five helpers, read whole.** `CataclysmSkillEffects.h`: `WeaponDamageOf(const UAbilitySystemComponent*)` (980);
+   `ModifiedDamage(Source, BaseDamage, SkillTags, SkillHealthCostPercent = -1, MetresMovedBeforeBlow = -1,
+   TargetDistanceMetres = -1, bTargetIsStaggered = false, Target = nullptr, EnemiesStruckTogether = -1, MetresCharged = -1,
+   ChargeRangeMetres = -1)` (1052 to 1062); `IncreasesBehindAttackDamage(Source)` (1614 to 1615); `IncreasesForSkill` and
+   `MoreForSkill`, each `(Source, SkillTags, SkillHealthCostPercent = -1, MetresMovedBeforeBlow = -1,
+   TargetDistanceMetres = -1, bTargetIsStaggered = false, Target = nullptr, EnemiesStruckTogether = -1, MetresCharged = -1,
+   ChargeRangeMetres = -1)` (1633 to 1642, 1658 to 1667). All in the public section that opens at 959; the next access line
+   is `private:` at 3159.
+2. **What they answer.** `IncreasesForSkill` (`CataclysmSkillEffects.cpp` 480 to 502) asks
+   `UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill` (`CataclysmAbilitySystemComponent.cpp` 671 to 703),
+   which with no `attack_damage` line returns the stored folded increases (683 to 689) and with one evaluates the whole
+   modifier list with the skill's tags and `WithEnemiesInReach(WithTargetState(..., Target, CurrentConditions(...)))`.
+   `MoreForSkill` (504 to 525) asks `AttackDamageMoreForSkill` (815 to 874), 1 with no line (826 to 833), else the applying
+   "more" over the "more" folded with no tags and no state (845 to 874). So with no line, or plain rows only, the weapon
+   part `WeaponDamageOf / max(1 + Folded) * More * (1 + Applying)` is the attribute.
+3. **`ApplyHit`'s own weapon part** (686 onward): `Folded = IncreasesBehindAttackDamage(Source)` (857), `Applying =
+   IncreasesForSkill(...)` (861 to 866), `BeforeIncreases = WeaponDamageOf(Source) / FMath::Max(1.0f + Folded,
+   UE_KINDA_SMALL_NUMBER) * MoreForSkill(...)` (909 to 914), then `ModifiedDamage((BeforeIncreases * DamagePercent / 100 +
+   flats) * (1 + Applying + Conditional + Bought + TrapIncreases) * ...)` (1000 to 1018). The epsilon is
+   `UE_KINDA_SMALL_NUMBER`, and the helper uses the same.
+4. **The enemy-side conditions with no target** (`CataclysmStatPipeline.cpp`): `TargetIsBoss` and `TargetIsNotBoss`
+   both need `bTargetIsBossKnown` (914, 926); the struck and crit histories need `bTargetStrikeHistoryKnown` (929 to 936);
+   the struck-count conditions refuse a count below nought (1169 to 1188). `WithTargetState` with a null target reads
+   nothing.
+5. **Path B before this change.** `UCataclysmSkillTemplate::CommitAndBegin` (`CataclysmSkillTemplate.cpp` from 162):
+   `PayHealthCost()` at 241 and `LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack()` at 261, both for a
+   use that is not a free repeat; the self hit at 319 to 333, inside the same not-a-free-repeat block, priced
+   `ModifiedDamage(Cataclysm, WeaponDamageOf(Cataclysm) * GetDamagePercent() / 100, SkillTags)` (323 to 325) and dealt
+   with `ApplyDirectDamage(Self, Self, ToAnEnemy * Share / 100, Delivery)` (area, no crit, no leech, no retaliation).
+6. **The two use facts.** `LastHealthCostPercentOfMaximum` (`CataclysmSkillTemplate.h` 292): the health this use cost as
+   a percentage of maximum health, -1 before a first use; written by `PayHealthCost` on every use
+   (`CataclysmSkillTemplate.cpp` 3781). **It is the figure `IncreasesForSkill`'s `SkillHealthCostPercent` means**: the
+   template hands exactly it to `ApplyHit` as `Delivery.SkillHealthCostPercent` (2256), and `ApplyHit` hands that to
+   `IncreasesForSkill` and `MoreForSkill`. `LastMetresMovedBeforeUse` (`.h` 320): metres moved since the character's own
+   last attack, read at the use's payment, -1 for a free repeat; the template hands it as `Delivery.MetresMovedBeforeBlow`
+   (2261).
+7. **Every caller of `WeaponDamageOf` outside `ApplyHit`**, by script over the module's source outside `Tests/`, for
+   paths C and A to be checked against:
+   - `CataclysmSkillTemplate.cpp` 324, `CommitAndBegin`: the self hit (path B, changed here);
+   - `CataclysmDungeonGameMode.cpp` 13349, `MakeTheEchoChamberCopy`: the Echo Chamber self hit (path C);
+   - `CataclysmSkillTemplate.cpp` 3347, `LeaveZoneAlong`: a skill's ground patch (path A);
+   - `CataclysmSkillTemplate.cpp` 1648, `IgniteAroundConsumed`, and 1749, `SpreadFireAround`: the two burn spreads, whose
+     hit figure the issue records as not read (Burn is a flat figure);
+   - `CataclysmSkillTemplates.cpp` 2889, `UCataclysmSelfBuffSkill::StoreCeiling`, and 2901, `StoreSpendPerBlow`: Martyr's
+     Ember's stored damage, which the owner kept as it is;
+   - `CataclysmEnemyModifiers.cpp` 985 (`TimedStep`, Inferno Path), `CataclysmGatekeeperCharacter.cpp` 474
+     (`UseEnemyAbility`, Soulfall's ground) and `CataclysmHellhoundCharacter.cpp` 281 (`UseEnemyAbility`, Hellrush's
+     lane): a creature's ground, priced from a creature, which records no stat line.
+8. **Every test that reads a self hit's figure:** `Cataclysm.Skills.AUseARowRolledToHitItsUserHitsNoEnemyAndItsUserTakesTheHitOrHalfOfIt`
+   (`CataclysmSkillTemplateTests.cpp` 19496), whose two `FScopedFighter`s record no stat line, so its figures are the
+   attribute's as before. `Cataclysm.Enchantments.TheMeleeSkillsHitYouInsteadRowRollsForAMeleeSkillAndRecordsTheWholeHit`
+   and `TheSpellsBackfireRowRollsForASpellAndRecordsHalfTheHit` (`CataclysmEnchantmentEffectTests.cpp` 17316, 17360) read
+   only the share recorded and deal no self hit. The Echo Chamber tests are path C, whose code is not changed.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| The owner: a self hit reads the full attack damage line; wearer conditions judged when the blow is dealt | `CataclysmSkillTemplate.cpp` 319 to 341, the price at 326 to 332: `ToAnEnemy = ModifiedDamage(Cataclysm, AttackDamageWithNoTarget(Cataclysm, SkillTags, LastHealthCostPercentOfMaximum, LastMetresMovedBeforeUse) * GetDamagePercent() / 100, SkillTags)`, at the use's payment, where the self hit already was. |
+| 1, tag-scoped rows reach | `AttackDamageWithNoTarget` asks `IncreasesForSkill` and `MoreForSkill` with the skill's tags (`CataclysmSkillEffects.cpp` 527 to 538). |
+| 2, the template's `SkillTags` | the second argument at `CataclysmSkillTemplate.cpp` 328. |
+| 3, the stacks held now | `CurrentConditions`, inside both lookups, reads them at the call. Nothing new. |
+| 4, the enemy struck is nobody | the helper passes no target, distance, stagger, count or charge: each stays at its "not known" default. |
+| 5, blow facts for path B | the two use facts, at `CataclysmSkillTemplate.cpp` 329 to 330. |
+| 9, the shared helper and its test with B | `CataclysmSkillEffects.h` 1669 to 1697 (declaration and comment), `.cpp` 527 to 538; the tests below. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE HELPER IS `ApplyHit`'S WEAPON PART AND NOTHING MORE.** Not the spell part (`SpellDamageOf`, issue
+  [#2498](https://github.com/sdubois777/Cataclysm/issues/2498), not decided), not the flat rows
+  ([#2499](https://github.com/sdubois777/Cataclysm/issues/2499)), not damage against the target's type or a shared
+  debuff (no target), not Fervour bought, next-use charges or effectiveness spent (a use rolled to hit its user spends
+  none, `CataclysmSkillTemplate.cpp` 286 to 296), not the damage cut stacks placed on the attacker
+  (`DamageCutPercentNow`) and not the Thrall multiplier. None of these was in the self hit before. The option not taken:
+  price the self hit through more of `ApplyHit`, which would widen this beyond the ruling.
+- **`ExtraIncreases` IS A PARAMETER, NOUGHT FOR THE SELF HIT**, as the plan gave it, so a later caller with an increase
+  of its own adds it into the same bracket. The option not taken: leave it to path C or A to add.
+- **THE TWO USE FACTS GO TO THE HELPER AND NOT TO `ModifiedDamage`.** The brief said nothing else in the self hit
+  changes. The runtime modifiers `ModifiedDamage` reads are a skill's own self buff and an aura's ally increase, both
+  unconditional by that function's comment, so no figure changes either way today. The option not taken: pass them to
+  both.
+- **THE TESTS ARE IN TWO EXISTING GROUPS.** The helper's in `Cataclysm.ConditionalDamage.`, whose `FCaster` has a
+  settable attack damage attribute and stat line and whose tests are the increases bracket; the self hit's in
+  `Cataclysm.Skills.`, beside the self hit test it extends, with the same fighters. The option not taken: a new group.
+  No test name begins with either new test's name, and neither new name begins with another test's, case ignored
+  (searched by script over 4,773 name strings, with the existing self hit test's name as the control, found once).
+
+### THE GENRE SOURCE
+
+Brief 76 names none and nothing was fetched. The ruling rests on this game's own rule: a self hit is the use's own hit.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmSkillEffects::AttackDamageWithNoTarget(Source, SkillTags, SkillHealthCostPercent = -1,
+  MetresMovedBeforeBlow = -1, ExtraIncreases = 0)`**, public static (`CataclysmSkillEffects.h` 1693 to 1697, `.cpp` 527 to
+  538): `WeaponDamageOf(Source) / FMath::Max(1 + IncreasesBehindAttackDamage(Source), UE_KINDA_SMALL_NUMBER) *
+  MoreForSkill(Source, SkillTags, cost, moved) * (1 + IncreasesForSkill(Source, SkillTags, cost, moved) + ExtraIncreases)`.
+  Its comment says it is for #2234, that it passes no target and no blow beyond the two facts so enemy conditions
+  refuse, and why a plain row is not counted twice: the attribute already holds it, the division takes the folded
+  increases out before `IncreasesForSkill` puts them back, and `MoreForSkill` divides the folded "more" out of its own
+  product. No parameter is named like a field of the class (searched).
+- **Path B** (`CataclysmSkillTemplate.cpp` 319 to 332): the call above in place of `WeaponDamageOf(Cataclysm)`, and a
+  three-line comment. Nothing else in the self hit changes.
+
+**THE ROWS PATH B NOW REACHES**, from the enchantment session's classification by script of every `attack_damage` row in
+`game/Data/EnchantmentEffects.csv` and `PassiveEffects.csv` at `ebe796ea7`:
+
+- **wearer-state conditioned**, 15 enchantment rows and 8 passive rows: "While below 40% HP you deal 30%-60% increased
+  damage", the two stationary and four moving rows, the five windows after a block, a summon, a dodge, a hit taken and
+  an empty resource, "Strike skills deal 25%-40% less damage if you have moved", "Gain 50%-100% increased damage while
+  under the effect of a DoT", the channel row; the Masochist and Ravager nodes on health, health cost windows, foreign
+  damage, full Fervour, enemies in reach, class resource points and a two-handed weapon. A row scoped to a tag reaches only
+  a use carrying it.
+- **wearer-scaled**, 21 enchantment rows (the 23 so classed less the two flat ones) and 18 passive rows: stacks held,
+  seconds stationary or out of combat, class points, kills, bosses defeated, buffs held; health missing or owed, debuffs
+  carried, Bloodlust and Carnage stacks, class resource held, enemies in reach, minions held, damage reduction.
+- **tag-scoped only**, 12 enchantment rows: ultimate, heavy, melee, ranged, spell, charge, projectile and gadget scopes.
+  A self hit's use carries its own tags, so a melee use takes the melee rows and a spell's backfire the spell rows.
+- **the two blow-fact passive rows**, because path B passes both facts: `Masochist_basic_bt_b2#1` (Grand Tithe,
+  `skill_health_cost_above`) and `Ravager_capstone_25#4` (Headlong, `metres_moved_before_attack`, `Type.Melee`).
+
+**STILL NOT REACHED BY A SELF HIT:** the enemy-conditioned rows (13 enchantment, 4 passive: boss, non-boss, within
+metres, staggered, below 50% health, first hit, debuffed, carrying a DoT, a Void Splinter, Cripple, Weaken, in your
+zone); the rows scaled by the target or the blow (5 enchantment, 1 passive: metres to target, the target's debuffs,
+consecutive hits, enemies hit beyond the first, share of range moved); the one blow-fact enchantment row,
+`Negative_Point_blank_AOE_skills_deal_15_25_less_damage#1` (`enemies_hit_at_most`), because no enemy count is passed;
+the two scaled by a gadget's age (no gadget is being priced); and the flat rows, which no part of the helper reads
+([#2499](https://github.com/sdubois777/Cataclysm/issues/2499)). The plain rows (2 enchantment, 5 passive) were in the
+attribute before and still are, once.
+
+**PATHS C AND A FOLLOW**, each in its own brief and window: the Echo Chamber copy (`MakeTheEchoChamberCopy`, the copied
+row's `Skill.Tags`), then a skill's ground patch (`LeaveZoneAlong`), which closes #2234.
+
+### Tests
+
+Three Unreal tests. Crit is never rolled by the helper; the self hit test pins `Cataclysm.CritRoll` at 100 after its
+world is made (`MakeWorld`, which does not set the roll), as the test it extends does. Bodies at least 1 m apart: the
+self hit test's two fighters 2 m apart; the helper tests have one caster and no body. **Teams:** the self hit test's
+`FScopedFighter`s carry no team, as in the existing test, which `UCataclysmTeams::AttitudeBetween` answers as hostile; the
+self hit itself is dealt by the user to the user. No wait on a tick: no clock is run in any of the three.
+
+1. `Cataclysm.ConditionalDamage.AttackDamageWithNoTargetIsTheAttributeForACharacterWithNoLine`, 5 assertions in a
+   passing run. The control of the pair. In order: a world; **set-up: no attack damage line is recorded**; **control: the
+   attribute is the caster's 1000**; **with no line and no folded increases the helper is the attribute**; **with 25%
+   folded increases and no line, a spell's tags, a cost of 20% and 6 m moved, it is still the attribute** (the bracket is
+   taken out and put back by the same figure).
+2. `Cataclysm.ConditionalDamage.AttackDamageWithNoTargetTakesTheWearersAndTheSkillsRowsAndNoEnemysRow`, 10 assertions in a
+   passing run. A caster whose attribute is 1000 with nothing folded, and a hand-built line: 1000 flat from the weapon, 20%
+   increased `WhileStationary`, 30% increased scoped to `Type.Melee`, 50% increased `TargetIsBoss`, and Grand Tithe's 24%
+   (`SkillHealthCostAbovePercent` 10). In order: a world; **set-up: `Type.Melee` is in the vocabulary**; **control, read
+   first: having just moved (`NoteMovedMetres(1)`), an untagged use reads the plain 1000**; **moved, a melee use reads 300
+   more (the tag row, not the stationary one)**; **moved, a spell reads the control (the melee row keeps to melee)**;
+   **standing still (`NoteDidNotMove`), an untagged use reads 200 more**; **still, a melee use reads 500 more, the two
+   added in one bracket**; **moved, untagged, a cost of 20%: 240 more, Grand Tithe and no boss row**; **a cost of 5%:
+   nothing**; **an extra 10% with Grand Tithe is 340 more, not 1.1 x 1.24**. The boss row's 50% is in no figure.
+3. `Cataclysm.Skills.AUseRolledToHitItsUserHitsItWithItsOwnConditionedAttackDamage`, 13 assertions in a passing run. The
+   existing self hit test's rig -- a strike of radius 4 m and 360 degrees in the Heavy slot, `Type.Melee`, no cooldown and
+   no mana, an enemy fighter 2 m away, the use-outcome roll pinned at 0 -- with the user carrying a hand-built line: the
+   weapon's 100 flat and "While stationary your damage is increased by 20%" (20% increased, `WhileStationary`), nothing
+   folded. In order: three set-ups (the roll, the crit roll, the strike); **control, read first, having just moved: the
+   plain swing is used**; **and hurts the enemy and not its user**; **the rolled swing is used**; **it deals the enemy
+   nothing**; **and its user what the plain swing dealt the enemy** (within 0.5%, the existing test's tolerance); then
+   standing still: **the plain swing is used**; **set-up: its own hit is 20% larger than when moved** (the row reaches the
+   use's own hit, ratio within 0.006); **the rolled swing is used**; **it deals the enemy nothing**; **and its user what
+   the plain swing dealt the enemy standing still** (within 0.5%). Before this change the last read the attribute's
+   figure, the moved figure, 1/1.2 of it.
+
+**Every earlier test is unchanged, and expected to pass unchanged**, the self hit test of the existing group included
+(no stat line, so the attribute). The three tests listed under WHAT WAS READ FIRST, item 8, are the only ones that read a
+self hit's share or figure.
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, float, float, float)` throughout, and once `(const TCHAR*,
+int32, int)` for a tag container's `Num()`, as the neighbouring test does. `TestNull` and `TestNotNull` on pointers.
+
+**Not tested:** a backfire's half share with a conditioned row (the share is unchanged code, tested by the existing test);
+a scaled row on a self hit (judged by the same lookups, as the helper test's conditions are); the two use facts on a real
+self hit (the helper test passes a cost directly; Headlong's distance is not tested here); a tag-scoped row on a real
+self hit; a refreshed player wearing the real rows; a Spell's backfire (#2498); the enemy-conditioned rows on a real self
+hit (shown on the helper only); a free repeat, which deals no self hit; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF,
+as `prove_cpp_guard` reads it), each new text absent before the break. Round, curly and square brackets before and after
+each break: `CataclysmSkillTemplate.cpp` 1076/1076, 335/335, 3/3 both; `CataclysmSkillEffects.cpp` 1662/1662, 464/464,
+15/15 both. Each compiles alone by reading: SH-I leaves the two members unread there, which is no warning; SH-II's
+`IncreasesBehindAttackDamage(Source)` is declared above it, and both facts are still used by `MoreForSkill`.
+
+**The events the tests' actors raise, with their depth.** The helper tests raise none: no skill is used and no blow is
+dealt. The self hit test, on the user: `ActOnSkillUse` called by the test for each rolled use, depth nought, which fires
+the row and records the share; the skill's use notice in `CommitAndBegin`, depth nought; the self hit
+`ApplyDirectDamage(Self, Self)`, at depth nought, outside any `ActOnEvent`, which raises what a direct blow taken raises
+on the user, and nothing worn hangs on it; each plain swing's `hit_dealt` on the enemy, depth nought, and the user wears no
+row on it. The enemy wears nothing. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Prefix | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|---|
+| SH-I, the self hit reads the attribute again | `CataclysmSkillTemplate.cpp` | `UCataclysmSkillEffects::AttackDamageWithNoTarget(Cataclysm, SkillTags,` + newline + six tabs + `/*SkillHealthCostPercent=*/LastHealthCostPercentOfMaximum,` + newline + six tabs + `/*MetresMovedBeforeBlow=*/LastMetresMovedBeforeUse)` | `UCataclysmSkillEffects::WeaponDamageOf(Cataclysm)` | `Cataclysm.Skills.AUseRolledToHitItsUser` (1 test) | `AUseRolledToHitItsUserHitsItWithItsOwnConditionedAttackDamage` | none |
+| SH-II, the helper counts only the folded increases | `CataclysmSkillEffects.cpp` | `* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)` | `* (1.0f + IncreasesBehindAttackDamage(Source)` | `Cataclysm.ConditionalDamage.AttackDamageWithNoTarget` (2 tests) | `AttackDamageWithNoTargetTakesTheWearersAndTheSkillsRowsAndNoEnemysRow` | none: `AttackDamageWithNoTargetIsTheAttributeForACharacterWithNoLine` passes, the folded figure being its answer either way |
+
+Failed assertions, by reading:
+
+- **SH-I, 1 in 1 test:** "and its user what the plain swing dealt the enemy standing still" (the moved figure against
+  1.2 times it). The control half passes, the attribute being the answer when the row does not hold, and so does the
+  ratio set-up, `ApplyHit` being unchanged.
+- **SH-II, 5 in 1 test:** moved melee (0 against 300), still untagged (0 against 200), still melee (0 against 500), the
+  20% cost (0 against 240) and the extra 10% (100 against 340). The control, the spell and the 5% cost pass.
+
+**A test of another group expected to fail, to check in the window:** under SH-II,
+`Cataclysm.Skills.AUseRolledToHitItsUserHitsItWithItsOwnConditionedAttackDamage`, 1 assertion, the same as SH-I's. Under
+SH-I, none outside its prefix.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### Python of record at the starting head
+
+Measured at `ebe796ea7` before any edit: "6947 passed, 7 skipped in 328.79s"; JUnit 6954 tests, 0 failures, 0 errors, 7
+skipped. The run after this commit is in the second session's hand-back.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-24 — A walk's days run when the player leaves the dungeon, and a clear is credited before them
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp` (`OwedDays`, `DaysOwed`,

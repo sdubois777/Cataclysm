@@ -19602,6 +19602,127 @@ bool FCataclysmRolledUseHitsItsUserTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledUseHitsItsUserWithItsRowsTest,
+	"Cataclysm.Skills.AUseRolledToHitItsUserHitsItWithItsOwnConditionedAttackDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2234, ruled 2026-10-23: a self hit reads the full attack damage line, and a row about the wearer is judged
+ * when the blow is dealt. The test above, with a user carrying "While stationary your damage is increased by 20%" as
+ * a stat line, hand-built. THE CONTROL FIRST: having just moved, the row does not hold, and the user takes what a
+ * plain swing dealt the enemy. Then standing still: a plain swing deals the enemy 20% more, and the user, rolled to
+ * be hit, takes that raised figure. Before #2234 the self hit read only the attribute, which holds the plain figure.
+ */
+bool FCataclysmRolledUseHitsItsUserWithItsRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmUseOutcomeTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	FUseOutcomeRollPinned Pinned(TEXT("0"));
+	IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	const float CritRollWas = CritRoll ? CritRoll->GetFloat() : -1.0f;
+	if (CritRoll)
+	{
+		CritRoll->Set(100.0f, ECVF_SetByConsole);
+	}
+	ON_SCOPE_EXIT
+	{
+		if (CritRoll)
+		{
+			CritRoll->Set(CritRollWas, ECVF_SetByConsole);
+		}
+	};
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Swing"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the critical strike roll can be pinned"), CritRoll)
+		|| !TestNotNull(TEXT("set-up: the strike"), Swing))
+	{
+		return false;
+	}
+	Swing->CooldownOverride = 0.0f;
+	Swing->ManaCostOverride = 0.0f;
+
+	// THE USER'S LINE AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE IT: the weapon's 100 flat and nothing
+	// unconditional, so the attribute holds 100 and nothing is folded; and the stationary row, which it cannot fold.
+	FCataclysmStatModifier Weapon;
+	Weapon.Bucket = ECataclysmStatBucket::Flat;
+	Weapon.Source = ECataclysmModifierSource::GearImplicit;
+	Weapon.Value = WeaponDamage;
+	FCataclysmStatModifier Stationary;
+	Stationary.Bucket = ECataclysmStatBucket::Increased;
+	Stationary.Source = ECataclysmModifierSource::Enchantment;
+	Stationary.Value = 20.0f;
+	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
+	FCataclysmStatInputs Line;
+	Line.Base = 0.0f;
+	Line.Modifiers.Add(Weapon);
+	Line.Modifiers.Add(Stationary);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Line);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmPoolAction Row = AUseRow(TEXT("Test:self"), 20.0f, /*bNoDamage=*/false, 0.0f, false, TEXT("skill_use"));
+	Row.bUseDealsIncreasedDamage = false;
+	Row.bUseHitsItsUser = true;
+
+	const auto Use = [&](float& OutEnemyLost, float& OutCasterLost)
+	{
+		const float EnemyBefore = Enemy.Health();
+		const float CasterBefore = Caster.Health();
+		const bool bUsed = Activate(Caster, Swing);
+		OutEnemyLost = EnemyBefore - Enemy.Health();
+		OutCasterLost = CasterBefore - Caster.Health();
+		return bUsed;
+	};
+	const auto RolledToHitItsUser = [&]()
+	{
+		Caster.AbilitySystem->SetPoolActions({Row});
+		TheRowsSeeAUseOf(Caster, Swing);
+	};
+	float EnemyLost = 0.0f;
+	float CasterLost = 0.0f;
+
+	// THE CONTROL: JUST MOVED, so the row does not hold. A plain swing, then one rolled to hit its user.
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	Caster.AbilitySystem->SetPoolActions({});
+	if (!TestTrue(TEXT("control: the plain swing is used"), Use(EnemyLost, CasterLost))
+		|| !TestTrue(TEXT("control: a plain swing hurts the enemy and not its user"), EnemyLost > 0.0f && CasterLost == 0.0f))
+	{
+		return false;
+	}
+	const float WhenMoved = EnemyLost;
+	RolledToHitItsUser();
+	TestTrue(TEXT("control: the rolled swing is used"), Use(EnemyLost, CasterLost));
+	TestEqual(TEXT("control: it deals the enemy nothing"), EnemyLost, 0.0f, 0.01f);
+	TestEqual(TEXT("control: and its user what a plain swing dealt the enemy, the row not holding"), CasterLost,
+			  WhenMoved, WhenMoved * 0.005f);
+
+	// STANDING STILL: the row holds, and a plain swing deals the enemy 20% more.
+	Caster.AbilitySystem->NoteDidNotMove();
+	Caster.AbilitySystem->SetPoolActions({});
+	TestTrue(TEXT("the plain swing is used standing still"), Use(EnemyLost, CasterLost));
+	const float WhenStill = EnemyLost;
+	if (!TestEqual(TEXT("set-up: standing still, the swing's own hit is 20% larger"), WhenStill / WhenMoved, 1.2f, 0.006f))
+	{
+		return false;
+	}
+
+	// AND THE USER, ROLLED TO BE HIT, TAKES THAT RAISED FIGURE AND NOT THE ATTRIBUTE'S.
+	RolledToHitItsUser();
+	TestTrue(TEXT("the rolled swing is used standing still"), Use(EnemyLost, CasterLost));
+	TestEqual(TEXT("it deals the enemy nothing"), EnemyLost, 0.0f, 0.01f);
+	TestEqual(TEXT("and its user what the plain swing dealt the enemy standing still, 20% more than when moved"),
+			  CasterLost, WhenStill, WhenStill * 0.005f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackGrantScopeTest,
 	"Cataclysm.Skills.AStackARowGrantsOnAUseIsGainedOnlyWhenTheUsesTagsMatchTheGrantsOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

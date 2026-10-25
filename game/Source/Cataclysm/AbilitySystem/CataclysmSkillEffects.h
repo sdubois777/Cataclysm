@@ -1666,6 +1666,36 @@ public:
 							  float MetresCharged = -1.0f,
 							  float ChargeRangeMetres = -1.0f);
 
+	/**
+	 * What one hit of this character's attack damage is worth to a skill with these
+	 * tags, read from the whole attack damage line, when no enemy is being struck.
+	 * Issue #2234, ruled 2026-10-23.
+	 *
+	 * FOR THE DAMAGE PRICED OUTSIDE `ApplyHit`: a self hit ("hits you instead",
+	 * "backfire"), and next a copied blow and a ground patch. It is `ApplyHit`'s own
+	 * weapon part -- the attribute with its folded increases undone, times
+	 * `MoreForSkill`, times one plus `IncreasesForSkill` -- with no enemy in it.
+	 *
+	 * NO TARGET AND NO BLOW BEYOND THE TWO USE FACTS. The target is null and every
+	 * other blow fact is "not known", so a row about the enemy struck (a boss, its
+	 * health, its distance, its ailments, how many were struck) refuses, and a row
+	 * about the wearer (still, moving, wounded, its stacks) or the skill's tags is
+	 * judged now.
+	 *
+	 * A PLAIN ROW IS NOT COUNTED TWICE. The attribute already holds it: dividing by
+	 * one plus the folded increases takes those back out before `IncreasesForSkill`
+	 * puts them in again, and `MoreForSkill` divides the folded "more" out of its own
+	 * product. With no attack damage line it is the attribute exactly as it was.
+	 *
+	 * @param ExtraIncreases  a fraction added to the increases, for a caller with an
+	 *        increase of its own to join them; nought for the self hit
+	 */
+	static float AttackDamageWithNoTarget(const UAbilitySystemComponent* Source,
+										  const FGameplayTagContainer& SkillTags,
+										  float SkillHealthCostPercent = -1.0f,
+										  float MetresMovedBeforeBlow = -1.0f,
+										  float ExtraIncreases = 0.0f);
+
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;
 	static const TCHAR* AuraAreaTagName;
