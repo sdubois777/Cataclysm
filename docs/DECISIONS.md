@@ -73,7 +73,7 @@ control); `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthI
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | 4187 (`0d9473e18`) + 9 new − 1 removed diagnostic = **4195**, 0 failed |
+| Whole Unreal suite | 4198 (`1bf218ccb`, the #2516 merge, window t88x) + 9 new − 1 removed diagnostic = **4206**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails |
 | P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails |
