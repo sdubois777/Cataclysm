@@ -371,7 +371,36 @@ specifically (searched over non-test code for `ECataclysmGearSlot::Weapon1`):
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Two windows, run by the enchantment session on 2026-10-25. **t88w** (at `3021dc952`, lock `enchant-t88w`, taken at 9.3
+GB free under the one-time Q-M2 exception) stopped at the whole suite on test 7; its figures and the ruled correction
+are in the section above. **t88x**, the re-run, at `ac3bfa906` on `feat/trees-follow-worn-weapons` (four commits on
+development `0d9473e18`), lock `enchant-t88x`, taken at 11.2 GB free:
+
+- **The corrected test alone, first:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.13.cpp"; "1
+  tests performed, 1 succeeded, 0 failed". **ITS SLOT LINE, MEASURED:** "set-up: after the creation choice Weapon1 holds
+  nothing and Weapon2 holds Weapon_Sword". So the coordinating session's reading of `Equip` holds, and a lone one-handed
+  creation weapon is in Weapon2. **Ruled the same day by the coordinating session: a lone one-handed weapon belongs in
+  Weapon1, the right hand; a follow-up branch after this one fixes it in `Equip`.**
+- **The whole Unreal suite, as registered:** build already up to date, 0 actions; "4198 tests performed, 4198 succeeded,
+  0 failed" (4187 on development + 11 of this layer); "Declared: 4198 tests in the tree at ac3bfa906; 4198 performed,
+  gap 0". 40 tests skipped part of what they check. The memory summary line, quoted: "CataclysmTestMemorySummary:
+  tests=4805 peak_used_virtual_mb=7956 final_used_virtual_mb=7605 collections=3181 collection_total_s=115.291
+  worlds_at_last_collection=1". The suite's editor log ran 19:39:15 to 19:52:29, 13 min 14 s.
+- **Python of record, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.Passives.CarriedTypes.` (11 tests), each anchor counted once, 0 ensures, the
+  file's hash the same after, and every restored half 11 performed, 11 succeeded:**
+  - **L1-G1, the union takes only the first worn weapon:** PROVED, AS REGISTERED. With the break in, 11 performed, 9
+    succeeded, 2 failed, `TwoWeaponsReachTheUnionOfTheirTypes` and `AWeaponWithAnEmptyListCountsAsTheCreationType`; 7
+    failed assertions, registered 7.
+  - **L1-G2, the equipment refresh left on the creation type:** PROVED, AS REGISTERED. 1 failed,
+    `ATreeOpenedByAWornTypeGrantsItsEffectsAndStopsWhenItComesOff`; 3 failed assertions, registered 3.
+  - **L1-G4, the creation marker ignored:** PROVED, AS REGISTERED. 1 failed,
+    `APlainDropOfTheCreationWeaponTypeKeepsItsTypeThroughACreationChangeAndAPossession`; 3 failed assertions, registered
+    3.
+  - **L1-G3 WAS RETIRED, accepted by the coordinating session on 2026-10-25**, for the reason given above: with an
+    empty marked list now rewritten, its break failed only test 7's control reading back the very line it broke, and
+    "a break that fails only the control reading back the broken line proves nothing". L1-G4 took its slot.
 
 ---
 
