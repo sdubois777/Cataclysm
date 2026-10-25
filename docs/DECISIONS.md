@@ -12,7 +12,8 @@ built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, t
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN WHEN WRITTEN.** The route was measured first, by the diagnostic window `dungeon-w54d`
+- **BUILT AND RUN: window w56 below passed every registered figure, and all three proofs were PROVED.** The route was
+  measured first, by the diagnostic window `dungeon-w54d`
   (2026-10-25, `c612ff801`): a level-100 Ravager applied through `UCataclysmPlayerClassStats::ApplyTo` gave a creature,
   once it held the three attribute sets it lacks, exactly what it gave a five-set control ("max health 2236.6, mana
   436.0, armour 416.1"), and one archetype setter afterwards took armour to 0 and crit to 5.
@@ -23,8 +24,8 @@ built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, t
   through a setter still reaches the Stalker. Twenty-seven such writes are in the game mode (counted by searching for
   the call, 2026-10-25); none was read for whether it can reach a creature raised by a rule.
 - **Its death drops what a Common creature drops** until layer 3.
-- **WINDOW W55 STOPPED AT ONE FAILING TEST**, recorded under Run below; the code was changed as ruled, and the window is
-  registered again.
+- **WINDOW W55 STOPPED AT ONE FAILING TEST**, recorded under Run below; the code was changed as ruled, and window w56
+  passed.
 
 ### The rules, as decided (the owner's answers and the coordinating session's rulings, 2026-10-25)
 
@@ -147,7 +148,23 @@ editor process; no open pull request; "free GB: 12.7 of 31.1". The lock was rele
 | Python (JUnit) | | 6996 / 0 / 0 / 8; ruff `All checks passed!` |
 | P1 to P3 | | not run: "STOPPED: the whole suite did not pass" |
 
-The next window is registered above.
+**Window w56 (lock `dungeon-w56`, `feat/corrupted-stalker-body-3` at `976c5b8d5`, on `1bf218ccb`, 2026-10-25)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`1bf218ccb` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.5 of 31.1". The lock was released before anything was written here. The move onto `1bf218ccb`: one
+top-of-file conflict in this file, resolved by taking `development`'s file with this entry above its first, asserted
+lossless; `check_resolved_cpp.py`, "9 files read, 0 with complaints".
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.32.cpp, Module.Cataclysm.33.cpp` |
+| Step 1b, the Horde test alone | passes | `Tests: 1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4207 / 0 | `4207 tests performed, 4207 succeeded, 0 failed`; declared 4207, gap 0 |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=7617`, peak 7,985 |
+| Python (JUnit) | | 6996 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails | "1 tests performed, 0 succeeded, 1 failed: ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails | "1 tests performed, 0 succeeded, 1 failed: TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails | "1 tests performed, 0 succeeded, 1 failed: ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
