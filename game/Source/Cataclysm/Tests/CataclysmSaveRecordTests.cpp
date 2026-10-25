@@ -914,6 +914,10 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 	TestEqual(TEXT("and the part of a day it carries"),
 		Read->PartialDay, 0.25f, 0.0001f);
 
+	// AND THE WHOLE DAYS A WALK OWES, since 2026-10-24. Thirteen rather than the
+	// default nought, for the reason the quarter above is not zero.
+	TestEqual(TEXT("and the days the walk owes"), Read->DaysOwed, 13);
+
 	TestTrue(TEXT("somebody is on a floor"), Read->Floor.IsOccupied());
 	TestEqual(TEXT("which floor"), Read->Floor.Floor, 6);
 	TestEqual(TEXT("which dungeon"), Read->Floor.Dungeon, FName(TEXT("Hell_On_Earth")));

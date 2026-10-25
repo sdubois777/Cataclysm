@@ -52285,14 +52285,15 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THE CONTROL: AN ORDINARY DESCENT SPENDS A DAY AND IS COUNTED.
-	const int32 DayOnEntering = Run->Day();
+	// THE CONTROL: AN ORDINARY DESCENT SPENDS A DAY AND IS COUNTED. The day is owed, not run, since 2026-10-24: a
+	// walk's days run when the player leaves, so `DaysOwed` is the measure that moves.
+	const int32 OwedOnEntering = Run->DaysOwed();
 	const int32 DescentsOnEntering = Mode->FloorsDescended;
 	if (!TestTrue(TEXT("CONTROL: set-up: an ordinary descent was made"), Mode->GoDownOneFloor()))
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: an ordinary descent spends one day"), Run->Day(), DayOnEntering + 1);
+	TestEqual(TEXT("CONTROL: an ordinary descent owes one day"), Run->DaysOwed(), OwedOnEntering + 1);
 	TestEqual(TEXT("CONTROL: and is counted as a descent"), Mode->FloorsDescended, DescentsOnEntering + 1);
 
 	// THE FALL FROM FLOOR 3 OF 30.
@@ -52301,7 +52302,7 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const int32 DayBefore = Run->Day();
+	const int32 OwedBefore = Run->DaysOwed();
 	const int32 DescentsBefore = Mode->FloorsDescended;
 	if (!FallIntoAChasm(*this, Mode, Player))
 	{
@@ -52310,7 +52311,7 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("fallen from floor 3 of 30, the dark floor carries the number 13"), Mode->FloorNumber, 13);
 	TestEqual(TEXT("and its brief carries the same number"), Mode->FloorBrief.FloorNumber, 13);
 	TestEqual(TEXT("the game mode keeps the floor fallen from"), Mode->TheDarkFloorFellFromFloor(), 3);
-	TestEqual(TEXT("the fall spent no day"), Run->Day(), DayBefore);
+	TestEqual(TEXT("the fall spent no day"), Run->DaysOwed(), OwedBefore);
 	TestEqual(TEXT("the fall is not counted as a descent"), Mode->FloorsDescended, DescentsBefore);
 	TestTrue(TEXT("the player stands on the dark floor's entrance cell"),
 			 Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation())
@@ -52323,7 +52324,7 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the dark floor's stairs lead to floor 13"), TakeTheStairs(*this, Mode), 13);
 	TestFalse(TEXT("and the player has left the dark floor"), Mode->ThePlayerIsOnTheDarkFloor());
 	TestEqual(TEXT("off the dark floor the game mode keeps no floor fallen from"), Mode->TheDarkFloorFellFromFloor(), 0);
-	TestEqual(TEXT("the dark floor's stairs spent no day"), Run->Day(), DayBefore);
+	TestEqual(TEXT("the dark floor's stairs spent no day"), Run->DaysOwed(), OwedBefore);
 	TestEqual(TEXT("and are not counted as a descent"), Mode->FloorsDescended, DescentsBefore);
 
 	// NEARER THE BOTTOM: FROM FLOOR 25 OF 30.
@@ -52334,7 +52335,7 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("fallen from floor 25 of 30, the dark floor carries the final floor's number, 30"), Mode->FloorNumber,
 			  30);
 	TestEqual(TEXT("the game mode keeps floor 25 as the floor fallen from"), Mode->TheDarkFloorFellFromFloor(), 25);
-	TestEqual(TEXT("that fall spent no day either"), Run->Day(), DayBefore);
+	TestEqual(TEXT("that fall spent no day either"), Run->DaysOwed(), OwedBefore);
 	TestEqual(TEXT("and is not counted as a descent either"), Mode->FloorsDescended, DescentsBefore);
 	return true;
 }
@@ -52395,7 +52396,8 @@ bool FCataclysmDarkFloorNotLastTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const int32 DayBefore = Run->Day();
+	// OWED DAYS ARE THE MEASURE, since 2026-10-24: the run's own day does not move while the player is inside.
+	const int32 OwedBefore = Run->DaysOwed();
 	if (!FallIntoAChasm(*this, Mode, Player)
 		|| !TestEqual(TEXT("set-up: the dark floor carries the final floor's number, 6"), Mode->FloorNumber, 6))
 	{
@@ -52416,7 +52418,7 @@ bool FCataclysmDarkFloorNotLastTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("the dark floor's stairs lead to floor 6"), Mode->FloorNumber, 6);
 	TestTrue(TEXT("taking them did not clear the dungeon"), DarkFloorDungeonStands(Run, DungeonId));
-	TestEqual(TEXT("and spent no day"), Run->Day(), DayBefore);
+	TestEqual(TEXT("and spent no day"), Run->DaysOwed(), OwedBefore);
 	TestTrue(TEXT("the floor arrived on is the last floor"), Mode->IsOnTheLastFloor());
 	TestTrue(TEXT("its brief puts a boss at the exit"), Mode->FloorBrief.bBossAtTheExit);
 	TestTrue(TEXT("and its population holds a Gatekeeper"),
@@ -54644,7 +54646,9 @@ bool FCataclysmDarkFloorDeathTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const int32 DayOnTheDarkFloor = Run->Day();
+	// THE DAY THE WALK HAS REACHED, the run's day and the days the walk owes, since 2026-10-24: those run when the
+	// death ends the walk, before the death's own five, so they are not the death's.
+	const int32 DayOnTheDarkFloor = Run->Day() + Run->DaysOwed();
 
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
 	if (!TestTrue(TEXT("set-up: the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))

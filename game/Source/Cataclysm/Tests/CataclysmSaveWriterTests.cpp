@@ -743,6 +743,14 @@ bool FCataclysmSaveWriterGathersTheClock::RunTest(const FString&)
 	TestEqual(TEXT("and it is written rather than left alone"),
 			  Record->PartialDay, 0.75f, 0.0001f);
 
+	// AND THE WHOLE DAYS A WALK OWES, since 2026-10-24, with the same control:
+	// the record holds something else first, so a gather that left it alone
+	// would fail.
+	Run->OwedDays = 4;
+	Record->DaysOwed = 9;
+	FCataclysmSaveGather::RunClockFrom(*Run, *Record);
+	TestEqual(TEXT("and the days a walk owes are written too"), Record->DaysOwed, 4);
+
 	return true;
 }
 

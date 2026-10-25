@@ -1231,4 +1231,36 @@ bool FCataclysmEmpireFallMoveLineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The screen's line about the days a walk under way will pass when the player leaves.
+ *
+ * WHY IT IS NEEDED. Since 2026-10-24 nothing resolves while the player is inside a dungeon, by the owner's decision,
+ * so the day the screen shows stands still during a walk. The coordinating session ruled that day that the status line
+ * says so. On the layout class for the reason `ProgressLine` is.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireDaysOwedLineTest,
+	"Cataclysm.EmpireScreen.TheScreenSaysHowManyDaysPassWhenThePlayerLeaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireDaysOwedLineTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::DaysOwedLine(nullptr), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	TestEqual(TEXT("a run owing nothing says nothing"), UCataclysmEmpireMapLayout::DaysOwedLine(Run), FString());
+
+	// SET DIRECTLY, as `ProgressLine`'s test sets its counters: whether the count is RAISED correctly is
+	// `Cataclysm.EmpireRun.InsideADungeonFloorTimeIsOwedAndSettlingRunsItInOrder`. This covers the wording.
+	Run->OwedDays = 1;
+	TestEqual(TEXT("one day, singular"), UCataclysmEmpireMapLayout::DaysOwedLine(Run),
+			  FString(TEXT("1 day passes when you leave")));
+
+	Run->OwedDays = 12;
+	TestEqual(TEXT("twelve days, plural"), UCataclysmEmpireMapLayout::DaysOwedLine(Run),
+			  FString(TEXT("12 days pass when you leave")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

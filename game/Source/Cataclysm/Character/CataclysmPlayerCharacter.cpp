@@ -4197,6 +4197,17 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 				return;
 			}
 
+			// NOT IN THE MIDDLE OF A WALK. Since 2026-10-24 nothing resolves
+			// while the player is inside a dungeon, by the owner's decision, and
+			// days passed by hand here would resolve exactly that. Ruled by the
+			// coordinating session that day. `Cataclysm.LeaveDungeon` first.
+			if (Run->IsAWalkUnderWay())
+			{
+				Ar.Log(TEXT("A dungeon is being walked, and its days pass when "
+							"you leave it. Cataclysm.LeaveDungeon first."));
+				return;
+			}
+
 			const int32 Days = Args.Num() >= 1
 				? FMath::Max(1, FCString::Atoi(*Args[0])) : 1;
 

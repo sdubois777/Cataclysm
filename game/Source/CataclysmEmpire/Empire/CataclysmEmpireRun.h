@@ -807,6 +807,20 @@ public:
 	int32 SurgesFromEmptyBoard = 0;
 
 	/**
+	 * The whole days the walk under way has spent and the empire has not yet run. Read it through `DaysOwed`.
+	 *
+	 * NOTHING RESOLVES WHILE THE PLAYER IS INSIDE A DUNGEON, by the owner's decision of 2026-10-24, verbatim: "all
+	 * of the resolutions and day/timer updates happen once a player leaves a dungeon". A floor still costs its
+	 * days, one a floor to begin with; `SpendFloorTime` adds them here rather than running them, and
+	 * `SettleDaysOwed` runs them in order when the player leaves. The part of a day stays on
+	 * `UCataclysmDayClock::PartialDay`, as before; only whole days are owed.
+	 *
+	 * SAVED with the run's clock, `UCataclysmRunSave::DaysOwed`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 OwedDays = 0;
+
+	/**
 	 * Starts a run: an intact empire, a clock at day 0, and a surge due
 	 * immediately.
 	 *
@@ -945,12 +959,47 @@ public:
 	 * and resolves its dungeons exactly as a day spent in one go would. The part
 	 * of a day left over is kept on `UCataclysmDayClock::PartialDay`.
 	 *
+	 * WHILE THE PLAYER IS INSIDE A DUNGEON IT RUNS NONE OF THEM. Each whole day is added to `OwedDays` instead, and
+	 * `SettleDaysOwed` runs them when the player leaves; inside means `UCataclysmDayClock::CurrentDungeonId` names
+	 * a dungeon. The owner's decision of 2026-10-24, `docs/DECISIONS.md`.
+	 *
 	 * @param Days the floor's cost. Zero or less passes no time.
 	 * @return one report per whole day that passed, in order. **Usually empty**,
-	 *         which is the difference between this and `AdvanceDay`.
+	 *         which is the difference between this and `AdvanceDay`, and
+	 *         **always empty while the player is inside a dungeon**.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	TArray<FCataclysmDayReport> SpendFloorTime(float Days);
+
+	/** The whole days the walk under way has spent and not yet run; see `OwedDays`. 0 outside a walk. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DaysOwed() const;
+
+	/**
+	 * Runs the days the walk owes, one at a time and in order, and owes none afterwards.
+	 *
+	 * CALLED WHEN THE PLAYER LEAVES, by `ACataclysmDungeonGameMode::LeaveEmpireDungeon`, which every way out of a
+	 * dungeon goes through. That call comes AFTER a clear has been credited, so the clear counts first and the
+	 * days run second, as the owner ruled on 2026-10-24: "Clear counts, city still falls". On a death it comes
+	 * after the death's resolve and before the death's own days.
+	 *
+	 * CALLED BEFORE THE CLOCK IS TOLD THE PLAYER HAS LEFT, so the dungeon walked keeps its timer paused and a Hollow
+	 * walked keeps its floors through these days, which were spent inside it. A cleared dungeon is off the clock
+	 * already.
+	 *
+	 * @return one report per day run, oldest first. Empty when nothing was owed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDayReport> SettleDaysOwed();
+
+	/**
+	 * Whether the player is inside a dungeon of this run: the clock names one.
+	 *
+	 * `Cataclysm.EmpireAdvance` refuses while this is true, since days passed by hand in the middle of a walk would
+	 * resolve what the owner ruled waits for the player to leave.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsAWalkUnderWay() const;
 
 	// ----------------------------------------------------------------------
 	// The dungeons standing on the map
@@ -1358,12 +1407,11 @@ private:
 	 * once, with no coin, to the city `UCataclysmSurgeScheduler::PickRefuge`
 	 * answers, keeping its floors, its remaining timer and its sub-type, and
 	 * is named in `FCataclysmDayReport::Relocated` and `MovedByAFall`. With
-	 * nowhere to go it stays on the fallen city. The dungeon the player is
-	 * walking moves like any other and the walk goes on.
+	 * nowhere to go it stays on the fallen city.
 	 *
-	 * **THE ORDINARY DUNGEON THE PLAYER IS WALKING IS STILL ABSORBED**, which
-	 * is a recorded difference from the model, issue #2399: `Simulation._fall`
-	 * spares it.
+	 * **NO CITY FALLS WHILE THE PLAYER IS INSIDE A DUNGEON**, since 2026-10-24: the days a walk spends are run when
+	 * the player leaves, `SettleDaysOwed`. So this never meets a dungeon the player is still walking in play. A
+	 * Quest dungeon whose death left it on the map moves like any other in the days settled after the death.
 	 *
 	 * THE MOVES' DRAWS COME BEFORE THE DUNGEON CITY AND THE FALL'S SURGE, the
 	 * order `Simulation._fall` takes them in.

@@ -315,6 +315,16 @@ both to add a field the record had gained:
   **Nothing loads a run's cities back yet** (issue #753), so both fields are
   written and never read; that is the gap every city field has.
 
+`Run_v1.json` was edited an eighteenth time on 2026-10-24:
+
+- `DaysOwed`, the whole days a walk under way has spent and the empire has not
+  yet run, because since 2026-10-24 a walk's days run when the player leaves
+  the dungeon (`docs/DECISIONS.md`, the owner's decision of that day). **It holds
+  13 rather than 0 on purpose**: zero is the field's default, and 13 is no other
+  number in the file. `CurrentDungeonId` is 3 here, so the file describes a run
+  saved while the player was inside a dungeon, which is when the field is not
+  zero.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

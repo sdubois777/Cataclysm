@@ -391,11 +391,17 @@ by `git add` with no error and no warning. Guarded by
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)).
 
   Walking a dungeon spends the empire's days. `Cataclysm.EnterDungeon` starts
-  one of the dungeons standing on the map: its own timer stops while the player
-  is inside it, every other one keeps counting, each floor descended costs one
+  one of the dungeons standing on the map, and each floor descended costs one
   day, and reaching the bottom takes it off the map so its host city stops being
-  bitten by it. Cities can fall while the player is underground (issue
-  [#1092](https://github.com/sdubois777/Cataclysm/issues/1092)).
+  bitten by it (issue
+  [#1092](https://github.com/sdubois777/Cataclysm/issues/1092)). **Nothing
+  happens in the empire while the player is inside**, by the owner's decision of
+  2026-10-24: the days a walk spends are counted, `UCataclysmEmpireRun::DaysOwed`,
+  and run in order when the player leaves -- after a clear is credited, or after
+  a death's resolve and before the death's own days. In those days the walked
+  dungeon's own timer stays stopped and every other one counts, so a city can
+  fall in them; the empire map's status line says how many days will pass.
+  `Cataclysm.EmpireAdvance` refuses while a dungeon is being walked.
 
   **Nothing takes the player from the map into a dungeon, or back.** There is no
   capital to stand in between runs (issue

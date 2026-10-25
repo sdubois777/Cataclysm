@@ -694,6 +694,16 @@ public:
 	float PartialDay = 0.0f;
 
 	/**
+	 * The whole days a walk under way has spent and the empire has not yet run, `UCataclysmEmpireRun::OwedDays`.
+	 * Since 2026-10-24 a walk's days run when the player leaves the dungeon, so a run saved mid-walk carries them
+	 * here. Zero outside a walk, and what a file written before this field existed reads back as.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `PartialDay`'s reason above.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DaysOwed = 0;
+
+	/**
 	 * The empire's 25 cities, as they stood.
 	 *
 	 * ONLY THE MUTABLE HALF OF EACH ONE IS IN HERE, because only fields marked
