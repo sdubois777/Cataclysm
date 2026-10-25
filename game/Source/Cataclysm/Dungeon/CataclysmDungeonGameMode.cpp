@@ -13513,8 +13513,13 @@ bool ACataclysmDungeonGameMode::MakeTheEchoChamberCopy()
 		const float Percent = Skill.DamagePercent >= 0.0f
 			? Skill.DamagePercent
 			: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).DamagePercent;
+		// AND FROM THE WHOLE ATTACK DAMAGE LINE, ruled 2026-10-23 for #2234 (path C): the player's own conditioned,
+		// scaled and skill-type rows, asked with the copied row's own tags, are judged here, on the tick after the use,
+		// which is when the copy is made. No enemy is struck and no blow fact is passed, so no enemy row reaches it.
 		const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
-			AbilitySystem, UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem) * Percent / 100.0f, Skill.Tags);
+			AbilitySystem,
+			UCataclysmSkillEffects::AttackDamageWithNoTarget(AbilitySystem, Skill.Tags) * Percent / 100.0f,
+			Skill.Tags);
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bCannotCriticallyStrike = true;

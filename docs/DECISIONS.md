@@ -2,6 +2,269 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The Echo Chamber copy that hits the player is priced from the player's whole attack damage line with the copied row's tags and no target, so the player's conditioned, scaled and skill-type attack damage rows reach it as they hold when the copy is made, and no row about an enemy does: #2234 path C
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (the price of the self hit in
+`ACataclysmDungeonGameMode::MakeTheEchoChamberCopy`, and nothing else in that file);
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the oracle of one existing test, and two new tests
+with their helpers, group `Cataclysm.DungeonModifierEffects.`); `tools/generate_datatables.py` and
+`tools/tests/test_every_conditioned_stat_has_an_asker.py` (comments only). No data row, no tag, no workbook cell, nothing
+under `game/Data/`, `game/Content/` or `game/Config/Tags/`. Neither `UCataclysmSkillTemplate::LeaveZoneAlong` nor the
+ground patch's pricing (path A) is changed, and neither is path B's self hit or its helper. **This does NOT close
+[#2234](https://github.com/sdubois777/Cataclysm/issues/2234): path A closes it.**
+
+### SAID FIRST
+
+**A PLAY CHANGE, ON FLOORS CARRYING ECHO CHAMBER.** A copy aimed within its own radius hits the player for a tenth of
+what it would deal an enemy (ruled 2026-10-05). Until this change "what it would deal an enemy" was the attack damage
+ATTRIBUTE times the skill's percent, then the runtime modifiers, so every conditioned, scaled and tag-scoped
+`attack_damage` row the player wore was missing from it. **Now the self hit carries them, judged when the copy is made**
+-- on the tick after the use -- so it is larger for a player whose damage rows hold (standing still, wounded, a melee
+copy under a melee row) and smaller for one whose drawback rows hold.
+
+**NO ROW ABOUT AN ENEMY REACHES IT, AND NO BLOW FACT.** No enemy is struck, so the target is null and every enemy-side
+condition refuses. Unlike path B, no use fact is passed either (ruling 5), so the two blow-fact passive rows path B reaches
+(Grand Tithe and Headlong) do not reach this one.
+
+**NOTHING CHANGES FOR A PLAYER WITH NO SUCH ROW.** With no `attack_damage` line, or plain rows only, the figure is the
+attribute exactly as before (path B's control test of the helper).
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 79. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- an Echo Chamber copy that hits you is priced with your conditioned and skill-type attack damage rows as they hold when the copy is made, but no row about an enemy
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner was asked with AskUserQuestion on 2026-10-23 and SELECTED the option labelled, verbatim, "Reach patches and
+self-hits (Recommended)". Its description, written by the coordinating session and shown to the owner, verbatim (as
+recorded in path B's entry below):
+
+> A ground patch and a reflected self-hit read the full attack-damage line. Conditions about you are judged when the patch
+> is laid or the blow copied; conditions about the enemy struck do not apply to a patch. Martyr's Ember's stored damage
+> stays as it is: it was kept fixed on purpose earlier.
+
+The owner selected that option; the words are the coordinating session's, and the owner did not type them.
+
+The coordinating session's rulings of 2026-10-24 that govern this path, verbatim (the numbers are its own):
+
+> 2. Tags: the template's SkillTags for patches and self-hits; the copied row's Skill.Tags for Echo.
+> 3. Scaled rows: the stacks held at laying or copying time.
+> 4. A self-hit's "enemy struck" is nobody (Target = nullptr).
+> 5. Blow facts for path B only.
+> 9. Order: B, then C, then A, one brief and one window each.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of `fix/self-hit-reads-attack-damage-2` at `02302d2c5`, before this change.
+
+1. **`ACataclysmDungeonGameMode::NoteSkillUseForEchoChamber`** (`CataclysmDungeonGameMode.cpp` 13364 to 13392), on the
+   use's skill-used notice. It refuses unless the floor carries the row, the user is the player, the slot is not the basic
+   attack and the skill is one Echo Chamber copies (13374 to 13379). It keeps only the skill's NAME
+   (`EchoChamberPending`, 13385), the aim's distance from the player, at least one metre (`EchoChamberPendingAimCm`, 13386
+   to 13387), and the copy's aim point at the drawn angle (`EchoChamberPendingAim`, 13388 to 13389), and sets
+   `MakeTheEchoChamberCopy` for the next tick (13390 to 13391). **It reads no wearer state at all.**
+2. **`ACataclysmDungeonGameMode::MakeTheEchoChamberCopy`** (13394 to 13436), on the next tick. It looks the row up again
+   by name among the skills of the player's damage type (`DungeonGameModeEchoChamberSkill`, 1078 to 1090, a copy of the
+   generated table's row, so `Skill.Tags` is the copied row's tags), triggers the copy free
+   (`UCataclysmTriggeredSkill::Trigger`, 13405), then, when the aim was within the skill's radius (13415), takes `Percent`
+   from the row's `DamagePercent` or the slot's (13417 to 13419), prices
+   `ToAnEnemy = ModifiedDamage(AbilitySystem, WeaponDamageOf(AbilitySystem) * Percent / 100, Skill.Tags)` (13420 to 13421)
+   and deals `ToAnEnemy * EchoChamberSelfHitPercent / 100` as the player's own area damage to themselves, no crit, no
+   leech, no retaliation (13422 to 13431). **So every wearer state the price reads is read here, at copying time, after
+   the copy has been triggered in the same call.**
+3. **The helper on path B's branch**, read whole: `CataclysmSkillEffects.h` 1693 to 1697, public (the section opens at
+   `public:` 959; the next access line is `private:` 3189):
+   `static float AttackDamageWithNoTarget(const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags,
+   float SkillHealthCostPercent = -1.0f, float MetresMovedBeforeBlow = -1.0f, float ExtraIncreases = 0.0f);` Body
+   `CataclysmSkillEffects.cpp` 527 to 538. `AbilitySystem` at the call is `const UAbilitySystemComponent*` (13414), and
+   `FCataclysmWeaponSkill::Tags` is an `FGameplayTagContainer`. `CataclysmSkillEffects.h` is already included (21).
+4. **Every test that reads an Echo Chamber self hit's figure** (searched "EchoChamber" over `game/Source`: 74 in the
+   tests file, the only test file): only
+   `Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithinItsOwnRadiusHitsThePlayerAndOneAimedBeyondDoesNot`
+   (`CataclysmDungeonModifierEffectsTests.cpp` 46523), which recomputed the old price inline as its oracle (46586 to 46587)
+   and asserts the player lost more than nothing and at most a tenth of it. `EchoChamberFiresAFreeCopy...` reads only that a
+   far copy did not hit; the other three read no figure.
+5. **What that test's player carries.** An `ACataclysmPlayerCharacter` possessed in the test, refreshed through its
+   equipment component with nothing worn and no passive points; `game/Data/ClassStats.csv` states no `attack_damage` row
+   (searched: 0). So its line holds no conditioned or tag-scoped row and the helper is the attribute for it (path B's
+   control test). Read from the code, not measured.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| The owner: a reflected self hit reads the full attack damage line; conditions about you judged when the blow is copied | `CataclysmDungeonGameMode.cpp` 13420 to 13426: `ToAnEnemy = ModifiedDamage(AbilitySystem, AttackDamageWithNoTarget(AbilitySystem, Skill.Tags) * Percent / 100, Skill.Tags)`, where the price already was, inside `MakeTheEchoChamberCopy`, which is when the copy is made. |
+| 2, the copied row's `Skill.Tags` | the second argument at 13425. |
+| 3, the stacks held at copying time | `CurrentConditions`, inside both lookups of the helper, reads them at the call. Nothing new. |
+| 4, the enemy struck is nobody | the helper passes no target; every blow fact stays at its "not known" default. |
+| 5, blow facts for path B only | the call passes neither use fact: `SkillHealthCostPercent` and `MetresMovedBeforeBlow` stay -1. |
+| 9, B then C then A | this commit sits on path B's `02302d2c5`; path A follows. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE PRICE STAYS AFTER THE COPY IS TRIGGERED.** The copy is triggered at 13405 and priced at 13423, in the same call,
+  so a wearer state the copy's own activation changes would be read after the change. The brief named the line to change
+  and not its position. The option not taken: price before triggering, which would read the state before the copy acts.
+  Nothing read shows a copy's activation changing a condition the rows ask (a copy is a free repeat and sends no notice;
+  the tests' copies strike nobody), so no figure differs today either way.
+- **THE TESTS ARE IN THE ECHO CHAMBER TESTS' GROUP**, `Cataclysm.DungeonModifierEffects.`, after
+  `EchoChamberAndWildMagicEachActOnceOnOneUseAndNeitherActsOnTheOthersSkill`, with that rig (`FPossessedPlayer`,
+  `AnObstacleFloor`, `AStrikeEchoChamberCopies`, `FEchoChamberAnglePinned`, `ThePlayerUses`). The option not taken: a new
+  group, which would need a rig of its own for a possessed player on a floor carrying the row.
+- **THE PLAYER'S LINE IS HAND-BUILT** with `SetStatInputs`, as several tests in that file do: the weapon flat at the
+  attribute's figure, nothing folded, and the one row a reading needs. **Health lost is compared, not computed**: each
+  reading starts from 1000 health with no energy shield, block and crit pinned off, so two readings differ only by the
+  price. A row's reading is asserted at least its share above the control (every defence step multiplies, except a flat
+  reduction, which takes a smaller share of a larger hit), and a row that must not reach is asserted equal to it within
+  0.5%. The option not taken: an exact figure through the player's defences, which would have to be re-derived from the
+  refreshed player's armour and resistances.
+
+### THE GENRE SOURCE
+
+Brief 79 names none and nothing was fetched. The ruling rests on this game's own rule: the copy's self hit is a tenth of
+what the copy would deal an enemy.
+
+### WHAT WAS BUILT
+
+- **The self hit's price** (`CataclysmDungeonGameMode.cpp` 13420 to 13426): `AttackDamageWithNoTarget(AbilitySystem,
+  Skill.Tags)` in place of `WeaponDamageOf(AbilitySystem)`, all other parameters at their defaults, then
+  `* Percent / 100` and `ModifiedDamage(AbilitySystem, that, Skill.Tags)` as before, and a three-line comment saying why
+  (#2234 path C) and that wearer conditions are judged here, on the tick after the use, which is when the copy is made.
+  Every line changed: one removed (the old second line of the `ToAnEnemy` statement), three comment lines and three code
+  lines added.
+
+**THE ROWS PATH C NOW REACHES**, from path B's entry below, which gives the enchantment session's classification by
+script of every `attack_damage` row in `game/Data/EnchantmentEffects.csv` and `PassiveEffects.csv` at `ebe796ea7`; not
+re-measured here:
+
+- **wearer-state conditioned**, 15 enchantment rows and 8 passive rows, judged when the copy is made;
+- **wearer-scaled**, 21 enchantment rows and 18 passive rows, at the stacks held when the copy is made (ruling 3);
+- **tag-scoped**, 12 enchantment rows, each reaching only a copy whose row carries its tag. Echo Chamber copies strikes,
+  projectiles and debuffs of the player's damage type, so a melee strike's copy takes the melee rows and a spell's copy the
+  spell rows.
+
+**STILL NOT REACHED BY THE COPY'S SELF HIT:** everything path B's entry lists as not reached by a self hit (the
+enemy-conditioned rows, the rows scaled by the target or the blow, `enemies_hit_at_most`, a gadget's age, the flat rows of
+[#2499](https://github.com/sdubois777/Cataclysm/issues/2499)), **and also the two blow-fact passive rows**
+`Masochist_basic_bt_b2#1` (Grand Tithe, `skill_health_cost_above`) and `Ravager_capstone_25#4` (Headlong,
+`metres_moved_before_attack`), because no use fact is passed (ruling 5).
+
+**PATH A FOLLOWS**, in its own brief and window: a skill's ground patch (`LeaveZoneAlong`), which closes #2234.
+
+### Tests
+
+**THE ORACLE OF THE EXISTING TEST, CHANGED.**
+`Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithinItsOwnRadiusHitsThePlayerAndOneAimedBeyondDoesNot`
+(`CataclysmDungeonModifierEffectsTests.cpp` 46523), what the copy would deal an enemy:
+
+- old: `ModifiedDamage(Player.AbilitySystem, WeaponDamageOf(Player.AbilitySystem) * Percent / 100.0f, Strike->Tags)`;
+- new (46589 to 46591): `ModifiedDamage(Player.AbilitySystem, AttackDamageWithNoTarget(Player.AbilitySystem,
+  Strike->Tags) * Percent / 100.0f, Strike->Tags)`, with a comment.
+
+**Why it is not a weakening.** The assertion is unchanged ("at most a tenth of it", `Lost <= ToAnEnemy * 10 / 100 +
+0.01`), and the oracle is now the price the code uses, so the bound is still the copy's tenth before defences. For this
+test's player, whose line holds no conditioned or tag-scoped row (read first, item 5), the new oracle's figure is the old
+one's exactly, so the test measures the same number as before. Kept on the old formula, the oracle would sit below the
+real price for any player whose damage rows hold, and the bound would fail a correct self hit.
+
+Two new Unreal tests, each with its control read first. Crit pinned at 100 with `CataclysmTestWorld::FScopedCritRoll`
+AFTER `MakeWorldThatHasBegunPlay` (the self hit also cannot critically strike); `Cataclysm.BlockRoll` pinned at 100 (never
+blocks) by a new scoped pin, `FEchoChamberRollPinned`, which puts back the value it found. **Bodies:** one, the player;
+the copy is aimed at the player's own feet, which `EchoChamberLeastAimCm` puts one metre away, inside the strike's radius
+of at least 2 m; the floor's creatures are cleared. **Teams:** the real player character on its own team; the self hit is
+dealt by the player to the player. No wait on a tick: `MakeTheEchoChamberCopy` is called by hand, as the existing tests do.
+New helpers, in one block before the tests: `FEchoChamberRollPinned`, `AnEchoChamberTestRow`,
+`GiveThePlayerAttackDamageRows` and `HealthAnEchoChamberCopyTakes` (health lost from 1000 with no energy shield, -1 when no
+copy was made or it did not hit).
+
+1. `Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesTheWearersStationaryRowAsItHoldsWhenTheCopyIsMade`, 15
+   assertions in a passing run. The line: the weapon flat and "while stationary your damage is increased by 50%" (50%
+   increased, `WhileStationary`). In order: a world; the six of `AnObstacleFloor` (game mode spawned, a possessed player,
+   combat events, floor one, no curse, floor two); **set-up: a copied strike of radius 2 m or more**; **set-up: the angle
+   can be pinned**; **set-up: the block roll can be pinned**; having just moved (`NoteMovedMetres(1)`): **set-up: the line
+   reads the plain weapon figure** (the helper, within 0.1%); **control: the copy hits the player, who loses health**; then
+   standing still (`NoteDidNotMove`): **set-up: the line reads 50% more**; **the copy hits the player, who loses health**;
+   **the self hit takes the 50% row: at least 1.5 times the control** (less 0.5% for rounding). Before this change the two
+   readings were equal.
+2. `Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys`, 16
+   assertions in a passing run. In order: a world; the six of `AnObstacleFloor`; the three set-ups above; **set-up: the
+   copied strike carries `Type.Melee`**; **set-up: and does not carry `Type.Spell`**; **control, read first: with the
+   weapon flat alone, the copy hits the player, who loses health**; **30% increased scoped to `Type.Melee` raises it: at
+   least 1.3 times the control**; **40% increased scoped to `Type.Spell` does not: the control's figure within 0.5%**;
+   **60% increased `TargetIsBoss` does not: the control's figure within 0.5%**.
+
+**Every earlier Echo Chamber test is unchanged** but for the oracle above, and is expected to pass: `EchoChamberFigures...`,
+`EchoChamberFiresAFreeCopy...`, `EchoChamberCopiesNothing...` and `EchoChamberAndWildMagic...` are not touched, and the
+self hit test's other assertions, messages and order are as they were.
+
+**Names:** searched by script over 4,786 name strings under `game/Source`, case ignored, with
+`Cataclysm.DungeonModifierEffects.EchoChamberACopyAimedWithin` as the control (selects 1): each new name occurs once; no
+other name begins with either, and neither begins with another; no name begins with `Cataclysm.DungeonModifierEffects`
+without its dot; the prefix `Cataclysm.DungeonModifierEffects.EchoChamberSelfHit` selects exactly the two new tests.
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, float, float, float)` only, four times. `TestTrue` with
+`const TCHAR*` and with `FString` messages; `TestNotNull` on pointers.
+
+**Not tested:** a scaled row on the copy's self hit (judged by the same lookups as the conditioned row); a projectile's
+or a debuff's copy (only a strike is copied in the tests); a spell's copy taking a `Type.Spell` row; a drawback row
+lowering it; the enemy rows other than the boss row; a refreshed player wearing the real rows; the player's defences'
+exact share; whether a copy's own activation changes a wearer condition before the price is read (the judgement above);
+anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. The old text was counted exactly once in `CataclysmDungeonGameMode.cpp` by a script at this commit's working
+tree (CRLF read as LF, as `prove_cpp_guard` reads it), and each new text absent before the break. Round, curly and square
+brackets: 10049/10049, 2659/2659, 244/244 before; EC-I the same after; EC-II 10050/10050, 2659/2659, 244/244 after (one
+pair added, balanced). Each compiles alone by reading: EC-I's `WeaponDamageOf` is the call that stood there before, with
+the same header; EC-II's `FGameplayTagContainer()` binds to the helper's `const FGameplayTagContainer&`.
+
+**The prefix** `Cataclysm.DungeonModifierEffects.EchoChamberSelfHit` cannot end with a dot, because it is part of a test
+name and not a group; no other test name begins with it (above). The group with its dot would run the whole file's group.
+
+**The events the tests' actors raise, with their depth.** Each reading: `ThePlayerUses` sends the player's skill-used
+notice (`UCataclysmCombatEvents::NoteSkillUsed`), depth nought, which reaches the game mode's listeners (Echo Chamber
+draws its copy; the floor carries no other row) and the player's rows (it wears none); `MakeTheEchoChamberCopy` triggers
+the copy, a free repeat that sends no notice and strikes nobody (the floor's creatures are cleared); then the self hit,
+`ApplyDirectDamage(Player, Player)`, depth nought, outside any `ActOnEvent`, which raises what a direct blow taken raises
+on the player, and nothing worn hangs on it. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Prefix | Tests stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|---|
+| EC-I, the copy's self hit priced from the attribute again | `CataclysmDungeonGameMode.cpp` | `UCataclysmSkillEffects::AttackDamageWithNoTarget(AbilitySystem, Skill.Tags)` | `UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem)` | `Cataclysm.DungeonModifierEffects.EchoChamberSelfHit` (2 tests) | both | none (both are stated) |
+| EC-II, the copy priced with no tags | `CataclysmDungeonGameMode.cpp` | `UCataclysmSkillEffects::AttackDamageWithNoTarget(AbilitySystem, Skill.Tags)` | `UCataclysmSkillEffects::AttackDamageWithNoTarget(AbilitySystem, FGameplayTagContainer())` | `Cataclysm.DungeonModifierEffects.EchoChamberSelfHit` (2 tests) | `EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys` | none: `EchoChamberSelfHitTakesTheWearersStationaryRowAsItHoldsWhenTheCopyIsMade` passes, its row carrying no tag |
+
+Failed assertions, by reading:
+
+- **EC-I, 2 in 2 tests:** "the self hit takes the 50% row" (the control's figure against at least 1.5 times it) and "a
+  row scoped to the copied skill's Type.Melee raises it" (the control's figure against at least 1.3 times it). The set-ups
+  pass, since they call the helper directly; the spell and boss readings pass, the attribute being their answer either way.
+- **EC-II, 1 in 1 test:** "a row scoped to the copied skill's Type.Melee raises it". The spell and boss readings pass.
+
+**Outside the prefix:** under EC-I and EC-II, the existing self hit test passes: its player's line holds no conditioned
+or tag-scoped row, so the price under either break, the helper with any tags and the attribute are one figure. No other
+test reads the price. None expected to fail.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. The oracle change above is a change to what an Unreal test computes as its bound, stated with old and new.
+
+### Python of record at the starting head
+
+Measured at `02302d2c5` before any edit: "6962 passed, 7 skipped in 297.69s"; JUnit 6969 tests, 0 failures, 0 errors, 7
+skipped. The run after this commit is in the second session's hand-back.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-24 — The modifier tests' console-variable helper puts back the value it found (#2493)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only: `FScopedConsoleString` and one

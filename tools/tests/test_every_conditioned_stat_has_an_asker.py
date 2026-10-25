@@ -28,8 +28,8 @@ read from the code, stat by stat, on 2026-10-06; no probe hands over a blow or a
 target to prove it. And a stat can have a second consumer that reads the
 attribute: issues #2234 and #2235 record two. A third, #2233's throw
 interval, asks since 2026-10-23. Of #2234's three paths the self hit reads the
-whole line since 2026-10-24 (path B); the Echo Chamber copy (C) and a ground
-patch (A) remain.
+whole line since 2026-10-24 (path B) and the Echo Chamber copy since
+2026-10-25 (path C); a ground patch (A) remains.
 
 THE PARSE IS NARROW, as in `test_every_scaled_stat_has_an_asker.py`: one literal
 block per table, anchored on the accessor that opens it, raising when the shape

@@ -46629,12 +46629,16 @@ bool FCataclysmEchoChamberSelfHitTest::RunTest(const FString& Parameters)
 	const float Lost = BeforeTheNearOne - Player.Read(Health);
 	TestTrue(FString::Printf(TEXT("who loses health (%.2f)"), Lost), Lost > 0.0f);
 
-	// AND NO MORE THAN A TENTH OF WHAT THE COPY WOULD DEAL TO AN ENEMY, before the player's own defences.
+	// AND NO MORE THAN A TENTH OF WHAT THE COPY WOULD DEAL TO AN ENEMY, before the player's own defences. PRICED AS
+	// THE CODE PRICES IT SINCE #2234 PATH C, from the whole attack damage line with the copied row's tags and no
+	// target. This player wears nothing, so its line holds no conditioned or tag-scoped row and the figure is the
+	// attribute's as before.
 	const float Percent = Strike->DamagePercent >= 0.0f
 		? Strike->DamagePercent
 		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Strike->Slot).DamagePercent;
-	const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
-		Player.AbilitySystem, UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem) * Percent / 100.0f, Strike->Tags);
+	const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(Player.AbilitySystem,
+		UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags) * Percent / 100.0f,
+		Strike->Tags);
 	TestTrue(FString::Printf(TEXT("set-up: the copy would deal something to an enemy (%.2f)"), ToAnEnemy), ToAnEnemy > 0.0f);
 	TestTrue(FString::Printf(TEXT("at most a tenth of it: %.2f of %.2f"), Lost, ToAnEnemy),
 			 Lost <= ToAnEnemy * Effects::EchoChamberSelfHitPercent / 100.0f + 0.01f);
@@ -46756,6 +46760,242 @@ bool FCataclysmEchoChamberWithWildMagicTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Wild Magic has nothing more to trigger"), Mode->WildMagicPendingSkill().IsNone());
 	TestEqual(TEXT("one copy"), Mode->EchoChamberCopiesFired(), 1);
 	TestEqual(TEXT("one trigger"), Mode->WildMagicTriggeredCount(), 1);
+	return true;
+}
+
+// ISSUE #2234 PATH C, ruled 2026-10-23: the copy that hits the player is priced from the player's whole attack damage
+// line, asked with the copied row's own tags and no target. A row about the player is judged when the copy is made; no
+// row about an enemy reaches it. Each test reads a control first and compares health lost against it.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A roll pinned for as long as it is in scope, and put back to what it was. */
+	struct FEchoChamberRollPinned
+	{
+		FEchoChamberRollPinned(const TCHAR* Name, float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FEchoChamberRollPinned()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/** An attack damage row of this many percent increased, from an enchantment. */
+	FCataclysmStatModifier AnEchoChamberTestRow(float Percent)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Percent;
+		return Row;
+	}
+
+	/**
+	 * The player's attack damage line as `UCataclysmPlayerClassStats::ApplyTo` would leave it for the attribute it
+	 * holds now and nothing unconditional, with these rows beside it, so nothing is folded and the attribute is the
+	 * plain figure. `SetStatInputs` replaces every line the player had, which is harmless here: each reading below is
+	 * taken on the same lines but the one row a test swaps.
+	 */
+	void GiveThePlayerAttackDamageRows(const FPossessedPlayer& Player, const TArray<FCataclysmStatModifier>& Rows)
+	{
+		FCataclysmStatModifier Weapon;
+		Weapon.Bucket = ECataclysmStatBucket::Flat;
+		Weapon.Source = ECataclysmModifierSource::GearImplicit;
+		Weapon.Value = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem);
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Weapon);
+		Line.Modifiers.Append(Rows);
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.Add(FName(TEXT("attack_damage")), Line);
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Player.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	}
+
+	/**
+	 * The health one copy aimed at the player's own feet takes, from full health and with no energy shield to absorb any
+	 * of it, so two readings differ only by what the copy was priced at. -1 when no copy was made or it did not hit.
+	 */
+	float HealthAnEchoChamberCopyTakes(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+									   const FCataclysmWeaponSkill& Strike)
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+		const float Before = Player.Read(Health);
+		const int32 HitsBefore = Mode->EchoChamberSelfHits();
+		ThePlayerUses(Player, Strike.Name, ECataclysmAbilitySlot::Heavy, Player.Character->GetActorLocation());
+		if (!Mode->MakeTheEchoChamberCopy() || Mode->EchoChamberSelfHits() != HitsBefore + 1)
+		{
+			return -1.0f;
+		}
+		return Before - Player.Read(Health);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitStationaryRowTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesTheWearersStationaryRowAsItHoldsWhenTheCopyIsMade",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberSelfHitStationaryRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// PINNED AFTER THE WORLD IS MADE, which sets the critical strike roll itself. The self hit cannot critically strike;
+	// the block roll is pinned so that no reading is halved by a block.
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	const FEchoChamberRollPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 200.0f);
+	FEchoChamberAnglePinned Pinned(0.0f);
+	if (!TestNotNull(TEXT("set-up: a copied strike with a radius of two metres or more"), Strike)
+		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the block roll can be pinned"), NeverBlocks.Variable))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+
+	// "WHILE STATIONARY YOUR DAMAGE IS INCREASED BY 50%", a row about the player, beside the plain weapon figure.
+	FCataclysmStatModifier Stationary = AnEchoChamberTestRow(50.0f);
+	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
+	GiveThePlayerAttackDamageRows(Player, {Stationary});
+	const float Attribute = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem);
+
+	// THE CONTROL, READ FIRST: having just moved, the row does not hold when the copy is made.
+	Player.AbilitySystem->NoteMovedMetres(1.0f);
+	if (!TestEqual(TEXT("set-up: moved, the line reads the plain weapon figure"),
+				   UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags), Attribute,
+				   Attribute * 0.001f))
+	{
+		return false;
+	}
+	const float WhenMoved = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
+	if (!TestTrue(FString::Printf(TEXT("control: moved, the copy hits the player, who loses health (%.2f)"), WhenMoved),
+				  WhenMoved > 0.0f))
+	{
+		return false;
+	}
+
+	// STANDING STILL: the row holds when the copy is made, and the copy that hits the player carries it.
+	Player.AbilitySystem->NoteDidNotMove();
+	if (!TestEqual(TEXT("set-up: still, the line reads 50% more"),
+				   UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags),
+				   Attribute * 1.5f, Attribute * 0.001f))
+	{
+		return false;
+	}
+	const float WhenStill = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
+	TestTrue(FString::Printf(TEXT("still, the copy hits the player, who loses health (%.2f)"), WhenStill),
+			 WhenStill > 0.0f);
+	// AT LEAST HALF AS MUCH AGAIN: every step of the player's defences multiplies, except a flat reduction, which takes
+	// a smaller share of a larger hit. Before #2234 path C the two readings were equal.
+	TestTrue(FString::Printf(TEXT("still, the self hit takes the 50%% row: %.2f against the control's %.2f"), WhenStill,
+							 WhenMoved),
+			 WhenStill >= WhenMoved * 1.5f * 0.995f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitTagRowsTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberSelfHitTagRowsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	const FEchoChamberRollPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 200.0f);
+	FEchoChamberAnglePinned Pinned(0.0f);
+	if (!TestNotNull(TEXT("set-up: a copied strike with a radius of two metres or more"), Strike)
+		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: the block roll can be pinned"), NeverBlocks.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+	const FGameplayTag Spell = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(UCataclysmSkillEffects::SpellTagName), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the copied strike carries Type.Melee"), Melee.IsValid() && Strike->Tags.HasTag(Melee))
+		|| !TestTrue(TEXT("set-up: and does not carry Type.Spell"), Spell.IsValid() && !Strike->Tags.HasTag(Spell)))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+
+	// THE CONTROL, READ FIRST: the plain weapon figure and no row beside it.
+	GiveThePlayerAttackDamageRows(Player, {});
+	const float Plain = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
+	if (!TestTrue(FString::Printf(TEXT("control: the copy hits the player, who loses health (%.2f)"), Plain),
+				  Plain > 0.0f))
+	{
+		return false;
+	}
+
+	// "MELEE SKILLS DEAL 30% INCREASED DAMAGE": a tag the copied row carries. At least 1.3 times the control, for the
+	// reason the stationary test gives.
+	FCataclysmStatModifier MeleeRow = AnEchoChamberTestRow(30.0f);
+	MeleeRow.RequiredTags.AddTag(Melee);
+	GiveThePlayerAttackDamageRows(Player, {MeleeRow});
+	const float WithMelee = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
+	TestTrue(FString::Printf(TEXT("a row scoped to the copied skill's Type.Melee raises it: %.2f against %.2f"),
+							 WithMelee, Plain),
+			 WithMelee >= Plain * 1.3f * 0.995f);
+
+	// 40% INCREASED SCOPED TO TYPE.SPELL, which the copied row does not carry: the control's figure.
+	FCataclysmStatModifier SpellRow = AnEchoChamberTestRow(40.0f);
+	SpellRow.RequiredTags.AddTag(Spell);
+	GiveThePlayerAttackDamageRows(Player, {SpellRow});
+	TestEqual(TEXT("a row scoped to a tag the copied skill does not carry does not raise it"),
+			  HealthAnEchoChamberCopyTakes(Mode, Player, *Strike), Plain, Plain * 0.005f);
+
+	// 60% INCREASED AGAINST A BOSS, a row about the enemy struck. No enemy is struck: the control's figure.
+	FCataclysmStatModifier BossRow = AnEchoChamberTestRow(60.0f);
+	BossRow.Condition = ECataclysmStatCondition::TargetIsBoss;
+	GiveThePlayerAttackDamageRows(Player, {BossRow});
+	TestEqual(TEXT("a row about the enemy struck (a boss) does not raise it"),
+			  HealthAnEchoChamberCopyTakes(Mode, Player, *Strike), Plain, Plain * 0.005f);
 	return true;
 }
 
