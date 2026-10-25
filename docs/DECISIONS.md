@@ -288,8 +288,9 @@ open pull request; "free GB: 16.6 of 31.1". The lock was released before anythin
   built. Lint: "All checks passed!".
 - **The proofs:** as under Proofs above.
 
-Branch `feat/game-seeded-floor-draws-2` on `development` at `b83230b44` (written on `439786ca3` as `-1` and moved,
-its zero-context patch ids unchanged). This entry adds lines to `docs/DECISIONS.md`
+Branch `feat/game-seeded-floor-draws-3` on `development` at `1fe1d4311` (written on `439786ca3` as `-1`, moved onto
+`b83230b44` as `-2`, where its window ran at `2d5f13e99`, and then onto `1fe1d4311`, the tools-only #2502, with no file
+under `game/` changed from the tested head). This entry adds lines to `docs/DECISIONS.md`
 and removes none of development's.
 
 ---
