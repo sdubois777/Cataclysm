@@ -54,23 +54,12 @@ namespace CataclysmWardenTest
 	/**
 	 * A world that has begun play, so spawned characters get their attributes.
 	 *
-	 * IT REGISTERS A WORLD CONTEXT AND NO OTHER TEST FILE DOES. That line was
-	 * here before the shared helper existed, and it is kept rather than folded
-	 * into the shared one, because nothing records why this file needs it and
-	 * twenty other files use the shared helper without it. Removing it is a
-	 * separate change that should start by finding out what it is for.
+	 * THIS FILE USED TO REGISTER ITS OWN WORLD CONTEXT, and no other did. The
+	 * shared helper gives every test world one now and removes it when the world
+	 * is cleaned up (issue #2488), so the copy here would have been a second
+	 * context for the same world.
 	 */
-	static UWorld* MakeWorldThatHasBegunPlay()
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (World && GEngine)
-		{
-			FWorldContext& Context =
-				GEngine->CreateNewWorldContext(EWorldType::Game);
-			Context.SetCurrentWorld(World);
-		}
-		return World;
-	}
+	using CataclysmTestWorld::MakeWorldThatHasBegunPlay;
 
 	static void TearDown(UWorld* World)
 	{
@@ -78,7 +67,6 @@ namespace CataclysmWardenTest
 		{
 			return;
 		}
-		GEngine->DestroyWorldContext(World);
 		World->DestroyWorld(false);
 	}
 

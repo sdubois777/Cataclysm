@@ -8,6 +8,8 @@
 #include "HAL/IConsoleManager.h"
 // For moving a test world's clock. See `RunClock` below.
 #include "TimerManager.h"
+// For the worlds `GiveTestWorldAContext` registered. See there.
+#include "UObject/ObjectKey.h"
 
 /**
  * The world every automation test runs in, in one place.
@@ -271,6 +273,63 @@ namespace CataclysmTestWorld
 	};
 
 	/**
+	 * Give a test world a world context, and take it away when the world is
+	 * cleaned up.
+	 *
+	 * WHY. `UWorld::DestroyActor` asks the engine for the world's context so it
+	 * can tell the network drivers an actor has gone, and when there is none it
+	 * logs "UWorld::DestroyActor: World has no context!". `UWorld::CreateWorld`
+	 * with `bInformEngineOfWorld` false makes no context, so every creature a
+	 * test destroyed logged it: 915,493 warnings in one whole-suite run, each
+	 * echoed again by the automation controller, about 378 MB of a 917 MB engine
+	 * log (issue #2488). The warning fires while a test runs, whenever it
+	 * destroys an actor, so ending worlds differently could not stop it.
+	 *
+	 * WHAT A CONTEXT CHANGES, BY READING THE ENGINE. The engine reads a world's
+	 * context for its network drivers, its game viewport and its level
+	 * collection; a test world has no network driver and no viewport. The world's
+	 * game instance is the world's own `OwningGameInstance`, not the context's,
+	 * so a test world still has none. The editor's frame updates level streaming
+	 * for a game world with a context, and ticks nothing.
+	 *
+	 * ONLY ITS OWN. The removal runs for every world the engine cleans up, the
+	 * editor's included, so it removes a context only for a world this function
+	 * registered. A world that already has a context is left alone, which is what
+	 * keeps `BeginPlayIn` on a world from `MakeWorldThatHasNotBegunPlay` from
+	 * registering it twice.
+	 *
+	 * AFTER CLEAN-UP RATHER THAN DURING IT, on `OnPostWorldCleanup`, so the
+	 * context is there for anything the clean-up itself destroys. No call site
+	 * that ends a world has to change: there are thousands of them.
+	 *
+	 * `Cataclysm.TestWorld.ATestWorldHasAWorldContextUntilItIsDestroyed` is the
+	 * test for both halves.
+	 */
+	inline void GiveTestWorldAContext(UWorld* World)
+	{
+		if (!World || !GEngine || GEngine->GetWorldContextFromWorld(World))
+		{
+			return;
+		}
+
+		static TSet<TObjectKey<UWorld>> Registered;
+		static const FDelegateHandle Removal =
+			FWorldDelegates::OnPostWorldCleanup.AddLambda(
+				[](UWorld* Cleaned, bool /*bSessionEnded*/, bool /*bCleanupResources*/)
+				{
+					if (Registered.Remove(TObjectKey<UWorld>(Cleaned)) > 0 && GEngine)
+					{
+						GEngine->DestroyWorldContext(Cleaned);
+					}
+				});
+		(void)Removal;
+
+		FWorldContext& Context = GEngine->CreateNewWorldContext(EWorldType::Game);
+		Context.SetCurrentWorld(World);
+		Registered.Add(TObjectKey<UWorld>(World));
+	}
+
+	/**
 	 * A world in which an actor spawned later actually receives `BeginPlay`.
 	 *
 	 * USE THIS BY DEFAULT. It is the one that behaves like the running game, and
@@ -288,6 +347,7 @@ namespace CataclysmTestWorld
 		{
 			return nullptr;
 		}
+		GiveTestWorldAContext(World);
 
 		FURL URL;
 		World->InitializeActorsForPlay(URL);
@@ -323,6 +383,7 @@ namespace CataclysmTestWorld
 		{
 			return;
 		}
+		GiveTestWorldAContext(World);
 
 		FURL URL;
 		World->InitializeActorsForPlay(URL);
@@ -341,8 +402,10 @@ namespace CataclysmTestWorld
 	inline UWorld* MakeWorldThatHasNotBegunPlay()
 	{
 		SilenceCriticalStrikes();
-		return UWorld::CreateWorld(EWorldType::Game,
-								   /*bInformEngineOfWorld=*/false);
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+										   /*bInformEngineOfWorld=*/false);
+		GiveTestWorldAContext(World);
+		return World;
 	}
 
 	/**

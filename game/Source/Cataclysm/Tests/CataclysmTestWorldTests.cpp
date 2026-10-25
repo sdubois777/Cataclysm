@@ -69,6 +69,41 @@ CATACLYSM_TEST(FCataclysmTestWorldDispatchesBeginPlayTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmTestWorldHasAWorldContextTest,
+	"Cataclysm.TestWorld.ATestWorldHasAWorldContextUntilItIsDestroyed")
+{
+	// ISSUE #2488. Without a context, every actor a test destroyed logged
+	// "UWorld::DestroyActor: World has no context!", 915,493 times in one
+	// whole-suite run. Both halves are asked: that the context is there while
+	// the test runs, and that it is gone once the world is destroyed, because a
+	// context left behind keeps a reference to its world.
+	if (!TestNotNull(TEXT("the engine"), GEngine))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	TestNotNull(TEXT("a world from the helper has a world context"),
+		GEngine->GetWorldContextFromWorld(World));
+
+	const int32 ContextsBefore = GEngine->GetWorldContexts().Num();
+	World->DestroyWorld(false);
+
+	TestNull(TEXT("its world context is gone once the world is destroyed"),
+		GEngine->GetWorldContextFromWorld(World));
+	// THE EDITOR'S OWN CONTEXTS ARE UNTOUCHED. The removal runs for every world
+	// the engine cleans up, so exactly one context leaving the list is what
+	// says it removed only the one it made.
+	TestEqual(TEXT("exactly one world context left the engine's list"),
+		GEngine->GetWorldContexts().Num(), ContextsBefore - 1);
+
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmTestWorldWithoutBeginPlayTest,
 	"Cataclysm.TestWorld.TheOtherHelperGivesAWorldThatHasNotBegunPlay")
 {
