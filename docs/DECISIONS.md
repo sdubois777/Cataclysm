@@ -153,13 +153,14 @@ frame a pawn was placed, is [#2505](https://github.com/sdubois777/Cataclysm/issu
 
 ### Run
 
-Not yet run past the first window above. Predicted Unreal total: `development`'s last measured total plus three, 4151,
+Not yet run past the second window above. Predicted Unreal total: `development`'s last measured total plus three, 4154
+(4151 at `74acd5e1c`),
 with no failure. **Step 1b**, ruled by the coordinating session: the second window runs
 `Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing` alone right after the
 build, and stops there if it fails.
 
-Branch `fix/instant-moves-restart-the-still-clock-2` on `development` at `3830065c5` (written on `b2b60ebf6` as `-1`
-and moved, its zero-context patch ids unchanged; the append-append conflict at the end of
+Branch `fix/instant-moves-restart-the-still-clock-3` on `development` at `74acd5e1c` (written on `b2b60ebf6` as `-1`,
+moved onto `3830065c5` as `-2`, where its first two windows ran, and then onto `74acd5e1c`, the #2234 B merge; its zero-context patch ids unchanged; the append-append conflict at the end of
 `CataclysmDungeonModifierEffectsTests.cpp` was resolved by taking `development`'s file and re-applying this change's
 own edit scripts, each asserted to match once, which gave the original's 63 lines added and 2 removed).
 
