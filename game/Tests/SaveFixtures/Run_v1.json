@@ -158,7 +158,8 @@
 					],
 					"Sockets": 0,
 					"Residue": 2.5,
-					"Kills": 0
+					"Kills": 0,
+					"bMadeAtCreation": false
 				},
 				"Material": "None",
 				"MaterialQuantity": 0,

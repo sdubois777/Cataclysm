@@ -73,7 +73,8 @@
 				],
 				"Sockets": 2,
 				"Residue": 4.25,
-				"Kills": 0
+				"Kills": 0,
+				"bMadeAtCreation": false
 			},
 			"Material": "None",
 			"Quantity": 0
@@ -88,7 +89,8 @@
 				"Enchantments": [],
 				"Sockets": 0,
 				"Residue": 0,
-				"Kills": 0
+				"Kills": 0,
+				"bMadeAtCreation": false
 			},
 			"Material": "Whispering_Ash",
 			"Quantity": 12
@@ -122,7 +124,8 @@
 				],
 				"Sockets": 3,
 				"Residue": 2.5,
-				"Kills": 123456
+				"Kills": 123456,
+				"bMadeAtCreation": true
 			}
 		},
 		{
@@ -136,7 +139,8 @@
 				"Enchantments": [],
 				"Sockets": 0,
 				"Residue": 0.25,
-				"Kills": 0
+				"Kills": 0,
+				"bMadeAtCreation": false
 			}
 		}
 	],

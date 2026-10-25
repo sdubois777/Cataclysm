@@ -754,10 +754,11 @@ bool UCataclysmEquipmentComponent::CarryCreationDamageType(FName WeaponType, FNa
 		FCataclysmItem& Weapon = Slots[Index];
 		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
 			Weapon.Base, TEXT("CarryCreationDamageType"), /*bWarnIfMissing=*/false);
-		const bool bTheCreationWeapon = Base && Base->WeaponType == WeaponType.ToString()
-			&& Weapon.Affixes.Num() == 0 && Weapon.EnchantmentCount == 0 && Weapon.Enchantments.Num() == 0
-			&& Weapon.DamageTypes.Num() == 1;
-		if (!bTheCreationWeapon || Weapon.DamageTypes[0] == DamageType)
+		// THE MARKER SAYS WHICH WEAPON IT IS (Q-L1), and the weapon type says it is still the one the choice names: a
+		// choice that moved the weapon type puts a new weapon on, and the old one keeps what it carried.
+		const bool bTheCreationWeapon =
+			Weapon.bMadeAtCreation && Base && Base->WeaponType == WeaponType.ToString();
+		if (!bTheCreationWeapon || (Weapon.DamageTypes.Num() == 1 && Weapon.DamageTypes[0] == DamageType))
 		{
 			continue;
 		}

@@ -11,10 +11,12 @@ accumulation in `RefreshAttributes` reads the worn list); `game/Source/Cataclysm
 `ReachableTrees`, `ReachesTreeOf`, `ChooseAtCreation` and `SetCreationChoice`);
 `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (`GiveStartingWeapon`, `ApplyCreationChoice`, the
 `Cataclysm.ShowPassives` console line); `game/Source/Cataclysm/Interface/CataclysmPassiveTreeWidget.cpp` (`ClassRefusalFor`);
-`game/Source/Cataclysm/Items/CataclysmItem.h` (the comment on `FCataclysmItem::DamageTypes`);
+`game/Source/Cataclysm/Items/CataclysmItem.h` (the comment on `FCataclysmItem::DamageTypes`, and the new `SaveGame` field
+`FCataclysmItem::bMadeAtCreation`, Q-L1); `game/Tests/SaveFixtures/Character_v3.json`, `Run_v1.json` and `README.md` (the
+field on every item, no version bump);
 `game/Source/Cataclysm/Tests/CataclysmExtraDamageTypesTests.cpp` (one comment, no assertion); the new
-`game/Source/Cataclysm/Tests/CataclysmCarriedDamageTypesTests.cpp` (ten tests, the group `Cataclysm.Passives.CarriedTypes.`);
-this file. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill or slot change**: the
+`game/Source/Cataclysm/Tests/CataclysmCarriedDamageTypesTests.cpp` (eleven tests, the group
+`Cataclysm.Passives.CarriedTypes.`); this file. Two commits on one branch: `24f2e075a`, and the marker of Q-L1 on top. **No data row, no workbook cell, nothing under `game/Data/` or `game/Content/`. No skill or slot change**: the
 weapon slots, `SkillsFor`, `EquippedWeaponType` and `DamageTypeOf` are untouched. **It does not close #857**: layer 2 reads
 the types where skills are chosen (#837).
 
@@ -57,6 +59,41 @@ The coordinating session, 2026-10-25, verbatim:
 > - Find out what "created weapons" are besides the starting weapon (crafting?) and propose how they get a list. Use
 >   the drop's roll if they are generated items.
 > **Q3:** the union of the worn weapons' types, as the design says. YES.
+
+The coordinating session, 2026-10-25, on the known limit the first commit reported, verbatim:
+
+> **Q-L1: B, the marker.** Recognising the creation weapon by its contents can silently rewrite a player's own item once
+> saves load (#753). A marker removes that case for good, and it costs a few lines.
+> - Add a SaveGame bool on FCataclysmItem, default false, set only on the starting weapon and the creation choice's
+>   weapon.
+> - CarryCreationDamageType rewrites only a weapon carrying that marker.
+> - Add one test: a plain dropped weapon of the creation weapon type, carrying one other type with no affix and no
+>   enchantment, keeps its type through a possession and a creation change. Its control is the marked weapon, which
+>   does follow.
+> - Update the fixture. There is no version bump, under the same rule as Q6. Say in the entry that nothing loads a save
+>   yet.
+> Both of the session's judgements are accepted: a worn weapon with an empty list counts as the creation type; a
+> planted weapon still carries its types (J5a). The correction to brief 88's prediction, that test 1's control passes,
+> is accepted. Crafting stays a proposal: a weapon made by crafting calls RollDamageTypes, as the drop does, when
+> crafting makes weapons.
+
+**THE OWNER'S RULE**, verbatim, relayed by the coordinating session on 2026-10-25: "we shouldn't have anything that says
+"increased X damage". It should all be generic for this reason." It applies to damage scoped by the damage's own type
+(an `Element.*` tag): carrying more types must not be an unearned multiplier.
+
+**THE COUNT**, by the enchantment session, reading only, at `0d9473e18` (its script `t89_element_scope.py`, output
+`t89_element_scope.out`):
+
+- **0 rows** scope a damage stat by the damage's own type, across `EnchantmentEffects.csv` (707 rows, set bonuses
+  included), `PassiveEffects.csv`, `Affixes.csv` and a sweep of every `game/Data` CSV tag column.
+- A text sweep of every enchantment sentence, passive node and option text, and affix name found only "dealing 50% of
+  its maximum health as Death damage" (Tyrant's Chains, 6-Piece Bonus), which is damage dealt as a type, not an increase.
+- Kept apart: 8 "Increased damage against <type> enemies" affixes (`damage_vs_<type>`, scoped by the ENEMY's type), and
+  70 rows scoped by a skill's own tags (65 enchantment, 5 passive).
+
+**THE OWNER'S ANSWER**, relayed by the coordinating session on 2026-10-25: keep the 8 against-enemy affixes. They scope by
+the enemy's type, so a weapon's carried types do not affect them; the rule applies to the damage's own type. **So
+nothing changes in the data.**
 
 Already decided by the design, no ruling needed: points in a tree whose type stops being carried stay spent and that
 tree's effects stop applying (`docs/Cataclysm_GDD_v2.md`, "Taking off the weapon that unlocked a tree does not refund the
@@ -101,7 +138,7 @@ Line numbers are of `0d9473e18` (the plan of 2026-10-25 read `ba70a1759`; each l
 | The starting weapon | `GiveStartingWeapon` | none | **built**: the creation type (the default at `BeginPlay`, moved to the chosen one at possession) |
 | The creation choice's weapon | `ApplyCreationChoice` | none | **built**: the chosen type |
 | Crafting | none exists. Materials drop (`SpawnMaterialsFor`, `CataclysmDroppedItem.cpp` 677) and the inventory screen loads their table (`CataclysmInventoryWidget.cpp` 369), but nothing makes or changes a weapon | n/a | **proposed, not built**: a craft that makes a weapon is a generated item and should call `RollDamageTypes` as the drop does |
-| A save | every field is `SaveGame` (`CataclysmItem.h` 198); nothing loads a save (#753) | as saved; empty for an item saved before #876 | an empty list counts as the creation type (below); nothing re-rolls it |
+| A save | every field is `SaveGame` (`CataclysmItem.h` 198); nothing loads a save (#753) | as saved; empty for an item saved before #876 | an empty list counts as the creation type (below); nothing re-rolls it; `bMadeAtCreation` is saved with the item (Q-L1), false for a file without it |
 | A test seam | tests build `FCataclysmItem` by hand | empty unless set | an empty list counts as the creation type |
 | `Cataclysm.Equip` | wears an item already in the bag | n/a | makes nothing |
 
@@ -113,8 +150,9 @@ Line numbers are of this commit.
 | :-- | :-- |
 | Q3, the union of the worn weapons' types, in order | `CarriedDamageTypesOf`, `CataclysmEquipmentComponent.cpp` 694 to 727: each weapon's types in order, `AddUnique`, Weapon1's first (`WornWeapons` is in slot order). |
 | With nothing worn, the creation type | 721 to 725, and `ACataclysmPlayerState::CarriedDamageTypes` (`CataclysmPlayerState.cpp` 389 to 400) with no pawn. |
-| After that, the worn weapons' types decide | `ReachableTrees` (402 to 410), `ReachesTreeOf`'s check and its one-class check (430 and 445), the refresh (`CataclysmEquipmentComponent.cpp` 939 to 940), the screen (`CataclysmPassiveTreeWidget.cpp` 820), the console line (`CataclysmPlayerCharacter.cpp` 3765 to 3767). |
-| The starting weapon carries the chosen type | `GiveStartingWeapon`, `CataclysmPlayerCharacter.cpp` 2473 to 2479; the creation choice's weapon, 2372; the early return, 2352 to 2359. |
+| After that, the worn weapons' types decide | `ReachableTrees` (402 to 410), `ReachesTreeOf`'s check and its one-class check (430 and 445), the refresh (`CataclysmEquipmentComponent.cpp` 940 to 941), the screen (`CataclysmPassiveTreeWidget.cpp` 820), the console line (`CataclysmPlayerCharacter.cpp` 3770 to 3772). |
+| The starting weapon carries the chosen type | `GiveStartingWeapon`, `CataclysmPlayerCharacter.cpp` 2476 to 2484; the creation choice's weapon, 2372 to 2375; the early return, 2352 to 2359. |
+| Q-L1, the marker | `FCataclysmItem::bMadeAtCreation`, `CataclysmItem.h` 279 to 292, `SaveGame`, default false; set at `CataclysmPlayerCharacter.cpp` 2375 and 2484 and nowhere else; read by `CarryCreationDamageType`, `CataclysmEquipmentComponent.cpp` 757 to 760. |
 | Types that reach no built tree are accepted | nothing refuses them: such a list reaches no tree and the screen shows none. |
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
@@ -134,10 +172,13 @@ Line numbers are of this commit.
   keeps its meaning: an announcement would refresh the stat line by itself and hide the writers' own refresh, the step that
   test guards. The option not taken: rebuilding the weapon through `ApplyCreationChoice`, which neither writer reaches,
   which puts the old axe in the bag, and whose broadcast is the refresh "by accident" that test exists to rule out.
-- **WHICH WEAPON IS THE CREATION WEAPON:** a worn weapon of the chosen weapon type with no affix and no enchantment
-  carrying exactly one type. **An Everyday drop of the same weapon type carrying one type is the same item and is changed
-  with it** if the creation choice moves while it is worn. The option not taken: a field marking the creation weapon,
-  which is a save field and a fixture change for a case only the creation screen reaches.
+- **WHICH WEAPON IS THE CREATION WEAPON: THE MARKER, RULED (Q-L1).** The first commit recognised it by its contents (the
+  chosen weapon type, no affix, no enchantment, exactly one type), which also rewrote an Everyday drop of the same weapon
+  type; the coordinating session ruled the marker instead. **The content test is dropped; the weapon-type test is kept
+  beside the marker**, because a choice that moves the weapon type puts a new marked weapon on and sends the old one to
+  the bag, and the old one should keep what it carried rather than take the new type on its way out. "Exactly one type"
+  is dropped too: a marked weapon is rewritten whenever its list is not exactly the chosen type, an empty one included.
+  The option not taken: the marker alone, which would rewrite the old marked axe as it went to the bag.
 - **A WEAPON PLANTED IN THE GROUND STILL CARRIES ITS TYPES**, as it still grants its class points (ruled 2026-10-09, J5a)
   and keeps its skills. The option not taken: leaving it out, which would close its trees for the seconds it stands.
 - **A SLOT A FLOOR RULE SWITCHED OFF IS NOT ASKED ABOUT**: no floor rule switches a weapon slot off in play
@@ -156,8 +197,15 @@ None. The rulings and the design settle the mechanism; no formula was proposed a
 - **`UCataclysmEquipmentComponent::CarriedDamageTypesOf(Weapons, CreationDamageType)`**, public static: the union above,
   `NAME_None` entries skipped.
 - **`UCataclysmEquipmentComponent::CarriedDamageTypes(CreationDamageType)`**, public: the static over `WornWeapons()`.
-- **`UCataclysmEquipmentComponent::CarryCreationDamageType(WeaponType, DamageType)`**, public: the creation weapon's list
-  set to `{DamageType}`, the change count raised, whether one changed.
+- **`UCataclysmEquipmentComponent::CarryCreationDamageType(WeaponType, DamageType)`**, public: a worn weapon marked
+  `bMadeAtCreation` of that weapon type has its list set to `{DamageType}`, the change count raised, whether one changed.
+- **`FCataclysmItem::bMadeAtCreation`** (Q-L1), `SaveGame`, default false, set only on the starting weapon and the
+  creation choice's weapon. **Not a version bump**: no item record has a version of its own, the character record stays
+  at 3 and the run record at 1, and a file without the field reads as false (`docs/Save_System_Design.md` section 5,
+  "Adding a field with a sensible default is not a version bump"). **Nothing loads a save yet (#753).** The two
+  fixtures of the current shapes, `Character_v3.json` (four items) and `Run_v1.json` (one ground item), carry the field,
+  true on the worn greatsword alone so one value differs from the default, as
+  `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires; the fixture README says so.
 - **`ACataclysmPlayerState::CarriedDamageTypes()`**, public, `BlueprintPure`: the pawn's equipment's answer, or the
   creation type alone with no pawn.
 - **The readers moved**: `ReachableTrees`, `ReachesTreeOf` (both checks and the sentence), `RefreshAttributes`' passive
@@ -170,7 +218,7 @@ None. The rulings and the design settle the mechanism; no formula was proposed a
 
 ### Tests
 
-Ten Unreal tests in `Cataclysm.Passives.CarriedTypes.` (`CataclysmCarriedDamageTypesTests.cpp`), sharing
+Eleven Unreal tests in `Cataclysm.Passives.CarriedTypes.` (`CataclysmCarriedDamageTypesTests.cpp`), sharing
 `CataclysmCarriedTypesTest`: `SpawnPossessedPlayer` (the creation tests' helper); `SpawnCarrier` (that player at level 100,
 one set-up check); `SpawnBareCarrier` (everything taken off, a second set-up check that nothing is worn, since a possessed
 player starts holding a two-handed Greataxe); `Weapon(base, types)`; `Wear` (`EquipInto`, which announces and so
@@ -219,6 +267,14 @@ clock, no blow. Assertion counts include the helpers' set-up checks, by reading.
     Demonic"**, **{} then {War} with Void gives "Void, War"**, **no weapon gives the creation type alone**; set-up three, a
     bare Sword in Weapon1; **control, it carries "Demonic"**; set-up, an Axe carrying War in Weapon2; **"Demonic, War"**,
     **six trees**.
+11. `APlainDropOfTheCreationWeaponTypeKeepsItsTypeThroughACreationChangeAndAPossession`, 17 (Q-L1): the real tables load
+    (2); in one world, set-up, **control, `ChooseAtCreation(Greataxe, War)` is taken** and **the marked starting weapon now
+    carries "War"**; set-up two, a hand-built unmarked Greataxe carrying Void, no affix, no enchantment, worn alone;
+    **`ChooseAtCreation(Greataxe, Demonic)` is taken**; **the plain drop still carries "Void"**, **the character carries
+    "Void"**; in a second world, set-up three, `SetCreationChoice(Greataxe, War)` before possession, set-up, the plain drop
+    the only thing worn; possession; **the plain drop is still held, unmarked**, **and still carries "Void"**. Fails if
+    `CarryCreationDamageType` recognises the creation weapon by anything but the marker. The drop is built by hand,
+    unmarked as every drop is, because a rolled one carries whatever affixes its seed gives.
 
 **Every earlier test is expected to pass unchanged, by reading, and none was changed.** The plan's list:
 `Cataclysm.Passives.PointsStaySpentWhenTheWeaponThatUnlockedTheTreeComesOff` (a player state with no pawn: the creation
@@ -243,25 +299,26 @@ UDataTable*`.
 delegate and not a combat event.
 
 **Not tested:** the skills (layer 2; they do not follow); a weapon planted in the ground carrying its types (by reading);
-an Everyday drop of the creation weapon type changed with the creation weapon (the judgement above); a save loaded with an
-empty list (nothing loads a save, #753); the `Cataclysm.ShowPassives` line's words; the tooltip of the starting weapon,
+a save loaded with an empty list or with `bMadeAtCreation` (nothing loads a save, #753); a marked weapon leaving its role
+when the weapon type changes (it keeps its list, by reading); the `Cataclysm.ShowPassives` line's words; the tooltip of the starting weapon,
 which now lists "Demonic" (it lists any weapon's types since #876); crafting a weapon (none exists).
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Each old text counted exactly once in its file by a script (CRLF read as LF), each new text absent before the
-break. Brackets before and after each break, round, curly, square: L1-G1 345 and 346, 122 and 122, 22 and 22, each pair
-balanced; L1-G2 345 and 343, 122 and 123, 22 and 22, balanced; L1-G3 (`CataclysmPlayerCharacter.cpp`) 1770 and 1771, 389
-and 390, 88 and 88, balanced. Each compiles alone by reading: L1-G1 is `FMath::Min` of two `int32`; L1-G2 builds the list
-the line built before; L1-G3 keeps `Chooser` read, so no unused-variable warning. Prefix `Cataclysm.Passives.CarriedTypes.`
-with its dot: 10 tests, the same 10 without the dot (a script over 3,458 test name strings in `game/Source`, all distinct,
-case ignored; `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` found once as the control).
+Not run. Three proposed: L1-G1, L1-G2 and L1-G4. L1-G3, proposed with the first commit, is retired (below). Each old text
+counted exactly once in its file by a script (CRLF read as LF); each new text absent before the break except L1-G4's,
+which is the old text's own tail. Brackets before and after each break, round, curly, square, each pair balanced:
+L1-G1 345 and 346, 122 and 122, 22 and 22; L1-G2 345 and 343, 122 and 123, 22 and 22; L1-G4 345 and 345, 122 and 122,
+22 and 22. Each compiles alone by reading: L1-G1 is `FMath::Min` of two `int32`; L1-G2 builds the list the line built
+before; L1-G4 drops one operand of a `&&` and leaves every local read. Prefix `Cataclysm.Passives.CarriedTypes.` with its
+dot: 11 tests, the same 11 without the dot (a script over 3,459 test name strings in `game/Source`, all distinct, case
+ignored; `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` found once as the control).
 
 | Proof | File | Old text | New text | Stated to fail | Every other test of the prefix |
 |---|---|---|---|---|---|
-| L1-G1, only the first worn weapon | `CataclysmEquipmentComponent.cpp` | `WeaponIndex < Weapons.Num(); ++WeaponIndex)` | `WeaponIndex < FMath::Min(1, Weapons.Num()); ++WeaponIndex)` | `TwoWeaponsReachTheUnionOfTheirTypes`, `AWeaponWithAnEmptyListCountsAsTheCreationType` | pass: the other eight wear one weapon or none |
-| L1-G2, the refresh left on the creation type | `CataclysmEquipmentComponent.cpp` | `CarriedDamageTypesOf(WornWeapons(), State->GetChosenDamageType());` | `TArray<FName>{State->GetChosenDamageType()};` | `ATreeOpenedByAWornTypeGrantsItsEffectsAndStopsWhenItComesOff` | pass: the other nine read the player state's list, not the stat line |
-| L1-G3, the starting weapon built with no list | `CataclysmPlayerCharacter.cpp` | `Starting.DamageTypes = {` | `Starting.DamageTypes = TArray<FName>{}; (void)TArray<FName>{` | `TheStartingWeaponCarriesTheCreationTypeAndFollowsAChangeOfIt`, `APossessedCharacterHoldingTheChosenWeaponCarriesTheChosenType` | pass: the other eight, **test 1's control among them**, because an empty list counts as the creation type |
+| L1-G1, only the first worn weapon | `CataclysmEquipmentComponent.cpp` | `WeaponIndex < Weapons.Num(); ++WeaponIndex)` | `WeaponIndex < FMath::Min(1, Weapons.Num()); ++WeaponIndex)` | `TwoWeaponsReachTheUnionOfTheirTypes`, `AWeaponWithAnEmptyListCountsAsTheCreationType` | pass: the other nine wear one weapon or none |
+| L1-G2, the refresh left on the creation type | `CataclysmEquipmentComponent.cpp` | `CarriedDamageTypesOf(WornWeapons(), State->GetChosenDamageType());` | `TArray<FName>{State->GetChosenDamageType()};` | `ATreeOpenedByAWornTypeGrantsItsEffectsAndStopsWhenItComesOff` | pass: the other ten read the player state's list, not the stat line |
+| L1-G4, the marker ignored (Q-L1) | `CataclysmEquipmentComponent.cpp` | `Weapon.bMadeAtCreation && Base && Base->WeaponType == WeaponType.ToString();` | `Base && Base->WeaponType == WeaponType.ToString();` | `APlainDropOfTheCreationWeaponTypeKeepsItsTypeThroughACreationChangeAndAPossession` | pass: the other ten change the type only of a marked weapon, or of nothing worn |
 
 Failed assertions, by reading:
 
@@ -270,9 +327,17 @@ Failed assertions, by reading:
   second ("Void"), "Demonic, War" ("Demonic"), six trees (3): 4.
 - **L1-G2, 3 in 1 test.** Test 4: the rise by eight times the figure (0), the armour attribute rising (equal), the rise back
   (0). Its control and "the rise is gone" pass.
-- **L1-G3, 3 in 2 tests.** Test 7: "the starting weapon carries Demonic" (reads ""), "it now carries War" ("", since only a
-  one-type list is changed in place); what the character carries passes on the empty-list rule. Test 8: "carrying War"
-  (""). **Brief 88 predicted test 1's control to fail here too; it cannot**, by the empty-list judgement above.
+- **L1-G4, 3 in 1 test.** Test 11: "the plain drop still carries Void" (reads "Demonic"), "so the character carries Void"
+  ("Demonic"), "and still carries Void" after possession ("War"). Its control passes (the marked weapon follows either
+  way), and so does "still held, unmarked".
+
+**L1-G3 IS RETIRED, AND WHY.** Its anchor, `Starting.DamageTypes = {`, is still in `CataclysmPlayerCharacter.cpp` once
+(brackets 1772 and 1773, 389 and 390, 88 and 88); the marker added a line after it and did not touch it. Re-predicted with
+the marker, it fails **1 assertion in 1 test**: test 7's control, "the starting weapon carries Demonic" (reads ""). Test
+7's "it now carries War" now passes, because a marked weapon with an empty list is rewritten too, and test 8 passes for
+the same reason; test 1's control passes on the empty-list rule, as accepted. A proof whose one failure reads back the
+line it breaks says little, and the three-proof limit is better spent on the marker, which is new and is what Q-L1 is
+for.
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 

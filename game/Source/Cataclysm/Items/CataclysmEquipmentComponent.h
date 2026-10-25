@@ -390,9 +390,10 @@ public:
 	 * Make the weapon creation gave carry `DamageType`, when the creation choice has moved to another damage type
 	 * and not to another weapon type. Issue #857, layer 1.
 	 *
-	 * WHICH WEAPON THAT IS: a worn weapon of `WeaponType` with no affix and no enchantment that carries exactly one
-	 * damage type. That is the item `ACataclysmPlayerCharacter` builds for a creation choice, and an Everyday drop of
-	 * the same weapon type carrying one type is the same item and is changed with it.
+	 * WHICH WEAPON THAT IS: a worn weapon marked `FCataclysmItem::bMadeAtCreation` whose weapon type is `WeaponType`.
+	 * Ruled 2026-10-25 (Q-L1): the marker, not the item's contents, so a player's own drop of the same weapon type is
+	 * never rewritten. A marked weapon of another weapon type is left alone, since a choice that moved the weapon
+	 * type puts a new weapon on.
 	 *
 	 * NOTHING IS ANNOUNCED, and the count `ChangeCount` reads rises. The callers write the stat line themselves, which
 	 * is what `Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine` asks of them, and the weapon slots do

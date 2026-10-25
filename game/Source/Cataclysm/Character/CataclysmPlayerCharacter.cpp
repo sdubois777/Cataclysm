@@ -2370,6 +2370,9 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 	Chosen.GearLevel = 0;
 	// CARRYING THE CHOSEN TYPE, as the starting weapon does. Issue #857 layer 1.
 	Chosen.DamageTypes = {ChosenDamageType};
+	// AND MARKED AS THE CREATION WEAPON, so a later change of only the damage
+	// type finds it and no other weapon (Q-L1).
+	Chosen.bMadeAtCreation = true;
 
 	int32 WeaponsWorn = 0;
 	for (const ECataclysmGearSlot WeaponSlot : UCataclysmGearSlots::WeaponSlots())
@@ -2477,6 +2480,8 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	Starting.DamageTypes = {Chooser ? Chooser->GetChosenDamageType()
 									: UCataclysmCharacterCreation::DefaultDamageType};
+	// AND MARKED AS THE CREATION WEAPON (Q-L1). See `FCataclysmItem::bMadeAtCreation`.
+	Starting.bMadeAtCreation = true;
 
 	FCataclysmItem CameOff;
 	FCataclysmItem AlsoCameOff;

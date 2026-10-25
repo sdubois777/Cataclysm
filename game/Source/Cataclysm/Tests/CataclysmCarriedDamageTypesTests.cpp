@@ -742,4 +742,111 @@ bool FCataclysmCarriedTypesEmptyListTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarriedTypesPlainDropKeepsItsTypeTest,
+	"Cataclysm.Passives.CarriedTypes.APlainDropOfTheCreationWeaponTypeKeepsItsTypeThroughACreationChangeAndAPossession",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A dropped Greataxe carrying Void, with no affix and no enchantment, is the same weapon type as the creation weapon
+ * and holds one type, so recognising the creation weapon by its contents would rewrite it. It keeps Void through a
+ * creation choice that changes only the damage type, and through a possession that applies a chosen Greataxe. Ruled
+ * 2026-10-25 (Q-L1): only a weapon marked `bMadeAtCreation` follows. The control is the marked starting weapon, which
+ * does follow the same kind of change.
+ *
+ * THE DROP IS BUILT BY HAND, unmarked as every drop is, because a rolled one would carry whatever affixes its seed gave.
+ */
+bool FCataclysmCarriedTypesPlainDropKeepsItsTypeTest::RunTest(const FString&)
+{
+	using namespace CataclysmCarriedTypesTest;
+
+	const FName Void(TEXT("Void"));
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!TestNotNull(TEXT("the weapon skill table loads"), Skills)
+		|| !TestNotNull(TEXT("the item base table loads"), Bases))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// A CREATION CHANGE.
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		const FCarrier Carrier = SpawnCarrier(*this, World);
+		if (!Carrier.IsComplete())
+		{
+			return false;
+		}
+
+		// THE CONTROL: THE MARKED STARTING WEAPON FOLLOWS.
+		FString Reason;
+		if (!TestTrue(TEXT("control: a Greataxe carrying War is taken"),
+					  Carrier.State->ChooseAtCreation(Skills, Bases, FName(TEXT("Greataxe")), War, Reason)))
+		{
+			AddError(Reason);
+			return false;
+		}
+		const FCataclysmItem* Marked = Carrier.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+		TestEqual(TEXT("control: the marked starting weapon now carries War"),
+				  Marked ? Joined(Marked->DamageTypes) : FString(), FString(TEXT("War")));
+
+		Carrier.Equipment->UnequipEverything();
+		if (!TestEqual(TEXT("set-up: nothing is worn"), Carrier.Equipment->NumEquipped(), 0)
+			|| !Wear(*this, Carrier, Weapon(TEXT("Weapon_Greataxe"), {Void}), ECataclysmGearSlot::Weapon1))
+		{
+			return false;
+		}
+
+		Reason.Empty();
+		if (!TestTrue(TEXT("a Greataxe carrying Demonic is taken"),
+					  Carrier.State->ChooseAtCreation(Skills, Bases, FName(TEXT("Greataxe")), Demonic, Reason)))
+		{
+			AddError(Reason);
+			return false;
+		}
+		const FCataclysmItem* Dropped = Carrier.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+		TestEqual(TEXT("the plain drop still carries Void"), Dropped ? Joined(Dropped->DamageTypes) : FString(),
+				  FString(TEXT("Void")));
+		TestEqual(TEXT("so the character carries Void"), Joined(Carrier.State->CarriedDamageTypes()),
+				  FString(TEXT("Void")));
+	}
+
+	// A POSSESSION, with the drop already worn and a Greataxe chosen.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UCataclysmEquipmentComponent* Equipment = Character ? Character->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a player state"), State) || !TestNotNull(TEXT("set-up: a controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: a player character with equipment"), Equipment))
+	{
+		return false;
+	}
+	State->SetCreationChoice(FName(TEXT("Greataxe")), War);
+	Controller->SetPlayerState(State);
+
+	Equipment->UnequipEverything();
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	const ECataclysmEquipResult Result =
+		Equipment->EquipInto(Weapon(TEXT("Weapon_Greataxe"), {Void}), ECataclysmGearSlot::Weapon1, Removed,
+							 AlsoRemoved);
+	if (!TestTrue(TEXT("set-up: the plain drop is the only thing worn"),
+				  Result == ECataclysmEquipResult::Equipped && Equipment->NumEquipped() == 1))
+	{
+		return false;
+	}
+
+	Controller->Possess(Character);
+
+	const FCataclysmItem* Held = Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	TestTrue(TEXT("after possession the plain drop is still held"),
+			 Held && Held->Base == FName(TEXT("Weapon_Greataxe")) && !Held->bMadeAtCreation);
+	TestEqual(TEXT("and still carries Void"), Held ? Joined(Held->DamageTypes) : FString(), FString(TEXT("Void")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

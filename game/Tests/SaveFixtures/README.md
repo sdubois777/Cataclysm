@@ -372,6 +372,14 @@ gear at all:
   is not a version bump, by section 5 of `docs/Save_System_Design.md`: a file
   without it reads as a character wearing nothing.
 
+`Character_v3.json` and `Run_v1.json` were edited under the exception again on
+2026-10-25, for issue #857 (ruling Q-L1): every item gained `bMadeAtCreation`,
+which marks the weapon character creation gave. **It is true on the worn
+greatsword and false on the other four items**: false is the field's default, so
+only the true one shows the value survives a round trip. **Still version 3, and
+the run record still version 1**: a field with a default is not a version bump,
+and a file without it reads as false. Nothing loads a save yet (#753).
+
 **Once the game can load a save, this exception is gone.** From then on a
 file here is a file a player might have, and changing one means changing what
 an old build wrote -- which is a lie about history and defeats the whole point
