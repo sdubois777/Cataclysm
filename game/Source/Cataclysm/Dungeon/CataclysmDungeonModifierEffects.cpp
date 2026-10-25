@@ -168,6 +168,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::ChaosTouchedKey =
 const TCHAR* UCataclysmDungeonModifierEffects::TheReaperKey =
 	TEXT("Death_The_Reaper");
 
+const TCHAR* UCataclysmDungeonModifierEffects::CorruptedStalkerKey =
+	TEXT("Generic_Corrupted_Stalker");
+
 const TCHAR* UCataclysmDungeonModifierEffects::BloodBondKey =
 	TEXT("Demonic_Blood_Bond");
 
@@ -913,6 +916,12 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
 		RowKey == FName(InsanityBurstsKey)
+		// THE CORRUPTED STALKER, since 2026-10-25 (issue #1308, part B, layer 1). It arrives, hunts and follows from
+		// floor to floor wearing a player's build, and swings its weapon's basic attack. Missing: its other skills and
+		// its potions (layer 2), its drops and experience (layer 3), and six of the seven entries the owner asked for,
+		// one per damage type except War, whose weapon skills are undesigned placeholders (layer 4). Ruled to stay
+		// partly built until all seven exist.
+		|| RowKey == FName(CorruptedStalkerKey)
 		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
 		// THE LABRYNTH WAS HERE UNTIL 2026-10-12, for "rooms rearrange". The rooms still do not move; the row was
@@ -1089,6 +1098,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SoulHarvestKey),
 		FName(ChaosTouchedKey),
 		FName(TheReaperKey),
+		FName(CorruptedStalkerKey),
 		FName(BloodBondKey),
 		FName(PlagueConvergenceKey),
 		FName(DivineWrathKey),
@@ -3289,6 +3299,17 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::CorruptedStalkerIsDue(float SecondsOnFloor, bool bHuntedAnEarlierFloor)
+{
+	return SecondsOnFloor >= (bHuntedAnEarlierFloor ? CorruptedStalkerFollowSeconds : CorruptedStalkerFirstFloorSeconds);
+}
+
+float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)
+{
+	const float Along = static_cast<float>(FMath::Clamp(DifficultyTier, 1, 8) - 1) / 7.0f;
+	return FMath::Lerp(CorruptedStalkerHealthMultiplierAtTierOne, CorruptedStalkerHealthMultiplierAtTierEight, Along);
 }
 
 bool UCataclysmDungeonModifierEffects::WingsOfTheHostIsDue(float SecondsSinceLast)

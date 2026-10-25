@@ -277,13 +277,16 @@ by `git add` with no error and no warning. Guarded by
   Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
   the game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **As of 2026-10-23, 119 of the 123 modifiers do what their rows say, one does
-  part of it, and three are a name and a number.** Counted from
+  **As of 2026-10-25, 119 of the 123 modifiers do what their rows say, two do
+  part of it, and two are a name and a number.** Counted from
   `UCataclysmDungeonModifierEffects::BuiltStateOf` against every row of
   `game/Data/DungeonModifiers.csv`: every Celestial, Chaos, Death, Demonic,
   Famine and Pestilence row is built; Void's Insanity Bursts is partly built,
-  because its "attack allies" waits on co-op; and War's Supply Lines and
-  Battlefield Tactics and the Generic Corrupted Stalker are not built. The rules
+  because its "attack allies" waits on co-op; the Generic Corrupted Stalker is
+  partly built, because it arrives, follows and swings its weapon wearing one
+  authored player build, and its skills, potions, drops and six more entries are
+  still to come (issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308));
+  and War's Supply Lines and Battlefield Tactics are not built. The rules
   live in `UCataclysmDungeonModifierEffects` and `FCataclysmDungeonFloorRules` in
   `game/Source/Cataclysm/Dungeon/`: some change the player's own numbers once a
   floor, some change while the player plays on the dungeon game mode's

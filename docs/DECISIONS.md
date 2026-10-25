@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The Corrupted Stalker arrives, hunts and follows from floor to floor wearing a player's build (#1308, part B, layer 1)
+
+**Affects:** a new creature class, `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` / `.cpp`;
+`ACataclysmEnemyCharacter` (one flag and two guards); `UCataclysmDungeonModifierEffects` (the row's key, numbers and
+built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, the resets); nine tests appended to
+`CataclysmDungeonModifierEffectsTests.cpp`; two diagnostic test files removed; `game/README.md`'s count. Issue
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layers 2 to 4.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN WHEN WRITTEN.** The route was measured first, by the diagnostic window `dungeon-w54d`
+  (2026-10-25, `c612ff801`): a level-100 Ravager applied through `UCataclysmPlayerClassStats::ApplyTo` gave a creature,
+  once it held the three attribute sets it lacks, exactly what it gave a five-set control ("max health 2236.6, mana
+  436.0, armour 416.1"), and one archetype setter afterwards took armour to 0 and crit to 5.
+- **THE ROW STAYS PARTLY BUILT**, ruled by the coordinating session on 2026-10-25, until all seven non-War entries exist.
+- **THE HEALTH AND DAMAGE MULTIPLIERS ARE PLACEHOLDERS**, 1.2 rising evenly to 5.0 for health and 1.0 for damage, ruled
+  the same day: a working prototype first, and a standard-library fight model in `sim/` brings their replacements.
+- **Not guarded:** a rule that writes a creature's attribute directly with `SetNumericAttributeBase` rather than
+  through a setter still reaches the Stalker. Twenty-seven such writes are in the game mode (counted by searching for
+  the call, 2026-10-25); none was read for whether it can reach a creature raised by a rule.
+- **Its death drops what a Common creature drops** until layer 3.
+
+### The rules, as decided (the owner's answers and the coordinating session's rulings, 2026-10-25)
+
+| Rule | Decided |
+|---|---|
+| Arrival | 60 s into the first floor it hunts, at the walkable cell farthest from the player (by walking); the owner's "as proposed", the 60 s the coordinating session's |
+| Following | while it stands, 30 s after the player on each later floor, at the entrance, with the share of its health it had; the 30 s the coordinating session's |
+| Slain | not raised again in that dungeon |
+| Horde | it belongs to no wave: raised by the rule, so no wave and no floor clear waits for it, and the next wave in the same arena keeps it |
+| Entries | one per damage type, the owner's "Maybe one per damage type. So 8"; War waits under the no-War order; only Demonic is authored, because the other six types' weapon skills are undesigned placeholders in `WeaponSkills.csv` |
+| Numbers | the entry's class line at the tier's reference level (`UCataclysmPowerScore::ReferenceCharacter`), its passives and its eighteen pieces through `ApplyTo`; each affix at the highest tier a drop can carry at that tier, its roll drawn on the floor's seed |
+| "Hunted by" | a line in the floor's modifier panel, "hunted by <name>", where every rule's line is shown; no banner exists in the game |
+| Sight | The Reaper's figure, for "hunts you" |
+| Its blow | its weapon's basic attack, cast through `UCataclysmTriggeredSkill::Trigger`; its other skills are layer 2 |
+
+**The Demonic entry**, authored by the dungeon session under the owner's delegation of unstated numbers: "Kaedric the
+Hollowed", a Ravager with a Greataxe; flat health with armour on the seven armour pieces, damage on the gloves,
+necklace, relic and weapon, flat and increased health on the eight rings; thirteen passive points (the Ravager's root
+and Thick Hide in full). Every affix was checked against its piece's slot in `Affixes.csv` before it was written.
+
+### What changed
+
+- `ACataclysmCorruptedStalkerCharacter`: a creature holding the two attribute sets a player holds and a creature does
+  not, and the typed resistances; `Entries()`, eight slots; `WearTheBuild`, which gathers its pieces' modifiers through
+  an equipment component belonging to no actor (one left on it would be refreshed by
+  `UCataclysmAbilitySystemComponent::RefreshWornStatLine` with the console's class and no passives), applies the build,
+  the placeholder multipliers, and sets `bHoldsAPlayerBuild`; and a blow that is its weapon's basic attack.
+- `ACataclysmEnemyCharacter::bHoldsAPlayerBuild`: while set, `ApplyStartingAttributes` and `RewriteAttackDamage` write
+  nothing, so no setter and no floor damage rule undoes the build.
+- `ACataclysmDungeonGameMode`: `StepTheCorruptedStalker`, `RaiseTheCorruptedStalker`, `NoteDeathForTheCorruptedStalker`,
+  `FarthestWalkableCellFrom`; the floor's state reset unless it still stands, and the dungeon's in `LeaveEmpireDungeon`.
+- Removed: `CataclysmEnemyCastsAPlayerSkillTests.cpp` and `CataclysmCreatureWearsAPlayerBuildTests.cpp`, the two
+  diagnostics, whose measurements are recorded above and in the part A entry; tests below assert what they measured.
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+`TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored`;
+`ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel` (against a five-set control given the same
+build, at tiers 1 and 8); `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` (the coordinating
+session's, with a plain creature as control);
+`TheCorruptedStalkerComesAMinuteIntoItsFirstFloorAtTheCellFarthestFromThePlayer` (with a floor without the row as
+control); `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad`;
+`ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon`; `ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone`;
+`ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer`;
+`TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist`.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4187 (`0d9473e18`) + 9 new − 1 removed diagnostic = **4195**, 0 failed |
+| Memory | about 7,700 MB; reported if above 9,500 |
+| P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails |
+| P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails |
+| P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails |
+| P4, the first floor's cell taken as the entrance | `TheCorruptedStalkerComesAMinuteIntoItsFirstFloorAtTheCellFarthestFromThePlayer` fails |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-25 — A character's class trees follow the damage types its worn weapons carry, and the starting weapon carries the creation type (#857, layer 1)
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the new public

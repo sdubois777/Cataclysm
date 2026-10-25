@@ -1437,6 +1437,15 @@ public:
 	bool bRaisedByARule = false;
 
 	/**
+	 * Whether this creature holds a player's build: the Corrupted Stalker (issue #1308). While it does, neither
+	 * `ApplyStartingAttributes` nor `RewriteAttackDamage` writes anything, so no archetype setter and no floor's damage
+	 * rule running afterwards can undo the build. The diagnostic window w54d (2026-10-25) measured one setter taking a
+	 * build's armour from 416.1 to 0 and its crit from 0 to 5. Set by `ACataclysmCorruptedStalkerCharacter::WearTheBuild`.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bHoldsAPlayerBuild = false;
+
+	/**
 	 * Whether no damage reaches this creature's health, shield or mana: The Reaper, which
 	 * cannot die. Issues #1820 and #41.
 	 *

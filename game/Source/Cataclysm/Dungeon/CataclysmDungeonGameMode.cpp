@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Dungeon/CataclysmFloorObject.h"
 
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -2895,6 +2896,140 @@ void ACataclysmDungeonGameMode::RaiseTheReaper()
 	TheReaper = Reaper;
 	UE_LOG(LogCataclysm, Log, TEXT("The Reaper: %s arrives at floor %d's entrance"),
 		   *Reaper->GetName(), FloorNumber);
+}
+
+ACataclysmCorruptedStalkerCharacter* ACataclysmDungeonGameMode::CorruptedStalkerOnTheFloor() const
+{
+	return CorruptedStalker.Get();
+}
+
+FIntPoint ACataclysmDungeonGameMode::FarthestWalkableCellFrom(const FCataclysmFloorPlan& Plan, FIntPoint From)
+{
+	if (!Plan.IsFloor(From))
+	{
+		return From;
+	}
+	const TArray<int32> Distances = CataclysmFloorDistancesFrom(Plan, From);
+	FIntPoint Farthest = From;
+	int32 Most = 0;
+	for (int32 Y = 0; Y < Plan.Height; ++Y)
+	{
+		for (int32 X = 0; X < Plan.Width; ++X)
+		{
+			const int32 Index = Plan.IndexOf(FIntPoint(X, Y));
+			if (Distances.IsValidIndex(Index) && Distances[Index] > Most)
+			{
+				Most = Distances[Index];
+				Farthest = FIntPoint(X, Y);
+			}
+		}
+	}
+	return Farthest;
+}
+
+void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHILE IT STANDS, ITS HEALTH IS KEPT ON THE BEAT, so the next floor raises it with what it had.
+	if (const ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get())
+	{
+		if (const UAbilitySystemComponent* Abilities = Stalker->GetAbilitySystemComponent())
+		{
+			const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+			if (Maximum > 0.0f && !UCataclysmSkillEffects::IsDead(Stalker))
+			{
+				CorruptedStalkerHealthShare = FMath::Clamp(
+					Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum,
+					0.0f, 1.0f);
+			}
+		}
+		return;
+	}
+
+	// ONCE A FLOOR, WHETHER OR NOT THE SPAWN SUCCEEDS, as The Reaper's.
+	if (bCorruptedStalkerRaisedThisFloor)
+	{
+		return;
+	}
+	CorruptedStalkerSecondsOnFloor += SecondsBetweenWaveChecks;
+	if (!Effects::CorruptedStalkerIsDue(CorruptedStalkerSecondsOnFloor, bCorruptedStalkerHasHunted))
+	{
+		return;
+	}
+	bCorruptedStalkerRaisedThisFloor = true;
+	RaiseTheCorruptedStalker();
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	const TArray<FCataclysmStalkerEntry> Entries = ACataclysmCorruptedStalkerCharacter::AuthoredEntries();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt() || Entries.Num() == 0)
+	{
+		return;
+	}
+
+	// WHICH ENTRY, ON THE FLOOR'S SEED, so the same dungeon raises the same one.
+	FRandomStream Stream(CurrentFloor->GetPlan().Seed ^ Effects::CorruptedStalkerSalt);
+	const FCataclysmStalkerEntry& Entry = Entries[Stream.RandRange(0, Entries.Num() - 1)];
+
+	// THE FIRST FLOOR IT HUNTS: THE WALKABLE CELL FARTHEST FROM THE PLAYER, out of sight, the owner's answer of
+	// 2026-10-25. EVERY FLOOR AFTER: THE ENTRANCE, as if it took the stairs after them.
+	const FIntPoint Entrance = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
+	const FIntPoint Cell = bCorruptedStalkerHasHunted
+		? Entrance
+		: FarthestWalkableCellFrom(CurrentFloor->GetPlan(), CurrentFloor->GetPlan().IsFloor(ThePlayersCell())
+																? ThePlayersCell() : Entrance);
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmCorruptedStalkerCharacter::StaticClass();
+	const FVector Where = CurrentFloor->WorldOfCell(Cell)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmCorruptedStalkerCharacter* Stalker = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
+		ACataclysmCorruptedStalkerCharacter::StaticClass(), Where, FRotator::ZeroRotator, SpawnParams);
+	if (!Stalker)
+	{
+		return;
+	}
+	Stalker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	if (!Stalker->WearTheBuild(Entry, ACataclysmGameMode::DifficultyTierIn(this), Stream))
+	{
+		Stalker->Destroy();
+		return;
+	}
+
+	// WITH THE HEALTH IT CARRIED, on a floor after the first.
+	if (bCorruptedStalkerHasHunted)
+	{
+		if (UAbilitySystemComponent* Abilities = Stalker->GetAbilitySystemComponent())
+		{
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+					* FMath::Max(CorruptedStalkerHealthShare, 0.01f));
+		}
+	}
+	Stalker->SightRadiusMultiplier = Effects::CorruptedStalkerSightMultiplier;
+	FloorEnemies.Add(Stalker);
+	Stalker->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Stalker);
+	CorruptedStalker = Stalker;
+	bCorruptedStalkerHasHunted = true;
+	UE_LOG(LogCataclysm, Log, TEXT("The Corrupted Stalker: %s arrives on floor %d at cell (%d, %d)"),
+		   *Entry.Name, FloorNumber, Cell.X, Cell.Y);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForTheCorruptedStalker(const FCataclysmDeathNotice& Notice)
+{
+	if (Notice.Victim && Notice.Victim == CorruptedStalker.Get())
+	{
+		bCorruptedStalkerSlain = true;
+		CorruptedStalkerHealthShare = 0.0f;
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& Notice)
@@ -14447,6 +14582,15 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 
 	EmpireDungeonId = INDEX_NONE;
 
+	// AND THE CORRUPTED STALKER IS THE DUNGEON'S: the next dungeon that carries it is hunted from its first floor
+	// again. Issue #1308.
+	bCorruptedStalkerHasHunted = false;
+	bCorruptedStalkerSlain = false;
+	CorruptedStalkerHealthShare = 1.0f;
+	CorruptedStalkerSecondsOnFloor = 0.0f;
+	bCorruptedStalkerRaisedThisFloor = false;
+	CorruptedStalker.Reset();
+
 	// AND THE DUNGEON'S MODIFIERS GO WITH IT. `EnterEmpireDungeon` overwrites
 	// `TotalFloors`, `DungeonType` and `DungeonSubType` on the way in, so those
 	// are replaced by the next dungeon rather than lingering -- but a player who
@@ -15181,6 +15325,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bTheReaper = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TheReaperKey))
 		&& !FloorBrief.bOneWave && !bTheReaperRaised;
+	// AND THE CORRUPTED STALKER, UNTIL IT IS SLAIN IN THIS DUNGEON. Issue #1308.
+	const bool bCorruptedStalker = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::CorruptedStalkerKey))
+		&& !bCorruptedStalkerSlain;
 	// AND BLOOD BOND, UNTIL THIS FLOOR HAS BONDED. Issues #1820 and #41.
 	const bool bBloodBond = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::BloodBondKey))
@@ -15374,7 +15522,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
+		&& !bTheReaper && !bCorruptedStalker && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bHeavensQuake && !bCryptquake && FloorObstacleWarnings.IsEmpty()
@@ -15570,6 +15718,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bTheReaper)
 	{
 		StepTheReaper();
+	}
+
+	// AND THE CORRUPTED STALKER, WHICH SPAWNS A CREATURE AND TOUCHES NO STAT OF THE PLAYER'S. Issue #1308.
+	if (bCorruptedStalker)
+	{
+		StepTheCorruptedStalker();
 	}
 
 	// AND BLOOD BOND, WHICH READS WHERE THE CREATURES STAND. Issues #1820 and #41.
@@ -17207,6 +17361,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForStarvationCurse(Notice);
 	NoteDeathForSoulHarvest(Notice);
 	NoteDeathForChaosTouched(Notice);
+	NoteDeathForTheCorruptedStalker(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
@@ -19610,6 +19765,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			? FString(TEXT("the reaper: here, and it cannot die; one landed blow kills"))
 			: FString::Printf(TEXT("the reaper: comes %.0f seconds into the floor"),
 							  Effects::TheReaperDelaySeconds));
+	}
+
+	// AND THE CORRUPTED STALKER: who hunts the player, or when it comes. THE "HUNTED BY" LINE THE OWNER ASKED FOR, in
+	// the panel, which is where every rule's line is shown. Issue #1308.
+	const FName StalkerRow(Effects::CorruptedStalkerKey);
+	if (FloorBrief.Modifiers.Contains(StalkerRow))
+	{
+		const ACataclysmCorruptedStalkerCharacter* Hunter = CorruptedStalker.Get();
+		Counting.Add(StalkerRow, bCorruptedStalkerSlain
+			? FString(TEXT("corrupted stalker: slain; it hunts you no more"))
+			: Hunter
+			? FString::Printf(TEXT("hunted by %s"), *Hunter->EntryName())
+			: FString::Printf(TEXT("corrupted stalker: hunts you from %.0f seconds into the floor"),
+							  bCorruptedStalkerHasHunted ? Effects::CorruptedStalkerFollowSeconds
+														 : Effects::CorruptedStalkerFirstFloorSeconds));
 	}
 
 	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.
@@ -22028,6 +22198,19 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		TheReaperSecondsOnFloor = 0.0f;
 		bTheReaperRaised = false;
 		TheReaper.Reset();
+
+		// AND THE CORRUPTED STALKER'S FLOOR CLOCK, unless it still stands: a Horde wave keeps its arena and its
+		// creatures, so it is still hunting and is raised by the rule again rather than a second time. A floor change
+		// took it with the last floor's creatures, and it follows the player down. Issue #1308.
+		if (ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get())
+		{
+			CreaturesRaisedByARule.Add(Stalker);
+		}
+		else
+		{
+			CorruptedStalkerSecondsOnFloor = 0.0f;
+			bCorruptedStalkerRaisedThisFloor = false;
+		}
 
 		// AND BLOOD BOND LETS GO: a bond is this floor's. A Horde wave keeps its creatures, so
 		// an elite still bonded is made mortal again rather than left unable to die with
