@@ -59292,7 +59292,7 @@ bool FCataclysmNecroticSparesAStillCreatureTest::RunTest(const FString& Paramete
 	using namespace CataclysmStillCreatureTest;
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	const FName NecroticGround(Effects::NecroticGroundKey);
+	// THE ROW IS THE NAMESPACE'S `NecroticGround`, the same key; a local of that name would hide it (C4459).
 	for (UClass* Ringed : {ACataclysmCorruptedSentinelCharacter::StaticClass(), ACataclysmImpCharacter::StaticClass()})
 	{
 		const bool bStill = Ringed == ACataclysmCorruptedSentinelCharacter::StaticClass();
