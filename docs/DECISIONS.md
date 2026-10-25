@@ -2,6 +2,201 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — The test runner waits for the editor's log to be released before deleting it, instead of crashing, retrying every 2 seconds for up to 2 minutes
+
+**Affects:** `tools/unreal_build.py` (new `HELD_FILE_RETRY_SECONDS`, `HELD_FILE_LIMIT_SECONDS`, `FileStillHeld` and
+`delete_when_released`; `run_automation_tests` deletes `TEST_LOG` through it and takes a keyword-only `wait`);
+`tools/tests/test_unreal_build_held_log.py` (new, seven tests). Python only: no C++, no data row, no workbook cell, nothing
+under `game/`. Issue [#2459](https://github.com/sdubois777/Cataclysm/issues/2459). **This closes #2459.**
+
+### SAID FIRST
+
+- **A TEST RUN THAT FINDS THE LOG HELD NOW WAITS UP TO 2 MINUTES INSTEAD OF CRASHING.** It prints one line when it starts
+  waiting. If the log is still held after 2 minutes it raises `FileStillHeld`, naming the file, the seconds waited and
+  #2459, where it used to raise `PermissionError` at once.
+- **WHICH PROCESS HELD THE LOG IS STILL NOT KNOWN.** This change waits for it; it does not find it.
+- **IT NEEDS NO UNREAL WINDOW.** Its proof is the Python guard proof below, run in the writing session's own worktree. No
+  Unreal build, no editor and no lock were used.
+
+### WHO RULED
+
+Nothing of the owner's is quoted here. The coordinating session's scheduling of 2026-10-24, verbatim as relayed in brief
+78:
+
+> this is ALREADY issue #2459 ... I am scheduling #2459 as your next brief after #2234 B, because it has now cost two
+> windows. The fix is a short retry of the unlink in tools/unreal_build.py, with a test that holds the file open and
+> checks that the call waits instead of crashing.
+
+And its ruling of 2026-10-24 on the other two deletes, verbatim: "Your reading of the other two unlink calls (about 939 and
+960): if the editor can hold those files too, use the same helper for them in this change, and say so."
+
+### THE TWO INCIDENTS
+
+1. **2026-10-21, window enchant-tt3** (traps layer 2). `prove_cpp_guard` had broken and built `CataclysmMinion.cpp`;
+   `run_automation_tests` then raised `PermissionError: [WinError 32] The process cannot access the file because it is
+   being used by another process` on `game\Saved\Logs\Cataclysm.log`, at `TEST_LOG.unlink(missing_ok=True)`. No proof test
+   ran. Nothing was running when looked at a minute later.
+2. **2026-10-24, window t74x** (#2485's second run). The same error at the same line, during `prove_cpp_guard` TW-I, after
+   its break was built; no test ran with the break in. Just before, the enchantment session's own check had printed "log
+   check: game/Saved/Logs/Cataclysm.log opens for writing (waited 0 s)": that check opens the file for append, which
+   Windows allows while another process holds it with shared write, so it could not see this. No `UnrealEditor` or
+   `UnrealBuildTool` process was running when looked at after the window.
+
+### WHAT WAS READ FIRST
+
+Lines are of development `b83230b44`, before this change.
+
+1. **`run_automation_tests`** (`tools/unreal_build.py` 792 to 820): it raises if `EDITOR_CMD` is missing (801 to 804),
+   makes the log's directory (806), deletes the log with `TEST_LOG.unlink(missing_ok=True)` (807), runs
+   `UnrealEditor-Cmd.exe` with `subprocess.run(..., check=False)` (809 to 814), raises if no log was written (816 to 819),
+   and parses the log (820). `TEST_LOG` is `GAME_DIR / "Saved" / "Logs" / "Cataclysm.log"` (98).
+2. **Every other delete or rename in the file** (searched for `unlink`, `rename`, `replace`, `remove`, `rmtree`). The
+   `.replace(` hits at 69, 571, 928 and 1195 are string and `dataclasses` replaces, not files. Two deletes remain:
+   - 939, in `forget_the_saved_originals`, and 960, in `restore_an_interrupted_proof`: both delete the recovery file,
+     `cpp_guard_originals.json` in the repository's git directory (`recovery_file`, 877 to 884, or `RECOVERY_FILE` in
+     tests). Only this module writes and reads it (`save_originals_for_recovery` 919 to 932, and the two readers), each
+     time with `read_text` or `write_text`, which close the file before returning. The editor and the build never open
+     it: it is outside `game/`, and nothing in the engine is given its path. **So neither can be held by the editor, and
+     both are left as they were, as the ruling says for that case.**
+3. **How the existing tests avoid the real log.** No test in `tools/tests/test_unreal_build.py` calls
+   `run_automation_tests`: one reads its signature (134 to 151) and one replaces it with a stand-in (1589 to 1591). The
+   log tests parse text constants (`TEST_LOG` at 121 is a string in the test file, not the path). The tests of the
+   recovery file point `RECOVERY_FILE` at `tmp_path` (948 to 955). Nothing in the file touches
+   `game/Saved/Logs/Cataclysm.log`, and the new tests keep it that way.
+4. **The precedent for an injectable wait.** `build()` takes `wait: Callable[[float], None] = time.sleep`, documented
+   "ONLY EVER PASSED BY TESTS", with its interval as the constant `MUTEX_RETRY_WAIT_SECONDS` (598 to 662). The new
+   function follows it.
+5. **CI.** `.github/workflows/ci.yml` runs the fast suite on `ubuntu-latest` (27, 67).
+
+### WHAT WAS BUILT
+
+Line numbers are of this commit, in `tools/unreal_build.py`.
+
+- **792 to 800:** the comment and the two constants, `HELD_FILE_RETRY_SECONDS = 2.0` and `HELD_FILE_LIMIT_SECONDS =
+  120.0`.
+- **803 to 804:** `class FileStillHeld(RuntimeError)`.
+- **807 to 846:** `delete_when_released(path, *, retry_seconds, limit_seconds, wait=time.sleep, clock=time.monotonic) ->
+  float`. It calls `path.unlink(missing_ok=True)` and returns the seconds waited. On `PermissionError` (835) it reads the
+  time waited; at or past the limit it raises `FileStillHeld` from the error, with the message "<path> could not be
+  deleted: another process held it open for <seconds> seconds, the limit, and Windows refuses to delete a file held open
+  (<the error>). Issue #2459."; otherwise it prints one line on the first refusal and calls `wait(retry_seconds)`. Any
+  other error is not caught.
+- **849 to 868:** `run_automation_tests` gains `*, wait=time.sleep` after `timeout`; its docstring adds two sentences; 868
+  is `delete_when_released(TEST_LOG, wait=wait)` where 807 was `TEST_LOG.unlink(missing_ok=True)`. The default `timeout`
+  is still `None`, which `test_no_timeout_is_the_default_on_a_build_or_a_test_run` reads.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **ONLY `PermissionError` IS RETRIED.** That is the error of both incidents; any other `OSError` is a different fault and
+  is raised at once. The option not taken: retrying every `OSError`.
+- **THE LIMIT IS MEASURED ON A CLOCK, NOT COUNTED IN ATTEMPTS.** So the limit is 2 minutes however long each attempt takes.
+  `time.monotonic` is the default, so a change of the system clock does not move it. The option not taken: a fixed count
+  of 60 attempts, as `build()` counts attempts.
+- **ONE LINE IS PRINTED, ON THE FIRST WAIT ONLY.** A line every 2 seconds would print up to 60. The option not taken: a
+  line per wait, as `build()` prints one per minute-long wait.
+- **THE HELPER'S DEFAULTS ARE BOUND WHEN THE MODULE LOADS**, so a test changes the waits by passing `wait` and `clock`,
+  not by patching the constants. The option not taken: reading the constants at call time.
+- **THE TESTS ARE IN A NEW FILE, `tools/tests/test_unreal_build_held_log.py`**, beside `test_unreal_build.py`, so this
+  change does not edit a 1,730-line file other sessions also edit. The option not taken: appending to
+  `test_unreal_build.py`.
+- **THE FILE IS HELD BY THIS PROCESS, NOT BY A CHILD.** On Windows CPython's `open()` asks for read and write sharing and
+  not for delete sharing, so while the handle is open `unlink` raises `PermissionError` (WinError 32); measured in the
+  writing session before the tests were written. Each test that relies on it first checks that a plain `unlink` is
+  refused, as its control. A child process would need a wait for the child to have opened the file, and gives the same
+  refusal. The option not taken: a child process holding the file.
+
+### THE GENRE SOURCE
+
+None. This is a fault of this project's own build tool; it proposes no formula, affix or mechanic. Nothing was fetched.
+
+### THE TESTS, WITH EVERY ASSERTION'S MEANING
+
+`tools/tests/test_unreal_build_held_log.py`. Every file is under `tmp_path`; no test sleeps. Three tests are marked
+Windows-only (`skipif(sys.platform != "win32")`), because on Linux and macOS an open handle does not stop a delete; CI runs
+on `ubuntu-latest` and skips those three, and the two `_HeldPath` tests, which run everywhere, cover the same retry logic
+there. On this Windows machine all seven run.
+
+1. `test_a_file_nobody_holds_is_deleted_at_once_and_a_missing_one_is_no_error` (the control, 3): the file is gone; no wait
+   and 0 seconds returned; called again on the missing file, no error, no wait and 0 returned.
+2. `test_a_file_held_open_is_waited_for_and_deleted_once_it_is_released` (Windows, 4): a plain `unlink` is refused while
+   the handle is open (the control); after the call, whose `wait` closes the handle at the third wait, the file is gone;
+   the waits were three of `HELD_FILE_RETRY_SECONDS`; 6 seconds were returned.
+3. `test_a_file_held_past_the_limit_raises_an_error_naming_it` (Windows, 6): a plain `unlink` is refused (the control); the
+   call raises `FileStillHeld`; its message contains the file's full path; it contains "120 seconds" and "#2459"; there
+   were 60 waits (the limit over the interval); the file is still there.
+4. `test_a_refused_delete_is_retried_on_any_platform` (3): a `_HeldPath` refusing twice is deleted on the third attempt;
+   two waits of the interval; 4 seconds returned.
+5. `test_a_delete_refused_past_the_limit_raises_on_any_platform` (3): a `_HeldPath` refusing every attempt makes the call
+   raise `FileStillHeld` with "HeldByAnother.log" in the message; it is not deleted; 60 waits.
+6. `test_run_automation_tests_waits_for_a_held_log_instead_of_crashing` (Windows, 3): `TEST_LOG` is a temporary file held
+   open, `EDITOR_CMD` is the test file itself and `subprocess.run` is a stand-in that writes a one-test log; the run waits
+   once, the interval; the old log was gone when the stand-in editor started; the new log was read (1 performed,
+   `AttributeDefaults` succeeded).
+7. `test_the_held_file_defaults_are_the_documented_ones` (4): the interval is 2.0; the limit is 120.0; the signature's
+   two defaults are those constants.
+
+### NOT TESTED
+
+- **Which process held the log in either incident, and for how long.** Not known; the 2-minute limit is a judgement.
+- **A hold by another process**, as in the incidents: the tests hold the file from this process. The refusal is the same
+  Windows error.
+- **The real `run_automation_tests` against the editor**: no editor was run.
+
+### THE GUARD PROOF
+
+Run in the writing session's own worktree, with nothing else running there, with `tools/prove_guard.py`'s
+`break_and_run`. The anchor `        except PermissionError as error:` was counted exactly once in `tools/unreal_build.py`
+by a script (and `PermissionError as error` once). The break replaces it with `        except FileNotFoundError as
+error:`, which compiles and makes the function delete once and raise `PermissionError`, as before this change. The
+command: `python -m pytest tools/tests/test_unreal_build_held_log.py tools/tests/test_unreal_build.py`.
+
+- `summary`: "PROVED: 5 failed, 92 passed in 1.02s | restored: 97 passed in 0.87s". `proved` True, `crashed` False.
+- `named_failures`, all five as predicted before the run: `test_a_file_held_open_is_waited_for_and_deleted_once_it_is_released`,
+  `test_a_file_held_past_the_limit_raises_an_error_naming_it`, `test_a_refused_delete_is_retried_on_any_platform`,
+  `test_a_delete_refused_past_the_limit_raises_on_any_platform` and
+  `test_run_automation_tests_waits_for_a_held_log_instead_of_crashing`, each under `tools/tests/test_unreal_build_held_log.py`.
+  The control and the defaults test passed with the break in, as they should.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE MEASUREMENT
+
+No Unreal window applies: the change is to `tools/unreal_build.py` and its tests only, and its proofs are Python guard
+proofs, run by the enchantment session in its own worktree with nothing else running there.
+
+**A DEFECT FOUND IN REVIEW, AND FIXED IN A SECOND COMMIT (D1).** The first commit printed its "held open" line only
+`if waited == 0`, where `waited` is read after the first refused delete; a real monotonic clock almost never reads exactly
+the starting time then, so the line meant to make a delay visible would rarely print. The tests could not see it, because
+their clock did not advance between readings. The coordinating session's ruling of 2026-10-24, verbatim: "#2459 D1: FIX IT
+in a second commit on this branch, as you recommend. This change should not ship with a defect it already knows about. Use
+a first-wait flag. In the held test, assert that the line is printed, using a clock that DOES advance, so the test would
+have caught the old comparison." The second commit:
+- `delete_when_released` keeps an `announced` flag and prints the line on the first wait;
+- a new test, `test_the_first_wait_is_announced_once_with_a_clock_that_advances`, runs on every platform with
+  `_HeldPath` refusing three times and a clock that also moves on 0.001 s at every reading, and asserts the line is
+  printed exactly once and names #2459.
+
+**The proofs**, by `tools/prove_guard.py`'s `break_and_run`, command `python -m pytest -p no:cacheprovider
+tools/tests/test_unreal_build_held_log.py tools/tests/test_unreal_build.py`, each anchor counted once:
+- **AN-I, the first-wait flag put back to `if waited == 0:`**: "PROVED: 1 failed, 97 passed in 0.93s | restored: 98
+  passed in 0.93s"; named failure `test_the_first_wait_is_announced_once_with_a_clock_that_advances`.
+- **RT-I, the retry removed** (`except PermissionError as error:` to `except FileNotFoundError as error:`), run again on
+  the second commit: "PROVED: 6 failed, 92 passed in 0.99s | restored: 98 passed in 0.90s"; named failures the five
+  retry tests of the first commit and the new one.
+- On the first commit, before D1, the same RT-I gave "PROVED: 5 failed, 92 passed in 1.22s | restored: 97 passed in
+  0.81s", in the enchantment session's run and the writing session's alike.
+- Each proof reported crashed False and nothing disturbed.
+
+**Python of record** on the second commit's files, by the enchantment session (no `-q`, JUnit outside the repository): "6954 passed, 8 skipped"; JUnit 6962 tests, 0 failures, 0 errors, 8 skipped (development b83230b44's 6954 and this change's 8). `ruff check .`: "All checks passed!". Three of the eight new tests need Windows and are skipped on continuous integration, which runs on Linux; the `_HeldPath` tests run the same retry logic there.
+
+**The other two deletes** (`forget_the_saved_originals` and `restore_an_interrupted_proof`, of the recovery file
+`cpp_guard_originals.json`) are left as they are, with the reason above; the coordinating session accepted that reasoning
+on 2026-10-24.
+
+---
+
 ## 2026-10-24 — Garbage is collected after every automation test that made a world, so a destroyed test world is freed before the next test; a memory line per test behind a switch, and one summary line at the end of every run
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmCollectGarbageBetweenTests.cpp` (new; the handler and two tests in

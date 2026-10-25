@@ -789,14 +789,79 @@ def declared_line(tests: "TestOutcome", declared: Sequence[str], commit: str) ->
     return line + ". Issue #1707."
 
 
+#: How often `delete_when_released` tries again to delete a file another
+#: process holds open, and how long it goes on trying before it gives up. Issue
+#: #2459: twice the delete of the test log was refused because something still
+#: held the log, and each time a guard proof window was lost. The enchantment
+#: session's own check of the log waited about 5 seconds in window t74y before
+#: the file was free; two minutes allows for an editor still closing and still
+#: reports a file held for good within the window.
+HELD_FILE_RETRY_SECONDS = 2.0
+HELD_FILE_LIMIT_SECONDS = 120.0
+
+
+class FileStillHeld(RuntimeError):
+    """A file could not be deleted because another process kept it open."""
+
+
+def delete_when_released(path: pathlib.Path,
+                         *,
+                         retry_seconds: float = HELD_FILE_RETRY_SECONDS,
+                         limit_seconds: float = HELD_FILE_LIMIT_SECONDS,
+                         wait: Callable[[float], None] = time.sleep,
+                         clock: Callable[[], float] = time.monotonic) -> float:
+    """Delete `path`, waiting while another process holds it open.
+
+    Returns the seconds waited, 0 when the first attempt deleted it. A file
+    that is not there is not an error.
+
+    WHY IT WAITS. On Windows a file another process holds open without delete
+    sharing cannot be deleted: `unlink` raises `PermissionError` (WinError 32).
+    Issue #2459 has the two incidents, both on `game/Saved/Logs/Cataclysm.log`
+    just after an editor run. Each refused attempt is retried after
+    `retry_seconds`; once `limit_seconds` have passed it raises
+    `FileStillHeld`, naming the file and the time waited. Any other error is
+    raised at once. The first wait is printed, so a delay is visible.
+
+    @param wait   what to call with the seconds to wait; ONLY EVER PASSED BY
+                  TESTS, so they do not sleep
+    @param clock  where the time waited is read from; ONLY EVER PASSED BY TESTS
+    """
+    started = clock()
+    announced = False
+    while True:
+        try:
+            path.unlink(missing_ok=True)
+            return clock() - started
+        except PermissionError as error:
+            waited = clock() - started
+            if waited >= limit_seconds:
+                raise FileStillHeld(
+                    f"{path} could not be deleted: another process held it open "
+                    f"for {waited:g} seconds, the limit, and Windows refuses to "
+                    f"delete a file held open ({error}). Issue #2459.") from error
+            # THE FIRST WAIT, BY A FLAG AND NOT BY `waited == 0`, which a real clock almost never reads after a
+            # refused attempt, so the line would rarely print (found in review, 2026-10-24, #2459).
+            if not announced:
+                announced = True
+                print(f"{path} is held open by another process; trying again every "
+                      f"{retry_seconds:g} seconds for up to {limit_seconds:g} "
+                      "seconds. Issue #2459.", flush=True)
+            wait(retry_seconds)
+
+
 def run_automation_tests(prefix: str = "Cataclysm",
-                         timeout: float | None = None) -> TestOutcome:
+                         timeout: float | None = None,
+                         *,
+                         wait: Callable[[float], None] = time.sleep) -> TestOutcome:
     """Run the Unreal automation tests and read the results out of the log.
 
     Standard output carries only the software development kit validation banner,
     so the pipe is ignored and `game/Saved/Logs/Cataclysm.log` is read instead.
     The log is deleted first, so a run that writes nothing cannot be mistaken for
-    the previous run's results.
+    the previous run's results. The delete waits while another process still
+    holds the log open (`delete_when_released`, issue #2459); `wait` is passed
+    only by tests.
     """
     if not EDITOR_CMD.is_file():
         raise FileNotFoundError(
@@ -804,7 +869,7 @@ def run_automation_tests(prefix: str = "Cataclysm",
             "installation directory if it is not at the default location.")
 
     TEST_LOG.parent.mkdir(parents=True, exist_ok=True)
-    TEST_LOG.unlink(missing_ok=True)
+    delete_when_released(TEST_LOG, wait=wait)
 
     subprocess.run(
         [str(EDITOR_CMD), str(PROJECT_FILE),
