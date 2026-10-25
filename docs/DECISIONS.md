@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — Every test world has a world context, so destroying an actor in one no longer warns (#2488)
+
+**Affects:** four test files under `game/Source/Cataclysm/Tests/` and nothing else. No game code changes. **This closes
+[#2488](https://github.com/sdubois777/Cataclysm/issues/2488)** when it merges, apart from the `EndPlay` warning, which
+was ruled a follow-up.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN WHEN WRITTEN.** What the engine does with a context is read, not measured. That the context
+  is removed safely from inside the engine's world clean-up event is the part only a run can show.
+- **The count is read from one log.** The figures below come from the kept engine log of the window `dungeon-w51`
+  (2026-10-25, `00a925dc7`). They are not re-measured here.
+
+### Why
+
+`UWorld::DestroyActor` (Unreal Engine 5.8, `Runtime/Engine/Private/LevelActor.cpp`) asks the engine for the world's
+context so it can tell the network drivers that an actor has gone. When the world has none, it logs "UWorld::DestroyActor:
+World has no context!". `UWorld::CreateWorld` with `bInformEngineOfWorld` false makes no context, and that is how every
+test world is made. In `dungeon-w51`'s engine log, `grep -c "World has no context"` printed 1,830,986: 915,493 warnings,
+each echoed once more by the automation controller. That is about 378 MB of a 917 MB log. 95.9% came from the dungeon
+modifier and dungeon mode tests, which destroy creatures when they clear a floor or change floors.
+
+The warning fires while a test body runs, whenever it destroys an actor. So ending a world differently, which was the
+issue's second option, could not stop it. Only a context that exists while the test runs does.
+
+### What changed
+
+- `CataclysmTestWorld.h`, the shared test-world helpers: a new `GiveTestWorldAContext(UWorld*)`. It makes a world
+  context for the world, and removes it on `FWorldDelegates::OnPostWorldCleanup`, after the world's clean-up, for worlds
+  it registered only. A world that already has a context is left alone. All three world helpers call it:
+  `MakeWorldThatHasBegunPlay`, `BeginPlayIn` and `MakeWorldThatHasNotBegunPlay`.
+- `CataclysmAbyssalWardenTests.cpp`: its own copy of the world helper made a second context for the same world, and
+  its tear-down removed one. Both are gone. The file now uses the shared helper by name.
+- `CataclysmImpactEffectTests.cpp`: `Cataclysm.Effects.ImpactIsPlacedOnWhatWasHit` makes its own context. Its early
+  return, taken when the test actor cannot be moved, left that context behind. It removes it now.
+- `CataclysmTestWorldTests.cpp`: a new test, `Cataclysm.TestWorld.ATestWorldHasAWorldContextUntilItIsDestroyed`.
+  It checks three things: a world from `MakeWorldThatHasBegunPlay` has a context; after `DestroyWorld` it has none;
+  and exactly one context has left the engine's list, which shows the editor's own contexts were not touched.
+
+**What a context changes, by reading the engine:** the engine reads a world's context for its network drivers, its
+game viewport and its level collection, and a test world has no network driver and no viewport. A world's game
+instance is its own `OwningGameInstance`, not the context's, so a test world still has none. In the editor's frame
+(`UEditorEngine::Tick`), a game world with a context gets a level-streaming update and is not ticked. No game code and
+no Python check reads world contexts.
+
+**Not changed:** 36 test files make worlds with `UWorld::CreateWorld` directly, without the shared helpers. Their
+warnings remain. The agent that read the log estimated at most 37,657 warnings from them.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | the base's last measured total, 4160 at `00a925dc7`, plus this change's 1: **4161**, 0 failed. Plus whatever has merged into `development` since, by name |
+| `grep -c "World has no context"` on the kept engine log | falls from 1,830,986 to **at most 75,314** (at most 37,657 warnings, each printed twice) |
+| `final_used_virtual_mb` | within 1 GB of 11,421, so **10,421 to 12,421**. A context that is never removed holds its world and would raise this |
+| Guard proof | the call to `GiveTestWorldAContext` removed from `MakeWorldThatHasBegunPlay`. Predicted: `ATestWorldHasAWorldContextUntilItIsDestroyed` fails |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-25 — A skill's ground patch is priced from its caster's whole attack damage line, judged when it is laid, so the caster's conditioned, scaled and skill-type attack damage rows reach it, a skill gadget's ground takes the gadget rows, and no row about an enemy does: #2234 path A, which closes it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`UCataclysmSkillTemplate::LeaveZoneAlong`,

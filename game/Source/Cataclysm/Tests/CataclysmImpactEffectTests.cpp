@@ -530,6 +530,7 @@ bool FCataclysmImpactIsPlacedOnWhatWasHit::RunTest(const FString& Parameters)
 	{
 		AddError(TEXT("the test actor could not be moved, so nothing below "
 					  "would distinguish 'on the actor' from 'at the origin'."));
+		GEngine->DestroyWorldContext(World);
 		World->DestroyWorld(false);
 		return false;
 	}
