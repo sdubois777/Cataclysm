@@ -21,7 +21,12 @@ changed. **This closes [#2388](https://github.com/sdubois777/Cataclysm/issues/23
 ### What was ruled
 
 The coordinating session, 2026-10-24, under the owner's delegation: **an instant move restarts the standing-still
-clock**, and is not ground walked. That settles the contradiction #2388 found in the 2026-09-12 judgement "A teleport
+clock**, and is not ground walked. The 2026-09-12 entry's judgement 2 it settles, verbatim: "This game does the
+opposite and starts the standing-still clock afresh without adding distance, so a teleport neither earns distance nor
+counts as having moved." The coordinating session's ruling on the random teleport's test, verbatim: "T2: ACCEPTED:
+renamed ...AndStartsTheStandingStillClockAgain, with the clock assertions 5 -> 0. It follows today's ruling citing the
+2026-09-12 entry."
+ That settles the contradiction #2388 found in the 2026-09-12 judgement "A teleport
 is not movement", whose sentence said both "This game does the opposite" of a Path of Exile developer who resets the
 standing-still bonus and "starts the standing-still clock afresh". The clock half stands; the judgement's sentence is
 corrected below. It also replaces the 2026-10-12 random teleport's choice to leave the clock alone, which that entry
@@ -61,8 +66,17 @@ Changed, for the new signature and the ruling:
 - `Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` is renamed
   `...AndStartsTheStandingStillClockAgain`; its two clock assertions read 0 seconds where they read 5.
 - `Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`: its blink is the
-  player's real movement skill, used as the Abstinence tests use it, and not the announcement called by hand; it also
-  checks the blink is not counted as ground walked.
+  player's real movement skill, used as the Abstinence tests use it, and not the announcement called by hand, aimed at
+  a point 5 metres away through the skill's clicked target; it asserts the blink moved the player at least a metre,
+  ruled by the coordinating session so that the next check cannot pass by measuring nothing, and then that the blink
+  is not counted as ground walked.
+
+Python, new: `tools/tests/test_every_instant_relocation_announces_itself.py`, ruled by the coordinating session in
+place of an Unreal test for each of the eight sites that have none. It removes comments by tracking `/* */`, `//`
+and string literals, and checks each of the eleven functions makes its call, that the game makes the library call
+eleven times in all outside the tests, and (its control) that the comment stripper drops a commented call and keeps one
+after code. It reads text and does not run anything, so it shows the call is in the function and not that it is
+reached.
 
 New: `Cataclysm.Movement.ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn` (with its control, the
 same move unannounced, counted), `Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntranceIsNotGroundWalked`

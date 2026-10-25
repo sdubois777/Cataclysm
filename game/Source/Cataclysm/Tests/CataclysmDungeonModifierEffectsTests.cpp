@@ -80,6 +80,7 @@
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
+#include "Engine/TargetPoint.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
@@ -57734,12 +57735,24 @@ bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
 	}
 	Mode->ClearFloorEnemies();
 
-	// A BLINK TWO SECONDS IN.
+	// A BLINK TWO SECONDS IN, AIMED AT A POINT FIVE METRES AWAY. A test world has no cursor, so with nothing aimed at
+	// the blink would land where the player stands and the walked-ground check below would measure nothing. The
+	// skill aims at a clicked target while one is set (`UCataclysmSkillTemplate::ClickedTarget`).
 	UCataclysmMovementSkill* Blink = RuleOfChaosGrantStep(Player);
+	ATargetPoint* Aimed = World->SpawnActor<ATargetPoint>(
+		Player.Character->GetActorLocation() + FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: the blink was granted"), Blink) || !TestNotNull(TEXT("set-up: a point to aim at"), Aimed))
+	{
+		return false;
+	}
+	Blink->ClickedTarget = Aimed;
 	StartTheStandStillClock(Player);
 	const float WalkedBeforeTheBlink = Player.AbilitySystem->MetresWalkedTotal();
+	const FVector BeforeTheBlink = Player.Character->GetActorLocation();
 	CataclysmTestWorld::RunClock(World, 2.0f);
-	if (!TestTrue(TEXT("set-up: the player's blink went off"), RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff))
+	if (!TestTrue(TEXT("set-up: the player's blink went off"), RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff)
+		|| !TestTrue(TEXT("set-up: the blink moved the player at least a metre"),
+					 FVector::Dist2D(BeforeTheBlink, Player.Character->GetActorLocation()) >= 100.0f))
 	{
 		return false;
 	}
