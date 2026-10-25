@@ -20,6 +20,7 @@ struct FOnAttributeChangeData;
 struct FCataclysmDeathNotice;
 struct FCataclysmHitNotice;
 struct FCataclysmSkillUsedNotice;
+struct FCataclysmItem;
 
 /**
  * The player pawn. Its ability system component lives on the player state, so
@@ -445,6 +446,17 @@ public:
 	void RefreshWeaponMeshes();
 
 	/**
+	 * Which worn weapon each hand draws: Weapon1 in the right and Weapon2 in the
+	 * left, except that ONE WEAPON WORN IS DRAWN IN THE RIGHT HAND, whichever slot
+	 * holds it (ruled 2026-10-25; "There is no primary hand"). Null for an empty
+	 * hand. Static and art-free so a test can ask it on a machine without the
+	 * weapons pack.
+	 */
+	static void WeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
+							   const FCataclysmItem*& OutRight,
+							   const FCataclysmItem*& OutLeft);
+
+	/**
 	 * Swings when the character uses any skill, including the basic attack.
 	 * Issue #1126.
 	 *
@@ -709,9 +721,9 @@ protected:
 	 *
 	 * ONE PER HAND, BECAUSE THE DESIGN HAS AN OFF-HAND. The Shield is a
 	 * one-handed base, so a character can hold a sword and a shield at once.
-	 * `ECataclysmGearSlot::Weapon1` is drawn in the right hand and `Weapon2` in
-	 * the left, which is also how the equipment component already thinks about
-	 * them.
+	 * With two worn, `ECataclysmGearSlot::Weapon1` is drawn in the right hand and
+	 * `Weapon2` in the left; ONE WORN IS DRAWN IN THE RIGHT HAND whichever slot
+	 * holds it, because the slots carry no meaning (`WeaponsInHands`).
 	 *
 	 * A TWO-HANDED WEAPON DRAWS IN THE RIGHT HAND ONLY, and that is a
 	 * limitation rather than a decision. `UCataclysmEquipmentComponent` puts a

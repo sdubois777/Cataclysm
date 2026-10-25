@@ -269,6 +269,25 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	LeftHandWeapon->SetGenerateOverlapEvents(false);
 }
 
+void ACataclysmPlayerCharacter::WeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
+											   const FCataclysmItem*& OutRight,
+											   const FCataclysmItem*& OutLeft)
+{
+	OutRight = FromEquipment ? FromEquipment->EquippedAt(ECataclysmGearSlot::Weapon1) : nullptr;
+	OutLeft = FromEquipment ? FromEquipment->EquippedAt(ECataclysmGearSlot::Weapon2) : nullptr;
+
+	// ONE WEAPON WORN IS DRAWN IN THE RIGHT HAND, WHICHEVER SLOT HOLDS IT. Ruled
+	// 2026-10-25. "There is no primary hand" (docs/Cataclysm_GDD_v2.md), so which
+	// slot a lone weapon sits in means nothing, and `Equip` leaves a one-handed
+	// weapon put on over a two-handed one in Weapon2 with Weapon1 empty. Drawing
+	// it by slot showed it in the left hand alone. Two worn are drawn by slot.
+	if (!OutRight && OutLeft)
+	{
+		OutRight = OutLeft;
+		OutLeft = nullptr;
+	}
+}
+
 void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
 {
 	if (!RightHandWeapon || !LeftHandWeapon)
@@ -296,19 +315,21 @@ void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
 
 	const UDataTable* Table = UCataclysmWeaponMeshes::LoadTable();
 
-	// THE TWO SLOTS THE DESIGN HAS, RIGHT THEN LEFT. A two-handed weapon sits in
-	// Weapon1 and blocks Weapon2, so it draws in the right hand and the left
+	// RIGHT THEN LEFT, AS `WeaponsInHands` CHOOSES THEM. A two-handed weapon sits
+	// in Weapon1 and blocks Weapon2, so it draws in the right hand and the left
 	// stays empty. See the header for why that is a limitation and not a
 	// decision.
-	const TPair<ECataclysmGearSlot, UStaticMeshComponent*> Hands[] = {
-		{ECataclysmGearSlot::Weapon1, RightHandWeapon},
-		{ECataclysmGearSlot::Weapon2, LeftHandWeapon},
+	const FCataclysmItem* InRightHand = nullptr;
+	const FCataclysmItem* InLeftHand = nullptr;
+	WeaponsInHands(Equipment, InRightHand, InLeftHand);
+	const TPair<const FCataclysmItem*, UStaticMeshComponent*> Hands[] = {
+		{InRightHand, RightHandWeapon},
+		{InLeftHand, LeftHandWeapon},
 	};
 
-	for (const TPair<ECataclysmGearSlot, UStaticMeshComponent*>& Hand : Hands)
+	for (const TPair<const FCataclysmItem*, UStaticMeshComponent*>& Hand : Hands)
 	{
-		const FCataclysmItem* Worn =
-			Equipment ? Equipment->EquippedAt(Hand.Key) : nullptr;
+		const FCataclysmItem* Worn = Hand.Key;
 
 		if (!Worn)
 		{
