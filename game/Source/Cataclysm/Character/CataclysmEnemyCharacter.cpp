@@ -1465,6 +1465,12 @@ float ACataclysmEnemyCharacter::DamageMultiplierProduct() const
 
 void ACataclysmEnemyCharacter::RewriteAttackDamage()
 {
+	// NOT OVER A PLAYER'S BUILD. See `bHoldsAPlayerBuild`.
+	if (bHoldsAPlayerBuild)
+	{
+		return;
+	}
+
 	// THE DAMAGE ALONE, AND NOT `ApplyStartingAttributes`, which sets health and the
 	// energy shield to their maximums: a creature whose damage a rule grows in the
 	// middle of a fight would be healed by it. See the header.
@@ -1625,7 +1631,8 @@ void ACataclysmEnemyCharacter::SetCommanderHealthMultiplier(float NewMultiplier)
 
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 {
-	if (!AbilitySystemComponent)
+	// NOR OVER A PLAYER'S BUILD, which every setter below would otherwise undo. See `bHoldsAPlayerBuild`.
+	if (!AbilitySystemComponent || bHoldsAPlayerBuild)
 	{
 		return;
 	}

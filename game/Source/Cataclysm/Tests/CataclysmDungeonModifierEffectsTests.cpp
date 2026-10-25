@@ -101,6 +101,10 @@
 #include "Components/TextBlock.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
+#include "Character/CataclysmPassiveTree.h"
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Player/CataclysmPowerScore.h"
 
 /**
  * What the dungeon modifiers do on a floor. Issue #41.
@@ -59769,6 +59773,656 @@ bool FCataclysmScopedPinRestoresTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("a second value set through the helper is in force"), Roll->GetFloat(), 0.75f, 0.0001f);
 	}
 	TestEqual(TEXT("and once it goes the default is back"), Roll->GetFloat(), -1.0f, 0.0001f);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Generic_Corrupted_Stalker, part B layer 1. Issue #1308.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName CorruptedStalkerRow(UCataclysmDungeonModifierEffects::CorruptedStalkerKey);
+
+	/** The authored Demonic entry, or an empty one. */
+	FCataclysmStalkerEntry TheDemonicStalkerEntry()
+	{
+		for (const FCataclysmStalkerEntry& Entry : ACataclysmCorruptedStalkerCharacter::Entries())
+		{
+			if (Entry.DamageType == FName(TEXT("Demonic")))
+			{
+				return Entry;
+			}
+		}
+		return FCataclysmStalkerEntry();
+	}
+
+	/** A Corrupted Stalker spawned at `Where` and wearing the Demonic entry at `Tier`, seeded with `Seed`. */
+	ACataclysmCorruptedStalkerCharacter* AStalkerWearingTheDemonicEntry(UWorld* World, const FVector& Where,
+																		int32 Tier, int32 Seed)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACataclysmCorruptedStalkerCharacter* Stalker = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
+			ACataclysmCorruptedStalkerCharacter::StaticClass(), Where, FRotator::ZeroRotator, Params);
+		if (!Stalker)
+		{
+			return nullptr;
+		}
+		Stalker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		FRandomStream Stream(Seed);
+		return Stalker->WearTheBuild(TheDemonicStalkerEntry(), Tier, Stream) ? Stalker : nullptr;
+	}
+
+	float StalkerRead(const AActor* Actor, const FGameplayAttribute& Attribute)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Abilities && Abilities->HasAttributeSetForAttribute(Attribute)
+			? Abilities->GetNumericAttribute(Attribute) : -1.0f;
+	}
+
+	/** A dungeon carrying only the Corrupted Stalker, on `Floor`, with the floor's own creatures cleared. */
+	ACataclysmDungeonGameMode* AStalkedDungeon(FAutomationTestBase& Test, UWorld* World,
+											   const FPossessedPlayer& Player, int32 Floor)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {CorruptedStalkerRow};
+		if (!Test.TestTrue(TEXT("set-up: the floor was reached"), Mode->GoToFloor(Floor)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	int32 StalkersStanding(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmCorruptedStalkerCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+// EIGHT NAMED SLOTS, ONE PER DAMAGE TYPE, AND ONLY DEMONIC FILLED, with every base, affix and passive node a row.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerEntriesTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerEntriesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	const TArray<FCataclysmStalkerEntry> Entries = ACataclysmCorruptedStalkerCharacter::Entries();
+	const TArray<FName> Types = {TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"), TEXT("Famine"),
+								 TEXT("Celestial"), TEXT("Chaos"), TEXT("Void")};
+	if (!TestEqual(TEXT("one slot for each of the eight damage types"), Entries.Num(), Types.Num()))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Types.Num(); ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("slot %d is %s's"), Index, *Types[Index].ToString()),
+				  Entries[Index].DamageType, Types[Index]);
+	}
+	const TArray<FCataclysmStalkerEntry> Authored = ACataclysmCorruptedStalkerCharacter::AuthoredEntries();
+	if (!TestEqual(TEXT("one entry is authored"), Authored.Num(), 1)
+		|| !TestEqual(TEXT("and it is Demonic's"), Authored[0].DamageType, FName(TEXT("Demonic"))))
+	{
+		return false;
+	}
+	TestFalse(TEXT("War's slot is named and empty"), Entries[0].IsAuthored());
+
+	const FCataclysmStalkerEntry& Demonic = Authored[0];
+	TestEqual(TEXT("a Ravager"), Demonic.ClassName, FString(TEXT("Ravager")));
+	TestEqual(TEXT("eighteen pieces"), Demonic.Pieces.Num(), 18);
+	TSet<ECataclysmGearSlot> Slots;
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
+	const UDataTable* Nodes = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("set-up: the base table"), Bases) || !TestNotNull(TEXT("set-up: the affix table"), Affixes)
+		|| !TestNotNull(TEXT("set-up: the node table"), Nodes))
+	{
+		return false;
+	}
+	for (const FCataclysmStalkerPiece& Piece : Demonic.Pieces)
+	{
+		Slots.Add(Piece.Slot);
+		TestTrue(FString::Printf(TEXT("%s is a base"), *Piece.Base.ToString()),
+				 Bases->GetRowMap().Contains(Piece.Base));
+		for (const FName& Affix : Piece.Affixes)
+		{
+			TestTrue(FString::Printf(TEXT("%s is an affix"), *Affix.ToString()), Affixes->GetRowMap().Contains(Affix));
+		}
+	}
+	TestEqual(TEXT("each piece in its own slot"), Slots.Num(), 18);
+	for (const FCataclysmSpentNode& Spent : Demonic.Allocation.Nodes)
+	{
+		TestTrue(FString::Printf(TEXT("%s is a passive node"), *Spent.Node.ToString()),
+				 Nodes->GetRowMap().Contains(Spent.Node));
+	}
+	TestTrue(TEXT("the Greataxe has a basic attack"),
+			 UCataclysmWeaponSkills::BasicAttackFor(Bases, Demonic.WeaponType).Slot != ECataclysmAbilitySlot::None);
+	return true;
+}
+
+// ITS NUMBERS ARE A PLAYER'S: A FIVE-SET ACTOR GIVEN THE SAME BUILD THROUGH `ApplyTo` HOLDS THE SAME ARMOUR AND ATTACK
+// DAMAGE, AND ITS HEALTH TIMES THE PLACEHOLDER MULTIPLIER, AT TIER 1 AND AT TIER 8.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuildTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	TestEqual(TEXT("the health multiplier is 1.2 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 1.2f,
+			  0.0001f);
+	TestEqual(TEXT("and 5.0 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 5.0f, 0.0001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmStalkerEntry Entry = TheDemonicStalkerEntry();
+	float HealthAtTierOne = 0.0f;
+	for (const int32 Tier : {1, 8})
+	{
+		ACataclysmCorruptedStalkerCharacter* Stalker =
+			AStalkerWearingTheDemonicEntry(World, FVector(Tier * 1000.0f, 0.0f, 0.0f), Tier, /*Seed=*/7);
+		if (!TestNotNull(FString::Printf(TEXT("tier %d: a Stalker wears the build"), Tier), Stalker))
+		{
+			return false;
+		}
+		TestTrue(TEXT("it holds a player's build"), Stalker->bHoldsAPlayerBuild);
+		TestEqual(TEXT("and is named as its entry"), Stalker->EntryName(), Entry.Name);
+		TestEqual(TEXT("and wears eighteen pieces"), Stalker->WornPieces().Num(), 18);
+
+		// THE CONTROL: THE SAME PIECES, ROLLED ON THE SAME SEED, GATHERED AND APPLIED AS A PLAYER'S ARE.
+		AActor* Control = World->SpawnActor<AActor>(FVector(Tier * 1000.0f, 500.0f, 0.0f), FRotator::ZeroRotator);
+		UCataclysmAbilitySystemComponent* Abilities = NewObject<UCataclysmAbilitySystemComponent>(Control);
+		Abilities->RegisterComponent();
+		Abilities->AddAttributeSetSubobject(NewObject<UCataclysmVitalAttributeSet>(Control));
+		Abilities->AddAttributeSetSubobject(NewObject<UCataclysmPrimaryAttributeSet>(Control));
+		Abilities->AddAttributeSetSubobject(NewObject<UCataclysmCombatAttributeSet>(Control));
+		Abilities->AddAttributeSetSubobject(NewObject<UCataclysmResistanceAttributeSet>(Control));
+		Abilities->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Control));
+		Abilities->InitAbilityActorInfo(Control, Control);
+		UCataclysmEquipmentComponent* Wardrobe = NewObject<UCataclysmEquipmentComponent>(Control);
+		Wardrobe->RegisterComponent();
+		FRandomStream Same(7);
+		const TArray<FCataclysmItem> Items = ACataclysmCorruptedStalkerCharacter::PiecesAt(Entry, Tier, Same);
+		for (int32 Index = 0; Index < Items.Num(); ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			Wardrobe->EquipInto(Items[Index], Entry.Pieces[Index].Slot, Removed, AlsoRemoved);
+		}
+		TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = Wardrobe->GatherModifiers();
+		UCataclysmPassiveTree::AccumulateInto(Modifiers, Entry.Allocation, UCataclysmPassiveTree::LoadNodeTable(),
+											  UCataclysmPassiveTree::LoadEffectTable(), {Entry.DamageType});
+		const TMap<FName, float> Bases = Wardrobe->StatBasesFromWeapons();
+		UCataclysmPlayerClassStats::ApplyTo(Abilities, UCataclysmPlayerClassStats::LoadTable(), Entry.ClassName,
+											UCataclysmPowerScore::ReferenceCharacter(Tier).Level, &Modifiers,
+											ECataclysmPoolFill::FillToMaximum, &Bases);
+
+		const float ControlHealth = StalkerRead(Control, Vital::GetMaxHealthAttribute());
+		const float StalkerHealth = StalkerRead(Stalker, Vital::GetMaxHealthAttribute());
+		TestTrue(FString::Printf(TEXT("tier %d: the control has a maximum health: %.1f"), Tier, ControlHealth),
+				 ControlHealth > 0.0f);
+		TestEqual(FString::Printf(TEXT("tier %d: the Stalker's is the control's times %.2f"), Tier,
+								  Effects::CorruptedStalkerHealthMultiplier(Tier)),
+				  StalkerHealth, ControlHealth * Effects::CorruptedStalkerHealthMultiplier(Tier), 0.5f);
+		TestEqual(FString::Printf(TEXT("tier %d: and it starts full"), Tier),
+				  StalkerRead(Stalker, Vital::GetHealthAttribute()), StalkerHealth, 0.5f);
+		TestEqual(FString::Printf(TEXT("tier %d: the same armour"), Tier), StalkerRead(Stalker, Combat::GetArmorAttribute()),
+				  StalkerRead(Control, Combat::GetArmorAttribute()), 0.01f);
+		const float Damage = StalkerRead(Stalker, Combat::GetAttackDamageAttribute());
+		TestTrue(FString::Printf(TEXT("tier %d: an attack damage from its weapon: %.1f"), Tier, Damage), Damage > 0.0f);
+		TestEqual(FString::Printf(TEXT("tier %d: the same attack damage"), Tier), Damage,
+				  StalkerRead(Control, Combat::GetAttackDamageAttribute()), 0.01f);
+		if (Tier == 1)
+		{
+			HealthAtTierOne = StalkerHealth;
+		}
+		else
+		{
+			TestTrue(TEXT("CONTROL: tier 8 is stronger than tier 1"), StalkerHealth > HealthAtTierOne);
+		}
+	}
+	return true;
+}
+
+// THE TRAP THE DIAGNOSTIC WINDOW W54D FOUND, GUARDED: AN ARCHETYPE SETTER OR A FLOOR'S DAMAGE RULE RUNNING AFTER THE
+// BUILD CHANGES NOTHING ON IT. The same setter changes a plain creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerGuardTest,
+	"Cataclysm.DungeonModifierEffects.ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerGuardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, /*Tier=*/4, /*Seed=*/3);
+	if (!TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+	const TArray<FGameplayAttribute> Watched = {Vital::GetMaxHealthAttribute(), Vital::GetHealthAttribute(),
+		Combat::GetArmorAttribute(), Combat::GetAttackDamageAttribute(), Combat::GetCritChanceAttribute()};
+	TArray<float> Before;
+	for (const FGameplayAttribute& Attribute : Watched)
+	{
+		Before.Add(StalkerRead(Stalker, Attribute));
+	}
+
+	Stalker->SetRarityStep(3);
+	Stalker->SetArmour(1.0f);
+	Stalker->SetAttackDamage(1.0f);
+	Stalker->SetHealth(1.0f);
+	Stalker->SetFloorDepthDamageMultiplier(3.0f);
+	for (int32 Index = 0; Index < Watched.Num(); ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("%s is what the build made it"), *Watched[Index].GetName()),
+				  StalkerRead(Stalker, Watched[Index]), Before[Index], 0.01f);
+	}
+
+	// THE CONTROL: THE SAME SETTER WRITES A PLAIN CREATURE'S ARMOUR.
+	ACataclysmEnemyCharacter* Plain =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(800.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a plain creature"), Plain))
+	{
+		return false;
+	}
+	const float PlainBefore = StalkerRead(Plain, Combat::GetArmorAttribute());
+	Plain->SetArmour(PlainBefore + 77.0f);
+	TestTrue(TEXT("CONTROL: the setter changes a plain creature's armour"),
+			 !FMath::IsNearlyEqual(StalkerRead(Plain, Combat::GetArmorAttribute()), PlainBefore, 0.01f));
+	return true;
+}
+
+// A MINUTE INTO THE FIRST FLOOR IT HUNTS, AT THE WALKABLE CELL FARTHEST FROM THE PLAYER, HOSTILE AND SEEING THE WHOLE
+// FLOOR, HOLDING NO FLOOR CLEAR; ONCE; AND NEVER ON A FLOOR WITHOUT THE ROW.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerArrivesTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerComesAMinuteIntoItsFirstFloorAtTheCellFarthestFromThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerArrivesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("59.75 seconds is not yet"), Effects::CorruptedStalkerIsDue(59.75f, false));
+	TestTrue(TEXT("60 seconds is due"), Effects::CorruptedStalkerIsDue(60.0f, false));
+	TestTrue(TEXT("30 seconds is due on a later floor"), Effects::CorruptedStalkerIsDue(30.0f, true));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: A FLOOR WITHOUT THE ROW RAISES NONE IN SEVENTY SECONDS.
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(70.0f));
+	if (!TestNull(TEXT("CONTROL: no Stalker on a floor without the row"), Mode->CorruptedStalkerOnTheFloor()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {CorruptedStalkerRow};
+	if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	const FIntPoint Farthest = ACataclysmDungeonGameMode::FarthestWalkableCellFrom(
+		Mode->CurrentFloor->GetPlan(), Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()));
+	TestTrue(TEXT("the panel says when it comes"),
+			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(TEXT("60 seconds")));
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds) - 1);
+	if (!TestNull(TEXT("no Stalker a beat before a minute"), Mode->CorruptedStalkerOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmCorruptedStalkerCharacter* Stalker = Mode->CorruptedStalkerOnTheFloor();
+	if (!TestNotNull(TEXT("the Stalker came at a minute"), Stalker))
+	{
+		return false;
+	}
+	TestTrue(TEXT("wearing a player's build"), Stalker->bHoldsAPlayerBuild);
+	TestTrue(TEXT("raised by a rule"), Stalker->bRaisedByARule);
+	TestTrue(TEXT("on the monsters' side"),
+			 Stalker->GetGenericTeamId() == UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	TestEqual(TEXT("noticing the player from across the floor"), Stalker->SightRadiusMultiplier,
+			  Effects::CorruptedStalkerSightMultiplier);
+	TestTrue(TEXT("at the walkable cell farthest from the player, within one cell of it"),
+			 FVector::Dist2D(Stalker->GetActorLocation(), Mode->CurrentFloor->WorldOfCell(Farthest))
+				 < FCataclysmFloorGenerator::CellSizeCm);
+	TestTrue(TEXT("CONTROL: and that is not the entrance the player stands at"),
+			 FVector::Dist2D(Stalker->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 > FCataclysmFloorGenerator::CellSizeCm * 2.0f);
+	TestTrue(TEXT("the panel says who hunts the player"),
+			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(TEXT("hunted by Kaedric")));
+	TestTrue(TEXT("and the floor is clear while it stands: it holds no floor clear"), Mode->FloorIsCleared());
+
+	// ONCE: another minute raises no second one.
+	Beat(Mode, BeatsFor(60.0f));
+	TestTrue(TEXT("a minute later it is the same Stalker"), Mode->CorruptedStalkerOnTheFloor() == Stalker);
+	TestEqual(TEXT("and only one stands"), StalkersStanding(World), 1);
+	return true;
+}
+
+// ON THE NEXT FLOOR IT FOLLOWS THIRTY SECONDS AFTER THE PLAYER, AT THE ENTRANCE, WITH THE SHARE OF HEALTH IT HAD.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerFollowsTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerFollowsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AStalkedDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	ACataclysmCorruptedStalkerCharacter* First = Mode->CorruptedStalkerOnTheFloor();
+	if (!TestNotNull(TEXT("set-up: the Stalker came on floor 2"), First))
+	{
+		return false;
+	}
+	UAbilitySystemComponent* FirstAbilities = First->GetAbilitySystemComponent();
+	FirstAbilities->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+		FirstAbilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) * 0.4f);
+	Beat(Mode, 1);
+
+	if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestNull(TEXT("no Stalker as floor 3 begins"), Mode->CorruptedStalkerOnTheFloor());
+	TestFalse(TEXT("the first went with floor 2"), IsValid(First));
+	Mode->ClearFloorEnemies();
+	TestTrue(TEXT("the panel says when it follows"),
+			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(TEXT("30 seconds")));
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFollowSeconds) - 1);
+	if (!TestNull(TEXT("no Stalker a beat before thirty seconds"), Mode->CorruptedStalkerOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmCorruptedStalkerCharacter* Second = Mode->CorruptedStalkerOnTheFloor();
+	if (!TestNotNull(TEXT("it followed at thirty seconds"), Second))
+	{
+		return false;
+	}
+	TestTrue(TEXT("at the entrance, within one cell of it"),
+			 FVector::Dist2D(Second->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 < FCataclysmFloorGenerator::CellSizeCm);
+	const float Share = StalkerRead(Second, Vital::GetHealthAttribute())
+		/ FMath::Max(StalkerRead(Second, Vital::GetMaxHealthAttribute()), 1.0f);
+	TestEqual(TEXT("with the share of its health it had"), Share, 0.4f, 0.01f);
+	return true;
+}
+
+// ONCE SLAIN, NO LATER FLOOR OF THAT DUNGEON RAISES IT AGAIN, AND THE PANEL SAYS SO.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerSlainTest,
+	"Cataclysm.DungeonModifierEffects.ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerSlainTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AStalkedDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	ACataclysmCorruptedStalkerCharacter* Stalker = Mode->CorruptedStalkerOnTheFloor();
+	if (!TestNotNull(TEXT("set-up: the Stalker came"), Stalker))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Stalker, 100000000.0f);
+	if (!TestTrue(TEXT("set-up: it died"), UCataclysmSkillEffects::IsDead(Stalker)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its death is the dungeon's last of it"), Mode->CorruptedStalkerSlainInThisDungeon());
+	TestTrue(TEXT("and the panel says so"),
+			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(TEXT("slain")));
+
+	if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds + 10.0f));
+	TestNull(TEXT("no floor after raises it again"), Mode->CorruptedStalkerOnTheFloor());
+	TestEqual(TEXT("and none stands"), StalkersStanding(World), 0);
+	return true;
+}
+
+// IN A HORDE ARENA IT BELONGS TO NO WAVE: THE NEXT WAVE IN THE SAME ARENA KEEPS THE SAME ONE AND RAISES NO SECOND.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerHordeTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {CorruptedStalkerRow};
+	if (!TestTrue(TEXT("set-up: the first wave was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	ACataclysmCorruptedStalkerCharacter* Stalker = Mode->CorruptedStalkerOnTheFloor();
+	if (!TestNotNull(TEXT("it came a minute into the first wave"), Stalker))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the wave is clear while it stands"), Mode->FloorIsCleared());
+
+	if (!TestTrue(TEXT("set-up: the second wave was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: in the same arena"), Mode->FloorBrief.bSameArenaAsLastFloor))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the same Stalker is still hunting"), Mode->CorruptedStalkerOnTheFloor() == Stalker);
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	TestEqual(TEXT("and a minute later no second one stands"), StalkersStanding(World), 1);
+	return true;
+}
+
+// ITS BLOW IS ITS WEAPON'S BASIC ATTACK, CAST AS A PLAYER'S IS: IT HURTS A PLAYER WITHIN ITS REACH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBlowTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(
+		UCataclysmItemModifiers::LoadBaseTable(), TheDemonicStalkerEntry().WeaponType);
+	if (!TestTrue(TEXT("set-up: the Greataxe's basic attack has a reach"), Basic.Params.RadiusCm > 0.0f))
+	{
+		return false;
+	}
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(
+		World, Player.Character->GetActorLocation() + FVector(Basic.Params.RadiusCm * 0.5f, 0.0f, 0.0f),
+		/*Tier=*/2, /*Seed=*/5);
+	if (!TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its reach is its weapon's basic attack's"), Stalker->AttackReachCm(), Basic.Params.RadiusCm,
+			  0.01f);
+
+	const float Before = Player.Read(Vital::GetHealthAttribute());
+	Stalker->AttackTarget(Player.Character);
+	const float After = Player.Read(Vital::GetHealthAttribute());
+	TestTrue(FString::Printf(TEXT("its blow hurt the player: %.1f to %.1f"), Before, After), After < Before);
+	return true;
+}
+
+// THE ROW IS PARTLY BUILT, AND IS ONE WITH A RULE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuiltStateTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerBuiltStateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("the Corrupted Stalker is partly built"),
+			  static_cast<int32>(Effects::BuiltStateOf(CorruptedStalkerRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	TestTrue(TEXT("and is a row with a rule"), Effects::KeysWithARule().Contains(CorruptedStalkerRow));
+	TestEqual(TEXT("CONTROL: Insanity Bursts is partly built too"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::InsanityBurstsKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	TestEqual(TEXT("CONTROL: and War's Supply Lines is not built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(TEXT("War_Supply_Lines")))),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+	return true;
+}
+
+// A DIVINE WRATH BEAM PASSES OVER A STANDING CORRUPTED STALKER, as it passes over a floor's boss, and destroys an
+// ordinary creature under it. Ruled by the coordinating session on 2026-10-25.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerWrathTest,
+	"Cataclysm.DungeonModifierEffects.ADivineWrathBeamSparesACorruptedStalkerAndDestroysAnOrdinaryCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerWrathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWrathFloor(*this, World, Player);
+	ACataclysmGroundZone* Beam = Mode ? ABeamCame(*this, Mode) : nullptr;
+	if (!Beam)
+	{
+		return false;
+	}
+	const FVector Under = Beam->GetActorLocation();
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(World, Under, /*Tier=*/2, /*Seed=*/9);
+	ACataclysmEnemyCharacter* Ordinary = PlaceCreatureAtRung(World, Mode, Under + FVector(50.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a Stalker under the beam"), Stalker)
+		|| !TestNotNull(TEXT("set-up: an ordinary creature under it"), Ordinary))
+	{
+		return false;
+	}
+	Mode->FloorEnemies.Add(Stalker);
+	if (!TestTrue(TEXT("set-up: the beam covers the Stalker"), Beam->Covers(Stalker->GetActorLocation()))
+		|| !TestTrue(TEXT("set-up: and the ordinary creature"), Beam->Covers(Ordinary->GetActorLocation())))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestFalse(TEXT("the Corrupted Stalker under the beam lives"), UCataclysmSkillEffects::IsDead(Stalker));
+	TestTrue(TEXT("CONTROL: the ordinary creature under it was destroyed"), UCataclysmSkillEffects::IsDead(Ordinary));
+	TestEqual(TEXT("one destroyed"), Mode->DivineWrathDestroyedCount(), 1);
 	return true;
 }
 

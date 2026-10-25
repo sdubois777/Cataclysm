@@ -2163,6 +2163,18 @@ public:
 	/** The Reaper on this floor, or null before it arrives. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* TheReaperOnTheFloor() const { return TheReaper.Get(); }
 
+	/** The Corrupted Stalker on this floor, or null. Issue #1308. */
+	class ACataclysmCorruptedStalkerCharacter* CorruptedStalkerOnTheFloor() const;
+
+	/** Whether the Corrupted Stalker has been slain in this dungeon, after which no floor raises it again. */
+	bool CorruptedStalkerSlainInThisDungeon() const { return bCorruptedStalkerSlain; }
+
+	/**
+	 * The walkable cell farthest from `From` by walking, the first of them in cell order; `From` when the plan has
+	 * none other, or `From` is not walkable. Where the Corrupted Stalker arrives on the first floor it hunts.
+	 */
+	static FIntPoint FarthestWalkableCellFrom(const struct FCataclysmFloorPlan& Plan, FIntPoint From);
+
 	/** Demonic Guide, for the panel and tests: the floor's guide, or null. */
 	ACataclysmEnemyCharacter* DemonicGuideOnTheFloor() const { return DemonicGuide.Get(); }
 
@@ -3180,6 +3192,15 @@ private:
 
 	/** The Reaper, on every blow: one of its that lands on the player kills them. */
 	void NoteHitForTheReaper(const struct FCataclysmHitNotice& Notice);
+
+	/** The Corrupted Stalker, on the beat: counts the floor's seconds, raises it when due, and keeps its health. */
+	void StepTheCorruptedStalker();
+
+	/** The Corrupted Stalker itself: an authored entry's build, at the farthest cell or at the entrance. */
+	void RaiseTheCorruptedStalker();
+
+	/** The Corrupted Stalker, on every death: its own is the dungeon's last of it. */
+	void NoteDeathForTheCorruptedStalker(const struct FCataclysmDeathNotice& Notice);
 
 	/** Blood Bond, on the beat: the first elite that notices the player takes the bond. */
 	void StepBloodBond(class ACataclysmPlayerCharacter* Player);
@@ -5163,6 +5184,17 @@ private:
 	float TheReaperSecondsOnFloor = 0.0f;
 	bool bTheReaperRaised = false;
 	TWeakObjectPtr<ACataclysmEnemyCharacter> TheReaper;
+
+	/**
+	 * The Corrupted Stalker. The floor's: its seconds and whether it has come. The dungeon's: whether it has hunted an
+	 * earlier floor, whether it has been slain, and the share of its health it carries to the next floor.
+	 */
+	float CorruptedStalkerSecondsOnFloor = 0.0f;
+	bool bCorruptedStalkerRaisedThisFloor = false;
+	bool bCorruptedStalkerHasHunted = false;
+	bool bCorruptedStalkerSlain = false;
+	float CorruptedStalkerHealthShare = 1.0f;
+	TWeakObjectPtr<class ACataclysmCorruptedStalkerCharacter> CorruptedStalker;
 
 	/**
 	 * Blood Bond: the elite bonded on this floor, and whether this floor has bonded at all,

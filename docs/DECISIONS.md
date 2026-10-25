@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The Corrupted Stalker arrives, hunts and follows from floor to floor wearing a player's build (#1308, part B, layer 1)
+
+**Affects:** a new creature class, `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` / `.cpp`;
+`ACataclysmEnemyCharacter` (one flag and two guards); `UCataclysmDungeonModifierEffects` (the row's key, numbers and
+built state); `ACataclysmDungeonGameMode` (raising, following, the panel line, the resets, `ClearFloorEnemies`, Divine Wrath's beam); ten tests appended to
+`CataclysmDungeonModifierEffectsTests.cpp`; two diagnostic test files removed; `game/README.md`'s count. Issue
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layers 2 to 4.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w56 below passed every registered figure, and all three proofs were PROVED.** The route was
+  measured first, by the diagnostic window `dungeon-w54d`
+  (2026-10-25, `c612ff801`): a level-100 Ravager applied through `UCataclysmPlayerClassStats::ApplyTo` gave a creature,
+  once it held the three attribute sets it lacks, exactly what it gave a five-set control ("max health 2236.6, mana
+  436.0, armour 416.1"), and one archetype setter afterwards took armour to 0 and crit to 5.
+- **THE ROW STAYS PARTLY BUILT**, ruled by the coordinating session on 2026-10-25, until all seven non-War entries exist.
+- **THE HEALTH AND DAMAGE MULTIPLIERS ARE PLACEHOLDERS**, 1.2 rising evenly to 5.0 for health and 1.0 for damage, ruled
+  the same day: a working prototype first, and a standard-library fight model in `sim/` brings their replacements.
+- **Not guarded:** a rule that writes a creature's attribute directly with `SetNumericAttributeBase` rather than
+  through a setter still reaches the Stalker. Twenty-seven such writes are in the game mode (counted by searching for
+  the call, 2026-10-25); none was read for whether it can reach a creature raised by a rule.
+- **Its death drops what a Common creature drops** until layer 3.
+- **WINDOW W55 STOPPED AT ONE FAILING TEST**, recorded under Run below; the code was changed as ruled, and window w56
+  passed.
+
+### The rules, as decided (the owner's answers and the coordinating session's rulings, 2026-10-25)
+
+| Rule | Decided |
+|---|---|
+| Arrival | 60 s into the first floor it hunts, at the walkable cell farthest from the player (by walking); the owner's "as proposed", the 60 s the coordinating session's |
+| Following | while it stands, 30 s after the player on each later floor, at the entrance, with the share of its health it had; the 30 s the coordinating session's |
+| Slain | not raised again in that dungeon |
+| Horde | it belongs to no wave: raised by the rule, so no wave and no floor clear waits for it, and the next wave in the same arena keeps it |
+| Entries | one per damage type, the owner's "Maybe one per damage type. So 8"; War waits under the no-War order; only Demonic is authored, because the other six types' weapon skills are undesigned placeholders in `WeaponSkills.csv` |
+| Numbers | the entry's class line at the tier's reference level (`UCataclysmPowerScore::ReferenceCharacter`), its passives and its eighteen pieces through `ApplyTo`; each affix at the highest tier a drop can carry at that tier, its roll drawn on the floor's seed |
+| "Hunted by" | a line in the floor's modifier panel, "hunted by <name>", where every rule's line is shown; no banner exists in the game |
+| Sight | The Reaper's figure, for "hunts you" |
+| Its blow | its weapon's basic attack, cast through `UCataclysmTriggeredSkill::Trigger`; its other skills are layer 2 |
+
+**The Demonic entry**, authored by the dungeon session under the owner's delegation of unstated numbers: "Kaedric the
+Hollowed", a Ravager with a Greataxe; flat health with armour on the seven armour pieces, damage on the gloves,
+necklace, relic and weapon, flat and increased health on the eight rings; thirteen passive points (the Ravager's root
+and Thick Hide in full). Every affix was checked against its piece's slot in `Affixes.csv` before it was written.
+
+### What changed
+
+- `ACataclysmCorruptedStalkerCharacter`: a creature holding the two attribute sets a player holds and a creature does
+  not, and the typed resistances; `Entries()`, eight slots; `WearTheBuild`, which gathers its pieces' modifiers through
+  an equipment component belonging to no actor (one left on it would be refreshed by
+  `UCataclysmAbilitySystemComponent::RefreshWornStatLine` with the console's class and no passives), applies the build,
+  the placeholder multipliers, and sets `bHoldsAPlayerBuild`; and a blow that is its weapon's basic attack.
+- `ACataclysmEnemyCharacter::bHoldsAPlayerBuild`: while set, `ApplyStartingAttributes` and `RewriteAttackDamage` write
+  nothing, so no setter and no floor damage rule undoes the build.
+- `ACataclysmDungeonGameMode`: `StepTheCorruptedStalker`, `RaiseTheCorruptedStalker`, `NoteDeathForTheCorruptedStalker`,
+  `FarthestWalkableCellFrom`; the floor's state reset unless it still stands, and the dungeon's in `LeaveEmpireDungeon`.
+- Removed: `CataclysmEnemyCastsAPlayerSkillTests.cpp` and `CataclysmCreatureWearsAPlayerBuildTests.cpp`, the two
+  diagnostics, whose measurements are recorded above and in the part A entry; tests below assert what they measured.
+
+### The floor's enemy list, and the two rulings after window w55
+
+**The cause of w55's failure.** The Stalker is in `FloorEnemies`, as The Reaper is, and `ClearFloorEnemies` destroyed
+it: the Horde test calls it to clear the second wave's own creatures, and the floor's clock had been kept for a
+Stalker that stood. In the game, `ClearFloorEnemies` is called only by `PopulateFloor`, when the arena changes.
+
+**RULED, 2026-10-25, the coordinating session: `ClearFloorEnemies` keeps a standing Corrupted Stalker**, neither
+destroying it nor taking it out of the list, so every floor rule that reads the list still reaches it. A floor change
+still removes it, through `UCataclysmFloorContents::ClearTheFloor`. The ruling replaced an earlier one, to take it out
+of `FloorEnemies`, after the dungeon session listed what that would have exempted it from:
+
+| Function | What it does with the list | The Stalker, by reading |
+|---|---|---|
+| `LivingFloorEnemies` | the floor-clear count | already excluded: raised by a rule |
+| `StandingInSection` | a section's count | already excluded, same predicate |
+| `LightforgedWallsStanding` | the stairs' count | already excluded, same predicate |
+| `BloodGatesPlacedCount` | the gate's count | already excluded: raised by a rule |
+| `ChooseTheSoulChainBearers` | chooses bearers | already excluded: raised by a rule |
+| `ChooseTheSealBearers` | chooses bearers | already excluded: raised by a rule |
+| `StepShadowyEnemies`, the shroud | shrouds unlit creatures | already lit: raised by a rule |
+| `StepShadowyEnemies`, the light | lights creatures that cannot move | not reached: it moves |
+| `RaiseTheTrickOrTreatPair` | the floor's creature kinds | not reached: it is no placed kind |
+| `ChooseTheFloorsMedic` | makes a creature the floor's healer | reached; may choose it only by rarity, and it is Common |
+| `ChooseTheFloorsCommander` | makes the highest rung the commander | reached, as any creature; at the Common rung, chosen only when nothing outranks it |
+| `StepBloodBond` | bonds an elite | not reached: it is Common |
+| `NoteDeathForObsidianSarcophagi` | counts the floor's paid deaths | reached, as any creature's death |
+| `DivineResurgencePlacedCount` | counts creatures standing | reached, as any creature |
+| `NoteDeathForInfestedHoard` | a drop on a death | reached, as any creature's death |
+| `StepPlaguebearer` | a damage multiplier | reaches it and writes nothing: the build guard |
+| `ChooseAtGrimTotem` | a damage multiplier | reaches it and writes nothing: the build guard |
+| `StepMoraleBreak` | panics a pack | not reached: it is in no pack |
+| `StepSanctionedPassage` | widens sight | reached; it already sees the whole floor |
+| `StepDirgeResonance` | hastes "all enemies" and makes them immune to fear | reached, as its row's "all enemies" says |
+| `StepDivineWrath` | destroys the creatures its beam covers | **spared**, ruled below |
+| `GoToFloor` | finds the Gatekeeper | not reached: it is no Gatekeeper |
+
+Counted from `CataclysmDungeonGameMode.cpp` by a script listing the function each mention of `FloorEnemies` is in,
+2026-10-25: 22 functions read the list, and the rest only add to it.
+
+**RULED, 2026-10-25, the coordinating session: Divine Wrath's beam spares the Corrupted Stalker, as it spares a floor's
+boss.** Its reason, verbatim: "the Stalker is ruled to pay a Boss-rung creature's experience and drop about 6 items. A
+beam that erases it would let a player lure the beam onto it and skip the encounter. The row already exempts the floor's
+boss for the same kind of reason." The check is in `StepDivineWrath` alone.
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+`TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored`;
+`ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel` (against a five-set control given the same
+build, at tiers 1 and 8); `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` (the coordinating
+session's, with a plain creature as control);
+`TheCorruptedStalkerComesAMinuteIntoItsFirstFloorAtTheCellFarthestFromThePlayer` (with a floor without the row as
+control); `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad`;
+`ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon`; `ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone`;
+`ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer`;
+`TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist`;
+`ADivineWrathBeamSparesACorruptedStalkerAndDestroysAnOrdinaryCreature` (with an ordinary creature under the same beam as
+control).
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Step 1b | `ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone` alone, by its full name; the window stops if it fails |
+| Whole Unreal suite | 4198 (`1bf218ccb`, the #2516 merge, window t88x) + 10 new − 1 removed diagnostic = **4207**, 0 failed |
+| Memory | about 7,700 MB; reported if above 9,500 |
+| P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails |
+| P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails |
+| P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails |
+
+Three proofs, the owner's limit of 2026-09-14; a fourth, the first floor's cell taken as the entrance, was dropped by the coordinating session on 2026-10-25, and its test still runs in the whole suite. The beam's check is not proved:
+the three are the setter guard, the carried health and the slain flag, unchanged.
+
+### Run
+
+**Window w55 (lock `dungeon-w55`, `feat/corrupted-stalker-body-2` at `3da41694c`, on `1bf218ccb`, 2026-10-25) stopped
+at the whole suite.** The six conditions were checked immediately before the lock was taken: both of `development`'s
+runs at `1bf218ccb` succeeded (waited for until they had); none in progress or queued; the lock free; no build or
+editor process; no open pull request; "free GB: 12.7 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 40 actions, 37 files compiled` |
+| Whole Unreal suite | 4206 / 0 | `4206 tests performed, 4205 succeeded, 1 failed: ACorruptedStalkerInAHordeArenaIsKeptAcrossItsWavesAndHoldsNone`; declared 4206, gap 0 |
+| The failure | | "Expected 'and a minute later no second one stands' to be 1, but it was 0." The assertion before it, "the same Stalker is still hunting", passed |
+| Memory | about 7,700 | `final_used_virtual_mb=7731`, peak 8,078 |
+| Python (JUnit) | | 6996 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1 to P3 | | not run: "STOPPED: the whole suite did not pass" |
+
+**Window w56 (lock `dungeon-w56`, `feat/corrupted-stalker-body-3` at `976c5b8d5`, on `1bf218ccb`, 2026-10-25)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`1bf218ccb` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.5 of 31.1". The lock was released before anything was written here. The move onto `1bf218ccb`: one
+top-of-file conflict in this file, resolved by taking `development`'s file with this entry above its first, asserted
+lossless; `check_resolved_cpp.py`, "9 files read, 0 with complaints".
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.32.cpp, Module.Cataclysm.33.cpp` |
+| Step 1b, the Horde test alone | passes | `Tests: 1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4207 / 0 | `4207 tests performed, 4207 succeeded, 0 failed`; declared 4207, gap 0 |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=7617`, peak 7,985 |
+| Python (JUnit) | | 6996 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, the guard in `ApplyStartingAttributes` removed | `ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt` fails | "1 tests performed, 0 succeeded, 1 failed: ASetterOrDamageRuleRunAfterACorruptedStalkersBuildCannotUndoIt"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the carried health share not applied | `TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` fails | "1 tests performed, 0 succeeded, 1 failed: TheCorruptedStalkerFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, its death not noted | `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` fails | "1 tests performed, 0 succeeded, 1 failed: ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-25 — A character's class trees follow the damage types its worn weapons carry, and the starting weapon carries the creation type (#857, layer 1)
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the new public

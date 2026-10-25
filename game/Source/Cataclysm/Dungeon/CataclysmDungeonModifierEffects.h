@@ -2577,6 +2577,22 @@ public:
 	static const TCHAR* TheReaperKey;
 
 	/**
+	 * `Generic_Corrupted_Stalker`: "A corrupted former player character hunts you across the dungeon floors rather
+	 * than waiting to be found. It is drawn at random from a shared table of characters consumed by Worn Residue,
+	 * rebuilt to the peak of player power for this dungeon tier, and fights with player skills rather than a monster
+	 * ability list. It drops its equipped items on death." Issue #1308, part B; the part A grant puts it on one dungeon
+	 * in twenty.
+	 *
+	 * LAYER 1 (2026-10-25): it arrives `CorruptedStalkerFirstFloorSeconds` into the first floor it hunts, at the
+	 * walkable cell farthest from the player, and `CorruptedStalkerFollowSeconds` after the player on each later floor,
+	 * at the entrance, with the share of its health it had; once slain it is not raised again in that dungeon. It is
+	 * raised by the rule, so no wave and no floor clear waits for it. It wears an authored entry's build
+	 * (`ACataclysmCorruptedStalkerCharacter`) and swings its weapon's basic attack. The owner's answers and the
+	 * coordinating session's rulings of 2026-10-25.
+	 */
+	static const TCHAR* CorruptedStalkerKey;
+
+	/**
 	 * The row that binds the player to the first elite that notices them. Issues #1820
 	 * and #41.
 	 *
@@ -7090,6 +7106,30 @@ public:
 	 */
 	static constexpr float TheReaperSightMultiplier = VengefulWraithsSightMultiplier;
 
+	/** What the Corrupted Stalker notices the player from, times its own sight: The Reaper's figure, for "hunts you". */
+	static constexpr float CorruptedStalkerSightMultiplier = VengefulWraithsSightMultiplier;
+
+	/** Seconds into the first floor it hunts before it arrives. The coordinating session's, 2026-10-25. */
+	static constexpr float CorruptedStalkerFirstFloorSeconds = 60.0f;
+
+	/** Seconds after the player arrives on each later floor before it follows. The coordinating session's, 2026-10-25. */
+	static constexpr float CorruptedStalkerFollowSeconds = 30.0f;
+
+	/** The health multiplier's ends. PLACEHOLDERS; see `CorruptedStalkerHealthMultiplier`. */
+	static constexpr float CorruptedStalkerHealthMultiplierAtTierOne = 1.2f;
+	static constexpr float CorruptedStalkerHealthMultiplierAtTierEight = 5.0f;
+
+	/** What its attack damage is multiplied by. A PLACEHOLDER of 1.0, ruled with the health multiplier. */
+	static constexpr float CorruptedStalkerDamageMultiplier = 1.0f;
+
+	/** Mixed into the floor's seed for which entry it raises. The letters "stlk". */
+	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
+
+	static_assert(CorruptedStalkerFirstFloorSeconds > CorruptedStalkerFollowSeconds
+					  && CorruptedStalkerFollowSeconds > 0.0f,
+				  "The Corrupted Stalker arrives later on its first floor than it follows on the next, and never with "
+				  "the player.");
+
 	static_assert(
 		TheReaperDelaySeconds > 0.0f && TheReaperRung == 0,
 		"The Reaper arriving with the player gives no warning, and a rung above Common "
@@ -8079,6 +8119,20 @@ public:
 
 	/** Whether The Reaper is due after this long on a floor: at `TheReaperDelaySeconds`. */
 	static bool TheReaperIsDue(float SecondsOnFloor);
+
+	/**
+	 * Whether the Corrupted Stalker is due this many seconds into a floor: `CorruptedStalkerFirstFloorSeconds` on the
+	 * first floor it hunts, `CorruptedStalkerFollowSeconds` on each after it. At and not past.
+	 */
+	static bool CorruptedStalkerIsDue(float SecondsOnFloor, bool bHuntedAnEarlierFloor);
+
+	/**
+	 * What a Corrupted Stalker's maximum health is multiplied by at a tier: 1.2 at tier 1, rising evenly to 5.0 at tier
+	 * 8, held there above and below. A PLACEHOLDER, ruled by the coordinating session on 2026-10-25 as layer 1's: the
+	 * research found Path of Exile gives its player-like Rogue Exiles more life the higher the map tier, and a pure
+	 * standard-library fight model in `sim/` brings the replacement figures.
+	 */
+	static float CorruptedStalkerHealthMultiplier(int32 DifficultyTier);
 
 	/**
 	 * Whether a creature may take the Blood Bond: at `BloodBondRung`, not a floor's boss, and
