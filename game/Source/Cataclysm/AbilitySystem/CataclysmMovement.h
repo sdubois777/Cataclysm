@@ -6,6 +6,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmMovement.generated.h"
 
+class AActor;
 class ACataclysmCharacterBase;
 
 /**
@@ -33,10 +34,10 @@ class ACataclysmCharacterBase;
  *
  * AN INSTANT RELOCATION IS NOT MOVEMENT, and it cannot be told from a very
  * fast walk by sampling position. So each place that relocates a character at
- * once calls `UCataclysmAbilitySystemComponent::NoteRelocatedInstantly` itself
- * rather than being inferred here: a blink, a recall, a position swap, a
- * Flicker, the Phasewalker enemy modifier, and the placement of the player at
- * a floor's start.
+ * once calls `UCataclysmMovement::NoteRelocatedInstantly` below itself rather
+ * than being inferred here; the list is on
+ * `UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`. Until issue #2388
+ * none of them did.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmMovement : public UBlueprintFunctionLibrary
@@ -83,4 +84,14 @@ public:
 	 * rather than "never".
 	 */
 	static void SampleStep(ACataclysmCharacterBase* Character);
+
+	/**
+	 * Tell a character's ability system it was relocated at once from `From` to where it now stands, so the
+	 * relocation is not counted as walked and its standing-still clock starts again. Issue #2388.
+	 *
+	 * CALLED AFTER THE MOVE, by every place in the game that puts a character somewhere else at once; the list is
+	 * on `UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`. Anything that is not one of this project's
+	 * characters, or has no ability system of this project's, is left alone: nothing samples it.
+	 */
+	static void NoteRelocatedInstantly(AActor* Character, const FVector& From);
 };

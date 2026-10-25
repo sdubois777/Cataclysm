@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -1587,9 +1588,12 @@ int32 ACataclysmDungeonGameMode::BringFollowersTo(APawn* Leader)
 		const FVector Standing = Spots[Moved % Spots.Num()]
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Body));
 		// SWEEP OFF, for the reason `PlaceAtEntrance` gives.
+		const FVector Was = Body->GetActorLocation();
 		if (Body->TeleportTo(Standing, Body->GetActorRotation(),
 							 /*bIsATest=*/false, /*bNoCheck=*/true))
 		{
+			// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+			UCataclysmMovement::NoteRelocatedInstantly(Body, Was);
 			++Moved;
 		}
 	}
@@ -1634,8 +1638,16 @@ bool ACataclysmDungeonGameMode::PlaceAtEntrance(APawn* Pawn)
 	// SWEEP OFF. The pawn is being put somewhere it is not, across a floor that
 	// may be a hundred metres away, and a swept move would stop at the first wall
 	// between here and there and leave the player inside it.
-	return Pawn->TeleportTo(Standing, Pawn->GetActorRotation(),
-						    /*bIsATest=*/false, /*bNoCheck=*/true);
+	const FVector Was = Pawn->GetActorLocation();
+	if (!Pawn->TeleportTo(Standing, Pawn->GetActorRotation(),
+						  /*bIsATest=*/false, /*bNoCheck=*/true))
+	{
+		return false;
+	}
+
+	// AN INSTANT RELOCATION, not ground walked, and the standing-still clock starts again. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(Pawn, Was);
+	return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -9660,8 +9672,11 @@ void ACataclysmDungeonGameMode::StepRealityRifts(
 			const FIntPoint Other = RealityRiftCells[Index ^ 1];
 			const FVector Arrive = CurrentFloor->WorldOfCell(Other)
 				+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Player));
+			const FVector Was = Player->GetActorLocation();
 			if (Player->TeleportTo(Arrive, Player->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true))
 			{
+				// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+				UCataclysmMovement::NoteRelocatedInstantly(Player, Was);
 				RealityRiftRestLeft = Effects::RealityRiftRestSeconds;
 				UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the player carried from rift %d to rift %d on floor %d"),
 					   Index, Index ^ 1, FloorNumber);
@@ -9855,10 +9870,14 @@ void ACataclysmDungeonGameMode::StepTheRealityChamber(ACataclysmPlayerCharacter*
 	// neither read nor started.
 	const FVector Arrive = (bAtTheFloorEnd ? ChamberEnd : FloorEnd)
 		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Player));
+	const FVector Was = Player->GetActorLocation();
 	if (!Player->TeleportTo(Arrive, Player->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true))
 	{
 		return;
 	}
+
+	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(Player, Was);
 	bRealityChamberRiftArmed = false;
 	UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the player carried %s the hidden chamber on floor %d"),
 		   bAtTheFloorEnd ? TEXT("into") : TEXT("out of"), FloorNumber);

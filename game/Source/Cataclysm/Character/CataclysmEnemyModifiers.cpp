@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmEnemyModifiers.h"
 
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -374,7 +375,11 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 	{
 		return false;
 	}
+	const FVector Was = Enemy->GetActorLocation();
 	Enemy->AddActorWorldOffset(Step * PhasewalkerDistanceCm, /*bSweep=*/true);
+
+	// A PHASE IS AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);
 
 	return true;
 }

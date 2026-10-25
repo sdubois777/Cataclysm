@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
@@ -3507,9 +3508,13 @@ void UCataclysmMovementSkill::ActivateAbility(
 		End = FVector(Partner->GetActorLocation().X,
 					  Partner->GetActorLocation().Y, Start.Z);
 
+		const FVector PartnerWas = Partner->GetActorLocation();
 		Partner->SetActorLocation(
 			FVector(Start.X, Start.Y, Partner->GetActorLocation().Z),
 			/*bSweep=*/true);
+
+		// A TRADE IS AN INSTANT RELOCATION FOR BOTH OF THEM, so neither's walked ground counts it. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(Partner, PartnerWas);
 
 		SwappedWith = Partner;
 	}
@@ -3595,8 +3600,18 @@ void UCataclysmMovementSkill::ActivateAbility(
 
 	// Swept, so a leap into a wall stops at the wall rather than putting the
 	// character inside it.
+	const FVector SelfWas = Self->GetActorLocation();
 	Self->SetActorLocation(End, /*bSweep=*/true);
 	ArrivedAt = Self->GetActorLocation();
+
+	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
+	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.
+	if (Params.MovementMode == ECataclysmMovementMode::Blink
+		|| Params.MovementMode == ECataclysmMovementMode::Swap
+		|| Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
+	}
 
 	EnemiesHit = Targets.Num();
 
@@ -3732,8 +3747,12 @@ void UCataclysmMovementSkill::FlickerOnce()
 		const FVector Feet(Next->GetActorLocation().X,
 						   Next->GetActorLocation().Y,
 						   Self->GetActorLocation().Z);
+		const FVector SelfWas = Self->GetActorLocation();
 		Self->SetActorLocation(Feet, /*bSweep=*/true);
 		ArrivedAt = Self->GetActorLocation();
+
+		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
 		++Arrivals;
 
 		// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is

@@ -294,9 +294,12 @@ bool FCataclysmMovementTeleportTest::RunTest(const FString& Parameters)
 	//
 	// PATH OF EXILE 2 STATES THE RULE OUTRIGHT for its own distance bonus:
 	// "Teleportation does not count towards the distance travelled".
+	//
+	// SINCE ISSUE #2388 THE ANNOUNCEMENT ALSO MOVES THE PLACE THE SAMPLER LAST SAW THE CHARACTER, so this test no
+	// longer moves it by hand: the assertions below are the announcement's own work.
+	const FVector Was = Walker.Character->GetActorLocation();
 	Walker.Character->SetActorLocation(FVector(100000.0f, 0.0f, 0.0f));
-	Walker.AbilitySystem->NoteRelocatedInstantly();
-	Walker.AbilitySystem->NoteSampledAt(Walker.Character->GetActorLocation());
+	UCataclysmMovement::NoteRelocatedInstantly(Walker.Character, Was);
 
 	TestEqual(TEXT("a teleport adds no distance"),
 			  Walker.AbilitySystem->MetresWalkedTotal(), Total, 0.001f);
@@ -315,6 +318,64 @@ bool FCataclysmMovementTeleportTest::RunTest(const FString& Parameters)
 	// earns distance nor counts as having moved.
 	TestEqual(TEXT("a teleport starts the standing-still clock again"),
 			  Walker.AbilitySystem->SecondsSinceMoved(), 0.0f, 0.1f);
+
+	return true;
+}
+
+/**
+ * An instant relocation keeps the ground walked since the last sample, adds none of its own, and starts the
+ * standing-still clock again. Issue #2388.
+ *
+ * THE CONTROL is a second character moved the same way with no announcement: its next sample counts the whole jump,
+ * which is what every relocation in the game did before #2388, when nothing called the announcement.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementRelocationKeepsTheWalkTest,
+	"Cataclysm.Movement.ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMovementRelocationKeepsTheWalkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmMovementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FWalker Relocated(World);
+	const FWalker Control(World);
+	if (!TestTrue(TEXT("two creatures with ability systems spawned"), Relocated.IsUsable() && Control.IsUsable()))
+	{
+		return false;
+	}
+
+	Relocated.MoveTo(0.0f);
+	Control.MoveTo(0.0f);
+	const float RelocatedTotal = Relocated.AbilitySystem->MetresWalkedTotal();
+	const float ControlTotal = Control.AbilitySystem->MetresWalkedTotal();
+	CataclysmTestWorld::RunClock(World, 2.0f);
+
+	// TWO METRES WALKED AND NOT YET SAMPLED, THEN A THOUSAND METRES AT ONCE.
+	for (const FWalker* Walker : {&Relocated, &Control})
+	{
+		Walker->Character->SetActorLocation(FVector(200.0f, 0.0f, 0.0f));
+		const FVector Was = Walker->Character->GetActorLocation();
+		Walker->Character->SetActorLocation(FVector(100200.0f, 0.0f, 0.0f));
+		if (Walker == &Relocated)
+		{
+			UCataclysmMovement::NoteRelocatedInstantly(Walker->Character, Was);
+		}
+		UCataclysmMovement::SampleStep(Walker->Character);
+	}
+
+	TestEqual(TEXT("the relocated creature's next sample counts the two metres walked and none of the jump"),
+			  Relocated.AbilitySystem->MetresWalkedTotal() - RelocatedTotal, 2.0f, 0.001f);
+	TestEqual(TEXT("and its standing-still clock started again"),
+			  Relocated.AbilitySystem->SecondsSinceMoved(), 0.0f, 0.1f);
+	TestEqual(TEXT("CONTROL: unannounced, the same move counts the jump as walked"),
+			  Control.AbilitySystem->MetresWalkedTotal() - ControlTotal, 1002.0f, 0.001f);
 
 	return true;
 }

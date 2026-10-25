@@ -2576,19 +2576,25 @@ public:
 	void NoteDidNotMove();
 
 	/**
-	 * Record that this character was put somewhere else at once. Issue #41.
+	 * Record that this character was put somewhere else at once, by `Displacement`. Issues #41 and #2388.
 	 *
-	 * A BLINK, A RECALL, A POSITION SWAP, A FLICKER, THE PHASEWALKER MODIFIER, OR
-	 * THE PLACEMENT OF THE PLAYER AT A FLOOR'S START. It stamps the clock, adds no
-	 * distance, and does not mark the character as moving: a teleport is not
-	 * movement, but a bonus that builds up while standing still should not survive
-	 * one. That division is a judgement recorded in `docs/DECISIONS.md`.
+	 * A BLINK, A RECALL, A POSITION SWAP, A FLICKER, A RANDOM TELEPORT WHEN HIT, THE PHASEWALKER MODIFIER, A
+	 * REALITY RIFT, A RESPAWN, A SAVE'S PLACEMENT, A SKILL GADGET MOVED, OR THE PLACEMENT OF A CHARACTER AT A
+	 * FLOOR'S START. `UCataclysmMovement::NoteRelocatedInstantly` is how each of them calls this.
 	 *
-	 * CALLED AT EACH PLACE THAT RELOCATES A CHARACTER RATHER THAN INFERRED. The
-	 * sampler cannot tell a blink from a very fast walk, so a new instant move
-	 * that forgets to call this would be counted as walking.
+	 * NOT GROUND WALKED: the place the sampler last saw the character moves by `Displacement` with it, so the
+	 * sampler's next step measures only what was walked since its last, adds none of the relocation to the distance
+	 * walked or to the metres since the character's own attack, and does not mark the character as moving for it.
+	 *
+	 * AND THE STANDING-STILL CLOCK STARTS AGAIN, ruled by the coordinating session on 2026-10-24 for issue #2388:
+	 * a bonus that builds while standing still does not survive a relocation. `docs/DECISIONS.md` has the entry.
+	 *
+	 * CALLED AT EACH PLACE THAT RELOCATES A CHARACTER RATHER THAN INFERRED. The sampler cannot tell a blink from a
+	 * very fast walk, so a new instant move that forgets to call this is counted as walking.
+	 *
+	 * @param Displacement where the character now stands, less where it stood before the relocation
 	 */
-	void NoteRelocatedInstantly();
+	void NoteRelocatedInstantly(const FVector& Displacement);
 
 	/**
 	 * Record that this character attacked. Issue #41, slice 2.

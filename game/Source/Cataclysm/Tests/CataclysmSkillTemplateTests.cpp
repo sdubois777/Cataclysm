@@ -27783,7 +27783,7 @@ bool FCataclysmTeleportWhenHitStaysPutTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitIsNotMovementTest,
-	"Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone",
+	"Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndStartsTheStandingStillClockAgain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -27801,8 +27801,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitIsNotMovementTest,
  * metres since its own attack, 4 metres in total, and its clock back at nought. THE WEARER is told of a tick, which
  * does not move it, and then of a landed hit, and its row moves it 4 m. Before the sampler looks again, the place
  * the sampler last saw it is where it now stands, and its
- * clock still reads 5 seconds. The sampler's next step then sees no move: not moving, no metres, and the clock
- * still at 5 seconds.
+ * clock reads nought: since issue #2388 every instant relocation starts the standing-still clock again (ruled
+ * 2026-10-24; until then this move left it at 5 seconds). The sampler's next step then sees no move: not moving,
+ * no metres, and the clock still at nought.
  *
  * STANDING: the wearer at the origin; the control 40 m along Y; the fighter named as the attacker 40 m against Y.
  */
@@ -27900,8 +27901,8 @@ bool FCataclysmTeleportWhenHitIsNotMovementTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("the place the sampler last saw the wearer is where the wearer now stands"),
 			  GroundCmFrom(Wearer, WearerSystem->SampledLocation()), 0.0f, 0.01f);
-	TestEqual(TEXT("the move leaves the wearer's clock at 5 seconds since it moved"),
-			  WearerSystem->SecondsSinceMoved(), 5.0f, 0.01f);
+	TestEqual(TEXT("the move starts the wearer's standing-still clock again"),
+			  WearerSystem->SecondsSinceMoved(), 0.0f, 0.01f);
 	TestFalse(TEXT("and does not mark the wearer as moving"), WearerSystem->IsMoving());
 
 	UCataclysmMovement::SampleStep(Wearer);
@@ -27909,8 +27910,7 @@ bool FCataclysmTeleportWhenHitIsNotMovementTest::RunTest(const FString&)
 	TestEqual(TEXT("and adds no metres since its own attack"),
 			  WearerSystem->MetresMovedSinceOwnAttack() - WearerMetresBefore, 0.0f, 0.001f);
 	TestEqual(TEXT("and no metres in total"), WearerSystem->MetresWalkedTotal() - WearerTotalBefore, 0.0f, 0.001f);
-	TestEqual(TEXT("and leaves its clock at 5 seconds since it moved"), WearerSystem->SecondsSinceMoved(), 5.0f,
-			  0.01f);
+	TestEqual(TEXT("and its clock is still at nought"), WearerSystem->SecondsSinceMoved(), 0.0f, 0.01f);
 	return true;
 }
 

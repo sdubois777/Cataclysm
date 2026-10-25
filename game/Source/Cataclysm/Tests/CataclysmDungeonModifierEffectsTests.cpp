@@ -80,6 +80,7 @@
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
+#include "Engine/TargetPoint.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
@@ -57703,7 +57704,9 @@ bool FCataclysmVigilDodgeTest::RunTest(const FString& Parameters)
 }
 
 // A BLINK OR A STEP PUTS THE 3 SECONDS BACK TO NOTHING. A teleport is announced, as every instant relocation is
-// (`UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`), and a step is sampled.
+// (`UCataclysmMovement::NoteRelocatedInstantly`), and a step is sampled. THE BLINK IS A REAL ONE since issue #2388,
+// the player's movement skill used as the Abstinence tests use it: until then nothing in the game announced a blink,
+// and this test called the announcement by hand.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilClockTest,
 	"Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -57732,10 +57735,67 @@ bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
 	}
 	Mode->ClearFloorEnemies();
 
-	// A BLINK TWO SECONDS IN.
+	// A BLINK TWO SECONDS IN, AIMED ALONG A STRAIGHT RUN OF FLOOR AT LEAST 3 METRES LONG THAT LEAVES THE ENTRANCE.
+	// A test world has no cursor, and with nothing aimed at the blink goes its whole range along the way the player
+	// faces (`UCataclysmSkillTemplate::AimedPointWithin`), into whatever stands there. The move is swept, so a wall
+	// stops it: the first window of issue #2388 aimed 5 metres along +X and the player moved less than a metre.
+	// Ruled by the coordinating session on 2026-10-25: from the entrance's cell, the first of +X, -X, +Y and -Y whose
+	// next cells are all floor for at least 3 metres, aimed at the far one's middle. The skill aims at a clicked target
+	// while one is set (`UCataclysmSkillTemplate::ClickedTarget`).
+	UCataclysmMovementSkill* Blink = RuleOfChaosGrantStep(Player);
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Entrance = Plan.Entrance;
+	const float CellCm = static_cast<float>(FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Entrance),
+															Mode->CurrentFloor->WorldOfCell(Entrance + FIntPoint(1, 0))));
+	const int32 CellsInARun = CellCm > 0.0f ? FMath::CeilToInt(300.0f / CellCm) : 0;
+	FIntPoint RunEnd(-1, -1);
+	for (const FIntPoint Way : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+	{
+		bool bOpen = CellsInARun > 0;
+		for (int32 Step = 1; bOpen && Step <= CellsInARun; ++Step)
+		{
+			bOpen = Plan.IsFloor(Entrance + Way * Step);
+		}
+		if (bOpen)
+		{
+			RunEnd = Entrance + Way * CellsInARun;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: the blink was granted"), Blink)
+		|| !TestTrue(TEXT("set-up: a straight run of floor at least 3 m long leaves the entrance"), RunEnd.X >= 0))
+	{
+		return false;
+	}
+	const FVector RunEndWorld = Mode->CurrentFloor->WorldOfCell(RunEnd);
+	ATargetPoint* Aimed = World->SpawnActor<ATargetPoint>(
+		FVector(RunEndWorld.X, RunEndWorld.Y, Player.Character->GetActorLocation().Z), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a point to aim at"), Aimed))
+	{
+		return false;
+	}
+	Blink->ClickedTarget = Aimed;
+
+	// AND THE PLAYER RAISED BY THE GAP WALKING MOVEMENT KEEPS ABOVE THE FLOOR IN PLAY,
+	// `UCharacterMovementComponent::MAX_FLOOR_DIST`, 2.4 cm. The game stands a pawn at exactly its capsule's half
+	// height, touching the ground, and a test player is never moved by its walking movement, which in play lifts it to
+	// that gap on its next update. A swept move begun touching the ground is refused: measured on 2026-10-25, the
+	// blink's move began "start-penetrating" the floor's `Ground` component and the player did not move. Ruled by the
+	// coordinating session that day. Straight up, so the movement sampler, which measures flat, sees no ground walked.
+	Player.Character->AddActorWorldOffset(FVector(0.0f, 0.0f, UCharacterMovementComponent::MAX_FLOOR_DIST));
 	StartTheStandStillClock(Player);
+	const float WalkedBeforeTheBlink = Player.AbilitySystem->MetresWalkedTotal();
+	const FVector BeforeTheBlink = Player.Character->GetActorLocation();
 	CataclysmTestWorld::RunClock(World, 2.0f);
-	Player.AbilitySystem->NoteRelocatedInstantly();
+	if (!TestTrue(TEXT("set-up: the player's blink went off"), RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff)
+		|| !TestTrue(TEXT("set-up: the blink moved the player at least a metre"),
+					 FVector::Dist2D(BeforeTheBlink, Player.Character->GetActorLocation()) >= 100.0f))
+	{
+		return false;
+	}
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestEqual(TEXT("the blink is not counted as ground walked"), Player.AbilitySystem->MetresWalkedTotal(),
+			  WalkedBeforeTheBlink, 0.001f);
 	CataclysmTestWorld::RunClock(World, 2.0f);
 	Beat(Mode, 1);
 	TestNull(TEXT("four seconds in, two after a blink: nothing"), Mode->EdictOfVigilMarkNow());
@@ -59045,6 +59105,57 @@ bool FCataclysmSeededIllusionsTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("seed %d's illusions stand at [%s] of %d; seeds [%s] differ"), SeededFloorSeed, *First,
 							Placed, *SeededFloorJoined(Differing)));
 	TestTrue(TEXT("CONTROL: another seed makes other creatures illusions"), Differing.Num() > 0);
+	return true;
+}
+
+// THE PLACEMENT AT A FLOOR'S ENTRANCE IS NOT GROUND WALKED, AND THE STANDING-STILL CLOCK STARTS AGAIN. Issue #2388.
+// THE CONTROL is the same jump made by `TeleportTo` alone, which the sampler counts as walked.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEntrancePlacementIsNotWalkedTest,
+	"Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntranceIsNotGroundWalked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEntrancePlacementIsNotWalkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// FORTY METRES FROM THE ENTRANCE, SAMPLED THERE, AND STOOD STILL FOR TWO SECONDS.
+	const FVector Entrance = Player.Character->GetActorLocation();
+	const FVector Away = Entrance + FVector(4000.0f, 0.0f, 0.0f);
+	Player.Character->TeleportTo(Away, Player.Character->GetActorRotation(), false, true);
+	UCataclysmMovement::SampleStep(Player.Character);
+	const float Total = Player.AbilitySystem->MetresWalkedTotal();
+	CataclysmTestWorld::RunClock(World, 2.0f);
+
+	if (!TestTrue(TEXT("the player is put at the entrance"), Mode->PlaceAtEntrance(Player.Character)))
+	{
+		return false;
+	}
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestEqual(TEXT("the placement added no ground walked"), Player.AbilitySystem->MetresWalkedTotal(), Total, 0.001f);
+	TestEqual(TEXT("and started the standing-still clock again"), Player.AbilitySystem->SecondsSinceMoved(), 0.0f,
+			  0.1f);
+
+	// THE CONTROL: the same forty metres by `TeleportTo` alone.
+	Player.Character->TeleportTo(Away, Player.Character->GetActorRotation(), false, true);
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestTrue(TEXT("CONTROL: the same jump unannounced is counted as walked"),
+			 Player.AbilitySystem->MetresWalkedTotal() - Total > 30.0f);
+
 	return true;
 }
 

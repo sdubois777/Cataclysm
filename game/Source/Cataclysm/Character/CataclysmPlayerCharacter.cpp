@@ -4,6 +4,7 @@
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -1934,9 +1935,13 @@ void ACataclysmPlayerCharacter::Revive()
 	// the body fell would stop against the first thing in the way.
 	if (!bPlacedByTheDungeon)
 	{
+		const FVector Was = GetActorLocation();
 		SetActorLocationAndRotation(RespawnLocation, RespawnRotation,
 									/*bSweep=*/false, nullptr,
 									ETeleportType::TeleportPhysics);
+
+		// AN INSTANT RELOCATION, not ground walked; the dungeon's own placement says so itself. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(this, Was);
 	}
 
 	// EVERYTHING TEMPORARY ON THE CHARACTER GOES, AND IT GOES BEFORE THE REFILL.

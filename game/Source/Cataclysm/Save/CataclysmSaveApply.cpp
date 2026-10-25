@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -298,10 +299,14 @@ bool FCataclysmSaveApply::PlacementInto(
 	// TELEPORTED RATHER THAN MOVED. `SetActorLocation` with sweeping on would
 	// drag the character along the floor from wherever it happens to be
 	// standing, and stop it against the first thing in the way.
+	const FVector Was = Character.GetActorLocation();
 	Character.SetActorLocationAndRotation(Saved.Location,
 										  FRotator(0.0f, Saved.Yaw, 0.0f),
 										  /*bSweep=*/false, nullptr,
 										  ETeleportType::TeleportPhysics);
+
+	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(&Character, Was);
 
 	return VitalsInto(Character, Saved.Health, Saved.Mana, Saved.EnergyShield);
 }

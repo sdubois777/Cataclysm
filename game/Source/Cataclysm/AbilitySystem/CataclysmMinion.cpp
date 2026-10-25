@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 // For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
 #include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
@@ -828,7 +829,11 @@ bool ACataclysmMinion::IsSkillGadget() const
 void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
 {
 	// MOVED, NOT REPLACED: its health, its clock and its age are its own and stay. S6.
+	const FVector Was = GetActorLocation();
 	SetActorLocation(Location, /*bSweep=*/false, /*OutSweepHitResult=*/nullptr, ETeleportType::TeleportPhysics);
+
+	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(this, Was);
 	SkillGadgetPlacedAtSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 }
 

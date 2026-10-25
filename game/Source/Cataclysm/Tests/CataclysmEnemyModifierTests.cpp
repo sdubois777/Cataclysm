@@ -7,6 +7,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmMovement.h"
 // For the bleed whose tick a bonded creature shares. Issue #2289.
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -3316,6 +3317,51 @@ CATACLYSM_MODIFIER_TEST(FCataclysmBondAllyShareOverkillTest,
 	TestEqual(TEXT("the ally's death records an overkill of nought"), Slain.AllyOverkill, 0.0f, 0.001f);
 	TestEqual(TEXT("the bystander loses what it lost in the control: the ally's death adds no explosion"),
 			  Slain.BystanderLost, Spared.BystanderLost, 0.05f);
+	return true;
+}
+
+// A PHASE IS NOT GROUND WALKED, AND THE STANDING-STILL CLOCK STARTS AGAIN. Issue #2388.
+CATACLYSM_MODIFIER_TEST(FCataclysmPhasewalkerIsNotWalkedTest,
+	"Cataclysm.EnemyModifiers.APhasewalkersPhaseIsNotGroundWalked")
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UCataclysmAbilitySystemComponent* System =
+		Enemy ? Cast<UCataclysmAbilitySystemComponent>(Enemy->GetAbilitySystemComponent()) : nullptr;
+	if (!TestNotNull(TEXT("a creature with an ability system"), System))
+	{
+		return false;
+	}
+	Enemy->SetHealth(500.0f);
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::PhasewalkerRow));
+	Enemy->SecondsSincePhase = 0.0f;
+
+	UCataclysmMovement::SampleStep(Enemy);
+	const float Total = System->MetresWalkedTotal();
+	CataclysmTestWorld::RunClock(World, 2.0f);
+
+	const FVector Before = Enemy->GetActorLocation();
+	bool bPhased = false;
+	for (int32 Step = 0; Step < 16 && !bPhased; ++Step)
+	{
+		bPhased = UCataclysmEnemyModifiers::PhaseStep(Enemy, 0.25f);
+	}
+	if (!TestTrue(TEXT("set-up: it phased, and moved"), bPhased && (Enemy->GetActorLocation() - Before).Size() > 1.0f))
+	{
+		return false;
+	}
+
+	UCataclysmMovement::SampleStep(Enemy);
+	TestEqual(TEXT("the phase added no ground walked"), System->MetresWalkedTotal(), Total, 0.001f);
+	TestFalse(TEXT("and did not mark it as moving"), System->IsMoving());
+	TestEqual(TEXT("and started its standing-still clock again"), System->SecondsSinceMoved(), 0.0f, 0.1f);
 	return true;
 }
 
