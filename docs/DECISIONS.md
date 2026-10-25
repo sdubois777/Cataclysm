@@ -196,7 +196,39 @@ None.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t92w, under the editor lock as `enchant-t92w`, taken at 11.6 GB
+free, at `83285be2f` on `fix/lone-one-hander-goes-to-the-right-hand-1` (one commit, moved from `88fd76eef` on
+`1bf218ccb` onto development `1170587cf`; the move kept its zero-context patch id, whole and outside this file, and its
+23 removed lines; only this file conflicted, its lines unchanged).
+
+**THE TWO JUDGEMENTS, ACCEPTED 2026-10-25 by the coordinating session, verbatim:**
+
+> - **J1:** the hand choice as a static that needs no art is the right shape. Record in the entry that the one changed
+>   assertion sits in a mesh half, which does not run where game/Content/Medieval_Weapons/ is absent, and so was not run
+>   in your window. Name it.
+> - **J2:** a lone two-hander in Weapon2, which only Both Hands Full allows, is drawn in the right hand too. That follows
+>   the same rule, and my "a two-hander is unchanged" meant one in Weapon1. Say so in the entry.
+
+So: **the one changed assertion, "the right hand" in
+`Cataclysm.WeaponMesh.SwappingATwoHandedWeaponForAOneHandedOneRedrawsTheHand`, sits in a mesh half and WAS NOT RUN IN
+THIS WINDOW**: this worktree has no `game/Content/Medieval_Weapons/` (gitignored), so that half reports "skipped part of
+what it checks". It runs only where the pack is installed. And a lone two-hander in Weapon2, which only Both Hands Full
+allows, is drawn in the right hand too; "a two-hander is unchanged" meant one in Weapon1 (J2).
+
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4210 tests performed,
+  4210 succeeded, 0 failed" (4207 on development + 3); "Declared: 4210 tests in the tree at 83285be2f; 4210 performed,
+  gap 0". 43 tests skipped part of what they check. The memory summary line, quoted: "CataclysmTestMemorySummary:
+  tests=4817 peak_used_virtual_mb=7940 final_used_virtual_mb=7595 collections=3191 collection_total_s=105.623
+  worlds_at_last_collection=1".
+- **Python of record, as registered:** "6988 passed, 8 skipped"; JUnit 6996 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **G1, the lone-weapon rule removed** (anchor `if (!OutRight && OutLeft)` counted once; prefix `Cataclysm.WeaponMesh.`,
+  10 tests): PROVED, AS REGISTERED. With the break in, 10 performed, 8 succeeded, 2 failed,
+  `ALoneOneHandedWeaponInTheSecondSlotIsDrawnInTheRightHand` and
+  `TakingTheRightHandWeaponOffOfTwoDrawsTheOtherInTheRightHand`; 4 failed assertions, registered 4 ("a lone sword in
+  Weapon2 is drawn in the right hand", "and the left hand draws nothing", "the shield left alone in Weapon2 is drawn in
+  the right hand", "and the left hand draws nothing"). 0 ensures. Restored, 10 performed, 10 succeeded. The file's hash
+  is the same after.
 
 ---
 
