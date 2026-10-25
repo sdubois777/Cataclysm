@@ -1706,7 +1706,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetAttackDamage(ImpAttackDamage);
 		// NO SetArmour CALL. See the header: this creature's designed armour
 		// share is exactly zero and it is the only one in the roster with none.
-		Enemy->SetRarityStep(RarityStepFor(Setting(ImpRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(ImpRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1714,7 +1714,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(HellhoundHealth);
 		Enemy->SetArmour(HellhoundArmour);
 		Enemy->SetAttackDamage(HellhoundAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(HellhoundRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(HellhoundRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1722,7 +1722,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(BruteHealth);
 		Enemy->SetArmour(BruteArmour);
 		Enemy->SetAttackDamage(BruteAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(BruteRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(BruteRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1730,7 +1730,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(AbyssalWardenHealth);
 		Enemy->SetArmour(AbyssalWardenArmour);
 		Enemy->SetAttackDamage(AbyssalWardenAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(AbyssalWardenRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(AbyssalWardenRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1738,7 +1738,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(CorruptedSentinelHealth);
 		Enemy->SetArmour(CorruptedSentinelArmour);
 		Enemy->SetAttackDamage(CorruptedSentinelAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(CorruptedSentinelRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(CorruptedSentinelRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1746,7 +1746,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(SuccubusHealth);
 		Enemy->SetArmour(SuccubusArmour);
 		Enemy->SetAttackDamage(SuccubusAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(SuccubusRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(SuccubusRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1758,7 +1758,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(GatekeeperHealth);
 		Enemy->SetArmour(GatekeeperArmour);
 		Enemy->SetAttackDamage(GatekeeperAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(GatekeeperRarityStep), Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(GatekeeperRarityStep), Enemy, RarityStreamNow));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1808,6 +1808,13 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	// placed on the floor that is being cleared away, and putting them down
 	// afterwards would stand them on whatever replaces it.
 	WaveStillToArrive.Reset();
+	WavePlacementsTried = 0;
+}
+
+FRandomStream ACataclysmDungeonGameMode::RarityStreamForPlacement(int32 Index) const
+{
+	// NO FLOOR, NO SEED: a stream of nought, which no caller reaches, since both callers place on a built floor.
+	return FRandomStream(CurrentFloor ? CurrentFloor->GetPlan().Seed ^ (RarityFromTheFloorSalt + Index) : 0);
 }
 
 int32 ACataclysmDungeonGameMode::PopulateFloor()
@@ -2112,6 +2119,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// as before. The first few are put down in this frame and `Tick` puts
 		// down the rest.
 		WaveStillToArrive = Population.Enemies;
+		WavePlacementsTried = 0;
 		ArrivingSightRadiusMultiplier = FloorBrief.SightRadiusMultiplier;
 		Spawned = ContinueTheWaveArriving();
 	}
@@ -2119,8 +2127,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	{
 		// AN ORDINARY FLOOR'S CREATURES ARE PUT DOWN ALL AT ONCE, while the floor
 		// is being built, as they always were.
-		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		for (int32 PlacementIndex = 0; PlacementIndex < Population.Enemies.Num(); ++PlacementIndex)
 		{
+			const FCataclysmEnemyPlacement& Placement = Population.Enemies[PlacementIndex];
+
+			// ITS RARITY RUNG FROM THE FLOOR'S SEED AND ITS PLACE IN THE LIST. Issue #2490.
+			const FRandomStream Rarity = RarityStreamForPlacement(PlacementIndex);
+			TGuardValue<const FRandomStream*> FromTheFloor(RarityStreamNow, &Rarity);
 			if (ACataclysmEnemyCharacter* Enemy =
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
@@ -2527,6 +2540,11 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 	int32 Arrived = 0;
 	for (int32 Index = 0; Index < ThisFrame; ++Index)
 	{
+		// ITS RARITY RUNG FROM THE FLOOR'S SEED AND ITS PLACE IN THE POPULATION PASS'S LIST, counted across frames.
+		// Issue #2490.
+		const FRandomStream Rarity = RarityStreamForPlacement(WavePlacementsTried++);
+		TGuardValue<const FRandomStream*> FromTheFloor(RarityStreamNow, &Rarity);
+
 		// ONE THAT FAILS TO SPAWN IS DROPPED RATHER THAN TRIED AGAIN, which is
 		// what putting a whole floor down at once has always done with one.
 		if (ACataclysmEnemyCharacter* Enemy = SpawnPlacedCreature(

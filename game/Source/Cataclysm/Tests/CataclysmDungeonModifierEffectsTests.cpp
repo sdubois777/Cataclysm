@@ -402,25 +402,38 @@ namespace CataclysmDungeonModifierEffectsTest
 	};
 
 	/**
-	 * A string console variable set the way a person at the console sets it,
-	 * and emptied again afterwards.
+	 * A console variable set the way a person at the console sets it, and put
+	 * back afterwards to the value it held when the helper was made.
 	 *
 	 * AT THE CONSOLE'S PRIORITY, because Unreal discards a write from a lower
 	 * priority than the last one, and a test that set it any lower would pass
 	 * alone and do nothing in a full run after somebody typed at the console.
+	 *
+	 * PUT BACK, NOT EMPTIED, since issue #2493. It wrote an empty string as it
+	 * went, which is a string variable's default and is 0 for a number one:
+	 * the engine reads it with `Atof`. Most of its uses are roll pins whose
+	 * default -1 means "not pinned", and each left its roll pinned at 0 for
+	 * every later test in the run. The game-mode tests' helper of this name
+	 * already put back what it found; this one now does the same.
 	 */
 	struct FScopedConsoleString
 	{
 		FScopedConsoleString(const TCHAR* Name, const TCHAR* Value)
 		{
 			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+			}
 			Set(Value);
 		}
 
 		~FScopedConsoleString()
 		{
-			Set(TEXT(""));
+			Set(*Previous);
 		}
+
+		FString Previous;
 
 		void Set(const TCHAR* Value)
 		{
@@ -59385,6 +59398,50 @@ bool FCataclysmNecroticSparesAStillCreatureTest::RunTest(const FString& Paramete
 																			   Feet + FVector(400.0f, 0.0f, 0.0f)));
 		}
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The test helper that pins a console variable puts back the value it found. Issue #2493.
+// ---------------------------------------------------------------------------
+
+// A ROLL PIN SET THROUGH `FScopedConsoleString` READS ITS DEFAULT AGAIN WHEN THE HELPER GOES. Until issue #2493 the
+// helper wrote an empty string as it went, and the engine reads an empty string as 0 for a number variable
+// (`LexFromString` calls `Atof`), so a roll pin whose default -1 means "not pinned, draw" was left pinned at 0 for
+// every later test in the run. MEASURED HERE on Illusory Enemies' roll, which is one of those pins: the variable is
+// put at its default first, so a value an earlier test left behind cannot make the comparison agree with itself.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScopedPinRestoresTest,
+	"Cataclysm.DungeonModifierEffects.AScopedConsolePinPutsBackTheValueItFound",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScopedPinRestoresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.IllusoryEnemiesRoll"));
+	if (!TestNotNull(TEXT("set-up: Illusory Enemies' roll is a console variable"), Roll))
+	{
+		return false;
+	}
+	Roll->Set(TEXT("-1"), ECVF_SetByConsole);
+	if (!TestEqual(TEXT("set-up: it reads its default, not pinned"), Roll->GetFloat(), -1.0f, 0.0001f))
+	{
+		return false;
+	}
+
+	{
+		const FScopedConsoleString Pin(TEXT("Cataclysm.IllusoryEnemiesRoll"), TEXT("0.25"));
+		TestEqual(TEXT("while the helper is held the roll is pinned at a quarter"), Roll->GetFloat(), 0.25f, 0.0001f);
+	}
+	TestEqual(TEXT("once it goes, the roll reads its default again and not 0"), Roll->GetFloat(), -1.0f, 0.0001f);
+
+	// AND A SECOND SET MADE THROUGH THE HELPER WHILE IT IS HELD IS UNDONE TOO: what it puts back is what it found.
+	{
+		FScopedConsoleString Pin(TEXT("Cataclysm.IllusoryEnemiesRoll"), TEXT("0.25"));
+		Pin.Set(TEXT("0.75"));
+		TestEqual(TEXT("a second value set through the helper is in force"), Roll->GetFloat(), 0.75f, 0.0001f);
+	}
+	TestEqual(TEXT("and once it goes the default is back"), Roll->GetFloat(), -1.0f, 0.0001f);
 	return true;
 }
 

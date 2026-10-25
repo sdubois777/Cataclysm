@@ -2,6 +2,134 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — The modifier tests' console-variable helper puts back the value it found (#2493)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` only: `FScopedConsoleString` and one
+new test. No game code changes. **This closes [#2493](https://github.com/sdubois777/Cataclysm/issues/2493)** when it
+merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN WHEN WRITTEN. THE EFFECT IS READ, AND THE NEW TEST IS ITS MEASUREMENT.** The coordinating
+  session asked for a measurement first; one needs an Unreal run, so the measurement is the new test's failing half
+  in the window's guard proof.
+- **WHAT THE ENGINE DOES, read in Unreal Engine 5.8's `Runtime/Core/Private/HAL/ConsoleManager.cpp`:** a typed
+  console variable's `Set` passes the text to `GetValueFromString<T>`, which for a float calls `LexFromString`, which
+  is `Atof`; `Atof("")` is 0. The history check before it (`TrackHistory`) records the write and refuses only a write
+  of a lower priority than the last, and the helper writes at the console's priority.
+- **AT RISK IN THE WINDOW:** any test that passed only because an earlier test left a roll pinned at 0. Such a test is
+  order-dependent today, and now sees the roll it asked for. A failure comes to the coordinating session as old -> new.
+
+### What changed
+
+The helper wrote an empty string when it went. That is a string variable's default and 0 for a number variable, and
+most of the 142 places in the file that made one before this change (counted by searching for a helper
+being declared with a name, 2026-10-24) pin rolls whose default -1 means "not pinned". It now records the value the
+variable held when the helper was made and writes that back, as the helper of the same name in
+`CataclysmDungeonGameModeTests.cpp` already did.
+
+New test: `Cataclysm.DungeonModifierEffects.AScopedConsolePinPutsBackTheValueItFound`. It puts Illusory Enemies' roll
+at its default -1 first, so a value an earlier test left cannot make the comparison agree with itself; pins it at a
+quarter through the helper; and asserts it reads -1 again once the helper goes, and again after a second value set
+through the helper while held.
+
+### Proofs
+
+**PROVED**, by `unreal_build.prove_cpp_guard`, in the stacked window below, as that window's P2: `Set(*Previous);` ->
+`Set(TEXT(""));` in the helper's destructor (the code as it was), the break text matching once. Predicted:
+`AScopedConsolePinPutsBackTheValueItFound` fails, reading 0 where it expects -1. Printed: "1 tests performed, 0
+succeeded, 1 failed: AScopedConsolePinPutsBackTheValueItFound"; restored "1 tests performed, 1 succeeded, 0 failed".
+
+**THIS IS THE MEASUREMENT** the coordinating session asked for, and it settles what was only read above: with the
+helper writing an empty string, the engine log printed "Expected 'once it goes, the roll reads its default again and
+not 0' to be -1.000000, but it was 0.000000" and "Expected 'and once it goes the default is back' to be -1.000000, but
+it was 0.000000". An empty string set on a float console variable reads as 0.
+
+**AND NO OTHER TEST HAD LEANT ON IT.** The whole suite below, with the helper now putting back what it found, passed
+every test: none had passed only because an earlier test left a roll pinned at 0.
+
+### Run
+
+One window for the two, stacked as ruled, run by the dungeon session and given by the coordinating session (lock
+`dungeon-w51`, `fix/rarity-seed-and-console-pins-2` at `00a925dc7`, on `5317410f1`, the #2334 merge #2509, 2026-10-25),
+with the six conditions checked immediately before the lock was taken: both of `development`'s runs at `5317410f1`
+succeeded (its CI run was waited for until it had); none in progress or queued; the lock free; no build or editor
+process; no open pull request; "free GB: 15.8 of 31.1". The lock was released before anything was written here. The
+move: `check_resolved_cpp.py`, "6 files read, 0 with complaints"; both commits' zero-context patch ids unchanged; the
+append-append conflict at the end of `CataclysmDungeonModifierEffectsTests.cpp` resolved by taking `development`'s
+file and re-applying #2493's own edit script, each edit asserted to match once, which gave the original's 60 lines
+added and 3 removed.
+
+- **Build:** "Build: Succeeded - 71 actions, 61 files compiled".
+- **The whole Unreal suite:** "4160 tests performed, 4160 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4160 tests in the tree at 00a925dc7; 4160 performed, gap 0; every declared test was reported by the run."
+  Registered 4160 and 0: the 4158 of the #2334 merge and one new test for each issue. Memory:
+  "CataclysmTestMemorySummary: tests=4767 peak_used_virtual_mb=11691 final_used_virtual_mb=11421 collections=3152
+  collection_total_s=106.788 worlds_at_last_collection=1".
+- **Python:** "6974 passed, 8 skipped"; JUnit tests 6982, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **The proofs:** as under Proofs above, both PROVED.
+
+Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1` (moved from `3c1f3ac5f` as `-1`, its
+zero-context patch ids unchanged), stacked with #2490 at the coordinating
+session's ruling of 2026-10-24 so the two share one window; the stacked branch is registered as `development`'s last
+measured total plus two.
+
+---
+
+## 2026-10-24 — A creature the floor places draws its rarity rung from the floor's seed (#2490)
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmGameMode.h` and `.cpp` (`RarityStepFor` takes an optional stream);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`RarityStreamNow`, `WavePlacementsTried`,
+`RarityStreamForPlacement`; the floor's two population loops and `ApplyDesignedStats`);
+`game/Source/Cataclysm/Tests/CataclysmDungeonGameModeTests.cpp` (one new test). **This closes
+[#2490](https://github.com/sdubois777/Cataclysm/issues/2490)** when it merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **WHAT KEEPS TODAY'S DRAW, a labelled judgement of the dungeon session:** every creature not placed by the floor's
+  population pass. That is every map with no floor plan -- the editor's Play button on any map, and the sandbox --
+  and every creature made during play: summons, reinforcements, the Reaper and its horde, raised and risen
+  creatures, guards and the rest of `SpawnPlacedCreature`'s other callers. Their timing depends on what the player
+  does, so a floor seed cannot make them repeat, and they keep the draw from the creature's identity and the clock.
+- **AT RISK IN THE WINDOW:** a test that builds the same floor of the same seed many times and counts how often each
+  rung comes up now sees one answer, not a spread. A failure comes to the coordinating session as old -> new.
+
+### What changed
+
+`docs/Cataclysm_GDD_v2.md` promises the same seed builds the same floor ("the same seed always produces the same
+floor"). Until this change a creature's rung was drawn from its own identity and the clock, which no seed controls,
+and every map uses that draw (`ACataclysmGameMode::RarityStepFor`). Now, while the dungeon game mode puts down the
+floor's population -- an ordinary floor all at once, or an arriving wave over several frames -- each creature draws
+from a stream made of the floor plan's seed and its place in the population pass's list, as the floor's other seeded
+draws are (`CurrentFloor->GetPlan().Seed ^ (salt + index)`; the salt is "rr", `0x72720000`). An arriving wave counts
+its place across frames, and a creature that fails to spawn still uses up its place, so the creatures after it keep
+theirs. A rung set by the console or fixed by a rule is used as before and draws nothing.
+
+### Tests
+
+New: `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor`. Floors 1 to 6 of one dungeon seed
+are built twice, and each floor's rungs are compared in placement order. Its controls: some rung on the six floors is
+above Common, and the six floors do not all hold the same rungs.
+
+### Proofs
+
+**PROVED**, by `unreal_build.prove_cpp_guard`, in the stacked window (its P1, recorded in full in the entry above):
+`FRandomStream Stream = FromTheFloor != nullptr` -> `FRandomStream Stream = false` in
+`ACataclysmGameMode::RarityStepFor`, so every creature draws from its identity and the clock again, the break text
+matching once. Predicted: `TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor` fails. Printed: "1 tests performed,
+0 succeeded, 1 failed: TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor"; restored "1 tests performed, 1 succeeded,
+0 failed".
+
+### Run
+
+In the one window shared with #2493, recorded under "Run" in the entry above: 4160 tests performed, 4160 succeeded, 0
+failed.
+
+Branch `fix/rarity-seed-and-console-pins-2` on `development` at `5317410f1`, stacked with #2493 (the entry above).
+
+---
+
 ## 2026-10-24 — A creature that cannot move is given a light under Shadowy Enemies, and Necrotic Ground puts no patch over one (#2334)
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`CreatureCannotMove` and

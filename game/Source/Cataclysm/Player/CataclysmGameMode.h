@@ -267,11 +267,18 @@ public:
 	 *                 to draw one from the spawn weights
 	 * @param Spawned  the creature, which seeds its own draw so that two made in
 	 *                 the same frame do not come out the same
+	 * @param FromTheFloor a stream made from the floor's seed, for a creature
+	 *                 the floor itself places, so the same seed builds the same
+	 *                 floor (issue #2490). Null everywhere else -- a map with
+	 *                 no floor plan, the editor's Play button, and a creature
+	 *                 made during play -- which draws as before, from the
+	 *                 creature's identity and the clock.
 	 *
 	 * @return Common when there is no world or no creature, which is what every
 	 *         creature spawned as before anything drew a rarity at all
 	 */
-	int32 RarityStepFor(int32 Setting, const AActor* Spawned) const;
+	int32 RarityStepFor(int32 Setting, const AActor* Spawned,
+						const FRandomStream* FromTheFloor = nullptr) const;
 
 	/** Every Abyssal Warden this game mode placed. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Sandbox")

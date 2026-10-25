@@ -5864,6 +5864,30 @@ private:
 	TArray<FCataclysmEnemyPlacement> WaveStillToArrive;
 
 	/**
+	 * How many of the arriving wave's creatures have been tried, so each draws its rarity rung from its own place in
+	 * the population pass's list however many frames the wave takes to arrive. Issue #2490. Nought when a wave is
+	 * decided and when the floor is cleared away.
+	 */
+	int32 WavePlacementsTried = 0;
+
+	/**
+	 * The stream a creature the floor itself is placing draws its rarity rung from, while it is being placed; null
+	 * otherwise, which is every creature made during play. Issue #2490. Set around `SpawnPlacedCreature` by
+	 * `RarityStreamForPlacement` at the two places the floor's population is put down, and read by
+	 * `ApplyDesignedStats`.
+	 */
+	const FRandomStream* RarityStreamNow = nullptr;
+
+	/**
+	 * The rarity stream of the floor's `Index`th placement: the floor plan's seed mixed with the index, as the floor's
+	 * other seeded draws are. Issue #2490.
+	 */
+	FRandomStream RarityStreamForPlacement(int32 Index) const;
+
+	/** Mixed with the floor plan's seed and a placement's index for its rarity rung. The letters "rr". Issue #2490. */
+	static constexpr int32 RarityFromTheFloorSalt = 0x72720000;
+
+	/**
 	 * What the arriving wave's creatures notice from, as a multiple of their own
 	 * distance, taken when the wave began arriving.
 	 *
