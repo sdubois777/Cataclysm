@@ -123,6 +123,34 @@ metres along +X from where the player stands -> new, aimed at the middle of the 
 straight run of floor at least 3 m long leaves the entrance". A comment that said an unaimed blink lands where the
 player stands was wrong and is corrected: unaimed, it goes its whole range along the way the player faces.
 
+### The second window, a measurement, and a second set-up the coordinating session ruled
+
+The second window (lock `dungeon-w46`, at `7b7e14061`, 2026-10-25; the six conditions checked, "free GB: 15.8 of 31.1")
+stopped at step 1b: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.33.cpp"; "Tests: 1 tests
+performed, 0 succeeded, 1 failed: ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing", again at "set-up: the
+blink moved the player at least a metre", with the new "a straight run of floor at least 3 m long leaves the entrance"
+passing. So the wall reading above was wrong.
+
+**Measured**, at the coordinating session's ruling, by one diagnostic run of that test alone (lock `dungeon-diag2388`)
+with temporary log lines in the test and in `UCataclysmMovementSkill::ActivateAbility`, removed before any commit:
+
+| what | printed |
+|---|---|
+| the player before the use | X=5400 Y=7000 Z=96 |
+| the aim point the skill read, and its end point | X=5000 Y=7000 Z=96, both: the target point, 4 metres along -X |
+| the swept move | "moved to X=5400 ... blocking 1 start-penetrating 1 hit actor CataclysmDungeonFloor_0 component Ground" |
+| went off; mana taken | 1; 20.00 |
+| the player after the use, and one clock step later | X=5400, both |
+
+**The cause:** the game stands a pawn at exactly its capsule's half height (`DungeonGameModeStandingHeightOf`), so it
+touches the ground, and a swept move begun touching the ground is refused. In play the character's walking movement
+lifts it to `UCharacterMovementComponent::MAX_FLOOR_DIST` (2.4 cm) above the floor on its next update; a test player is
+never moved by it. The skill reads its clicked target in a test world, and the move has no delay. **Changed, as ruled by
+the coordinating session on 2026-10-25, with every assertion kept:** old, the blink cast from where the game stood the
+player -> new, the player raised straight up by `UCharacterMovementComponent::MAX_FLOOR_DIST` before it, with a comment
+saying that is the gap walking movement keeps in play. The same refusal in play, for a swept relocation made in the
+frame a pawn was placed, is [#2505](https://github.com/sdubois777/Cataclysm/issues/2505), read and not measured.
+
 ### Run
 
 Not yet run past the first window above. Predicted Unreal total: `development`'s last measured total plus three, 4151,

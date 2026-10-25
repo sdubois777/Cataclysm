@@ -57775,6 +57775,14 @@ bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Blink->ClickedTarget = Aimed;
+
+	// AND THE PLAYER RAISED BY THE GAP WALKING MOVEMENT KEEPS ABOVE THE FLOOR IN PLAY,
+	// `UCharacterMovementComponent::MAX_FLOOR_DIST`, 2.4 cm. The game stands a pawn at exactly its capsule's half
+	// height, touching the ground, and a test player is never moved by its walking movement, which in play lifts it to
+	// that gap on its next update. A swept move begun touching the ground is refused: measured on 2026-10-25, the
+	// blink's move began "start-penetrating" the floor's `Ground` component and the player did not move. Ruled by the
+	// coordinating session that day. Straight up, so the movement sampler, which measures flat, sees no ground walked.
+	Player.Character->AddActorWorldOffset(FVector(0.0f, 0.0f, UCharacterMovementComponent::MAX_FLOOR_DIST));
 	StartTheStandStillClock(Player);
 	const float WalkedBeforeTheBlink = Player.AbilitySystem->MetresWalkedTotal();
 	const FVector BeforeTheBlink = Player.Character->GetActorLocation();
