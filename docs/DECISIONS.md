@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — A creature that cannot move is given a light under Shadowy Enemies, and Necrotic Ground puts no patch over one (#2334)
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (`CreatureCannotMove` and
+`ANecroticPatchHereWouldReachACreatureThatCannotMove`, new; `StepShadowyEnemies` adds a light; `StepNecroticGround`
+refuses a patch); `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (three new tests). No data
+row, no workbook cell and nothing under `game/Data/` is changed. **This closes the two cases still open on
+[#2334](https://github.com/sdubois777/Cataclysm/issues/2334)** when it merges; the Sacrificial Bond cases were closed by
+#2338.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** Written and read; the Run section is filled when the window runs.
+- **THE LIGHT IS NOT PLACED WHERE THE RULING SAID.** The ruling put it in `PlaceTheShadowLights`, and asked first for
+  a check that the floor's creatures exist when that runs. They do not: `GoToFloor` places the arena's objects, the
+  light zones among them, before the population pass places any creature. So the light is added on the beat, in
+  `StepShadowyEnemies`, which also reaches a creature a later wave brings. A labelled judgement of the dungeon session.
+
+### What was ruled
+
+The coordinating session, under the owner's delegation that every floor must be finishable without dying:
+
+1. **Shadowy Enemies:** a light zone on each creature that cannot move.
+2. **Necrotic Ground:** a patch is never centred within reach of a creature that cannot move, the Heavenly Core
+   included; and a check of whether Necrotic Ground can be drawn on an Ascendant's last floor.
+
+**It can, by reading.** `UCataclysmFloorBrief` gives an Ascendant's floors the dungeon's own modifiers and adds its
+Edicts (rule 6); nothing removes a Death row from its last floor, and Reality Twister (rule 4) may add any row with an
+effect. So the Heavenly Core, which never moves and seals that floor's stairs while it stands, can stand in the fog.
+
+### What the game does now
+
+`ACataclysmDungeonGameMode::CreatureCannotMove` answers true for a Corrupted Sentinel and for every floor source
+(`ACataclysmFloorSourceCharacter`: the Heavenly Core, beacons, blooms, sarcophagi and the rest).
+
+- **Shadowy Enemies.** On each beat, a living creature on the floor's list that cannot move, and that no light zone
+  reaches, gets a light zone on its cell, kept with the floor's other light cells and forgotten with them at the next
+  floor. So it is lit, and can be hurt by a character with no fire. A creature that can move still has to be led into
+  a light.
+- **Necrotic Ground.** Before a patch is put down, the search the fog heals by is made at its centre; if it finds a
+  living creature that cannot move, the patch is not put down that beat, the clock is not reset, and the next beat
+  tries a new place.
+
+### Tests
+
+New, in `CataclysmDungeonModifierEffectsTests.cpp`:
+`ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan` (its control: an Imp can);
+`ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches` (its control: an Imp as far from every light is
+shrouded and given none); `NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove` (the player ringed by 80
+Sentinels 4 metres apart, so every place the first patch can fall reaches one, and none falls in three cadences; its
+control: the same ring of Imps, under which the fog spreads).
+
+**At risk in the window:** `ShadowyEnemiesLightsTheExitWhereTheBossStands` asserts the floor's last light is the exit's
+and that there are at most four. A floor whose population holds a Corrupted Sentinel no light reaches gets one more,
+after the exit's. A failure there comes to the coordinating session as old -> new.
+
+### Proofs
+
+Registered for the window and not yet run:
+
+- **P1**, the light's `ShadowLightCells.Add(CurrentFloor->CellOfWorld(At));` -> a comment. Predicted:
+  `ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches` fails. Prefix
+  `Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsACreatureThatCannotMove`.
+- **P2**, `if (ANecroticPatchHereWouldReachACreatureThatCannotMove(Player, Where))` -> `if (false)`. Predicted:
+  `NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove` fails. Prefix
+  `Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatch`.
+
+### Run
+
+Not yet run. Predicted Unreal total: `development`'s last measured total plus three.
+
+Branch `fix/floors-a-still-creature-cannot-block-1` on `development` at `b2b60ebf6`.
+
+---
+
 ## 2026-10-24 — The save-writer tests wait for a write to finish, not only for its file to exist
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp` only (`CataclysmSaveWriterTest::WaitForSlot` also

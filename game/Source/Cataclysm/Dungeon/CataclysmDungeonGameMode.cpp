@@ -4418,6 +4418,36 @@ void ACataclysmDungeonGameMode::PlaceTheSpires()
 	RefreshFloorModifierPanel();
 }
 
+bool ACataclysmDungeonGameMode::CreatureCannotMove(const AActor* Creature)
+{
+	return Creature != nullptr
+		&& (Creature->IsA<ACataclysmCorruptedSentinelCharacter>() || Creature->IsA<ACataclysmFloorSourceCharacter>());
+}
+
+bool ACataclysmDungeonGameMode::ANecroticPatchHereWouldReachACreatureThatCannotMove(
+	const AActor* Player, const FVector& Where) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const UWorld* World = GetWorld();
+	if (!World || !Player)
+	{
+		return false;
+	}
+
+	// THE SAME SEARCH THE FOG HEALS BY, from the same side, so a creature this lets the fog reach is one it heals and
+	// the other way round.
+	for (AActor* Creature : UCataclysmTargeting::FindEnemiesInLine(
+			 World, Player, Where, Where, Effects::NecroticGroundPatchRadiusCm))
+	{
+		if (CreatureCannotMove(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::HeavenlyCoreNow() const
 {
 	ACataclysmEnemyCharacter* Core = HeavenlyCore.Get();
@@ -10956,6 +10986,35 @@ void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Pl
 
 	const bool bRow = FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey))
 		&& CurrentFloor && CurrentFloor->IsBuilt();
+
+	// A LIGHT ON EVERY CREATURE OF THE FLOOR THAT CANNOT MOVE AND NO LIGHT REACHES. Issue #2334, ruled by the
+	// coordinating session under the owner's delegation: a shrouded creature takes no damage, a character with no
+	// fire cannot light one, and a player cannot lead one that never moves into a light, so a floor whose stairs need
+	// it dead could not be finished. HERE, ON THE BEAT, AND NOT IN `PlaceTheShadowLights`, which runs before the
+	// floor's creatures are placed; on the beat it also reaches a creature a later wave brings. Kept with the floor's
+	// other light cells, so `ForgetTheShadowLights` takes it with them.
+	if (bRow)
+	{
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+		{
+			ACataclysmEnemyCharacter* Creature = Enemy.Get();
+			if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature) || !CreatureCannotMove(Creature))
+			{
+				continue;
+			}
+			const FVector At = Creature->GetActorLocation();
+			bool bReached = false;
+			for (const FIntPoint& Cell : ShadowLightCells)
+			{
+				bReached = bReached
+					|| FVector::Dist2D(At, CurrentFloor->WorldOfCell(Cell)) <= Effects::ShadowyEnemiesLightRadiusCm;
+			}
+			if (!bReached)
+			{
+				ShadowLightCells.Add(CurrentFloor->CellOfWorld(At));
+			}
+		}
+	}
 
 	// THE LIGHT ZONES DRAWN AGAIN whenever one is missing, which is after a Horde arena's every wave. They do no
 	// damage, and are drawn in Celestial's colours, as Void Parasite's light is.
@@ -21180,6 +21239,15 @@ void ACataclysmDungeonGameMode::StepNecroticGround(
 	const FVector Where(From.X + Away * FMath::Cos(Angle),
 						From.Y + Away * FMath::Sin(Angle),
 						From.Z);
+
+	// NEVER OVER A CREATURE THAT CANNOT MOVE. Issue #2334, ruled by the coordinating session under the owner's
+	// delegation: a creature the fog heals ten per cent a second, which no player can lead out of it, cannot be killed
+	// by a character dealing less, and a floor whose stairs need it dead could not be finished. The Heavenly Core is
+	// one. The clock is not reset, so the next beat tries another place, as after a failed spawn.
+	if (ANecroticPatchHereWouldReachACreatureThatCannotMove(Player, Where))
+	{
+		return;
+	}
 
 	// NO DAMAGE ON THE PATCH ITSELF, and drawn in the row's colours. The burn above is
 	// the damage; a patch that dealt its own would take it twice where patches overlap.

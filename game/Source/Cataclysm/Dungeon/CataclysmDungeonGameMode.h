@@ -2232,6 +2232,23 @@ public:
 	 */
 	class ACataclysmEnemyCharacter* HeavenlyCoreNow() const;
 
+	/**
+	 * Whether `Creature` is one that never moves: a Corrupted Sentinel, or a floor source -- the Heavenly Core, a
+	 * beacon, a bloom, a sarcophagus and the rest of `ACataclysmFloorSourceCharacter`'s kinds. Issue #2334.
+	 *
+	 * A PLAYER CANNOT LEAD ONE ANYWHERE, so a floor rule that makes a creature unkillable where it stands makes one of
+	 * these unkillable for good, and a floor whose stairs need it dead cannot be finished. The two rules that could,
+	 * Shadowy Enemies and Necrotic Ground, ask this.
+	 */
+	static bool CreatureCannotMove(const AActor* Creature);
+
+	/**
+	 * Whether a Necrotic Ground patch centred at `Where` would reach a creature that never moves, by the search the
+	 * fog uses to choose whom it heals, made from `Player`'s side as the fog's is. Issue #2334: such a patch is not placed, ruled by the coordinating session
+	 * under the owner's delegation.
+	 */
+	bool ANecroticPatchHereWouldReachACreatureThatCannotMove(const AActor* Player, const FVector& Where) const;
+
 	/** Whether a Heavenly Core stands on this floor. */
 	bool HeavenlyCoreStands() const { return HeavenlyCoreNow() != nullptr; }
 
