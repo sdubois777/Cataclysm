@@ -57703,7 +57703,9 @@ bool FCataclysmVigilDodgeTest::RunTest(const FString& Parameters)
 }
 
 // A BLINK OR A STEP PUTS THE 3 SECONDS BACK TO NOTHING. A teleport is announced, as every instant relocation is
-// (`UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`), and a step is sampled.
+// (`UCataclysmMovement::NoteRelocatedInstantly`), and a step is sampled. THE BLINK IS A REAL ONE since issue #2388,
+// the player's movement skill used as the Abstinence tests use it: until then nothing in the game announced a blink,
+// and this test called the announcement by hand.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVigilClockTest,
 	"Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -57733,9 +57735,17 @@ bool FCataclysmVigilClockTest::RunTest(const FString& Parameters)
 	Mode->ClearFloorEnemies();
 
 	// A BLINK TWO SECONDS IN.
+	UCataclysmMovementSkill* Blink = RuleOfChaosGrantStep(Player);
 	StartTheStandStillClock(Player);
+	const float WalkedBeforeTheBlink = Player.AbilitySystem->MetresWalkedTotal();
 	CataclysmTestWorld::RunClock(World, 2.0f);
-	Player.AbilitySystem->NoteRelocatedInstantly();
+	if (!TestTrue(TEXT("set-up: the player's blink went off"), RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestEqual(TEXT("the blink is not counted as ground walked"), Player.AbilitySystem->MetresWalkedTotal(),
+			  WalkedBeforeTheBlink, 0.001f);
 	CataclysmTestWorld::RunClock(World, 2.0f);
 	Beat(Mode, 1);
 	TestNull(TEXT("four seconds in, two after a blink: nothing"), Mode->EdictOfVigilMarkNow());
@@ -59045,6 +59055,57 @@ bool FCataclysmSeededIllusionsTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("seed %d's illusions stand at [%s] of %d; seeds [%s] differ"), SeededFloorSeed, *First,
 							Placed, *SeededFloorJoined(Differing)));
 	TestTrue(TEXT("CONTROL: another seed makes other creatures illusions"), Differing.Num() > 0);
+	return true;
+}
+
+// THE PLACEMENT AT A FLOOR'S ENTRANCE IS NOT GROUND WALKED, AND THE STANDING-STILL CLOCK STARTS AGAIN. Issue #2388.
+// THE CONTROL is the same jump made by `TeleportTo` alone, which the sampler counts as walked.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEntrancePlacementIsNotWalkedTest,
+	"Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntranceIsNotGroundWalked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEntrancePlacementIsNotWalkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// FORTY METRES FROM THE ENTRANCE, SAMPLED THERE, AND STOOD STILL FOR TWO SECONDS.
+	const FVector Entrance = Player.Character->GetActorLocation();
+	const FVector Away = Entrance + FVector(4000.0f, 0.0f, 0.0f);
+	Player.Character->TeleportTo(Away, Player.Character->GetActorRotation(), false, true);
+	UCataclysmMovement::SampleStep(Player.Character);
+	const float Total = Player.AbilitySystem->MetresWalkedTotal();
+	CataclysmTestWorld::RunClock(World, 2.0f);
+
+	if (!TestTrue(TEXT("the player is put at the entrance"), Mode->PlaceAtEntrance(Player.Character)))
+	{
+		return false;
+	}
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestEqual(TEXT("the placement added no ground walked"), Player.AbilitySystem->MetresWalkedTotal(), Total, 0.001f);
+	TestEqual(TEXT("and started the standing-still clock again"), Player.AbilitySystem->SecondsSinceMoved(), 0.0f,
+			  0.1f);
+
+	// THE CONTROL: the same forty metres by `TeleportTo` alone.
+	Player.Character->TeleportTo(Away, Player.Character->GetActorRotation(), false, true);
+	UCataclysmMovement::SampleStep(Player.Character);
+	TestTrue(TEXT("CONTROL: the same jump unannounced is counted as walked"),
+			 Player.AbilitySystem->MetresWalkedTotal() - Total > 30.0f);
+
 	return true;
 }
 

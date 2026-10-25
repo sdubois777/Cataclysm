@@ -1850,10 +1850,19 @@ void UCataclysmAbilitySystemComponent::NoteSampledAt(const FVector& Where)
 	bHasSampledLocation = true;
 }
 
-void UCataclysmAbilitySystemComponent::NoteRelocatedInstantly()
+void UCataclysmAbilitySystemComponent::NoteRelocatedInstantly(const FVector& Displacement)
 {
-	// THE CLOCK ONLY: no distance, and the character is not marked as moving.
-	// Issue #41, slice 2.
+	// NOT GROUND WALKED. Until issue #2388 nothing in the game called this, and it stamped the clock only, so the
+	// sampler's next step counted the whole relocation as walked. The place it last saw the character moves with the
+	// character, so that step measures only what was walked since the last one. Nothing is moved when there has been
+	// no sample: the first one only remembers where the character is.
+	if (bHasSampledLocation)
+	{
+		NoteSampledAt(LastSampledLocation + Displacement);
+	}
+
+	// AND THE STANDING-STILL CLOCK STARTS AGAIN, ruled 2026-10-24 for issue #2388. Whether the character is moving
+	// is left as the last sample found it.
 	if (const UWorld* World = GetWorld())
 	{
 		LastMovedAtSeconds = World->GetTimeSeconds();
@@ -7010,14 +7019,9 @@ bool UCataclysmAbilitySystemComponent::TeleportTheWearerRandomly(float Metres)
 		return false;
 	}
 
-	// AND IT IS NOT MOVEMENT. The movement sampler compares where the character is with where it last saw it, and
-	// cannot tell this from a walk. So the place it last saw is moved by what the character was moved by: its next
-	// step then measures only the ground walked since its last, and adds no distance and marks nothing as moving
-	// for this. The clock the standing-still conditions read is left alone.
-	if (bHasSampledLocation)
-	{
-		NoteSampledAt(LastSampledLocation + (Self->GetActorLocation() - From));
-	}
+	// AND IT IS NOT MOVEMENT, and the standing-still clock starts again, as for every instant relocation since
+	// issue #2388 (ruled 2026-10-24; until then this move left that clock alone). See `NoteRelocatedInstantly`.
+	NoteRelocatedInstantly(Self->GetActorLocation() - From);
 	return true;
 }
 

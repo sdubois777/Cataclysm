@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-24 — An instant relocation is not ground walked, and it starts the standing-still clock again (#2388)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`NoteRelocatedInstantly` takes the displacement and moves the sampler's last-seen place by it; the random teleport
+when hit calls it); `CataclysmMovement.h` and `.cpp` (`UCataclysmMovement::NoteRelocatedInstantly`, new); the twelve
+call sites listed below; five Unreal test files. No data row, no workbook cell and nothing under `game/Data/` is
+changed. **This closes [#2388](https://github.com/sdubois777/Cataclysm/issues/2388)** when it merges.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** Written and read; the Run section is filled when the window runs.
+- **NOT EVERY SITE HAS A TEST OF ITS OWN.** Tested by a run when it comes: a blink (in the Edict of Vigil's test), the
+  placement at a floor's entrance, the Phasewalker phase, the random teleport when hit, and the movement library's
+  call itself. Called and not tested: a trade's two ends, a return, a Flicker's arrivals, a follower placed at the
+  entrance, the two Reality Rift carries, a respawn outside a dungeon, a save's placement, and a skill gadget moved.
+
+### What was ruled
+
+The coordinating session, 2026-10-24, under the owner's delegation: **an instant move restarts the standing-still
+clock**, and is not ground walked. That settles the contradiction #2388 found in the 2026-09-12 judgement "A teleport
+is not movement", whose sentence said both "This game does the opposite" of a Path of Exile developer who resets the
+standing-still bonus and "starts the standing-still clock afresh". The clock half stands; the judgement's sentence is
+corrected below. It also replaces the 2026-10-12 random teleport's choice to leave the clock alone, which that entry
+asked to be ruled.
+
+### What the game does now
+
+Until this change nothing in the game called `NoteRelocatedInstantly`, so every relocation was counted by the
+movement sampler as ground walked. Now each one, after the move, calls `UCataclysmMovement::NoteRelocatedInstantly`
+with where the character stood before. That moves the place the sampler last saw the character by the same
+displacement, so the sampler's next step counts only what was walked since the last one, and restarts the
+standing-still clock. Whether the character is moving is left as the last sample found it.
+
+The twelve sites, found by searching `game/Source` outside the tests for `TeleportTo(`, `SetActorLocation(`,
+`SetActorLocationAndRotation(` and `AddActorWorldOffset(`, and reading each: the movement skill for a blink, a trade
+and a return (`CataclysmSkillTemplates.cpp`), a trade's partner, each arrival of a Flicker; the random teleport when
+hit (`CataclysmAbilitySystemComponent.cpp`); the Phasewalker phase (`CataclysmEnemyModifiers.cpp`); the placement at
+a floor's entrance and of the followers beside it, and the two Reality Rift carries (`CataclysmDungeonGameMode.cpp`);
+a respawn outside a dungeon (`CataclysmPlayerCharacter.cpp`); a save's placement (`CataclysmSaveApply.cpp`); a skill
+gadget moved (`CataclysmMinion.cpp`).
+
+**Not changed, by reading, because each is ground moved:** a leap and a charge (the 2026-09-12 judgement that a
+movement skill that travels is movement), a charging creature's step and a tether's pull and hold
+(`CataclysmEnemyCharacter.cpp`, `CataclysmTether.cpp`), a knockback (`CataclysmSkillEffects.cpp`). **Not changed
+because no sampled ground moves:** a creature stood again on its own cell at spawn or on a raised rung, and actors
+that are not characters (stairs, obstacles, projectiles, ground zones). The echo placed by a dungeon rule
+(`CataclysmDungeonGameMode.cpp`, `Echo->SetActorLocation`) is placed when it is made and loses its brain, and was
+left alone; a labelled judgement.
+
+### Tests
+
+Changed, for the new signature and the ruling:
+
+- `Cataclysm.Movement.AnInstantRelocationIsNeitherWalkingNorMoving`: it called the announcement and then moved the
+  sampler's place by hand; it calls `UCataclysmMovement::NoteRelocatedInstantly`, which moves it, and its assertions
+  are unchanged.
+- `Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` is renamed
+  `...AndStartsTheStandingStillClockAgain`; its two clock assertions read 0 seconds where they read 5.
+- `Cataclysm.DungeonModifierEffects.ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing`: its blink is the
+  player's real movement skill, used as the Abstinence tests use it, and not the announcement called by hand; it also
+  checks the blink is not counted as ground walked.
+
+New: `Cataclysm.Movement.ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn` (with its control, the
+same move unannounced, counted), `Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntranceIsNotGroundWalked`
+(with its control), `Cataclysm.EnemyModifiers.APhasewalkersPhaseIsNotGroundWalked`.
+
+### Proofs
+
+Registered for the window and not yet run:
+
+- **P1**, `NoteSampledAt(LastSampledLocation + Displacement);` -> `NoteSampledAt(LastSampledLocation);` in
+  `CataclysmAbilitySystemComponent.cpp`. Predicted: `ARelocationKeepsTheGroundWalkedSinceTheLastSampleAndAddsNoneOfItsOwn`
+  and `AnInstantRelocationIsNeitherWalkingNorMoving` fail. Prefix `Cataclysm.Movement.`.
+- **P2**, the call after `PlaceAtEntrance`'s move removed (`UCataclysmMovement::NoteRelocatedInstantly(Pawn, Was);` ->
+  a comment). Predicted: `ThePlacementAtAFloorsEntranceIsNotGroundWalked` fails. Prefix
+  `Cataclysm.DungeonModifierEffects.ThePlacementAtAFloorsEntrance`.
+- **P3**, the Phasewalker's call removed (`UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);` -> a comment).
+  Predicted: `APhasewalkersPhaseIsNotGroundWalked` fails. Prefix `Cataclysm.EnemyModifiers.APhasewalkersPhase`.
+
+### Run
+
+Not yet run. Predicted Unreal total: `development`'s last measured total plus three.
+
+Branch `fix/instant-moves-restart-the-still-clock-1` on `development` at `b2b60ebf6`.
+
+---
+
 ## 2026-10-24 — A self hit ("hits you instead", "backfire") is priced from the user's whole attack damage line with no target, so the user's conditioned, scaled and skill-type attack damage rows reach it and no row about an enemy does: #2234 path B, with the shared helper `AttackDamageWithNoTarget`
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the new public static
@@ -30519,6 +30606,9 @@ The sentence: "Teleport to a random location within 4 meters when hit".
   and `stationary_for_seconds` is such a row. So a wearer who has stood still for 5 seconds and is moved by
   this row still reads 5 seconds. The option not taken is one line: call `NoteRelocatedInstantly` after the
   move, which restarts that one clock and feeds nothing else.
+  **Ruled 2026-10-24 (issue #2388): the clock starts again.** The action now calls it, as every instant
+  relocation does; see the entry of that day headed "An instant relocation is not ground walked, and it starts the
+  standing-still clock again (#2388)".
 - **FOUND WHILE READING, AND NOT CHANGED: `NoteRelocatedInstantly` HAS NO CALLER IN THE GAME.** Its comment and
   the comment on `UCataclysmMovement` say each place that relocates a character at once calls it: a blink, a
   recall, a swap, a Flicker, the Phasewalker modifier and the placement at a floor's start. A search of
@@ -100139,6 +100229,11 @@ binding to the hit, death and skill-used announcements was in a test.
    bonus that builds while standing still, because you did move. This game does the
    opposite and starts the standing-still clock afresh without adding distance, so a
    teleport neither earns distance nor counts as having moved.
+   **Corrected 2026-10-24 (issue #2388):** "the opposite" contradicted the clause after
+   it. The clock half stands, ruled that day: a teleport starts the standing-still clock
+   again, as that developer's reset does, and adds no distance. See the entry of
+   2026-10-24 headed "An instant relocation is not ground walked, and it starts the
+   standing-still clock again (#2388)".
 3. **Sampling four times a second, ignoring a move below 0.05 metres, is a
    judgement.** No game documents a sampling rate. The threshold answers a failure
    Diablo IV players reported, where tiny unintended steps while attacking in place

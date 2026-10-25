@@ -5,6 +5,17 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
 
+void UCataclysmMovement::NoteRelocatedInstantly(AActor* Character, const FVector& From)
+{
+	ACataclysmCharacterBase* Base = Cast<ACataclysmCharacterBase>(Character);
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Base ? Cast<UCataclysmAbilitySystemComponent>(Base->GetAbilitySystemComponent()) : nullptr;
+	if (Cataclysm)
+	{
+		Cataclysm->NoteRelocatedInstantly(Base->GetActorLocation() - From);
+	}
+}
+
 void UCataclysmMovement::SampleStep(ACataclysmCharacterBase* Character)
 {
 	if (!Character)
