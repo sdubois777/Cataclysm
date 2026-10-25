@@ -195,7 +195,30 @@ None. No Python check, generator or validator is changed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t77w, under the editor lock as `enchant-t77w`, at 7fd06ec27 (this
+commit moved from d7c093c6c on 7edf6c0e6 onto development e26af37c9; the move kept its zero-context patch id, whole and
+outside this file, and its 3 removed lines; development's own change to this test file since, 8 lines from 3830065c5, does
+not touch `WaitForSlot`). Free physical memory before the lock: 15.4 GB.
+
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4155 tests performed,
+  4155 succeeded, 0 failed" (4154 on development + this test); "Declared: 4155 tests in the tree at 7fd06ec27; 4155
+  performed, gap 0". 40 tests skipped part of what they check. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4762 peak_used_virtual_mb=11362 final_used_virtual_mb=11076 collections=3148
+  collection_total_s=107.463 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6974 passed, 8 skipped"; JUnit 6982 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **WS-I, `WaitForSlot` waits only for the file again** (the `&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))`
+  line removed, anchor counted once; prefix `Cataclysm.SaveWriter.`, 21 tests): PROVED, ITS STOP CONDITION HELD. With the
+  break in, 21 tests performed, 20 succeeded, 1 failed, `TheTestsWaitForAWriteToFinishNotOnlyForItsFile`, the required
+  test and no other. Restored, 21 performed, 21 succeeded. The file's hash is the same after. The proof's log check printed
+  "can be renamed away and back, so it can be deleted (waited 0 s)".
+- **ITS FAILED-ASSERTION COUNT WAS NOT AS REGISTERED: 1 against the registered 3 or 4.** The one that failed is assertion
+  9, "and no write to it is in flight when it returns", and it is the one the guard rests on: it states what this change
+  does. Assertions 10 to 12 (the slot reads back, it is the large record, its label is whole) PASSED with the break in.
+  They depend on timing: in this run the 32 MB write finished before the read opened the file, so the read found the
+  finished large record. The registration's "9, 11 and 12 always" was wrong for 11 and 12. Ruled by the coordinating
+  session on 2026-10-25 (R1): accepted as proved, with the count recorded as not as registered, handled as TR-XXVI's 12
+  against 13 was earlier.
 
 ---
 
