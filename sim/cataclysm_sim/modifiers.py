@@ -119,8 +119,9 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
         ('Recession', 5),
         ('Withered Ground', 5),
     ],
-    # One row, and the only Generic dungeon modifier. Every Cataclysm can draw
-    # it, which is what `pool_for` below is for.
+    # One row, and the only Generic dungeon modifier. No Cataclysm draws it:
+    # `pool_for` below leaves it out, and `Simulation._carries_the_corrupted_
+    # stalker` grants it outside the slots.
     'Generic': [
         ('Corrupted Stalker', 20),
     ],
@@ -199,13 +200,14 @@ def pool_for(active_types) -> list[tuple[str, float]]:
     Cataclysm" meant "in every pool". That reading was recorded as a reading
     rather than a decision, and issue #1303 is the owner rejecting it.
 
-    SO NOTHING IN THIS MODEL GRANTS IT YET. What causes it to appear was
-    decided by the project owner on 2026-09-05 and recorded on 2026-10-24: every
-    dungeon has an independent 5% chance of carrying it, outside the modifier
-    slots (`docs/DECISIONS.md`, "2026-09-05 (recorded 2026-10-24) -- The
-    Corrupted Stalker is granted by a flat 5% chance on any dungeon, outside the
-    modifier slots", and Section VIII of `docs/Cataclysm_GDD_v2.md`). That roll
-    is not built here or in the game; issue #1308 is the building.
+    IT IS GRANTED OUTSIDE THE POOL, since 2026-10-25 (issue #1308). What
+    causes it to appear was decided by the project owner on 2026-09-05 and
+    recorded on 2026-10-24: every dungeon has an independent 5% chance of
+    carrying it, outside the modifier slots (`docs/DECISIONS.md`, "2026-09-05
+    (recorded 2026-10-24) -- The Corrupted Stalker is granted by a flat 5%
+    chance on any dungeon, outside the modifier slots", and Section VIII of
+    `docs/Cataclysm_GDD_v2.md`). `Simulation._carries_the_corrupted_stalker`
+    makes that roll, and `TuningConfig.corrupted_stalker_chance` is the 5%.
 
     WHEN THAT RULE ARRIVES IT MUST CARRY THE WEIGHT WITH IT. The same section
     says "Each dungeon modifier carries a weight, and the sum of the weights on
@@ -214,3 +216,8 @@ def pool_for(active_types) -> list[tuple[str, float]]:
     granted weightlessly.
     """
     return [m for t in active_types for m in MODIFIERS.get(t, [])]
+
+
+#: The Corrupted Stalker's row: its name and its weight, read from the table
+#: rather than written again, so the weight it adds is the one the table holds.
+CORRUPTED_STALKER: tuple[str, float] = MODIFIERS[GENERIC][0]

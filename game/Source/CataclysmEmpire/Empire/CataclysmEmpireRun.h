@@ -593,6 +593,16 @@ public:
 	FRandomStream ModifierStream;
 
 	/**
+	 * The run's seed for the Corrupted Stalker's roll, mixed with each dungeon's walk seed by
+	 * `UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker`.
+	 *
+	 * NOT A DRAW ON `ModifierStream`, ruled by the coordinating session on 2026-10-25: a roll there would move every
+	 * later modifier draw of the campaign. Issue #1308.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CorruptedStalkerSeed = 0;
+
+	/**
 	 * Gives one dungeon its modifiers and its modifier score.
 	 *
 	 * DOES NOTHING WHEN THE POOL IS EMPTY, which leaves the dungeon exactly as it

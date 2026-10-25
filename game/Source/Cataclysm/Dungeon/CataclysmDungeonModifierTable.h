@@ -46,7 +46,8 @@ public:
 	 * owner ruled on 2026-09-05 that it is "granted separately" and does not
 	 * compete for one of a dungeon's modifier slots, so it maps to
 	 * `ECataclysmType::None`, which is never in a run's active set and therefore
-	 * never in a pool. Nothing grants it; that gap is issue
+	 * never in a pool. `UCataclysmEmpireRun::GiveModifiers` grants it to one
+	 * dungeon in twenty, outside the slots, since 2026-10-25: issue
 	 * [#1308](https://github.com/sdubois777/Cataclysm/issues/1308).
 	 */
 	static const TCHAR* GenericCataclysm;

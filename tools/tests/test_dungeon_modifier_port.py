@@ -217,14 +217,18 @@ class TestTheGenericColumn:
             "of the pool. The design has 123 dungeon modifiers. Issue #1303.")
         assert sum(len(v) for v in MODIFIERS.values()) == len(rows)
 
-    def test_nothing_else_grants_it(self):
-        """Issue #1308. Taking it out of the pool leaves it granted by nothing,
-        which is deliberate: the design says what the modifier does and never
-        what causes it to appear, so a trigger here would be invented design.
+    def test_it_is_granted_by_its_own_helper_and_not_by_the_slot_draw(self):
+        """Issue #1308. The Corrupted Stalker is granted outside the slots: the
+        owner's 5% chance of 2026-09-05, built on 2026-10-25. Two halves.
 
-        This check exists so that when a grant rule IS built, whoever builds it
-        finds a test saying the gap was known rather than assuming an oversight.
-        `_make_dungeon` is the only place a dungeon is given modifiers.
+        THE SLOT DRAW NEVER NAMES THE GENERIC TYPE. `_make_dungeon` is the only
+        place a dungeon is given modifiers, and its draw is from the pool, which
+        leaves the Generic column out.
+
+        THE GRANT IS ITS OWN HELPER, `Simulation._carries_the_corrupted_stalker`,
+        which `_make_dungeon` calls and which rolls on a stream of its own.
+        `sim/tests/test_the_corrupted_stalker_is_granted_outside_the_slots.py`
+        measures what it does; this says where it is.
         """
         source = (REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py").read_text(
             encoding="utf-8")
@@ -232,12 +236,15 @@ class TestTheGenericColumn:
         body = body[:body.index("\n    def ")]
         assert "pool_for" in body or "modifier_pool" in body, (
             "_make_dungeon no longer draws its modifiers from the pool, so "
-            "this check cannot tell whether the Corrupted Stalker is granted.")
+            "this check cannot tell what the slot draw holds.")
         assert GENERIC not in body, (
-            "_make_dungeon now mentions the Generic Cataclysm type, so "
-            "something may grant the Corrupted Stalker after all. If a grant "
-            "rule was built, issue #1308 is done and this check should say "
-            "what the rule is instead of that there is none.")
+            "_make_dungeon now names the Generic Cataclysm type, so the slot "
+            "draw may hold the Corrupted Stalker, which the owner ruled is "
+            "granted outside the slots.")
+        assert "self._carries_the_corrupted_stalker(" in body, (
+            "_make_dungeon no longer calls the Corrupted Stalker's grant")
+        assert "def _carries_the_corrupted_stalker(" in source, (
+            "the Corrupted Stalker's grant is not its own helper any more")
 
 
 class TestNothingStatesTheWrongRowCount:

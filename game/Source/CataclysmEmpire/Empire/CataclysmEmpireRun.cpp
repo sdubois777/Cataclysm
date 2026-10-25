@@ -80,6 +80,11 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	ModifierStream.Initialize(
 		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::ModifierSalt));
 
+	// AND THE CORRUPTED STALKER'S SEED, which is not a stream: each dungeon makes its own from it. See
+	// `UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker`.
+	CorruptedStalkerSeed = UCataclysmRoster::MixedSeed(
+		InSeed, UCataclysmDungeonModifierRules::CorruptedStalkerSalt);
+
 	// THE POOL IS NOT CLEARED BY A FRESH RUN. It is the modifier TABLE and not
 	// anything this campaign did, and the caller that filled it in did so once.
 	// Clearing it here would make `Begin` a second time silently stop giving
@@ -106,6 +111,19 @@ void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 
 	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);
 	Dungeon.ModifierScore = UCataclysmDungeonModifierRules::DangerOf(Drawn);
+
+	// THE CORRUPTED STALKER, OUTSIDE THE SLOTS AND OFF `ModifierStream`. Issue #1308: one dungeon in twenty, and it
+	// still adds its weight to the Modifier Score. Its weight is the table's row, so a pool without the row grants
+	// nothing; the row is never in `Pool`, because `PoolFor` leaves the `Generic` column out.
+	const FName StalkerKey = UCataclysmDungeonModifierRules::CorruptedStalkerKey();
+	const FCataclysmDungeonModifier* Stalker = ModifierPool.FindByPredicate(
+		[&StalkerKey](const FCataclysmDungeonModifier& Row) { return Row.RowKey == StalkerKey; });
+	if (Stalker
+		&& UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(CorruptedStalkerSeed, Dungeon.WalkSeed()))
+	{
+		Dungeon.Modifiers.Add(Stalker->RowKey);
+		Dungeon.ModifierScore += Stalker->Danger;
+	}
 }
 
 int32 UCataclysmEmpireRun::Day() const
