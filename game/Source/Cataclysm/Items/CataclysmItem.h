@@ -184,8 +184,8 @@ struct CATACLYSM_API FCataclysmItem
 	 * grants, and it is what unlocks class trees and skills.
 	 *
 	 * ROLLED WHEN THE ITEM DROPS and never afterwards, from one type up to
-	 * the lower of the base's MaxDamageTypes, the difficulty tier, and how
-	 * many types that weapon type has at all.
+	 * the lower of the base's MaxDamageTypes and how many types that weapon
+	 * type has at all, at any difficulty tier since 2026-10-25.
 	 * UCataclysmDropRoll::RollDamageTypes does it and carries the design
 	 * document's wording for the rule.
 	 *

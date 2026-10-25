@@ -627,24 +627,29 @@ public:
 												const FString& WeaponType);
 
 	/**
-	 * The most damage types a weapon of this base can roll at this tier.
+	 * The most damage types a weapon of this base can roll, at any tier.
 	 *
-	 * `docs/Cataclysm_GDD_v2.md`: "A weapon rolls from one damage type up to
-	 * the lower of its own limit and the tier it dropped on." Mirrors
-	 * max_damage_types() in `sim/cataclysm_sim/affixes.py`.
+	 * THE LOWER OF TWO LIMITS: the base's own (4 on a one-hander, 8 on a
+	 * two-hander) and how many damage types are designed for its weapon type at
+	 * all. A Shield's base limit is four and only three types exist for it; a
+	 * 2H Crossbow's is eight and only three exist for it. Without the second a
+	 * roll would ask for more distinct types than there are to draw.
 	 *
-	 * THERE IS A THIRD LIMIT THAT NEITHER STATES, and for some weapons it is
-	 * the one that binds: how many damage types that weapon type has at all.
-	 * A Shield's base limit is four and only three types exist for it. A 2H
-	 * Crossbow's base limit is eight and only three exist for it. Without
-	 * this a roll would ask for more distinct types than there are to draw.
+	 * NO TIER, SINCE 2026-10-25. The project owner removed the tier cap: "I
+	 * think we should remove the tier cap. They're already gated by their level
+	 * with how many points they can spread out so getting a multi damage weapon
+	 * doesn't matter." It was the third limit, the lower of these and the tier
+	 * the weapon dropped on, from 2026-08-04. Mirrors max_damage_types() in
+	 * `sim/cataclysm_sim/affixes.py`, which holds the base's limit only.
 	 */
 	static int32 MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
-								   int32 DifficultyTier, int32 AvailableCount);
+								   int32 AvailableCount);
 
 	/**
 	 * The damage types one dropped weapon carries. Empty for a non-weapon.
 	 *
+	 * @param DifficultyTier  named only in the warning for a weapon that can
+	 *        carry none; since 2026-10-25 it caps nothing
 	 * @param Stream  drawn from without replacement, so no type repeats
 	 */
 	static TArray<FName> RollDamageTypes(const UDataTable* WeaponSkillTable,

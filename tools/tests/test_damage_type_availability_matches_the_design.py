@@ -199,11 +199,11 @@ def test_where_the_designed_types_bind_below_the_base_limit(
     limit that caps a roll. A Shield's base limit is four and three types are
     designed for it. A 2H Crossbow's base limit is eight and three are designed.
 
-    `UCataclysmDropRoll::MaxDamageTypesFor` takes this as a third limit
-    alongside the base's own and the difficulty tier, and neither
-    `docs/Cataclysm_GDD_v2.md` nor `sim/cataclysm_sim/affixes.py` mentions it.
-    If this list ever empties, that third limit has stopped doing anything and
-    the code carrying it should say so rather than sitting there unexercised.
+    `UCataclysmDropRoll::MaxDamageTypesFor` takes this as a second limit
+    alongside the base's own; the difficulty tier was a third until the project
+    owner removed it on 2026-10-25. If this list ever empties, that limit has
+    stopped doing anything and the code carrying it should say so rather than
+    sitting there unexercised.
     """
     designed: dict[str, int] = {weapon: 0 for weapon in weapon_types}
     for weapons in in_the_data.values():
@@ -217,7 +217,7 @@ def test_where_the_designed_types_bind_below_the_base_limit(
                    if designed[weapon] < limit_of[weapon])
     assert binds, (
         "no weapon type has fewer damage types designed for it than its base "
-        "allows, so the third limit in "
+        "allows, so the designed-types limit in "
         "UCataclysmDropRoll::MaxDamageTypesFor no longer constrains anything. "
         "Either a weapon gained damage types or a base limit dropped; check "
         "which, and say so there.")

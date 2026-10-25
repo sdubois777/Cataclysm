@@ -1170,11 +1170,10 @@ TArray<FName> UCataclysmDropRoll::DamageTypesAvailableTo(
 }
 
 int32 UCataclysmDropRoll::MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
-											int32 DifficultyTier,
 											int32 AvailableCount)
 {
-	return FMath::Max(0, FMath::Min3(BaseRow.MaxDamageTypes, DifficultyTier,
-									 AvailableCount));
+	// NO TIER TERM, by the project owner's ruling of 2026-10-25. See the header.
+	return FMath::Max(0, FMath::Min(BaseRow.MaxDamageTypes, AvailableCount));
 }
 
 TArray<FName> UCataclysmDropRoll::RollDamageTypes(
@@ -1192,7 +1191,7 @@ TArray<FName> UCataclysmDropRoll::RollDamageTypes(
 
 	TArray<FName> Pool = DamageTypesAvailableTo(WeaponSkillTable,
 												BaseRow.WeaponType);
-	const int32 Most = MaxDamageTypesFor(BaseRow, DifficultyTier, Pool.Num());
+	const int32 Most = MaxDamageTypesFor(BaseRow, Pool.Num());
 	if (Most <= 0)
 	{
 		UE_LOG(LogCataclysm, Warning,
