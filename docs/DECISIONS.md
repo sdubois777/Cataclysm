@@ -347,7 +347,8 @@ Assertion counts include set-up checks, by reading.
    reaches Molten Cleave**, **control, Heavy's gadget tags carry Slot.Heavy**, **control, an Ultimate-cooldown row names
    Cooldown.Ultimate**; set-up two; **a Slot.Ultimate row reaches Pyroclasm on Heavy**, **a Slot.Heavy row does not**,
    **the Heavy key's gadget conversion is asked as an Ultimate**, **an Ultimate-cooldown row reaches Cooldown.Heavy
-   alone**, **a Heavy-cooldown row reaches nothing**.
+   and, with the Ultimate key empty, Cooldown.Ultimate** (ruled after window t95w, below), **a Heavy-cooldown row
+   reaches nothing**.
 9. `TwoSkillsMadeForOneSlotEachKeepTheirOwnCooldownOfThatSlotsLength`, 15 (the owner's ruling): set-up, the three
    lengths differ; set-up, the control's two granted; **control, the Heavy skill is used**, **the Special is still ready**, **it is used**, **Heavy
    waits Heavy's**, **Special waits Special's**; set-up; **the Heavy-key skill is used**, **it is on cooldown**, **the
@@ -497,6 +498,38 @@ directly from Q-L3a." Two existing tests asserted that the Aura key has no coold
    comment says why.
 
 With the tag in, layer 3's test 12 (Molten Cleave on the Aura key) can pass its set-up, and L3-G1 reaches it.
+
+### THE FIRST WINDOW, t95w, STOPPED ON ONE TEST; THE TEST CHANGED, NOT THE CODE (written by the enchantment session)
+
+**A false start, which built and tested nothing.** The enchantment session first started the window script without
+its scratchpad argument, and a stop file left in the scratchpad by the previous window (t93w) made the stall guard
+exit as soon as it started. The script stopped at its first log write, before any build or test, and released the
+lock. The stop file was removed, every pre-check was repeated (10.9 GB free) and the window was started again.
+
+**The second start, at `9c72fc5e1`:** the Aura-key test alone, "Build: Succeeded - 41 actions, 38 files compiled",
+"1 tests performed, 1 succeeded, 0 failed"; the whole suite, "4237 tests performed, 4236 succeeded, 1 failed:
+AMovedUltimateIsReachedByUltimateRowsAndConvertedAsAnUltimate", declared 4237, gap 0. One assertion failed, at line
+863: "a row naming the Ultimate's cooldown reaches the Heavy key's tag, and only it". The window stopped there, as
+written; the proofs and Python did not run.
+
+**Why.** `CooldownTagsOfSkillsDesignedFor(Ultimate)` adds each skill made for the Ultimate slot at its key's tag
+(Pyroclasm on the Heavy key: Cooldown.Heavy) and also the Ultimate slot's own tag unless a skill made for another slot
+sits on the Ultimate key. After the move the Ultimate key is empty (test 2 asserts it), so the function returns
+{Cooldown.Heavy, Cooldown.Ultimate}, as its header says it does. The test's "only it" contradicted the header. With
+the key empty, Cooldown.Ultimate acts on nothing: no skill and no charges are held under it.
+
+**The coordinating session's ruling, 2026-10-25, verbatim:** "**(a): change the test, not the code.** The header gives
+a reason for keeping the slot's own tag: a cooldown applied with no ability behind it reads exactly as before. With
+the Ultimate key empty, that extra tag acts on nothing. The test's "and only it" was the error."
+
+**The change**, `CataclysmSkillAssignmentTests.cpp`, test 8, the one assertion and the comment above the test:
+- OLD `TestTrue("a row naming the Ultimate's cooldown reaches the Heavy key's tag, and only it",
+  CooldownTagsOfSkillsDesignedFor(Ultimate) == FGameplayTagContainer(CooldownTag(Heavy)))`.
+- NEW `TestTrue("a row naming the Ultimate's cooldown reaches the Heavy key's tag, and the empty Ultimate key keeps its
+  own", CooldownTagsOfSkillsDesignedFor(Ultimate) == HeavyKeyAndEmptyUltimateKey)`, where that container holds
+  CooldownTag(Heavy) and CooldownTag(Ultimate).
+- The comment adds that the Ultimate key is empty and keeps its own tag, and that the tag acts on nothing there. The
+  test's line in the Tests list above says the same. No game code changed; the assertion count (12) is unchanged.
 
 ### THE WINDOW'S RUN
 

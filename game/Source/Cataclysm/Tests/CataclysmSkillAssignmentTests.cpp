@@ -805,7 +805,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentSlotRulesTest,
  * O1: Pyroclasm on the Heavy key is reached by a row requiring `Slot.Ultimate` ("Your ultimate ability deals ...") and
  * not by one requiring `Slot.Heavy` ("Your heavy attack deals ..."); the gadget conversion asks the Heavy key with
  * Pyroclasm's tags and not the key's; and a row naming the Ultimate's cooldown reaches the Heavy key's tag, where its
- * cooldown is kept. Molten Cleave on its own key is the control, read first.
+ * cooldown is kept, and also `Cooldown.Ultimate`, because the Ultimate key is empty and no skill made for another slot
+ * sits there, so the slot keeps its own tag (see `CooldownTagsOfSkillsDesignedFor`'s header); with that key empty the
+ * tag acts on nothing. Molten Cleave on its own key is the control, read first.
  */
 bool FCataclysmSkillAssignmentSlotRulesTest::RunTest(const FString&)
 {
@@ -860,9 +862,11 @@ bool FCataclysmSkillAssignmentSlotRulesTest::RunTest(const FString&)
 	const FGameplayTagContainer Gadget = Carrier.AbilitySystem->SkillGadgetSlotTags(ECataclysmAbilitySlot::Heavy);
 	TestTrue(TEXT("the Heavy key's gadget conversion is asked as an Ultimate"),
 			 Gadget.HasTagExact(UltimateTag) && !Gadget.HasTagExact(HeavyTag));
-	TestTrue(TEXT("a row naming the Ultimate's cooldown reaches the Heavy key's tag, and only it"),
+	FGameplayTagContainer HeavyKeyAndEmptyUltimateKey(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy));
+	HeavyKeyAndEmptyUltimateKey.AddTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Ultimate));
+	TestTrue(TEXT("a row naming the Ultimate's cooldown reaches the Heavy key's tag, and the empty Ultimate key keeps its own"),
 			 Carrier.AbilitySystem->CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Ultimate)
-				 == FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy)));
+				 == HeavyKeyAndEmptyUltimateKey);
 	TestEqual(TEXT("and a row naming the Heavy cooldown reaches nothing: no Heavy skill is held"),
 			  Carrier.AbilitySystem->CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Heavy).Num(), 0);
 	return true;
