@@ -455,7 +455,43 @@ registered.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t99w, under the editor lock as `enchant-t99w`, on
+`feat/skill-choice-screen-2`: the two commits moved from `169a0b75f` and `c8e839cc8` (on `b074a5090`) onto development
+`f9fa99a23` as `2f68241c2` and `716ffd0b0`, each keeping its zero-context patch id, whole and outside this file; this
+file conflicted in the first, resolved by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over
+the 14 C++ files the branch changes: "14 files read, 0 with complaints". Python before the window, at `716ffd0b0`:
+"6999 passed, 8 skipped". The two stops are recorded in the section above; the record of the stops is `cafc36d6b`, and
+the third part ran from step 1c, as ruled, at 10.8 GB free.
+
+- **The build, on the second start (the first start's build compiled them):** "Build: Succeeded - target already up to
+  date, 0 actions, nothing compiled"; "compiled: CataclysmSkillAssignmentWidget.cpp in Module.Cataclysm.10.cpp",
+  "compiled: CataclysmSkillChoiceScreenTests.cpp in Module.Cataclysm.28.cpp" (each unity file's object newer than the
+  source). The first start's build: "Build: Succeeded - 40 actions, 37 files compiled", after the build plan cache was
+  deleted.
+- **The two editor runs, as corrected:** the interface run made exactly `WBP_SkillAssignment.uasset`; the input run
+  changed only files under `game/Content/Input` and `L_Sandbox.umap`, and added `IA_ToggleSkillAssignment.uasset`
+  ("before 1c: 23 changed files, all registered"). The asset commit, `b27be77b8`, holds the five ruled files ("5 files
+  changed"); the other 18 were restored unchanged ("restoring: 18 files"), and the worktree was clean after it.
+- **The screen's tests alone, as registered:** `Cataclysm.SkillChoiceScreen.`: "8 tests performed, 8 succeeded, 0
+  failed".
+- **The whole Unreal suite, as registered:** "4254 tests performed, 4254 succeeded, 0 failed" (4245 on development + 9);
+  "Declared: 4254 tests in the tree at b27be77b8; 4254 performed, gap 0". 43 tests skipped part of what they check.
+  `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`, with its twelve names, passed against the regenerated config.
+  The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4861 peak_used_virtual_mb=7987
+  final_used_virtual_mb=7632 collections=3235 collection_total_s=107.779 worlds_at_last_collection=1".
+- **Python of record, with the assets in the tree, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0
+  failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.SkillChoiceScreen.` (8 tests), each anchor counted once, 0 ensures, the file's
+  hash the same after, and every restored half 8 performed, 8 succeeded:**
+  - **L4-G1, the click assigns to the Heavy key instead of the selected key:** PROVED, AS REGISTERED. 2 failed,
+    `ClickingASlotThenASkillPutsItOnThatKeyAndTheBarShowsIt` and `ASkillChosenForAnotherKeyIsRefusedAndTheReasonIsShown`;
+    4 failed assertions, registered 4.
+  - **L4-G2, a kept choice is not recorded on its row:** PROVED, AS REGISTERED. 1 failed,
+    `AKeptChoiceWhoseWeaponIsOffIsShownBesideTheDefault`; 1 failed assertion, registered 1.
+  - **L4-G3, the tool tip loses the description:** PROVED, AS REGISTERED. 1 failed,
+    `APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription`; 1 failed assertion, registered 1.
+- Not checked by any run, as the Tests section says: the K key pressed in play, a hover showing the tool tip, the
+  layout, and a real click. The owner's play-check line above is how those are checked.
 
 ---
 
