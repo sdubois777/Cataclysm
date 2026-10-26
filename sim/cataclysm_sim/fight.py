@@ -1,8 +1,8 @@
 """The Corrupted Stalker against the tier's reference character, set beside a Boss on the same floor.
 
 WHAT IT IS FOR. The game's Corrupted Stalker (issue #1308) carries a player's numbers: its entry's Ravager class line
-at the tier's reference level, its eighteen pieces at the highest affix tier a drop carries, and thirteen passive
-points. Its health and attack damage are then multiplied by placeholders, 1.2 rising evenly to 5.0 for health and 1.0
+at the tier's reference level, its eighteen pieces at the highest affix tier a drop carries and the reference
+character's gear level, and thirteen passive points. Its health and attack damage are then multiplied by placeholders, 1.2 rising evenly to 5.0 for health and 1.0
 for damage, ruled by the coordinating session on 2026-10-25 as layer 1's. This model brings the replacements: per
 tier, the health multiplier that makes the reference character take as long to kill the Stalker as to kill a Boss on
 the same floor, and the damage multiplier that makes the Stalker kill the reference character as fast as that Boss
@@ -114,18 +114,23 @@ def reference_player(tier: int) -> Character:
 
 
 def stalker_gear(tier: int) -> Gear:
-    """The Demonic entry's pieces at the highest affix tier a drop carries, roll one half, gear level nought."""
+    """The Demonic entry's pieces at the highest affix tier a drop carries, roll one half, at the reference
+    character's gear level (`player_damage.gear_level_at`), as the game's `PiecesAt` has carried them since
+    2026-10-25. Until then this built them at gear level nought while `fight` took the Stalker's hit from
+    `player_damage.damage_per_hit`, which is at the reference gear level, so its health and damage columns were at
+    different gear levels."""
     flat: Counter[str] = Counter()
     increased: Counter[str] = Counter(THICK_HIDE)
     affix_tier = af.max_affix_tier_on_a_drop(tier)
+    gear_level = pd.gear_level_at(tier)
     for base_name, pair in DEMONIC_PIECES:
         base = af.base_named(base_name)
         for implicit in base.implicits:
-            value = implicit.value_at(0, two_handed=base.value_multiplier != 1.0)
+            value = implicit.value_at(gear_level, two_handed=base.value_multiplier != 1.0)
             (flat if implicit.kind == "flat" else increased)[implicit.stat] += (
                 value if implicit.kind == "flat" else value / 100.0)
         for affix in pair:
-            value = affix.value_at(affix_tier, roll=0.5, gear_level=0)
+            value = affix.value_at(affix_tier, roll=0.5, gear_level=gear_level)
             if affix.kind == "flat":
                 flat[affix.stat] += value
             else:

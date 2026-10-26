@@ -120,11 +120,19 @@ TArray<FCataclysmItem> ACataclysmCorruptedStalkerCharacter::PiecesAt(const FCata
 																	  int32 DifficultyTier, FRandomStream& Stream)
 {
 	const int32 AffixTier = UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTier);
+
+	// AT THE REFERENCE CHARACTER'S GEAR LEVEL, ruled by the coordinating session on 2026-10-25 (issue #1308): the
+	// tier's ceiling is upgraded to `min(10, Tier + 2)`, and "rebuilt to the peak of player power" grows as a player
+	// does. At gear level 0 its attack damage stopped rising at 414 from tier 6, where the affix tier stops at 7, while
+	// a player's goes on rising with its upgrades: window w58 measured the plateau.
+	const TArray<FCataclysmScoredGear> Reference = UCataclysmPowerScore::ReferenceCharacter(DifficultyTier).Gear;
+	const int32 GearLevel = Reference.Num() > 0 ? Reference[0].Upgrade : 0;
 	TArray<FCataclysmItem> Items;
 	for (const FCataclysmStalkerPiece& Piece : Entry.Pieces)
 	{
 		FCataclysmItem Item;
 		Item.Base = Piece.Base;
+		Item.GearLevel = GearLevel;
 		if (Piece.Slot == ECataclysmGearSlot::Weapon1 || Piece.Slot == ECataclysmGearSlot::Weapon2)
 		{
 			Item.DamageTypes = { Entry.DamageType };
