@@ -291,11 +291,14 @@ void ACataclysmEnemyCharacter::HandleDeath()
 
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+		// THE RUNG IT PAYS AS, which is its own unless a subclass says otherwise, and its random gear as that rung's
+		// unless a subclass gives a count; then what it wore. Issue #1308; see `RarityStepItPaysAs`.
 		if (bPays)
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
-				World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
-				Stream, /*bMarked=*/bRaisedByARule);
+				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
+				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven());
+			DropWhatItWore(World, GetActorLocation(), Stream);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.
@@ -329,7 +332,7 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			if (State && bPays)
 			{
 				State->GrantExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
-					UCataclysmEnemyScore::FloorIn(World), RarityStep)));
+					UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())));
 			}
 
 			// AND A KILL CLEARS WHAT THE KILLER OWES. Issue #997. The

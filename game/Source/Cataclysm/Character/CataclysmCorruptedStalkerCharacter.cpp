@@ -17,6 +17,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmPowerScore.h"
 #include "UObject/Package.h"
 
@@ -390,6 +391,48 @@ void ACataclysmCorruptedStalkerCharacter::AfterRegenerationStep()
 
 	// AND A DRINK'S HEAL RUNS ON, as the player's does from the player's own step.
 	UCataclysmPotions::HealStep(this, UCataclysmRegeneration::StepSeconds);
+}
+
+int32 ACataclysmCorruptedStalkerCharacter::RarityStepItPaysAs() const
+{
+	return bHoldsAPlayerBuild ? FirstBossRarityStep : Super::RarityStepItPaysAs();
+}
+
+int32 ACataclysmCorruptedStalkerCharacter::RandomGearDropsGiven() const
+{
+	return bHoldsAPlayerBuild ? 0 : Super::RandomGearDropsGiven();
+}
+
+TArray<int32> ACataclysmCorruptedStalkerCharacter::WornPiecesThatDrop(int32 PieceCount, FRandomStream& Stream)
+{
+	TArray<int32> Dropped;
+	for (int32 Index = 0; Index < PieceCount; ++Index)
+	{
+		if (Stream.FRand() < UCataclysmDungeonModifierEffects::CorruptedStalkerPieceDropChance)
+		{
+			Dropped.Add(Index);
+		}
+	}
+	return Dropped;
+}
+
+void ACataclysmCorruptedStalkerCharacter::DropWhatItWore(UWorld* World, const FVector& At, FRandomStream& Stream)
+{
+	if (!World || !bHoldsAPlayerBuild)
+	{
+		return;
+	}
+	// THE ITEMS AS IT WORE THEM: their values were rolled at the tier being played when it was raised.
+	const TArray<int32> Dropped = WornPiecesThatDrop(Pieces.Num(), Stream);
+	for (int32 Each = 0; Each < Dropped.Num(); ++Each)
+	{
+		ACataclysmDroppedItem* Drop = ACataclysmDroppedItem::PutOnTheFloor(
+			World, At + ACataclysmDroppedItem::ScatterOffset(Each, Dropped.Num()), Pieces[Dropped[Each]], NAME_None, 0);
+		if (Drop)
+		{
+			Drop->bDroppedByARaisedCreature = bRaisedByARule;
+		}
+	}
 }
 
 void ACataclysmCorruptedStalkerCharacter::AttackTarget(AActor* Target)

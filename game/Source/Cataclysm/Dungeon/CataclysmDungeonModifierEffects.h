@@ -7144,6 +7144,13 @@ public:
 	/** At least this long between two of its skill uses, its basic attack included. */
 	static constexpr float CorruptedStalkerSecondsBetweenSkillUses = 0.75f;
 
+	/**
+	 * The chance each piece it wore drops when it dies: one in three, so six of its eighteen on average against a Boss's
+	 * mean of five. The coordinating session's, 2026-10-25, under the owner's "All 18 pieces should have a chance to
+	 * drop. Not guaranteed that everything will."
+	 */
+	static constexpr float CorruptedStalkerPieceDropChance = 1.0f / 3.0f;
+
 	static_assert(CorruptedStalkerFirstFloorSeconds > CorruptedStalkerFollowSeconds
 					  && CorruptedStalkerFollowSeconds > 0.0f,
 				  "The Corrupted Stalker arrives later on its first floor than it follows on the next, and never with "
