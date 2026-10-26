@@ -99,7 +99,7 @@ creature as controls); `ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | the base's measured total + 8, 0 failed |
+| Whole Unreal suite | 4224 (`6a9edc26a`, the #2520 merge) + 8 = **4232**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, the 40% potion threshold check never true | `ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` fails |
 | P2, the guard against a second running copy removed | `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` fails |
