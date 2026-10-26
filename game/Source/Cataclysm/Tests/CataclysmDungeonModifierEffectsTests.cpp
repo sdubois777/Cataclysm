@@ -102,6 +102,7 @@
 #include "Components/TextBlock.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
@@ -61013,6 +61014,253 @@ bool FCataclysmCorruptedStalkerFervourTest::RunTest(const FString& Parameters)
 							StalkerRead(Stalker, Resource::GetMaxClassResourceAttribute()),
 							StalkerRead(Stalker, Resource::GetFervourPerEnemyHitAttribute()),
 							StalkerRead(Stalker, Resource::GetFervourPerEnemyInReachAttribute())));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Generic_Corrupted_Stalker, part B layer 3: its death. Issue #1308.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A player state, a controller and a possessed player, at level 1 with no experience. */
+	ACataclysmPlayerState* AnExperiencedPlayer(UWorld* World)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Player =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!State || !Controller || !Player)
+		{
+			return nullptr;
+		}
+		Controller->SetPlayerState(State);
+		Controller->Possess(Player);
+		State->SetLevelAndExperience(1, 0);
+		return State;
+	}
+
+	/** The dropped things in the world: gear, materials. */
+	void DropsOnTheFloor(UWorld* World, int32& OutGear, int32& OutMaterials)
+	{
+		OutGear = 0;
+		OutMaterials = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			(It->IsMaterial() ? OutMaterials : OutGear) += 1;
+		}
+	}
+}
+
+// ITS DEATH PAYS A BOSS RUNG'S ENEMY SCORE AS EXPERIENCE, AT THE COMMON RUNG; AN ORDINARY COMMON CREATURE'S PAYS ITS OWN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerExperienceTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerExperienceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* State = AnExperiencedPlayer(World);
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector(500.0f, 0.0f, 0.0f), /*Tier=*/3, /*Seed=*/4);
+	ACataclysmEnemyCharacter* Ordinary =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player"), State) || !TestNotNull(TEXT("set-up: a Stalker"), Stalker)
+		|| !TestNotNull(TEXT("set-up: an ordinary creature"), Ordinary))
+	{
+		return false;
+	}
+	const int32 Boss = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World),
+													  ACataclysmEnemyCharacter::FirstBossRarityStep);
+	const int32 Common = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World), 0);
+	if (!TestTrue(FString::Printf(TEXT("set-up: a Boss is worth more than a Common, %d and %d"), Boss, Common),
+				  Boss > Common && Common > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it stands at the Common rung"), Stalker->RarityStep, 0);
+
+	const int64 Before = State->GetExperienceIntoLevel();
+	Stalker->HandleDeath();
+	TestEqual(TEXT("its death paid a Boss rung's Enemy Score"), State->GetExperienceIntoLevel() - Before,
+			  static_cast<int64>(Boss));
+
+	const int64 AfterStalker = State->GetExperienceIntoLevel();
+	Ordinary->SetRarityStep(0);
+	Ordinary->HandleDeath();
+	TestEqual(TEXT("CONTROL: an ordinary Common creature's death pays a Common's"),
+			  State->GetExperienceIntoLevel() - AfterStalker, static_cast<int64>(Common));
+	return true;
+}
+
+// ITS DEATH DROPS THE BOSS ROW'S MATERIALS AND NONE OF ITS RANDOM GEAR: WHAT GEAR IT DROPS IS WHAT IT WORE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerMaterialsTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerMaterialsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, /*Tier=*/3, /*Seed=*/4);
+	if (!TestNotNull(TEXT("set-up: a Stalker"), Stalker))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it pays as a Boss"), Stalker->RarityStepItPaysAs(), ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestEqual(TEXT("and its death rolls no random gear"), Stalker->RandomGearDropsGiven(), 0);
+
+	// THE DEATH STREAM CANNOT BE PINNED (seeded from the creature and the clock), so bounds: every gear item on the
+	// floor is one it wore, and materials came. The Boss row's mean is five, a Poisson draw.
+	TSet<FName> Worn;
+	for (const FCataclysmItem& Piece : Stalker->WornPieces())
+	{
+		Worn.Add(Piece.Base);
+	}
+	Stalker->HandleDeath();
+	int32 Gear = 0;
+	int32 Materials = 0;
+	DropsOnTheFloor(World, Gear, Materials);
+	TestTrue(FString::Printf(TEXT("its gear is no more than it wore: %d"), Gear), Gear <= Stalker->WornPieces().Num());
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		if (!It->IsMaterial())
+		{
+			TestTrue(FString::Printf(TEXT("%s is a piece it wore"), *It->Item.Base.ToString()), Worn.Contains(It->Item.Base));
+		}
+	}
+
+	// CONTROL: AN ORDINARY BOSS-RUNG CREATURE'S DEATH ROLLS ITS RANDOM GEAR, over enough deaths to see some.
+	int32 OrdinaryGear = 0;
+	for (int32 Death = 0; Death < 6 && OrdinaryGear == 0; ++Death)
+	{
+		ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(3000.0f + Death * 500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("set-up: a Boss-rung creature"), Boss))
+		{
+			return false;
+		}
+		Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+		int32 GearBefore = 0;
+		int32 MaterialsBefore = 0;
+		DropsOnTheFloor(World, GearBefore, MaterialsBefore);
+		Boss->HandleDeath();
+		int32 GearAfter = 0;
+		int32 MaterialsAfter = 0;
+		DropsOnTheFloor(World, GearAfter, MaterialsAfter);
+		OrdinaryGear += GearAfter - GearBefore;
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: an ordinary Boss-rung creature's deaths dropped random gear: %d"),
+							 OrdinaryGear), OrdinaryGear > 0);
+	return true;
+}
+
+// EACH WORN PIECE DROPS WITH CHANCE ONE IN THREE: OVER MANY SEEDS THE MEAN IS SIX OF EIGHTEEN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerPieceChanceTest,
+	"Cataclysm.DungeonModifierEffects.EachPieceACorruptedStalkerWoreDropsWithChanceOneInThree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerPieceChanceTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 Seeds = 2000;
+	constexpr int32 Pieces = 18;
+	int64 Total = 0;
+	int32 None = 0;
+	int32 Every = 0;
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		FRandomStream Stream(Seed);
+		const int32 Count = ACataclysmCorruptedStalkerCharacter::WornPiecesThatDrop(Pieces, Stream).Num();
+		Total += Count;
+		None += Count == 0 ? 1 : 0;
+		Every += Count == Pieces ? 1 : 0;
+	}
+	const double Mean = static_cast<double>(Total) / Seeds;
+	// FIVE STANDARD ERRORS of a binomial of eighteen at one third, over 2,000 draws: 6, give or take 0.22.
+	const double Band = 5.0 * FMath::Sqrt(Pieces * (1.0 / 3.0) * (2.0 / 3.0) / Seeds);
+	TestTrue(FString::Printf(TEXT("the mean is six of eighteen: %.3f, within %.3f"), Mean, Band),
+			 FMath::Abs(Mean - 6.0) <= Band);
+	TestTrue(FString::Printf(TEXT("CONTROL: it is a chance a piece and not all or none: %d none, %d all"), None, Every),
+			 None < Seeds / 100 && Every == 0);
+	FRandomStream Empty(1);
+	TestEqual(TEXT("no pieces, none drop"), ACataclysmCorruptedStalkerCharacter::WornPiecesThatDrop(0, Empty).Num(), 0);
+	return true;
+}
+
+// THE PIECES ON THE FLOOR ARE THE ITEMS IT WORE, AS IT WORE THEM, MARKED AS DROPPED BY A CREATURE A RULE RAISED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerDropsWhatItWoreTest,
+	"Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerDropsIsTheItemsItWoreMarkedAsARaisedCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerDropsWhatItWoreTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, /*Tier=*/5, /*Seed=*/6);
+	if (!TestNotNull(TEXT("set-up: a Stalker"), Stalker))
+	{
+		return false;
+	}
+	Stalker->bRaisedByARule = true;
+	FRandomStream Stream(11);
+	FRandomStream Same(11);
+	const TArray<int32> Expected = ACataclysmCorruptedStalkerCharacter::WornPiecesThatDrop(Stalker->WornPieces().Num(),
+																						  Same);
+	if (!TestTrue(TEXT("set-up: this seed drops some pieces"), Expected.Num() > 0))
+	{
+		return false;
+	}
+	Stalker->DropWhatItWore(World, FVector::ZeroVector, Stream);
+
+	TArray<const ACataclysmDroppedItem*> Drops;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		Drops.Add(*It);
+	}
+	if (!TestEqual(TEXT("the pieces the draw chose are on the floor"), Drops.Num(), Expected.Num()))
+	{
+		return false;
+	}
+	for (int32 Each = 0; Each < Expected.Num(); ++Each)
+	{
+		const FCataclysmItem& Worn = Stalker->WornPieces()[Expected[Each]];
+		const bool bFound = Drops.ContainsByPredicate([&Worn](const ACataclysmDroppedItem* Drop)
+		{
+			return Drop->Item.Base == Worn.Base && Drop->Item.GearLevel == Worn.GearLevel
+				&& Drop->Item.Affixes.Num() == Worn.Affixes.Num() && Drop->Item.Affixes.Num() > 0
+				&& Drop->Item.Affixes[0].Tier == Worn.Affixes[0].Tier
+				&& FMath::IsNearlyEqual(Drop->Item.Affixes[0].Roll, Worn.Affixes[0].Roll);
+		});
+		TestTrue(FString::Printf(TEXT("%s is on the floor as it was worn"), *Worn.Base.ToString()), bFound);
+	}
+	TestTrue(TEXT("each is marked as dropped by a creature a rule raised"),
+			 !Drops.ContainsByPredicate([](const ACataclysmDroppedItem* Drop) { return !Drop->bDroppedByARaisedCreature; }));
+	TestEqual(TEXT("its pieces carry the reference character's gear level at tier 5, 7"),
+			  Stalker->WornPieces()[0].GearLevel, 7);
 	return true;
 }
 

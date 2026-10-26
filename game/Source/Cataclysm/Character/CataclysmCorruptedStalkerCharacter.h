@@ -172,6 +172,22 @@ public:
 	/** Whether a copy of its skill in this slot is running now: an aura on, a buff held, a channel under way. */
 	bool IsRunningASkillIn(ECataclysmAbilitySlot Slot) const;
 
+	// ----------------------------------------------------------------------
+	// Its death -- layer 3, 2026-10-25
+	// ----------------------------------------------------------------------
+
+	/** A Boss's rung once it wears a build: its experience and its materials and magic find are a Boss's. */
+	virtual int32 RarityStepItPaysAs() const override;
+
+	/** None of the drop row's random gear once it wears a build: what it drops is what it wore. */
+	virtual int32 RandomGearDropsGiven() const override;
+
+	/** Each piece it wore, with `CorruptedStalkerPieceDropChance`, marked as dropped by a creature a rule raised. */
+	virtual void DropWhatItWore(UWorld* World, const FVector& At, FRandomStream& Stream) override;
+
+	/** Which of `PieceCount` pieces drop, by index: each with `CorruptedStalkerPieceDropChance`, one draw a piece. */
+	static TArray<int32> WornPiecesThatDrop(int32 PieceCount, FRandomStream& Stream);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
 	TObjectPtr<UCataclysmPrimaryAttributeSet> PrimaryAttributes;
 

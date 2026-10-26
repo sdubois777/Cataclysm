@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The Corrupted Stalker grows as a player does, and its death pays as a Boss and drops what it wore (#1308, part B, layer 3)
+
+**Affects:** `ACataclysmCorruptedStalkerCharacter` (its items' gear level; its death); `ACataclysmEnemyCharacter` (three
+hooks its `HandleDeath` asks); one number in `UCataclysmDungeonModifierEffects`; `sim/cataclysm_sim/fight.py`; four
+Unreal tests. Issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layer 4, the other six
+entries. Two commits on one branch, stacked to save a window as the coordinating session asked: the gear level, then
+layer 3.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w60 below passed every registered figure, and all three proofs were PROVED.** A first window,
+  w59, stopped at the build; recorded under Run.
+- **THE MULTIPLIERS ARE NOT CHANGED HERE.** The placeholders stay. The health multipliers the coordinating session had
+  accepted, 0.75 to 2.96, are withdrawn, because they were fitted on items at gear level 0. Both multipliers follow on
+  a small branch, set from this window's measured build and blow at all eight tiers.
+- **THE DEATH STREAM CANNOT BE PINNED.** `HandleDeath` seeds it from the creature and the clock. The one-in-three rate
+  is tested through the pure `WornPiecesThatDrop` over 2,000 seeds; the death itself is tested by bounds.
+
+### Commit 1: its items carry the reference character's gear level
+
+**The 414 ceiling, read.** `UCataclysmDropRoll::MaxAffixTierOnADrop` caps an item's affix tier at the difficulty tier
+plus one, at most 7, so tiers 6, 7 and 8 all roll at affix tier 7. The Stalker's items were at gear level 0
+(`PiecesAt` never set `GearLevel`), so from tier 6 nothing on it grew, and window w58 measured its blow at 414.0 at all
+three. A player does not stop there: the reference character's gear is upgraded to `min(10, Tier + 2)`, and a gear
+level adds 15% to an affix's value. **Ruled by the coordinating session, 2026-10-25:** its pieces carry that upgrade,
+"rebuilt to the peak of player power" growing as a player does.
+
+**The fight model, corrected.** `fight.py` built the Stalker's health at gear level 0 and took its hit from
+`player_damage.damage_per_hit`, which is at the reference gear level, so its two columns were at different gear
+levels; both are at the reference gear level now. Its figures at this commit, printed by
+`python -m cataclysm_sim.fight`: built health 962, 1510, 2176, 2980, 4019, 5430, 6241, 7049; health multiplier 0.48,
+0.74, 0.89, 1.04, 1.12, 1.11, 1.28, 1.28; damage multiplier 1.73, 3.27, 4.25, 4.66, 4.69, 4.44, 5.01, 5.55, for tiers 1
+to 8. Its six tests pass.
+
+**The damage multiplier's arithmetic, recorded as the coordinating session accepted it.** It makes the Stalker deal the
+Boss's damage per second to the player. Every layer of the player's defence takes a share of a hit, so the landed
+shares cancel, and critical strikes are left out on both sides: D = (the Boss's hit / 1.5 s) x 0.75 s / the Stalker's
+hit = the Boss's hit / (2 x the Stalker's hit). At tier 8, against w58's measured 414: 15,459 / 828 = 18.67. Potions do
+not enter it; they enter the health multiplier.
+
+### Commit 2: its death
+
+**Ruled by the coordinating session, 2026-10-25:**
+
+| Rule | Decided |
+|---|---|
+| Its rung | stays Common; its death pays as a Boss through three hooks. A Boss's rung would double its body, make it immune to stun, knockdown, fear, taunt, command and execution, turn on the "against bosses" damage stats on both sides, make its death a floor boss's (firing four cleanses), make it a Commander under Commander's Aura, and fill the player's potions by eleven charges |
+| Experience | a Boss rung's Enemy Score on the floor where it dies |
+| Materials and magic find | the Boss row's: materials a Poisson draw of mean five, +300 magic find; none of its five random gear items |
+| Gear | each worn piece with chance 1/3, as worn, its values rolled at the tier being played when it was raised; marked as dropped by a creature a rule raised |
+| Kept on its real rung | the player's potion refill from the kill, and Judgment Zones' boss bonus |
+
+**What changed.** `ACataclysmEnemyCharacter`: `RarityStepItPaysAs` (its own rung by default), `RandomGearDropsGiven`
+(-1, the drop row's roll, by default), `DropWhatItWore` (nothing by default); `HandleDeath` passes the first to the drop
+roll and the experience, the second to `UCataclysmDropSpawner::SpawnDropsFor` as its gear count, and calls the third
+after it, all under `PaysForItsDeath`. `ACataclysmCorruptedStalkerCharacter`: the Boss rung, no random gear, and its
+pieces through `WornPiecesThatDrop` and `UCataclysmDropSpawner::PutOnTheFloor`.
+`CorruptedStalkerPieceDropChance` = 1/3. `BuiltStateOf`'s comment now names only the missing entries.
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+`ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience` (with an ordinary Common creature's death as control);
+`ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear` (with an ordinary Boss-rung creature's random gear as
+control); `EachPieceACorruptedStalkerWoreDropsWithChanceOneInThree` (2,000 seeds, the mean within five standard errors
+of six; never all eighteen, rarely none); `WhatACorruptedStalkerDropsIsTheItemsItWoreMarkedAsARaisedCreatures` (the
+pieces the draw chose, as worn, marked; its pieces at tier 5 carry gear level 7). The row's state stays Partly built,
+which layer 1's `TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist` already asserts, so the plan's fifth
+test is that one.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4255 (`abe7f7d59`, the #2527 merge) + 4 = **4259**, 0 failed |
+| Memory | about 7,700 MB; reported if above 9,500 |
+| P1, `RarityStepItPaysAs` answers its real rung | `ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience` fails |
+| P2, `RandomGearDropsGiven` answers the drop row's | `ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear` fails |
+| P3, every piece drops | `EachPieceACorruptedStalkerWoreDropsWithChanceOneInThree` fails |
+| The per-tier build and blow | measured, quoted as printed: the "STALKER BUILD:" and "STALKER BLOW:" lines at the reference gear level |
+
+### Run
+
+**Window w59 (lock `dungeon-w59`, `feat/corrupted-stalker-death-1` at `5190eacee`, on `abe7f7d59`, 2026-10-25) stopped at
+the build**, with the six conditions checked before the lock was taken ("free GB: 10.9 of 31.1") and the lock released
+after: `Build: Failed - 72 actions, 62 files compiled`, "error C2039: 'PutOnTheFloor': is not a member of
+'ACataclysmDroppedItem'", and the same for `ScatterOffset`. Both are `UCataclysmDropSpawner`'s; the two calls were
+corrected as a compile fix. No test ran.
+
+**Window w60 (lock `dungeon-w60`, `feat/corrupted-stalker-death-1` at `7d9fa1921`, on `abe7f7d59`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`abe7f7d59` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.7 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 8 actions, 4 files compiled` |
+| Whole Unreal suite | 4259 / 0 | `4259 tests performed, 4259 succeeded, 0 failed`; declared 4259, gap 0 |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=7920`, peak 8,256 |
+| Python (JUnit) | | 7007 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, `RarityStepItPaysAs` answers its real rung | the experience test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, `RandomGearDropsGiven` answers the drop row's | the materials test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, every piece drops | the one-in-three test fails | "1 tests performed, 0 succeeded, 1 failed: EachPieceACorruptedStalkerWoreDropsWithChanceOneInThree"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**The build and blow at the reference gear level, as printed** ("STALKER BUILD:" and "STALKER BLOW:"; health before the
+placeholder multiplier; the blow against a target with no armour and no resistance):
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Max health before the multiplier | 945.6 | 1485.5 | 2139.7 | 2926.7 | 3940.4 | 5314.3 | 6109.7 | 6902.3 |
+| Armour | 1155.3 | 1382.7 | 1641.1 | 1937.0 | 2289.4 | 2723.9 | 2983.5 | 3243.8 |
+| Its basic attack's blow | 348.0 | 468.0 | 634.0 | 867.0 | 1195.0 | 1661.0 | 1874.0 | 2101.0 |
+
+**The plateau is gone:** its blow rises at every tier. **Beside the fight model:** its built health is within 2% of the
+model's at every tier (962 against 945.6 at tier 1, 7,049 against 6,902.3 at tier 8). Its blow is about one and a half
+times the model's hit at every tier (224.6 against 348.0 at tier 1, 1,392.0 against 2,101.0 at tier 8), for a reason
+not measured; the game's is the figure it deals. **From the game's figures:** health multiplier 0.49, 0.75, 0.90, 1.06,
+1.14, 1.14, 1.30, 1.31; damage multiplier 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68, for tiers 1 to 8. Not changed
+here: they are the coordinating session's to rule on the follow-up branch.
+
+"STALKER FERVOUR BLOWS: the player's health after each of the twenty: 0, 0, ..." and "STALKER FERVOUR: 0.0 before, 1.0
+after twenty blows": at the reference gear level its first blow killed the level-20 test player, so one blow landed.
+
+---
+
 ## 2026-10-25 — A skill a choice takes off the keys keeps its remaining cooldown, and waits what is left of it when it returns (#2524)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`

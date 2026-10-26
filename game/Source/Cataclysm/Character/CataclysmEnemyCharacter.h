@@ -1445,6 +1445,24 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bHoldsAPlayerBuild = false;
 
+	// ----------------------------------------------------------------------
+	// What a death pays -- three hooks, 2026-10-25, issue #1308 layer 3
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The rung this creature's death pays as: the Enemy Score its experience is, and the drop row its materials and
+	 * magic find come from. Its own rung, unless a subclass pays as another. The Corrupted Stalker pays as a Boss while
+	 * it stands at the Common rung, ruled by the coordinating session on 2026-10-25: a Boss's rung would also double its
+	 * body and make it immune to stun, fear and execution, among other things.
+	 */
+	virtual int32 RarityStepItPaysAs() const { return RarityStep; }
+
+	/** How many random gear items its death drops: -1, the default, rolls the drop row's; 0 drops none. */
+	virtual int32 RandomGearDropsGiven() const { return -1; }
+
+	/** What its death drops besides the drop row's roll, when its death pays. Nothing, unless a subclass wears gear. */
+	virtual void DropWhatItWore(UWorld* World, const FVector& At, FRandomStream& Stream) {}
+
 	/**
 	 * Whether no damage reaches this creature's health, shield or mana: The Reaper, which
 	 * cannot die. Issues #1820 and #41.

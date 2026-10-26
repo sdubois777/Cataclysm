@@ -17,6 +17,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmPowerScore.h"
 #include "UObject/Package.h"
 
@@ -120,11 +121,19 @@ TArray<FCataclysmItem> ACataclysmCorruptedStalkerCharacter::PiecesAt(const FCata
 																	  int32 DifficultyTier, FRandomStream& Stream)
 {
 	const int32 AffixTier = UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTier);
+
+	// AT THE REFERENCE CHARACTER'S GEAR LEVEL, ruled by the coordinating session on 2026-10-25 (issue #1308): the
+	// tier's ceiling is upgraded to `min(10, Tier + 2)`, and "rebuilt to the peak of player power" grows as a player
+	// does. At gear level 0 its attack damage stopped rising at 414 from tier 6, where the affix tier stops at 7, while
+	// a player's goes on rising with its upgrades: window w58 measured the plateau.
+	const TArray<FCataclysmScoredGear> Reference = UCataclysmPowerScore::ReferenceCharacter(DifficultyTier).Gear;
+	const int32 GearLevel = Reference.Num() > 0 ? Reference[0].Upgrade : 0;
 	TArray<FCataclysmItem> Items;
 	for (const FCataclysmStalkerPiece& Piece : Entry.Pieces)
 	{
 		FCataclysmItem Item;
 		Item.Base = Piece.Base;
+		Item.GearLevel = GearLevel;
 		if (Piece.Slot == ECataclysmGearSlot::Weapon1 || Piece.Slot == ECataclysmGearSlot::Weapon2)
 		{
 			Item.DamageTypes = { Entry.DamageType };
@@ -382,6 +391,48 @@ void ACataclysmCorruptedStalkerCharacter::AfterRegenerationStep()
 
 	// AND A DRINK'S HEAL RUNS ON, as the player's does from the player's own step.
 	UCataclysmPotions::HealStep(this, UCataclysmRegeneration::StepSeconds);
+}
+
+int32 ACataclysmCorruptedStalkerCharacter::RarityStepItPaysAs() const
+{
+	return bHoldsAPlayerBuild ? FirstBossRarityStep : Super::RarityStepItPaysAs();
+}
+
+int32 ACataclysmCorruptedStalkerCharacter::RandomGearDropsGiven() const
+{
+	return bHoldsAPlayerBuild ? 0 : Super::RandomGearDropsGiven();
+}
+
+TArray<int32> ACataclysmCorruptedStalkerCharacter::WornPiecesThatDrop(int32 PieceCount, FRandomStream& Stream)
+{
+	TArray<int32> Dropped;
+	for (int32 Index = 0; Index < PieceCount; ++Index)
+	{
+		if (Stream.FRand() < UCataclysmDungeonModifierEffects::CorruptedStalkerPieceDropChance)
+		{
+			Dropped.Add(Index);
+		}
+	}
+	return Dropped;
+}
+
+void ACataclysmCorruptedStalkerCharacter::DropWhatItWore(UWorld* World, const FVector& At, FRandomStream& Stream)
+{
+	if (!World || !bHoldsAPlayerBuild)
+	{
+		return;
+	}
+	// THE ITEMS AS IT WORE THEM: their values were rolled at the tier being played when it was raised.
+	const TArray<int32> Dropped = WornPiecesThatDrop(Pieces.Num(), Stream);
+	for (int32 Each = 0; Each < Dropped.Num(); ++Each)
+	{
+		ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
+			World, At + UCataclysmDropSpawner::ScatterOffset(Each, Dropped.Num()), Pieces[Dropped[Each]], NAME_None, 0);
+		if (Drop)
+		{
+			Drop->bDroppedByARaisedCreature = bRaisedByARule;
+		}
+	}
 }
 
 void ACataclysmCorruptedStalkerCharacter::AttackTarget(AActor* Target)
