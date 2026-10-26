@@ -2972,6 +2972,17 @@ void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
 				CorruptedStalkerHealthShare = FMath::Clamp(
 					Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum,
 					0.0f, 1.0f);
+
+				// AND ITS POTIONS, which carry to the next floor with its health and do not refill on the stairs, as
+				// the player's do not. Ruled by the coordinating session, 2026-10-25.
+				if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(Abilities))
+				{
+					CorruptedStalkerPotionCharges.SetNum(UCataclysmPotions::SlotCount);
+					for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+					{
+						CorruptedStalkerPotionCharges[Slot] = Holder->GetPotionCharges(Slot);
+					}
+				}
 			}
 		}
 		return;
@@ -3041,6 +3052,16 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker()
 				Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
 					* FMath::Max(CorruptedStalkerHealthShare, 0.01f));
 		}
+
+		// AND THE POTION CHARGES IT CARRIED. The first floor it hunts leaves its slots as they start, full.
+		if (UCataclysmAbilitySystemComponent* Holder =
+				Cast<UCataclysmAbilitySystemComponent>(Stalker->GetAbilitySystemComponent()))
+		{
+			for (int32 Slot = 0; Slot < CorruptedStalkerPotionCharges.Num(); ++Slot)
+			{
+				Holder->SetPotionCharges(Slot, CorruptedStalkerPotionCharges[Slot]);
+			}
+		}
 	}
 	Stalker->SightRadiusMultiplier = Effects::CorruptedStalkerSightMultiplier;
 	FloorEnemies.Add(Stalker);
@@ -3054,11 +3075,22 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker()
 
 void ACataclysmDungeonGameMode::NoteDeathForTheCorruptedStalker(const FCataclysmDeathNotice& Notice)
 {
-	if (Notice.Victim && Notice.Victim == CorruptedStalker.Get())
+	ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get();
+	if (Notice.Victim && Notice.Victim == Stalker)
 	{
 		bCorruptedStalkerSlain = true;
 		CorruptedStalkerHealthShare = 0.0f;
 		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// ITS KILLS REFILL ITS POTIONS AS A PLAYER'S KILLS REFILL A PLAYER'S, by how strong the one killed was: "same as
+	// the player", the owner's answer of 2026-10-25. In practice what it kills is the player's minions, which stand at
+	// the Common rung. Ruled by the coordinating session that day.
+	if (Stalker && Notice.Killer == Stalker && Notice.Victim)
+	{
+		const ACataclysmEnemyCharacter* Killed = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+		UCataclysmPotions::NoteEnemyKilled(Stalker, Killed ? Killed->RarityStep : 0);
 	}
 }
 
@@ -14621,6 +14653,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	bCorruptedStalkerHasHunted = false;
 	bCorruptedStalkerSlain = false;
 	CorruptedStalkerHealthShare = 1.0f;
+	CorruptedStalkerPotionCharges.Reset();
 	CorruptedStalkerSecondsOnFloor = 0.0f;
 	bCorruptedStalkerRaisedThisFloor = false;
 	CorruptedStalker.Reset();

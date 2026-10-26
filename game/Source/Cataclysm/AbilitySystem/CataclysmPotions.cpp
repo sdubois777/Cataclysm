@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -36,11 +37,12 @@ const TCHAR* UCataclysmPotions::HealLessPerDrinkStat =
 
 UCataclysmAbilitySystemComponent* UCataclysmPotions::PotionHolderOf(const AActor* Character)
 {
-	// ONLY A PLAYER CHARACTER HOLDS POTIONS. Every character's ability system
-	// has the four counts, and a creature killing a minion goes through the same
-	// death, so the rule refuses anything that is not a player rather than
-	// relying on nobody asking.
-	if (!Cast<ACataclysmPlayerCharacter>(Character))
+	// ONLY A PLAYER CHARACTER HOLDS POTIONS, AND A CREATURE WEARING A PLAYER'S BUILD. Every character's ability system
+	// has the four counts, and a creature killing a minion goes through the same death, so the rule refuses anything
+	// else rather than relying on nobody asking. The Corrupted Stalker holds them "same as the player", the owner's
+	// answer of 2026-10-25, ruled by the coordinating session that day to be the Stalker only (issue #1308).
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Character);
+	if (!Cast<ACataclysmPlayerCharacter>(Character) && !(Creature && Creature->bHoldsAPlayerBuild))
 	{
 		return nullptr;
 	}

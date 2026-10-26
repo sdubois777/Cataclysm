@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
@@ -60557,6 +60558,461 @@ bool FCataclysmSkillPoolWildMagicPanelTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("carrying War and Demonic, both are named and both pools counted"),
 			  Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
 			  FString::Printf(TEXT("wild magic: 0 triggered; pool of %d War and Demonic skills"), Both));
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Generic_Corrupted_Stalker, part B layer 2: its brain and its potions. Issue #1308.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** Where each slot sits in the Stalker's choice list. */
+	int32 StalkerChoiceIndex(ECataclysmAbilitySlot Slot)
+	{
+		return ACataclysmCorruptedStalkerCharacter::ChoiceOrder().IndexOfByKey(Slot);
+	}
+
+	void StalkerSet(ACataclysmCorruptedStalkerCharacter* Stalker, const FGameplayAttribute& Attribute, float Value)
+	{
+		if (UAbilitySystemComponent* Abilities = Stalker ? Stalker->GetAbilitySystemComponent() : nullptr)
+		{
+			Abilities->SetNumericAttributeBase(Attribute, Value);
+		}
+	}
+
+	/** Its mana, health and Fervour as shares of their maximums; the Fervour maximum is raised to 100 first. */
+	void StalkerAt(ACataclysmCorruptedStalkerCharacter* Stalker, float ManaShare, float HealthShare, float Fervour)
+	{
+		using Vital = UCataclysmVitalAttributeSet;
+		using Resource = UCataclysmClassResourceAttributeSet;
+		StalkerSet(Stalker, Vital::GetManaAttribute(), StalkerRead(Stalker, Vital::GetMaxManaAttribute()) * ManaShare);
+		StalkerSet(Stalker, Vital::GetHealthAttribute(),
+				   StalkerRead(Stalker, Vital::GetMaxHealthAttribute()) * HealthShare);
+		StalkerSet(Stalker, Resource::GetMaxClassResourceAttribute(), 100.0f);
+		StalkerSet(Stalker, Resource::GetClassResourceAttribute(), Fervour);
+	}
+
+	UCataclysmAbilitySystemComponent* StalkerHolder(ACataclysmCorruptedStalkerCharacter* Stalker)
+	{
+		return Stalker ? Cast<UCataclysmAbilitySystemComponent>(Stalker->GetAbilitySystemComponent()) : nullptr;
+	}
+}
+
+// SIX CHOICES IN THE RULED ORDER, EACH WITH ITS SLOT'S COOLDOWN AND ITS SHAPE'S REACH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerChoicesTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersChoicesAreInTheRuledOrderWithTheirSlotsCooldowns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerChoicesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Slot = ECataclysmAbilitySlot;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TArray<Slot> Order = ACataclysmCorruptedStalkerCharacter::ChoiceOrder();
+	const TArray<Slot> Ruled = {Slot::Aura, Slot::Support, Slot::Movement, Slot::Ultimate, Slot::Heavy, Slot::Special};
+	TestTrue(TEXT("aura, support, movement, ultimate, heavy, special"), Order == Ruled);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, /*Tier=*/4, /*Seed=*/2);
+	if (!TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+	for (const Slot Each : Ruled)
+	{
+		TestNotNull(FString::Printf(TEXT("it holds a skill in %s"), *UEnum::GetValueAsString(Each)), Stalker->SkillIn(Each));
+	}
+	StalkerAt(Stalker, 1.0f, 0.4f, 100.0f);
+	const TArray<FCataclysmEnemyAbility> Choices = Stalker->EnemyAbilities();
+	if (!TestEqual(TEXT("six choices"), Choices.Num(), 6))
+	{
+		return false;
+	}
+	const auto At = [&Choices](Slot Each) { return Choices[StalkerChoiceIndex(Each)]; };
+	TestEqual(TEXT("the heavy skill's cooldown is its slot's 1.5 s"), At(Slot::Heavy).CooldownSeconds, 1.5f, 0.01f);
+	TestEqual(TEXT("the special's is 5 s"), At(Slot::Special).CooldownSeconds, 5.0f, 0.01f);
+	TestEqual(TEXT("the movement skill's is 5 s"), At(Slot::Movement).CooldownSeconds, 5.0f, 0.01f);
+	TestEqual(TEXT("the ultimate's is 20 s"), At(Slot::Ultimate).CooldownSeconds, 20.0f, 0.01f);
+	TestTrue(FString::Printf(TEXT("the support skill's is at least its buff's 10 s: %.2f"),
+							 At(Slot::Support).CooldownSeconds), At(Slot::Support).CooldownSeconds >= 10.0f - 0.01f);
+	TestEqual(TEXT("the movement skill reaches only beyond 15 m"), At(Slot::Movement).MinRangeCm,
+			  Effects::CorruptedStalkerMovementBeyondCm, 0.01f);
+	TestEqual(TEXT("the heavy skill reaches its 4 m"), At(Slot::Heavy).MaxRangeCm, 400.0f, 0.01f);
+	TestEqual(TEXT("the special reaches its 12 m"), At(Slot::Special).MaxRangeCm, 1200.0f, 0.01f);
+	TestEqual(TEXT("the ultimate reaches its 3.5 m"), At(Slot::Ultimate).MaxRangeCm, 350.0f, 0.01f);
+	TestEqual(TEXT("it swings or casts at most every 0.75 s"), Stalker->SecondsBetweenAttacks(),
+			  Effects::CorruptedStalkerSecondsBetweenSkillUses, 0.01f);
+	return true;
+}
+
+// ITS BRAIN CHOOSES THE FIRST SKILL IN THE RULED ORDER IT MAY USE: the aura with mana, the support skill below half its
+// health, the movement skill beyond 15 m, the ultimate with its Fervour, then the heavy skill and the special by reach.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerChoosesTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersBrainChoosesTheFirstSkillItMayUseInTheRuledOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerChoosesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Slot = ECataclysmAbilitySlot;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, /*Tier=*/4, /*Seed=*/2);
+	ACataclysmEnemyController* Brain = Stalker ? Cast<ACataclysmEnemyController>(Stalker->GetController()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker) || !TestNotNull(TEXT("set-up: its brain"), Brain))
+	{
+		return false;
+	}
+
+	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
+	TestEqual(TEXT("below 30% mana, full health, no Fervour, at 3 m: the heavy skill"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Heavy));
+	TestEqual(TEXT("at 8 m: the special, which reaches 12 m"), Brain->ChooseAbility(800.0f),
+			  StalkerChoiceIndex(Slot::Special));
+	TestEqual(TEXT("at 20 m: the movement skill"), Brain->ChooseAbility(2000.0f), StalkerChoiceIndex(Slot::Movement));
+	TestEqual(TEXT("CONTROL: at 14 m nothing reaches, so its brain chases"), Brain->ChooseAbility(1400.0f), INDEX_NONE);
+
+	StalkerAt(Stalker, 0.2f, 1.0f, 100.0f);
+	TestEqual(TEXT("with its Fervour, at 3 m: the ultimate before the heavy skill"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Ultimate));
+
+	StalkerAt(Stalker, 0.2f, 0.45f, 100.0f);
+	TestEqual(TEXT("below half its health: the support skill before the ultimate"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Support));
+	StalkerAt(Stalker, 0.2f, 0.55f, 100.0f);
+	TestEqual(TEXT("CONTROL: above half its health, the ultimate again"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Ultimate));
+
+	StalkerAt(Stalker, 1.0f, 0.45f, 100.0f);
+	TestEqual(TEXT("with its mana: the aura first of all"), Brain->ChooseAbility(300.0f), StalkerChoiceIndex(Slot::Aura));
+	return true;
+}
+
+// ONE AURA AT A TIME, AND IT GOES OFF BELOW 30% MANA.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerAuraTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerAuraTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Slot = ECataclysmAbilitySlot;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(
+		World, Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	if (!TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+	const int32 Aura = StalkerChoiceIndex(Slot::Aura);
+	StalkerAt(Stalker, 1.0f, 1.0f, 0.0f);
+	TestFalse(TEXT("CONTROL: no aura runs before it casts one"), Stalker->IsRunningASkillIn(Slot::Aura));
+	TestTrue(TEXT("CONTROL: and the aura may be chosen"), Stalker->EnemyAbilities()[Aura].MaxRangeCm > 0.0f);
+	Stalker->UseEnemyAbility(Aura, Player.Character, Player.Character->GetActorLocation());
+	if (!TestTrue(TEXT("its aura runs once cast"), Stalker->IsRunningASkillIn(Slot::Aura)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and while it runs the aura cannot be chosen again"), Stalker->EnemyAbilities()[Aura].MaxRangeCm, 0.0f,
+			  0.0001f);
+
+	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
+	Stalker->AfterRegenerationStep();
+	TestFalse(TEXT("below 30% mana its aura goes off"), Stalker->IsRunningASkillIn(Slot::Aura));
+	return true;
+}
+
+// A HEALTH POTION BELOW 40% HEALTH, UNDER THE PLAYER'S RULES: TEN CHARGES, ONE HEAL AT A TIME.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerPotionTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerPotionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmCorruptedStalkerCharacter* Low = AStalkerWearingTheDemonicEntry(World, FVector::ZeroVector, 4, 2);
+	ACataclysmCorruptedStalkerCharacter* Above = AStalkerWearingTheDemonicEntry(World, FVector(800.0f, 0.0f, 0.0f), 4, 2);
+	UCataclysmAbilitySystemComponent* LowHolder = StalkerHolder(Low);
+	UCataclysmAbilitySystemComponent* AboveHolder = StalkerHolder(Above);
+	if (!TestNotNull(TEXT("set-up: a Stalker"), LowHolder) || !TestNotNull(TEXT("set-up: a second"), AboveHolder))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it starts with full slots"), LowHolder->GetPotionCharges(0), UCataclysmPotions::MaxCharges, 0.01f);
+
+	StalkerAt(Low, 1.0f, 0.35f, 0.0f);
+	StalkerAt(Above, 1.0f, 0.45f, 0.0f);
+	Low->AfterRegenerationStep();
+	Above->AfterRegenerationStep();
+	TestEqual(TEXT("below 40% health it drank from its first slot"), LowHolder->GetPotionCharges(0),
+			  UCataclysmPotions::MaxCharges - UCataclysmPotions::ChargesPerDrink, 0.01f);
+	TestTrue(TEXT("and the heal runs"), LowHolder->GetPotionHeal().IsRunning());
+	TestEqual(TEXT("CONTROL: above 40% the other drank nothing"), AboveHolder->GetPotionCharges(0),
+			  UCataclysmPotions::MaxCharges, 0.01f);
+
+	Low->AfterRegenerationStep();
+	TestEqual(TEXT("one heal at a time: the next step drinks nothing more"), LowHolder->GetPotionCharges(0)
+			  + LowHolder->GetPotionCharges(1), 2.0f * UCataclysmPotions::MaxCharges - UCataclysmPotions::ChargesPerDrink,
+			  0.01f);
+
+	// AND AN ORDINARY CREATURE STILL HOLDS NONE.
+	ACataclysmEnemyCharacter* Plain =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1600.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	TestEqual(TEXT("CONTROL: an ordinary creature cannot drink"),
+			  static_cast<int32>(UCataclysmPotions::Drink(Plain, 0)),
+			  static_cast<int32>(ECataclysmPotionRefusal::NoCharacter));
+	return true;
+}
+
+// ITS KILLS REFILL ITS POTIONS AS A PLAYER'S KILLS REFILL A PLAYER'S; THE PLAYER'S KILL DOES NOT FILL THE STALKER'S.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerRefillTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerRefillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AStalkedDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	ACataclysmCorruptedStalkerCharacter* Stalker = Mode->CorruptedStalkerOnTheFloor();
+	UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Stalker);
+	if (!TestNotNull(TEXT("set-up: the Stalker came"), Holder))
+	{
+		return false;
+	}
+	Holder->SetPotionCharges(0, 0.0f);
+
+	ACataclysmEnemyCharacter* ThePlayers = PlaceCreatureAtRung(World, Mode, FVector(2000.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* TheStalkers = PlaceCreatureAtRung(World, Mode, FVector(2200.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature for the player"), ThePlayers)
+		|| !TestNotNull(TEXT("set-up: one for the Stalker"), TheStalkers))
+	{
+		return false;
+	}
+	// KILLED BY RECORDED BLOWS, AND NOT BY A WRITE TO HEALTH. A death notice names its killer from the last blow on
+	// record, and `ReduceHealthDirectly` records none, so window w57 ran this test with no killer named on either
+	// death: the Stalker's refill was never reached, and the control below passed while testing nothing. Ruled by the
+	// coordinating session on 2026-10-25.
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	ABlowLands(Player.Character, ThePlayers, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player's blow killed its creature"), UCataclysmSkillEffects::IsDead(ThePlayers)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: the player's kill fills none of the Stalker's"), Holder->GetPotionCharges(0), 0.0f, 0.01f);
+	ABlowLands(Stalker, TheStalkers, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the Stalker's blow killed its creature"), UCataclysmSkillEffects::IsDead(TheStalkers)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its own kill fills its slots by the rung of what it killed"), Holder->GetPotionCharges(0),
+			  UCataclysmPotions::ChargesForKillOf(0), 0.01f);
+	return true;
+}
+
+// ITS POTION CHARGES GO DOWN THE STAIRS WITH IT, AND DO NOT REFILL THERE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerChargesFollowTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerFollowsWithThePotionChargesItHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerChargesFollowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AStalkedDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFirstFloorSeconds));
+	UCataclysmAbilitySystemComponent* First = StalkerHolder(Mode->CorruptedStalkerOnTheFloor());
+	if (!TestNotNull(TEXT("set-up: the Stalker came on floor 2"), First))
+	{
+		return false;
+	}
+	First->SetPotionCharges(0, 10.0f);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::CorruptedStalkerFollowSeconds));
+	UCataclysmAbilitySystemComponent* Second = StalkerHolder(Mode->CorruptedStalkerOnTheFloor());
+	if (!TestNotNull(TEXT("it followed"), Second) || !TestTrue(TEXT("as a new creature"), Second != First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the charges its first slot had"), Second->GetPotionCharges(0), 10.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: and a slot it never drank from is full"), Second->GetPotionCharges(1),
+			  UCataclysmPotions::MaxCharges, 0.01f);
+	return true;
+}
+
+// A MEASUREMENT, ASKED FOR BY THE COORDINATING SESSION ON 2026-10-25: WHAT A STALKER IS BUILT WITH AT EACH TIER, for the
+// simulation's fight model to be checked against. Printed on lines beginning "STALKER BUILD:", and fails nothing but
+// its set-up.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuiltAtEachTierTest,
+	"Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		ACataclysmCorruptedStalkerCharacter* Stalker =
+			AStalkerWearingTheDemonicEntry(World, FVector(Tier * 1000.0f, 0.0f, 0.0f), Tier, /*Seed=*/7);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: a Stalker at tier %d"), Tier), Stalker))
+		{
+			return false;
+		}
+		const float Multiplier = Effects::CorruptedStalkerHealthMultiplier(Tier);
+		const float Health = StalkerRead(Stalker, Vital::GetMaxHealthAttribute());
+		AddInfo(FString::Printf(TEXT("STALKER BUILD: tier %d: max health %.1f (%.1f before the multiplier of %.3f), "
+									 "armour %.1f, attack damage %.1f, crit chance %.2f, max mana %.1f, demonic "
+									 "resistance %.1f"),
+								Tier, Health, Health / Multiplier, Multiplier,
+								StalkerRead(Stalker, Combat::GetArmorAttribute()),
+								StalkerRead(Stalker, Combat::GetAttackDamageAttribute()),
+								StalkerRead(Stalker, Combat::GetCritChanceAttribute()),
+								StalkerRead(Stalker, Vital::GetMaxManaAttribute()),
+								StalkerRead(Stalker, UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute())));
+
+		// AND WHAT ITS BASIC ATTACK ACTUALLY TAKES FROM A TARGET, asked for on 2026-10-25: a target of the players' side
+		// beside it, with no armour and more health than any blow takes.
+		ACataclysmEnemyCharacter* Target = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Tier * 1000.0f + 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: a target at tier %d"), Tier), Target))
+		{
+			return false;
+		}
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(10000000.0f);
+		Target->SetArmour(0.0f);
+		const float TargetBefore = StalkerRead(Target, Vital::GetHealthAttribute());
+		Stalker->AttackTarget(Target);
+		AddInfo(FString::Printf(TEXT("STALKER BLOW: tier %d: its basic attack took %.1f from a target with armour %.1f "
+									 "and all resistance %.1f; its attack damage %.1f"),
+								Tier, TargetBefore - StalkerRead(Target, Vital::GetHealthAttribute()),
+								StalkerRead(Target, Combat::GetArmorAttribute()),
+								StalkerRead(Target, UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute()),
+								StalkerRead(Stalker, Combat::GetAttackDamageAttribute())));
+	}
+	return true;
+}
+
+// A MEASUREMENT, ASKED FOR BY THE COORDINATING SESSION ON 2026-10-25: WHETHER FERVOUR BUILDS ON A STALKER IN A FIGHT.
+// Twenty blows on a player beside it, each followed by its quarter-second step. Printed on the line beginning "STALKER
+// FERVOUR:", and fails nothing but its set-up. If it does not build, its ultimate never fires in play: a known gap.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerFervourTest,
+	"Cataclysm.DungeonModifierEffects.WhetherFervourBuildsOnACorruptedStalkerInAFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerFervourTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(
+		World, Player.Character->GetActorLocation() + FVector(150.0f, 0.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	if (!TestNotNull(TEXT("set-up: a Stalker beside the player"), Stalker))
+	{
+		return false;
+	}
+	const float Before = StalkerRead(Stalker, Resource::GetClassResourceAttribute());
+	// AND THE PLAYER'S HEALTH AFTER EACH BLOW, asked for on 2026-10-25: Fervour is paid only for a blow that landed and
+	// dealt damage, and a player who has died takes none.
+	FString Healths;
+	for (int32 Blow = 0; Blow < 20; ++Blow)
+	{
+		Stalker->AttackTarget(Player.Character);
+		Stalker->AfterRegenerationStep();
+		Healths += FString::Printf(TEXT("%s%.0f"), Blow == 0 ? TEXT("") : TEXT(", "),
+								   Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute()));
+	}
+	AddInfo(FString::Printf(TEXT("STALKER FERVOUR BLOWS: the player's health after each of the twenty: %s"), *Healths));
+	AddInfo(FString::Printf(TEXT("STALKER FERVOUR: %.1f before, %.1f after twenty blows on the player beside it; its "
+								 "maximum %.1f, Fervour per enemy hit %.2f, per enemy in reach %.2f"),
+							Before, StalkerRead(Stalker, Resource::GetClassResourceAttribute()),
+							StalkerRead(Stalker, Resource::GetMaxClassResourceAttribute()),
+							StalkerRead(Stalker, Resource::GetFervourPerEnemyHitAttribute()),
+							StalkerRead(Stalker, Resource::GetFervourPerEnemyInReachAttribute())));
 	return true;
 }
 

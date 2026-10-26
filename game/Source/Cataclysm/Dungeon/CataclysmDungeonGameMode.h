@@ -5194,6 +5194,9 @@ private:
 	bool bCorruptedStalkerHasHunted = false;
 	bool bCorruptedStalkerSlain = false;
 	float CorruptedStalkerHealthShare = 1.0f;
+
+	/** The dungeon's: the Stalker's four potion slots' charges, carried to the next floor with its health. */
+	TArray<float> CorruptedStalkerPotionCharges;
 	TWeakObjectPtr<class ACataclysmCorruptedStalkerCharacter> CorruptedStalker;
 
 	/**

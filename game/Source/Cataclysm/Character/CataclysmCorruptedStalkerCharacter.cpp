@@ -3,6 +3,11 @@
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AIController.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -185,6 +190,8 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	// from 416.1 to 0 and crit from 0 to 5.
 	bHoldsAPlayerBuild = true;
 	BasicAttack = UCataclysmWeaponSkills::BasicAttackFor(UCataclysmItemModifiers::LoadBaseTable(), Entry.WeaponType);
+	Skills = UCataclysmWeaponSkills::SkillsFor(UCataclysmWeaponSkills::LoadGeneratedTable(), Entry.WeaponType,
+											   Entry.DamageType.ToString());
 	WornEntryName = Entry.Name;
 	return true;
 }
@@ -194,6 +201,187 @@ float ACataclysmCorruptedStalkerCharacter::AttackReachCm() const
 	return bHoldsAPlayerBuild && BasicAttack.Slot != ECataclysmAbilitySlot::None && BasicAttack.Params.RadiusCm > 0.0f
 		? BasicAttack.Params.RadiusCm
 		: Super::AttackReachCm();
+}
+
+TArray<ECataclysmAbilitySlot> ACataclysmCorruptedStalkerCharacter::ChoiceOrder()
+{
+	using Slot = ECataclysmAbilitySlot;
+	return {Slot::Aura, Slot::Support, Slot::Movement, Slot::Ultimate, Slot::Heavy, Slot::Special};
+}
+
+const FCataclysmWeaponSkill* ACataclysmCorruptedStalkerCharacter::SkillIn(ECataclysmAbilitySlot Slot) const
+{
+	// BY ITS DESIGNED SLOT, the slot every rule reads since issue #837 layer 3; a Stalker presses no keys.
+	return Skills.FindByPredicate([Slot](const FCataclysmWeaponSkill& Skill)
+		{ return UCataclysmWeaponSkills::DesignedSlotOf(Skill) == Slot; });
+}
+
+bool ACataclysmCorruptedStalkerCharacter::IsRunningASkillIn(ECataclysmAbilitySlot Slot) const
+{
+	const UAbilitySystemComponent* Abilities = GetAbilitySystemComponent();
+	if (!Abilities)
+	{
+		return false;
+	}
+	// EVERY GRANT IS ITS OWN SPEC, because `UCataclysmTriggeredSkill::Trigger` grants a new one each time, and the
+	// slot is stamped on the instance it grants.
+	for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
+	{
+		const UCataclysmGameplayAbility* Running = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
+		if (Spec.IsActive() && Running && Running->GetDesignedSlot() == Slot)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+TArray<FCataclysmEnemyAbility> ACataclysmCorruptedStalkerCharacter::EnemyAbilities() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	const UAbilitySystemComponent* Abilities = GetAbilitySystemComponent();
+	const UDataTable* SlotTable = UCataclysmSkillSlots::LoadGeneratedTable();
+	const auto Read = [Abilities](const FGameplayAttribute& Attribute)
+	{
+		return Abilities && Abilities->HasAttributeSetForAttribute(Attribute)
+			? Abilities->GetNumericAttribute(Attribute) : 0.0f;
+	};
+	const float Mana = Read(Vital::GetManaAttribute());
+	const float MaxMana = Read(Vital::GetMaxManaAttribute());
+	const float Health = Read(Vital::GetHealthAttribute());
+	const float MaxHealth = Read(Vital::GetMaxHealthAttribute());
+	const float Fervour = Read(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	constexpr float Anywhere = 1000000.0f;
+
+	TArray<FCataclysmEnemyAbility> Choices;
+	for (const ECataclysmAbilitySlot Slot : ChoiceOrder())
+	{
+		FCataclysmEnemyAbility Choice;
+		Choice.Name = FName(*UEnum::GetValueAsString(Slot));
+		Choice.WindUpSeconds = 0.0f;
+		const FCataclysmWeaponSkill* Skill = SkillIn(Slot);
+		const FCataclysmSkillSlotNumbers Numbers = UCataclysmSkillSlots::NumbersFor(SlotTable, Slot);
+
+		// ITS MANA AT THE LEVEL `Trigger` GRANTS AT, which is the level a player's own grant is at too.
+		const float ManaCost = Skill
+			? UCataclysmSkillSlots::ManaCostAtLevel(Skill->ManaCost >= 0.0f ? Skill->ManaCost
+																			  : Numbers.ManaCostAtLevel100, 1)
+			: 0.0f;
+		bool bMay = bHoldsAPlayerBuild && Skill && Mana >= ManaCost && !IsRunningASkillIn(Slot);
+		float Nearest = 0.0f;
+		float Farthest = Anywhere;
+		float Cooldown = Skill ? (Skill->Cooldown >= 0.0f ? Skill->Cooldown : Numbers.Cooldown) : 0.0f;
+		switch (Slot)
+		{
+		case ECataclysmAbilitySlot::Aura:
+			bMay = bMay && MaxMana > 0.0f && Mana >= Effects::CorruptedStalkerAuraOffBelowManaShare * MaxMana;
+			break;
+		case ECataclysmAbilitySlot::Support:
+			bMay = bMay && MaxHealth > 0.0f && Health < Effects::CorruptedStalkerSupportBelowHealthShare * MaxHealth;
+			Cooldown = FMath::Max(Cooldown, Skill ? Skill->Params.Duration : 0.0f);
+			break;
+		case ECataclysmAbilitySlot::Movement:
+			Nearest = Effects::CorruptedStalkerMovementBeyondCm;
+			break;
+		case ECataclysmAbilitySlot::Ultimate:
+			bMay = bMay && Fervour >= Numbers.FervourCost;
+			Farthest = Skill ? Skill->Params.RadiusCm : 0.0f;
+			break;
+		default:
+			// A STRIKE REACHES ITS RADIUS, A SHOT ITS RANGE.
+			Farthest = Skill ? FMath::Max(Skill->Params.RadiusCm, Skill->Params.RangeCm) : 0.0f;
+			break;
+		}
+		Choice.MinRangeCm = bMay ? Nearest : 1.0f;
+		Choice.MaxRangeCm = bMay ? Farthest : 0.0f;
+		Choice.Shape = Skill ? Skill->Shape : ECataclysmSkillShape::None;
+		Choice.CooldownSeconds = Skill
+			? UCataclysmGameplayAbility::CooldownAfterReduction(Abilities, Cooldown, Skill->Tags) : 0.0f;
+		Choices.Add(Choice);
+	}
+	return Choices;
+}
+
+void ACataclysmCorruptedStalkerCharacter::UseEnemyAbility(int32 Index, AActor* Target, const FVector& AimedAt)
+{
+	const TArray<ECataclysmAbilitySlot> Order = ChoiceOrder();
+	const FCataclysmWeaponSkill* Skill = Order.IsValidIndex(Index) ? SkillIn(Order[Index]) : nullptr;
+	if (!bHoldsAPlayerBuild || !Skill)
+	{
+		return;
+	}
+	const FVector From = GetActorLocation();
+	const FVector Aim = Target ? Target->GetActorLocation() : AimedAt;
+	UCataclysmTriggeredSkill::Trigger(this, *Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/true, &From);
+
+	// A LEAP MOVED IT AT ONCE, so the path it was following is stale; the controller chases again on its next pass.
+	if (Order[Index] == ECataclysmAbilitySlot::Movement)
+	{
+		if (AAIController* Brain = Cast<AAIController>(GetController()))
+		{
+			Brain->StopMovement();
+		}
+	}
+}
+
+float ACataclysmCorruptedStalkerCharacter::DesignedSecondsBetweenAttacks() const
+{
+	return bHoldsAPlayerBuild ? UCataclysmDungeonModifierEffects::CorruptedStalkerSecondsBetweenSkillUses
+							  : Super::DesignedSecondsBetweenAttacks();
+}
+
+void ACataclysmCorruptedStalkerCharacter::AfterRegenerationStep()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	Super::AfterRegenerationStep();
+	UAbilitySystemComponent* Abilities = GetAbilitySystemComponent();
+	if (!bHoldsAPlayerBuild || !Abilities || UCataclysmSkillEffects::IsDead(this))
+	{
+		return;
+	}
+
+	// ITS AURA OFF BELOW THE RULED SHARE OF ITS MANA.
+	const float MaxMana = Abilities->GetNumericAttribute(Vital::GetMaxManaAttribute());
+	if (MaxMana > 0.0f
+		&& Abilities->GetNumericAttribute(Vital::GetManaAttribute()) < Effects::CorruptedStalkerAuraOffBelowManaShare * MaxMana)
+	{
+		TArray<FGameplayAbilitySpecHandle> Auras;
+		for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
+		{
+			const UCataclysmGameplayAbility* Running = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
+			if (Spec.IsActive() && Running && Running->GetDesignedSlot() == ECataclysmAbilitySlot::Aura)
+			{
+				Auras.Add(Spec.Handle);
+			}
+		}
+		for (const FGameplayAbilitySpecHandle& Handle : Auras)
+		{
+			Abilities->CancelAbilityHandle(Handle);
+		}
+	}
+
+	// A POTION BELOW THE RULED SHARE OF ITS HEALTH, THE FIRST SLOT THAT CAN POUR ONE, under the player's rules:
+	// `UCataclysmPotions::Drink` refuses while a heal runs and when a slot holds too few charges.
+	const float MaxHealth = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (MaxHealth > 0.0f
+		&& Abilities->GetNumericAttribute(Vital::GetHealthAttribute()) < Effects::CorruptedStalkerPotionBelowHealthShare * MaxHealth)
+	{
+		for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+		{
+			const ECataclysmPotionRefusal Refused = UCataclysmPotions::Drink(this, Slot);
+			if (Refused == ECataclysmPotionRefusal::None || Refused == ECataclysmPotionRefusal::AHealIsRunning)
+			{
+				break;
+			}
+		}
+	}
+
+	// AND A DRINK'S HEAL RUNS ON, as the player's does from the player's own step.
+	UCataclysmPotions::HealStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCorruptedStalkerCharacter::AttackTarget(AActor* Target)
