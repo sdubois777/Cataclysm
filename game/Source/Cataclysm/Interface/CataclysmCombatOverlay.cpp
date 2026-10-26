@@ -559,6 +559,38 @@ FString UCataclysmCombatOverlay::SilencedTextFor(const AActor* Actor)
 	return UCataclysmSilence::IsSilenced(Actor) ? FString(TEXT("Silenced")) : FString();
 }
 
+namespace
+{
+	/** `Word` while a living actor holds the tag named `TagName`, else empty. Issue #2379. */
+	FString WordWhileHeld(const AActor* Actor, const TCHAR* TagName, const TCHAR* Word)
+	{
+		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(TagName), /*ErrorIfNotFound=*/false);
+		return Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag) && !UCataclysmSkillEffects::IsDead(Actor)
+			? FString(Word)
+			: FString();
+	}
+}
+
+FString UCataclysmCombatOverlay::CrippledTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Cripple"), TEXT("Crippled"));
+}
+
+FString UCataclysmCombatOverlay::WeakenedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Weaken"), TEXT("Weakened"));
+}
+
+FString UCataclysmCombatOverlay::ShreddedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Shred"), TEXT("Shredded"));
+}
+
+FString UCataclysmCombatOverlay::StunnedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("State.Stunned"), TEXT("Stunned"));
+}
+
 FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -905,6 +937,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
+		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
+		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.

@@ -531,7 +531,7 @@ public:
 	 *
 	 * STATE ON THE CREATURE, like the armour removed, so nothing else on screen
 	 * would say it was there. Cripple is not said here: it is a tagged debuff,
-	 * and no screen shows those yet.
+	 * named by `CrippledTextFor` (issue #2379).
 	 */
 	static FString SlowedTextFor(const AActor* Actor);
 
@@ -560,6 +560,17 @@ public:
 	 * creature's status line; the player is never silenced, so the line above its own bars does not ask.
 	 */
 	static FString SilencedTextFor(const AActor* Actor);
+
+	/**
+	 * "Crippled", "Weakened", "Shredded" and "Stunned" while `Status.Debuff.Cripple`, `Status.Debuff.Weaken`,
+	 * `Status.Debuff.Shred` and `State.Stunned` last on a living actor, or empty. Issue #2379: until then no screen
+	 * named them, while a worn row could put any of them on the player every 15 seconds. By name only, as "Feared"
+	 * and "Maddened" are. A creature's status line shows each, and so does the line above the player's own bars.
+	 */
+	static FString CrippledTextFor(const AActor* Actor);
+	static FString WeakenedTextFor(const AActor* Actor);
+	static FString ShreddedTextFor(const AActor* Actor);
+	static FString StunnedTextFor(const AActor* Actor);
 
 	/**
 	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
