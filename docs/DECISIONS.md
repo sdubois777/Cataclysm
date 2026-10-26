@@ -90,6 +90,10 @@ test, and one piece of the model's entry changed fails the entry test; both rest
   index), `UseEnemyAbility`, `DesignedSecondsBetweenAttacks`, `AfterRegenerationStep` (the aura off, the potion, the
   heal), `SkillIn`, `IsRunningASkillIn`; its skills from `UCataclysmWeaponSkills::SkillsFor`.
 - `UCataclysmPotions::PotionHolderOf`: a creature with `bHoldsAPlayerBuild` holds potions.
+- **BY ITS DESIGNED SLOT**, since the branch moved onto `b074a5090` (#2521, issue #837 layer 3): `SkillIn` finds a skill
+  by `UCataclysmWeaponSkills::DesignedSlotOf`, and the running-copy check and the aura's cancel read
+  `UCataclysmGameplayAbility::GetDesignedSlot`. Layer 3's rule: a skill's designed slot decides its rules, and the key
+  decides only input. A Stalker presses no keys, so the two are the same for it today.
 - `ACataclysmDungeonGameMode`: the Stalker's charges kept on the beat and given to the next floor's; its kills refill
   it through `UCataclysmPotions::NoteEnemyKilled`; both the dungeon's, reset in `LeaveEmpireDungeon`.
 
@@ -110,7 +114,7 @@ FERVOUR:", and since w57 "STALKER FERVOUR BLOWS:", the player's health after eac
 | Figure | Registered |
 |---|---|
 | Step 1b | `ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo` alone, by its full name; the window stops if it fails |
-| Whole Unreal suite | 4224 (`6a9edc26a`, the #2520 merge) + 8 = **4232**, 0 failed |
+| Whole Unreal suite | 4237 (`b074a5090`, the #2521 merge) + 8 = **4245**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, the 40% potion threshold check never true | `ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` fails |
 | P2, the guard against a second running copy removed | `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` fails |

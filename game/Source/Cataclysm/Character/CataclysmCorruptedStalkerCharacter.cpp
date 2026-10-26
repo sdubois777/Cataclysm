@@ -211,7 +211,9 @@ TArray<ECataclysmAbilitySlot> ACataclysmCorruptedStalkerCharacter::ChoiceOrder()
 
 const FCataclysmWeaponSkill* ACataclysmCorruptedStalkerCharacter::SkillIn(ECataclysmAbilitySlot Slot) const
 {
-	return Skills.FindByPredicate([Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; });
+	// BY ITS DESIGNED SLOT, the slot every rule reads since issue #837 layer 3; a Stalker presses no keys.
+	return Skills.FindByPredicate([Slot](const FCataclysmWeaponSkill& Skill)
+		{ return UCataclysmWeaponSkills::DesignedSlotOf(Skill) == Slot; });
 }
 
 bool ACataclysmCorruptedStalkerCharacter::IsRunningASkillIn(ECataclysmAbilitySlot Slot) const
@@ -226,7 +228,7 @@ bool ACataclysmCorruptedStalkerCharacter::IsRunningASkillIn(ECataclysmAbilitySlo
 	for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
 	{
 		const UCataclysmGameplayAbility* Running = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
-		if (Spec.IsActive() && Running && Running->Slot == Slot)
+		if (Spec.IsActive() && Running && Running->GetDesignedSlot() == Slot)
 		{
 			return true;
 		}
@@ -351,7 +353,7 @@ void ACataclysmCorruptedStalkerCharacter::AfterRegenerationStep()
 		for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
 		{
 			const UCataclysmGameplayAbility* Running = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
-			if (Spec.IsActive() && Running && Running->Slot == ECataclysmAbilitySlot::Aura)
+			if (Spec.IsActive() && Running && Running->GetDesignedSlot() == ECataclysmAbilitySlot::Aura)
 			{
 				Auras.Add(Spec.Handle);
 			}
