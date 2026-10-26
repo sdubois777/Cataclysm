@@ -111,6 +111,15 @@ CLAIMS: dict[str, list[tuple[str, float, str]]] = {
     "Buff_Feasting": [
         ("Strength", 4.0, "its attack speed is increased by 4%"),
     ],
+
+    # --- the curse the Succubus casts, ruled 2026-10-26 ----------------------
+    # ONE STRENGTH, TWO HALVES: the row's MovesStat cuts the two maximum pools,
+    # and UCataclysmSkillEffects::KeptUnderWitheredTouch reads the same 20 for
+    # the player's own blows and ticks.
+    "Debuff_Withered_Touch": [
+        ("DurationSeconds", 5.0, "maximum energy shield by 20%, for 5 seconds"),
+        ("Strength", 20.0, "the player's damage by 20%"),
+    ],
 }
 
 #: The seven numeric columns, in the order `tools/generate_datatables.py` reads

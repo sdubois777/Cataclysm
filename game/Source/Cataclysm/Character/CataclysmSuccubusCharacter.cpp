@@ -429,13 +429,14 @@ void ACataclysmSuccubusCharacter::UseEnemyAbility(
 		const FGameplayTag Effect =
 			UCataclysmSkillShapes::StatusTagFor(WitherEffectName);
 
-		// A TAG AND NO MAGNITUDE, which is what issue #166 settled a buff or a
-		// debuff is until there is something to apply its magnitude to.
-		// Withered Touch "reduces player damage output and mana/energy shield",
-		// and nothing in the project reads a modifier for any of those three
-		// yet. Granting the tag makes the duration real and makes "is it up?" a
-		// question with a true answer.
-		if (UCataclysmSkillEffects::ApplyTagForDuration(
+		// THE TAG AND THE ROW'S TWO POOL CUTS, ruled 2026-10-26: "20% less damage
+		// dealt, and 20% less maximum mana and maximum energy shield, for the
+		// Succubus's 5 s". The row's `MovesStat` names `max_mana` and
+		// `max_energy_shield` by proportion, so this lowers both ceilings by its
+		// Strength; no magnitude is passed, so the row's 20 is the figure. The
+		// damage half is read off the tag by
+		// `UCataclysmSkillEffects::KeptUnderWitheredTouch`.
+		if (UCataclysmSkillEffects::ApplyNamedEffect(
 				this, Target, Effect, WitherDurationSeconds))
 		{
 			LastCursed = Target;

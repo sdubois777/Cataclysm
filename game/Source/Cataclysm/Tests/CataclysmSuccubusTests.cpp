@@ -4,6 +4,9 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -17,6 +20,7 @@
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -905,6 +909,331 @@ bool FCataclysmSuccubusCastReleasesWhenItsBoltLeaves::RunTest(const FString&)
 	TestNull(TEXT("and nothing was played"),
 		Succubus->LastPlayedAnimation.Get());
 
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Withered Touch, what the curse does. Ruled 2026-10-26: "20% less damage
+// dealt, and 20% less maximum mana and maximum energy shield, for the
+// Succubus's 5 s", the damage "the cursed player's OWN damage only".
+// --------------------------------------------------------------------------
+
+namespace CataclysmSuccubusWitherTest
+{
+	/**
+	 * A stand-in for the cursed player: a body with a root, so it stands where
+	 * it is put, and the vital and combat sets a player's ability system holds.
+	 * NOT A PLAYER CHARACTER, on purpose: a player carries a recorded stat line,
+	 * and `StatForSkill` then answers spell damage from the line and not from
+	 * the attribute, so a figure written here would not be the figure read.
+	 * The shape is `FScopedCaster`'s in CataclysmCommandTests.cpp.
+	 */
+	struct FWitherTestPlayer
+	{
+		FWitherTestPlayer(UWorld* World, const FVector& Where)
+		{
+			Actor = World->SpawnActor<AActor>(Where, FRotator::ZeroRotator);
+			check(Actor);
+			USphereComponent* Sphere = NewObject<USphereComponent>(Actor);
+			Sphere->InitSphereRadius(34.0f);
+			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Sphere->SetCollisionObjectType(ECC_Pawn);
+			Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+			Actor->SetRootComponent(Sphere);
+			Sphere->RegisterComponent();
+			Actor->SetActorLocation(Where);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmCombatAttributeSet>(Actor));
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+			Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+		}
+
+		~FWitherTestPlayer()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		void Set(const FGameplayAttribute& Attribute, float Value) const
+		{
+			AbilitySystem->SetNumericAttributeBase(Attribute, Value);
+		}
+
+		float Get(const FGameplayAttribute& Attribute) const
+		{
+			return AbilitySystem->GetNumericAttribute(Attribute);
+		}
+
+		/** The pools the ruling names: 200 maximum mana, 300 maximum energy
+		 *  shield, each pool at 100, below the cut ceiling. */
+		void GivePools() const
+		{
+			Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 200.0f);
+			Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 100.0f);
+			Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 300.0f);
+			Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 100.0f);
+		}
+
+		float MaxMana() const { return Get(UCataclysmVitalAttributeSet::GetMaxManaAttribute()); }
+		float Mana() const { return Get(UCataclysmVitalAttributeSet::GetManaAttribute()); }
+		float MaxShield() const { return AbilitySystem->MaximumEnergyShield(); }
+		float Shield() const { return Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()); }
+		float Health() const { return Get(UCataclysmVitalAttributeSet::GetHealthAttribute()); }
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/** 1 m is 100 cm. Everything stands 50 m or more from the Succubus. */
+	constexpr float M = 100.0f;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmSuccubusCurseCutsTheMaximumPools,
+	"Cataclysm.Succubus.ItsCurseTakesAFifthOffTheMaximumManaAndShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSuccubusCurseCutsTheMaximumPools::RunTest(const FString&)
+{
+	using namespace CataclysmSuccubusTest;
+	using namespace CataclysmSuccubusWitherTest;
+	using Succubus_t = ACataclysmSuccubusCharacter;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmSuccubusCharacter* Succubus = SpawnSuccubus(World, FVector::ZeroVector);
+	const FGameplayTag Withered = WitheredTouchTag();
+	if (!TestNotNull(TEXT("set-up: a Succubus"), Succubus)
+		|| !TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid()))
+	{
+		return false;
+	}
+
+	const FWitherTestPlayer Cursed(World, FVector(50.0f * M, 0.0f, 0.0f));
+	const FWitherTestPlayer Uncursed(World, FVector(50.0f * M, 10.0f * M, 0.0f));
+	Cursed.GivePools();
+	Uncursed.GivePools();
+	if (!TestEqual(TEXT("set-up: the cursed one's maximum mana is 200"), Cursed.MaxMana(), 200.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: and its maximum shield 300"), Cursed.MaxShield(), 300.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: the uncursed one's maximum mana is 200"), Uncursed.MaxMana(), 200.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: and its maximum shield 300"), Uncursed.MaxShield(), 300.0f, 0.01f))
+	{
+		return false;
+	}
+
+	Succubus->UseEnemyAbility(Succubus_t::WitherTheLivingAbility, Cursed.Actor, Cursed.Actor->GetActorLocation());
+	if (!TestTrue(TEXT("set-up: the curse is on the cursed one"), UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered))
+		|| !TestFalse(TEXT("set-up: and not on the other"), UCataclysmSkillEffects::HasTag(Uncursed.Actor, Withered)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("cursed, maximum mana is 160"), Cursed.MaxMana(), 160.0f, 0.01f);
+	TestEqual(TEXT("cursed, maximum energy shield is 240"), Cursed.MaxShield(), 240.0f, 0.01f);
+	TestEqual(TEXT("control: the uncursed one's maximum mana is 200"), Uncursed.MaxMana(), 200.0f, 0.01f);
+	TestEqual(TEXT("control: and its maximum shield 300"), Uncursed.MaxShield(), 300.0f, 0.01f);
+
+	// #1757's RULE: THE CURSE LOWERS THE CEILING AND DOES NOT DRAIN. Both pools
+	// stood at 100, under the cut ceiling, and the curse leaves them there.
+	TestEqual(TEXT("the curse takes no mana"), Cursed.Mana(), 100.0f, 0.01f);
+	TestEqual(TEXT("and no shield"), Cursed.Shield(), 100.0f, 0.01f);
+
+	// THE STRONGEST APPLICATION WINS, so a second curse of the same strength
+	// refreshes the first and does not cut again: 160 and 240, not 128 and 192.
+	Succubus->UseEnemyAbility(Succubus_t::WitherTheLivingAbility, Cursed.Actor, Cursed.Actor->GetActorLocation());
+	TestEqual(TEXT("a second curse brings maximum mana no lower"), Cursed.MaxMana(), 160.0f, 0.01f);
+	TestEqual(TEXT("nor maximum shield"), Cursed.MaxShield(), 240.0f, 0.01f);
+
+	// AND NEITHER POOL RISES PAST THE SHOWN MAXIMUM WHILE CURSED. A gain of 500
+	// to each, larger than either ceiling, lands at the cut ceiling.
+	for (const FWitherTestPlayer* Each : { &Cursed, &Uncursed })
+	{
+		Each->AbilitySystem->ApplyModToAttribute(
+			UCataclysmVitalAttributeSet::GetManaAttribute(), EGameplayModOp::Additive, 500.0f);
+		Each->AbilitySystem->ApplyModToAttribute(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), EGameplayModOp::Additive, 500.0f);
+	}
+	TestTrue(TEXT("cursed, mana does not exceed the shown maximum"), Cursed.Mana() <= Cursed.MaxMana() + 0.01f);
+	TestTrue(TEXT("nor the shield"), Cursed.Shield() <= Cursed.MaxShield() + 0.01f);
+	TestEqual(TEXT("a gain fills mana to 160 and no further"), Cursed.Mana(), 160.0f, 0.01f);
+	TestEqual(TEXT("and the shield to 240"), Cursed.Shield(), 240.0f, 0.01f);
+	TestEqual(TEXT("control: the uncursed one fills to 200"), Uncursed.Mana(), 200.0f, 0.01f);
+	TestEqual(TEXT("control: and its shield to 300"), Uncursed.Shield(), 300.0f, 0.01f);
+
+	// FOR 5 SECONDS, ON THE WORLD'S OWN CLOCK. Still on at 4.5 s, gone at 5.5.
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	TestTrue(TEXT("at 4.5 s the curse is still on"), UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered));
+	TestEqual(TEXT("and maximum mana still 160"), Cursed.MaxMana(), 160.0f, 0.01f);
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestFalse(TEXT("at 5.5 s it has ended"), UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered));
+	TestEqual(TEXT("and maximum mana is 200 again"), Cursed.MaxMana(), 200.0f, 0.01f);
+	TestEqual(TEXT("and maximum shield 300 again"), Cursed.MaxShield(), 300.0f, 0.01f);
+	TestEqual(TEXT("control: the uncursed one's maximum mana is still 200"), Uncursed.MaxMana(), 200.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmSuccubusCurseCutsThePlayersOwnDamage,
+	"Cataclysm.Succubus.ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSuccubusCurseCutsThePlayersOwnDamage::RunTest(const FString&)
+{
+	using namespace CataclysmSuccubusTest;
+	using namespace CataclysmSuccubusWitherTest;
+	using Succubus_t = ACataclysmSuccubusCharacter;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmSuccubusCharacter* Succubus = SpawnSuccubus(World, FVector::ZeroVector);
+	const FGameplayTag Withered = WitheredTouchTag();
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Spell = UCataclysmSkillEffects::SpellTag();
+	if (!TestNotNull(TEXT("set-up: a Succubus"), Succubus)
+		|| !TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid())
+		|| !TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid())
+		|| !TestTrue(TEXT("set-up: the spell tag exists"), Spell.IsValid()))
+	{
+		return false;
+	}
+
+	// TWO PLAYERS ALIKE, ONE CURSED, each with its own targets on its own line,
+	// 10 m from the other line and 2 m between things on a line.
+	const FWitherTestPlayer Cursed(World, FVector(50.0f * M, 0.0f, 0.0f));
+	const FWitherTestPlayer Uncursed(World, FVector(50.0f * M, 10.0f * M, 0.0f));
+	const FWitherTestPlayer CursedsTarget(World, FVector(52.0f * M, 0.0f, 0.0f));
+	const FWitherTestPlayer UncursedsTarget(World, FVector(52.0f * M, 10.0f * M, 0.0f));
+	const FWitherTestPlayer CursedsTicked(World, FVector(54.0f * M, 0.0f, 0.0f));
+	const FWitherTestPlayer UncursedsTicked(World, FVector(54.0f * M, 10.0f * M, 0.0f));
+	const FWitherTestPlayer CursedsMinionsTarget(World, FVector(56.0f * M, 0.0f, 0.0f));
+	const FWitherTestPlayer UncursedsMinionsTarget(World, FVector(56.0f * M, 10.0f * M, 0.0f));
+	for (const FWitherTestPlayer* Each : { &Cursed, &Uncursed })
+	{
+		Each->Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		Each->Set(UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), 50.0f);
+	}
+
+	Succubus->UseEnemyAbility(Succubus_t::WitherTheLivingAbility, Cursed.Actor, Cursed.Actor->GetActorLocation());
+	if (!TestTrue(TEXT("set-up: the curse is on the cursed one"), UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered))
+		|| !TestFalse(TEXT("set-up: and not on the other"), UCataclysmSkillEffects::HasTag(Uncursed.Actor, Withered)))
+	{
+		return false;
+	}
+
+	// --- a blow: its weapon part, and its spell part ----------------------
+
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer SpellTags(Spell);
+	const float CursedWeapon = UCataclysmSkillEffects::ApplyHit(Cursed.Actor, CursedsTarget.Actor, 100.0f, NoTags);
+	const float UncursedWeapon =
+		UCataclysmSkillEffects::ApplyHit(Uncursed.Actor, UncursedsTarget.Actor, 100.0f, NoTags);
+	const float CursedSpell = UCataclysmSkillEffects::ApplyHit(Cursed.Actor, CursedsTarget.Actor, 100.0f, SpellTags);
+	const float UncursedSpell =
+		UCataclysmSkillEffects::ApplyHit(Uncursed.Actor, UncursedsTarget.Actor, 100.0f, SpellTags);
+	if (!TestTrue(TEXT("set-up: the uncursed one's weapon blow deals something"), UncursedWeapon > 1.0f)
+		|| !TestTrue(TEXT("set-up: and its spell blow carries a spell part"), UncursedSpell - UncursedWeapon > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a cursed player's weapon blow is 80% of an uncursed one's"),
+		CursedWeapon, 0.8f * UncursedWeapon, 0.01f);
+	TestEqual(TEXT("and the spell part of its spell blow is 80% too"),
+		CursedSpell - CursedWeapon, 0.8f * (UncursedSpell - UncursedWeapon), 0.01f);
+
+	// --- a damage over time tick ------------------------------------------
+
+	// TEN A TICK, SCALED BY ITS APPLIER as every ailment a character applies is,
+	// and one tick landed: the first is due at 1 s, and the clock stops at 1.5.
+	if (!TestTrue(TEXT("set-up: the cursed one's poison lands"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Cursed.Actor, CursedsTicked.Actor,
+				/*DamagePerTick=*/10.0f, /*DurationSeconds=*/4.0f, Poison, /*bScalesWithInstigator=*/true))
+		|| !TestTrue(TEXT("set-up: and the uncursed one's"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Uncursed.Actor, UncursedsTicked.Actor,
+				/*DamagePerTick=*/10.0f, /*DurationSeconds=*/4.0f, Poison, /*bScalesWithInstigator=*/true)))
+	{
+		return false;
+	}
+	const float CursedsBefore = CursedsTicked.Health();
+	const float UncursedsBefore = UncursedsTicked.Health();
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	const float CursedTick = CursedsBefore - CursedsTicked.Health();
+	const float UncursedTick = UncursedsBefore - UncursedsTicked.Health();
+	if (!TestTrue(TEXT("set-up: the uncursed one's tick dealt something"), UncursedTick > 1.0f)
+		|| !TestTrue(TEXT("set-up: the curse is still on at 1.5 s"),
+			UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a cursed player's damage over time tick is 80% of an uncursed one's"),
+		CursedTick, 0.8f * UncursedTick, 0.01f);
+
+	// --- controls: the player's minion ------------------------------------
+
+	// "A MINION IS A SEPARATE ACTOR THE CURSE DID NOT TOUCH." Each player's imp,
+	// 2 m past its own target, 10 m from the other imp.
+	ACataclysmMinion* CursedsImp = ACataclysmMinion::Spawn(Cursed.Actor, FVector(58.0f * M, 0.0f, 0.0f),
+		/*Lifetime=*/20.0f, /*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	ACataclysmMinion* UncursedsImp = ACataclysmMinion::Spawn(Uncursed.Actor, FVector(58.0f * M, 10.0f * M, 0.0f),
+		/*Lifetime=*/20.0f, /*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: the cursed one's imp"), CursedsImp)
+		|| !TestNotNull(TEXT("set-up: the uncursed one's imp"), UncursedsImp))
+	{
+		return false;
+	}
+
+	// ITS OWN SWING, which it deals as itself.
+	const float CursedsMinionBefore = CursedsMinionsTarget.Health();
+	const float UncursedsMinionBefore = UncursedsMinionsTarget.Health();
+	CursedsImp->AttackTarget(CursedsMinionsTarget.Actor);
+	UncursedsImp->AttackTarget(UncursedsMinionsTarget.Actor);
+	const float CursedsMinionBlow = CursedsMinionBefore - CursedsMinionsTarget.Health();
+	const float UncursedsMinionBlow = UncursedsMinionBefore - UncursedsMinionsTarget.Health();
+	if (!TestTrue(TEXT("set-up: the uncursed one's imp deals something"), UncursedsMinionBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the cursed player's minion's blow is unchanged"),
+		CursedsMinionBlow, UncursedsMinionBlow, 0.01f);
+
+	// AND A USE CAST IN THE PLAYER'S NAME BY ITS MINION: the instigator is the
+	// cursed player and the blow names the imp as what cast it, as a skill
+	// gadget's, a skill trap's and a gadget's copy do. It keeps its whole figure.
+	FCataclysmHitDelivery ByCursedsImp;
+	ByCursedsImp.CastBy = CursedsImp;
+	FCataclysmHitDelivery ByUncursedsImp;
+	ByUncursedsImp.CastBy = UncursedsImp;
+	const float CursedByItsImp = UCataclysmSkillEffects::ApplyHit(
+		Cursed.Actor, CursedsTarget.Actor, 100.0f, NoTags, ByCursedsImp);
+	const float UncursedByItsImp = UCataclysmSkillEffects::ApplyHit(
+		Uncursed.Actor, UncursedsTarget.Actor, 100.0f, NoTags, ByUncursedsImp);
+	if (!TestTrue(TEXT("set-up: a blow cast by the uncursed one's imp deals something"), UncursedByItsImp > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a blow its minion cast in the cursed player's name is unchanged"),
+		CursedByItsImp, UncursedByItsImp, 0.01f);
 	return true;
 }
 

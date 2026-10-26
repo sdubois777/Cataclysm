@@ -287,9 +287,9 @@ public:
 	// ----------------------------------------------------------------------
 	// Wither the Living, the curse
 	//
-	// THE FIRST DEBUFF ANY ENEMY IN THE GAME HAS CAST. `Withered Touch` has been
-	// a row of `game/Data/StatusEffects.csv` since the table was generated and
-	// nothing has ever applied it to anything.
+	// THE FIRST DEBUFF ANY ENEMY IN THE GAME HAS CAST. It applies `Withered
+	// Touch`, a row of `game/Data/StatusEffects.csv`: 20% off the player's
+	// maximum mana and maximum energy shield, and off its own damage, for 5 s.
 	// ----------------------------------------------------------------------
 
 	/** How far the curse reaches, in centimetres. `Range` is 8 metres, the same

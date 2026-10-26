@@ -1076,6 +1076,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		}
 	}
 
+	// AND WITHERED TOUCH ON THE ATTACKER ITSELF, ruled 2026-10-26: "Take 20% off every blow the player deals, weapon and
+	// spell parts both". A "less" on the whole blow, as `Kept` is. NOT FOR A USE A MINION CAST IN ITS NAME, a skill
+	// gadget's, a skill trap's or a gadget's copy: those name the minion in `NamedCastBy`, and only a minion is ever
+	// named there. A minion's own swing never comes here; it is the minion's `ApplyDirectDamage`.
+	const float KeptUnderTheCurse = NamedCastBy.IsExplicitlyNull() ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat)
@@ -1085,6 +1091,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			// Issue #1833, timed grants. One for every other blow.
 			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent)
 			* Kept
+			* KeptUnderTheCurse
 			* UCataclysmCommand::ThrallDamageMultiplierAgainst(Instigator, Target),
 		SkillTags,
 		Delivery.SkillHealthCostPercent,
@@ -2438,8 +2445,16 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	{
 		AskedWith.AppendTags(Applying->SkillTags);
 	}
+	// AND WITHERED TOUCH ON THE APPLIER ITSELF, ruled 2026-10-26: "every damage-over-time tick it applies". Priced in
+	// when the effect is laid, as the applier's three stats are. Only for an effect scaled by its applier and laid on
+	// another character, so not a spread copy, a trap's share or converted damage; and not for a use a minion cast in
+	// the applier's name, whose skill names that minion in `FreeRepeatCastBy`, as `ApplyHit` leaves it out.
+	const UCataclysmSkillTemplate* const CastFor = Cast<UCataclysmSkillTemplate>(Skill);
+	const bool bCastByAMinion = CastFor && !CastFor->FreeRepeatCastBy.IsExplicitlyNull();
+	const float KeptUnderTheCurse = bScalesWithInstigator && Instigator != Target
+		&& !bCastByAMinion ? KeptUnderWitheredTouch(Instigator) : 1.0f;
 	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
-		bScalesWithInstigator ? Source : nullptr, DamagePerTick,
+		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse,
 		DurationSeconds, AskedWith);
 	if (!Numbers.bUsable)
 	{
@@ -4940,6 +4955,17 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::NumbersForEffectTag(
 	const FString RowName = Row.ToString();
 	const FString HumanName = EffectTag.ToString();
 	return StatusEffectNumbers(*RowName, *HumanName);
+}
+
+float UCataclysmSkillEffects::KeptUnderWitheredTouch(const AActor* Attacker)
+{
+	// THE TAG THROUGH THE ONE NAME-TO-TAG HELPER, AND THE FIGURE FROM ITS ROW, so the 20 lives in the table alone.
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!HasTag(Attacker, Withered))
+	{
+		return 1.0f;
+	}
+	return FMath::Clamp(1.0f - NumbersForEffectTag(Withered).Strength / 100.0f, 0.0f, 1.0f);
 }
 
 bool UCataclysmSkillEffects::ApplyNamedEffect(

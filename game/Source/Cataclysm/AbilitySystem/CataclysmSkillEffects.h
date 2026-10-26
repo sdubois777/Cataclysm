@@ -2138,6 +2138,13 @@ public:
 								 FName DamageType = NAME_None);
 
 	/**
+	 * What a blow or a damage over time effect keeps while its attacker carries Withered Touch: one less the row's
+	 * `Strength` as a share, 0.8 for its 20; one without the tag. Ruled 2026-10-26: "the cursed player's OWN damage
+	 * only". `ApplyHit` and `ApplyDamageOverTime` ask it, and each leaves out a use a minion cast in the attacker's name.
+	 */
+	static float KeptUnderWitheredTouch(const AActor* Attacker);
+
+	/**
 	 * The name what a lasting effect STATED travels under, on the effect
 	 * itself, as a set-by-caller number that no modifier reads. Issue #1503.
 	 *

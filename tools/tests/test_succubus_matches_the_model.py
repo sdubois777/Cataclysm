@@ -26,6 +26,7 @@ about a number.
 
 from __future__ import annotations
 
+import csv
 import math
 import pathlib
 import re
@@ -403,7 +404,44 @@ def test_the_curse_names_an_effect_the_table_really_has():
     assert f'Tag="Status.Debuff.{segment}"' in source(TAGS_INI), (
         f"game/Config/Tags/CataclysmTags.ini has no Status.Debuff.{segment} "
         f"tag, so UCataclysmSkillShapes::StatusTagFor returns an invalid tag "
-        f"and ApplyTagForDuration grants nothing at all.")
+        f"and ApplyNamedEffect grants nothing at all.")
+
+
+def withered_touch_row() -> dict[str, str]:
+    named = text_constant("WitherEffectName")
+    with STATUS_EFFECTS.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row["EffectKind"] == "Debuff" and row["EffectName"] == named:
+                return row
+    pytest.fail(f"game/Data/StatusEffects.csv has no Debuff row {named!r}.")
+
+
+def test_the_curse_lasts_as_long_as_its_row_says():
+    """The Succubus hands `ApplyNamedEffect` its own duration, and that
+    function uses the duration it is handed and never the row's, so the two
+    copies of 5 seconds are pinned together here. Ruled 2026-10-26."""
+    written = constant("WitherDurationSeconds")
+    row = float(withered_touch_row()["DurationSeconds"])
+
+    assert written == row, (
+        f"WitherDurationSeconds is {written} and the Withered Touch row's "
+        f"DurationSeconds is {row}; the curse would last one and say the "
+        f"other.")
+
+
+def test_the_curse_moves_the_two_maximum_pools_by_a_share():
+    """The row cuts the two pools and the code cuts the player's own blows
+    and ticks, ruled 2026-10-26. So `attack_damage` stays off the row: on it,
+    the weapon part of every blow would be cut twice."""
+    row = withered_touch_row()
+
+    assert row["MovesStat"] == "max_mana, max_energy_shield", (
+        f"Withered Touch's MovesStat is {row['MovesStat']!r}. The ruling puts "
+        f"the two maximum pools on the row and the damage cut in "
+        f"UCataclysmSkillEffects::KeptUnderWitheredTouch.")
+    assert row["MovesStatBy"] == "proportion", (
+        f"Withered Touch's MovesStatBy is {row['MovesStatBy']!r}; its Strength "
+        f"of 20 is a share, 20% off each maximum.")
 
 
 def test_the_curse_draws_no_marker_and_that_is_designed():
