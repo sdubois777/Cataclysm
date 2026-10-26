@@ -2,9 +2,9 @@
 
 WHAT IT IS FOR. The game's Corrupted Stalker (issue #1308) carries a player's numbers: its entry's Ravager class line
 at the tier's reference level, its eighteen pieces at the highest affix tier a drop carries and the reference
-character's gear level, and thirteen passive points. Its health and attack damage are then multiplied by placeholders, 1.2 rising evenly to 5.0 for health and 1.0
-for damage, ruled by the coordinating session on 2026-10-25 as layer 1's. This model brings the replacements: per
-tier, the health multiplier that makes the reference character take as long to kill the Stalker as to kill a Boss on
+character's gear level, and thirteen passive points. Its health and attack damage are then multiplied by a table of eight values each,
+`HEALTH_MULTIPLIERS` and `DAMAGE_MULTIPLIERS`, ruled by the coordinating session on 2026-10-26 from this model run
+against the game's measured build (`fitted_to_the_game`). This model computes them: per tier, the health multiplier that makes the reference character take as long to kill the Stalker as to kill a Boss on
 the same floor, and the damage multiplier that makes the Stalker kill the reference character as fast as that Boss
 does.
 
@@ -21,14 +21,18 @@ drink is taken as poured in full, which is the most the potions can add.
 WHAT IT CANNOT KNOW. The game builds the Stalker through `UCataclysmPlayerClassStats::ApplyTo` and this through
 `Character`; the two are pinned to the same class line and affixes elsewhere, but its built health and attack damage
 here are not the game's measured ones. The game test
-`Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` prints those, to be compared. Each affix
-is taken at a roll of one half, the mean of the game's draw. Critical strikes are left out on both sides.
+`Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` prints those, and they are copied below
+as `GAME_BUILT_HEALTH`, `GAME_ARMOUR` and `GAME_BLOW`. Each affix is taken at a roll of one half, the mean of the
+game's draw.
+
+A STATED LIMIT: CRITICAL STRIKES ARE LEFT OUT ON BOTH SIDES, the Boss's and the Stalker's, in both multipliers.
 
 Pure standard library, as the whole simulation is. Run it: `python -m cataclysm_sim.fight` from `sim/`.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import Counter
 from dataclasses import dataclass
@@ -73,18 +77,17 @@ DEMONIC_PIECES: tuple[tuple[str, tuple[af.StatAffix, af.StatAffix]], ...] = (
 #: Thick Hide in full, twelve points: +1% increased armour and +0.5% increased maximum health a point.
 THICK_HIDE = {"armor": 0.12, "max_health": 0.06}
 
-#: The pieces whose affixes are attack damage, which belongs to the weapon and is counted by `player_damage`.
-DAMAGE_PIECES = sum(1 for _, pair in DEMONIC_PIECES if af.FLAT_DAMAGE in pair)
+#: What window w60 measured in the game, tiers 1 to 8, at the reference gear level: the Stalker's maximum health before
+#: its multiplier, its armour, and what its basic attack took from a target with no armour and no resistance. Printed
+#: by `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` and recorded in `docs/DECISIONS.md`.
+GAME_BUILT_HEALTH = (945.6, 1485.5, 2139.7, 2926.7, 3940.4, 5314.3, 6109.7, 6902.3)
+GAME_ARMOUR = (1155.3, 1382.7, 1641.1, 1937.0, 2289.4, 2723.9, 2983.5, 3243.8)
+GAME_BLOW = (348.0, 468.0, 634.0, 867.0, 1195.0, 1661.0, 1874.0, 2101.0)
 
-#: The placeholders now in the game, for comparison.
-PLACEHOLDER_HEALTH = (1.2, 5.0)
-PLACEHOLDER_DAMAGE = 1.0
-
-
-def placeholder_health_multiplier(tier: int) -> float:
-    """The game's `CorruptedStalkerHealthMultiplier`: 1.2 at tier 1, rising evenly to 5.0 at tier 8."""
-    low, high = PLACEHOLDER_HEALTH
-    return low + (high - low) * (min(max(tier, 1), 8) - 1) / 7.0
+#: The multipliers in the game, tiers 1 to 8: `fitted_to_the_game` to two decimals, ruled by the coordinating session
+#: on 2026-10-26. The game's copies are `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`.
+HEALTH_MULTIPLIERS = (0.49, 0.76, 0.91, 1.07, 1.15, 1.15, 1.32, 1.33)
+DAMAGE_MULTIPLIERS = (1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68)
 
 
 def _defender(hero: Character, tier: int) -> dmg.Defender:
@@ -113,7 +116,7 @@ def reference_player(tier: int) -> Character:
                      gear=rb.gear(affix_tier=pd.affix_tier_at(tier), gear_level=pd.gear_level_at(tier)))
 
 
-def stalker_gear(tier: int) -> Gear:
+def _stalker_pieces(tier: int) -> tuple[Counter[str], Counter[str]]:
     """The Demonic entry's pieces at the highest affix tier a drop carries, roll one half, at the reference
     character's gear level (`player_damage.gear_level_at`), as the game's `PiecesAt` has carried them since
     2026-10-25. Until then this built them at gear level nought while `fight` took the Stalker's hit from
@@ -130,15 +133,38 @@ def stalker_gear(tier: int) -> Gear:
             (flat if implicit.kind == "flat" else increased)[implicit.stat] += (
                 value if implicit.kind == "flat" else value / 100.0)
         for affix in pair:
-            value = affix.value_at(affix_tier, roll=0.5, gear_level=gear_level)
+            value = affix.value_at(affix_tier, roll=0.5, gear_level=gear_level,
+                                   two_handed=base.value_multiplier != 1.0)
             if affix.kind == "flat":
                 flat[affix.stat] += value
             else:
                 increased[affix.stat] += value / 100.0
+    return flat, increased
+
+
+def stalker_gear(tier: int) -> Gear:
+    """The Demonic entry's pieces as `Gear`, without their attack damage, which `stalker_hit` composes."""
+    flat, increased = _stalker_pieces(tier)
     flat.pop("attack_damage", None)
     increased.pop("attack_damage", None)
     return Gear(flat=dict(flat), increased=dict(increased),
                 weapon_base={"attack_speed": af.attack_speed_of(af.base_named("Greataxe"))})
+
+
+def stalker_hit(tier: int) -> float:
+    """One non-critical blow of its basic attack: every flat attack damage its pieces carry, times one plus every
+    increase, the three-bucket pipeline with no more multiplier and the basic attack's 100%.
+
+    FROM ITS OWN PIECES, AS THE GAME BUILDS IT. Until 2026-10-26 this was `player_damage.damage_per_hit` for a Greataxe
+    with four damage affixes, which is the reference player's hit and not the Stalker's, and it fell about a third
+    short of the game's measured blow (224.6 against 348.0 at tier 1). Three terms were missing, each found by
+    reading: the eight Bands' implicit flat attack damage; the Greataxe's two affixes doubled, as a two-handed weapon's
+    are; and every affix at a roll of one half and the highest affix tier a drop carries, where `damage_per_hit` takes
+    a full roll at the reference affix tier. With all three it is within 1.5% of the game's at every tier; the rest is
+    not measured.
+    """
+    flat, increased = _stalker_pieces(tier)
+    return flat["attack_damage"] * (1.0 + increased["attack_damage"])
 
 
 def stalker(tier: int) -> Character:
@@ -192,11 +218,31 @@ def fight(tier: int) -> StalkerFight:
                  int(boss_seconds // POTION_HEAL_SECONDS))
     health_multiplier = boss_seconds * player_dps_on_stalker / (built_health * (1.0 + POTION_HEAL_SHARE * drinks))
 
-    hit = pd.damage_per_hit(tier, ("Greataxe",), flat_affixes=DAMAGE_PIECES, increased_affixes=DAMAGE_PIECES)
+    hit = stalker_hit(tier)
     landed = _landed(hit, "Demonic", player_defender)
     damage_multiplier = boss_dps_on_player * STALKER_SECONDS_BETWEEN_BLOWS / (hit * landed)
     return StalkerFight(tier, boss_seconds, boss_kills_in, built_health, hit, drinks, health_multiplier,
                         damage_multiplier, player_dps_on_stalker)
+
+
+def fitted_to_the_game(tier: int) -> StalkerFight:
+    """`fight`, with the Stalker's built health, armour and blow replaced by the game's measured ones. The ruled
+    tables are this to two decimals."""
+    row = fight(tier)
+    player_defender = _defender(reference_player(tier), tier)
+    hunter_defender = dataclasses.replace(_defender(stalker(tier), tier), health=GAME_BUILT_HEALTH[tier - 1],
+                                          armor=GAME_ARMOUR[tier - 1])
+    player_dps = pd.damage_per_second(tier)
+    player_dps_on_stalker = player_dps * _landed(pd.damage_per_hit(tier), "Demonic", hunter_defender)
+    built_health = GAME_BUILT_HEALTH[tier - 1]
+    health_multiplier = row.boss_seconds_to_kill * player_dps_on_stalker / (
+        built_health * (1.0 + POTION_HEAL_SHARE * row.drinks))
+    boss_dps_on_player = player_defender.health / row.boss_seconds_to_kill_the_player
+    hit = GAME_BLOW[tier - 1]
+    damage_multiplier = boss_dps_on_player * STALKER_SECONDS_BETWEEN_BLOWS / (
+        hit * _landed(hit, "Demonic", player_defender))
+    return StalkerFight(tier, row.boss_seconds_to_kill, row.boss_seconds_to_kill_the_player, built_health, hit,
+                        row.drinks, health_multiplier, damage_multiplier, player_dps_on_stalker)
 
 
 def table() -> list[StalkerFight]:
@@ -204,12 +250,16 @@ def table() -> list[StalkerFight]:
 
 
 def report() -> str:
-    lines = ["tier  boss TTK s  boss kills s  stalker health  stalker hit  drinks  health x (now)  damage x (now)"]
+    lines = ["tier  boss TTK s  boss kills s  stalker health  stalker hit  drinks  health x (game-fitted, ruled)"
+             "  damage x (game-fitted, ruled)"]
     for row in table():
+        game = fitted_to_the_game(row.tier)
         lines.append(f"{row.tier:>4}  {row.boss_seconds_to_kill:>10.1f}  {row.boss_seconds_to_kill_the_player:>12.1f}"
                      f"  {row.stalker_built_health:>14.0f}  {row.stalker_hit:>11.1f}  {row.drinks:>6}"
-                     f"  {row.health_multiplier:>6.2f} ({placeholder_health_multiplier(row.tier):.2f})"
-                     f"  {row.damage_multiplier:>6.2f} ({PLACEHOLDER_DAMAGE:.2f})")
+                     f"  {row.health_multiplier:>6.2f} ({game.health_multiplier:.2f}, "
+                     f"{HEALTH_MULTIPLIERS[row.tier - 1]:.2f})"
+                     f"  {row.damage_multiplier:>6.2f} ({game.damage_multiplier:.2f}, "
+                     f"{DAMAGE_MULTIPLIERS[row.tier - 1]:.2f})")
     return "\n".join(lines)
 
 

@@ -7115,13 +7115,6 @@ public:
 	/** Seconds after the player arrives on each later floor before it follows. The coordinating session's, 2026-10-25. */
 	static constexpr float CorruptedStalkerFollowSeconds = 30.0f;
 
-	/** The health multiplier's ends. PLACEHOLDERS; see `CorruptedStalkerHealthMultiplier`. */
-	static constexpr float CorruptedStalkerHealthMultiplierAtTierOne = 1.2f;
-	static constexpr float CorruptedStalkerHealthMultiplierAtTierEight = 5.0f;
-
-	/** What its attack damage is multiplied by. A PLACEHOLDER of 1.0, ruled with the health multiplier. */
-	static constexpr float CorruptedStalkerDamageMultiplier = 1.0f;
-
 	/** Mixed into the floor's seed for which entry it raises. The letters "stlk". */
 	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
 
@@ -8153,12 +8146,22 @@ public:
 	static bool CorruptedStalkerIsDue(float SecondsOnFloor, bool bHuntedAnEarlierFloor);
 
 	/**
-	 * What a Corrupted Stalker's maximum health is multiplied by at a tier: 1.2 at tier 1, rising evenly to 5.0 at tier
-	 * 8, held there above and below. A PLACEHOLDER, ruled by the coordinating session on 2026-10-25 as layer 1's: the
-	 * research found Path of Exile gives its player-like Rogue Exiles more life the higher the map tier, and a pure
-	 * standard-library fight model in `sim/` brings the replacement figures.
+	 * What a Corrupted Stalker's maximum health is multiplied by at a tier, 1 to 8, held at the end above and below:
+	 * 0.49, 0.76, 0.91, 1.07, 1.15, 1.15, 1.32, 1.33. Ruled by the coordinating session on 2026-10-26 from the fight model
+	 * `sim/cataclysm_sim/fight.py` run against the game's measured build: the multiplier at which the tier's reference
+	 * character takes as long to kill it, its potions counted, as to kill the simulation's Boss on the middle floor of a
+	 * fifty-floor dungeon. Below 1 at tiers 1 to 3 is A JUDGEMENT, accepted: a player's peak build there is tougher than
+	 * that Boss. Critical strikes are left out on both sides.
 	 */
 	static float CorruptedStalkerHealthMultiplier(int32 DifficultyTier);
+
+	/**
+	 * What a Corrupted Stalker's attack damage is multiplied by at a tier, 1 to 8, held at the end above and below:
+	 * 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68. Ruled with the health multiplier: the multiplier at which it deals
+	 * that Boss's damage per second to the reference character, the Boss's hit every 1.5 seconds against its own blow
+	 * every 0.75. Critical strikes are left out on both sides.
+	 */
+	static float CorruptedStalkerDamageMultiplier(int32 DifficultyTier);
 
 	/**
 	 * Whether a creature may take the Blood Bond: at `BloodBondRung`, not a floor's boss, and

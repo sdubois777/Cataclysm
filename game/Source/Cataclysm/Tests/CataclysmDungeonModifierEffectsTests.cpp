@@ -59915,8 +59915,8 @@ bool FCataclysmCorruptedStalkerEntriesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// ITS NUMBERS ARE A PLAYER'S: A FIVE-SET ACTOR GIVEN THE SAME BUILD THROUGH `ApplyTo` HOLDS THE SAME ARMOUR AND ATTACK
-// DAMAGE, AND ITS HEALTH TIMES THE PLACEHOLDER MULTIPLIER, AT TIER 1 AND AT TIER 8.
+// ITS NUMBERS ARE A PLAYER'S: A FIVE-SET ACTOR GIVEN THE SAME BUILD THROUGH `ApplyTo` HOLDS THE SAME ARMOUR, AND ITS
+// HEALTH AND ATTACK DAMAGE TIMES THE TIER'S MULTIPLIERS, AT TIER 1 AND AT TIER 8.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuildTest,
 	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -59928,9 +59928,15 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	TestEqual(TEXT("the health multiplier is 1.2 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 1.2f,
+	// The ruled tables' ends, and held there outside 1 to 8.
+	TestEqual(TEXT("the health multiplier is 0.49 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.49f,
 			  0.0001f);
-	TestEqual(TEXT("and 5.0 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 5.0f, 0.0001f);
+	TestEqual(TEXT("and 1.33 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.33f, 0.0001f);
+	TestEqual(TEXT("the damage multiplier is 1.12 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 1.12f,
+			  0.0001f);
+	TestEqual(TEXT("and 3.68 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 3.68f, 0.0001f);
+	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 1.12f, 0.0001f);
+	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.33f, 0.0001f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -59994,8 +60000,10 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 				  StalkerRead(Control, Combat::GetArmorAttribute()), 0.01f);
 		const float Damage = StalkerRead(Stalker, Combat::GetAttackDamageAttribute());
 		TestTrue(FString::Printf(TEXT("tier %d: an attack damage from its weapon: %.1f"), Tier, Damage), Damage > 0.0f);
-		TestEqual(FString::Printf(TEXT("tier %d: the same attack damage"), Tier), Damage,
-				  StalkerRead(Control, Combat::GetAttackDamageAttribute()), 0.01f);
+		TestEqual(FString::Printf(TEXT("tier %d: the control's attack damage times %.2f"), Tier,
+								  Effects::CorruptedStalkerDamageMultiplier(Tier)),
+				  Damage, StalkerRead(Control, Combat::GetAttackDamageAttribute())
+					  * Effects::CorruptedStalkerDamageMultiplier(Tier), 0.05f);
 		if (Tier == 1)
 		{
 			HealthAtTierOne = StalkerHealth;
@@ -60907,8 +60915,12 @@ bool FCataclysmCorruptedStalkerChargesFollowTest::RunTest(const FString& Paramet
 }
 
 // A MEASUREMENT, ASKED FOR BY THE COORDINATING SESSION ON 2026-10-25: WHAT A STALKER IS BUILT WITH AT EACH TIER, for the
-// simulation's fight model to be checked against. Printed on lines beginning "STALKER BUILD:", and fails nothing but
-// its set-up.
+// simulation's fight model to be checked against. Printed on lines beginning "STALKER BUILD:" and "STALKER BLOW:".
+//
+// AND THE CHECK ON THE RULED MULTIPLIERS, since 2026-10-26. The tables were fitted to what window w60 measured here,
+// copied below; divided by its tier's multiplier, its health and its blow must still be those within 1%. A build that
+// moves away from them leaves the tables fitted to a Stalker that no longer exists, and this fails rather than leaving
+// that unseen. `sim/cataclysm_sim/fight.py` holds the same figures as `GAME_BUILT_HEALTH` and `GAME_BLOW`.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuiltAtEachTierTest,
 	"Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -60927,6 +60939,8 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+	constexpr float FittedBuiltHealth[8] = {945.6f, 1485.5f, 2139.7f, 2926.7f, 3940.4f, 5314.3f, 6109.7f, 6902.3f};
+	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{
 		ACataclysmCorruptedStalkerCharacter* Stalker =
@@ -60960,12 +60974,20 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		Target->SetArmour(0.0f);
 		const float TargetBefore = StalkerRead(Target, Vital::GetHealthAttribute());
 		Stalker->AttackTarget(Target);
-		AddInfo(FString::Printf(TEXT("STALKER BLOW: tier %d: its basic attack took %.1f from a target with armour %.1f "
-									 "and all resistance %.1f; its attack damage %.1f"),
-								Tier, TargetBefore - StalkerRead(Target, Vital::GetHealthAttribute()),
+		const float Blow = TargetBefore - StalkerRead(Target, Vital::GetHealthAttribute());
+		const float DamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(Tier);
+		AddInfo(FString::Printf(TEXT("STALKER BLOW: tier %d: its basic attack took %.1f (%.1f before the multiplier of "
+									 "%.3f) from a target with armour %.1f and all resistance %.1f; its attack damage %.1f"),
+								Tier, Blow, Blow / DamageMultiplier, DamageMultiplier,
 								StalkerRead(Target, Combat::GetArmorAttribute()),
 								StalkerRead(Target, UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute()),
 								StalkerRead(Stalker, Combat::GetAttackDamageAttribute())));
+
+		TestEqual(FString::Printf(TEXT("tier %d: its health before the multiplier is the build the table was fitted to"),
+								  Tier),
+				  Health / Multiplier, FittedBuiltHealth[Tier - 1], FittedBuiltHealth[Tier - 1] * 0.01f);
+		TestEqual(FString::Printf(TEXT("tier %d: its blow before the multiplier is the blow the table was fitted to"), Tier),
+				  Blow / DamageMultiplier, FittedBlow[Tier - 1], FittedBlow[Tier - 1] * 0.01f);
 	}
 	return true;
 }
