@@ -56,7 +56,24 @@ Predicted: the new test fails, 1 assertion (the sheet's line after two clears); 
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t104w, under the editor lock as `enchant-t104w`, taken at 10.8 GB
+free, at `55d042c2b` on `fix/the-sheet-reads-conditioned-rows-1`: the two commits moved from `cfb05f119` and
+`bc67eac8a` (on `abe7f7d59`) onto development `c85e507fa`, each keeping its zero-context patch id, whole and outside this
+file; this file conflicted in the first, resolved by placing the entry, its lines unchanged.
+`tools/check_resolved_cpp.py` over the 4 C++ files: "4 files read, 0 with complaints".
+
+- **The test alone, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "1 tests performed, 1
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4265 tests performed, 4265 succeeded, 0 failed" (4264 on development + 1);
+  "Declared: 4265 tests in the tree at 55d042c2b; 4265 performed, gap 0". 43 tests skipped part of what they check. The
+  memory summary line, quoted: "CataclysmTestMemorySummary: tests=4872 peak_used_virtual_mb=8008
+  final_used_virtual_mb=7644 collections=3245 collection_total_s=106.713 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **#2183-G1, the sheet reads the attribute alone:** PROVED, AS REGISTERED. Prefix the test's whole name (1 test), the
+  anchor counted once, 0 ensures, the file's hash the same after. It failed on 1 assertion, registered 1: the sheet's
+  armour line "to be "178.4", but it was "171.5"" (the blow's armour against the attribute); its control passed;
+  restored, 1 performed, 1 succeeded.
 
 ---
 
