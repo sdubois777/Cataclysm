@@ -11271,10 +11271,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsClearedRowTest,
  * armour's increases, and the armour a blow asks for rises with them. Issue
  * #1833, `armor` scaled by `floors_cleared`.
  *
- * THE BLOW'S FIGURE AND NOT THE SHEET'S, ruled 2026-09-30 after this test's first
- * run. The character sheet reads the Armor attribute, and
+ * THE BLOW'S FIGURE, ruled 2026-09-30 after this test's first run.
  * `UCataclysmPlayerClassStats::ApplyTo` resolves each stat with no state, so no
- * refresh can put a state-scaled row on the sheet: a known limit.
+ * refresh puts a state-scaled row on the Armor attribute. The character sheet
+ * shows it since issue #2183, by adding what the refresh could not fold; the
+ * test below checks that.
  */
 bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
 {
@@ -11308,6 +11309,56 @@ bool FCataclysmFloorsClearedRowTest::RunTest(const FString&)
 			  After.SumOfIncreases - Before.SumOfIncreases, 4.0f, 0.001f);
 	TestTrue(*FString::Printf(TEXT("and the armour a blow reads rose: %.2f to %.2f"), Before.Final, After.Final),
 			 After.Final > Before.Final + 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsClearedSheetTest,
+	"Cataclysm.Enchantments.TheSheetsArmourLineTakesTheArmourPerFloorClearedRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2183. The same row as the test above, "Your armor is increased by 1%-2% for every dungeon floor cleared this
+ * run", worn at the top: after two clears the character sheet's armour line shows the armour a blow reads, though the
+ * Armor attribute has not moved. The control, read first: with no clear, the sheet's line is the attribute.
+ */
+bool FCataclysmFloorsClearedSheetTest::RunTest(const FString&)
+{
+	using namespace CataclysmFloorRowsTest;
+
+	CataclysmKillCounterTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearingPlayer Wearing(Scope.World, TEXT("Positive_Your_armor_is_increased_by_1_2_for_every_dunge"),
+						   CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestNotNull(TEXT("a possessed player wearing the row"), Wearing.ASC))
+	{
+		return false;
+	}
+	const FName Armor(TEXT("armor"));
+	const float Attribute = Wearing.ASC->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute());
+	TestEqual(TEXT("control: with no clear, the sheet's armour line is the attribute"),
+			  UCataclysmCharacterSheetLayout::LineFor(TEXT("armor"), Wearing.ASC, 1).Value,
+			  UCataclysmCharacterSheetLayout::Number(Attribute));
+
+	Wearing.State->NoteFloorCleared();
+	Wearing.State->NoteFloorCleared();
+
+	FCataclysmStatBreakdown After;
+	if (!TestTrue(TEXT("armour has a stat line"),
+				  Wearing.ASC->StatBreakdownForSkill(Armor, FGameplayTagContainer(), After)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two clears leave the Armor attribute where it was"),
+			  Wearing.ASC->GetNumericAttribute(UCataclysmCombatAttributeSet::GetArmorAttribute()), Attribute, 0.001f);
+	TestTrue(*FString::Printf(TEXT("set-up: the armour a blow reads rose above the attribute: %.2f to %.2f"), Attribute,
+							  After.Final),
+			 After.Final > Attribute + 1.0f);
+	TestEqual(TEXT("and the sheet's armour line shows the armour a blow reads"),
+			  UCataclysmCharacterSheetLayout::LineFor(TEXT("armor"), Wearing.ASC, 1).Value,
+			  UCataclysmCharacterSheetLayout::Number(After.Final));
 	return true;
 }
 
