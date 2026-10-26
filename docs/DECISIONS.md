@@ -38,7 +38,9 @@ console obeys it as the screen does.
 **A SKILL THAT LEAVES THE KEYS THROUGH A CHOICE KEEPS NOTHING, AND THAT IS A SMALLER COOLDOWN SKIP OF ITS OWN, NOT
 CLOSED HERE.** Use Molten Cleave, choose Pyroclasm for the Heavy key (Molten Cleave is then on no key, and the Heavy
 key's running cooldown ends), then clear the Heavy key: Molten Cleave comes back ready. It takes two choices, and the
-skill is off the keys in between. The brief said to state it and build nothing more. A skill that leaves the keys
+skill is off the keys in between. The brief said to state it and build nothing more; the coordinating session
+opened issue #2524 for it ("A skill a choice takes off the keys forgets its cooldown, so two choices reset it"),
+to be closed in a small follow-up after this layer. A skill that leaves the keys
 because its weapon came off is different: a change of gear moves no cooldown, so the key keeps the cooldown that was
 running on it, and the skill that comes back to that key with its weapon waits whatever is left.
 
@@ -51,13 +53,19 @@ every other screen does; `AssignSkill` is not a server function. Not fixed by th
 **NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
 brief 97, from development `b074a5090`. Nothing was compiled, no Unreal test was run, no editor was opened.
 
-**ONE EXISTING UNREAL TEST WILL FAIL AFTER THE INPUT ASSETS ARE REGENERATED, AND THIS LAYER DID NOT CHANGE IT**, because
-the brief says to stop and say for an assertion change that was not ruled: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+**ONE EXISTING UNREAL TEST CHANGES, AS RULED, IN THE SECOND COMMIT.** The writing session stopped on it, as the brief
+says to for an assertion change that was not ruled: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
 (`CataclysmInputTests.cpp` 283-311) lists eleven native action names and asserts "and lists no others" against that
-count. After `generate_input_assets.py` runs, the config holds twelve, so that one assertion fails (12 against 11). The
-change it needs is one line in its `NativeNames` array, `CataclysmInputActionNames::ToggleSkillAssignment,`, which also
-adds one `TestNotNull`. Before the editor run, with that line added, the test would fail twice instead. It is the
-coordinating session's to rule.
+count, so after `generate_input_assets.py` runs, with twelve actions in the config, that assertion would fail (12
+against 11). The coordinating session ruled, 2026-10-25: "**YES: add CataclysmInputActionNames::ToggleSkillAssignment
+to ConfigListsEverySlotAndNativeAction**, with the "joined 2026-10-25, issue #837 layer 4" comment, as the earlier
+actions were added. Make it your second commit, with old and new recorded in the entry. It passes only after the
+input-asset run, which your window does first." The enchantment session's second commit: OLD the `NativeNames` array
+ending at `CataclysmInputActionNames::DrinkPotion4,` under the comment "Eleven native bindings"; NEW the same array
+with `CataclysmInputActionNames::ToggleSkillAssignment,` added last, under the comment "The skill-choice screen, on K,
+issue #837 layer 4. It joined on 2026-10-25.", and the comment above it "Twelve native bindings". That adds one
+`TestNotNull`, and "and lists no others" now compares against twelve. On a checkout whose input assets were not
+regenerated, the test fails twice, as it did for each earlier action.
 
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
@@ -234,7 +242,7 @@ screen": "IA_ToggleSkillAssignment"`.
 the generator) and `test_one_input_mode.py` (counts `ApplyPlayingInputMode();` in the controller, at least 5; there are
 14): "17 passed" with the new check's file. **None needs the regenerated assets; all pass now.**
 `Cataclysm.Input.ConfigListsEverySlotAndNativeAction` reads `DA_InputConfig` on disk: after the editor run it will read
-twelve native actions, eleven named in its list, and fail "and lists no others" (SAID FIRST).
+twelve native actions, all twelve named in its list since the second commit (SAID FIRST).
 `Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions` reads both contexts: K is a new key in each, owned by
 one action, so no collision; it needs nothing.
 
@@ -260,8 +268,8 @@ one action, so no collision; it needs nothing.
 - **THE KEPT LINE IS A RUN-TIME TEXT LINE UNDER ITS KEY'S BUTTON**, in a dimmed colour property, because a choice button
   holds one label in one colour. The option not taken: a second line inside the button's label, which cannot be dimmed.
 - **THE MIDDLE DOT IS WRITTEN `\u00B7` IN THE SOURCE**, so the C++ stays ASCII as the rest of `Interface/` is.
-- **`Cataclysm.Input.ConfigListsEverySlotAndNativeAction` WAS NOT CHANGED** (SAID FIRST). The option not taken: adding
-  the one name, which is an assertion change the brief says to stop on.
+- **`Cataclysm.Input.ConfigListsEverySlotAndNativeAction` WAS NOT CHANGED by the writing session** (SAID FIRST): adding
+  the one name is an assertion change the brief says to stop on. It was ruled and made in the second commit.
 
 ### WHAT WAS BUILT
 
@@ -355,7 +363,8 @@ passed", named failure
 `tools/tests/test_the_skill_assignment_screen_is_generated_with_its_bindings.py::test_every_bound_widget_of_the_skill_screen_is_added_by_its_generator`.
 
 **Existing tests, by reading.** Changed as ruled: layer 3's tests 2 and 6 (four assertions, above). Will move after the
-input editor run: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction` (SAID FIRST). Named because they reach the moved
+input editor run, and changed as ruled in the second commit: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+(SAID FIRST). Named because they reach the moved
 code and pass: the other twelve `Cataclysm.SkillAssignment.` tests (each choice in them is made before any cooldown
 runs, so the carry finds nothing to carry; test 12 commits Conflagration's nought-second cooldown, which applies no
 effect, before its choice, and Molten Cleave's after it; test 4 calls `RefillAbilitySlots` with nothing moved);

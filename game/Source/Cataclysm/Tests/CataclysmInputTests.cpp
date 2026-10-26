@@ -280,7 +280,7 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Eleven native bindings, found by the names the controller uses.
+	// Twelve native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
@@ -299,6 +299,9 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		CataclysmInputActionNames::DrinkPotion2,
 		CataclysmInputActionNames::DrinkPotion3,
 		CataclysmInputActionNames::DrinkPotion4,
+		// The skill-choice screen, on K, issue #837 layer 4. It joined on
+		// 2026-10-25.
+		CataclysmInputActionNames::ToggleSkillAssignment,
 	};
 
 	for (const FName& Name : NativeNames)
