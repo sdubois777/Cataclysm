@@ -1435,15 +1435,15 @@ public:
 	/**
 	 * The buffs a random buff is drawn from, in the order `Cataclysm.RandomBuffPick` counts in. Ruled 2026-10-12.
 	 *
-	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner has been asked which
-	 * buffs are in the pool. Until the answer it holds the buffs of the status table that a character can hold and
-	 * whose own description the existing stat lines and conditions can express: Mana Surge, Tactical Advantage,
-	 * Famished, Commander, Divine Aegis and Spellslinger. Each entry is the stat line its own description states.
+	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner answered on 2026-10-26,
+	 * "Add everything": every Buff row of the status table joins the pool once it is built as a standalone buff
+	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds eight: Mana Surge,
+	 * Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own description
+	 * states; and Dervish and Warhound (2026-10-26), each the stat lines of the set row that builds it.
 	 *
-	 * LEFT OUT FOR NOW: Dervish, Demonic Rage, Warhound, Plague, Sanctified Power, Temporal Flux, Void, Death,
-	 * Chaotic Barrier, The Ascended and Feasting. The owner answered on 2026-10-26, "Add everything": each joins the
-	 * table once it is built as a standalone buff (issue #2533). Until then most describe another set's own mechanic
-	 * or an enemy's.
+	 * LEFT OUT FOR NOW: Demonic Rage, Plague, Sanctified Power, Temporal Flux, Void, Death, Chaotic Barrier, The
+	 * Ascended and Feasting. Each needs an entry to lay more than stat lines, or a ruling on what it means for a
+	 * player, before it can join.
 	 *
 	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
 	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what
