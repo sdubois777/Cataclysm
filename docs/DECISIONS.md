@@ -422,6 +422,37 @@ The Q3a test is covered by the whole suite, not a fourth proof (ruled).
 "IA_ToggleSkillAssignment"`, as every earlier key added them. Without them the test refuses the document's new rows as
 "not a key this test knows". It still requires the document and the generator to agree binding for binding.
 
+### WINDOW t99w: TWO STOPS, AND THE CORRECTED REGISTRATION (written by the enchantment session, before it went on)
+
+**The first start stopped on a check the enchantment session wrote wrongly.** The build plan cache was deleted and the
+build ran: "Build: Succeeded - 40 actions, 37 files compiled". The window script then looked in that line for the new
+files' names, and `tools/unreal_build.py` names files only when few compile, so the check could not pass. The new
+check, kept on the coordinating session's word ("it reads the build products, not one line of output"): for each new
+`.cpp`, the unity file that includes it must have an object newer than the source. It found
+`CataclysmSkillAssignmentWidget.cpp` in `Module.Cataclysm.10.cpp` and `CataclysmSkillChoiceScreenTests.cpp` in
+`Module.Cataclysm.28.cpp`. The coordinating session ruled a new start: "No game step ran before the stop, so this is a
+new start rather than a re-run of a failed suite."
+
+**The second start stopped on the enchantment session's registration of the input-asset run.** The build was up to
+date and the new check passed; `tools/generate_interface_assets.py` made exactly `WBP_SkillAssignment.uasset`, as
+registered; `tools/generate_input_assets.py` exited 0 and changed every tracked file under `game/Content/Input` (the 17
+existing action files, `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`) and
+`game/Content/Maps/L_Sandbox.umap`, and added `IA_ToggleSkillAssignment.uasset`. The registration had allowed only the
+config, the two mapping contexts, the new action and the map, copied from #2136's commit. The reason is in the
+generator's own docstring: "Re-running it overwrites every property of every asset it owns", and "two runs over
+unchanged input do not produce identical bytes". Nothing outside the files it owns changed.
+
+**The coordinating session's ruling, 2026-10-25, verbatim:** "**(a), following #2136's precedent.** Commit only:
+IA_ToggleSkillAssignment.uasset (new); DA_InputConfig.uasset; IMC_KeyboardMovement.uasset; IMC_MouseMovement.uasset;
+WBP_SkillAssignment.uasset (new). Restore the other 17 action files and L_Sandbox.umap with git checkout. Keep
+WBP_SkillAssignment as generated; do not regenerate it. **You need not start again from step 0.**"
+
+**The corrected registration, from step 1c:** step 1b's allowed changes are files under `game/Content/Input` and
+`L_Sandbox.umap`, and it must add `IA_ToggleSkillAssignment.uasset`; step 1c stages the five files above by name,
+restores the 17 action files and the map, checks that nothing else is changed, and commits; then the screen's tests
+alone (8 of 8), the whole suite (4254 performed, 0 failed), Python (JUnit 7007, 0 failures) and the three proofs, as
+registered.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
