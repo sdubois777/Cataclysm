@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — Cripple, Weaken, Shred and Stun are named on a creature's status line and above the player's bars (#2379)
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (four new text functions and the
+status line), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the player's line), the new
+`game/Source/Cataclysm/Tests/CataclysmDebuffWordsTests.cpp` (four tests, the group `Cataclysm.DebuffWords.`), this file.
+No data, asset, tag or workbook change. Written by the enchantment session directly, at the coordinating session's word
+of 2026-10-25: "#2379. Add CrippledTextFor, WeakenedTextFor, ShreddedTextFor and StunnedTextFor, in StatusLineFor and
+the HUD. One test per word with a no-tag control. One proof."
+
+### SAID FIRST
+
+**Four ailments were held on actors and named on no screen.** A worn merged drawback puts a random one of them on its
+wearer every 15 seconds, and the Shard of Anarchy entry recorded that nothing said which. Now "Crippled", "Weakened",
+"Shredded" and "Stunned" are said while `Status.Debuff.Cripple`, `Status.Debuff.Weaken`, `Status.Debuff.Shred` and
+`State.Stunned` last on a living actor (`CataclysmAilments.cpp`, the four ailment rows), by name only, in the form of
+"Feared" and "Maddened". A creature's status line carries them after "Maddened"; the player's line above its bars
+draws each on a line of its own after Madness. The comment on `SlowedTextFor`, which said no screen shows tagged
+debuffs, now names `CrippledTextFor`.
+
+**Not shown, stated:** the seconds left, and the strength of each (Cripple's slow, Weaken's damage cut, Shred's
+armour cut). The issue left that open; the name alone is the smallest version and matches the two words beside it.
+Whether the words are legible on screen needs a person to look.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear the merged drawback that applies a random debuff every 15 seconds: the word for each (Crippled, Weakened,
+  Shredded or Stunned) appears above your bars while it lasts.
+
+### Tests
+
+Four tests, `Cataclysm.DebuffWords.CrippledIsSaidWhileCrippleIsHeld`, `...WeakenedIsSaidWhileWeakenIsHeld`,
+`...ShreddedIsSaidWhileShredIsHeld` and `...StunnedIsSaidWhileStunIsHeld`, 8 assertions each (one helper,
+`WordFollowsTheTag`): set-up, a world; set-up, the tag is registered and the creature has an ability system;
+**control, with no tag nothing is said**, **nor does the status line**; with the tag held as a loose tag, **the text is
+the word**, **the status line holds it**; the tag taken off, **nothing is said again**, **nor by the status line**. Existing tests that compare a whole status line exactly
+(`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnchantmentEffectTests.cpp` 6116-6240) would change only if their
+creature holds one of the four tags; by reading none does, and the whole suite is the check.
+
+### GUARD PROOF PROPOSED
+
+**#2379-G1, the words never follow the tag:** in `CataclysmCombatOverlay.cpp`'s `WordWhileHeld`,
+`UCataclysmSkillEffects::HasTag(Actor, Tag) && !UCataclysmSkillEffects::IsDead(Actor)` becomes
+`UCataclysmSkillEffects::HasTag(Actor, FGameplayTag()) && !UCataclysmSkillEffects::IsDead(Actor)`. Predicted: all four
+tests fail, 2 assertions each (the word, and the status line, while the tag is held), 8 in all; every control passes.
+Prefix `Cataclysm.DebuffWords.`.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — The Corrupted Stalker grows as a player does, and its death pays as a Boss and drops what it wore (#1308, part B, layer 3)
 
 **Affects:** `ACataclysmCorruptedStalkerCharacter` (its items' gear level; its death); `ACataclysmEnemyCharacter` (three

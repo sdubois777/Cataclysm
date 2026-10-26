@@ -711,6 +711,20 @@ void ACataclysmHUD::DrawPlayerVitals()
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
 
+	// AND THE FOUR TAGGED DEBUFFS, one line each, as Madness above: a worn row can put any of them on the player
+	// every 15 seconds, and until issue #2379 nothing named them.
+	for (const FString& Debuff :
+		 {UCataclysmCombatOverlay::CrippledTextFor(Pawn), UCataclysmCombatOverlay::WeakenedTextFor(Pawn),
+		  UCataclysmCombatOverlay::ShreddedTextFor(Pawn), UCataclysmCombatOverlay::StunnedTextFor(Pawn)})
+	{
+		if (!Debuff.IsEmpty())
+		{
+			Top -= PlayerBarHeightPx + PlayerBarGapPx;
+			DrawTextCentred(Debuff, FLinearColor::White,
+							PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+		}
+	}
+
 	// AND THE BUFF A WORN ROW DREW, WITH ITS SECONDS LEFT, such as "Commander 12s". Ruled 2026-10-12 by the
 	// coordinating session: the held buff is shown wherever the drawn debuff of the merged drawback is shown to
 	// the player, and Madness, the one of those five debuffs a screen names, is named just above. The owner's
