@@ -18770,6 +18770,13 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 			continue;
 		}
 
+		// NOR THE CORRUPTED STALKER, for the reason Divine Wrath's beam spares it: a player could end the encounter by
+		// finishing a chain beside it. Ruled by the coordinating session on 2026-10-26. Issue #2523.
+		if (Creature->IsA<ACataclysmCorruptedStalkerCharacter>())
+		{
+			continue;
+		}
+
 		// HEALTH TO ZERO AND THEN `HandleDeath`, WHICH IS A REAL DEATH. That pair is what
 		// `UCataclysmHealthDebt` uses, and it is what makes the loot roll and the
 		// experience grant in the creature's own handler run. Marking it dead instead
@@ -21611,6 +21618,14 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 	{
 		ACataclysmEnemyCharacter* Creature = *It;
 		if (!IsValid(Creature) || !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+
+		// NOR A CREATURE HOLDING A PLAYER BUILD, the Corrupted Stalker, whose rung is ruled Common, paying as a Boss: a
+		// rung raised here would also make it Blood Bond's and Blood-Forged Champions'. Ruled by the coordinating
+		// session on 2026-10-26. Issue #2523.
+		if (Creature->bHoldsAPlayerBuild)
 		{
 			continue;
 		}

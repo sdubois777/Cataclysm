@@ -195,6 +195,11 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	Abilities->SetNumericAttributeBase(AttackDamage,
 		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier(DifficultyTier));
 
+	// ENOUGH FERVOUR FOR ITS ULTIMATE ONCE, on every floor, since every floor it hunts raises it through here. See
+	// `CorruptedStalkerStartingFervour`.
+	Abilities->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+									   Effects::CorruptedStalkerStartingFervour);
+
 	// AND NOTHING WRITES OVER IT FROM HERE ON. The diagnostic window w54d measured one archetype setter taking armour
 	// from 416.1 to 0 and crit from 0 to 5.
 	bHoldsAPlayerBuild = true;
