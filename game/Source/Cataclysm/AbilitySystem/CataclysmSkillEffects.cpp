@@ -6,6 +6,7 @@
 // For the chances to apply an ailment that a blow carries. Issue #899.
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 // For the resistance a Shred reduces. The per-type slot is picked by
 // UCataclysmDamageCalculation::ResistanceAttributeFor and the generic one is
 // what an untyped attacker cuts instead.
@@ -3604,7 +3605,8 @@ namespace
 			Share = TargetAbilities->TakeNextDisplacementShare();
 		}
 
-		Target->AddActorWorldOffset(Resisted * Share, /*bSweep=*/true);
+		// SWEPT AND NOT REFUSED FOR STARTING ON THE FLOOR. Issue #2203.
+		UCataclysmMovement::MoveWithoutSticking(Target, Resisted * Share);
 
 		// DISPLACEMENT DONE TO A CREATURE IS NOT ITS OWN MOVEMENT, so Nowhere to
 		// Run measures from where it landed rather than undoing it. Issue #1515,

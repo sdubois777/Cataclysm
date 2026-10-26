@@ -3502,9 +3502,8 @@ void UCataclysmMovementSkill::ActivateAbility(
 					  Partner->GetActorLocation().Y, Start.Z);
 
 		const FVector PartnerWas = Partner->GetActorLocation();
-		Partner->SetActorLocation(
-			FVector(Start.X, Start.Y, Partner->GetActorLocation().Z),
-			/*bSweep=*/true);
+		UCataclysmMovement::MoveWithoutSticking(
+			Partner, FVector(Start.X, Start.Y, Partner->GetActorLocation().Z) - Partner->GetActorLocation());
 
 		// A TRADE IS AN INSTANT RELOCATION FOR BOTH OF THEM, so neither's walked ground counts it. Issue #2388.
 		UCataclysmMovement::NoteRelocatedInstantly(Partner, PartnerWas);
@@ -3592,9 +3591,10 @@ void UCataclysmMovementSkill::ActivateAbility(
 	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, Start);
 
 	// Swept, so a leap into a wall stops at the wall rather than putting the
-	// character inside it.
+	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
+	// and #2505: a blink in the frame the player is placed moved 0 cm.
 	const FVector SelfWas = Self->GetActorLocation();
-	Self->SetActorLocation(End, /*bSweep=*/true);
+	UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
 	ArrivedAt = Self->GetActorLocation();
 
 	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
@@ -3741,7 +3741,7 @@ void UCataclysmMovementSkill::FlickerOnce()
 						   Next->GetActorLocation().Y,
 						   Self->GetActorLocation().Z);
 		const FVector SelfWas = Self->GetActorLocation();
-		Self->SetActorLocation(Feet, /*bSweep=*/true);
+		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
 		ArrivedAt = Self->GetActorLocation();
 
 		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.

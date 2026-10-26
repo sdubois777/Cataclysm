@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTether.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -174,9 +175,9 @@ void ACataclysmTether::Check()
 		// half of the last.
 		//
 		// SWEPT, so a creature dragged into a wall stops at the wall rather than
-		// being put inside it.
-		A->SetActorLocation(A->GetActorLocation() + Half, /*bSweep=*/true);
-		B->SetActorLocation(B->GetActorLocation() - Half, /*bSweep=*/true);
+		// being put inside it, and not refused for starting on the floor. Issue #2203.
+		UCataclysmMovement::MoveWithoutSticking(A, Half);
+		UCataclysmMovement::MoveWithoutSticking(B, -Half);
 
 		// A DRAG IS DISPLACEMENT, NOT THE CREATURE'S OWN MOVEMENT, so Nowhere to
 		// Run measures from where each end landed. Issue #1515.
