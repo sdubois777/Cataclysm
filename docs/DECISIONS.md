@@ -12,7 +12,8 @@ tests. Issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays 
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** The fight model was run; its table is below.
+- **BUILT AND RUN: window w58 below passed every registered figure, and all three proofs were PROVED.** The fight
+  model was run; its table is below.
 - **THE FIGHT MODEL'S STALKER IS THE SIMULATION'S BUILD OF IT, NOT THE GAME'S.** The game test
   `WhatACorruptedStalkerIsBuiltWithAtEachTier` prints the game's built health and attack damage at all eight tiers in
   the window, to be compared before the multipliers are taken up. The multipliers are not changed by this entry: the
@@ -158,7 +159,34 @@ branch. Its attack damage is not settled: the model's hit runs ahead of the game
 game's stops rising at 414.0 from tier 6, for a reason not measured. The damage multiplier waits for the "STALKER
 BLOW:" figures.
 
-The next window is registered above.
+**Window w58 (lock `dungeon-w58`, `feat/corrupted-stalker-brain-2` at `2683f6df1`, on `b074a5090`, the #2521 merge,
+2026-10-25) passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s
+runs at `b074a5090` succeeded (its CI run waited for until it had); none in progress or queued; the lock free; no build
+or editor process; no open pull request; "free GB: 11.2 of 31.1". The lock was released before anything was written
+here. The move onto `b074a5090`: one top-of-file conflict in this file, resolved by taking `development`'s file with this
+entry above its first, asserted lossless; `check_resolved_cpp.py`, "7 files read, 0 with complaints".
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 41 actions, 38 files compiled` |
+| Step 1b, the refill test alone | passes | `Tests: 1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4245 / 0 | `4245 tests performed, 4245 succeeded, 0 failed`; declared 4245, gap 0 |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=7654`, peak 7,999 |
+| Python (JUnit) | | 7004 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, the 40% potion check never true | the potion test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the guard against a second running copy removed | the aura test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, the carried charges not given to the next floor's | the follow test fails | "1 tests performed, 0 succeeded, 1 failed: TheCorruptedStalkerFollowsWithThePotionChargesItHad"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**Its measurements, as printed.** The "STALKER BUILD:" lines repeat w57's figures above unchanged. "STALKER BLOW:" at each
+tier, against a target with no armour and no resistance: 198.0, 224.0, 255.0, 296.0, 347.0, 414.0, 414.0, 414.0, each
+within one point of that tier's attack damage (198.3 ... 414.0). **So its basic attack deals its attack damage once**,
+and the 414.0 at tiers 6 to 8 is what it really deals. "STALKER FERVOUR BLOWS: the player's health after each of the
+twenty: 248, 0, 0, ..." -- **the player died on the second blow**, which is why twenty blows earned two Fervour.
+
+**The damage multiplier, from the measured blow.** The fight model's damage multiplier taken against the game's measured
+basic-attack damage instead of the model's own hit, which runs ahead of the game's from tier 2: 1.96, 4.43, 6.85, 8.92,
+10.61, 11.83, 15.05, 18.67 for tiers 1 to 8. Why the game's attack damage stops rising at 414.0 from tier 6 is not
+measured. The multipliers are the coordinating session's to rule on a follow-up branch; this entry changes neither.
 
 ---
 
