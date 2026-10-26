@@ -293,7 +293,7 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * passive node is chosen, so it may use the wording section VI reserves for
 	 * things a drop cannot hand you by accident.
 	 *
-	 * Burning Wrath is now "4% more fire damage for every enemy currently
+	 * Burning Wrath is now "4% more damage for every enemy currently
 	 * burning within 15 meters": this is 4, ScalingSource is Burning, and the
 	 * count is taken once when the buff goes up.
 	 */
@@ -615,10 +615,9 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * of a `ScalingSource` and sizes one blow; this is a flat grant to somebody
 	 * else, for as long as they stand in the ring.
 	 *
-	 * SCOPED TO THE SKILL'S OWN ELEMENT, so "increased FIRE damage" is data
-	 * rather than code: Conflagration carries `Element.Demonic`, which is this
-	 * project's fire, and a War aura written the same way would scope to
-	 * `Element.War` with nothing changing here.
+	 * SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on the
+	 * owner's "Make them generic": until then the bonus required the aura's own
+	 * element, so Conflagration's reached Demonic blows only.
 	 *
 	 * IT REACHES ALLIES AND NOT THE CASTER.
 	 * `UCataclysmTargeting::FindAlliesInSphere` excludes the caster, and its

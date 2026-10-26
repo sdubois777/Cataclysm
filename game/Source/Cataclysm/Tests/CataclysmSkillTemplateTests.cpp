@@ -3677,8 +3677,10 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
 	TestEqual(TEXT("It counted both burning enemies"), Buff->BurningEnemiesAtCast, 2);
 	TestEqual(TEXT("It granted 4% for each of them"), Buff->GrantedIncrease, 8.0f);
-	TestEqual(TEXT("Scoped to the skill's own element"),
-		Buff->GrantedScope.ToString(), FString(TEXT("Element.Demonic")));
+	// SCOPED TO NOTHING SINCE 2026-10-25 (Q-P2, Q-B1). This read
+	// "Element.Demonic", the skill's own element.
+	TestFalse(TEXT("Scoped to no tag, so it raises all damage"),
+		Buff->GrantedScope.IsValid());
 
 	// A Demonic strike carries Element.Demonic, so the increase reaches it.
 	FScopedFighter Demonic(World, FVector(2 * M, 0, 0));
@@ -3804,11 +3806,13 @@ bool FCataclysmBuffGrantsMoreNotIncreasedTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseIsScopedTest,
-	"Cataclysm.Skills.ABuffsIncreaseDoesNotReachAnotherDamageType",
+// RENAMED 2026-10-25 from `ABuffsIncreaseDoesNotReachAnotherDamageType`, whose
+// name the ruling made false (Q-P2, Q-B1, on the owner's "Make them generic").
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseIsUnscopedTest,
+	"Cataclysm.Skills.ABuffsIncreaseReachesAnotherDamageTypeToo",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
+bool FCataclysmBuffIncreaseIsUnscopedTest::RunTest(const FString&)
 {
 	using namespace CataclysmSkillTest;
 
@@ -3828,10 +3832,9 @@ bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
 	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
 	TestEqual(TEXT("One burning enemy, so 4%"), Buff->GrantedIncrease, 4.0f);
 
-	// A War strike carries Element.War, so a Demonic increase must not reach it.
-	// THIS IS THE POINT OF SCOPING BY THE SKILL'S TAGS. A plain attribute could
-	// not express it: the character's increased damage would be one number for
-	// every skill they own.
+	// A War strike carries Element.War, and the Demonic buff's increase reaches
+	// it too, because the increase is scoped to no tag. Until 2026-10-25 it was
+	// scoped to the skill's own element and this strike dealt the plain 250.
 	FScopedFighter Target(World, FVector(2 * M, 0, 0));
 	UCataclysmStrikeSkill* WarStrike = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
@@ -3840,8 +3843,8 @@ bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
 	const float Before = Target.Health();
 	TestTrue(TEXT("The War strike activates"), Activate(Caster, WarStrike));
 
-	TestEqual(TEXT("The War strike dealt the plain 250%, unraised"),
-		Before - Target.Health(), WeaponDamage * 250.0f / 100.0f);
+	TestEqual(TEXT("The War strike dealt 250% raised by the buff's 4%"),
+		Before - Target.Health(), WeaponDamage * 250.0f / 100.0f * 1.04f, 0.01f);
 
 	return true;
 }
@@ -11729,10 +11732,10 @@ bool FCataclysmAuraHelpsAlliesTest::RunTest(const FString&)
 		static_cast<int32>(OnAlly[0].Bucket),
 		static_cast<int32>(ECataclysmStatBucket::Increased));
 	TestEqual(TEXT("carrying the 8 the row states"), OnAlly[0].Value, 8.0f, 0.01f);
-	TestTrue(TEXT("and scoped to the aura's own element, so it is FIRE damage"),
-		OnAlly[0].RequiredTags.HasTag(
-			UGameplayTagsManager::Get().RequestGameplayTag(
-				FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false)));
+	// SCOPED TO NOTHING SINCE 2026-10-25 (Q-P2, on the owner's "Make them
+	// generic"). This asserted the modifier required `Element.Demonic`.
+	TestTrue(TEXT("and scoped to no tag, so it raises all damage"),
+		OnAlly[0].RequiredTags.IsEmpty());
 
 	// AND IT REACHES A REAL BLOW. The Heavy slot is 250% of a weapon dealing
 	// 100, and 8% increased makes it 270.

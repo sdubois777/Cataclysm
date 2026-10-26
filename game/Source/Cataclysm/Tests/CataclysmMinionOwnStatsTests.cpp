@@ -511,9 +511,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnBuffsTest,
  * Until then the blow went straight to `ApplyDirectDamage` and never through
  * `ModifiedDamage`, the only reader of that list.
  *
- * AND A FIRE-SCOPED BUFF STILL DOES NOTHING, which is the Conflagration aura's
- * own case: "increased fire damage" needs a fire blow, and no minion type
- * deals fire damage. That half is right as worded and is the control here.
+ * AND A FIRE-SCOPED BUFF STILL DOES NOTHING: a modifier requiring a fire blow
+ * needs one, and no minion type deals fire damage. That half is the control
+ * here. It was the Conflagration aura's own case until 2026-10-25, when its
+ * ally bonus became unscoped (Q-P2); the modifier is built by hand below.
  */
 bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
 {
@@ -570,10 +571,11 @@ bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
 	TestEqual(TEXT("50% increased on the imp's own ability system makes its blow half again"),
 			  Buffed, Plain * 1.5f, 0.01f);
 
-	// THE CONTROL: THE SAME BUFF SCOPED TO FIRE, as Conflagration writes it.
+	// THE CONTROL: THE SAME BUFF SCOPED TO FIRE, as Conflagration wrote it
+	// until 2026-10-25.
 	Its->RemoveStatModifier(Handle);
-	// THE AURA'S OWN SCOPE: Conflagration's row is Element.Demonic -- its
-	// "hellfire" is the Demonic element; there is no Element.Fire.
+	// FIRE IS Element.Demonic -- Conflagration's "hellfire" is the Demonic
+	// element; there is no Element.Fire.
 	const FGameplayTag Fire = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Demonic")));
 	if (!TestTrue(TEXT("the Demonic element tag exists"), Fire.IsValid()))
 	{

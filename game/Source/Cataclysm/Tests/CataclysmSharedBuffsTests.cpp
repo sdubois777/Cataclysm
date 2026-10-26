@@ -161,10 +161,10 @@ namespace CataclysmSharedBuffsTest
 /**
  * "Your support ability affects all allies within 15 meters". A Support buff
  * granting 4% More reaches an imp 10 m away and not one 20 m away, and the
- * near imp's blow is 4% more. The buff is granted here with no element, so the
- * copy reaches an imp's blow, which carries none; the shipped buffs are
- * Demonic, and `TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds` shows
- * their copy keeps that scope.
+ * near imp's blow is 4% more. The buff is granted here with no element; a
+ * Demonic buff's copy reaches an imp's blow as well since 2026-10-25, which
+ * `Cataclysm.GenericBuffs.ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`
+ * shows.
  */
 CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedSupportReachTest,
 	"Cataclysm.SharedBuffs.ASupportBuffReachesAnAllyWithinFifteenMetresAndNotOneBeyond")
@@ -208,9 +208,9 @@ CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedSupportReachTest,
 
 /**
  * "Applying a buff to yourself also applies it to all allies within 8 meters".
- * A Demonic buff's copy carries the Demonic scope; it is taken back when the
- * ally walks out, given again when it walks back, and taken back when the buff
- * ends.
+ * A Demonic buff's copy carries no scope, as the buff's own carries none since
+ * 2026-10-25; it is taken back when the ally walks out, given again when it
+ * walks back, and taken back when the buff ends.
  */
 CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedTakeBackTest,
 	"Cataclysm.SharedBuffs.TheCopyIsTakenBackWhenTheAllyLeavesAndWhenTheBuffEnds")
@@ -241,11 +241,11 @@ CATACLYSM_SHARED_BUFFS_TEST(FCataclysmSharedTakeBackTest,
 
 	UCataclysmSharedBuffs::Step(Wearer);
 	TestEqual(TEXT("the ally at 5 m carries 4% More"), MoreCarried(Ally), 4.0f, 0.001f);
-	const FGameplayTag Demonic = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Demonic")));
+	// SCOPED TO NOTHING SINCE 2026-10-25 (Q-P2, Q-B1, on the owner's "Make them
+	// generic"). This asserted the copy required `Element.Demonic`.
 	const UCataclysmAbilitySystemComponent* Its = SystemOf(Ally);
-	TestTrue(TEXT("scoped to Demonic damage, as the wearer's own is"),
-		Its && Its->GetStatModifiers().Num() == 1 && Demonic.IsValid()
-			&& Its->GetStatModifiers()[0].RequiredTags.HasTagExact(Demonic));
+	TestTrue(TEXT("scoped to no tag, as the wearer's own is"),
+		Its && Its->GetStatModifiers().Num() == 1 && Its->GetStatModifiers()[0].RequiredTags.IsEmpty());
 
 	MoveTo(Ally, 12.0f);
 	UCataclysmSharedBuffs::Step(Wearer);

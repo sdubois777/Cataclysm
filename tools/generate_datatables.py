@@ -262,8 +262,8 @@ SHAPE_RIDERS = {
     # a ScalingSource and sizes one blow. This is a flat grant to somebody else
     # for as long as they stand inside.
     "AllyIncreasedDamage": "percentage points of increased damage an aura "
-                           "grants allies standing in it, scoped to the "
-                           "skill's own element",
+                           "grants allies standing in it, to damage of every "
+                           "element (ruled 2026-10-25, Q-P2)",
 
     # THE OTHER HALF OF THE SAME EVENT `ScalingSource=HitTaken` READS. Added
     # 2026-09-02 for Living Pyre, "returns health equal to 25% of the damage

@@ -471,9 +471,9 @@ public:
 	 *
 	 * Every row of the Weapon Skills sheet carries exactly one, because the
 	 * sheet is a matrix of weapon type against damage type and the damage type
-	 * is one of its two axes. It is what a self buff scopes its increase to, so
-	 * that "increased fire damage" is expressed as the tag the data already
-	 * carries rather than as a name written in C++.
+	 * is one of its two axes. A self buff's increase and an aura's ally bonus
+	 * were scoped to it until 2026-10-25, when the owner's "Make them generic"
+	 * made both raise all damage (Q-P2, Q-B1).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	FGameplayTag ElementTag() const;

@@ -2321,7 +2321,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		return;
 	}
 
-	// Burning Wrath is "4% more fire damage for every enemy currently
+	// Burning Wrath is "4% more damage for every enemy currently
 	// burning within 15 meters", so the count is taken once, when it goes up,
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
@@ -2531,7 +2531,7 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	}
 
 	// THE MULTIPLICATIVE BUCKET, CHANGED 2026-09-01. Burning Wrath reads "4%
-	// more fire damage for every enemy currently burning", and "more" is this
+	// more damage for every enemy currently burning", and "more" is this
 	// project's word -- section VI's -- for a multiplier that applies separately
 	// rather than joining the additive sum. In the additive bucket the buff
 	// competed with every gear affix the character wore, which is what made a
@@ -2549,19 +2549,12 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	Modifier.Source = ECataclysmModifierSource::SkillBuff;
 	Modifier.Value = MorePotent(Avatar(), SkillTags, Params.MoreDamagePer * Units);
 
-	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
-	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
-	// so "more fire damage" is a multiplier that reaches skills carrying
-	// that tag. A self buff written for another damage type scopes to its own
-	// element with no code changing. A skill carrying no element tag grants an
-	// increase that applies to everything, which is what an unscoped modifier
-	// means throughout the pipeline.
-	GrantedScope = ElementTag();
-	if (GrantedScope.IsValid())
-	{
-		Modifier.RequiredTags.AddTag(GrantedScope);
-	}
-
+	// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2, Q-B1)
+	// on the owner's "Make them generic": Burning Wrath carries Element.Demonic
+	// and its More reaches a skill of every element, as Butcher's Heat's,
+	// Unbroken's and Held Fast's do. Until then the modifier required the
+	// skill's own element. `GrantedScope` stays empty, so the copy
+	// `UCataclysmSharedBuffs::Step` gives allies is unscoped too.
 	IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);
 	if (IncreaseHandle == 0)
 	{
@@ -5402,17 +5395,10 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		const float Effective = MoreEffective(Params.AllyIncreasedDamage);
 		Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);
 
-		// SCOPED TO THE AURA'S OWN ELEMENT, so "increased FIRE damage" is data.
-		// Conflagration carries `Element.Demonic`, which is this project's fire.
-		// An aura carrying no element grants an increase that reaches
-		// everything, which is what an unscoped modifier means throughout the
-		// pipeline.
-		const FGameplayTag Scope = ElementTag();
-		if (Scope.IsValid())
-		{
-			Modifier.RequiredTags.AddTag(Scope);
-		}
-
+		// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on
+		// the owner's "Make them generic": Conflagration carries
+		// `Element.Demonic` and an ally inside it is raised on a blow of every
+		// element. Until then the modifier required the aura's own element.
 		const int32 Handle = Abilities->AddStatModifier(Modifier);
 		if (Handle != 0)
 		{
