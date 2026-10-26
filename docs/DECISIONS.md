@@ -469,6 +469,35 @@ Failed assertions, by reading:
 
 None.
 
+### THE THIRD COMMIT: THE COOLDOWN.AURA TAG, AND Q-L3C'S TWO TEST CHANGES (written by the enchantment session)
+
+**The tag**, under the coordinating session's workbook grant of 2026-10-25 (the Tags sheet, the one Cooldown.Aura row,
+until this branch merges): `docs/All_Things_Cataclysm.xlsx`, sheet "Tags", a new row at its end, "Cooldown.Aura" /
+"The Aura slot is waiting to be used again", matching the five existing Cooldown rows (sheet rows 117 to 121). A dry run
+on an exported copy first: `tools/generate_gameplay_tags.py` wrote 199 tags and changed only
+`game/Config/Tags/CataclysmTags.ini`, by the one line
+`GameplayTagList=(Tag="Cooldown.Aura",DevComment="The Aura slot is waiting to be used again")`, sorted before
+Cooldown.Heavy; `tools/generate_datatables.py` on the same copy changed no CSV. The real regeneration gave the same.
+
+**Q-L3c, ruled 2026-10-25 by the coordinating session, verbatim:** "**Q-L3c: YES to both test changes.** They follow
+directly from Q-L3a." Two existing tests asserted that the Aura key has no cooldown tag; each changes, old and new:
+
+1. `Cataclysm.Skills.EveryWaitingSlotHasACooldownTag` (`CataclysmSkillSlotTests.cpp`): in the branch for a slot that
+   never waits, OLD `TestFalse("Aura never waits, so it needs no cooldown tag", Tag.IsValid())` for the Aura; NEW
+   `TestTrue("the Aura slot never waits, but its key carries Cooldown.Aura for a cooldown skill placed there (Q-L3c)",
+   Tag.IsValid())`; the basic attack still asserts it has none. Its comment, OLD "Cooldown.Basic and Cooldown.Aura
+   deliberately do not exist", NEW: Cooldown.Basic deliberately does not exist, and Cooldown.Aura exists since #837
+   layer 3, for a cooldown skill placed on the Aura key (the owner: "Each skill its own cooldown"); an aura itself still
+   waits for nothing. The count "five slots wait" is unchanged (it counts slots whose length is above 0).
+2. `Cataclysm.Enchantments.TheReduceAllRowsTakeTheirSecondsOffEveryRunningCooldown`
+   (`CataclysmEnchantmentEffectTests.cpp`): OLD the reduced-slot loop over Heavy, Special, Support, Ultimate and Movement,
+   then `TestFalse("the aura slot has no cooldown tag")` and `TestEqual("the aura slot is not cooling down", 0)`; NEW the
+   Aura joins the loop (it is put on thirty with the others and left at 26 or 28), and the two Aura assertions are
+   inverted: `TestTrue("the aura slot has a cooldown tag")` and `TestTrue("the aura slot is cooling down", > 0)`. Its
+   comment says why.
+
+With the tag in, layer 3's test 12 (Molten Cleave on the Aura key) can pass its set-up, and L3-G1 reaches it.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

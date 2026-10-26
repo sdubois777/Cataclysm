@@ -8393,8 +8393,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownReduceAllRowsTest,
 
 /**
  * Two rows that take seconds off every running cooldown, each worn alone with
- * every slot that has a cooldown on a thirty-second one; the aura, a toggle,
- * has none by design and is checked to be left alone. Issue #1833, the cooldown reduction
+ * every slot that has a cooldown on a thirty-second one. SINCE #837 LAYER 3 the Aura key has a cooldown tag too
+ * (Q-L3c, 2026-10-25: a cooldown skill placed on the Aura key keeps its own cooldown, the owner's "Each skill its own
+ * cooldown"), so it is put on thirty with the others and shortened like them. Issue #1833, the cooldown reduction
  * action. "When your class resource hits zero, all skill cooldowns are reduced
  * by 2-4 seconds" at 4 leaves 26 on every slot, the ultimate included, ruled
  * 2026-09-25; "Each summon reduces all your skill cooldowns by 1-2 seconds" at 2
@@ -8426,19 +8427,18 @@ bool FCataclysmCooldownReduceAllRowsTest::RunTest(const FString&)
 		}
 		Worn.ASC()->ActOnEvent(FName(Case.Event));
 		for (const ESlot Slot : {ESlot::Heavy, ESlot::Special, ESlot::Support,
-								 ESlot::Ultimate, ESlot::Movement})
+								 ESlot::Ultimate, ESlot::Movement, ESlot::Aura})
 		{
 			TestEqual(FString::Printf(TEXT("%s: slot %d has %.0f left"), Case.Event,
 									  static_cast<int32>(Slot), Case.Left),
 				SecondsLeft(Worn.ASC(), Slot), Case.Left, 0.01f);
 		}
-		// THE AURA IS LEFT ALONE: it is a toggle with no cooldown tag by design
-		// (`UCataclysmSkillSlots::CooldownTag`), so the row has nothing on it
-		// to shorten and places nothing on it either.
-		TestFalse(FString::Printf(TEXT("%s: the aura slot has no cooldown tag"), Case.Event),
+		// THE AURA KEY IS REDUCED LIKE THE OTHERS (Q-L3c, 2026-10-25): it carries Cooldown.Aura since #837 layer 3,
+		// for a cooldown skill placed on that key, so the row shortens it like every other running cooldown.
+		TestTrue(FString::Printf(TEXT("%s: the aura slot has a cooldown tag"), Case.Event),
 			UCataclysmSkillSlots::CooldownTag(ESlot::Aura).IsValid());
-		TestEqual(FString::Printf(TEXT("%s: the aura slot is not cooling down"), Case.Event),
-			SecondsLeft(Worn.ASC(), ESlot::Aura), 0.0f, 0.01f);
+		TestTrue(FString::Printf(TEXT("%s: the aura slot is cooling down"), Case.Event),
+			SecondsLeft(Worn.ASC(), ESlot::Aura) > 0.0f);
 	}
 	return true;
 }
