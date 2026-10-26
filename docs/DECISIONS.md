@@ -72,7 +72,26 @@ comparison of every sheet against development's workbook found exactly these ten
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t106w, under the editor lock as `enchant-t106w`, taken at 10.9 GB
+free, at `f574a7a8e` on `docs/status-sources-planned-1`: the commit moved from `40955224d` (on `47852b3a6`) onto
+development `c80760f5a`. The merge between them changed neither the workbook, `StatusEffects.csv`,
+`DT_StatusEffects.uasset` nor the asset record; the CSV kept its zero-context patch id and the workbook its bytes; this
+file conflicted, resolved by placing the entry, its lines unchanged. A cell-by-cell comparison against `c80760f5a`'s
+workbook found exactly the ten cells above different. Python before the rebuild: "1 failed, 7000 passed, 8 skipped",
+the one failure the expected
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`.
+
+- **The asset rebuild, as registered:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and
+  changed exactly `game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json`, both in the
+  commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 20 actions, 17 files compiled"; "4265 tests performed,
+  4265 succeeded, 0 failed"; "Declared: 4265 tests in the tree at f574a7a8e; 4265 performed, gap 0". 43 tests skipped
+  part of what they check. The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4872
+  peak_used_virtual_mb=8004 final_used_virtual_mb=7662 collections=3245 collection_total_s=106.193
+  worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "7001 passed, 8 skipped"; JUnit 7009 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **No guard proof**, as registered: no test reads these descriptions.
 
 ---
 
