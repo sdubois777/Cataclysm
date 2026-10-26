@@ -171,7 +171,36 @@ taunting nobody (`ApplyTaunt` refuses 0 seconds).
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t118w, under the editor lock as `enchant-t118w`, taken at 12.2 GB
+free, at `3cf0102e0` on `feat/random-buffs-dervish-and-warhound-1`: the three commits moved from `7f7d0da64`,
+`806a7be97` and `fa11ee3ef` (on `697702601`) onto development `2c6da3ff2` as `d714fbbac`, `3546476fe` and `3cf0102e0`,
+each keeping its zero-context patch id, outside this file and in it; this file conflicted in the second, resolved by
+placing the entry, its lines unchanged; the workbook kept its bytes. `tools/check_resolved_cpp.py` over the 4 C++ files:
+"4 files read, 0 with complaints". Python before the rebuild: "1 failed, 7007 passed, 8 skipped", the one failure the
+expected asset-hash check.
+
+- **The asset rebuild, as registered:** exit 0; it changed exactly `game/Content/Data/DT_StatusEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`, committed as `a90478754` before any test ran.
+- **The two new tests, each alone, as registered:** `TheRandomBuffDervishIsTenIncreasedAttackSpeedAtOneStack`: "1 tests
+  performed, 1 succeeded, 0 failed" (after "Build: Succeeded - 40 actions, 37 files compiled");
+  `TheRandomBuffWarhoundLaysTheWarlordsWillSixPieceFiguresAndABlowTakenSummonsIt`: "1 tests performed, 1 succeeded, 0
+  failed".
+- **The whole Unreal suite, as registered:** "4276 tests performed, 4276 succeeded, 0 failed" (4274 on development + 2);
+  "Declared: 4276 tests in the tree at a90478754; 4276 performed, gap 0". 43 tests skipped part of what they check. The
+  memory summary line, quoted: "CataclysmTestMemorySummary: tests=4883 peak_used_virtual_mb=8031
+  final_used_virtual_mb=7687 collections=3256 collection_total_s=107.852 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset, as registered:** "7008 passed, 8 skipped"; JUnit 7016 tests, 0 failures,
+  0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **The C++ proofs, prefix `Cataclysm.StatExemption.TheRandomBuff` (8 tests), each anchor counted once, 0 ensures, the
+  file's hash the same after, and every restored half 8 performed, 8 succeeded:**
+  - **RB1-G1, the drawn Dervish adds no attack speed:** PROVED, AS REGISTERED. 1 failed, the Dervish test; 1 failed
+    assertion, registered 1 ("to be 0.100000, but it was 0.000000").
+  - **RB1-G2, the drawn Warhound gives no summon chance:** PROVED, AS REGISTERED. 1 failed, the Warhound test; 2 failed
+    assertions, registered 2 (the chance read 0, and no Warhound was summoned).
+- **RB1-G3, the Python proof, as registered,** after the window, in a `git archive` copy of `a90478754`, through
+  `tools/prove_guard.py` on `tools/tests/test_the_random_buff_table_names_buff_rows.py`: "PROVED: 2 failed, 3 passed in
+  0.10s | restored: 5 passed in 0.05s"; named failures `test_every_buff_in_the_table_is_a_buff_row_of_the_status_table`
+  and `test_the_table_holds_exactly_the_buffs_listed_here_in_this_order`; proved True.
 
 ---
 
