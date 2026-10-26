@@ -300,7 +300,34 @@ not one of the branch's prefixed proofs.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t93w, under the editor lock as `enchant-t93w`, taken at 11.8 GB
+free, at `45bf65f9a` on `fix/element-scoped-buffs-raise-all-damage-1`: the three commits moved from `9f613830b`,
+`20df37f5c` and `d0cef6627` (on `1bf218ccb`) onto development `57c108494` as `22d243319`, `542a6cc36` and `45bf65f9a`,
+each keeping its zero-context patch id, whole and outside this file, and its removed lines (101, 8, 0); this file
+conflicted in the first, resolved by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over the
+branch's changed C++ files: "10 files read, 0 with complaints".
+
+- **The asset rebuild, as registered:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and
+  changed exactly `game/Content/Data/DT_WeaponSkills.uasset` and `game/Data/datatable_asset_sources.json`, both in the
+  commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4224 tests performed,
+  4224 succeeded, 0 failed" (4221 on development + 3); "Declared: 4224 tests in the tree at 45bf65f9a; 4224 performed, gap
+  0". 43 tests skipped part of what they check. The four Unreal assertions this branch changes under the owner's ruling
+  are among them. The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4831 peak_used_virtual_mb=8010
+  final_used_virtual_mb=7676 collections=3205 collection_total_s=106.364 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "6990 passed, 8 skipped"; JUnit 6998 tests, 0
+  failures, 0 errors, 8 skipped (at `45bf65f9a` before the rebuild it was "1 failed, 6989 passed, 8 skipped", the asset
+  hash). `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.GenericBuffs.` (3 tests), each anchor counted once, 0 ensures, the file's hash
+  the same after, and every restored half 3 performed, 3 succeeded:**
+  - **GB-I, the element scope put back in `GrantIncrease`:** PROVED, AS REGISTERED. 2 failed,
+    `ASelfBuffOfOneElementRaisesABlowOfAnother` and `ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`; 5 failed
+    assertions, registered 5.
+  - **GB-II, the element scope put back in `HelpAlliesInside`:** PROVED, AS REGISTERED. 1 failed,
+    `AnAurasAllyBonusRaisesAnAllysBlowOfAnotherElement`; 2 failed assertions, registered 2.
+  - **GB-III, the shared copy given the element:** PROVED, AS REGISTERED. 1 failed,
+    `ASharedBuffsCopyRaisesAnAllysBlowOfAnotherElement`; 2 failed assertions, registered 2.
+- The Python proof of the owner's-rule check (Q-B2), run in an exported copy before the move, is recorded above.
 
 ---
 
