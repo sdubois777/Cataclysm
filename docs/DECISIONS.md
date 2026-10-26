@@ -2,6 +2,229 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — A random buff can wear set rows: Shard of Anarchy's random buff can draw Sanctified Power, Demonic Rage, Temporal Flux and Void, batch 2 of the owner's "Add everything" (#2538)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Sanctified Power, Demonic Rage, Temporal Flux and Void
+rows, and `game/Data/StatusEffects.csv` (the branch's first commit, by the enchantment session under the coordinating
+session's grant for those four marks only: "(planned) " comes off the four descriptions);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` and `.h` (`AccumulateEnchantmentsInto`: the row builder takes a list
+of rows, and a new optional parameter `ExtraRows`); `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`
+(`RefreshAttributes` builds the rows a held buff wears); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
+and `.h` (`FRandomBuff` gains `WornRows` and `KeptStacksAtDraw`; `RandomBuffEnchantmentName` and
+`HeldRandomBuffEffectRows` are new; `HoldARandomBuff` lays stacks at the draw; four entries at the end of
+`RandomBuffTable`; the help text of `Cataclysm.RandomBuffPick`; `OwnStacksByEnchantment` splits a key at its last
+colon; comments); `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (four tests and their helpers, and
+one pinned name string with its label); `tools/tests/test_the_random_buff_table_names_buff_rows.py` (both lists, the
+count, the prose, one new test); this file. The asset `game/Content/Data/DT_StatusEffects.uasset` and
+`game/Data/datatable_asset_sources.json` are rebuilt in the enchantment session's window. Issue #2538 stays open: five
+Buff rows are still left out.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** a wearer of two pieces of Shard of Anarchy whose 30-second roll draws a buff can now be
+  given, for 30 seconds: **Sanctified Power** (a blocked attack refreshes every skill, at most once in 5 seconds);
+  **Demonic Rage** (health falling below a quarter gives crowd control immunity and 100% more attack and spell damage
+  for 10 seconds, at most once in 5 minutes); **Temporal Flux** (5 stacks at once, shown as "Temporal Flux 5/5"; the
+  next skill used spends them and is cast again 1 to 5 times); **Void** (10 stacks at once; the next ability but the
+  basic attack costs no mana and deals 100% more damage). Each of the twelve buffs is now drawn one time in twelve,
+  where each of eight was one in eight.
+- **THE DRAWN FORM DIFFERS FROM THE DESCRIPTIONS, AND THE DESCRIPTIONS STAND,** as ruled (below): Temporal Flux's 5
+  stacks and Void's 10 are laid at the draw, and Sanctified Power counts no stack.
+- **A WEARER OF THE MATCHING SET WHO DRAWS THE BUFF WEARS THE ROW TWICE, under two names, and the rename keeps the two
+  apart:** every key a row keeps begins with its enchantment name, and the buff's copy is renamed
+  `RandomBuff:<buff>`, so the two rows have their own stacks, windows and trigger cooldowns. What that gives, read and
+  not tested: a Divine Retribution ten-piece wearer drawing Sanctified Power gains nothing, since a block resets
+  through both rows at once; a Demon King's Regalia six-piece wearer drawing Demonic Rage gets both rows' lines on one
+  fall, 200 crowd control resistance and the two 100% more lines multiplied, four times the attack and spell damage,
+  for 10 seconds; a Shard of Anarchy ten-piece wearer drawing Temporal Flux (a ten-piece wearer also wears the
+  two-piece that draws) has two rows, and a use spends and draws casts from each; a Null Emperor six-piece wearer
+  drawing Void has two rows at 10, and the next ability spends both and is doubled once; a ten-piece wearer's Void
+  aura reads the most held under the name "Void", so it rises at the draw. This follows the batch 1 ruling "A
+  six-piece wearer who draws the matching buff gets both sets of figures"; the four-times damage is for the
+  enchantment session to judge.
+- **THE ROWS' EFFECTS END WITH THE BUFF.** When it is replaced, `HoldARandomBuff`'s refresh builds the new buff's rows
+  only; when its 30 seconds pass, `EndHeldRandomBuffIfItsTimeHasPassed` runs after the next `StepTimedGrants` and its
+  refresh builds none. The stat lines go with the refresh, and `SetPoolActions` forgets every kept stack no action
+  carries. Between the 30 seconds passing and that next step, the actions are still worn: a block in that gap can
+  still refresh. Demonic Rage's own-stack counts are not forgotten, but no line reads them once the rows are gone.
+- **The buffs' places in `Cataclysm.RandomBuffPick` 0 to 7 do not move.** The four are appended as 8 to 11.
+
+### THE RULINGS, VERBATIM (the owner and the coordinating session, 2026-10-26)
+
+The owner, on which Buff rows Shard of Anarchy's random buff draws from: "Add everything".
+
+The coordinating session: "Temporal Flux and Void: YES, lay stacks at their caps (5 and 10) when drawn. Record it as a
+coordinator judgement." "Order: batch 1 (Dervish, Warhound) now, then batches 2, 3 and 4, each its own branch and
+window." "Each batch moves its own share of IN_THE_TABLE, LEFT_OUT and the help text."
+
+The coordinating session, on the four descriptions: "leave the Sanctified Power and Temporal Flux sentences as they
+are. A Buff row describes the buff as its set grants it. Batch 1 set the precedent: the Warhound row says "A temporary
+minion that taunts enemies and deals damage." and was not reworded for the drawn form. The drawn form's differences
+(Temporal Flux's 5 stacks and Void's 10 laid at the draw; Sanctified Power counting no stack) go in batch 2's
+docs/DECISIONS.md entry and in the comment on its RandomBuffTable entries. No grant widening; the grant stays the four
+marks."
+
+### THE MECHANISM: AN ENTRY NAMES EFFECT ROWS TO WEAR
+
+The reading session's plan's recommendation, built: 93 lines of game code that are not comments or blank, across five
+files, besides the four entries (28 lines) and the help text (2).
+
+- **`FRandomBuff::WornRows`** names rows of `game/Data/EnchantmentEffects.csv` by row name, and
+  **`FRandomBuff::KeptStacksAtDraw`** says how many kept stacks each worn row that keeps them gains at the draw.
+- **`HeldRandomBuffEffectRows`** finds each named row in the loaded effect table and copies it, with its `Enchantment`
+  renamed `RandomBuff:<buff>` (`RandomBuffEnchantmentName`). A name the table does not hold is left out, with the
+  table's own warning.
+- **The rows are built by the worn rows' builder.** In `AccumulateEnchantmentsInto` the body of the effect loop is now
+  a lambda over a list of rows, `GrantRows`; `Grant` looks up one enchantment's rows and calls it, as before; and a
+  new optional parameter, `ExtraRows`, is granted through it at the end, at the set rows' roll. The body's lines are
+  not changed, so no action or modifier is built a second way.
+- **`RefreshAttributes` builds them** in a second call of `AccumulateEnchantmentsInto`, with no worn item and the
+  buff's rows, before `SetPoolActions`: the actions join the worn actions, and the lines are kept apart and joined
+  where the buff's stat lines are, after the class points are read.
+- **`HoldARandomBuff` lays the stacks**, after its refresh: for each action whose kept-stack key begins with the buff's
+  name, `GainKeptStack` `KeptStacksAtDraw` times, each capped by the row.
+- **`OwnStacksByEnchantment` splits a key at its last colon**, so Demonic Rage's own stacks are shown under the stat
+  names and not "Demonic Rage:attack_damage". A key of a worn row holds one colon, so its split is unchanged.
+
+### THE FOUR ENTRIES AND THE SET ROWS THEY WEAR
+
+Read at development `54925981a`; CSV line numbers count the header as line 1.
+
+| Place, entry | Rows worn | What the rows are | At the draw |
+| :-- | :-- | :-- | :-- |
+| 8 Sanctified Power | `Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec#1` (line 581) | `cooldown_reset_all` 100 on `block`, Trigger Cooldown 5 | nothing |
+| 9 Demonic Rage | `Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#1` to `#3` (lines 424-426) | `crowd_control_resistance` flat 100, `attack_damage` more 100, `spell_damage` more 100; each `own_stacks`, on `health_falls_below` 25, at most 1 stack, lasting 10 s, Trigger Cooldown 300 | nothing |
+| 10 Temporal Flux | `Positive_Shard_of_Anarchy_10_Piece_Bonus_Every_30_seco#1` (line 595) | `kept_stacks_repeat_skill` 100 on `skill_use`, cap 5, Every Seconds 30, stacks named "Temporal Flux" | 5 "Temporal Flux" |
+| 11 Void | `Positive_Null_Emperor_6_Piece_Bonus_Every_time_you_hit#1` (line 625) | `kept_stacks_free_next_ability` 100 on `hit_dealt`, condition `target_is_silenced`, cap 10, stacks named "Void" | 10 "Void" |
+
+- **THE STACKS LAID AT THE DRAW ARE THE COORDINATING SESSION'S JUDGEMENT** (quoted above): the rows' caps, 5 and 10.
+  No row states a number laid at a draw. Without them neither buff does anything in 30 seconds: Temporal Flux's row
+  gains one stack per 30 seconds of fighting, and Void's only on a hit on a silenced enemy.
+- **Demonic Rage is the rows, not condition lines.** This supersedes the 2026-10-12 entry's option not taken (three
+  lines under `HealthBelowPercent` 25) and batch 1's reason for leaving it out: as rows it keeps "for 10 seconds".
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **The loop body becomes a lambda over a list of rows, not over one row.** Not taken: the plan's lambda per row, whose
+  three `continue`s would become `return`s and whose 560 lines would move. This keeps the body's lines as they were.
+- **A second call in `RefreshAttributes`, not a parameter through `GatherModifiers`.** Not taken: threading the rows
+  through `GatherModifiers` and `GatherModifiersReading`, which would put the buff's lines into the map the class
+  points are read from and into the Corrupted Stalker's gathering. The cost taken: while such a buff is held, each
+  refresh groups the effect table a second time.
+- **`OwnStacksByEnchantment` splits at the last colon.** Not taken: a buff name with no colon (for example
+  `RandomBuff_<buff>`), against the plan and the brief's `RandomBuff:<name>`.
+- **The four tests are in `CataclysmEnchantmentEffectTests.cpp`, named in `Cataclysm.StatExemption.TheRandomBuff`.**
+  Not taken: `CataclysmStatExemptionTests.cpp` beside batch 1's, which has no block, health-threshold or
+  possessed-player rig for these rows.
+- **A Python test reads the six worn row names against the effect table.** Not taken: relying on the engine's warning,
+  which no test reads.
+
+### WHAT MOVED, OLD AND NEW
+
+- `tools/tests/test_the_random_buff_table_names_buff_rows.py`: `IN_THE_TABLE` gains "Sanctified Power", "Demonic
+  Rage", "Temporal Flux" and "Void" at its end, 8 names to 12; `LEFT_OUT` loses them, 9 to 5, with Demonic Rage's own
+  reason; `test_the_reader_finds_the_table`'s count 8 becomes 12; the docstring gains "Twelve and five since batch 2";
+  a new test, `test_every_row_a_buff_wears_is_a_row_of_the_effect_table`. `assert len(rows) == 17` does not move.
+- `Cataclysm.RandomBuffPick`'s help text: "... 6 Dervish, 7 Warhound. -1 picks at random." becomes "... 6 Dervish, 7
+  Warhound, 8 Sanctified Power, 9 Demonic Rage, 10 Temporal Flux, 11 Void. -1 picks at random."
+- `CataclysmEnchantmentEffectTests.cpp`, `ShardOfAnarchysTwoPieces...`'s set-up: "the eight buffs of the table" and
+  "..., Dervish, Warhound" become "the twelve buffs of the table" and the same string with ", Sanctified Power,
+  Demonic Rage, Temporal Flux, Void" after it.
+- `CataclysmAbilitySystemComponent.h`, the comment above `RandomBuffTable`: "It holds eight" becomes "It holds twelve"
+  with the four named, and "LEFT OUT FOR NOW: Demonic Rage, Plague, Sanctified Power, Temporal Flux, Void, Death,
+  Chaotic Barrier, The Ascended and Feasting" becomes "LEFT OUT FOR NOW: Plague, Death, Chaotic Barrier, The Ascended
+  and Feasting". The table's opening comment and `FRandomBuff`'s say an entry may wear rows.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear two pieces of Shard of Anarchy and pin `Cataclysm.RandomBuffPick 8` to `11`: with Sanctified Power, block an
+  attack while skills wait and they are ready again; with Demonic Rage, drop below a quarter of health and hit harder
+  for 10 seconds; with Temporal Flux, "Temporal Flux 5/5" shows and the next skill is cast several times; with Void,
+  the next skill costs no mana and hits twice as hard. Each ends with the buff's 30 seconds.
+
+### Tests
+
+All four in `Cataclysm.StatExemption.`, selected with batch 1's by the prefix `Cataclysm.StatExemption.TheRandomBuff`,
+written in `CataclysmEnchantmentEffectTests.cpp`. Each reads its control before the draw, each figure is a
+difference from or a ratio to that reading, the draw is pinned through `Cataclysm.RandomBuffPick` to the buff's place
+looked up by name (four set-up checks: in the table, the pin exists, the draw lays a buff, the buff held is it), and
+the end is read after the world's clock is moved by hand to 30.5 seconds past the draw and `StepTimedGrants` runs.
+"The buff's actions" are the actions whose trigger key begins with `RandomBuff:<buff>:`.
+
+`TheRandomBuffSanctifiedPowerMakesABlockRefreshEverySkillOnceInFiveSeconds`, 20 assertions, on a bare wearer with
+every slot on a 30-second cooldown and a 1000-strong attacker, `Cataclysm.BlockRoll` 0 and `Cataclysm.CritRoll` 100:
+a world; set-up, more than one slot waits, the ultimate's among them; set-up, the blow is blocked; **control: with no
+buff the block refreshes nothing**; **control: no action of the buff's**; the four draw checks; **one action of the
+buff's**; set-up, blocked; **held, the block refreshes every slot**; **four seconds on**, blocked, **and it refreshes
+nothing**; **six seconds on**, blocked, **and every slot is refreshed again**; **after 30 seconds no buff is held**,
+**and no action of the buff's**; blocked, **and the block refreshes nothing**.
+
+`TheRandomBuffDemonicRageBelowAQuarterOfHealthIsImmuneAndDoublesDamageForTenSeconds`, 34 assertions, two bare wearers
+in worlds of their own (each row's cooldown is 300 s): for each, a world; **control: with no buff a fall to 20% adds no
+crowd control resistance**, **and multiplies no attack damage**, **and no action of the buff's**; the four draw
+checks; **three actions of the buff's**; **control: held, health at 30% adds no resistance**; **held, a fall to 20%
+adds 100 resistance**, **doubles attack damage** and **doubles spell damage** (ratios of
+`MultiplierForStatAgainst`). The first falls 1 s after the draw: **9.5 s after the fall the resistance is held**,
+**10.5 s after it has lapsed**, **and so has the attack damage**. The second falls 25 s after the draw, so its 10 s
+would outlast the buff: **after 30.5 s no buff is held**, **no action of the buff's**, **no resistance added**, **no
+attack damage** and **no spell damage multiplied**.
+
+`TheRandomBuffTemporalFluxLaysFiveStacksAtTheDrawAndAUseIsCastAgain`, 29 assertions, on the possessed player of
+`CataclysmSkillRepeatTest::FRepeatRig` using Carom, the casts' draw pinned to 3: a world; set-up, the rig and the pin
+(2); **control: no Temporal Flux**, **no action of the buff's**, **a use asks no cast**, **and none is made**; the four
+draw checks; **one action of the buff's**; **five Temporal Flux at once**; **an interface reads five of five**; **a
+use asks Carom to be cast again**, **one row asked**, **the buff's own**; **three casts are made**, **three more
+run**, **all five are spent**; the four draw checks again; **its five are laid again**; **after 30.5 s no buff is
+held**, **no action of the buff's**, **no Temporal Flux**, **and a use asks no cast**.
+
+`TheRandomBuffVoidLaysTenStacksAtTheDrawSoTheNextAbilityIsFreeAndDoubled`, 24 assertions, on a bare wearer: a world;
+**control: no Void**, **no action of the buff's**, **the next ability is not free**, **`SpendFreeNextAbility` gives
+1**; the four draw checks; **one action of the buff's**; **ten Void at once**; **the next ability is free**; **the use
+that spends them gives 2**; **all ten are spent**; **the ability after is not free**; the four draw checks again;
+**its ten are laid again**; **after 30.5 s no buff is held**, **no action of the buff's**, **no Void**, **and the next
+ability is not free**.
+
+Python: `test_every_row_a_buff_wears_is_a_row_of_the_effect_table` reads the six worn row names out of the table's
+body (the count pinned at 6) and finds each in `game/Data/EnchantmentEffects.csv`.
+
+### Not tested
+
+A wearer of the matching set who also draws the buff (SAID FIRST); a real mana cost read through
+`UCataclysmGameplayAbility::ManaCostFor` with Void held (the test reads `NextAbilityIsFree`, which it asks); Demonic
+Rage's crowd control immunity against a real stun; the casts' random number (pinned at 3); the row's 30-second clock
+while Temporal Flux is held; a buff replaced by a different buff (the tests end each by its seconds); the gap between
+the 30 seconds passing and the next step; `OwnStacksByEnchantment`'s text for Demonic Rage.
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in its file by script. Each break changes one line and moves no bracket, so its file
+compiles alone as before. Prefix for all three: `Cataclysm.StatExemption.TheRandomBuff`, which selects 12 tests by
+reading (batch 1's eight and these four). The count to quote is the run's. In each, batch 1's eight tests pass.
+
+- **RB2-G1, the rows not worn:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, `&Actions,
+  &BuffRows);` becomes `&Actions, nullptr);`. Predicted: the four new tests fail, 25 assertions. Sanctified Power 3
+  (one action; held, the block refreshes every slot; six seconds on, every slot refreshed again). Demonic Rage 9
+  (each wearer: three actions, 100 resistance, doubled attack, doubled spell; the first also "9.5 s after the fall
+  the resistance is held"). Temporal Flux 8 (one action; five at once; five of five; Carom asked; one row asked, so
+  "the buff's own" is not asserted; three casts; three run; laid again). Void 5 (one action; ten at once; free; gives
+  2; laid again).
+- **RB2-G2, no stacks laid at the draw:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+  `if (Drawn.KeptStacksAtDraw > 0)` becomes `if (Drawn.KeptStacksAtDraw > 100)`. Predicted: Temporal Flux and Void
+  fail, 11 assertions; Sanctified Power and Demonic Rage pass. Temporal Flux 7 (five at once; five of five; Carom
+  asked; one row asked; three casts; three run; laid again). Void 4 (ten at once; free; gives 2; laid again).
+- **RB2-G3, the rows not renamed:** the same file, `Copy.Enchantment = RandomBuffEnchantmentName(Buff.Name);` becomes
+  `Copy.Enchantment = Row->Enchantment;`. The rows then keep their sets' names, so no key begins with the buff's and no
+  stack is laid. Predicted: the four new tests fail, 16 assertions. Sanctified Power 1 (one action; the block still
+  refreshes, under the set's key). Demonic Rage 2 (three actions, for each wearer; the lines still work). Temporal Flux
+  8 (one action, and the seven of RB2-G2). Void 5 (one action, and the four of RB2-G2).
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — Shard of Anarchy's random buff can draw Dervish and Warhound: batch 1 of the owner's "Add everything" (#2538)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Dervish and Warhound rows, and

@@ -26,6 +26,7 @@
 #include "CataclysmAbilitySystemComponent.generated.h"
 
 struct FGameplayTag;
+struct FCataclysmEnchantmentEffectRow;
 
 /**
  * What `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` took away when a
@@ -1425,25 +1426,42 @@ public:
 	/**
 	 * One buff a row may draw: the name of its row in `game/Data/StatusEffects.csv`, and the stat lines it lays on
 	 * its holder, each a stat's name and a modifier on it.
+	 *
+	 * AND, SINCE BATCH 2 OF ISSUE #2538 (2026-10-26), EFFECT ROWS IT WEARS WHILE IT IS HELD, and kept stacks it lays
+	 * when it is drawn. See `HeldRandomBuffEffectRows` and `HoldARandomBuff`.
 	 */
 	struct FRandomBuff
 	{
 		const TCHAR* Name = nullptr;
 		TArray<TPair<FName, FCataclysmStatModifier>> Lines;
+
+		/** Rows of `game/Data/EnchantmentEffects.csv`, by row name, worn while the buff is held. */
+		TArray<FName> WornRows;
+
+		/** How many kept stacks each worn row that keeps them gains at the draw, to its own cap. Nought for none. */
+		int32 KeptStacksAtDraw = 0;
 	};
+
+	/**
+	 * The enchantment name a buff's worn rows are renamed under, "RandomBuff:" and the buff's name. Every key a row
+	 * keeps begins with its enchantment name, so the buff's stacks, windows and trigger cooldowns are its own: a
+	 * wearer of the set the row belongs to keeps the set's apart from the buff's. Issue #2538, batch 2.
+	 */
+	static FString RandomBuffEnchantmentName(const TCHAR* BuffName);
 
 	/**
 	 * The buffs a random buff is drawn from, in the order `Cataclysm.RandomBuffPick` counts in. Ruled 2026-10-12.
 	 *
 	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner answered on 2026-10-26,
 	 * "Add everything": every Buff row of the status table joins the pool once it is built as a standalone buff
-	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds eight: Mana Surge,
+	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds twelve: Mana Surge,
 	 * Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own description
-	 * states; and Dervish and Warhound (2026-10-26), each the stat lines of the set row that builds it.
+	 * states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds it; and
+	 * Sanctified Power, Demonic Rage, Temporal Flux and Void (2026-10-26, batch 2), each wearing the set rows that
+	 * build it, by name (`FRandomBuff::WornRows`).
 	 *
-	 * LEFT OUT FOR NOW: Demonic Rage, Plague, Sanctified Power, Temporal Flux, Void, Death, Chaotic Barrier, The
-	 * Ascended and Feasting. Each needs an entry to lay more than stat lines, or a ruling on what it means for a
-	 * player, before it can join.
+	 * LEFT OUT FOR NOW: Plague, Death, Chaotic Barrier, The Ascended and Feasting. Each needs rows of its own or a
+	 * new action, or a ruling on what it means for a player, before it can join.
 	 *
 	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
 	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what
@@ -1475,6 +1493,10 @@ public:
 	 * A CHARACTER WITH NO EQUIPMENT COMPONENT HOLDS THE NAME AND GETS NO LINE, because nothing writes it a stat
 	 * line. That is every enemy.
 	 *
+	 * AND THE ROWS IT WEARS ARE BUILT BY THE SAME REFRESH, and then each worn row that keeps stacks gains
+	 * `FRandomBuff::KeptStacksAtDraw` of them, to its own cap. Issue #2538, batch 2. A character with no equipment
+	 * component wears no row and so gains none.
+	 *
 	 * @return whether a buff is now held
 	 */
 	bool HoldARandomBuff();
@@ -1487,6 +1509,17 @@ public:
 
 	/** The held buff's lines, keyed by stat as every modifier map is. Empty when none is held. */
 	TMap<FName, TArray<FCataclysmStatModifier>> HeldRandomBuffStatModifiers() const;
+
+	/**
+	 * Copies of the effect rows the held buff wears, each renamed under `RandomBuffEnchantmentName`. Empty when none
+	 * is held. Issue #2538, batch 2. `UCataclysmEquipmentComponent::RefreshAttributes` builds them with the worn
+	 * rows' builder, so their actions reach `PoolActions` and their lines the stat line.
+	 *
+	 * THEY END WITH THE BUFF: once it is replaced or its seconds pass, the refresh that follows builds none of them,
+	 * and `SetPoolActions` forgets every kept stack no action carries. A named row the loaded table does not hold is
+	 * left out, with the table's own warning.
+	 */
+	TArray<FCataclysmEnchantmentEffectRow> HeldRandomBuffEffectRows() const;
 
 	/** The event raised when a skill's ability ends without being cancelled, with the skill's tags. */
 	static const TCHAR* SkillEndEvent;

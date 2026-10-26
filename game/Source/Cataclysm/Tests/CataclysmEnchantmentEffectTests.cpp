@@ -22751,8 +22751,9 @@ bool FCataclysmShardOfAnarchyTwoPieceRowTest::RunTest(const FString&)
 	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
 	if (!TestTrue(TEXT("set-up: the four pins exist"), BuffOrDebuff.Variable && WhichBuff.Variable
 			&& WhichDebuff.Variable && WhichResistance.Variable)
-		|| !TestEqual(TEXT("set-up: the eight buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
-			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger, Dervish, Warhound")))
+		|| !TestEqual(TEXT("set-up: the twelve buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
+			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger, Dervish, Warhound, "
+						 "Sanctified Power, Demonic Rage, Temporal Flux, Void")))
 		|| !TestTrue(TEXT("set-up: Commander is in the table and the Cripple tag exists"),
 			Commander >= 0 && Cripple.IsValid()))
 	{
@@ -23259,6 +23260,463 @@ bool FCataclysmShardOfAnarchyTenPieceRowTest::RunTest(const FString&)
 		CastsPinned);
 	TestEqual(TEXT("ten pieces: and three more run"), Ten.MoreRunning, CastsPinned);
 	TestEqual(TEXT("ten pieces: and all five stacks are spent"), Ten.HeldAfterTheCasts, 0);
+	return true;
+}
+
+// THE FOUR RANDOM BUFFS OF BATCH 2 OF ISSUE #2538, 2026-10-26, EACH WEARING ITS SET'S ROWS. Named in
+// `Cataclysm.StatExemption.TheRandomBuff` with batch 1's tests, so one prefix selects every per-buff test; written
+// here because the rigs the four set rows are measured with are here: the block and its cooldown slots of Divine
+// Retribution's ten-piece test, the health threshold of Demon King's Regalia's six-piece test, and the possessed
+// player and the skill Carom of `CataclysmSkillRepeatTest`.
+//
+// EACH TEST READS ITS CONTROL FIRST, with no buff drawn, and every figure is a difference from, or a ratio to, the
+// same wearer's reading before the draw. The draw is pinned through `Cataclysm.RandomBuffPick` to the buff's place,
+// looked up by name. AFTER THE BUFF'S 30 SECONDS, moved by hand to 30.5 and stepped, each effect is gone.
+//
+// THE SIX ROW NAMES ARE THE TABLE'S, and `tools/tests/test_the_random_buff_table_names_buff_rows.py` checks each is a
+// row of `game/Data/EnchantmentEffects.csv`.
+namespace CataclysmRandomBuffRowsTest
+{
+	/** Every key the buff's worn rows keep begins with this: its own enchantment name and a colon. */
+	FString KeyPrefixOf(const TCHAR* Buff)
+	{
+		return UCataclysmAbilitySystemComponent::RandomBuffEnchantmentName(Buff) + TEXT(":");
+	}
+
+	/** How many of the wearer's actions are the buff's worn rows: those whose trigger key begins with its prefix. */
+	int32 ActionsOfTheBuff(const UCataclysmAbilitySystemComponent* System, const TCHAR* Buff)
+	{
+		const FString Prefix = KeyPrefixOf(Buff);
+		int32 Count = 0;
+		for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+		{
+			Count += Action.TriggerKey.ToString().StartsWith(Prefix, ESearchCase::CaseSensitive) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** Draws the buff of this name, the draw pinned to it for the call, and says whether it is then held. */
+	bool DrawsTheBuff(FAutomationTestBase& Test, UCataclysmAbilitySystemComponent* System, const TCHAR* Buff)
+	{
+		const int32 Place = CataclysmShardOfAnarchyRowsTest::PlaceOfBuff(Buff);
+		if (!Test.TestTrue(*FString::Printf(TEXT("set-up: %s is in the table of buffs"), Buff), Place >= 0))
+		{
+			return false;
+		}
+		const CataclysmShardOfAnarchyRowsTest::FWholePin Pinned(TEXT("Cataclysm.RandomBuffPick"), Place);
+		return Test.TestNotNull(TEXT("set-up: the pin for which buff"), Pinned.Variable)
+			&& Test.TestTrue(TEXT("set-up: the draw lays a buff"), System->HoldARandomBuff())
+			&& Test.TestTrue(*FString::Printf(TEXT("set-up: the buff held is %s"), Buff),
+							 System->HeldRandomBuff() == FName(Buff));
+	}
+
+	/** The world's clock moved by hand to half a second past the buff's 30, and one step, which ends it. */
+	void PassTheBuffsSeconds(UWorld* World, UCataclysmAbilitySystemComponent* System, double DrawnAt)
+	{
+		World->TimeSeconds = DrawnAt + UCataclysmAbilitySystemComponent::RandomBuffSeconds + 0.5;
+		System->StepTimedGrants();
+	}
+
+	/**
+	 * Every slot on a thirty-second cooldown, built as `UCataclysmGameplayAbility::ApplyCooldown` builds one, as
+	 * Divine Retribution's ten-piece test builds them. The test world runs no timers, so none runs out by itself.
+	 */
+	void PutEverySlotOnCooldown(UCataclysmAbilitySystemComponent* System)
+	{
+		for (const ECataclysmAbilitySlot Each : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Each);
+			if (!Tag.IsValid() || System->HasMatchingGameplayTag(Tag))
+			{
+				continue;
+			}
+			UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+				GetTransientPackage(),
+				MakeUniqueObjectName(GetTransientPackage(), UGameplayEffect::StaticClass(), FName(TEXT("TestCooldown"))));
+			Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+			Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(30.0f));
+			FInheritedTagContainer Granted;
+			Granted.Added.AddTag(Tag);
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>().SetAndApplyTargetTagChanges(Granted);
+			System->ApplyGameplayEffectToSelf(Effect, 1.0f, System->MakeEffectContext());
+		}
+	}
+
+	/** How many slots wait on a cooldown now. */
+	int32 SlotsWaiting(const UCataclysmAbilitySystemComponent* System)
+	{
+		int32 Waiting = 0;
+		for (const ECataclysmAbilitySlot Each : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Each);
+			Waiting += Tag.IsValid() && System->HasMatchingGameplayTag(Tag) ? 1 : 0;
+		}
+		return Waiting;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffSanctifiedPowerTest,
+	"Cataclysm.StatExemption.TheRandomBuffSanctifiedPowerMakesABlockRefreshEverySkillOnceInFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "A stack gained every 5 seconds. When an attack is blocked, all of your skills are instantly refreshed." The buff
+ * wears Divine Retribution's ten-piece row, `cooldown_reset_all` 100 on `block`, Trigger Cooldown 5, under its own
+ * name. Measured as that row's test measures it: a bare wearer with every slot on a cooldown, blocking a real blow.
+ *
+ * EVERY GEAR REFRESH WRITES THE STAT LINE WHOLE, and the draw and the end each run one, so the block chance and the
+ * health are written again after each.
+ */
+bool FCataclysmRandomBuffSanctifiedPowerTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("Sanctified Power");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmApplyStatusRowTest::FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const CataclysmApplyStatusRowTest::FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+	CataclysmEnchantmentEffectTest::FWearer Attacker(World);
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	Wearer.Equipment->RefreshAttributes(System);
+	Attacker.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1000.0f);
+	const auto ReadyToBlock = [System]()
+	{
+		CataclysmHealthThresholdRowTest::SetHealth(System, 100000.0f, 100000.0f);
+		CataclysmBlockRowTest::WriteLines(System, {}, {{CataclysmBlockRowTest::BlockChance, 100.0f}});
+	};
+	const auto Blocks = [&]()
+	{
+		bool bBlocked = false;
+		CataclysmBlockRowTest::BlowOn(World, Wearer, Attacker, &bBlocked);
+		return bBlocked;
+	};
+
+	// THE CONTROL, READ FIRST: with no buff, a block refreshes nothing.
+	ReadyToBlock();
+	PutEverySlotOnCooldown(System);
+	const int32 Slots = SlotsWaiting(System);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: %d slots wait, the ultimate's among them"), Slots),
+			Slots > 1 && System->HasMatchingGameplayTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Ultimate)))
+		|| !TestTrue(TEXT("set-up: with no buff, the blow is blocked"), Blocks()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with no buff, the block refreshes nothing"), SlotsWaiting(System), Slots);
+	TestEqual(TEXT("control: and the wearer holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+
+	// DRAWN: ONE ACTION UNDER THE BUFF'S OWN NAME, AND A BLOCK REFRESHES EVERY SLOT.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	TestEqual(TEXT("the buff wears one row, built as an action under its own name"), ActionsOfTheBuff(System, Buff), 1);
+	ReadyToBlock();
+	if (!TestTrue(TEXT("set-up: held, the blow is blocked"), Blocks()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("held, the block refreshes every slot. If not, DT_EnchantmentEffects may be older than the rows"),
+		SlotsWaiting(System), 0);
+
+	// AT MOST ONCE IN 5 SECONDS, the row's trigger cooldown.
+	PutEverySlotOnCooldown(System);
+	World->TimeSeconds += 4.0f;
+	TestTrue(TEXT("four seconds on, the blow is blocked"), Blocks());
+	TestEqual(TEXT("and refreshes nothing: five seconds have not passed"), SlotsWaiting(System), Slots);
+	World->TimeSeconds += 2.0f;
+	TestTrue(TEXT("six seconds on, the blow is blocked"), Blocks());
+	TestEqual(TEXT("and every slot is refreshed again"), SlotsWaiting(System), 0);
+
+	// ITS 30 SECONDS PASS: THE ROW IS GONE, AND A BLOCK REFRESHES NOTHING.
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	ReadyToBlock();
+	PutEverySlotOnCooldown(System);
+	TestTrue(TEXT("after the buff, the blow is blocked"), Blocks());
+	TestEqual(TEXT("and the block refreshes nothing"), SlotsWaiting(System), Slots);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffDemonicRageTest,
+	"Cataclysm.StatExemption.TheRandomBuffDemonicRageBelowAQuarterOfHealthIsImmuneAndDoublesDamageForTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When your health falls below 25%, you become immune to crowd control and deal 100% more damage for 10 seconds."
+ * The buff wears Demon King's Regalia's three six-piece rows under its own name: 100 crowd control resistance and 100
+ * more attack and spell damage, own stacks on `health_falls_below` 25 lasting 10 seconds, Trigger Cooldown 300.
+ * Measured as that set's test measures it, through a bare wearer's health written by hand.
+ *
+ * TWO WEARERS, EACH IN A WORLD OF ITS OWN, because each row's trigger cooldown is 300 seconds and a fall can be read
+ * only once in a hold. The first falls a second after the draw and is read across its 10 seconds. The second falls
+ * 25 seconds after the draw, so its 10 seconds would run past the buff's 30, and is read once the buff has ended.
+ */
+bool FCataclysmRandomBuffDemonicRageTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	using CataclysmHealthThresholdRowTest::SetHealth;
+	const TCHAR* const Buff = TEXT("Demonic Rage");
+	const FName Resistance(TEXT("crowd_control_resistance"));
+	const FName AttackDamage(UCataclysmItemModifiers::AttackDamageStat);
+	const FName SpellDamage(TEXT("spell_damage"));
+
+	struct FReadings
+	{
+		float Resistance = 0.0f;
+		float Attack = 1.0f;
+		float Spell = 1.0f;
+	};
+	const auto Read = [&](const UCataclysmAbilitySystemComponent* Of)
+	{
+		FReadings Out;
+		Out.Resistance = Of->StatForSkill(Resistance, FGameplayTagContainer(), /*Fallback=*/0.0f);
+		Out.Attack = Of->MultiplierForStatAgainst(AttackDamage, FGameplayTagContainer(), /*Target=*/nullptr);
+		Out.Spell = Of->MultiplierForStatAgainst(SpellDamage, FGameplayTagContainer(), /*Target=*/nullptr);
+		return Out;
+	};
+
+	for (const bool bLate : {false, true})
+	{
+		const TCHAR* const Which = bLate ? TEXT("falling 25 s after the draw") : TEXT("falling 1 s after the draw");
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+		Wearer.Equipment->RefreshAttributes(System);
+		SetHealth(System, 1000.0f, 1000.0f);
+
+		// THE CONTROL, READ FIRST: with no buff, a fall below a quarter changes nothing.
+		const FReadings Before = Read(System);
+		SetHealth(System, 1000.0f, 200.0f);
+		const FReadings FellWithNoBuff = Read(System);
+		TestEqual(*FString::Printf(TEXT("control, %s: with no buff, a fall below 25%% adds no resistance"), Which),
+			FellWithNoBuff.Resistance, Before.Resistance, 0.01f);
+		TestEqual(*FString::Printf(TEXT("control, %s: and multiplies no attack damage"), Which),
+			FellWithNoBuff.Attack, Before.Attack, 0.0001f);
+		TestEqual(*FString::Printf(TEXT("control, %s: and the wearer holds no action of the buff's"), Which),
+			ActionsOfTheBuff(System, Buff), 0);
+
+		if (!DrawsTheBuff(*this, System, Buff))
+		{
+			return false;
+		}
+		const double DrawnAt = World->GetTimeSeconds();
+		TestEqual(*FString::Printf(TEXT("%s: the buff wears three rows, each built as an own-stack grant under its own "
+			"name"), Which), ActionsOfTheBuff(System, Buff), 3);
+		SetHealth(System, 1000.0f, 1000.0f);
+		World->TimeSeconds = DrawnAt + (bLate ? 25.0 : 1.0);
+
+		// HELD: THREE TENTHS IS NOT BELOW A QUARTER, AND TWO TENTHS IS.
+		SetHealth(System, 1000.0f, 300.0f);
+		const FReadings AtThreeTenths = Read(System);
+		TestEqual(*FString::Printf(TEXT("control, %s: held, health at 30%% adds no resistance"), Which),
+			AtThreeTenths.Resistance, Before.Resistance, 0.01f);
+		SetHealth(System, 1000.0f, 200.0f);
+		const FReadings Fallen = Read(System);
+		TestEqual(*FString::Printf(TEXT("%s: held, a fall below 25%% gives 100 crowd control resistance. If not, "
+			"DT_EnchantmentEffects may be older than the rows"), Which), Fallen.Resistance - Before.Resistance, 100.0f,
+			0.01f);
+		TestEqual(*FString::Printf(TEXT("%s: and twice the attack damage"), Which), Fallen.Attack / Before.Attack, 2.0f,
+			0.0001f);
+		TestEqual(*FString::Printf(TEXT("%s: and twice the spell damage"), Which), Fallen.Spell / Before.Spell, 2.0f,
+			0.0001f);
+
+		if (!bLate)
+		{
+			// FOR 10 SECONDS, inside the buff's 30.
+			World->TimeSeconds = DrawnAt + 1.0 + 9.5;
+			TestEqual(TEXT("9.5 seconds after the fall the resistance is still held"),
+				Read(System).Resistance - Before.Resistance, 100.0f, 0.01f);
+			World->TimeSeconds = DrawnAt + 1.0 + 10.5;
+			const FReadings Lapsed = Read(System);
+			TestEqual(TEXT("10.5 seconds after the fall it has lapsed"), Lapsed.Resistance, Before.Resistance, 0.01f);
+			TestEqual(TEXT("and so has the doubled attack damage"), Lapsed.Attack, Before.Attack, 0.0001f);
+			continue;
+		}
+
+		// THE BUFF'S 30 SECONDS PASS WHILE THE FALL'S 10 STILL RUN: EVERY EFFECT ENDS WITH THE BUFF.
+		PassTheBuffsSeconds(World, System, DrawnAt);
+		TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+		TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+		const FReadings Ended = Read(System);
+		TestEqual(TEXT("5.5 seconds after the fall, the buff ended: no resistance added"), Ended.Resistance,
+			Before.Resistance, 0.01f);
+		TestEqual(TEXT("and no attack damage multiplied"), Ended.Attack, Before.Attack, 0.0001f);
+		TestEqual(TEXT("and no spell damage multiplied"), Ended.Spell, Before.Spell, 0.0001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffTemporalFluxTest,
+	"Cataclysm.StatExemption.TheRandomBuffTemporalFluxLaysFiveStacksAtTheDrawAndAUseIsCastAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "A stack gained every 30 seconds. When a skill is used, it is cast a random number of times." The buff wears Shard
+ * of Anarchy's ten-piece row, `kept_stacks_repeat_skill` 100 on `skill_use`, cap 5, stacks named "Temporal Flux",
+ * under its own name, and lays the row's cap of 5 at the draw, the coordinating session's judgement of 2026-10-26.
+ * Measured as that row's test measures it: the possessed player of `CataclysmSkillRepeatTest::FRepeatRig`, a use of
+ * Carom told to the world, and the casts made by hand with their number pinned.
+ *
+ * THE END IS READ ON A SECOND DRAW, because the first is spent by the use: its five stacks are laid again, and its
+ * 30 seconds then pass with them held.
+ */
+bool FCataclysmRandomBuffTemporalFluxTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("Temporal Flux");
+	const TCHAR* const Stacks = TEXT("Temporal Flux");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const int32 CastsPinned = 3;
+	CataclysmKeptStacksTest::FKeptDrawPinned Draw(CastsPinned);
+	CataclysmSkillRepeatTest::FRepeatRig Rig(World);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the draw of casts can be pinned"), Draw.Variable))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* System = Rig.System;
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	const auto Uses = [&]()
+	{
+		CataclysmSkillRepeatTest::ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy,
+			Aim);
+	};
+
+	// THE CONTROL, READ FIRST: with no buff, no stack is held and a use asks for no cast.
+	TestEqual(TEXT("control: with no buff, no Temporal Flux is held"), System->KeptStacksHeldNamed(Stacks), 0);
+	TestEqual(TEXT("control: and the player holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	Uses();
+	TestTrue(TEXT("control: a use of a skill asks for no cast"), System->PendingKeptStackCastSkill().IsNone());
+	TestEqual(TEXT("control: and none is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+
+	// DRAWN: FIVE STACKS AT ONCE, UNDER THE BUFF'S OWN NAME.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff wears one row, built as an action under its own name"), ActionsOfTheBuff(System, Buff), 1);
+	TestEqual(TEXT("and the draw lays its five Temporal Flux at once. If not, DT_EnchantmentEffects may be older than "
+				   "the rows"), System->KeptStacksHeldNamed(Stacks), 5);
+	int32 ShownFiveOfFive = 0;
+	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Shown : System->KeptStacksForDisplay())
+	{
+		ShownFiveOfFive += Shown.Name == Stacks && Shown.Held == 5 && Shown.Cap == 5 ? 1 : 0;
+	}
+	TestEqual(TEXT("and an interface reads them as five of five"), ShownFiveOfFive, 1);
+
+	// A USE ASKS THE CAST AGAIN, AND THE CASTS SPEND ALL FIVE.
+	Uses();
+	TestTrue(*FString::Printf(TEXT("held, the skill used is the one to cast again: '%s'"),
+		*System->PendingKeptStackCastSkill().ToString()), System->PendingKeptStackCastSkill() == FName(*Carom));
+	if (TestEqual(TEXT("held, one row asked"), System->PendingKeptStackCasts().Num(), 1))
+	{
+		TestTrue(TEXT("the buff's own row"), System->PendingKeptStackCasts()[0].Key.ToString().StartsWith(
+			KeyPrefixOf(Buff), ESearchCase::CaseSensitive));
+	}
+	const int32 RunningBefore = CataclysmSkillRepeatTest::RepeatsRunning(System, Carom);
+	TestEqual(TEXT("five stacks, the draw pinned to 3: three casts more are made"),
+		UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), CastsPinned);
+	TestEqual(TEXT("and three more run"), CataclysmSkillRepeatTest::RepeatsRunning(System, Carom) - RunningBefore,
+		CastsPinned);
+	TestEqual(TEXT("and all five stacks are spent"), System->KeptStacksHeldNamed(Stacks), 0);
+
+	// DRAWN AGAIN, AND ITS 30 SECONDS PASS WITH THE FIVE HELD: THE STACKS AND THE ROW ARE GONE.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	TestEqual(TEXT("drawn again, its five are laid again"), System->KeptStacksHeldNamed(Stacks), 5);
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	TestTrue(TEXT("once its 30 seconds have passed the player holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and no Temporal Flux: the five are forgotten with the row"), System->KeptStacksHeldNamed(Stacks), 0);
+	Uses();
+	TestTrue(TEXT("and a use asks for no cast"), System->PendingKeptStackCastSkill().IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffVoidTest,
+	"Cataclysm.StatExemption.TheRandomBuffVoidLaysTenStacksAtTheDrawSoTheNextAbilityIsFreeAndDoubled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "At 10 stacks, your next ability costs no mana and deals 100% more damage." The buff wears Null Emperor's six-piece
+ * row, `kept_stacks_free_next_ability` 100 on `hit_dealt`, cap 10, stacks named "Void", under its own name, and lays
+ * the row's cap of 10 at the draw, the coordinating session's judgement of 2026-10-26. Read through what the game
+ * asks of those stacks: `NextAbilityIsFree`, which the mana cost asks, and `SpendFreeNextAbility`, which a paid use
+ * that is not the basic attack calls for its multiplier.
+ *
+ * THE END IS READ ON A SECOND DRAW, because the first is spent, as the Temporal Flux test's is.
+ */
+bool FCataclysmRandomBuffVoidTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("Void");
+	const TCHAR* const Stacks = TEXT("Void");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	Wearer.Equipment->RefreshAttributes(System);
+
+	// THE CONTROL, READ FIRST: with no buff, nothing is free and a use is worth itself.
+	TestEqual(TEXT("control: with no buff, no Void is held"), System->KeptStacksHeldNamed(Stacks), 0);
+	TestEqual(TEXT("control: and the wearer holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestFalse(TEXT("control: the next ability is not free"), System->NextAbilityIsFree());
+	TestEqual(TEXT("control: and a use spends nothing and multiplies by 1"), System->SpendFreeNextAbility(), 1.0f,
+		0.0001f);
+
+	// DRAWN: TEN AT ONCE, SO THE NEXT ABILITY IS FREE AND DEALS TWICE.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff wears one row, built as an action under its own name"), ActionsOfTheBuff(System, Buff), 1);
+	TestEqual(TEXT("and the draw lays its ten Void at once. If not, DT_EnchantmentEffects may be older than the rows"),
+		System->KeptStacksHeldNamed(Stacks), 10);
+	TestTrue(TEXT("so the next ability is free"), System->NextAbilityIsFree());
+	TestEqual(TEXT("and the use that spends them deals 100% more"), System->SpendFreeNextAbility(), 2.0f, 0.0001f);
+	TestEqual(TEXT("and spends all ten"), System->KeptStacksHeldNamed(Stacks), 0);
+	TestFalse(TEXT("so the ability after it is not free"), System->NextAbilityIsFree());
+
+	// DRAWN AGAIN, AND ITS 30 SECONDS PASS WITH THE TEN HELD: THE STACKS AND THE ROW ARE GONE.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	TestEqual(TEXT("drawn again, its ten are laid again"), System->KeptStacksHeldNamed(Stacks), 10);
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and no Void: the ten are forgotten with the row"), System->KeptStacksHeldNamed(Stacks), 0);
+	TestFalse(TEXT("so the next ability is not free"), System->NextAbilityIsFree());
 	return true;
 }
 
