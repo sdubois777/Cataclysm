@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — A death raised while another is being announced waits until every listener has heard that one (#2482)
+
+**Affects:** `UCataclysmCombatEvents::NoteDeath` and a new private `Announce`; a new `bWhileTheKillersRowsActed` on
+`FCataclysmDeathNotice`; `UCataclysmAbilitySystemComponent::IsActingOnAnEvent`; the player's death listener (its
+`kill` and `nearby_death` row events); `ACataclysmDungeonGameMode::EpidemicEndTheChain` (its killing flag); three
+new Unreal tests. Closes [#2482](https://github.com/sdubois777/Cataclysm/issues/2482).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **ORDER CHANGES, BY DESIGN, IN THE RULES THAT HEAR TWO DEATHS.** Read, not run: Hellfire now chains in rounds
+  rather than depth-first; Epidemic, Echoes of the Past, Soul Harvest, Blood-Forged Champions and Plague Harbingers
+  hear the first death before one a listener caused, so a soul or a champion's feeding can go to a different creature.
+  That is the ruling's intent.
+- **NOT FIXED HERE: Divine Resurgence miscounts by one either way,** a death that has happened and not been heard.
+  Filed by the coordinating session as [#2546](https://github.com/sdubois777/Cataclysm/issues/2546).
+
+### Ruled by the coordinating session, 2026-10-26
+
+| Question | Ruled |
+|---|---|
+| The order two listeners hear a death in (#2482's choice) | a kill raised inside a death listener is announced only after every listener has heard the first death |
+| The queue's shape | one list for waiting deaths and handed-over work, in the order raised; each death's record (killer, skill, its own copies of the tag lists) copied when it happens; a death at depth 0 announced at once; the death count raised when the death happens |
+| Epidemic's flag | cleared through the same list, so its mass kill's waiting deaths are heard while it is still set |
+| A kill a player's kill row makes | **does not fire kill rows again**, today's behaviour kept: this fixes the order deaths are heard in and must not change what rows do, and the overkill explosion's comment relies on it. Chaining on-kill effects, as Path of Exile and Last Epoch allow, would be its own issue |
+
+### What was read before building
+
+Two listeners hear deaths outside the tests: the dungeon (38 rule functions, bound in `StartPlay`) and the player
+(bound in `InitAbilityActorInfo`); the engine calls the newer binding first. Three dungeon rules kill from inside the
+announcement -- Hellfire, Epidemic, Blood Bond -- and the player's worn rows can. Every death reaches `NoteDeath`
+through `UCataclysmSkillEffects::MarkDead`, after the victim is tagged dead and its own death handling has run, so only
+the announcement waits.
+
+**Why the record is copied.** The notice points at the victim's last-blow record for its killing tags and at the
+skill for its tags; a death that waits could be heard after either changed.
+
+**Why the kill-row flag.** Until now a kill a row made inside an announcement was heard at once, while that
+character's rows were still acting, and `ActOnEvent` drops an event raised then (`PoolActionDepth`). With the queue
+it would be heard after they had stopped, and fire rows again. The notice now records whether the killer's rows were
+acting when the death happened, and the player's listener raises neither `kill` nor `nearby_death` rows on such a
+death. Handed-over work, the overkill explosion's, runs with no rows acting, so its kills raise rows as before.
+
+### Tests
+
+| Test | What it asserts | Control |
+|---|---|---|
+| `Cataclysm.DeathsHeardInOrder.AKillMadeInsideADeathListenerIsHeardAfterEveryListenerHasHeardTheFirst` | a listener that kills the second creature inside its own call: each listener hears the first death and then the second, in both orders of binding | each heard two deaths; a death while none is being announced is heard before the call returns |
+| `Cataclysm.DeathsHeardInOrder.ADeathThatWaitsIsHeardWithTheKillerAndTagsItHadWhenItDied` | a waiting death's notice names the killer and carries the tag on its record when it died | the record really was written over before it was heard |
+| `Cataclysm.DeathsHeardInOrder.AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore` | a plain kill fires "on a kill, own burns within 5 m deal their remaining damage", which kills a burning enemy inside the announcement; that death waits and explodes onto nobody | the plain kill's own overkill explosion row fires and hurts the enemy beside it |
+
+`Cataclysm.DungeonModifierEffects.TheMassKillDoesNotFeedItself`, unchanged, holds Epidemic's flag. **The first design
+of the third test could not fail**: a critical strike made by the test is inside no announcement, so its kill was
+heard at once while the rows acted and dropped as before. Rewritten before any run, to kill inside one.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4279 / 0: #2545's measured 4276 and the three tests this branch adds by name |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P1, the queue off: a death during an announcement is announced at once | `AKillMadeInsideADeathListenerIsHeardAfterEveryListenerHasHeardTheFirst` fails |
+| P2, Epidemic's flag cleared at once as well | `TheMassKillDoesNotFeedItself` fails |
+| P3, the kill-row flag never set | `AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore` fails |
+
+**A risk registered rather than hidden:** a test that reads what a rule did right after a listener's kill, in the old
+depth-first order, could now see another. If one fails the window stops there and it is reported, not changed.
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-26 — A random buff can wear set rows: Shard of Anarchy's random buff can draw Sanctified Power, Demonic Rage, Temporal Flux and Void, batch 2 of the owner's "Add everything" (#2538)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Sanctified Power, Demonic Rage, Temporal Flux and Void
