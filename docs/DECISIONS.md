@@ -91,7 +91,27 @@ stops there and it is reported, not changed.
 
 ### Run
 
-Not run yet.
+**Window w64 (lock `dungeon-w64`, `fix/moves-that-start-on-the-floor` at `9ed24de8d`, on `697702601`, 2026-10-26)
+STOPPED AT THE SUITE: one of the four new tests failed, on its own control.** The six conditions were checked
+immediately before the lock was taken ("free GB: 10.05", measured to two decimals because the first reading was 10.0).
+The lock was released before anything was written here. No proof was run.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4274 / 0 | `4274 tests performed, 4273 succeeded, 1 failed: ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem`; declared 4274, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=8128`, peak 8,457 |
+| Python (JUnit) | | 7016 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**The moves themselves, as printed** ("MOVES ON A FLOOR:"): the knockback moved the creature 300.0 cm; the Phasewalker
+300.0 cm; the tether dragged one end 150.0 cm and the other 150.0 cm; the blink moved the player 400.0 cm toward a
+point 400.0 cm away. Every assertion on them passed, every statue test passed, and no other test failed.
+
+**What failed: the blink test's wall control,** "CONTROL: moved toward the wall (-900.0 cm)". The test's fault, not
+the helper's: a clicked target is one use's aim, cleared as each use ends (`ClickedTarget.Reset()`, ruled 2026-10-16),
+and the control moved the aim point without setting it again, so the second blink went its whole nine metres the way
+the player faced. **Corrected in the next commit** by setting `Blink->ClickedTarget` before the second blink; not run
+yet.
 
 ---
 

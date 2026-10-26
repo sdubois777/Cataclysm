@@ -61740,6 +61740,9 @@ bool FCataclysmBlinkOnAFloorTest::RunTest(const FString& Parameters)
 	const FVector From = Player.Character->GetActorLocation();
 	const float FaceX = static_cast<float>(WallCell.X) + 0.5f * FCataclysmFloorGenerator::CellSizeCm;
 	Aimed->SetActorLocation(From + FVector(400.0f, 0.0f, 0.0f));
+	// AIMED AGAIN: a clicked target is one use's aim, cleared as each use ends (ruled 2026-10-16). Window w64 ran this
+	// control without the line, and the blink went its whole nine metres the way the player faced, -900 cm along X.
+	Blink->ClickedTarget = Aimed;
 	CataclysmTestWorld::RunClock(World, 30.0f);
 	if (!TestTrue(TEXT("CONTROL: set-up: the second blink went off"),
 				  RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff))
