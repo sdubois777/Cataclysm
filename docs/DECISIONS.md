@@ -124,7 +124,25 @@ count. On this branch the CSV and tag list are byte-identical to the dry run's.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t109w, under the editor lock as `enchant-t109w`, taken at 10.8 GB
+free, at `1df008d71` on `docs/status-rows-planned-or-retired-1`: the commit moved from `287dff01f` (on `2732839ad`) onto
+development `c0ce8d000`. The merge between them touched none of this branch's files but this one; the commit kept its
+patch id outside this file and the workbook, and the workbook its bytes; this file conflicted, resolved by placing the
+entry, its lines unchanged. `tools/check_resolved_cpp.py` over the 4 C++ files: "4 files read, 0 with complaints".
+Python before the rebuild: "1 failed, 7000 passed, 8 skipped", the one failure the expected
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`.
+
+- **The asset rebuild, as registered:** `tools/run_editor_python.py tools/generate_datatable_assets.py` exited 0 and
+  changed exactly `game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json`, both in the
+  commit that records this run.
+- **The whole Unreal suite, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "4268 tests performed,
+  4268 succeeded, 0 failed"; "Declared: 4268 tests in the tree at 1df008d71; 4268 performed, gap 0". The table check
+  now expecting 52 StatusEffects rows passed. 43 tests skipped part of what they check. The memory summary line,
+  quoted: "CataclysmTestMemorySummary: tests=4875 peak_used_virtual_mb=8008 final_used_virtual_mb=7668 collections=3248
+  collection_total_s=109.945 worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset in the tree, as registered:** "7001 passed, 8 skipped"; JUnit 7009 tests,
+  0 failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **No guard proof**, as registered.
 
 ---
 
