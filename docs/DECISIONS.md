@@ -11,8 +11,9 @@ the coordinating session on 2026-10-26, after the triage of the dungeon session'
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** The regeneration figure is measured in the window below, and the
-  spores test's comment is corrected from it in the record commit.
+- **BUILT AND RUN: window w63 below passed every registered figure.** The spores test's comment was corrected from
+  the printed figure in the record commit, after the run: a comment, so the run's head and the merged head differ by
+  those lines only.
 
 ### What each does
 
@@ -39,7 +40,22 @@ The #1765 guard, through `tools/prove_guard.py` in an archive copy of `25aba9c5b
 
 ### Run
 
-Not run yet.
+**Window w63 (lock `dungeon-w63`, `chore/stalker-area-small-fixes` at `143e098cf`, on `dd6950c54`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`dd6950c54` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 11.0 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4268 / 0 | `4268 tests performed, 4268 succeeded, 0 failed`; declared 4268, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7900`, peak 8,240 |
+| The player's regeneration | measured, quoted as printed | "SPORES REGEN: the player's health regeneration attribute 3.850, the rate asked for by name 3.850" |
+| Python (JUnit) | | 7011 tests, 0 failures, 0 errors, 8 skipped ("7003 passed, 8 skipped"); ruff `All checks passed!` |
+
+**The player regenerates 3.85 health a second in that test's world, not 1.** The #1924 arithmetic's "about 4" agrees.
+The comment now says 3.85, and the assertion, at least 10 lost in 2.5 seconds against 20 a second of poison, holds
+either way.
 
 ---
 
