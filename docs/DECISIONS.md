@@ -74,7 +74,7 @@ test is that one.
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | the base's measured total + 4, 0 failed |
+| Whole Unreal suite | 4255 (`abe7f7d59`, the #2527 merge) + 4 = **4259**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, `RarityStepItPaysAs` answers its real rung | `ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience` fails |
 | P2, `RandomGearDropsGiven` answers the drop row's | `ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear` fails |
