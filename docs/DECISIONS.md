@@ -20,9 +20,18 @@ tests. Issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays 
 - **A READING, RECORDED AS RULED:** the game's own creatures are not scaled by tier. `ApplyDesignedStats` sets fixed
   figures and a rung only multiplies them, so a Boss in the game is the same at tier 1 and tier 8; the fight model's
   Boss is the simulation's, which is the design's. Not changed.
-- **FERVOUR MAY NOT BUILD ON A CREATURE.** Whether it does is measured in the window by
-  `WhetherFervourBuildsOnACorruptedStalkerInAFight`. If it does not, the Stalker's ultimate never fires in play: ruled
-  acceptable for layer 2, and to be recorded as a known gap.
+- **A KNOWN GAP, ACCEPTED BY THE COORDINATING SESSION ON 2026-10-25: ITS ULTIMATE WILL RARELY FIRE.** Window w57
+  measured that Fervour builds on it: "STALKER FERVOUR: 0.0 before, 2.0 after twenty blows on the player beside it;
+  its maximum 100.0, Fervour per enemy hit 1.00". It is paid only for a blow that landed and dealt damage
+  (`CataclysmSkillTemplate.cpp`, `EnemiesHitForFervour`), one a blow, and the ultimate needs 50: about 37.5 s of blows
+  that all land, at one every 0.75 s, against the fight model's Boss fights of 7 to 20 s. Whether it should start with
+  some Fervour is for the coordinating session to raise after the multipliers are settled.
+- **WINDOW W57 STOPPED AT ONE FAILING TEST, AND ITS CONTROL HAD TESTED NOTHING.** The refill test killed both creatures
+  with `UCataclysmSkillEffects::ReduceHealthDirectly`, which records no blow; a death notice names its killer from the
+  last blow on record (`CataclysmCombatEvents.cpp`), so neither death named one. The Stalker's refill was never
+  reached, and the control -- the player's kill fills none of the Stalker's slots -- passed for the same reason it would
+  have passed with the rule broken. Both creatures are now killed by recorded blows (`ABlowLands`), with both
+  assertions unchanged, ruled the same day. Recorded under Run below.
 - **TWELVE DRINKS OF 35% ADD A GREAT DEAL OF STAYING POWER**, recorded as ruled; the fight model counts them.
 
 ### The rulings (the coordinating session's, 2026-10-25, under the owner's delegation)
@@ -92,23 +101,60 @@ test, and one piece of the model's entry changed fails the entry test; both rest
 `ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` (with a Stalker above 40% and an ordinary
 creature as controls); `ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo` (with the player's kill as control);
 `TheCorruptedStalkerFollowsWithThePotionChargesItHad`; and two measurements that fail nothing but their set-up,
-`WhatACorruptedStalkerIsBuiltWithAtEachTier` ("STALKER BUILD:") and `WhetherFervourBuildsOnACorruptedStalkerInAFight`
-("STALKER FERVOUR:").
+`WhatACorruptedStalkerIsBuiltWithAtEachTier` ("STALKER BUILD:", and since w57 "STALKER BLOW:", what its basic attack
+takes from an unarmoured target at each tier) and `WhetherFervourBuildsOnACorruptedStalkerInAFight` ("STALKER
+FERVOUR:", and since w57 "STALKER FERVOUR BLOWS:", the player's health after each blow).
 
 ### Registered before the run
 
 | Figure | Registered |
 |---|---|
+| Step 1b | `ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo` alone, by its full name; the window stops if it fails |
 | Whole Unreal suite | 4224 (`6a9edc26a`, the #2520 merge) + 8 = **4232**, 0 failed |
 | Memory | about 7,700 MB; reported if above 9,500 |
 | P1, the 40% potion threshold check never true | `ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` fails |
 | P2, the guard against a second running copy removed | `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` fails |
 | P3, the carried charges not given to the next floor's | `TheCorruptedStalkerFollowsWithThePotionChargesItHad` fails |
-| The two measurements | measured, either outcome reported; their lines quoted as printed |
+| The two measurements | measured, either outcome reported; their lines quoted as printed, the "STALKER BLOW:" and "STALKER FERVOUR BLOWS:" lines among them |
 
 ### Run
 
-Not run yet.
+**Window w57 (lock `dungeon-w57`, `feat/corrupted-stalker-brain-1` at `b94870b93`, on `6a9edc26a`, 2026-10-25) stopped
+at the whole suite.** The six conditions were checked immediately before the lock was taken: both of `development`'s
+runs at `6a9edc26a` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull
+request; "free GB: 11.5 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 71 actions, 61 files compiled` |
+| Whole Unreal suite | 4232 / 0 | `4232 tests performed, 4231 succeeded, 1 failed: ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo`; declared 4232, gap 0 |
+| The failure | | "Expected 'its own kill fills its slots by the rung of what it killed' to be 1.000000, but it was 0.000000" |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=8091`, peak 8,446 |
+| Python (JUnit) | | 7004 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1 to P3 | | not run: "STOPPED: the whole suite did not pass" |
+
+**Its measurements, as printed** (each line begins "STALKER BUILD: tier N: max health"; the figure before the
+multiplier and the attack damage):
+
+| Tier | Max health (before the multiplier) | Armour | Attack damage | Max mana |
+|---|---|---|---|---|
+| 1 | 900.7 (750.6) | 805.5 | 198.3 | 108.0 |
+| 2 | 1986.7 (1139.9) | 888.0 | 223.6 | 160.0 |
+| 3 | 3573.9 (1563.6) | 977.7 | 255.4 | 212.0 |
+| 4 | 5673.5 (2005.8) | 1072.4 | 295.8 | 260.0 |
+| 5 | 8440.2 (2503.4) | 1178.4 | 347.5 | 308.0 |
+| 6 | 12136.9 (3100.7) | 1302.8 | 414.0 | 360.0 |
+| 7 | 15430.9 (3462.1) | 1359.1 | 414.0 | 412.0 |
+| 8 | 18978.3 (3795.7) | 1411.1 | 414.0 | 460.0 |
+
+Crit chance 5.00 and demonic resistance 0.0 at every tier. **Beside the fight model:** its built health is within 1.3%
+of the game's at every tier (761 against 750.6 at tier 1, 3,839 against 3,795.7 at tier 8), so its health multipliers
+stand at 0.75 rising to 2.96 against the game's figures; the coordinating session will accept them on a follow-up
+branch. Its attack damage is not settled: the model's hit runs ahead of the game's attack damage from tier 2, and the
+game's stops rising at 414.0 from tier 6, for a reason not measured. The damage multiplier waits for the "STALKER
+BLOW:" figures.
+
+The next window is registered above.
 
 ---
 

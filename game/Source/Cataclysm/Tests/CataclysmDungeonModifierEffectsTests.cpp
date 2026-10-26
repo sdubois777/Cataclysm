@@ -60836,10 +60836,19 @@ bool FCataclysmCorruptedStalkerRefillTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, ThePlayers, 100000000.0f);
+	// KILLED BY RECORDED BLOWS, AND NOT BY A WRITE TO HEALTH. A death notice names its killer from the last blow on
+	// record, and `ReduceHealthDirectly` records none, so window w57 ran this test with no killer named on either
+	// death: the Stalker's refill was never reached, and the control below passed while testing nothing. Ruled by the
+	// coordinating session on 2026-10-25.
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	ABlowLands(Player.Character, ThePlayers, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player's blow killed its creature"), UCataclysmSkillEffects::IsDead(ThePlayers)))
+	{
+		return false;
+	}
 	TestEqual(TEXT("CONTROL: the player's kill fills none of the Stalker's"), Holder->GetPotionCharges(0), 0.0f, 0.01f);
-	UCataclysmSkillEffects::ReduceHealthDirectly(Stalker, TheStalkers, 100000000.0f);
-	if (!TestTrue(TEXT("set-up: the Stalker's creature died"), UCataclysmSkillEffects::IsDead(TheStalkers)))
+	ABlowLands(Stalker, TheStalkers, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the Stalker's blow killed its creature"), UCataclysmSkillEffects::IsDead(TheStalkers)))
 	{
 		return false;
 	}
@@ -60936,6 +60945,26 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 								StalkerRead(Stalker, Combat::GetCritChanceAttribute()),
 								StalkerRead(Stalker, Vital::GetMaxManaAttribute()),
 								StalkerRead(Stalker, UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute())));
+
+		// AND WHAT ITS BASIC ATTACK ACTUALLY TAKES FROM A TARGET, asked for on 2026-10-25: a target of the players' side
+		// beside it, with no armour and more health than any blow takes.
+		ACataclysmEnemyCharacter* Target = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Tier * 1000.0f + 100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: a target at tier %d"), Tier), Target))
+		{
+			return false;
+		}
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(10000000.0f);
+		Target->SetArmour(0.0f);
+		const float TargetBefore = StalkerRead(Target, Vital::GetHealthAttribute());
+		Stalker->AttackTarget(Target);
+		AddInfo(FString::Printf(TEXT("STALKER BLOW: tier %d: its basic attack took %.1f from a target with armour %.1f "
+									 "and all resistance %.1f; its attack damage %.1f"),
+								Tier, TargetBefore - StalkerRead(Target, Vital::GetHealthAttribute()),
+								StalkerRead(Target, Combat::GetArmorAttribute()),
+								StalkerRead(Target, UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute()),
+								StalkerRead(Stalker, Combat::GetAttackDamageAttribute())));
 	}
 	return true;
 }
@@ -60967,11 +60996,17 @@ bool FCataclysmCorruptedStalkerFervourTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const float Before = StalkerRead(Stalker, Resource::GetClassResourceAttribute());
+	// AND THE PLAYER'S HEALTH AFTER EACH BLOW, asked for on 2026-10-25: Fervour is paid only for a blow that landed and
+	// dealt damage, and a player who has died takes none.
+	FString Healths;
 	for (int32 Blow = 0; Blow < 20; ++Blow)
 	{
 		Stalker->AttackTarget(Player.Character);
 		Stalker->AfterRegenerationStep();
+		Healths += FString::Printf(TEXT("%s%.0f"), Blow == 0 ? TEXT("") : TEXT(", "),
+								   Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute()));
 	}
+	AddInfo(FString::Printf(TEXT("STALKER FERVOUR BLOWS: the player's health after each of the twenty: %s"), *Healths));
 	AddInfo(FString::Printf(TEXT("STALKER FERVOUR: %.1f before, %.1f after twenty blows on the player beside it; its "
 								 "maximum %.1f, Fervour per enemy hit %.2f, per enemy in reach %.2f"),
 							Before, StalkerRead(Stalker, Resource::GetClassResourceAttribute()),
