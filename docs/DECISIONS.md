@@ -24,6 +24,11 @@ KEPT"). The sheet's resistance lines already read through it. `ReadStat`, which 
 sheet uses, now asks the same function. With nothing recorded for a stat (an enemy, or a player before its first
 refresh) it returns the attribute, as before.
 
+**The coordinating session's ruling on that judgement, 2026-10-25, verbatim:** "#2183: your judgement is ACCEPTED.
+AttributeWithWhatWasNotFolded is right. Asking StatForSkill alone would drop what gameplay effects such as a Shred do to
+the attribute, and the sheet's resistance lines already read through this function. My wording was wrong. Record the
+reason in the entry."
+
 **What it reaches today:** "Your armor is increased by 1%-2% for every dungeon floor cleared this run" (armour scaled by
 `floors_cleared`), and any later row of that shape on an attribute-backed stat. A row whose condition is about a blow
 or a hit (`hit_is_melee_attack`) is still not on the sheet, because the sheet has no blow in hand; that is correct.
