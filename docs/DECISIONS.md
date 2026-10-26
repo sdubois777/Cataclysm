@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — The Corrupted Stalker's health and damage multipliers are a table of eight each, fitted to its measured build (#1308)
+
+**Affects:** `UCataclysmDungeonModifierEffects` (two tables replace three placeholder constants; a new
+`CorruptedStalkerDamageMultiplier(int32)`); `ACataclysmCorruptedStalkerCharacter::WearTheBuild` (multiplies its attack
+damage by its tier's figure); `sim/cataclysm_sim/fight.py` (the Stalker's hit composed from its own pieces; the
+tables; `fitted_to_the_game`); two Unreal tests and three Python tests. Issue
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layer 4, the other six entries.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **A STATED LIMIT: CRITICAL STRIKES ARE LEFT OUT ON BOTH SIDES,** the Boss's and the Stalker's, in both multipliers.
+  Ruled by the coordinating session to be recorded as a limit.
+- **THE BOSS IS THE SIMULATION'S, NOT A MEASURED ONE.** Its hit, the time the reference character takes to kill it,
+  and the player's damage per second all come from the simulation. None is measured in the game.
+- **HEALTH BELOW 1 AT TIERS 1 TO 3 IS A JUDGEMENT,** accepted by the coordinating session: a player's peak build there
+  is tougher than the Boss it is set beside, so the Stalker is made smaller than its own build rather than slower to
+  kill than that Boss.
+- **WHAT IS NOT EXPLAINED:** after the three terms below, the model's blow is still 0.7% to 1.4% below the game's, and
+  its built health 1.7% to 2.2% above. Neither cause is measured. The coordinating session ruled the 0.7% to 1.4% be
+  recorded here.
+
+### Ruled by the coordinating session, 2026-10-26
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Health multiplier | 0.49 | 0.76 | 0.91 | 1.07 | 1.15 | 1.15 | 1.32 | 1.33 |
+| Damage multiplier | 1.12 | 2.12 | 2.76 | 3.04 | 3.08 | 2.95 | 3.32 | 3.68 |
+
+Held at the end above tier 8 and below tier 1. One table per stat replaces the placeholders (health 1.2 rising evenly
+to 5.0, damage 1.0): a straight line between two ends cannot hold a curve that is level from tier 5 to 6 and, for
+damage, falls at tier 6.
+
+**What the health multiplier contains.** The multiplier at which the tier's reference character takes as long to kill
+the Stalker, its potions counted, as to kill the simulation's Boss on the middle floor of a fifty-floor Basic dungeon:
+the Boss's time to kill (7.1 s at tier 1, 19.7 s at tier 8) x the player's damage per second (281, 2,363) x the share
+of it that lands through the Stalker's measured armour (0.395, 0.611), divided by its measured built health (945.6,
+6,902.3) x (1 + 0.35 x its drinks, 2 and 6).
+
+**What the damage multiplier contains.** The multiplier at which it deals that Boss's damage per second: the Boss's
+hit every 1.5 seconds against its own blow every 0.75, so the Boss's hit / (2 x its measured blow): 778 / 696 = 1.12 at
+tier 1, 15,459 / 4,202 = 3.68 at tier 8. The player's defences take the same share of either hit, so the shares cancel.
+
+### Why the game's blow was half again the model's, and which was right
+
+**Ruled by the coordinating session, 2026-10-26: the game's blow is right, and the damage table stands as computed,
+1.12 to 3.68.** It was ruled first that the damage multiplier divides by the game's blow, so before it was set the coordinating session asked
+whether the game's blow (348.0 at tier 1) was right or the model's hit (224.6) was. **The game's is right.** The model
+took the reference player's hit, `player_damage.damage_per_hit` for a Greataxe with four damage affixes, which is not
+the Stalker's own pieces. Three terms were missing, found by reading, and each is needed: without the Bands the model
+is 31% short at tier 1, without the doubling 14% short at tier 1 and 23% at tier 8, and with a full roll in place of
+one half 9% to 15% over:
+
+| Term | What the game does | Where the model now has it |
+|---|---|---|
+| The eight Bands' implicit attack damage | a Band's implicit is flat attack damage, 46.4 across eight at tier 1 | `fight._stalker_pieces` keeps every implicit |
+| The Greataxe's two affixes doubled | a two-handed weapon's affixes are worth double, "A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix" in `docs/Cataclysm_GDD_v2.md` | `two_handed=` on each affix of a two-handed base |
+| Every affix at a roll of one half, at the drop's affix tier | its pieces are rolled as a drop is | `damage_per_hit` took a full roll at the reference affix tier |
+
+With all three, `fight.stalker_hit` is 345.6 at tier 1 against the game's 348.0, and 2,071.6 at tier 8 against 2,101.0.
+The model's own damage multiplier is then 1.13 to 3.73, within 1.4% of the table, which is fitted to the game's
+measured figures (`fight.fitted_to_the_game`) because those are what the game deals.
+
+### Tests
+
+- `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` **now fails as well as prints**: at
+  every tier its health and its blow, each divided by its tier's multiplier, must be within 1% of what window w60
+  measured, which is the build the tables were fitted to. A change that moves the build leaves the tables fitted to a
+  Stalker that no longer exists, and this reports it. Its "STALKER BLOW:" line now also prints the blow before the
+  multiplier.
+- `Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel`: **two
+  existing assertions changed**, ruled by the coordinating session on 2026-10-26 as following directly from the ruled
+  tables:
+
+  | Assertion | Was | Is |
+  |---|---|---|
+  | The health multiplier's ends | 1.2 at tier 1, 5.0 at tier 8 | 0.49 at tier 1, 1.33 at tier 8 |
+  | Its attack damage beside the control's, at tiers 1 and 8 | the same, within 0.01 | the control's times 1.12 at tier 1 and 3.68 at tier 8, within 0.05 |
+
+  Added beside them: the damage table's ends, 1.12 and 3.68, and both held outside 1 to 8.
+- `sim/tests/test_the_corrupted_stalker_fight.py`: the tables are `fitted_to_the_game` to two decimals; the game's two
+  tables, read out of its source, are the model's; the model's Stalker is within 2.5% of the game's measured health and
+  1.5% of its blow. The placeholder test is removed with the placeholders.
+
+### Proofs
+
+Python, through `tools/prove_guard.py` in an archive copy of `58aea5cf8`; every one PROVED, each passing in full with
+the files put back:
+
+| Break | Named failure |
+|---|---|
+| the Greataxe's affixes not doubled | `test_the_models_stalker_is_the_games_measured_one` |
+| the game's health table 0.48 at tier 1 | `test_the_ruled_tables_are_the_games` |
+| the model's damage table 3.69 at tier 8 | `test_the_ruled_tables_are_the_model_fitted_to_the_games_measured_build`, `test_the_ruled_tables_are_the_games` |
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4265 / 0: `development` at `47852b3a6` measured 4265, and no test is added |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| U1, its attack damage not multiplied | `WhatACorruptedStalkerIsBuiltWithAtEachTier` fails |
+| U2, its pieces at gear level 0 | `WhatACorruptedStalkerIsBuiltWithAtEachTier` fails |
+| The per-tier build and blow | quoted as printed: the "STALKER BUILD:" and "STALKER BLOW:" lines |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-25 — The character sheet's attribute-backed lines show a row scaled or conditioned on the character's state, such as armour per floor cleared (#2183)
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` (`ReadStat`);
@@ -337,8 +448,9 @@ placeholder multiplier; the blow against a target with no armour and no resistan
 | Armour | 1155.3 | 1382.7 | 1641.1 | 1937.0 | 2289.4 | 2723.9 | 2983.5 | 3243.8 |
 | Its basic attack's blow | 348.0 | 468.0 | 634.0 | 867.0 | 1195.0 | 1661.0 | 1874.0 | 2101.0 |
 
-**The plateau is gone:** its blow rises at every tier. **Beside the fight model:** its built health is within 2% of the
-model's at every tier (962 against 945.6 at tier 1, 7,049 against 6,902.3 at tier 8). Its blow is about one and a half
+**The plateau is gone:** its blow rises at every tier. **Beside the fight model:** its built health is within 2.2% of the
+model's at every tier (962 against 945.6 at tier 1, 7,049 against 6,902.3 at tier 8). This said "within 2%" until
+2026-10-26; tiers 6, 7 and 8 are 2.1% to 2.2% apart. Its blow is about one and a half
 times the model's hit at every tier (224.6 against 348.0 at tier 1, 1,392.0 against 2,101.0 at tier 8), for a reason
 not measured; the game's is the figure it deals. **From the game's figures:** health multiplier 0.49, 0.75, 0.90, 1.06,
 1.14, 1.14, 1.30, 1.31; damage multiplier 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68, for tiers 1 to 8. Not changed
