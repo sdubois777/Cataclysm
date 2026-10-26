@@ -57,7 +57,25 @@ reset case: ready, and no cooldown); the control, the death case and the reducti
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t103w, under the editor lock as `enchant-t103w`, taken at 10.9 GB
+free, at `bfc9241f2` on `fix/a-reset-reaches-a-skill-off-the-keys-1`: the commit moved from `c1f546d4d` (on
+`abe7f7d59`) onto development `22b05a357`, keeping its zero-context patch id, whole and outside this file; this file
+conflicted, resolved by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over the 4 C++ files: "4
+files read, 0 with complaints".
+
+- **The test alone, as registered:** "Build: Succeeded - 39 actions, 36 files compiled"; "1 tests performed, 1
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4264 tests performed, 4264 succeeded, 0 failed" (4263 on development + 1);
+  "Declared: 4264 tests in the tree at bfc9241f2; 4264 performed, gap 0". 43 tests skipped part of what they check. The
+  memory summary line, quoted: "CataclysmTestMemorySummary: tests=4871 peak_used_virtual_mb=7941
+  final_used_virtual_mb=7609 collections=3244 collection_total_s=106.715 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **#2528-G1, a reset of every cooldown leaves the kept ones:** PROVED, AS REGISTERED. Prefix
+  `Cataclysm.SkillAssignment.` (16 tests), the anchor counted once, 0 ensures, the file's hash the same after. 1 failed,
+  `AResetOfEveryCooldownReachesASkillHeldOffTheKeys`; 2 failed assertions, registered 2 (it did not come back ready, and
+  "to be 0, but it was 1" cooldown under `Cooldown.Ultimate`); the control, the death case and the reduction case passed;
+  restored, 16 performed, 16 succeeded.
 
 ---
 
