@@ -2,6 +2,268 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Withered Touch takes 20% off the cursed player's own blows and ticks, and off its maximum mana and maximum energy shield, for 5 seconds (#2533 follow-up)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Debuffs sheet's Withered Touch row, and `game/Data/StatusEffects.csv`
+(the branch's first commit, by the enchantment session under the coordinating session's grant for that row:
+DurationSeconds 5, Strength 20, MovesStat "max_mana, max_energy_shield", MovesStatBy "proportion", the description
+"Reduces the player's damage by 20%, and their maximum mana and maximum energy shield by 20%, for 5 seconds.");
+`game/Source/Cataclysm/Character/CataclysmSuccubusCharacter.cpp` (the curse is applied by `ApplyNamedEffect`) and `.h`
+(a comment); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`KeptUnderWitheredTouch`, one
+factor in `ApplyHit`, one in `ApplyDamageOverTime`); `game/Source/Cataclysm/Tests/CataclysmSuccubusTests.cpp` (two
+tests); `tools/tests/test_succubus_matches_the_model.py` (two pins, one message);
+`tools/tests/test_status_effect_numbers_match_their_prose.py` (one claim); this file. The asset
+`game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json` are rebuilt in the enchantment
+session's window. This closes the Withered Touch item of #2533's rulings ("Withered Touch is built in the next branch,
+which will take the mark off"); #2533 is closed.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **The two new tests read the status table ASSET**, not the CSV (`LoadStatusEffectTable`). Against today's asset the
+  row is all zero, so the curse falls back to the tag alone and the damage factor is one: both tests fail until the
+  window rebuilds `DT_StatusEffects`.
+- **WHAT A PLAYER NOTICES:** while cursed, every blow the player deals is 20% smaller, weapon and spell parts both; a
+  bleed, poison, burn or other ailment the player lays while cursed deals 20% less a tick for its whole run; the
+  maximum mana and maximum energy shield fall by a fifth; the player's minions hit as hard as before.
+- **THE RULING'S TEST SENTENCE HOLDS ONLY FOR A POOL AT OR BELOW THE CUT MAXIMUM WHEN THE CURSE LANDS.** Under #1757's
+  rule, which ruling 2 accepts, the curse does not drain: a player at 200 of 200 mana is cursed to a maximum of 160 and
+  still holds 200 until something writes the pool. So "current mana and shield never exceed the shown maximum while
+  cursed" is false for a full pool on the instant the curse lands, by that rule. The test puts both pools at 100 first,
+  checks the curse takes nothing, and then checks a gain stops at the cut maximum. The full-pool case is not asserted
+  either way. For the coordinating session to confirm.
+- **A DAMAGE OVER TIME EFFECT IS CUT WHEN IT IS LAID, NOT ON EACH TICK.** One laid while cursed keeps 80% to its end,
+  past the curse; one laid before the curse keeps its whole figure. A judgement; see below.
+- **NOT CUT, AND SAID SO** (swept for the operation across `game/Source`, the functions that deal or lay damage):
+  the ground a cursed player's skill leaves (priced once when laid, in `UCataclysmSkillTemplate::LeaveZoneAlong`
+  through `SkillHitWithNoTarget`, which this change does not touch); Void Splinter's share of current health
+  (`ApplyShareOfHealthOverTime`, whose figure is not priced from its applier's damage); and the direct damage paid from
+  figures of their own rather than through `ApplyHit`: a released damage store (`UCataclysmSelfBuffSkill::NoteBlowLanded`),
+  retaliation and reflection, the armour and health shares (`CataclysmNova.cpp`, `CataclysmGroundPound.cpp`, the
+  "smite by armour" row action), and the death and remaining-damage bursts. Each would need its own line.
+- **ONE NARROW CASE IS CUT THAT SHOULD NOT BE:** a burn from a skill gadget's projectile that lands after the gadget's
+  use has ended. The skill's `FreeRepeatCastBy` is cleared when the use ends and `ApplyBurn` carries no caster, so the
+  burn reads as the player's own. Not measured.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-26)
+
+> The Withered Touch figure is ACCEPTED: 20% less damage dealt, and 20% less maximum mana and maximum energy shield, for
+> the Succubus's 5 s. Record Enfeeble as the genre source, and that the mana and energy-shield half follows the row's
+> own words, with no genre source checked.
+>
+> 1. (b), with one change: the cursed player's OWN damage only. Take 20% off every blow the player deals, weapon and
+>    spell parts both, and every damage-over-time tick it applies, while the tag holds. Minions are excluded. The
+>    reason: the curse is on the player, as Enfeeble's curse is on the creature that carries it. A minion is a separate
+>    actor the curse did not touch. Keep attack_damage off the row's MovesStat, so the cut is not applied twice to the
+>    weapon part. Leave max_mana and max_energy_shield on the row. Say in the entry how the two parts divide. Add to the
+>    test: a cursed player's blow and its damage-over-time tick each do 80% of an uncursed player's. Control: the
+>    player's minion's blow is unchanged.
+> 2. Accept #1757's rule: the curse lowers the ceiling and does not drain. The test checks that current mana and
+>    shield never exceed the shown maximum while cursed. Record the hidden-base reading as read, not measured.
+> 3. Accept the shield gap and state it: a state-scaled shield row is not cut. It is narrow.
+>
+> The proof as planned, the Succubus line reverted, plus one for the ApplyHit factor if it stays within three.
+
+### THE GENRE SOURCE
+
+Path of Exile's Enfeeble, read by the enchantment session on poedb.tw: "Cursed Normal or Magic enemies deal (15—29)%
+less Damage" (rare and unique 9-18%), base duration 8-11.8 s. It settles the shape of the damage half: a curse that
+makes its carrier deal a share less damage, as a "less". The 20% and the 5 s are this game's. The mana and energy
+shield half follows the row's own words, "reduces player damage output and mana/energy shield"; no genre source was
+checked for it.
+
+### HOW THE TWO PARTS DIVIDE
+
+- **The row cuts the two pools.** `MovesStat` "max_mana, max_energy_shield" by "proportion": `ApplyNamedEffect` puts a
+  `MultiplyCompound` of 1 - 20/100 on each attribute for the effect's 5 s, removed when it ends. The Succubus now calls
+  `ApplyNamedEffect` where it called `ApplyTagForDuration`, with the same four arguments; no magnitude, so the row's
+  Strength is the figure. Its `WitherDurationSeconds` and the row's DurationSeconds are both 5, and a Python pin now
+  holds them together, because `ApplyNamedEffect` uses the duration it is handed and never the row's.
+- **The code cuts the player's own blows and ticks.** `UCataclysmSkillEffects::KeptUnderWitheredTouch(Attacker)` is
+  one less the row's Strength as a share, read through `NumbersForEffectTag` with the tag from
+  `UCataclysmSkillShapes::StatusTagFor`, while the attacker carries `Status.Debuff.WitheredTouch`, and one otherwise.
+  `ApplyHit` multiplies the whole blow by it, beside `Kept`, so the weapon part and the spell part are cut alike.
+  `ApplyDamageOverTime` multiplies the per-tick figure by it before the applier's three damage over time stats.
+- **`attack_damage` stays off the row**, as ruled, or the weapon part would be cut twice: once on the attribute
+  `WeaponDamageOf` reads and once by the factor.
+
+### MINIONS EXCLUDED, AND HOW
+
+"A minion is a separate actor the curse did not touch." Three cases:
+
+- **A minion's own swing** is `ACataclysmMinion::AttackTarget`, dealt through `ApplyDirectDamage` with the minion as
+  the instigator, and never reaches `ApplyHit`. The minion carries no tag, so its burns, laid in its own name, are not
+  cut either.
+- **A use a minion casts in the player's name** (a skill gadget's cast, a skill trap's cast, a gadget's copy of the
+  player's last skill) has the PLAYER as the instigator, so the tag would be found. It is left out by what cast it:
+  `ApplyHit` reads `NamedCastBy` (the delivery's `CastBy`, else the skill's `FreeRepeatCastBy`), and only
+  `UCataclysmTriggeredSkill::Trigger`'s two minion callers in `CataclysmMinion.cpp` ever name an actor there.
+  `ApplyDamageOverTime` asks the applying skill's `FreeRepeatCastBy` the same way.
+- **An effect not priced from its applier** (a spread copy, a trap's share of a blow, converted damage, anything laid
+  on the applier itself) is not cut: the factor is asked only when `bScalesWithInstigator` is set and the target is
+  another character.
+
+### #1757 AND THE HIDDEN BASE: READ, NOT MEASURED
+
+The curse lowers the ceiling and does not drain (#1757, `UCataclysmVitalAttributeSet::PreAttributeChange`: "LOWERING A
+MAXIMUM LEAVES THE CURRENT VALUE WHERE IT WAS, ON PURPOSE"). Every later write of mana or shield is clamped to the cut
+maximum, which is what the test measures. **What follows was read, not measured.** `ApplyModToAttribute` adds to the
+attribute's BASE and `PreAttributeChange` clamps only the CURRENT value (the engine source cited in `CLAUDE.md`, issues
+#1623 and #1036). So a gain at the cut ceiling leaves a base above it: the test's gain of 500 leaves mana's base at 600
+under a current 160. When the curse ends the maximum returns to 200 and the current stays at 160 until the next write;
+the next `ApplyModToAttribute` then works from the hidden base, so a spend can read as a refill. A spend while cursed
+at a pool above the cut maximum reads larger than it is, for the same reason. A hit on the shield writes the shield
+with an explicit clamp, so the shield has no hidden base on that route.
+
+### THE SHIELD GAP, ACCEPTED (ruling 3)
+
+`UCataclysmAbilitySystemComponent::MaximumEnergyShield` is the attribute plus the rows the refresh could not fold into
+it, such as a shield row scaled on the character's state (Hollow Crown is the one named there). The curse cuts the
+attribute only, so a player holding such a row loses less than a fifth of the maximum shown. Narrow, and not tested:
+the test's stand-in player carries no rows.
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **A damage over time effect is cut when it is laid.** Taken because that is where a tick's damage is priced from its
+  instigator (`DamageOverTimeNumbers`), and the rule a ground patch already follows ("PRICED WITH THE CASTER'S
+  MODIFIERS APPLIED, and priced once, when the ground is created", `LeaveZoneAlong`). Not taken: cutting each tick as
+  it lands, beside `TargetConditionedDotDamageMultiplier` in `PostGameplayEffectExecute`. That would follow "while the
+  tag holds" more closely, but a tick cannot tell there whether a minion cast the use that laid it, so the minion
+  exclusion would be lost.
+- **The minion exclusion is asked of who cast the use, not of who the instigator is.** Not taken: excluding every
+  blow whose delivery names a `DealtBy`. Only `MinionDelivery` and `UCataclysmAllyDamageShare` set that field (swept
+  by assignment across `game/Source`), and both deliveries go to `ApplyDirectDamage`, not to `ApplyHit`.
+- **The tests' cursed player is a stand-in, not an `ACataclysmPlayerCharacter`.** A bare actor with the player's vital
+  and combat sets on a `UCataclysmAbilitySystemComponent`, `FScopedCaster`'s shape. Not taken: a real player with its
+  player state, which carries a recorded stat line, so `StatForSkill` answers spell damage from the line and the spell
+  part written for the test would not be the one read.
+- **No new spelling of the tag.** The factor reads the tag through `UCataclysmSkillShapes::StatusTagFor("Withered
+  Touch")`, the helper the Succubus uses, and the figure through the row; no C++ constant holds the 20.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- let a Succubus curse you with Wither the Living: the maximum mana and maximum energy shield fall by a fifth for 5
+  seconds; your hits and the ailments you lay meanwhile deal a fifth less; your minions' hits do not change.
+
+### Tests
+
+Both in `Cataclysm.Succubus.` (with its dot). Each pair of readings is a cursed stand-in player against an uncursed
+one set up alike, 10 m apart and 50 m or more from the Succubus.
+
+`Cataclysm.Succubus.ItsCurseTakesAFifthOffTheMaximumManaAndShield`, 28 assertions: set-up, a Succubus; set-up, the
+tag exists; four set-up readings, each player at 200 maximum mana and 300 maximum shield; set-up, the curse is on the
+cursed one and not on the other; **cursed, maximum mana 160 and maximum shield 240** (2); control, the uncursed one
+200 and 300 (2); **the curse takes no mana and no shield** from pools at 100 (2); **a second curse brings them no
+lower, 160 and 240** (2); **a gain of 500 leaves mana and shield no higher than the shown maximum** (2), **filled to
+160 and 240** (2); control, the uncursed one fills to 200 and 300 (2); **at 4.5 s the curse is on and maximum mana is
+still 160** (2); **at 5.5 s it has ended, and the maxima are 200 and 300 again** (3); control, the uncursed one's
+maximum mana is still 200.
+
+`Cataclysm.Succubus.ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks`, 21 assertions: four set-up (a Succubus, the
+Withered Touch, poison and spell tags); set-up, the curse is on the cursed one and not the other (2); set-up, the
+uncursed weapon blow deals something and its spell blow carries a spell part (2); **a cursed player's weapon blow is
+80% of an uncursed one's**; **the spell part of its spell blow is 80% too** (spell blow less weapon blow, each player);
+set-up, each player's poison of 10 a tick lands (2); set-up, the uncursed tick dealt something, and the curse is still
+on at 1.5 s (2); **a cursed player's damage over time tick is 80% of an uncursed one's**; set-up, each player's imp (2);
+set-up, the uncursed imp deals something; **control: the cursed player's minion's blow is unchanged**; set-up, a blow
+cast by the uncursed one's imp deals something; **control: a blow its minion cast in the cursed player's name is
+unchanged** (`FCataclysmHitDelivery::CastBy` naming the imp, as a skill gadget's cast does). The blows are read as
+`ApplyHit` returns them, before the target's defences.
+
+Python: `test_succubus_matches_the_model.py` gains `test_the_curse_lasts_as_long_as_its_row_says` and
+`test_the_curse_moves_the_two_maximum_pools_by_a_share` (MovesStat and MovesStatBy pinned); its tag message names
+`ApplyNamedEffect`. `test_status_effect_numbers_match_their_prose.py` gains the claim
+`Debuff_Withered_Touch`: DurationSeconds 5 ("maximum energy shield by 20%, for 5 seconds") and Strength 20 ("the
+player's damage by 20%").
+
+### Not tested
+
+The full-pool case under #1757 (see SAID FIRST); the hidden base; the shield gap; a skill gadget's or trap's damage over
+time (the `FreeRepeatCastBy` half of the exclusion in `ApplyDamageOverTime`); a real player character; the routes listed
+as not cut. `Cataclysm.Succubus.ItFiresTheRightShotAndCastsTheRightCurse` checks only the tag and passes either way.
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in its file by script; each break keeps its file compiling (brackets balanced; both
+functions in WT-G1 take `(AActor*, AActor*, const FGameplayTag&, float)`). Prefix for all three: `Cataclysm.Succubus.`
+(10 registrations in `CataclysmSuccubusTests.cpp` by reading; the count to quote is the run's).
+
+- **WT-G1, the Succubus line reverted:** `game/Source/Cataclysm/Character/CataclysmSuccubusCharacter.cpp`,
+  `if (UCataclysmSkillEffects::ApplyNamedEffect(` becomes `if (UCataclysmSkillEffects::ApplyTagForDuration(`.
+  Predicted: `ItsCurseTakesAFifthOffTheMaximumManaAndShield` fails, 7 assertions (maximum mana 160 and maximum shield
+  240; the same two after the second curse; mana filled to 160 and shield to 240; maximum mana still 160 at 4.5 s);
+  the two "does not exceed" checks pass at 200 of 200. `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks` passes: the
+  tag still lands and the factor reads the tag. Every other test of the prefix passes.
+- **WT-G2, the ApplyHit factor made one:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`,
+  `NamedCastBy.IsExplicitlyNull() ? KeptUnderWitheredTouch(Instigator) : 1.0f` becomes
+  `NamedCastBy.IsExplicitlyNull() ? 1.0f : 1.0f`. Predicted: `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks` fails,
+  2 assertions (the weapon blow at 80%, the spell part at 80%); its tick and its two controls pass. Every other test of
+  the prefix passes.
+- **WT-G3, the tick factor made one:** the same file, `!bCastByAMinion ? KeptUnderWitheredTouch(Instigator) : 1.0f`
+  becomes `!bCastByAMinion ? 1.0f : 1.0f`. Predicted: `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks` fails, 1
+  assertion (the tick at 80%). Every other test of the prefix passes.
+
+### THE FOUR POINTS RULED AFTER THE BUILD (the coordinating session, 2026-10-26, verbatim)
+
+> 1. **(i): accept #1757's rule, with no drain at the moment of landing.** My test sentence was too strong for a full
+>    pool. Record the full-pool case as #1757's rule, asserted neither way.
+> 2. **Damage over time is cut when laid: ACCEPTED** as the session's judgement, stated, for the minion-exclusion reason.
+> 3. **Leave ALL of the uncut sources as stated gaps, including the ground-zone line.** Do not add a line that cannot
+>    be tested in this branch. I will open one issue listing them: ground zones; Void Splinter's share; the released
+>    damage store; retaliation and reflection; Nova and GroundPound; smite by armour; the death and remaining-damage
+>    bursts. They get cut together when someone can test them.
+> 4. **The late gadget burn: accept and state it.**
+
+So, stated plainly:
+- **A full pool when the curse lands:** a player at 200 of 200 mana is cursed to a maximum of 160 and still holds 200
+  until something writes the pool, under #1757's rule that a lower maximum does not lower the current value. The
+  tests start both pools at 100 and assert nothing about this case.
+- **Damage over time is cut when it is laid, not on each tick:** an effect laid while cursed keeps 80% to its end, even
+  after the curse ends, and one laid before the curse keeps its whole figure. A tick cannot tell whether a minion cast
+  the use that laid it, so cutting each tick would lose the minion exclusion.
+- **Not cut, as stated gaps for one issue:** ground zones a cursed player's skill leaves (priced once when laid, in
+  `UCataclysmSkillTemplate::LeaveZoneAlong`); Void Splinter's share of current health (`ApplyShareOfHealthOverTime`);
+  and the direct damage paid from figures of its own rather than through `ApplyHit`: a released damage store,
+  retaliation and reflection, the Nova and GroundPound shares, the "smite by armour" row action, and the death and
+  remaining-damage bursts.
+- **One narrow case is cut that should not be:** a skill gadget's projectile burn that lands after the gadget's use has
+  ended. The skill's `FreeRepeatCastBy` is cleared at the end of the use and `ApplyBurn` carries no caster, so the burn
+  reads as the player's own. Not measured.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-26, window t113w, under the editor lock as `enchant-t113w`, taken at 11.7 GB
+free, at `80ca8832a` on `feat/withered-touch-cuts-the-players-damage-1`: the three commits moved from `6025f5ab4`,
+`f3a901073` and `a38e7adce` (on `dd6950c54`) onto development `4e77c772c` as `ce11129a8`, `e4e1ea8ed` and `80ca8832a`,
+each keeping its zero-context patch id, outside this file and in it; this file conflicted in the second, resolved by
+placing the entry, its lines unchanged; the workbook kept its bytes. `tools/check_resolved_cpp.py` over the 5 C++ files:
+"5 files read, 0 with complaints". Python before the rebuild: "1 failed, 7005 passed, 8 skipped", the one failure the
+expected asset-hash check.
+
+- **The asset rebuild, as registered:** exit 0; it changed exactly `game/Content/Data/DT_StatusEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`, committed as `5f54deb26` before any test ran.
+- **The two new tests alone, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "2 tests performed, 2
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4270 tests performed, 4270 succeeded, 0 failed" (4268 on development + 2);
+  "Declared: 4270 tests in the tree at 5f54deb26; 4270 performed, gap 0". 43 tests skipped part of what they check.
+  Free memory before the suite was 10 GB. The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4877
+  peak_used_virtual_mb=7959 final_used_virtual_mb=7629 collections=3250 collection_total_s=110.142
+  worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset, as registered:** "7006 passed, 8 skipped"; JUnit 7014 tests, 0 failures,
+  0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.Succubus.` (10 tests), each anchor counted once, 0 ensures, the file's hash the
+  same after, and every restored half 10 performed, 10 succeeded:**
+  - **WT-G1, the Succubus lays the tag alone:** PROVED, AS REGISTERED. 1 failed,
+    `ItsCurseTakesAFifthOffTheMaximumManaAndShield`; 7 failed assertions, registered 7 (each pool reading 200 or 300
+    where 160 or 240 was expected).
+  - **WT-G2, a blow keeps its whole figure under the curse:** PROVED, AS REGISTERED. 1 failed,
+    `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks`; 2 failed assertions, registered 2 (the weapon blow 100 where 80,
+    the spell part 50 where 40).
+  - **WT-G3, a damage over time effect keeps its whole figure under the curse:** PROVED, AS REGISTERED. 1 failed, the
+    same test; 1 failed assertion, registered 1 (the tick 10 where 8).
+
+---
+
 ## 2026-10-26 — Three small fixes from the dungeon session's triage: a save comment, a per-beat guard, and the player's measured regeneration (#1958, #1765, #1940)
 
 **Affects:** `FCataclysmSaveApply::CreatureInto`'s comment (#1958); a new Python test,
