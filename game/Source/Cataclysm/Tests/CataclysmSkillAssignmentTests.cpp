@@ -5,17 +5,22 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -78,12 +83,13 @@ namespace CataclysmSkillAssignmentTest
 	};
 
 	/** A possessed player wearing the Greataxe it begins with, carrying Demonic. One set-up check. */
-	FSkillAssignmentCarrier SpawnAssignmentCarrier(FAutomationTestBase& Test, UWorld* World)
+	FSkillAssignmentCarrier SpawnAssignmentCarrier(FAutomationTestBase& Test, UWorld* World,
+												   const FVector& Where = FVector::ZeroVector)
 	{
 		FSkillAssignmentCarrier Made;
 		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
-		Made.Character = World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		Made.Character = World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
 		if (PlayerState && Controller && Made.Character)
 		{
 			Controller->SetPlayerState(PlayerState);
@@ -265,6 +271,72 @@ namespace CataclysmSkillAssignmentTest
 		AActor* Actor = nullptr;
 		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
 	};
+
+	/** Whether a press of this granted ability now would pass the cooldown check. */
+	bool KeyIsReady(const UCataclysmGameplayAbility* Ability)
+	{
+		return Ability->CheckCooldown(Ability->GetCurrentAbilitySpecHandle(), Ability->GetCurrentActorInfo(),
+									  /*OptionalRelevantTags=*/nullptr);
+	}
+
+	/** How many cooldown effects run under this key's tag, or -1 when the key has no tag. */
+	int32 CooldownEffectsOn(const UAbilitySystemComponent* System, ECataclysmAbilitySlot Key)
+	{
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Key);
+		return Tag.IsValid()
+			? System->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag))).Num()
+			: -1;
+	}
+
+	/** Centimetres in a metre. */
+	constexpr float AssignmentMetre = 100.0f;
+
+	/** The health every creature here starts with. */
+	constexpr float AssignmentEnemyHealth = 50000.0f;
+
+	/** A creature of the monsters' side with no armour, evasion, block or resistance, as the trap tests make one. */
+	ACataclysmEnemyCharacter* AssignmentEnemy(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		UAbilitySystemComponent* Its = Made ? Made->GetAbilitySystemComponent() : nullptr;
+		if (!Its)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetHealth(100000.0f);
+		Made->SetArmour(0.0f);
+		Made->SetAttackDamage(0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), AssignmentEnemyHealth);
+		return Made;
+	}
+
+	/** What a creature has lost since it was made. */
+	float AssignmentTakenFrom(const AActor* Who)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
+		return Its ? AssignmentEnemyHealth - Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+				   : -1.0f;
+	}
+
+	/** REPLACES THE WHOLE STAT LINE with one slot's trap flag: a flat 1 on `skill_slot_is_a_trap` requiring its tag. */
+	void HoldTheTrapFlag(UCataclysmAbilitySystemComponent* System, ECataclysmAbilitySlot Slot)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 1.0f;
+		Row.RequiredTags.AddTag(CataclysmAbilitySlots::Tag(Slot));
+		FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(UCataclysmAbilitySystemComponent::SkillSlotIsATrapStat));
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Row);
+		System->SetStatInputs(MoveTemp(Stats));
+	}
 
 	/** The console output a command writes, line by line. */
 	struct FSkillAssignmentOutput : public FOutputDevice
@@ -972,6 +1044,185 @@ bool FCataclysmSkillAssignmentNoticeTest::RunTest(const FString&)
 	TestTrue(TEXT("the Movement skill on the Special key is used"), Caster.Use(Moved));
 	TestTrue(TEXT("and announces Movement, the slot it was made for"),
 			 Heard.Num() == 2 && Heard[1] == ECataclysmAbilitySlot::Movement);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentAuraKeyTest,
+	"Cataclysm.SkillAssignment.MoltenCleaveOnTheAuraKeyWaitsItsOwnCooldownAndAnAuraThereWaitsForNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Q-L3a, "Add Cooldown.Aura": Molten Cleave chosen for the Aura key waits its own 1.5 seconds, under `Cooldown.Aura`.
+ * The control, read first: Conflagration, the aura on its own Aura key, has no cooldown, and its cooldown being
+ * committed applies no effect at all, so it is ready again at once. The cooldown is committed by the ability's own
+ * `ApplyCooldown`, the call a press commits, because a press of a strike waits on clips and targets.
+ *
+ * IT NEEDS THE TAG: until `Cooldown.Aura` is in the generated tag list the set-up check fails and nothing else is asked.
+ */
+bool FCataclysmSkillAssignmentAuraKeyTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	if (!TestTrue(TEXT("set-up: Cooldown.Aura is in the tag list"),
+				  UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Aura).IsValid()))
+	{
+		return false;
+	}
+	const float HeavySeconds = UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(),
+																ECataclysmAbilitySlot::Heavy).Cooldown;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillAssignmentCarrier Carrier = SpawnAssignmentCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+
+	// THE CONTROL: the aura on its own key waits for nothing, and committing its cooldown applies nothing.
+	const UCataclysmGameplayAbility* Aura = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Aura);
+	if (!TestNotNull(TEXT("set-up: Conflagration is on the Aura key"), Aura))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the aura's own cooldown is nought"), Aura->GetBaseCooldown(), 0.0f, 0.001f);
+	Aura->ApplyCooldown(Aura->GetCurrentAbilitySpecHandle(), Aura->GetCurrentActorInfo(),
+						FGameplayAbilityActivationInfo());
+	TestEqual(TEXT("control: committing it puts no effect under Cooldown.Aura"),
+			  CooldownEffectsOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Aura), 0);
+	TestTrue(TEXT("control: and the aura is ready again at once"), KeyIsReady(Aura));
+
+	FString Reason;
+	if (!TestTrue(TEXT("set-up: Molten Cleave is chosen for the Aura key"),
+				  Carrier.State->AssignSkill(ECataclysmAbilitySlot::Aura, MoltenCleaveRow, Reason)))
+	{
+		return false;
+	}
+	const UCataclysmGameplayAbility* Cleave = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Aura);
+	if (!TestTrue(TEXT("set-up: Molten Cleave is on the Aura key"),
+				  Cleave && Cleave->DisplayedName() == TEXT("Molten Cleave")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its cooldown is the Heavy slot's, the slot it was made for"), Cleave->GetBaseCooldown(),
+			  HeavySeconds, 0.001f);
+	Cleave->ApplyCooldown(Cleave->GetCurrentAbilitySpecHandle(), Cleave->GetCurrentActorInfo(),
+						  FGameplayAbilityActivationInfo());
+	TestFalse(TEXT("committed, it is on cooldown"), KeyIsReady(Cleave));
+	TestEqual(TEXT("for its own 1.5 seconds, under Cooldown.Aura"),
+			  CooldownLengthOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Aura), HeavySeconds, 0.001f);
+	TestEqual(TEXT("and nothing waits under Cooldown.Heavy"),
+			  CooldownLengthOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Heavy), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentTrapSentenceTest,
+	"Cataclysm.SkillAssignment.AnUltimateOnTheHeavyKeyMadeATrapByTheUltimateRowCastsByTheUltimatesSentence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Q-L3b: a trap casts by the sentence of the slot its skill was MADE for. Two players 100 m apart, each wearing a
+ * Demonic Whip, each with a trap placed from the Heavy key 20 m north, an enemy 2.5 m east of the trap and a second 15
+ * m east of it. The control, read first: Searing Lash on the Heavy key, made a trap by the Heavy row, "fires at the
+ * nearest enemy" from the trap, a 5 m cone, and the far enemy is untouched. Then The Gathering, made for the Ultimate
+ * slot, chosen for the Heavy key and made a trap by the Ultimate row: it casts "centered on the triggering enemy", and
+ * its 13 to 14.5 m point-blank strike reaches the far enemy 12.5 m from it.
+ */
+bool FCataclysmSkillAssignmentTrapSentenceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	// PINNED AFTER THE WORLD, which sets the roll itself.
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const float M = AssignmentMetre;
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	const FVector Far(15.0f * M, 0.0f, 0.0f);
+
+	// THE CONTROL: the Heavy skill on its own key.
+	const FSkillAssignmentCarrier Plain = SpawnAssignmentCarrier(*this, World);
+	if (!Plain.IsComplete()
+		|| !WearInTheRightHand(*this, Plain, AssignmentWeapon(TEXT("Weapon_Whip"), {FName(TEXT("Demonic"))})))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Lash = HeldOnKey(Plain.Slots, ECataclysmAbilitySlot::Heavy);
+	if (!TestTrue(TEXT("set-up: Searing Lash, made for the Heavy slot, is on the Heavy key"),
+				  Lash && Lash->Name == TEXT("Searing Lash")
+					  && UCataclysmWeaponSkills::DesignedSlotOf(*Lash) == ECataclysmAbilitySlot::Heavy))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* PlainNear = AssignmentEnemy(World, North + Near);
+	ACataclysmEnemyCharacter* PlainFar = AssignmentEnemy(World, North + Far);
+	if (!TestNotNull(TEXT("set-up: the control trap's enemy"), PlainNear)
+		|| !TestNotNull(TEXT("set-up: the control's far enemy"), PlainFar))
+	{
+		return false;
+	}
+	HoldTheTrapFlag(Plain.AbilitySystem, ECataclysmAbilitySlot::Heavy);
+	ACataclysmMinion* PlainTrap = ACataclysmMinion::PlaceSkillTrap(Plain.Character, ECataclysmAbilitySlot::Heavy, North);
+	if (!TestNotNull(TEXT("set-up: the control's trap is placed from the Heavy key"), PlainTrap))
+	{
+		return false;
+	}
+
+	// THE ULTIMATE ON THE HEAVY KEY.
+	const FVector Home(100.0f * M, 0.0f, 0.0f);
+	const FSkillAssignmentCarrier Moved = SpawnAssignmentCarrier(*this, World, Home);
+	FString Reason;
+	if (!Moved.IsComplete()
+		|| !WearInTheRightHand(*this, Moved, AssignmentWeapon(TEXT("Weapon_Whip"), {FName(TEXT("Demonic"))}))
+		|| !TestTrue(TEXT("set-up: The Gathering is chosen for the Heavy key"),
+					 Moved.State->AssignSkill(ECataclysmAbilitySlot::Heavy, FName(TEXT("Demonic_Whip_Ultimate")), Reason)))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Gathering = HeldOnKey(Moved.Slots, ECataclysmAbilitySlot::Heavy);
+	if (!TestTrue(TEXT("set-up: The Gathering, made for the Ultimate slot, is on the Heavy key"),
+				  Gathering && Gathering->Name == TEXT("The Gathering")
+					  && UCataclysmWeaponSkills::DesignedSlotOf(*Gathering) == ECataclysmAbilitySlot::Ultimate)
+		|| !TestTrue(TEXT("set-up: The Gathering reaches past the far enemy's 12.5 m from the near one and short of its 15 m "
+						  "from the trap"),
+					 Gathering->Params.RadiusCm > 1300.0f && Gathering->Params.RadiusCm < 1450.0f))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* MovedNear = AssignmentEnemy(World, Home + North + Near);
+	ACataclysmEnemyCharacter* MovedFar = AssignmentEnemy(World, Home + North + Far);
+	if (!TestNotNull(TEXT("set-up: the moved trap's enemy"), MovedNear)
+		|| !TestNotNull(TEXT("set-up: the moved trap's far enemy"), MovedFar))
+	{
+		return false;
+	}
+	HoldTheTrapFlag(Moved.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+	TestTrue(TEXT("the Ultimate trap row converts the Heavy key, which holds an Ultimate"),
+			 Moved.AbilitySystem->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+	ACataclysmMinion* MovedTrap =
+		ACataclysmMinion::PlaceSkillTrap(Moved.Character, ECataclysmAbilitySlot::Heavy, Home + North);
+	if (!TestNotNull(TEXT("set-up: the moved trap is placed from the Heavy key"), MovedTrap))
+	{
+		return false;
+	}
+
+	// BOTH ARMED, A SECOND AND A QUARTER LATER, AND STEPPED BY HAND.
+	World->TimeSeconds += 1.25f;
+	ACataclysmMinion::GadgetStep(PlainTrap);
+	ACataclysmMinion::GadgetStep(MovedTrap);
+	TestTrue(*FString::Printf(TEXT("control: the Heavy trap struck its enemy: %.2f"), AssignmentTakenFrom(PlainNear)),
+			 AssignmentTakenFrom(PlainNear) > 0.0f);
+	TestEqual(TEXT("control: and, fired from the trap at the nearest enemy, left the far enemy untouched"),
+			  AssignmentTakenFrom(PlainFar), 0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("the Ultimate on the Heavy key struck its enemy: %.2f"), AssignmentTakenFrom(MovedNear)),
+			 AssignmentTakenFrom(MovedNear) > 0.0f);
+	TestTrue(*FString::Printf(TEXT("and the far enemy, so it was cast centred on the triggering enemy, by the Ultimate's "
+								   "sentence: %.2f"), AssignmentTakenFrom(MovedFar)),
+			 AssignmentTakenFrom(MovedFar) > 0.0f);
 	return true;
 }
 

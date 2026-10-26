@@ -2569,10 +2569,13 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	AsTheTraps.Tags.AddTag(TagOfATrap());
 	AActor* const Enemy = IsValid(TriggeringEnemy) ? TriggeringEnemy : nullptr;
 	const FVector Place = Enemy ? Enemy->GetActorLocation() : GetActorLocation();
-	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SkillTrapSlot);
+	// BY THE SENTENCE OF THE SLOT THE SKILL WAS MADE FOR, NOT THE KEY THE TRAP WAS PLACED FROM: ruled 2026-10-25 (Q-L3b,
+	// under O1), so an Ultimate on the Heavy key casts as the Ultimate's sentence says. Issue #837 layer 3.
+	const ECataclysmAbilitySlot SentenceSlot = UCataclysmWeaponSkills::DesignedSlotOf(Skill);
+	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SentenceSlot);
 	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
-	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
+	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SentenceSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
 	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
 	// the slow's rule of a tenth (the owner, 2026-10-21).
 	SkillTrapTriggeringEnemy = Enemy;

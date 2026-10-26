@@ -694,8 +694,8 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 	// THE KEY'S TAG AND THE KEY'S CHARGES, AND THE DESIGNED SLOT'S LENGTH. Issue #837 layer 3. The owner, 2026-10-25:
 	// "Each skill its own cooldown". A key holds one skill, so keying the tag and the charges by the key keeps two
 	// skills made for one slot apart; `GetBaseCooldown` reads the length from `GetDesignedSlot`, so an Ultimate on the
-	// Heavy key waits 20 seconds under `Cooldown.Heavy`. THE AURA KEY HAS NO TAG, so a skill with a cooldown put there
-	// waits for nothing: not built, a tag would be needed (the layer's entry says so).
+	// Heavy key waits 20 seconds under `Cooldown.Heavy`, and a Heavy skill on the Aura key 1.5 seconds under
+	// `Cooldown.Aura` (Q-L3a). An aura's own length is nought, so it returns just below, waiting for nothing, whatever its key's tag.
 	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
 	if (!Tag.IsValid() || GetBaseCooldown() <= 0.0f)
 	{
