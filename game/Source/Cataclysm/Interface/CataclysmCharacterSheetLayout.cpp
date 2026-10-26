@@ -47,7 +47,12 @@ namespace
 
 		if (const FGameplayAttribute* Found = Map.Find(Stat))
 		{
-			return Read(ASC, *Found);
+			// AND WHAT THE STAT REFRESH COULD NOT FOLD INTO THE ATTRIBUTE: a row scaled or conditioned on the
+			// character's state now, such as armour per floor cleared. Issue #2183. The attribute stays the starting
+			// point, so a Shred or another debuff on it is kept, as the resistance lines keep it (2026-10-18).
+			const float Attribute = Read(ASC, *Found);
+			const UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(ASC);
+			return Cataclysm ? Cataclysm->AttributeWithWhatWasNotFolded(FName(*Stat), Attribute) : Attribute;
 		}
 
 		return 0.0f;

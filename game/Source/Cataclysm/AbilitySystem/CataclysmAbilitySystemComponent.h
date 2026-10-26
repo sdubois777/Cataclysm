@@ -2423,7 +2423,9 @@ public:
 	 * WHO ASKS: `UCataclysmDamageCalculation::TypedResistanceOf`, for a damage
 	 * type's resistance (`UCataclysmItemModifiers::ResistanceStatFor`), so a
 	 * resistance row under a condition reaches a blow, a minion's share, the
-	 * character sheet and `Cataclysm.ShowResistances`.
+	 * character sheet and `Cataclysm.ShowResistances`. And, since issue #2183,
+	 * the character sheet's every other attribute-backed line, through its
+	 * `ReadStat`, so a row scaled by the character's state reaches the sheet.
 	 *
 	 * NOT FROM `CurrentConditions`, for the reason the two maxima give: the
 	 * helper asks it for the character's readings.

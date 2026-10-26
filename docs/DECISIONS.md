@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The character sheet's attribute-backed lines show a row scaled or conditioned on the character's state, such as armour per floor cleared (#2183)
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` (`ReadStat`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` (who asks `AttributeWithWhatWasNotFolded`);
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` (the comment on `NoteFloorCleared`, which called this a known
+limit); `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (one new test, and the comment above the
+floors-cleared row's test); this file. No data, asset, tag or workbook change. Written by the enchantment session
+directly, at the coordinating session's word of 2026-10-25: "#2183. The sheet's ReadStat asks StatForSkill, with the
+attribute as the fallback. A test and one proof."
+
+### SAID FIRST
+
+**BUILT THROUGH `AttributeWithWhatWasNotFolded`, NOT `StatForSkill`, a judgement against the ruling's words, for one
+reason found while building.** `StatForSkill` answers from the recorded stat line and its pipeline, which does not hold
+what a gameplay effect does to the attribute: a Shred, an Abyssal Aura, any debuff. The sheet would have stopped showing
+them. The 2026-10-18 entry on conditioned resistances met the same problem and built
+`UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded` for it: the attribute as the starting point, plus only
+the difference a row scaled or conditioned on the character's state makes now ("A SHRED OR A DEBUFF ON THE ATTRIBUTE IS
+KEPT"). The sheet's resistance lines already read through it. `ReadStat`, which every other attribute-backed line of the
+sheet uses, now asks the same function. With nothing recorded for a stat (an enemy, or a player before its first
+refresh) it returns the attribute, as before.
+
+**What it reaches today:** "Your armor is increased by 1%-2% for every dungeon floor cleared this run" (armour scaled by
+`floors_cleared`), and any later row of that shape on an attribute-backed stat. A row whose condition is about a blow
+or a hit (`hit_is_melee_attack`) is still not on the sheet, because the sheet has no blow in hand; that is correct.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear "Your armor is increased by 1%-2% for every dungeon floor cleared this run", clear two floors, open the
+  character sheet: the armour line has risen.
+
+### Tests
+
+`Cataclysm.Enchantments.TheSheetsArmourLineTakesTheArmourPerFloorClearedRow`, 7 assertions: set-up, a world; set-up,
+the wearer; **control, with no clear the sheet's armour line is the attribute**; set-up, armour has a stat line; **two
+clears leave the Armor attribute where it was**; set-up, the armour a blow reads rose above the attribute; **and the
+sheet's armour line shows the armour a blow reads**. Every other sheet test reads a character whose rows carry no state,
+so the difference added is nothing for them (by reading; the whole suite is the check).
+
+### GUARD PROOF PROPOSED
+
+**#2183-G1, the sheet reads the attribute alone:** in `CataclysmCharacterSheetLayout.cpp`'s `ReadStat`,
+`Cataclysm->AttributeWithWhatWasNotFolded(FName(*Stat), Attribute)` becomes
+`Cataclysm->AttributeWithWhatWasNotFolded(NAME_None, Attribute)`, which finds no stat line and returns the attribute.
+Predicted: the new test fails, 1 assertion (the sheet's line after two clears); its control passes. Prefix: the test's whole name,
+`Cataclysm.Enchantments.TheSheetsArmourLineTakesTheArmourPerFloorClearedRow` (1 test).
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — A reset of every cooldown, a death and a reduction of every cooldown reach a skill held off the keys (#2528)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the new public

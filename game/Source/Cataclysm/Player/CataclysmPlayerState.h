@@ -207,10 +207,10 @@ public:
 	 *
 	 * NOTHING IS REFRESHED HERE. A blow asks for armour through the stat
 	 * pipeline each time, so a row scaled by this count reaches play at once.
-	 * The character sheet reads the Armor attribute, and a refresh cannot put a
-	 * state-scaled row there: `UCataclysmPlayerClassStats::ApplyTo` resolves each
-	 * stat with no state. A known limit, ruled 2026-09-30; the sheet shows the
-	 * unscaled armour, as it does for every state-scaled stat but maximum health.
+	 * A refresh cannot put a state-scaled row on the Armor attribute:
+	 * `UCataclysmPlayerClassStats::ApplyTo` resolves each stat with no state. The
+	 * character sheet adds what the refresh could not fold since issue #2183, so
+	 * it shows the scaled armour too.
 	 */
 	void NoteFloorCleared();
 
