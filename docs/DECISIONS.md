@@ -156,6 +156,19 @@ no other registration starts with it). The count to quote is the run's.
   (the help text is not changed). The reading session's plan predicted the second of these to fail as well; it reads
   no name out of the .cpp, so it cannot.
 
+### TWO POINTS RULED AFTER THE BUILD (the coordinating session, 2026-10-26, verbatim)
+
+> 1. **A six-piece wearer who draws the matching buff gets both sets of figures.** That is ordinary adding of flat and
+>    increased lines.
+> 2. **A Warhound standing when the buff ends lives out its 10 s doing nothing.** It is at most 10 s, and the owner's
+>    prototype-first rule says not to spend lines on it now. Name it in the entry. If play shows it matters, it is a
+>    10-line follow-up.
+
+So: a wearer of Warlord's Will's six pieces who draws the Warhound buff has a 20% chance and a 20 s Warhound while it is
+held, and Dervish's 10% adds to Spellblade's Will's stacks. A Warhound summoned while the buff was held and still
+standing when it ends lives out its time, hitting for nothing (`WarhoundBlow` reads the holder's stats at each hit) and
+taunting nobody (`ApplyTaunt` refuses 0 seconds).
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
