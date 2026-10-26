@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmContagion.h"
@@ -61283,6 +61284,220 @@ bool FCataclysmCorruptedStalkerDropsWhatItWoreTest::RunTest(const FString& Param
 			 !Drops.ContainsByPredicate([](const ACataclysmDroppedItem* Drop) { return !Drop->bDroppedByARaisedCreature; }));
 	TestEqual(TEXT("its pieces carry the reference character's gear level at tier 5, 7"),
 			  Stalker->WornPieces()[0].GearLevel, 7);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Corrupted Stalker's starting Fervour (#1308) and two rules that could reach it (#2523), 2026-10-26.
+// ---------------------------------------------------------------------------
+
+// IT IS RAISED WITH ITS ULTIMATE'S FERVOUR, KEEPS IT WHILE IT IS OUT OF CONTACT, AND CASTS ITS ULTIMATE. The owner's
+// answer, "Start with enough Fervour". Twenty seconds alone is longer than its build's starting node needs to drain
+// fifty at five a second after three seconds' grace.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerStartingFervourTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerStartingFervourTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Slot = ECataclysmAbilitySlot;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVector Far = Player.Character->GetActorLocation() + FVector(50000.0f, 0.0f, 0.0f);
+	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(World, Far, /*Tier=*/4, /*Seed=*/2);
+	ACataclysmCorruptedStalkerCharacter* Unheld =
+		AStalkerWearingTheDemonicEntry(World, Far + FVector(0.0f, 20000.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	ACataclysmCorruptedStalkerCharacter* Empty =
+		AStalkerWearingTheDemonicEntry(World, Far + FVector(0.0f, -20000.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	ACataclysmEnemyController* Brain = Stalker ? Cast<ACataclysmEnemyController>(Stalker->GetController()) : nullptr;
+	ACataclysmEnemyController* EmptyBrain = Empty ? Cast<ACataclysmEnemyController>(Empty->GetController()) : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable())
+		|| !TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker)
+		|| !TestNotNull(TEXT("set-up: a second, for the decay control"), Unheld)
+		|| !TestNotNull(TEXT("set-up: a third, for the Fervour control"), Empty)
+		|| !TestNotNull(TEXT("set-up: its brain"), Brain) || !TestNotNull(TEXT("set-up: the third's brain"), EmptyBrain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it is raised with its Ultimate's Fervour"),
+			  StalkerRead(Stalker, Resource::GetClassResourceAttribute()), Effects::CorruptedStalkerStartingFervour, 0.01f);
+
+	// CONTROL: THE SAME BUILD, NOT MARKED AS HOLDING ONE, DRAINS. So the build does carry the decay the skip stops.
+	Unheld->bHoldsAPlayerBuild = false;
+	for (int32 Second = 0; Second < 20; ++Second)
+	{
+		UCataclysmFervour::DecayStep(Stalker, 1.0f);
+		UCataclysmFervour::DecayStep(Unheld, 1.0f);
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: the same build not held as a player's drains alone: %.1f"),
+							 StalkerRead(Unheld, Resource::GetClassResourceAttribute())),
+			 StalkerRead(Unheld, Resource::GetClassResourceAttribute()) < Effects::CorruptedStalkerStartingFervour);
+	TestEqual(TEXT("twenty seconds alone and it still holds its Ultimate's Fervour"),
+			  StalkerRead(Stalker, Resource::GetClassResourceAttribute()), Effects::CorruptedStalkerStartingFervour, 0.01f);
+
+	// BESIDE THE PLAYER, BELOW ITS AURA'S MANA SHARE AND AT FULL HEALTH: ITS ULTIMATE, AND IT CASTS IT.
+	Stalker->SetActorLocation(Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f));
+	StalkerSet(Stalker, Vital::GetManaAttribute(), StalkerRead(Stalker, Vital::GetMaxManaAttribute()) * 0.2f);
+	const int32 Ultimate = StalkerChoiceIndex(Slot::Ultimate);
+	TestEqual(TEXT("at 3 m its brain chooses its Ultimate"), Brain->ChooseAbility(300.0f), Ultimate);
+	TestFalse(TEXT("CONTROL: no Ultimate runs before it casts one"), Stalker->IsRunningASkillIn(Slot::Ultimate));
+	Stalker->UseEnemyAbility(Ultimate, Player.Character, Player.Character->GetActorLocation());
+	TestTrue(TEXT("its Ultimate runs once cast"), Stalker->IsRunningASkillIn(Slot::Ultimate));
+
+	// CONTROL: A STALKER AT NO FERVOUR CHOOSES ITS HEAVY SKILL THERE INSTEAD.
+	StalkerSet(Empty, Resource::GetClassResourceAttribute(), 0.0f);
+	StalkerSet(Empty, Vital::GetManaAttribute(), StalkerRead(Empty, Vital::GetMaxManaAttribute()) * 0.2f);
+	TestEqual(TEXT("CONTROL: a Stalker at no Fervour chooses its heavy skill at 3 m"), EmptyBrain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Heavy));
+	return true;
+}
+
+// VOLATILE EVOLUTION SKIPS A CREATURE HOLDING A PLAYER BUILD: A WOUNDED STALKER STAYS COMMON, AND A WOUNDED CREATURE
+// BESIDE IT RISES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionSkipsTheStalkerTest,
+	"Cataclysm.DungeonModifierEffects.VolatileEvolutionDoesNotRaiseACorruptedStalkersRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionSkipsTheStalkerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector(50000.0f, 5000.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	if (!TestNotNull(TEXT("CONTROL: a wounded creature was placed"), Creature)
+		|| !TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+	StalkerSet(Stalker, Vital::GetHealthAttribute(), StalkerRead(Stalker, Vital::GetMaxHealthAttribute()) * 0.3f);
+	TestTrue(TEXT("set-up: the Stalker is wounded as the rule reads it"),
+			 Effects::VolatileEvolutionIsWounded(StalkerRead(Stalker, Vital::GetHealthAttribute()),
+												 StalkerRead(Stalker, Vital::GetMaxHealthAttribute())));
+	TestEqual(TEXT("set-up: it stands at Common"), Stalker->RarityStep, 0);
+
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("CONTROL: the wounded creature beside it rose a rung"), Creature->RarityStep,
+			  Effects::VolatileEvolutionRungsGained);
+	TestEqual(TEXT("the wounded Stalker is still Common"), Stalker->RarityStep, 0);
+	return true;
+}
+
+// EPIDEMIC'S MASS KILL SPARES THE CORRUPTED STALKER, AS DIVINE WRATH'S BEAM DOES, AND KILLS A CREATURE BESIDE IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicSparesTheStalkerTest,
+	"Cataclysm.DungeonModifierEffects.EpidemicsMassKillSparesACorruptedStalker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicSparesTheStalkerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// THE CHAIN, as `TheMassKillDoesNotFeedItself` builds it: the last corpse is at the end of the line, and the kill
+	// reaches its radius from there. The control and the Stalker stand inside that reach, beyond the line.
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	TArray<ACataclysmEnemyCharacter*> Line;
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnImpWithHealth(World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("a creature in the line"), Creature)
+			|| !TestTrue(TEXT("carrying the disease"), GiveTheDebuff(Player.Character, Creature, Disease)))
+		{
+			return false;
+		}
+		Line.Add(Creature);
+	}
+	const float LastX = 600.0f + 100.0f * (Effects::EpidemicSpreadsToKill - 1);
+	if (!TestTrue(TEXT("set-up: the reach covers both beside the last corpse"), Effects::EpidemicRadiusCm() > 300.0f))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Control = SpawnImpWithHealth(World, FVector(LastX + 150.0f, 0.0f, 0.0f), 100'000.0f);
+	ACataclysmCorruptedStalkerCharacter* Stalker =
+		AStalkerWearingTheDemonicEntry(World, FVector(LastX + 250.0f, 0.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
+	if (!TestNotNull(TEXT("CONTROL: a creature inside the reach"), Control)
+		|| !TestNotNull(TEXT("set-up: a Stalker wears the build"), Stalker))
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 100000.0f);
+	}
+
+	TestTrue(TEXT("CONTROL: the creature inside the reach was killed"), UCataclysmSkillEffects::IsDead(Control));
+	TestFalse(TEXT("the Stalker inside the same reach was not"), UCataclysmSkillEffects::IsDead(Stalker));
 	return true;
 }
 

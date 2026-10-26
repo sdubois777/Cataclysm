@@ -7115,6 +7115,13 @@ public:
 	/** Seconds after the player arrives on each later floor before it follows. The coordinating session's, 2026-10-25. */
 	static constexpr float CorruptedStalkerFollowSeconds = 30.0f;
 
+	/**
+	 * The Fervour it is raised with, on every floor it hunts: its Ultimate's cost, so it can cast it once in an
+	 * encounter. The project owner's answer of 2026-10-26, "Start with enough Fervour". It keeps them on its way to the
+	 * player because `UCataclysmFervour::DecayStep` skips a creature holding a player build.
+	 */
+	static constexpr float CorruptedStalkerStartingFervour = 50.0f;
+
 	/** Mixed into the floor's seed for which entry it raises. The letters "stlk". */
 	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
 

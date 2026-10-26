@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
 
@@ -427,6 +428,16 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 								  float SecondsInStep)
 {
 	if (!Character || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// NOR A CREATURE HOLDING A PLAYER BUILD, the Corrupted Stalker. It is raised with its Ultimate's Fervour, the
+	// owner's answer of 2026-10-26, and on the first floor it hunts it is raised at the walkable cell farthest from the
+	// player: with its build's starting node it would drain them at 5 a second on the way. Ruled by the coordinating
+	// session the same day as the means of keeping that answer true. Issue #1308.
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+		Enemy && Enemy->bHoldsAPlayerBuild)
 	{
 		return 0.0f;
 	}

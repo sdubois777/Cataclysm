@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — The Corrupted Stalker arrives with its Ultimate's Fervour, and two dungeon rules no longer reach it (#1308, #2523)
+
+**Affects:** `ACataclysmCorruptedStalkerCharacter::WearTheBuild` (its starting Fervour); `UCataclysmFervour::DecayStep`
+(skips a creature holding a player build); `ACataclysmDungeonGameMode::StepVolatileEvolution` and
+`EpidemicEndTheChain` (each skips the Stalker); one constant in `UCataclysmDungeonModifierEffects`; three Unreal tests.
+Closes [#2523](https://github.com/sdubois777/Cataclysm/issues/2523), with the list below as its evidence. Issue
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308) is otherwise complete for the Demonic entry.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w62 below passed every registered figure, and all three proofs were PROVED.**
+- **THE 28 WRITES WERE READ, NOT MEASURED.** Each verdict below comes from reading the write and the code that chooses
+  its creature, at `c80760f5a`. #2523 counted 27; the 28th is the Stalker's own carried health, added by layer 3.
+
+### The Stalker's starting Fervour
+
+**The project owner's answer, 2026-10-26, through the coordinating session's question:** "Start with enough Fervour".
+The Stalker arrives with 50 Fervour, its Ultimate's cost in `SkillSlots.csv`, so it can cast Pyroclasm once in an
+encounter; the Ultimate keeps its 20-second cooldown. It is set in `WearTheBuild`, which every floor it hunts raises it
+through, so it holds true when it follows to a later floor. `CorruptedStalkerStartingFervour` = 50.
+
+**The decay skip is the means of keeping that answer true, not a separate ruling.** Read before building: its build
+holds `Ravager_basic_spine_000`, whose Fervour decays at 5 a second after 3 seconds with no enemy within 4 metres, and
+`ACataclysmCharacterBase` runs that decay for every character. On the first floor it hunts it is raised at the walkable
+cell farthest from the player, so 50 at raising would be gone about 13 seconds later. Three ways were put to the
+coordinating session; it ruled **A**: `UCataclysmFervour::DecayStep` skips a creature holding a player build. The other
+two were to grant the 50 on first reaching the player each floor, and to remove the node from its build.
+
+### #2523: every direct attribute write in the dungeon game mode, against the Stalker
+
+Read at `c80760f5a`, by function; a function's line numbers move with every change to the file.
+
+| Function, writes | The rule | Reaches the Stalker? | Verdict |
+|---|---|---|---|
+| `RaiseTheCorruptedStalker`, 1 | its carried health on a later floor | yes, by design | its own carry-over |
+| `NoteDeathForBloodBond`, 1 | the bonded creature dies with the player | only through Volatile Evolution: the bond takes Elites only | closed by Volatile Evolution's skip |
+| `SetRuleResistance`, `ForgetRuleResistances`, 2 | Trial of Endurance, Obsidian Sarcophagi | yes: every hostile creature but a floor source | keeps the build: its own figure times the rule's, put back after |
+| `StrengthenTheFeeders`, 2 | Carrion Feast | no: only feeders the rule spawns | — |
+| `StrengthenTheEater`, 4 | Famished Beasts | no: an eater must be one of the floor's kinds, and the Stalker's class is none of them | — |
+| `PutTheHealthSharesBack`, 1 | after a rung change | only through Volatile Evolution, and writes nothing there: no feeder, no drops eaten | — |
+| `ApplyFloorRulesKeepingHealth`, 1 | the floor's rules on the player | no | — |
+| `StepDivineWrath`, 1 | the beam | no: it spares the Stalker, ruled 2026-10-25 | — |
+| `ApplySoulHarvestFigures`, 4 | Soul Harvest | yes: the nearest living creature to a death | keeps the build: its own figure plus the souls' share |
+| `ApplyNothingIsForgottenFigures`, 3 | Nothing Is Forgotten | no: only the Gatekeeper nearest the exit | — |
+| `ApplyVengefulWraithFigures`, 2 | Vengeful Wraiths | no: only wraiths the rule spawns | — |
+| `NoteDeathForDivineResurgence`, 1 | Divine Resurgence | no: a grave needs one of the floor's kinds | — |
+| `NoteDeathForBloodForgedChampions`, 2 | Blood-Forged Champions | only through Volatile Evolution: a champion is Elite or above | closed by Volatile Evolution's skip; the writes keep its pools |
+| `EpidemicEndTheChain`, 1 | Epidemic's mass kill | **yes: every creature in the reach** | **killed it outright. Now spared** |
+| `StepVolatileEvolution`, 2 | Volatile Evolution | **yes: any wounded hostile creature, by chance** | **its two writes keep the pools, but it raised the rung. Now skipped** |
+
+**Rung changes swept beside them**, since a rung change is the other way a rule alters a creature: Plaguebearer
+chooses from the floor's starting wave, which the Stalker is not in; Soul Chains and Infernal Seals exclude creatures
+raised by a rule; Royal Guard needs one of the floor's kinds. None reaches it.
+
+**Ruled by the coordinating session, 2026-10-26:**
+
+| Change | Ruled | Why |
+|---|---|---|
+| Volatile Evolution skips a creature holding a player build | YES | its rung is ruled Common, paying as a Boss; a rule that raises it undoes that, and at Elite it would also be Blood Bond's and Blood-Forged Champions' |
+| Epidemic's mass kill spares the Stalker | YES | Divine Wrath's reason: a player could end the encounter by finishing a chain beside it. Epidemic does not spare a floor's boss, so this is not that rule copied |
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+- `ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt`: raised with 50; twenty one-second decay
+  steps alone, and still 50, while the same build with `bHoldsAPlayerBuild` cleared drains (control); at 3 m its brain
+  chooses its Ultimate and it runs once cast, where a Stalker at 0 Fervour chooses its heavy skill (control).
+- `VolatileEvolutionDoesNotRaiseACorruptedStalkersRung`: the roll pinned, a wounded Stalker stays Common while a
+  wounded creature beside it rises a rung (control).
+- `EpidemicsMassKillSparesACorruptedStalker`: a chain of five ends beside a Stalker and a creature, both inside its
+  reach; the creature dies (control) and the Stalker does not.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4268 / 0: `development` at `2732839ad` measured 4265, and three tests are added |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P1, the decay skip removed | `ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt` fails |
+| P2, Volatile Evolution's skip removed | `VolatileEvolutionDoesNotRaiseACorruptedStalkersRung` fails |
+| P3, Epidemic's spare removed | `EpidemicsMassKillSparesACorruptedStalker` fails |
+
+P1 breaks the decay skip rather than the starting figure: the test asserts the starting 50 directly, and the skip is
+the part that holds in play and in no other test.
+
+### Run
+
+**Window w62 (lock `dungeon-w62`, `feat/corrupted-stalker-fervour` at `ef84057ab`, on `2732839ad`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`2732839ad` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.2 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4268 / 0 | `4268 tests performed, 4268 succeeded, 0 failed`; declared 4268, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7866`, peak 8,193 |
+| Python (JUnit) | | 7009 tests, 0 failures, 0 errors, 8 skipped ("7001 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the decay skip removed | the starting Fervour test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, Volatile Evolution's skip removed | the Volatile Evolution test fails | "1 tests performed, 0 succeeded, 1 failed: VolatileEvolutionDoesNotRaiseACorruptedStalkersRung"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, Epidemic's spare removed | the Epidemic test fails | "1 tests performed, 0 succeeded, 1 failed: EpidemicsMassKillSparesACorruptedStalker"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-26 — A status effect's description marks each named source not built yet "(planned)"; Raw Sewage leaves the Disease row, and Warlord's Decree is spelt as the skill is (#1832)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, ten cells in column A of the "Debuffs" sheet (rows 21, 22, 23, 24, 26) and
