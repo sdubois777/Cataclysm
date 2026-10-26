@@ -1323,4 +1323,94 @@ bool FCataclysmSkillAssignmentCarriedCooldownTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentOffTheKeysCooldownTest,
+	"Cataclysm.SkillAssignment.ASkillTakenOffTheKeysWaitsWhatIsLeftOfItsCooldownWhenItReturns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2524. Pyroclasm used on the Ultimate key, then taken off the keys by choosing Emberhurl for that key, and
+ * returned by clearing the slot two seconds later, waits what was left of its cooldown less those two seconds; the
+ * skill that held its key in between waits nothing of it. The control, read first: the same two choices with Pyroclasm
+ * never used return it ready.
+ */
+bool FCataclysmSkillAssignmentOffTheKeysCooldownTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	const FName EmberhurlRow(TEXT("Demonic_Greataxe_Special"));
+	const auto SecondsLeftOn = [](const UAbilitySystemComponent* System, ECataclysmAbilitySlot Key)
+	{
+		float Longest = 0.0f;
+		for (const TPair<float, float>& Wait : System->GetActiveEffectsTimeRemainingAndDuration(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(Key)))))
+		{
+			Longest = FMath::Max(Longest, Wait.Key);
+		}
+		return Longest;
+	};
+	const auto OnKeyNamed = [](UCataclysmAbilitySystemComponent* System, ECataclysmAbilitySlot Key, const TCHAR* Name)
+	{
+		const UCataclysmGameplayAbility* Ability = AbilityOnKey(System, Key);
+		return Ability && Ability->DisplayedName() == Name ? Ability : nullptr;
+	};
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillAssignmentCarrier Carrier = SpawnAssignmentCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+
+	// THE CONTROL: Pyroclasm, never used, taken off the keys and returned, is ready at once.
+	FString Reason;
+	if (!TestTrue(TEXT("set-up: Emberhurl is chosen for the Ultimate key, taking Pyroclasm off the keys"),
+				  Carrier.State->AssignSkill(ECataclysmAbilitySlot::Ultimate, EmberhurlRow, Reason)
+					  && OnKeyNamed(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate, TEXT("Emberhurl"))))
+	{
+		return false;
+	}
+	Carrier.State->ClearSkillChoice(ECataclysmAbilitySlot::Ultimate);
+	const UCataclysmGameplayAbility* Unused =
+		OnKeyNamed(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate, TEXT("Pyroclasm"));
+	TestTrue(TEXT("control: Pyroclasm, never used, returns to the Ultimate key ready"), Unused && KeyIsReady(Unused));
+	TestEqual(TEXT("control: and no cooldown runs under Cooldown.Ultimate"),
+			  CooldownEffectsOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), 0);
+
+	// PYROCLASM USED, 2.5 SECONDS PASS, AND IT IS TAKEN OFF THE KEYS.
+	if (!TestNotNull(TEXT("set-up: Pyroclasm is on the Ultimate key"), Unused))
+	{
+		return false;
+	}
+	Unused->ApplyCooldown(Unused->GetCurrentAbilitySpecHandle(), Unused->GetCurrentActorInfo(),
+						  FGameplayAbilityActivationInfo());
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float LeftBefore = SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+	if (!TestTrue(TEXT("set-up: Pyroclasm waits with more than 2.5 seconds left"), LeftBefore > 2.5f)
+		|| !TestTrue(TEXT("set-up: Emberhurl is chosen for the Ultimate key again, taking Pyroclasm off the keys"),
+					 Carrier.State->AssignSkill(ECataclysmAbilitySlot::Ultimate, EmberhurlRow, Reason)))
+	{
+		return false;
+	}
+	const UCataclysmGameplayAbility* Between =
+		OnKeyNamed(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate, TEXT("Emberhurl"));
+	TestTrue(TEXT("Emberhurl, holding the key in between, waits nothing of Pyroclasm's cooldown"),
+			 Between && KeyIsReady(Between));
+
+	// TWO SECONDS OFF THE KEYS, THEN BACK.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Carrier.State->ClearSkillChoice(ECataclysmAbilitySlot::Ultimate);
+	const UCataclysmGameplayAbility* Back =
+		OnKeyNamed(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate, TEXT("Pyroclasm"));
+	if (!TestNotNull(TEXT("set-up: Pyroclasm is back on the Ultimate key"), Back))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it waits what it had left, less the two seconds it was off the keys"),
+			  SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), LeftBefore - 2.0f, 0.1f);
+	TestFalse(TEXT("so a press of the Ultimate key cannot cast it"), KeyIsReady(Back));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

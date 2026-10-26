@@ -5108,6 +5108,31 @@ void UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys(const TMap<ECatac
 {
 	// EVERY KEY READ BEFORE ANY IS ENDED, so two skills that traded keys each take their own time. Issue #837 layer 4,
 	// ruled Q3a; see the header. The time left is the longest cooldown running, as the skill bar reads it.
+	const auto TimeLeftOn = [this](const FGameplayTag& Tag)
+	{
+		float Left = 0.0f;
+		for (const float Each : GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag))))
+		{
+			Left = FMath::Max(Left, Each);
+		}
+		return Left;
+	};
+	const UWorld* World = GetWorld();
+	const float Clock = World ? World->GetTimeSeconds() : 0.0f;
+
+	// A SKILL A CHOICE TAKES OFF THE KEYS KEEPS WHAT IT HAD LEFT, as the world clock's end time, so it waits only the
+	// rest when it returns (issue #2524). Read before any key is ended, as the moves below are.
+	for (const TPair<ECataclysmAbilitySlot, FName>& Was : KeysBefore)
+	{
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Was.Key);
+		const float Left = Tag.IsValid() && !Was.Value.IsNone() && !KeysAfter.FindKey(Was.Value) ? TimeLeftOn(Tag) : 0.0f;
+		if (Left > 0.0f)
+		{
+			CooldownsOffTheKeys.Add(Was.Value, TPair<float, FSkillCharges>(Clock + Left, SkillCharges.FindRef(Was.Key)));
+		}
+	}
+
 	TMap<ECataclysmAbilitySlot, TPair<float, FSkillCharges>> Carried;
 	FGameplayTagContainer Ending;
 	for (const ECataclysmAbilitySlot Key : CataclysmAbilitySlots::All())
@@ -5123,13 +5148,12 @@ void UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys(const TMap<ECatac
 		const FGameplayTag FromTag = From ? UCataclysmSkillSlots::CooldownTag(*From) : FGameplayTag();
 		if (FromTag.IsValid())
 		{
-			float Left = 0.0f;
-			for (const float Each : GetActiveEffectsTimeRemaining(
-					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(FromTag))))
-			{
-				Left = FMath::Max(Left, Each);
-			}
-			Carried.Add(Key, TPair<float, FSkillCharges>(Left, SkillCharges.FindRef(*From)));
+			Carried.Add(Key, TPair<float, FSkillCharges>(TimeLeftOn(FromTag), SkillCharges.FindRef(*From)));
+		}
+		// RETURNING FROM OFF THE KEYS: what is left of the time it kept, and its record is spent (issue #2524).
+		else if (TPair<float, FSkillCharges> Kept; !From && !Now.IsNone() && CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept))
+		{
+			Carried.Add(Key, TPair<float, FSkillCharges>(Kept.Key - Clock, Kept.Value));
 		}
 	}
 

@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A skill a choice takes off the keys keeps its remaining cooldown, and waits what is left of it when it returns (#2524)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`CarryCooldownsToNewKeys` and the new protected `CooldownsOffTheKeys`);
+`game/Source/Cataclysm/Tests/CataclysmSkillAssignmentTests.cpp` (one new test); this file. No data, asset, tag or
+workbook change. Written by the enchantment session directly, at the coordinating session's word ("Write a short brief
+and code, register, and keep it to one proof plus the issue's test and control").
+
+### SAID FIRST
+
+**#837 layer 4 made a skill that a choice MOVES to another key take its running cooldown and charges with it. A skill a
+choice took OFF the keys kept nothing, so two choices reset its cooldown** (issue #2524, found while building layer 4):
+use Molten Cleave, choose Pyroclasm for the Heavy key, then clear the slot, and Molten Cleave came back ready. Now, when
+a choice takes a skill off the keys while its cooldown runs, `CarryCooldownsToNewKeys` records the world-clock time that
+cooldown would end, and the charges its key held, under the skill's row. When a later choice brings that row back onto
+a key from off the keys, the key starts what is left of that time, through the same charge spend a move uses, and the
+record is removed. A record whose time has passed starts nothing. The cooldown belongs to the skill, not the key, as the owner
+ruled: "Each skill its own cooldown".
+
+**What it does not cover, stated rather than built:**
+- **Charges past the first.** A skill with several spent charges whose current recharge ends while it is off the keys
+  comes back with every charge ready; the later recharges are not counted on. Charges come only from
+  `skill_charges_bonus` enchantment rows, and no skill in the test character's pool has a second charge.
+- **A reset of every cooldown** (a death's refill, the Rule of Chaos kill clear, "reset all" rows) ends the running
+  cooldown effects and does not reach a skill held off the keys, so such a skill still waits its rest after it returns.
+- **A change of gear** moves no skill to another key and is unchanged: the key keeps the cooldown running on it.
+- **No genre source was found** for what a game does with a cooldown of a skill taken off the bar; the owner's
+  sentence decides it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- use a skill, choose another skill for its key (K), then clear the slot: the first skill returns still waiting the rest
+  of its cooldown.
+
+### WHAT WAS BUILT
+
+`UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys`: the time left under a key's tag is read by one local
+`TimeLeftOn`, used by the move (as before) and by the new record; before any key is ended, every row in `KeysBefore`
+that is in no key of `KeysAfter` and has time left is recorded in `CooldownsOffTheKeys` as (clock + time left, the key's
+`FSkillCharges`); in the per-key loop, a key whose new row came from no key takes that row's record, if one exists, as
+(end time - clock, charges), and the record is removed with `RemoveAndCopyValue`. The carried entries then run exactly
+as a move's do: `SpendSkillCharge` with the time, then the spent count (at least one) and the recharge length.
+
+### Tests
+
+`Cataclysm.SkillAssignment.ASkillTakenOffTheKeysWaitsWhatIsLeftOfItsCooldownWhenItReturns`, 11 assertions: set-up,
+the carrier; set-up, **Emberhurl is chosen for the Ultimate key, taking Pyroclasm off the keys**; **control, Pyroclasm,
+never used, returns ready**; **control, no cooldown runs under Cooldown.Ultimate**; set-up, Pyroclasm on the key; set-up,
+it waits with more than two seconds left after 2.5 s; set-up, Emberhurl chosen again; **Emberhurl, holding the key in
+between, waits nothing of Pyroclasm's cooldown**; set-up, Pyroclasm back after two seconds and a clear; **it waits what it
+had left less those two seconds, within 0.1 s**; **so the key cannot cast it**. The other 14 `Cataclysm.SkillAssignment.`
+tests and the 8 `Cataclysm.SkillChoiceScreen.` tests never take a used skill off the keys, so the record is never written
+in them (by reading).
+
+### GUARD PROOF PROPOSED
+
+**#2524-G1, a skill returning from off the keys ignores its record:** in `CataclysmAbilitySystemComponent.cpp`,
+`!From && !Now.IsNone() && CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept)` becomes
+`false && !From && !Now.IsNone() && CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept)`. Predicted: the new test fails,
+2 assertions (the time left, and that the key cannot cast it); its control passes. Prefix `Cataclysm.SkillAssignment.`.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — The skill-choice screen: press K, click a key, then a skill from the pool; a moved skill keeps its running cooldown; refusals name skills, not rows (#837, layer 4)
 
 **Affects:** the new `game/Source/Cataclysm/Interface/CataclysmSkillAssignmentWidget.h` and `.cpp`

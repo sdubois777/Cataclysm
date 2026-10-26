@@ -1916,7 +1916,8 @@ public:
 	 *
 	 * `KeysBefore` and `KeysAfter` give the row on each key before and after the refill. EVERY KEY WHOSE ROW CHANGED
 	 * ENDS WHAT RAN UNDER ITS TAG; then the key a skill landed on starts the time that was left on the key it came
-	 * from. A skill that was on no key before takes nothing, and nor does a key left empty.
+	 * from. A key left empty takes nothing. A skill a choice takes OFF the keys keeps the time it had left, and a skill
+	 * that returns from off the keys waits whatever of it remains (issue #2524, `CooldownsOffTheKeys`).
 	 */
 	void CarryCooldownsToNewKeys(const TMap<ECataclysmAbilitySlot, FName>& KeysBefore,
 								 const TMap<ECataclysmAbilitySlot, FName>& KeysAfter);
@@ -5161,6 +5162,13 @@ protected:
 		bool bWatching = false;
 	};
 	TMap<ECataclysmAbilitySlot, FSkillCharges> SkillCharges;
+
+	/**
+	 * The skills a choice took off the keys while their cooldown ran, by row: the world clock's time the cooldown
+	 * ends, and the charges the key held. `CarryCooldownsToNewKeys` writes one and spends it when the skill returns, so
+	 * two choices do not reset a cooldown (issue #2524). An entry whose time has passed starts nothing.
+	 */
+	TMap<FName, TPair<float, FSkillCharges>> CooldownsOffTheKeys;
 
 	/** Spent uses, at least one while the cooldown runs, at most `Maximum`. */
 	int32 SkillChargesSpent(ECataclysmAbilitySlot Slot, int32 Maximum) const;
