@@ -12,7 +12,8 @@ layer 3.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w60 below passed every registered figure, and all three proofs were PROVED.** A first window,
+  w59, stopped at the build; recorded under Run.
 - **THE MULTIPLIERS ARE NOT CHANGED HERE.** The placeholders stay. The health multipliers the coordinating session had
   accepted, 0.75 to 2.96, are withdrawn, because they were fitted on items at gear level 0. Both multipliers follow on
   a small branch, set from this window's measured build and blow at all eight tiers.
@@ -88,6 +89,40 @@ the build**, with the six conditions checked before the lock was taken ("free GB
 after: `Build: Failed - 72 actions, 62 files compiled`, "error C2039: 'PutOnTheFloor': is not a member of
 'ACataclysmDroppedItem'", and the same for `ScatterOffset`. Both are `UCataclysmDropSpawner`'s; the two calls were
 corrected as a compile fix. No test ran.
+
+**Window w60 (lock `dungeon-w60`, `feat/corrupted-stalker-death-1` at `7d9fa1921`, on `abe7f7d59`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`abe7f7d59` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.7 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 8 actions, 4 files compiled` |
+| Whole Unreal suite | 4259 / 0 | `4259 tests performed, 4259 succeeded, 0 failed`; declared 4259, gap 0 |
+| Memory | about 7,700; reported if above 9,500 | `final_used_virtual_mb=7920`, peak 8,256 |
+| Python (JUnit) | | 7007 / 0 / 0 / 8; ruff `All checks passed!` |
+| P1, `RarityStepItPaysAs` answers its real rung | the experience test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkersDeathPaysABossRungsEnemyScoreAsExperience"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, `RandomGearDropsGiven` answers the drop row's | the materials test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, every piece drops | the one-in-three test fails | "1 tests performed, 0 succeeded, 1 failed: EachPieceACorruptedStalkerWoreDropsWithChanceOneInThree"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**The build and blow at the reference gear level, as printed** ("STALKER BUILD:" and "STALKER BLOW:"; health before the
+placeholder multiplier; the blow against a target with no armour and no resistance):
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Max health before the multiplier | 945.6 | 1485.5 | 2139.7 | 2926.7 | 3940.4 | 5314.3 | 6109.7 | 6902.3 |
+| Armour | 1155.3 | 1382.7 | 1641.1 | 1937.0 | 2289.4 | 2723.9 | 2983.5 | 3243.8 |
+| Its basic attack's blow | 348.0 | 468.0 | 634.0 | 867.0 | 1195.0 | 1661.0 | 1874.0 | 2101.0 |
+
+**The plateau is gone:** its blow rises at every tier. **Beside the fight model:** its built health is within 2% of the
+model's at every tier (962 against 945.6 at tier 1, 7,049 against 6,902.3 at tier 8). Its blow is about one and a half
+times the model's hit at every tier (224.6 against 348.0 at tier 1, 1,392.0 against 2,101.0 at tier 8), for a reason
+not measured; the game's is the figure it deals. **From the game's figures:** health multiplier 0.49, 0.75, 0.90, 1.06,
+1.14, 1.14, 1.30, 1.31; damage multiplier 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68, for tiers 1 to 8. Not changed
+here: they are the coordinating session's to rule on the follow-up branch.
+
+"STALKER FERVOUR BLOWS: the player's health after each of the twenty: 0, 0, ..." and "STALKER FERVOUR: 0.0 before, 1.0
+after twenty blows": at the reference gear level its first blow killed the level-20 test player, so one blow landed.
 
 ---
 
