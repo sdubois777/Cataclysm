@@ -110,8 +110,12 @@ point 400.0 cm away. Every assertion on them passed, every statue test passed, a
 **What failed: the blink test's wall control,** "CONTROL: moved toward the wall (-900.0 cm)". The test's fault, not
 the helper's: a clicked target is one use's aim, cleared as each use ends (`ClickedTarget.Reset()`, ruled 2026-10-16),
 and the control moved the aim point without setting it again, so the second blink went its whole nine metres the way
-the player faced. **Corrected in the next commit** by setting `Blink->ClickedTarget` before the second blink; not run
-yet.
+the player faced. **Corrected in the next commit** by setting `Blink->ClickedTarget` before the second blink, approved by the
+coordinating session on 2026-10-26 as a set-up change with no assertion changed.
+
+**Registered for the next window, w65,** as for w64, with a step 1b first, ruled by the coordinating session: the
+movement-skill test alone by its full name, stopping there if it fails. 4274 / 0; P1 and P2 as above; the distances
+quoted as printed.
 
 ---
 
