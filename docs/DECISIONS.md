@@ -12,7 +12,7 @@ tables; `fitted_to_the_game`); two Unreal tests and three Python tests. Issue
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w61 below passed every registered figure, and both proofs were PROVED.**
 - **A STATED LIMIT: CRITICAL STRIKES ARE LEFT OUT ON BOTH SIDES,** the Boss's and the Stalker's, in both multipliers.
   Ruled by the coordinating session to be recorded as a limit.
 - **THE BOSS IS THE SIMULATION'S, NOT A MEASURED ONE.** Its hit, the time the reference character takes to kill it,
@@ -109,7 +109,31 @@ the files put back:
 
 ### Run
 
-Not run yet.
+**Window w61 (lock `dungeon-w61`, `feat/corrupted-stalker-multipliers-1` at `bed361082`, on `47852b3a6`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`47852b3a6` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.8 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4265 / 0 | `4265 tests performed, 4265 succeeded, 0 failed`; declared 4265, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7914`, peak 8,252 |
+| Python (JUnit) | | 7009 tests, 0 failures, 0 errors, 8 skipped ("7001 passed, 8 skipped"); ruff `All checks passed!` |
+| U1, its attack damage not multiplied | `WhatACorruptedStalkerIsBuiltWithAtEachTier` fails | "1 tests performed, 0 succeeded, 1 failed: WhatACorruptedStalkerIsBuiltWithAtEachTier"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| U2, its pieces at gear level 0 | `WhatACorruptedStalkerIsBuiltWithAtEachTier` fails | "1 tests performed, 0 succeeded, 1 failed: WhatACorruptedStalkerIsBuiltWithAtEachTier"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**The build and blow with the ruled multipliers, as printed** ("STALKER BUILD:" and "STALKER BLOW:"; the blow against
+a target with no armour and no resistance):
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Max health | 463.3 | 1129.0 | 1947.2 | 3131.6 | 4531.4 | 6111.4 | 8064.8 | 9180.1 |
+| Before the health multiplier | 945.6 | 1485.5 | 2139.7 | 2926.7 | 3940.4 | 5314.3 | 6109.7 | 6902.3 |
+| Its basic attack's blow | 390.0 | 992.0 | 1750.0 | 2635.0 | 3681.0 | 4900.0 | 6223.0 | 7730.0 |
+| Before the damage multiplier | 348.2 | 467.9 | 634.1 | 866.8 | 1195.1 | 1661.0 | 1874.4 | 2100.5 |
+
+Its health before the multiplier is w60's at every tier, and its blow before the multiplier is within 0.1% of w60's.
 
 ---
 
