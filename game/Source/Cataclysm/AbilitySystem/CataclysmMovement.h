@@ -94,4 +94,25 @@ public:
 	 * characters, or has no ability system of this project's, is left alone: nothing samples it.
 	 */
 	static void NoteRelocatedInstantly(AActor* Character, const FVector& From);
+
+	/**
+	 * Move `Actor` by `Delta`, swept, so a wall stops it, AND NOT REFUSED FOR STARTING ON THE FLOOR. Issues #2203 and
+	 * #2505, ruled by the coordinating session on 2026-10-26.
+	 *
+	 * WHY A PLAIN SWEEP IS NOT ENOUGH. The game stands a pawn at exactly its capsule's half height, so the capsule
+	 * touches the floor's ground, and a swept move begun touching it starts "penetrating": the engine refuses a move
+	 * along the ground then and the actor moves 0 cm. Measured on a real floor more than once. A walking character
+	 * with a controller is lifted about 2.15 cm on its first walking update, so in play this is the frame a character
+	 * is placed in, the frame after a teleport until its next update, and characters with no controller -- a floor
+	 * source, an Echo -- always. In a test, which never updates movement, it is every placed character.
+	 *
+	 * A CHARACTER GOES THROUGH ITS MOVEMENT COMPONENT'S `SafeMoveUpdatedComponent`, which, when the move starts
+	 * penetrating, lifts it out by the depth and a little more and makes the same move again. A wall still stops the
+	 * retried sweep. The Singularity Wells pull made this move first. ANYTHING ELSE, with no character movement, is
+	 * moved by the plain sweep it had before.
+	 *
+	 * THE ONE PLACE A SWEPT RELOCATION IS MADE. `tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py`
+	 * fails on a plain swept `SetActorLocation` or `AddActorWorldOffset` anywhere else in the game's source.
+	 */
+	static void MoveWithoutSticking(AActor* Actor, const FVector& Delta);
 };

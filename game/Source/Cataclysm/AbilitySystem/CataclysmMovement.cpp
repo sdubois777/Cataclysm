@@ -4,6 +4,25 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
+void UCataclysmMovement::MoveWithoutSticking(AActor* Actor, const FVector& Delta)
+{
+	if (!Actor || Delta.IsNearlyZero())
+	{
+		return;
+	}
+	const ACharacter* Character = Cast<ACharacter>(Actor);
+	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (Movement && Movement->UpdatedComponent)
+	{
+		FHitResult Hit;
+		Movement->SafeMoveUpdatedComponent(Delta, Actor->GetActorQuat(), /*bSweep=*/true, Hit);
+		return;
+	}
+	Actor->AddActorWorldOffset(Delta, /*bSweep=*/true);
+}
 
 void UCataclysmMovement::NoteRelocatedInstantly(AActor* Character, const FVector& From)
 {

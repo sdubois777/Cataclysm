@@ -25,6 +25,7 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -58406,11 +58407,16 @@ bool FCataclysmDivineLawsPaymentTest::RunTest(const FString& Parameters)
 
 	// ABSTINENCE: THE PAYMENT.
 	const FIntPoint First = NearestStandingStatue(Mode, Player.Character->GetActorLocation());
+	const FVector StoodBeforeTheStep = Player.Character->GetActorLocation();
 	const FRuleOfChaosUse Use = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
 	if (!TestTrue(TEXT("set-up: the movement skill went off and took mana"), Use.bWentOff && Use.ManaTaken > 0.0f))
 	{
 		return false;
 	}
+	// THE PLAYER PUT BACK WHERE THEY STOOD, a set-up line, ruled by the coordinating session on 2026-10-26. Until issue
+	// #2203 this blink began touching the floor and moved 0 cm; it now moves up to its 9 metres, which can carry the
+	// player inside a statue's 12 metre trigger, and this test is about the payment, not where the player lands.
+	StandThePlayerAt(Player, StoodBeforeTheStep);
 	TestEqual(TEXT("its quarter was taken from health"), Use.HealthTaken, Use.ManaTaken * 0.25f, 0.01f);
 	TestEqual(TEXT("and paying it woke one statue"), Mode->AngelicStatueCellsStanding().Num(), Before - 1);
 	TestFalse(TEXT("the nearest"), Mode->AngelicStatueCellsStanding().Contains(First));
@@ -58474,8 +58480,13 @@ bool FCataclysmDivineLawsForbiddenTest::RunTest(const FString& Parameters)
 
 	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Heavy, /*bHasCooldown=*/true);
 	ThePlayerUsesWithACooldown(Player, ECataclysmAbilitySlot::Movement, /*bHasCooldown=*/true);
+	const FVector StoodBeforeTheStep = Player.Character->GetActorLocation();
 	const FRuleOfChaosUse Use = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
 	TestTrue(TEXT("set-up: the movement skill went off and took mana"), Use.bWentOff && Use.ManaTaken > 0.0f);
+	// THE PLAYER PUT BACK WHERE THEY STOOD, a set-up line, ruled by the coordinating session on 2026-10-26. Until issue
+	// #2203 this blink began touching the floor and moved 0 cm; it now moves up to its 9 metres, which can carry the
+	// player inside a statue's 12 metre trigger, and this test is about the payment, not where the player lands.
+	StandThePlayerAt(Player, StoodBeforeTheStep);
 	TestEqual(TEXT("and no health beside it"), Use.HealthTaken, 0.0f, 0.01f);
 	StartTheStandStillClock(Player);
 	CataclysmTestWorld::RunClock(World, 4.0f);
@@ -61507,6 +61518,360 @@ bool FCataclysmEpidemicSparesTheStalkerTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("CONTROL: the creature inside the reach was killed"), UCataclysmSkillEffects::IsDead(Control));
 	TestFalse(TEXT("the Stalker inside the same reach was not"), UCataclysmSkillEffects::IsDead(Stalker));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Moves made touching the floor, issues #2203 and #2505, 2026-10-26. A test never updates movement, so every
+// character the game places stands at gap 0 on the floor's ground, which is where a plain swept move was refused. Each
+// test asserts that gap first, so it cannot pass on a character standing clear of the floor.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A floor with no rule on it, floor 2, emptied of its creatures. */
+	ACataclysmDungeonGameMode* APlainFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The first floor cell, more than three cells from `Away` both ways, whose cells at `Offsets` are all floor. */
+	FIntPoint AFloorCellWith(const FCataclysmFloorPlan& Plan, const FIntPoint& Away, const TArray<FIntPoint>& Floor,
+							 const TArray<FIntPoint>& Rock = {})
+	{
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				bool bFits = Plan.IsFloor(Cell) && (FMath::Abs(X - Away.X) > 3 || FMath::Abs(Y - Away.Y) > 3);
+				for (const FIntPoint& Offset : Floor)
+				{
+					bFits = bFits && Plan.IsFloor(Cell + Offset);
+				}
+				for (const FIntPoint& Offset : Rock)
+				{
+					bFits = bFits && Plan.Contains(Cell + Offset) && !Plan.IsFloor(Cell + Offset);
+				}
+				if (bFits)
+				{
+					return Cell;
+				}
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+
+	/** The floor's height under `At`: the ground of the cell it is over. */
+	float FloorHeightUnder(ACataclysmDungeonGameMode* Mode, const FVector& At)
+	{
+		return static_cast<float>(Mode->CurrentFloor->WorldOfCell(Mode->CurrentFloor->CellOfWorld(At)).Z);
+	}
+
+	/** How far the bottom of a character's capsule is above the floor's ground under it. */
+	float GapUnder(ACataclysmDungeonGameMode* Mode, const ACharacter* Character)
+	{
+		return static_cast<float>(Character->GetActorLocation().Z)
+			- Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - FloorHeightUnder(Mode, Character->GetActorLocation());
+	}
+
+	/** An Imp stood at `At` as the game stands a creature: its capsule's half height above the ground, touching it. */
+	ACataclysmEnemyCharacter* AnImpStoodOnTheFloor(UWorld* World, ACataclysmDungeonGameMode* Mode, const FVector& At)
+	{
+		ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, At + FVector(0.0f, 0.0f, 500.0f), 100000.0f);
+		if (!Imp)
+		{
+			return nullptr;
+		}
+		Imp->SetActorLocation(
+			FVector(At.X, At.Y, FloorHeightUnder(Mode, At) + Imp->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+		return Imp;
+	}
+}
+
+// A KNOCKBACK MOVES A CREATURE STANDING ON THE FLOOR ITS WHOLE DISTANCE, AND A WALL STILL STOPS ONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKnockbackOnAFloorTest,
+	"Cataclysm.DungeonModifierEffects.AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKnockbackOnAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Open = AFloorCellWith(Plan, Plan.Entrance, {FIntPoint(1, 0), FIntPoint(-1, 0)});
+	const FIntPoint BeforeAWall = AFloorCellWith(Plan, Plan.Entrance, {FIntPoint(-1, 0)}, {FIntPoint(1, 0)});
+	if (!TestTrue(TEXT("set-up: an open run of floor along X"), Open.X >= 0)
+		|| !TestTrue(TEXT("set-up: a floor cell before a wall along X"), BeforeAWall.X >= 0))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Creature = AnImpStoodOnTheFloor(World, Mode, Mode->CurrentFloor->WorldOfCell(Open));
+	if (!TestNotNull(TEXT("set-up: a creature on the floor"), Creature))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it stands touching the floor, as the game places a creature"), GapUnder(Mode, Creature), 0.0f,
+			  0.1f);
+
+	const FVector Start = Creature->GetActorLocation();
+	// WHAT ITS CROWD CONTROL RESISTANCE LEAVES OF THREE METRES, asked of the function the knockback asks.
+	const float Expected = UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(Creature, 300.0f);
+	if (!TestTrue(FString::Printf(TEXT("set-up: some of the three metres is left to move: %.1f cm"), Expected),
+				  Expected > 100.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a knockback of three metres lands"),
+			 UCataclysmSkillEffects::ApplyKnockbackFrom(Player.Character, Creature, Start - FVector(100.0f, 0.0f, 0.0f),
+														300.0f));
+	const float Moved = static_cast<float>(Creature->GetActorLocation().X - Start.X);
+	AddInfo(FString::Printf(TEXT("MOVES ON A FLOOR: the knockback moved the creature %.1f cm"), Moved));
+	TestEqual(TEXT("it moved the whole of its distance along the ground"), Moved, Expected, 1.0f);
+
+	// CONTROL: A WALL STILL STOPS IT. Six metres toward rock from a cell's middle; the face is two metres on.
+	ACataclysmEnemyCharacter* Against =
+		AnImpStoodOnTheFloor(World, Mode, Mode->CurrentFloor->WorldOfCell(BeforeAWall));
+	if (!TestNotNull(TEXT("CONTROL: set-up: a creature before the wall"), Against))
+	{
+		return false;
+	}
+	const FVector From = Against->GetActorLocation();
+	const float FaceX = static_cast<float>(From.X) + 0.5f * FCataclysmFloorGenerator::CellSizeCm;
+	UCataclysmSkillEffects::ApplyKnockbackFrom(Player.Character, Against, From - FVector(100.0f, 0.0f, 0.0f), 600.0f);
+	const float Now = static_cast<float>(Against->GetActorLocation().X);
+	TestTrue(FString::Printf(TEXT("CONTROL: pushed toward the wall (%.1f cm)"), Now - From.X), Now > From.X + 1.0);
+	TestTrue(FString::Printf(TEXT("CONTROL: and not past its face (%.1f, the face at %.1f)"), Now, FaceX), Now < FaceX);
+	return true;
+}
+
+// THE PLAYER'S MOVEMENT SKILL MOVES THEM FROM WHERE THE FLOOR STOOD THEM, AND A WALL STILL STOPS IT. The game has no
+// "dash" mode; a blink ends where a leap and a charge end, at the one move in `UCataclysmMovementSkill`.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlinkOnAFloorTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBlinkOnAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	UCataclysmMovementSkill* Blink = RuleOfChaosGrantStep(Player);
+	if (!Mode || !TestNotNull(TEXT("set-up: the player holds a blink"), Blink))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	FIntPoint Next(-1, -1);
+	for (const FIntPoint Way : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+	{
+		if (Plan.IsFloor(Plan.Entrance + Way))
+		{
+			Next = Plan.Entrance + Way;
+			break;
+		}
+	}
+	const FIntPoint BeforeAWall = AFloorCellWith(Plan, Plan.Entrance, {FIntPoint(-1, 0)}, {FIntPoint(1, 0)});
+	if (!TestTrue(TEXT("set-up: a floor cell beside the entrance"), Next.X >= 0)
+		|| !TestTrue(TEXT("set-up: a floor cell before a wall along X"), BeforeAWall.X >= 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the player stands touching the floor, where the floor stood them"),
+			  GapUnder(Mode, Player.Character), 0.0f, 0.1f);
+
+	// AIMED AT THE NEXT CELL'S MIDDLE, the way `ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing` aims, with
+	// none of its hand-made 2.4 cm lift.
+	const FVector NextWorld = Mode->CurrentFloor->WorldOfCell(Next);
+	ATargetPoint* Aimed = World->SpawnActor<ATargetPoint>(
+		FVector(NextWorld.X, NextWorld.Y, Player.Character->GetActorLocation().Z), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a point to aim at"), Aimed))
+	{
+		return false;
+	}
+	Blink->ClickedTarget = Aimed;
+	const FVector Before = Player.Character->GetActorLocation();
+	if (!TestTrue(TEXT("set-up: the blink went off"), RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	const float Moved = static_cast<float>(FVector::Dist2D(Before, Player.Character->GetActorLocation()));
+	AddInfo(FString::Printf(TEXT("MOVES ON A FLOOR: the blink moved the player %.1f cm toward a point %.1f cm away"),
+							Moved, FVector::Dist2D(Before, NextWorld)));
+	TestTrue(FString::Printf(TEXT("it moved the player at least three metres of the four: %.1f cm"), Moved),
+			 Moved >= 300.0f);
+
+	// CONTROL: A WALL STILL STOPS IT. The player stood before a wall and the blink aimed four metres into the rock,
+	// once its cooldown is over.
+	const FVector WallCell = Mode->CurrentFloor->WorldOfCell(BeforeAWall);
+	StandThePlayerAt(Player, WallCell);
+	const FVector From = Player.Character->GetActorLocation();
+	const float FaceX = static_cast<float>(WallCell.X) + 0.5f * FCataclysmFloorGenerator::CellSizeCm;
+	Aimed->SetActorLocation(From + FVector(400.0f, 0.0f, 0.0f));
+	CataclysmTestWorld::RunClock(World, 30.0f);
+	if (!TestTrue(TEXT("CONTROL: set-up: the second blink went off"),
+				  RuleOfChaosUseAtManaShare(Player, Blink, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	const float Now = static_cast<float>(Player.Character->GetActorLocation().X);
+	TestTrue(FString::Printf(TEXT("CONTROL: moved toward the wall (%.1f cm)"), Now - From.X), Now > From.X + 1.0);
+	TestTrue(FString::Printf(TEXT("CONTROL: and not past its face (%.1f, the face at %.1f)"), Now, FaceX), Now < FaceX);
+	return true;
+}
+
+// A TETHER DRAGS BOTH ITS ENDS BACK ON A FLOOR, EACH BY THE SAME AMOUNT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTetherOnAFloorTest,
+	"Cataclysm.DungeonModifierEffects.ATetherDragsBothEndsBackOnAFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTetherOnAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Cell = AFloorCellWith(Plan, Plan.Entrance, {FIntPoint(1, 0), FIntPoint(2, 0)});
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* One = AnImpStoodOnTheFloor(World, Mode, Mode->CurrentFloor->WorldOfCell(Cell));
+	ACataclysmEnemyCharacter* Two =
+		AnImpStoodOnTheFloor(World, Mode, Mode->CurrentFloor->WorldOfCell(Cell + FIntPoint(2, 0)));
+	if (!TestNotNull(TEXT("set-up: one end on the floor"), One) || !TestNotNull(TEXT("set-up: the other"), Two))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: one end touches the floor"), GapUnder(Mode, One), 0.0f, 0.1f);
+	TestEqual(TEXT("set-up: and so does the other"), GapUnder(Mode, Two), 0.0f, 0.1f);
+
+	TArray<AActor*> Pair;
+	Pair.Add(One);
+	Pair.Add(Two);
+	ACataclysmTether* Line = ACataclysmTether::Bind(Player.Character, Pair, /*MaxSeparationCm=*/500.0f,
+													/*DurationSeconds=*/8.0f, /*LineHalfWidthCm=*/150.0f);
+	if (!TestNotNull(TEXT("set-up: the line was bound"), Line))
+	{
+		return false;
+	}
+	const FVector OneWas = One->GetActorLocation();
+	const FVector TwoWas = Two->GetActorLocation();
+	Line->Check();
+	const float OneMoved = static_cast<float>(One->GetActorLocation().X - OneWas.X);
+	const float TwoMoved = static_cast<float>(TwoWas.X - Two->GetActorLocation().X);
+	AddInfo(FString::Printf(TEXT("MOVES ON A FLOOR: the tether dragged one end %.1f cm and the other %.1f cm"), OneMoved,
+							TwoMoved));
+	TestEqual(TEXT("the check dragged them once"), Line->TimesDragged, 1);
+	TestEqual(TEXT("back to the five metres"), Line->SeparationCm(), 500.0f, 1.0f);
+	TestEqual(TEXT("one end moved a metre and a half toward the other"), OneMoved, 150.0f, 1.0f);
+	TestEqual(TEXT("CONTROL: and the other the same, toward it"), TwoMoved, OneMoved, 1.0f);
+	return true;
+}
+
+// A PHASEWALKER STANDING ON THE FLOOR PHASES ITS THREE METRES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPhasewalkerOnAFloorTest,
+	"Cataclysm.DungeonModifierEffects.APhasewalkerStandingOnTheFloorPhasesItsWholeDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPhasewalkerOnAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	// FLOOR ON ALL EIGHT SIDES, so a step of three metres from the middle lands on floor whichever way it is drawn.
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FIntPoint Cell = AFloorCellWith(Plan, Plan.Entrance,
+		{FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1), FIntPoint(1, 1), FIntPoint(1, -1),
+		 FIntPoint(-1, 1), FIntPoint(-1, -1)});
+	if (!TestTrue(TEXT("set-up: a floor cell with floor on all eight sides"), Cell.X >= 0))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Creature = AnImpStoodOnTheFloor(World, Mode, Mode->CurrentFloor->WorldOfCell(Cell));
+	if (!TestNotNull(TEXT("set-up: a creature on the floor"), Creature))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it stands touching the floor"), GapUnder(Mode, Creature), 0.0f, 0.1f);
+
+	// CONTROL: WITHOUT THE MODIFIER IT DOES NOT PHASE, over the same sixteen steps.
+	const FVector Start = Creature->GetActorLocation();
+	for (int32 Step = 0; Step < 16; ++Step)
+	{
+		UCataclysmEnemyModifiers::PhaseStep(Creature, 0.25f);
+	}
+	TestEqual(TEXT("CONTROL: without Phasewalker it has not moved"),
+			  static_cast<float>(FVector::Dist2D(Start, Creature->GetActorLocation())), 0.0f, 0.01f);
+
+	Creature->ModifierRows.Add(FName(UCataclysmEnemyModifiers::PhasewalkerRow));
+	Creature->SecondsSincePhase = 0.0f;
+	bool bPhased = false;
+	for (int32 Step = 0; Step < 16; ++Step)
+	{
+		bPhased = UCataclysmEnemyModifiers::PhaseStep(Creature, 0.25f) || bPhased;
+	}
+	const float Moved = static_cast<float>(FVector::Dist2D(Start, Creature->GetActorLocation()));
+	AddInfo(FString::Printf(TEXT("MOVES ON A FLOOR: the Phasewalker moved %.1f cm"), Moved));
+	TestTrue(TEXT("on the sixteenth step it phased"), bPhased);
+	TestEqual(TEXT("its whole three metres along the ground"), Moved, UCataclysmEnemyModifiers::PhasewalkerDistanceCm,
+			  1.0f);
 	return true;
 }
 

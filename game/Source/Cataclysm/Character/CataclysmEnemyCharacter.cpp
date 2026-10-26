@@ -3,6 +3,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
 // For this creature's debuffs passing to whatever stands by its body. #1060.
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
@@ -642,7 +643,7 @@ void ACataclysmEnemyCharacter::HoldAgainstMovingAway()
 		Bearing.Z = 0.0f;
 		const FVector Placed = FVector(Holder.X, Holder.Y, Now.Z)
 			+ Bearing.GetSafeNormal() * AllowedCm;
-		SetActorLocation(Placed, /*bSweep=*/true);
+		UCataclysmMovement::MoveWithoutSticking(this, Placed - GetActorLocation());
 	}
 	HeldLastLocation = GetActorLocation();
 }

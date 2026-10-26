@@ -376,7 +376,7 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 		return false;
 	}
 	const FVector Was = Enemy->GetActorLocation();
-	Enemy->AddActorWorldOffset(Step * PhasewalkerDistanceCm, /*bSweep=*/true);
+	UCataclysmMovement::MoveWithoutSticking(Enemy, Step * PhasewalkerDistanceCm);
 
 	// A PHASE IS AN INSTANT RELOCATION, not ground walked. Issue #2388.
 	UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);

@@ -3758,8 +3758,8 @@ public:
 	 * own type, and standing in one slows the player by the 40% the row states.
 	 *
 	 * THE PLAYER IS PULLED `SingularityWellsPullCmPerSecond` TOWARD THE CENTRE OF THE NEAREST WELL COVERING THEM, a
-	 * beat's worth each beat, by a swept `SetActorLocation` as `ACataclysmTether::Check` moves its ends, and never
-	 * past the centre. NOT `UCataclysmSkillEffects::ApplyPull`: its diminishing-returns rule halves every displacement
+	 * beat's worth each beat, through the movement component's `SafeMoveUpdatedComponent` -- a plain swept move begun
+	 * on the floor is refused, issue #2203 -- and never past the centre. NOT `UCataclysmSkillEffects::ApplyPull`: its diminishing-returns rule halves every displacement
 	 * inside a five second window, so a pulsing pull would fade to nothing within about a second.
 	 *
 	 * A PROJECTILE INSIDE A WELL TURNS TOWARD ITS CENTRE, up to `SingularityWellsProjectileTurnDegreesPerSecond`, in
