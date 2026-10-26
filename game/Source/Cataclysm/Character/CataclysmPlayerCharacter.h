@@ -320,6 +320,14 @@ public:
 	 */
 	bool ApplyCreationChoice();
 
+	/**
+	 * Fills the six ability slots again from what is worn and what the player chose. Issue #837 layer 3.
+	 *
+	 * WHAT `ACataclysmPlayerState::AssignSkill` AND `ClearSkillChoice` CALL, so a choice reaches the keys at once. The
+	 * private `FillAbilitySlotsFromWornWeapon` is the whole of it; no stat line is written.
+	 */
+	void RefillAbilitySlots();
+
 	/** Client: the player state has replicated. There is no PossessedBy here. */
 	virtual void OnRep_PlayerState() override;
 

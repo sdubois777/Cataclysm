@@ -197,10 +197,14 @@ public:
 	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
-	 * Invalid for the Basic Attack and the Aura, which is correct rather than
-	 * missing: the Basic Attack is automatic so attack speed sets its rate, and
-	 * the Aura is a toggle so there is nothing to wait for. Neither has a
-	 * cooldown, so neither needs a tag saying it is on one.
+	 * Invalid for the Basic Attack, which is correct rather than missing: it is
+	 * automatic so attack speed sets its rate, and it has no cooldown, so it needs
+	 * no tag saying it is on one.
+	 *
+	 * `Cooldown.Aura` FOR THE AURA KEY SINCE ISSUE #837 LAYER 3 (ruled
+	 * 2026-10-25, Q-L3a): any skill may sit on that key and a cooldown is kept by
+	 * the key, so a skill with a cooldown there waits under it. An aura there still
+	 * waits for nothing, because its length is nought.
 	 */
 	static FGameplayTag CooldownTag(ECataclysmAbilitySlot Slot);
 

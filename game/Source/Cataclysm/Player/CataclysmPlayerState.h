@@ -8,6 +8,7 @@
 #include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmClassStats.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "CataclysmPlayerState.generated.h"
 
 class UDataTable;
@@ -536,6 +537,56 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	TArray<FName> CarriedDamageTypes() const;
 
+	// ----------------------------------------------------------------------
+	// Which pool skill sits on which key. Issue #837 layer 3.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The player's chosen skills, one entry per key a choice was made for. Issue #837 layer 3, ruled 2026-10-25.
+	 *
+	 * HERE AND SAVED, as the creation choice is: a pawn is destroyed on death and the player state is not, and the
+	 * character record writes it (`UCataclysmCharacterSave::SkillAssignment`, one field, no version bump, Q6).
+	 *
+	 * A CHOICE WHOSE WEAPON CAME OFF IS KEPT (Q5, the owner: "the slot shows its default and the choice is kept for
+	 * when the weapon returns"): the fill leaves it out and the key shows its default, and wearing the weapon again
+	 * puts it back. Only `ClearSkillChoice` forgets one (O5, the owner: "Forget my choice").
+	 */
+	const TArray<FCataclysmSkillChoice>& GetSkillAssignment() const { return SkillAssignment; }
+
+	/**
+	 * Put the pool skill of row `SkillRow` on the key `Slot`, and fill the keys again. Issue #837 layer 3.
+	 *
+	 * REFUSED, WITH `OutReason`, FOR WHAT `RefusalForSkillChoice` REFUSES: the basic attack's key (O2), a row not in
+	 * the character's pool now, a row already chosen for another key (O4). The skill moved keeps every rule of the slot
+	 * it was made for (O1). The key it leaves takes its next default, or stays empty (O4).
+	 *
+	 * @return whether the choice was recorded
+	 */
+	bool AssignSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason);
+
+	/**
+	 * "Clear the slot" (Q5): forget the choice for `Slot`, so the key returns to its default for good (O5), and fill
+	 * the keys again. Issue #837 layer 3.
+	 *
+	 * @return whether there was a choice to forget
+	 */
+	bool ClearSkillChoice(ECataclysmAbilitySlot Slot);
+
+	/**
+	 * Why `SkillRow` may not be chosen for `Slot`, in one sentence, or empty when it may. Issue #837 layer 3. A
+	 * static, so the screen of layer 4 can ask it of any pool.
+	 *
+	 * @param Table    the weapon skill matrix, for "no such row"; null skips that question
+	 * @param Pool     the skills the worn weapons make available now
+	 * @param Choices  the choices already made
+	 */
+	static FString RefusalForSkillChoice(ECataclysmAbilitySlot Slot, FName SkillRow, const UDataTable* Table,
+										 const TArray<FCataclysmWeaponSkill>& Pool,
+										 const TArray<FCataclysmSkillChoice>& Choices);
+
+	/** A key's name as a player reads it, "Heavy" or "Ultimate", from its `Slot.*` tag. Empty for none. */
+	static FString SkillSlotName(ECataclysmAbilitySlot Slot);
+
 	/**
 	 * Work this character's whole stat line out again and write it.
 	 *
@@ -660,6 +711,15 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Passives")
 	int32 PointsAnAllocationWasHandedWith = 0;
+
+	/**
+	 * See `GetSkillAssignment`. Issue #837 layer 3. Written by `AssignSkill` and `ClearSkillChoice` and by nothing
+	 * else; nothing loads a save into it yet (#753).
+	 *
+	 * REPLICATED, because the client's screen of layer 4 draws the keys from it.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Skills")
+	TArray<FCataclysmSkillChoice> SkillAssignment;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;

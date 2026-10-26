@@ -17,7 +17,7 @@ int32 UCataclysmChorus::Repeat(AActor* Caster, AActor* Target, float Sent,
 	// A SKILL, AND NOT THE BASIC ATTACK, the one slot `skill_use` leaves out
 	// too. A hit with no skill behind it is not "a skill you cast".
 	const UCataclysmGameplayAbility* Ability = Cast<UCataclysmGameplayAbility>(Skill);
-	if (!Ability || Ability->Slot == ECataclysmAbilitySlot::BasicAttack
+	if (!Ability || Ability->GetDesignedSlot() == ECataclysmAbilitySlot::BasicAttack
 		|| Sent <= 0.0f || !IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
 	{
 		return 0;

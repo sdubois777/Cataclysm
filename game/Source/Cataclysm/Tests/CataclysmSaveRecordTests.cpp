@@ -671,6 +671,16 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 	TestEqual(TEXT("a fully spent character has one point for every level"),
 		Points.Total(), Read->Level);
 
+	// AND THE CHOSEN SKILL, added 2026-10-25 for issue #837 layer 3: a heavy attack chosen for the Ultimate key, read
+	// back by its slot's NAME into the right key and by its row.
+	if (TestEqual(TEXT("the file states one chosen skill"), Read->SkillAssignment.Num(), 1))
+	{
+		TestTrue(TEXT("it is on the Ultimate key, read by the slot's name"),
+			Read->SkillAssignment[0].Slot == ECataclysmAbilitySlot::Ultimate);
+		TestEqual(TEXT("and it is the War Greatsword's heavy attack"), Read->SkillAssignment[0].SkillRow,
+			FName(TEXT("War_Greatsword_Heavy")));
+	}
+
 	return true;
 }
 

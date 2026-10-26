@@ -139,13 +139,22 @@ const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
 
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)
 {
-	// The Basic Attack is automatic and the Aura is a toggle. Neither waits, so
-	// neither has a tag saying it is waiting, and there is deliberately no
-	// Cooldown.Basic or Cooldown.Aura in the workbook's Tags sheet. A tag
-	// nothing can ever apply is the kind of thing this project keeps finding.
+	// The Basic Attack is automatic and never waits, so it has no tag saying it
+	// is waiting, and there is deliberately no Cooldown.Basic in the workbook's
+	// Tags sheet. A tag nothing can ever apply is the kind of thing this project
+	// keeps finding. Nothing but the basic attack sits on the Basic key (O2).
+	//
+	// THE AURA KEY HAS ONE SINCE ISSUE #837 LAYER 3, `Cooldown.Aura`. A cooldown
+	// is kept by the key a skill sits on (the owner, 2026-10-25: "Each skill its
+	// own cooldown"), and any skill may sit on the Aura key, so a Heavy skill put
+	// there must wait its own Heavy cooldown under this tag. Ruled 2026-10-25
+	// (Q-L3a, "Add Cooldown.Aura"). An aura on its own key still waits for
+	// nothing: its slot's cooldown is nought, and `CheckCooldown` and
+	// `ApplyCooldown` both return at once for a nought length, applying nothing.
+	// Until the Tags sheet row is generated into the tag list this answers an
+	// invalid tag, as it did, because ErrorIfNotFound is false below.
 	if (Slot == ECataclysmAbilitySlot::None
-		|| Slot == ECataclysmAbilitySlot::BasicAttack
-		|| Slot == ECataclysmAbilitySlot::Aura)
+		|| Slot == ECataclysmAbilitySlot::BasicAttack)
 	{
 		return FGameplayTag();
 	}

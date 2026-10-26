@@ -869,7 +869,8 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
 	const float Base = Skill.Cooldown >= 0.0f
 		? Skill.Cooldown
-		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).Cooldown;
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(),
+										   UCataclysmWeaponSkills::DesignedSlotOf(Skill)).Cooldown;
 	const float AfterRows = UCataclysmGameplayAbility::CooldownAfterReduction(Theirs, Base, Skill.Tags);
 
 	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
@@ -883,7 +884,7 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot
 	// table's cooldown is nought and states no wait. NOUGHT, "never swing", STAYS NOUGHT, which `StepSkillGadget`
 	// reads as never cast. The player's own Cripple reaches it, because it is read off the player's avatar.
-	if (Skill.Slot == ECataclysmAbilitySlot::BasicAttack)
+	if (UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::BasicAttack)
 	{
 		const float Swing = UCataclysmBasicAttack::SecondsBetweenSwingsFor(Cataclysm);
 		return Swing > 0.0f ? Swing / (1.0f + Faster) : 0.0f;
@@ -2265,10 +2266,12 @@ bool ACataclysmMinion::CastPlayersUltimateFromHere()
 
 	// WHAT THE COMMANDER HOLDS IN THE ULTIMATE SLOT NOW (T2), as `SkillGadgetsSkill` reads a slot, REFUSED AS A SKILL
 	// GADGET REFUSES (T2). NOT ASKED WHETHER THE SLOT IS CONVERTED: a converted Ultimate is still cast (T3).
+	// THE SKILL MADE FOR THE ULTIMATE SLOT, ON WHICHEVER KEY IT SITS, since issue #837 layer 3: "An Ultimate on the
+	// Heavy key is still an Ultimate in every rule" (O1, 2026-10-25).
 	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
 	const FCataclysmWeaponSkill* Held = Slots
-		? Slots->GetAvailableSkills().FindByPredicate(
-			  [](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Ultimate; })
+		? Slots->GetAvailableSkills().FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+			  { return UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::Ultimate; })
 		: nullptr;
 	if (!Held || !SkillGadgetMayCast(*Held))
 	{
@@ -2566,10 +2569,13 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	AsTheTraps.Tags.AddTag(TagOfATrap());
 	AActor* const Enemy = IsValid(TriggeringEnemy) ? TriggeringEnemy : nullptr;
 	const FVector Place = Enemy ? Enemy->GetActorLocation() : GetActorLocation();
-	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SkillTrapSlot);
+	// BY THE SENTENCE OF THE SLOT THE SKILL WAS MADE FOR, NOT THE KEY THE TRAP WAS PLACED FROM: ruled 2026-10-25 (Q-L3b,
+	// under O1), so an Ultimate on the Heavy key casts as the Ultimate's sentence says. Issue #837 layer 3.
+	const ECataclysmAbilitySlot SentenceSlot = UCataclysmWeaponSkills::DesignedSlotOf(Skill);
+	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SentenceSlot);
 	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
-	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
+	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SentenceSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
 	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
 	// the slow's rule of a tenth (the owner, 2026-10-21).
 	SkillTrapTriggeringEnemy = Enemy;

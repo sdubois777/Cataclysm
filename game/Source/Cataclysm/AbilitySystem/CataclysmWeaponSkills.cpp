@@ -99,6 +99,10 @@ void UCataclysmWeaponSkills::StampOnto(UCataclysmSkillTemplate& Template,
 	Template.DamagePercentOverride = Skill.DamagePercent;
 	Template.CooldownOverride = Skill.Cooldown;
 	Template.ManaCostOverride = Skill.ManaCost;
+
+	// AND THE SLOT IT WAS MADE FOR, which every rule reads wherever the skill sits (O1, issue #837 layer 3). The key
+	// is the caller's, as above.
+	Template.DesignedSlot = DesignedSlotOf(Skill);
 }
 
 TSubclassOf<UCataclysmGameplayAbility> UCataclysmWeaponSkills::TemplateFor(
@@ -126,10 +130,17 @@ namespace
 	 * One row of the matrix as a skill, in the slot the caller read from it. ONE FUNCTION because two lookups read
 	 * rows: a weapon's skills and every skill of a damage type. Written twice, the second would miss the next column.
 	 */
-	FCataclysmWeaponSkill WeaponSkillFromRow(const FCataclysmWeaponSkillRow& Row, ECataclysmAbilitySlot Slot)
+	FCataclysmWeaponSkill WeaponSkillFromRow(const FName& RowName, const FCataclysmWeaponSkillRow& Row,
+											 ECataclysmAbilitySlot Slot)
 	{
 		FCataclysmWeaponSkill Skill;
 		Skill.Slot = Slot;
+		// THE KEY AND THE DESIGNED SLOT ARE THE SAME HERE, the row's, and the fill moves the key alone (issue #837
+		// layer 3). The row's name, weapon and type are what a choice is saved by and a screen shows.
+		Skill.DesignedSlot = Slot;
+		Skill.RowName = RowName;
+		Skill.WeaponType = Row.WeaponType;
+		Skill.DamageType = Row.DamageType;
 		Skill.Name = Row.SkillName;
 		Skill.Description = Row.SkillDescription;
 		Skill.Shape = UCataclysmSkillShapes::ShapeFromName(Row.Shape);
@@ -184,7 +195,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsOfDamageType(const U
 	}
 	Table->ForeachRow<FCataclysmWeaponSkillRow>(
 		TEXT("UCataclysmWeaponSkills::SkillsOfDamageType"),
-		[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+		[&](const FName& RowName, const FCataclysmWeaponSkillRow& Row)
 		{
 			const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
 			if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None
@@ -192,7 +203,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsOfDamageType(const U
 			{
 				return;
 			}
-			Found.Add(WeaponSkillFromRow(Row, Slot));
+			Found.Add(WeaponSkillFromRow(RowName, Row, Slot));
 		});
 	return Found;
 }
@@ -215,7 +226,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 	{
 		Table->ForeachRow<FCataclysmWeaponSkillRow>(
 			TEXT("UCataclysmWeaponSkills::SkillsFor"),
-			[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+			[&](const FName& RowName, const FCataclysmWeaponSkillRow& Row)
 			{
 				if (Row.SkillName.IsEmpty())
 				{
@@ -248,7 +259,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::SkillsFor(
 
 				Taken.Add(Slot);
 
-				Found.Add(WeaponSkillFromRow(Row, Slot));
+				Found.Add(WeaponSkillFromRow(RowName, Row, Slot));
 			});
 	};
 
@@ -297,6 +308,9 @@ FCataclysmWeaponSkill UCataclysmWeaponSkills::BasicAttackFor(
 			}
 
 			Basic.Slot = ECataclysmAbilitySlot::BasicAttack;
+			// MADE FOR THE BASIC KEY AND NEVER MOVED FROM IT: it cannot be chosen (O2, issue #837 layer 3).
+			Basic.DesignedSlot = ECataclysmAbilitySlot::BasicAttack;
+			Basic.WeaponType = Row.WeaponType;
 			Basic.Name = BasicAttackName;
 			Basic.Shape = UCataclysmSkillShapes::ShapeFromName(Row.BasicShape);
 
@@ -408,7 +422,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* 
 			TSet<ECataclysmAbilitySlot> TakenByThisPair;
 			Table->ForeachRow<FCataclysmWeaponSkillRow>(
 				TEXT("UCataclysmWeaponSkills::PoolFor"),
-				[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+				[&](const FName& RowName, const FCataclysmWeaponSkillRow& Row)
 				{
 					const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
 					if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None || TakenByThisPair.Contains(Slot)
@@ -419,7 +433,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* 
 						return;
 					}
 					TakenByThisPair.Add(Slot);
-					Pool.Add(WeaponSkillFromRow(Row, Slot));
+					Pool.Add(WeaponSkillFromRow(RowName, Row, Slot));
 				});
 		}
 
@@ -436,7 +450,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* 
 		}
 		Table->ForeachRow<FCataclysmWeaponSkillRow>(
 			TEXT("UCataclysmWeaponSkills::PoolFor"),
-			[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+			[&](const FName& RowName, const FCataclysmWeaponSkillRow& Row)
 			{
 				const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
 				if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None || TakenByThisType.Contains(Slot)
@@ -446,7 +460,7 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* 
 					return;
 				}
 				TakenByThisType.Add(Slot);
-				Pool.Add(WeaponSkillFromRow(Row, Slot));
+				Pool.Add(WeaponSkillFromRow(RowName, Row, Slot));
 			});
 	}
 	return Pool;
@@ -463,6 +477,73 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::DefaultFillFrom(const TArr
 		{
 			Taken.Add(Skill.Slot);
 			Filled.Add(Skill);
+		}
+	}
+	return Filled;
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::FillWithChoices(const TArray<FCataclysmWeaponSkill>& Pool,
+																	  const TArray<FCataclysmSkillChoice>& Choices)
+{
+	TMap<ECataclysmAbilitySlot, FCataclysmWeaponSkill> OnKey;
+	TSet<FName> Held;
+
+	// EACH CHOSEN ROW THAT IS IN THE POOL, ON ITS KEY, KEEPING THE SLOT IT WAS MADE FOR (O1). The first choice of a key
+	// or of a row wins. A row not in the pool fills nothing here and stays chosen in the player state (Q5).
+	for (const FCataclysmSkillChoice& Choice : Choices)
+	{
+		if (!IsChoosableSlot(Choice.Slot) || Choice.SkillRow.IsNone() || OnKey.Contains(Choice.Slot)
+			|| Held.Contains(Choice.SkillRow))
+		{
+			continue;
+		}
+		const FCataclysmWeaponSkill* InPool = Pool.FindByPredicate(
+			[&Choice](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == Choice.SkillRow; });
+		if (!InPool)
+		{
+			continue;
+		}
+		FCataclysmWeaponSkill OnThisKey = *InPool;
+		OnThisKey.DesignedSlot = DesignedSlotOf(*InPool);
+		OnThisKey.Slot = Choice.Slot;
+		OnKey.Add(Choice.Slot, OnThisKey);
+		Held.Add(Choice.SkillRow);
+	}
+
+	// EVERY OTHER KEY: THE FIRST POOL ENTRY DESIGNED FOR IT NOT ALREADY HELD (O4), or nothing.
+	for (const FCataclysmWeaponSkill& Skill : Pool)
+	{
+		const ECataclysmAbilitySlot Designed = DesignedSlotOf(Skill);
+		if (Designed == ECataclysmAbilitySlot::None || OnKey.Contains(Designed)
+			|| (!Skill.RowName.IsNone() && Held.Contains(Skill.RowName)))
+		{
+			continue;
+		}
+		OnKey.Add(Designed, Skill);
+		if (!Skill.RowName.IsNone())
+		{
+			Held.Add(Skill.RowName);
+		}
+	}
+
+	// IN THE DEFAULT FILL'S KEY ORDER, so no choice is `DefaultFillFrom` element for element; then a key only a choice
+	// filled.
+	TArray<FCataclysmWeaponSkill> Filled;
+	TSet<ECataclysmAbilitySlot> Written;
+	for (const FCataclysmWeaponSkill& Default : DefaultFillFrom(Pool))
+	{
+		if (const FCataclysmWeaponSkill* Found = OnKey.Find(Default.Slot))
+		{
+			Filled.Add(*Found);
+			Written.Add(Default.Slot);
+		}
+	}
+	for (const ECataclysmAbilitySlot Key : CataclysmAbilitySlots::All())
+	{
+		if (const FCataclysmWeaponSkill* Found = OnKey.Find(Key); Found && !Written.Contains(Key))
+		{
+			Filled.Add(*Found);
+			Written.Add(Key);
 		}
 	}
 	return Filled;

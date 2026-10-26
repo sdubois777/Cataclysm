@@ -70,9 +70,31 @@ class CATACLYSM_API UCataclysmGameplayAbility : public UGameplayAbility
 public:
 	UCataclysmGameplayAbility();
 
-	/** Which input slot this ability is designed to sit in. */
+	/**
+	 * Which input slot this ability sits in: THE KEY. Since issue #837 layer 3 a weapon skill may sit on any of the six,
+	 * so this decides which button casts it, and its cooldown and charges, which are kept per skill by the key it sits
+	 * on (the owner, 2026-10-25: "Each skill its own cooldown"). Every other rule reads `GetDesignedSlot`.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
 	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	/**
+	 * The slot this skill was MADE for, stamped by `UCataclysmWeaponSkills::StampOnto` and the placeholder's grant. Issue
+	 * #837 layer 3. None, the default, means the same as `Slot`: every ability granted by hand, an ability set's and an
+	 * enemy's.
+	 *
+	 * RULED 2026-10-25 BY THE OWNER (O1): "A skill is already tagged as heavy/basic/support/etc. we don't need to do
+	 * anything. Where the user assigns it is irrelevant". So an Ultimate on the Heavy key is an Ultimate in every rule:
+	 * its numbers (Q7), its cooldown's LENGTH, its Fervour, Mana Weaver's rule and the slot rules a use announces.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ability")
+	ECataclysmAbilitySlot DesignedSlot = ECataclysmAbilitySlot::None;
+
+	/** The slot every rule reads: `DesignedSlot`, or `Slot` when none is set. */
+	ECataclysmAbilitySlot GetDesignedSlot() const
+	{
+		return DesignedSlot != ECataclysmAbilitySlot::None ? DesignedSlot : Slot;
+	}
 
 	/**
 	 * Activate as soon as the ability is granted, and keep it active.
@@ -515,6 +537,10 @@ public:
 	 * "your ultimate ability", since any skill may go in any slot. So the flag is ASKED WITH NO TAGS, and a row on it
 	 * requiring a tag matches nothing; `tools/generate_datatables.py` refuses one. An ability system this project did
 	 * not make carries no stat line and answers no.
+	 *
+	 * THE DESIGNED SLOT SINCE ISSUE #837 LAYER 3, NOT THE KEY: ruled 2026-10-25 (O1, O6), "Mana Weaver follows the
+	 * designed slot", so an Ultimate on the Heavy key keeps the rule and a Heavy skill on the Ultimate key does not take
+	 * it. `GetDesignedSlot` is the key for every ability nothing moved.
 	 */
 	bool UltimateCostDoublesByARow(const UAbilitySystemComponent* AbilitySystem) const;
 

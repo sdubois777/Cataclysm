@@ -77,7 +77,7 @@ bool UCataclysmFollowThrough::NoteMeleeKill(AActor* Character, FName KillingSkil
 
 	FGameplayAbilitySpecHandle Handle;
 	const UCataclysmSkillTemplate* Skill = SkillNamed(System, KillingSkillName, Handle);
-	if (!Skill || Skill->Slot == ECataclysmAbilitySlot::Movement)
+	if (!Skill || Skill->GetDesignedSlot() == ECataclysmAbilitySlot::Movement)
 	{
 		return false;
 	}
@@ -128,7 +128,7 @@ bool UCataclysmFollowThrough::MakePendingRepeat(AActor* Character)
 	// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH. The basic attack's
 	// reach is the one its swing uses; every other skill's is its range, or its
 	// radius when it states no range.
-	const float ReachCm = Skill->Slot == ECataclysmAbilitySlot::BasicAttack
+	const float ReachCm = Skill->GetDesignedSlot() == ECataclysmAbilitySlot::BasicAttack
 		? UCataclysmBasicAttack::ReachCmOf(System)
 		: Skill->RequirementReachCm();
 	const FVector From = Character->GetActorLocation();

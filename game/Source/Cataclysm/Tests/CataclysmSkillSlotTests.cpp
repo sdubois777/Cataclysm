@@ -104,10 +104,15 @@ bool FCataclysmSkillSlotNumbersTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The five slots that wait have a cooldown tag, and the two that do not, do not.
+ * The five slots that wait have a cooldown tag, the Aura key has one too, and the
+ * basic attack does not.
  *
  * A tag nothing can ever apply is the shape of problem this project keeps
- * finding, so Cooldown.Basic and Cooldown.Aura deliberately do not exist.
+ * finding, so Cooldown.Basic deliberately does not exist. COOLDOWN.AURA EXISTS
+ * SINCE #837 LAYER 3 (ruled 2026-10-25, Q-L3a and Q-L3c): any skill may be put on
+ * any key, and a cooldown skill placed on the Aura key keeps its own cooldown (the
+ * owner: "Each skill its own cooldown"), which needs a tag on that key. An aura
+ * itself still waits for nothing: its length is 0, so nothing is applied under it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCooldownTagTest,
 	"Cataclysm.Skills.EveryWaitingSlotHasACooldownTag",
@@ -136,6 +141,11 @@ bool FCataclysmSkillCooldownTagTest::RunTest(const FString& Parameters)
 				TEXT("%s waits %.1fs, so Cooldown.%s must exist in the tag list"),
 				*Name, Numbers.Cooldown, *Name), Tag.IsValid());
 			++WithTag;
+		}
+		else if (Slot == ECataclysmAbilitySlot::Aura)
+		{
+			TestTrue(TEXT("the Aura slot never waits, but its key carries Cooldown.Aura for a cooldown skill placed "
+						  "there (Q-L3c)"), Tag.IsValid());
 		}
 		else
 		{
