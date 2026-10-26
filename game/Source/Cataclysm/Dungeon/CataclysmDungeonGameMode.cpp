@@ -14262,6 +14262,8 @@ void ACataclysmDungeonGameMode::NoteDeathForRuleOfChaos(const FCataclysmDeathNot
 	// `UCataclysmAbilitySystemComponent::RollAndResetCooldowns` makes after its roll, made here without it.
 	AbilitySystem->RefillSkillCharges(EveryCooldown);
 	AbilitySystem->RemoveActiveEffectsWithGrantedTags(EveryCooldown);
+	// AND THE KEPT COOLDOWN OF A SKILL HELD OFF THE KEYS, so "every cooldown" is every one. Issue #2528.
+	AbilitySystem->ForgetCooldownsOffTheKeys();
 	++RuleOfChaosKills;
 	UE_LOG(LogCataclysm, Verbose, TEXT("Rule of Chaos: kill %d on floor %d cleared every cooldown."), RuleOfChaosKills,
 		   FloorNumber);

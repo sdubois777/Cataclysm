@@ -1898,6 +1898,19 @@ public:
 	void RefillSkillCharges(const FGameplayTagContainer& CooldownTags);
 
 	/**
+	 * Forget the cooldown kept for every skill a choice took off the keys (`CooldownsOffTheKeys`), so a reset or a
+	 * death that ends every running cooldown ends theirs too. Issue #2528. NOT CALLED FROM `RefillSkillCharges`, which
+	 * `CarryCooldownsToNewKeys` calls just after it writes a record.
+	 */
+	void ForgetCooldownsOffTheKeys();
+
+	/**
+	 * Take `Seconds` off the cooldown kept for every skill off the keys, as a reduction of every cooldown takes them
+	 * off the running ones. Issue #2528.
+	 */
+	void ShortenCooldownsOffTheKeys(float Seconds);
+
+	/**
 	 * The cooldown tags of the skills MADE for `Designed`, whichever keys they sit on. Issue #837 layer 3.
 	 *
 	 * A COOLDOWN IS KEPT BY THE KEY A SKILL SITS ON, its length by the slot it was made for: the owner, 2026-10-25,
