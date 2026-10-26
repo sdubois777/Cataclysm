@@ -620,6 +620,83 @@ CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmARowsKillFiresNoKillRowTest,
+	"Cataclysm.DeathsHeardInOrder.AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A kill a player's worn row makes inside another death's announcement does not fire their kill rows when it is
+ * heard. Issue #2482, ruled by the coordinating session on 2026-10-26: before the death queue that kill was heard while
+ * the rows were still acting, and dropped; it now waits, and the notice says a row made it. The player holds "on a
+ * kill, every own burn within five metres deals its remaining damage" and "enemies killed by you explode for the
+ * overkill". The player kills an enemy twenty metres away with a plain blow: its kill fires both rows, the remaining
+ * burn kills a burning enemy three metres from the player, and that death waits. NOTHING EXPLODES FROM IT, so the enemy
+ * beside it takes nothing. CONTROL: the plain kill's own explosion hurts the enemy beside THAT one.
+ */
+bool FCataclysmARowsKillFiresNoKillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Struck = SpawnEnemy(World, FVector(-20.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideTheStruck = SpawnEnemy(World, FVector(-21.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Burning = SpawnEnemy(World, FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideTheBurning = SpawnEnemy(World, FVector(4.0f * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("an enemy to strike"), Struck)
+		|| !TestNotNull(TEXT("CONTROL: an enemy beside it"), BesideTheStruck)
+		|| !TestNotNull(TEXT("a burning enemy"), Burning) || !TestNotNull(TEXT("an enemy beside that"), BesideTheBurning)
+		|| !TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestTrue(TEXT("set-up: the burn tag exists"), Burn.IsValid())
+		|| !TestTrue(TEXT("set-up: the player burns the enemy"), TenATick(Player, Burning, Burn)))
+	{
+		return false;
+	}
+
+	// THE TWO ROWS, as the loader builds them.
+	FCataclysmPoolAction Explodes;
+	Explodes.Event = FName(TEXT("kill"));
+	Explodes.Pool = FName(UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction);
+	Explodes.Percent = 100.0f;
+	Explodes.bExplodeVictimForOverkill = true;
+	Explodes.TriggerKey = FName(TEXT("DeathsHeardInOrderTest:kill:explode"));
+	AbilitySystem->SetPoolActions({Remaining(ECataclysmRemainingDamage::Nearby, TEXT("kill"), 100.0f, Burn), Explodes});
+
+	// TWO TICKS LAND, AND THE BURNING ENEMY IS LEFT WITH ONE TICK'S HEALTH, so its eight remaining ticks kill it.
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float EachTick = (1000.0f - HealthOf(Burning)) / 2.0f;
+	if (!TestTrue(*FString::Printf(TEXT("set-up: two ticks landed, %.2f each"), EachTick), EachTick > 0.0f))
+	{
+		return false;
+	}
+	UCataclysmTargeting::AbilitySystemOf(Burning)->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), EachTick);
+	const float BesideTheBurningBefore = HealthOf(BesideTheBurning);
+	const float BesideTheStruckBefore = HealthOf(BesideTheStruck);
+
+	UCataclysmSkillEffects::ApplyHit(Player, Struck, 100000.0f);
+	if (!TestTrue(TEXT("set-up: the plain blow killed the enemy struck"), UCataclysmSkillEffects::IsDead(Struck))
+		|| !TestTrue(TEXT("set-up: and its kill row's remaining burn killed the burning enemy"),
+					 UCataclysmSkillEffects::IsDead(Burning)))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: the plain kill fired the kill row and exploded: %.1f to %.1f"),
+							 BesideTheStruckBefore, HealthOf(BesideTheStruck)),
+			 HealthOf(BesideTheStruck) < BesideTheStruckBefore);
+	TestEqual(TEXT("the kill the row made fired no kill row: the enemy beside it took nothing"),
+			  HealthOf(BesideTheBurning), BesideTheBurningBefore, 0.01f);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS

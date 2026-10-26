@@ -1207,8 +1207,12 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			const float SlainMaximum = Slain
 				? Slain->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
 				: 0.0f;
-			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
-							   /*bLanded=*/true, Notice.Victim);
+			// NOT FOR A KILL A ROW MADE, so a row's kill does not fire rows again. See `bWhileTheKillersRowsActed`.
+			if (!Notice.bWhileTheKillersRowsActed)
+			{
+				Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
+								   /*bLanded=*/true, Notice.Victim);
+			}
 
 			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
 			// 2026-10-18 (Q5) for the Demon King's Regalia's ten-piece. A call of its own rather than a row on
@@ -1350,7 +1354,7 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		//
 		// THE TEAM TEST IS `IsAnEnemysDeath` AT THE TOP OF THIS FILE, since
 		// 2026-09-17, because Fed by the Fallen below asks the same question.
-		if (IsAnEnemysDeath(this, Notice)
+		if (IsAnEnemysDeath(this, Notice) && !Notice.bWhileTheKillersRowsActed
 			&& FVector::Dist(GetActorLocation(), Notice.Location)
 				<= NearbyDeathRadiusCm)
 		{

@@ -263,6 +263,15 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * for a death with no lethal blow on record. See `FCataclysmLastBlow::KillingBlowDamage`.
 	 */
 	float KillingBlowDamage = 0.0f;
+
+	/**
+	 * Whether the killer's own worn rows were acting when this death happened: a kill a row's action made. Issue
+	 * #2482, ruled by the coordinating session on 2026-10-26. The player's listener raises no row event on such a
+	 * death, `kill` or `nearby_death`, so a kill a row made does not fire rows again. Until the death queue that was
+	 * so by accident: the death was announced while the rows were still acting, and `ActOnEvent` drops an event raised
+	 * then. Handed-over work, the overkill explosion's, runs with no rows acting, so its kills still raise them.
+	 */
+	bool bWhileTheKillersRowsActed = false;
 };
 
 /**
@@ -498,6 +507,12 @@ public:
 	 * place a death is recorded, after the victim is marked dead -- so a listener
 	 * already sees it as a corpse, and `MarkDead` refusing a second time is what
 	 * makes this fire once a death.
+	 *
+	 * A DEATH RAISED WHILE ANOTHER IS BEING ANNOUNCED WAITS until every listener has heard that one. Issue #2482,
+	 * ruled by the coordinating session on 2026-10-26. Its notice is built when it happens, with its own copies of the
+	 * tag lists the notice points at, and it goes on the list `AfterThisDeathIsHeard` keeps, so deaths and handed-over
+	 * work are announced and done in the order they were raised. A death raised while none is being announced is
+	 * announced at once, and the count `DeathsSent` rises when the death happens either way.
 	 */
 	static void NoteDeath(AActor* Victim);
 
@@ -512,10 +527,10 @@ public:
 	 * the wrong way round. Work handed over here runs after `NoteDeath`'s broadcast has returned, so every
 	 * listener hears the first death wholly before the second, whatever order they were bound in.
 	 *
-	 * WHEN IT RUNS. While no death is being announced, in the order handed over. Called while no death is being
-	 * announced, the work is done at once. A death the work causes is announced in full from inside it, and work
-	 * handed over during THAT announcement runs when that announcement returns, so a chain nests one level for
-	 * each link and ends when a link kills nothing.
+	 * WHEN IT RUNS. While no death is being announced, in the order handed over, deaths that waited among it. Called
+	 * while no death is being announced, the work is done at once. A death the work causes is announced in full from
+	 * inside it, and work handed over during THAT announcement runs when that announcement returns, so a chain nests
+	 * one level for each link and ends when a link kills nothing.
 	 *
 	 * WHAT IT DOES NOT ORDER. `NoteDeath` is called from `UCataclysmSkillEffects::MarkDead`, at the top of a
 	 * creature's `HandleDeath`. The rest of the first creature's `HandleDeath` -- drops, the ailment spread,
@@ -557,6 +572,9 @@ public:
 private:
 	/** Do the work handed over, oldest first, unless a death is being announced. See `AfterThisDeathIsHeard`. */
 	void DoWorkAfterDeaths();
+
+	/** Tell every listener of this death, then do the work and deaths that waited for it. See `NoteDeath`. */
+	void Announce(const FCataclysmDeathNotice& Notice);
 
 	uint32 Hits = 0;
 	uint32 Deaths = 0;
