@@ -65,7 +65,22 @@ in them (by reading).
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t100w, under the editor lock as `enchant-t100w`, taken at 11 GB
+free, at `7a7a52c6d` on `fix/a-skill-off-the-keys-keeps-its-cooldown` (two commits on development `7980e4b69`). Python
+before the window: "6999 passed, 8 skipped", run again after the entry was edited during the first run.
+
+- **The test alone, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "1 tests performed, 1
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4255 tests performed, 4255 succeeded, 0 failed" (4254 on development + 1);
+  "Declared: 4255 tests in the tree at 7a7a52c6d; 4255 performed, gap 0". 43 tests skipped part of what they check. The
+  memory summary line, quoted: "CataclysmTestMemorySummary: tests=4862 peak_used_virtual_mb=8006
+  final_used_virtual_mb=7654 collections=3236 collection_total_s=106.257 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **#2524-G1, a skill returning from off the keys ignores its record:** PROVED, AS REGISTERED. Prefix
+  `Cataclysm.SkillAssignment.` (15 tests), the anchor counted once, 0 ensures, the file's hash the same after. 1 failed,
+  `ASkillTakenOffTheKeysWaitsWhatIsLeftOfItsCooldownWhenItReturns`; 2 failed assertions, registered 2 ("to be 15.500000,
+  but it was 0.000000", and the key could cast it); its control passed; restored, 15 performed, 15 succeeded.
 
 ---
 
