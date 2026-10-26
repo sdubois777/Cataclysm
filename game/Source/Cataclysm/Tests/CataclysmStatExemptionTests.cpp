@@ -12440,6 +12440,141 @@ bool FCataclysmRandomBuffSpellslingerTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffDervishTest,
+	"Cataclysm.StatExemption.TheRandomBuffDervishIsTenIncreasedAttackSpeedAtOneStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Increases your attack speed by 10% per stack." One stack and unscoped: the figure of Spellblade's Will's six-piece
+// row. Joined 2026-10-26 (issue #2538, batch 1).
+bool FCataclysmRandomBuffDervishTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE CONTROL, READ FIRST: the refreshed wearer with no buff.
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const float AttackBefore = Wearer.Increases(TEXT("attack_speed"));
+	const float LeechBefore = Wearer.Increases(TEXT("life_leech"));
+	TestEqual(TEXT("the buff lays one line"), LinesOfRandomBuff(TEXT("Dervish")), 1);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Dervish")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff adds 10 to attack speed increases"), Wearer.Increases(TEXT("attack_speed")) - AttackBefore, 0.10f, 0.0001f);
+	TestEqual(TEXT("control: and nothing to life leech increases"), Wearer.Increases(TEXT("life_leech")), LeechBefore, 0.0001f);
+
+	// ITS 30 SECONDS PASS, moved by hand, and the step ends it and writes the stat line without it.
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::RandomBuffSeconds + 0.5f;
+	Wearer.AbilitySystem->StepTimedGrants();
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), Wearer.AbilitySystem->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and its attack speed line is gone"), Wearer.Increases(TEXT("attack_speed")), AttackBefore, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffWarhoundTest,
+	"Cataclysm.StatExemption.TheRandomBuffWarhoundLaysTheWarlordsWillSixPieceFiguresAndABlowTakenSummonsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "A temporary minion that taunts enemies and deals damage." The four flat lines of Warlord's Will's six-piece rows: a
+// 10% chance a landed blow taken summons a Warhound, for 10 seconds, hitting for 20% of the holder's armour and
+// taunting for 3. Joined 2026-10-26 (issue #2538, batch 1).
+//
+// THE ROLL IS PINNED AT 0, under any chance above nought, so a blow summons exactly when the wearer holds a chance. The
+// blow cannot be mitigated, as the worn Warlord's Will row test's is, so no evasion or block refuses it. What the
+// Warhound then does, the roll itself and the quarter second are `Cataclysm.SetBonus.Warlord6.`'s.
+bool FCataclysmRandomBuffWarhoundTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.WarhoundRoll"));
+	if (!TestNotNull(TEXT("set-up: the Warhound's roll can be pinned"), Roll))
+	{
+		return false;
+	}
+	const float RollWas = Roll->GetFloat();
+	Roll->Set(0.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Roll->Set(RollWas, ECVF_SetByConsole); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const TCHAR* const Stats[] = {ACataclysmMinion::WarhoundChanceStat, ACataclysmMinion::WarhoundSecondsStat,
+		ACataclysmMinion::WarhoundArmourPercentStat, ACataclysmMinion::WarhoundTauntSecondsStat};
+	const float Figures[] = {10.0f, 10.0f, 20.0f, 3.0f};
+	const auto Read = [ASC](const TCHAR* Stat)
+	{
+		return ASC->StatForSkill(FName(Stat), FGameplayTagContainer(), /*Fallback=*/0.0f);
+	};
+	FCataclysmHitDelivery Unmitigated;
+	Unmitigated.bCannotBeMitigated = true;
+	const auto TakeABlow = [&]()
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, /*Damage=*/1.0f, Unmitigated);
+	};
+
+	// THE CONTROL, READ FIRST: the four stats as the refreshed wearer holds them with no buff, and a blow taken then
+	// summons nothing.
+	float Before[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Before[Index] = Read(Stats[Index]);
+	}
+	TakeABlow();
+	if (!TestNull(TEXT("control: with no buff, a blow taken summons no Warhound"), ACataclysmMinion::WarhoundOf(Wearer.Actor)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff lays four lines"), LinesOfRandomBuff(TEXT("Warhound")), 4);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Warhound")))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("the buff adds %.0f to %s"), Figures[Index], Stats[Index]),
+				  Read(Stats[Index]) - Before[Index], Figures[Index], 0.0001f);
+	}
+
+	// WHILE IT IS HELD, THE SAME BLOW SUMMONS ONE.
+	TakeABlow();
+	ACataclysmMinion* Warhound = ACataclysmMinion::WarhoundOf(Wearer.Actor);
+	ON_SCOPE_EXIT { if (IsValid(Warhound)) { Warhound->Destroy(); } };
+	if (!TestNotNull(TEXT("while the buff is held, a blow taken summons a Warhound"), Warhound))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it lasts 10 s"), Warhound->GetLifeSpan(), 10.0f, 0.06f);
+	const float Armour = ASC->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(), Wearer.Get(Combat::GetArmorAttribute()));
+	if (TestTrue(*FString::Printf(TEXT("set-up: the refreshed wearer has armour: %.1f"), Armour), Armour > 0.0f))
+	{
+		TestEqual(TEXT("and each of its hits is a fifth of the wearer's armour"), Warhound->WarhoundBlow(), Armour * 0.20f, Armour * 0.001f);
+	}
+
+	// ITS 30 SECONDS PASS, moved by hand: the lines are gone, and a blow taken rolls no chance.
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::RandomBuffSeconds + 0.5f;
+	ASC->StepTimedGrants();
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), ASC->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and its chance is gone from the stat line"), Read(Stats[0]), Before[0], 0.0001f);
+	TestNull(TEXT("control: so a blow taken after it summons and refreshes nothing"),
+			 ACataclysmMinion::RollForWarhoundOnHitTaken(Wearer.Actor));
+	return true;
+}
+
 // DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
 // you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs on you have 100%-300% more duration", "DoTs
 // on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from

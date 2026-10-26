@@ -4,9 +4,9 @@ and every Buff row is either in the table or on the list of those left out.
 Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (2-Piece
 Bonus): Every 30 seconds, a random buff or debuff is applied to you". A drawn
 buff is one entry of `UCataclysmAbilitySystemComponent::RandomBuffTable`, a
-table in code. THE OWNER HAS BEEN ASKED WHICH BUFFS ARE IN THE POOL, and until
-the answer the table holds the buffs a character can hold whose own
-description the existing stat lines and conditions can express.
+table in code. THE OWNER ANSWERED ON 2026-10-26, "Add everything": every Buff
+row joins the pool once it is built as a standalone buff (issue #2538). Each
+batch that builds some appends them to the table and moves them here.
 
 WHAT THIS FILE IS FOR. The table names each buff by the name of its row in
 `game/Data/StatusEffects.csv`, and nothing in the engine compares the two: a
@@ -15,9 +15,9 @@ under a name no row has. And a Buff row added to or taken out of the status
 table changes what "a random buff" could mean without anybody deciding whether
 it joins the draw. Both are refused here.
 
-WHEN THE OWNER ANSWERS, the table in the engine changes, and `IN_THE_TABLE`
+AS EACH BATCH LANDS, the table in the engine changes, and `IN_THE_TABLE`
 and `LEFT_OUT` below change with it. That is the point of the second list: it
-is the record of what was left out and why.
+is the record of what is still left out and why.
 """
 import csv
 import re
@@ -37,23 +37,25 @@ IN_THE_TABLE = (
     "Commander",
     "Divine Aegis",
     "Spellslinger",
+    # Batch 1 of issue #2538, 2026-10-26: each the stat lines of the set row
+    # that builds it. Appended, so places 0 to 5 keep their buffs.
+    "Dervish",
+    "Warhound",
 )
 
-#: Why nine of the Buff rows are not in the table, as ruled.
+#: Why eight of the Buff rows are not in the table, as ruled on 2026-10-12.
 ANOTHERS = "it describes another set's own mechanic or an enemy's"
 
 #: Every other Buff row, and why it is not in the table.
 LEFT_OUT = {
+    # EVERY ONE OF THESE JOINS THE TABLE once it is built as a standalone buff:
+    # the owner answered "Add everything" on 2026-10-26 (issue #2538). The
+    # reasons are why each is not built yet.
+    #
     # ITS DESCRIPTION CANNOT BE EXPRESSED WITH WHAT EXISTS. A judgement of the
     # session that built the table; the coordinating session rules on each.
-    # Dervish's row said "for melee attacks" until 2026-10-26, when it was corrected to the ruling "Dervish raises
-    # every swing" (issue #2533). It stays out of the table until it is built as a standalone buff; the owner has
-    # since answered "Add everything".
-    "Dervish": "it is not yet built as a standalone buff",
     "Demonic Rage": "ten seconds from the moment health falls below a quarter is an event, not a condition",
-    # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12,
-    # pending the owner.
-    "Warhound": ANOTHERS,
+    # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12.
     "Plague": ANOTHERS,
     "Sanctified Power": ANOTHERS,
     "Temporal Flux": ANOTHERS,
@@ -84,7 +86,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 6
+    assert len(table_names()) == len(IN_THE_TABLE) == 8
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -100,6 +102,7 @@ def test_every_buff_in_the_table_is_a_buff_row_of_the_status_table() -> None:
 def test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out() -> None:
     """Eighteen Buff rows on 2026-10-12: six in the table and twelve left out.
     Seventeen since 2026-10-26 (issue #2533 retired Warzone Control Points): six and eleven.
+    Eight and nine since batch 1 of issue #2538 added Dervish and Warhound.
     A row added to the status table fails here until somebody decides which
     list it joins."""
     rows = set(buff_rows())

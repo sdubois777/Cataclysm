@@ -2,6 +2,166 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Shard of Anarchy's random buff can draw Dervish and Warhound: batch 1 of the owner's "Add everything" (#2538)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Dervish and Warhound rows, and
+`game/Data/StatusEffects.csv` (the branch's first commit, by the enchantment session under the coordinating session's
+grant for those two marks only: "(planned) " comes off both descriptions);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (two entries at the end of
+`RandomBuffTable`, and the help text of `Cataclysm.RandomBuffPick`) and `.h` (the comment above `RandomBuffTable`);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two tests);
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (one pinned name string and its label);
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` (both lists, the count, the prose); this file. The asset
+`game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json` are rebuilt in the enchantment
+session's window. Issue #2538 stays open: nine Buff rows are still left out.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** a wearer of two pieces of Shard of Anarchy whose 30-second roll draws a buff can now be
+  given Dervish (10% increased attack speed, every swing, for 30 seconds) or Warhound (for 30 seconds, each landed
+  blow taken has a 10% chance to summon a Warhound for 10 seconds, which taunts what it hits for 3 seconds and hits for
+  20% of the wearer's armour). Each of the eight buffs is now drawn one time in eight, where each of six was one in six.
+- **A WEARER OF WARLORD'S WILL'S SIX PIECES WHO DRAWS WARHOUND GETS THE FIGURES ADDED** while the buff is held: a 20%
+  chance, a Warhound lasting 20 seconds, 40% of armour a hit and a 6-second taunt, because the buff's lines and the set
+  rows' lines are flat lines on the same four stats. The same holds for a Spellblade's Will six-piece wearer who draws
+  Dervish: 10% more increase on top of its own stacks. Not judged here; read in the reading session's plan as risk 0.4,
+  for the enchantment session to rule. Not tested.
+- **A WARHOUND STANDING WHEN THE BUFF ENDS STAYS FOR THE REST OF ITS 10 SECONDS AND THEN HITS FOR NOTHING AND TAUNTS
+  NOBODY.** Its life span is set when it is summoned, but `WarhoundBlow` and `AttackTarget` read the holder's
+  `warhound_percent_of_armor` and `warhound_taunt_seconds` at each hit, and both are gone with the buff. Read, not
+  tested; for the enchantment session to rule whether that stands.
+- **The buffs' places in `Cataclysm.RandomBuffPick` 0 to 5 do not move.** The two are appended as 6 and 7.
+
+### THE RULINGS, VERBATIM (the owner and the coordinating session, 2026-10-26)
+
+The owner, on which Buff rows Shard of Anarchy's random buff draws from: "Add everything".
+
+The coordinating session: "batch 1 (Dervish, Warhound) now ... Each batch moves its own share of IN_THE_TABLE, LEFT_OUT
+and the help text."
+
+### THE TWO ENTRIES AND THE SET ROWS THEIR FIGURES COME FROM
+
+Each is a list of stat lines, the only thing an entry of the table can lay today, and each figure is the ValueLow of a
+set row in `game/Data/EnchantmentEffects.csv`, read at development `697702601`:
+
+| Entry | Lines | Set row |
+| :-- | :-- | :-- |
+| 6 Dervish | `attack_speed` increased 10, no tags | `Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use#2`: `attack_speed` increased 10 per stack of `own_stacks`, at most 5, a stack lasting 5 s, gained on `spell` |
+| 7 Warhound | `warhound_summon_chance` flat 10, `warhound_seconds` flat 10, `warhound_percent_of_armor` flat 20, `warhound_taunt_seconds` flat 3 | `Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#1` to `#4`, the same four flats |
+
+- **Dervish is taken at one stack**, as the table's Spellslinger entry is ("One stack, as ruled"), and unscoped, by the
+  2026-10-06 ruling "Dervish raises every swing". This is the line the 2026-10-12 entry (the one headed "The set Shard of
+  Anarchy is built whole") recorded as Dervish's option not taken: "lay it unscoped, `attack_speed` increased 10". That
+  entry left Dervish out because its description then said "for melee attacks"; the 2026-10-26 correction (#2533) took
+  those words off, so the reason is gone.
+- **Warhound needs no new code.** `ACataclysmMinion::SummonerStat` reads each of the four stats with no tags through
+  `UCataclysmAbilitySystemComponent::StatForSkill`, which reads the stat line `SetStatInputs` stores.
+  `UCataclysmEquipmentComponent::RefreshAttributes` appends `HeldRandomBuffStatModifiers()` to the same modifier map the
+  worn rows go into before `UCataclysmPlayerClassStats::ApplyTo`, and the four names are in `StatsWithNoAttribute`, so
+  pass three of `ApplyTo` records them. The readers are `RollForWarhoundOnHitTaken` (called from `NoteHitTaken` for a
+  landed blow that is not a tick), `SummonWarhound`, `WarhoundBlow` and `AttackTarget`. Read, then tested below.
+- **The 2026-10-12 entry's table of six and its list of those left out are left as written.** This entry supersedes its
+  "option not taken" for Dervish, and its "Each describes another set's own mechanic" for Warhound.
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **Appended, not inserted.** So places 0 to 5 of the pin keep their buffs. Not taken: the status table's order, which
+  would move Commander and the others and every place the help text names.
+- **Warhound is stat lines only.** Not taken: also summoning a Warhound at the moment of the draw (a flag on
+  `FRandomBuff` and one call in `HoldARandomBuff`), which the set row does not do and the description does not say.
+- **Dervish keeps no stack count.** Not taken: a stack per spell used while held, which needs the table to lay an action
+  (batch 2's mechanism). "per stack" in the description is met at one stack, as Spellslinger's is.
+
+### WHAT MOVED, OLD AND NEW
+
+- `tools/tests/test_the_random_buff_table_names_buff_rows.py`: `IN_THE_TABLE` gains "Dervish" and "Warhound" at its
+  end, 6 names to 8; `LEFT_OUT` loses both, 11 to 9; `test_the_reader_finds_the_table`'s count 6 becomes 8; the
+  docstrings and comments now say the owner answered "Add everything" and each left-out row joins when it is built as a
+  standalone buff (#2538). `assert len(rows) == 17` does not move.
+- `Cataclysm.RandomBuffPick`'s help text: "... 4 Divine Aegis, 5 Spellslinger. -1 picks at random." becomes "... 4
+  Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound. -1 picks at random."
+- `CataclysmEnchantmentEffectTests.cpp`, `TheWornShardOfAnarchyTwoPiece...`'s set-up: "the six buffs of the table" and
+  "Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger" become "the eight buffs of the
+  table" and the same string with ", Dervish, Warhound" after it.
+- `CataclysmAbilitySystemComponent.h`, the comment above `RandomBuffTable`: "The owner has been asked ... Until the
+  answer it holds ... six" and "LEFT OUT FOR NOW: Dervish, ..., Warhound, ..." are rewritten to the answer, the eight
+  entries, and the nine still left out.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear two pieces of Shard of Anarchy and wait for a buff (or pin it with `Cataclysm.RandomBuffPick 6` or `7`): with
+  Dervish ("Dervish 30s" above the bars) swings come about a tenth faster; with Warhound, getting hit now and then brings
+  a Warhound beside you that taunts what it bites, until the 30 seconds are up.
+
+### Tests
+
+Both in `Cataclysm.StatExemption.` beside the six existing per-buff tests, and selected by the prefix
+`Cataclysm.StatExemption.TheRandomBuff`. Each uses the file's `FScopedGearWearer`, a refreshed level 20 Ravager, so
+every figure on it is a difference from its own reading before the draw.
+
+`Cataclysm.StatExemption.TheRandomBuffDervishIsTenIncreasedAttackSpeedAtOneStack`, 10 assertions: a world; **the buff
+lays one line**; the four set-up checks of `DrawsTheBuff` (Dervish is in the table, the pin exists, the draw lays a
+buff, the buff held is Dervish); **the buff adds 10 to attack speed increases** (0.10 over the reading before the draw);
+control, nothing to life leech increases; **once its 30 seconds have passed** (the world's seconds moved by hand and
+`StepTimedGrants` called) **the wearer holds no buff**, **and its attack speed line is gone** (back to the reading
+before the draw).
+
+`Cataclysm.StatExemption.TheRandomBuffWarhoundLaysTheWarlordsWillSixPieceFiguresAndABlowTakenSummonsIt`, 19
+assertions: a world; set-up, `Cataclysm.WarhoundRoll` exists (pinned at 0 for the test); **control: with no buff, a
+blow taken summons no Warhound** (a blow of 1 that cannot be mitigated, from a bare attacker); **the buff lays four
+lines**; the four set-up checks of `DrawsTheBuff`; **the buff adds 10 to `warhound_summon_chance`, 10 to
+`warhound_seconds`, 20 to `warhound_percent_of_armor` and 3 to `warhound_taunt_seconds`** (4, each read through
+`StatForSkill` with no tags, as `ACataclysmMinion` reads them, against the reading before the draw); **while the buff is
+held, the same blow summons a Warhound**; **and it lasts 10 s** (its life span, within 0.06); set-up, the refreshed
+wearer has armour; **each of its hits is a fifth of the wearer's armour** (`WarhoundBlow` against the armour read as it
+reads it); **once its 30 seconds have passed the wearer holds no buff**; **and the chance is gone from the stat line**;
+**control: a blow taken after it summons and refreshes nothing** (`RollForWarhoundOnHitTaken` returns null, where with
+the chance still held it would refresh the standing Warhound and return it).
+
+Python: `tools/tests/test_the_random_buff_table_names_buff_rows.py`'s five tests, unchanged in what they check, now hold
+eight names in the table and nine left out.
+
+### Not tested
+
+A wearer of the matching set who also draws the buff (the figures add, see SAID FIRST); the 10% roll itself (the roll
+is pinned at 0; `Cataclysm.SetBonus.Warlord6.` tests the roll, the quarter second, the refresh and the taunt); a real
+player character; the overlay's text for the two names (`HeldBuffTextFor` prints any name; its test uses Commander).
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in its file by script. Each break changes one number or one string literal on one
+line, so its file compiles alone as before (no bracket moves). Prefix for the two Unreal proofs:
+`Cataclysm.StatExemption.TheRandomBuff`, which selects 8 tests by reading (the six earlier per-buff tests and these two;
+no other registration starts with it). The count to quote is the run's.
+
+- **RB1-G1, Dervish's line made nought:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+  `Buff.Lines.Add(Line(UCataclysmItemModifiers::AttackSpeedStat, EBucket::Increased, 10.0f));` becomes
+  `Buff.Lines.Add(Line(UCataclysmItemModifiers::AttackSpeedStat, EBucket::Increased, 0.0f));`. Commander's line is the
+  same text with `20.0f`, so the anchor is Dervish's alone. Predicted: `TheRandomBuffDervish...` fails, 1 assertion
+  ("the buff adds 10 to attack speed increases": 0 where 0.10). Its line count, its control and its "line is gone"
+  pass. The 7 other tests of the prefix pass.
+- **RB1-G2, Warhound's chance made nought:** the same file,
+  `Buff.Lines.Add(Line(ACataclysmMinion::WarhoundChanceStat, EBucket::Flat, 10.0f));` becomes
+  `Buff.Lines.Add(Line(ACataclysmMinion::WarhoundChanceStat, EBucket::Flat, 0.0f));`. Predicted:
+  `TheRandomBuffWarhound...` fails, 2 assertions ("the buff adds 10 to warhound_summon_chance": 0 where 10; "while the
+  buff is held, a blow taken summons a Warhound": null), and the test returns at the second, so nothing after it is
+  asserted. The other three stat differences pass. The 7 other tests of the prefix pass.
+- **RB1-G3, a name the status table does not have** (Python, `tools/prove_guard.py`, in a `git archive` copy): the
+  same file, `Buff.Name = TEXT("Dervish");` becomes `Buff.Name = TEXT("Dervishes");`. Predicted to fail:
+  `tools/tests/test_the_random_buff_table_names_buff_rows.py::test_the_table_holds_exactly_the_buffs_listed_here_in_this_order`
+  and `::test_every_buff_in_the_table_is_a_buff_row_of_the_status_table`, and no other test. Not predicted to fail:
+  `test_the_reader_finds_the_table` (still 8 names), `test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out`
+  (it reads the two lists and the status table, not the .cpp) and `test_the_pin_names_the_buffs_in_the_tables_order`
+  (the help text is not changed). The reading session's plan predicted the second of these to fail as well; it reads
+  no name out of the .cpp, so it cannot.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — A move begun touching the floor is no longer refused: one helper through the engine's safe move (#2203, #2505)
 
 **Affects:** `UCataclysmMovement` (a new `MoveWithoutSticking`); the seven swept relocations in

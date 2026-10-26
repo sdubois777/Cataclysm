@@ -4829,7 +4829,7 @@ static TAutoConsoleVariable<int32> CVarRandomBuffOrDebuffPick(
 static TAutoConsoleVariable<int32> CVarRandomBuffPick(
 	TEXT("Cataclysm.RandomBuffPick"), -1,
 	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
-		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger. -1 picks at random."),
+		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -7638,6 +7638,31 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 			FRandomBuff Buff;
 			Buff.Name = TEXT("Spellslinger");
 			Buff.Lines.Add(Line(UCataclysmSkillSlots::ManaCostStat, EBucket::More, -10.0f));
+			Buffs.Add(Buff);
+		}
+
+		// "Increases your attack speed by 10% per stack." Joined 2026-10-26, the owner's "Add everything" (issue
+		// #2538). One stack, as Spellslinger is, and unscoped, as ruled ("Dervish raises every swing"): 10, the figure
+		// of Spellblade's Will's six-piece row `Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use#2`.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Dervish");
+			Buff.Lines.Add(Line(UCataclysmItemModifiers::AttackSpeedStat, EBucket::Increased, 10.0f));
+			Buffs.Add(Buff);
+		}
+
+		// "A temporary minion that taunts enemies and deals damage." Joined 2026-10-26, the owner's "Add everything"
+		// (issue #2538). The four flat lines of Warlord's Will's six-piece rows,
+		// `Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#1` to `#4`: while it is held, a landed blow taken has
+		// a 10% chance to summon a Warhound for 10 seconds, which hits for 20% of the holder's armour and taunts for 3.
+		// `ACataclysmMinion` reads the four off the stat line, so the lines are the whole of it.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Warhound");
+			Buff.Lines.Add(Line(ACataclysmMinion::WarhoundChanceStat, EBucket::Flat, 10.0f));
+			Buff.Lines.Add(Line(ACataclysmMinion::WarhoundSecondsStat, EBucket::Flat, 10.0f));
+			Buff.Lines.Add(Line(ACataclysmMinion::WarhoundArmourPercentStat, EBucket::Flat, 20.0f));
+			Buff.Lines.Add(Line(ACataclysmMinion::WarhoundTauntSecondsStat, EBucket::Flat, 3.0f));
 			Buffs.Add(Buff);
 		}
 

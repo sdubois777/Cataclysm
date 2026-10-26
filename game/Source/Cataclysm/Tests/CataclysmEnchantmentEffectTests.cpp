@@ -22751,8 +22751,8 @@ bool FCataclysmShardOfAnarchyTwoPieceRowTest::RunTest(const FString&)
 	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
 	if (!TestTrue(TEXT("set-up: the four pins exist"), BuffOrDebuff.Variable && WhichBuff.Variable
 			&& WhichDebuff.Variable && WhichResistance.Variable)
-		|| !TestEqual(TEXT("set-up: the six buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
-			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger")))
+		|| !TestEqual(TEXT("set-up: the eight buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
+			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger, Dervish, Warhound")))
 		|| !TestTrue(TEXT("set-up: Commander is in the table and the Cripple tag exists"),
 			Commander >= 0 && Cripple.IsValid()))
 	{
