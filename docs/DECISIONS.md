@@ -232,7 +232,35 @@ So, stated plainly:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t113w, under the editor lock as `enchant-t113w`, taken at 11.7 GB
+free, at `80ca8832a` on `feat/withered-touch-cuts-the-players-damage-1`: the three commits moved from `6025f5ab4`,
+`f3a901073` and `a38e7adce` (on `dd6950c54`) onto development `4e77c772c` as `ce11129a8`, `e4e1ea8ed` and `80ca8832a`,
+each keeping its zero-context patch id, outside this file and in it; this file conflicted in the second, resolved by
+placing the entry, its lines unchanged; the workbook kept its bytes. `tools/check_resolved_cpp.py` over the 5 C++ files:
+"5 files read, 0 with complaints". Python before the rebuild: "1 failed, 7005 passed, 8 skipped", the one failure the
+expected asset-hash check.
+
+- **The asset rebuild, as registered:** exit 0; it changed exactly `game/Content/Data/DT_StatusEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`, committed as `5f54deb26` before any test ran.
+- **The two new tests alone, as registered:** "Build: Succeeded - 40 actions, 37 files compiled"; "2 tests performed, 2
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4270 tests performed, 4270 succeeded, 0 failed" (4268 on development + 2);
+  "Declared: 4270 tests in the tree at 5f54deb26; 4270 performed, gap 0". 43 tests skipped part of what they check.
+  Free memory before the suite was 10 GB. The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4877
+  peak_used_virtual_mb=7959 final_used_virtual_mb=7629 collections=3250 collection_total_s=110.142
+  worlds_at_last_collection=1".
+- **Python of record, with the rebuilt asset, as registered:** "7006 passed, 8 skipped"; JUnit 7014 tests, 0 failures,
+  0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.Succubus.` (10 tests), each anchor counted once, 0 ensures, the file's hash the
+  same after, and every restored half 10 performed, 10 succeeded:**
+  - **WT-G1, the Succubus lays the tag alone:** PROVED, AS REGISTERED. 1 failed,
+    `ItsCurseTakesAFifthOffTheMaximumManaAndShield`; 7 failed assertions, registered 7 (each pool reading 200 or 300
+    where 160 or 240 was expected).
+  - **WT-G2, a blow keeps its whole figure under the curse:** PROVED, AS REGISTERED. 1 failed,
+    `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks`; 2 failed assertions, registered 2 (the weapon blow 100 where 80,
+    the spell part 50 where 40).
+  - **WT-G3, a damage over time effect keeps its whole figure under the curse:** PROVED, AS REGISTERED. 1 failed, the
+    same test; 1 failed assertion, registered 1 (the tick 10 where 8).
 
 ---
 
