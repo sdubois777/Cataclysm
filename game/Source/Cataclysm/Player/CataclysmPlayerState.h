@@ -574,7 +574,8 @@ public:
 
 	/**
 	 * Why `SkillRow` may not be chosen for `Slot`, in one sentence, or empty when it may. Issue #837 layer 3. A
-	 * static, so the screen of layer 4 can ask it of any pool.
+	 * static, so the screen of layer 4 can ask it of any pool. EVERY SKILL IS NAMED BY ITS NAME AND NOT ITS ROW (layer
+	 * 4, ruled Q5), except a row the table does not have, which has no name and is named as it was typed.
 	 *
 	 * @param Table    the weapon skill matrix, for "no such row"; null skips that question
 	 * @param Pool     the skills the worn weapons make available now

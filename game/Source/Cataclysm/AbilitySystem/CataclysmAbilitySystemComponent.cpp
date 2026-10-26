@@ -5102,6 +5102,53 @@ FGameplayTagContainer UCataclysmAbilitySystemComponent::CooldownTagsOfSkillsDesi
 	}
 	return Tags;
 }
+
+void UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys(const TMap<ECataclysmAbilitySlot, FName>& KeysBefore,
+															   const TMap<ECataclysmAbilitySlot, FName>& KeysAfter)
+{
+	// EVERY KEY READ BEFORE ANY IS ENDED, so two skills that traded keys each take their own time. Issue #837 layer 4,
+	// ruled Q3a; see the header. The time left is the longest cooldown running, as the skill bar reads it.
+	TMap<ECataclysmAbilitySlot, TPair<float, FSkillCharges>> Carried;
+	FGameplayTagContainer Ending;
+	for (const ECataclysmAbilitySlot Key : CataclysmAbilitySlots::All())
+	{
+		const FName Now = KeysAfter.FindRef(Key);
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Key);
+		if (KeysBefore.FindRef(Key) == Now || !Tag.IsValid())
+		{
+			continue;
+		}
+		Ending.AddTag(Tag);
+		const ECataclysmAbilitySlot* From = Now.IsNone() ? nullptr : KeysBefore.FindKey(Now);
+		const FGameplayTag FromTag = From ? UCataclysmSkillSlots::CooldownTag(*From) : FGameplayTag();
+		if (FromTag.IsValid())
+		{
+			float Left = 0.0f;
+			for (const float Each : GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(FromTag))))
+			{
+				Left = FMath::Max(Left, Each);
+			}
+			Carried.Add(Key, TPair<float, FSkillCharges>(Left, SkillCharges.FindRef(*From)));
+		}
+	}
+
+	// THE OLD KEYS END, their charges first, so the removal starts no next recharge (as a reset ends them).
+	RefillSkillCharges(Ending);
+	RemoveActiveEffectsWithGrantedTags(Ending);
+
+	// AND THE NEW KEY RUNS WHAT WAS LEFT, through the charge spend a use makes, then the uses still spent.
+	for (const TPair<ECataclysmAbilitySlot, TPair<float, FSkillCharges>>& Move : Carried)
+	{
+		if (Move.Value.Key > 0.0f)
+		{
+			SpendSkillCharge(Move.Key, Move.Value.Value.SkillTags, Move.Value.Key);
+			FSkillCharges& Charges = SkillCharges.FindOrAdd(Move.Key);
+			Charges.Spent = FMath::Max(Move.Value.Value.Spent, 1);
+			Charges.RechargeSeconds = Move.Value.Value.RechargeSeconds;
+		}
+	}
+}
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
 

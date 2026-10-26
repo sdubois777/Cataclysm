@@ -318,6 +318,15 @@ public:
 	 */
 	void ZoomPassiveTree(float Notches);
 
+	/**
+	 * Opens and closes the skill-choice screen: which pool skill goes on which of the six keys. Issue #837 layer 4.
+	 *
+	 * THE SAME SHAPE AS THE PASSIVE TREE'S, and public for the same reason: `Cataclysm.ChooseSkills` calls it, so a
+	 * checkout whose input assets predate the K key can still open the screen (ruled Q1: "K plus
+	 * Cataclysm.ChooseSkills"). It does not pause the game and opens anywhere, a dungeon included (ruled Q2).
+	 */
+	void ToggleSkillAssignment();
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
@@ -368,6 +377,9 @@ private:
 
 	/** The key's half of it. Calls TogglePassiveTree above. */
 	void Input_TogglePassiveTree();
+
+	/** The K key's half of it. Calls ToggleSkillAssignment above. Issue #837 layer 4. */
+	void Input_ToggleSkillAssignment();
 
 	/**
 	 * The four potion keys, 2 to 5. One handler a slot, because a native
@@ -640,6 +652,17 @@ private:
 	/** The character sheet, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmCharacterSheetWidget> CharacterSheetScreen = nullptr;
+
+	/** Which Widget Blueprint the skill-choice screen is. Soft, for the reason the character creator's is. Issue #837
+	 *  layer 4. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<class UCataclysmSkillAssignmentWidget> SkillAssignmentScreenClass =
+		TSoftClassPtr<class UCataclysmSkillAssignmentWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_SkillAssignment.WBP_SkillAssignment_C")));
+
+	/** The skill-choice screen, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<class UCataclysmSkillAssignmentWidget> SkillAssignmentScreen = nullptr;
 
 	/** Which Widget Blueprint one city's screen is. Soft, for the reason
 	 *  the character creator's is. */

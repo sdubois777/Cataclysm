@@ -218,6 +218,7 @@ The following are default controls. Players with multiple damage types can map m
 | I | Open and close the carried inventory |
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
+| K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -247,6 +248,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | I | Open and close the carried inventory |
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
+| K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |

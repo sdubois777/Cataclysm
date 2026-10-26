@@ -2344,9 +2344,31 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 
 void ACataclysmPlayerCharacter::RefillAbilitySlots()
 {
-	// THE SAME FILL A CHANGE OF GEAR MAKES, and nothing else: no stat line is written, for the reason
+	// THE SAME FILL A CHANGE OF GEAR MAKES: no stat line is written, for the reason
 	// `FillAbilitySlotsFromWornWeapon` gives. Issue #837 layer 3.
+	//
+	// AND A SKILL A CHOICE MOVED TAKES ITS RUNNING COOLDOWN TO THE KEY IT LANDS ON. Issue #837 layer 4, ruled Q3a
+	// 2026-10-25: "carry the running cooldown and charges with the skill". Here, because `AssignSkill` and
+	// `ClearSkillChoice` are this function's callers, so the console obeys it as the screen does. A change of gear does
+	// not come here and needs nothing: it never moves a skill to another key, only on or off them.
+	const auto RowsOnKeys = [this]()
+	{
+		TMap<ECataclysmAbilitySlot, FName> OnKeys;
+		for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetAvailableSkills())
+		{
+			OnKeys.Add(Skill.Slot, Skill.RowName);
+		}
+		return OnKeys;
+	};
+	const TMap<ECataclysmAbilitySlot, FName> KeysBefore =
+		WeaponSlots ? RowsOnKeys() : TMap<ECataclysmAbilitySlot, FName>();
 	FillAbilitySlotsFromWornWeapon();
+	if (UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+		Abilities && WeaponSlots)
+	{
+		Abilities->CarryCooldownsToNewKeys(KeysBefore, RowsOnKeys());
+	}
 }
 
 bool ACataclysmPlayerCharacter::ApplyCreationChoice()
@@ -4896,4 +4918,24 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
 			}
 
 			Controller->ToggleCharacterSheet();
+		}));
+
+// THE SKILL-CHOICE SCREEN, beside its key K. Issue #837 layer 4, ruled Q1: "K plus Cataclysm.ChooseSkills". Not
+// named `Cataclysm.SkillAssignment`, which is a test prefix.
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmChooseSkills(
+	TEXT("Cataclysm.ChooseSkills"),
+	TEXT("Open or close the skill-choice screen: click a slot, then a skill from your pool to put on it. K opens it "
+		 "too."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there is nothing to open a screen on."));
+				return;
+			}
+
+			Controller->ToggleSkillAssignment();
 		}));

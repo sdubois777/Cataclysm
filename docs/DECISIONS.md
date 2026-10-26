@@ -2,6 +2,499 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The skill-choice screen: press K, click a key, then a skill from the pool; a moved skill keeps its running cooldown; refusals name skills, not rows (#837, layer 4)
+
+**Affects:** the new `game/Source/Cataclysm/Interface/CataclysmSkillAssignmentWidget.h` and `.cpp`
+(`UCataclysmSkillAssignmentWidget`, `FCataclysmSkillScreenRow`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp` (the new public `CarryCooldownsToNewKeys`); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and
+`.cpp` (`RefillAbilitySlots` carries the cooldowns; the console command `Cataclysm.ChooseSkills`);
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp` (`RefusalForSkillChoice` names skills);
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (`ToggleSkillAssignment`,
+`Input_ToggleSkillAssignment`, `SkillAssignmentScreenClass`, `SkillAssignmentScreen`, the K binding);
+`game/Source/Cataclysm/Input/CataclysmInputConfig.h` (`ToggleSkillAssignment`); `tools/generate_input_assets.py`
+(`NATIVE_ACTIONS` and both mapping lists); `tools/generate_interface_assets.py` (`make_skill_assignment`, its two constants,
+one line in `main()`, the docstring); `docs/Cataclysm_GDD_v2.md` (one row in each controls table);
+`tools/tests/test_controls_table_matches_the_input_assets.py` (two lookup entries); the new
+`tools/tests/test_the_skill_assignment_screen_is_generated_with_its_bindings.py`; the new
+`game/Source/Cataclysm/Tests/CataclysmSkillChoiceScreenTests.cpp` (eight tests, the group `Cataclysm.SkillChoiceScreen.`);
+`game/Source/Cataclysm/Tests/CataclysmSkillAssignmentTests.cpp` (one new test, four assertions changed as ruled under
+Q5); this file. **No data row, no workbook cell, no tag, nothing under `game/Data/`, `game/Content/` or `game/Config/`.
+`WBP_SkillAssignment.uasset` and the regenerated input assets are the enchantment session's two editor runs.** It
+closes #837's layers; it leaves #1193 open.
+
+### SAID FIRST
+
+**PRESS K, OR TYPE `Cataclysm.ChooseSkills`: THE SIX KEYS, YOUR POOL, AND "CLEAR THE SLOT".** Click a key, then a skill
+from the pool, and the skill goes on that key. A skill clicked with no key selected is refused with "Click a slot
+first, then a skill." A skill already chosen for another key is refused, not swapped (layer 3's O4), and the refusal is
+shown. The screen does not pause the game and opens anywhere, a dungeon included.
+
+**A SKILL MOVED TO ANOTHER KEY TAKES ITS RUNNING COOLDOWN AND ITS SPENT CHARGES WITH IT** (ruled Q3a, option (c)).
+Pyroclasm used on the Ultimate key and moved to the Heavy key still waits the time it had left, now under
+`Cooldown.Heavy`, and `Cooldown.Ultimate` ends. Before this, moving a skill dodged its cooldown, by console since layer
+3 and in one click on this screen. It is done in the refill that `AssignSkill` and `ClearSkillChoice` make, so the
+console obeys it as the screen does.
+
+**A SKILL THAT LEAVES THE KEYS THROUGH A CHOICE KEEPS NOTHING, AND THAT IS A SMALLER COOLDOWN SKIP OF ITS OWN, NOT
+CLOSED HERE.** Use Molten Cleave, choose Pyroclasm for the Heavy key (Molten Cleave is then on no key, and the Heavy
+key's running cooldown ends), then clear the Heavy key: Molten Cleave comes back ready. It takes two choices, and the
+skill is off the keys in between. The brief said to state it and build nothing more; the coordinating session
+opened issue #2524 for it ("A skill a choice takes off the keys forgets its cooldown, so two choices reset it"),
+to be closed in a small follow-up after this layer. A skill that leaves the keys
+because its weapon came off is different: a change of gear moves no cooldown, so the key keeps the cooldown that was
+running on it, and the skill that comes back to that key with its weapon waits whatever is left.
+
+**THE REFUSAL SENTENCES NAME SKILLS, NOT ROWS** (ruled Q5): "Pyroclasm is already chosen for the Heavy slot. Clear that
+slot first.", where it said "Demonic_Greataxe_Ultimate". Four assertions of layer 3's tests changed with them, as ruled.
+
+**NO SERVER CALL, SO A NETWORKED CLIENT CHANGES ONLY ITS OWN COPY.** The screen calls the player state directly, as
+every other screen does; `AssignSkill` is not a server function. Not fixed by this layer.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 97, from development `b074a5090`. Nothing was compiled, no Unreal test was run, no editor was opened.
+
+**ONE EXISTING UNREAL TEST CHANGES, AS RULED, IN THE SECOND COMMIT.** The writing session stopped on it, as the brief
+says to for an assertion change that was not ruled: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+(`CataclysmInputTests.cpp` 283-311) lists eleven native action names and asserts "and lists no others" against that
+count, so after `generate_input_assets.py` runs, with twelve actions in the config, that assertion would fail (12
+against 11). The coordinating session ruled, 2026-10-25: "**YES: add CataclysmInputActionNames::ToggleSkillAssignment
+to ConfigListsEverySlotAndNativeAction**, with the "joined 2026-10-25, issue #837 layer 4" comment, as the earlier
+actions were added. Make it your second commit, with old and new recorded in the entry. It passes only after the
+input-asset run, which your window does first." The enchantment session's second commit: OLD the `NativeNames` array
+ending at `CataclysmInputActionNames::DrinkPotion4,` under the comment "Eleven native bindings"; NEW the same array
+with `CataclysmInputActionNames::ToggleSkillAssignment,` added last, under the comment "The skill-choice screen, on K,
+issue #837 layer 4. It joined on 2026-10-25.", and the comment above it "Twelve native bindings". That adds one
+`TestNotNull`, and "and lists no others" now compares against twelve. On a checkout whose input assets were not
+regenerated, the test fails twice, as it did for each earlier action.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- press K: six keys, your pool, click a key then a skill; a moved skill keeps its cooldown; clear the slot returns the
+  default; a choice whose weapon is off is shown as kept
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-25, as layer 3 records them: Q5 "the slot shows its default and the choice is kept for when the
+weapon returns. The screen offers "clear the slot"."; O5 "Forget my choice"; on the cooldown, "Each skill its own
+cooldown". The owner, 2026-08-24 (memory note, `docs/DECISIONS.md` "Screens are a C++ base class with the layout in a
+Widget Blueprint"): "these should all include basic UIs btw."
+
+The coordinating session, 2026-10-25, verbatim:
+
+> - **Q3a: (c), carry the running cooldown and charges with the skill.** The owner ruled "Each skill its own cooldown",
+>   so the cooldown belongs to the skill, not the key. When a choice moves a skill, or "clear the slot" moves the default
+>   back, the remaining time and charges move to the tag of the key the skill lands on. Do it in
+>   ACataclysmPlayerState::AssignSkill and ClearSkillChoice, or in the refill, so the console command obeys it too. Add
+>   one test: use Pyroclasm on the Ultimate key, move it to Heavy, and it is still waiting its remaining time. Its
+>   control: an unused skill moved is ready at once. If carrying turns out larger than a few dozen lines, fall back to
+>   (b), refusing a move while either key's cooldown runs, and tell me which you did. Record that no genre source was
+>   found.
+> - **Q1: K plus Cataclysm.ChooseSkills, both in this branch.** Every system needs a basic UI, and a screen with no key is
+>   not one a player finds. Include the input-asset editor run. Its respawning of the sandbox level's actors is what that
+>   script is for. List the four edits that must agree.
+> - **Q2:** no pause (decided). It opens anywhere, including in a dungeon. That is safe under Q3a (c).
+> - **Q3:** keep O4's refusal and show its sentence.
+> - **Q4: YES**, as you wrote it.
+> - **Q5: change the refusal sentence to skill names now.** A player-facing screen must not show row names like
+>   "Demonic_Greataxe_Ultimate". Change layer 3's console test 6 to match, as a ruled assertion change, with old and new in
+>   the entry. Keep "Click a slot first, then a skill."
+> - **Q6:** no skill-bar change; #1193 stays open.
+> - **Q7: YES**, the four-line tooltip, with no numbers.
+> - **Q8, Q9 and Q10: YES**, as you wrote them.
+> - **Proofs** L4-G1, L4-G2 and L4-G3 are accepted. The Q3a test is covered by the whole suite, not a fourth proof.
+> - The Python check that the generator adds every BindWidget name is accepted.
+> - Record the networking gap: no server call, so a networked client changes only its own copy.
+
+What Q4, Q8, Q9 and Q10 were, as the plan wrote them and as they are built: Q4, a kept choice's key shows its default,
+then a dimmed line "Kept: Pyroclasm (Greataxe · Demonic). It returns when that weapon is worn."; Q8, six clickable rows
+in `UCataclysmSkillBar::SlotsShown()` order (Heavy, Special, Support, Aura, Ultimate, Movement) under one line, "Basic
+attack: from the weapon"; Q9, a redraw in `NativeTick` when the equipment's `ChangeCount()` moved, as a public
+`RefreshIfGearChanged()`; Q10, the test prefix `Cataclysm.SkillChoiceScreen.`.
+
+### WHAT THE DESIGN ALREADY SAID (the plan's section 1, by lead sentence)
+
+- "The equipped weapons determine the **pool** of skills a player can draw from, not the contents of each slot. ... The
+  player then chooses which skills to use and assigns them to slots." The screen exists for this sentence.
+- "The player does not receive a button for every available skill. They choose from the available pool and assign
+  chosen skills to slots." The same.
+- "**A SLOT IS A KEY, AND NOTHING ELSE.** Any skill from the pool may go in any slot." So no click is refused for the
+  slot a skill was made for.
+- "**WHICH MEANS A SKILL CARRIES ITS OWN DAMAGE, COOLDOWN AND MANA COST.**" A tool tip could show numbers; Q7 ruled none
+  in this layer.
+- "A player carrying several damage types will have far more skills available than slots to hold them." So the pool is
+  a wrap box inside a scroll box.
+- "**A floor object is clicked the way a drop is, and it offers a choice rather than an item.** ... The panel does not
+  pause the game, like every other screen, so creatures go on while the player decides." No screen pauses (Q2).
+- "**There are two schemes and only one is active at a time.**" So the new key is free in both (Q1).
+- "The following are default controls. Players with multiple damage types can map multiple abilities of the same type
+  to available slots." Layer 3 already allows two skills made for one slot on two keys.
+- The design names no screen for this ("## **Key Screens**" lists none), no key, and no tool tip text. Those are the
+  rulings above.
+
+### THE GENRE SOURCE
+
+As the enchantment session's reading of 2026-10-25 states it (`t97_genre.md`). Two guides were READ: GGRecon, "Diablo 4
+active skills" (2 June 2023, https://www.ggrecon.com/guides/diablo-4-active-skills/), and N4G, "How To Assign Skills in
+Diablo 4" (Russell Carpenter, 17 July 2023, https://n4g.com/articles/diablo-4-how-to-assign-skills). SUMMARY: Diablo
+IV gives skill assignment a menu of its own, separate from the skill tree, with six skills on the bar at once; on PC the
+player drags a skill from a list onto a bar slot. Neither says what happens when the slot is occupied. The two disagree
+on which key opens the menu (A or S), unconfirmed which. NOT READ (HTTP 403), seen only as search summaries, so
+**UNCONFIRMED**: Prima Games on Last Epoch, whose summary says a player clicks the skill slot and selects a different
+skill, which is the click-a-slot-then-a-skill flow built here; and Last Epoch's own support page.
+
+What it settles: a separate window listing the skills, and placing by slot. What it does NOT settle: what happens when a
+skill already on one key is put on another (swap, move or refuse); no source says, and Q3 is the coordinating session's
+ruling. **NO GENRE SOURCE WAS FOUND FOR Q3a**, a cooldown carried with a moved skill: it rests on the owner's "Each skill
+its own cooldown". The key K is a judgement of this game's: S, where Last Epoch is reported to put its window, is a
+movement key under keyboard movement.
+
+### THE COOLDOWN SKIP LAYER 3 LEFT, AND HOW Q3a CLOSED IT
+
+**What it was** (the plan's risk 2, by reading; no test checked it). A cooldown is kept under the tag of the key a skill
+sits on (layer 3: "EACH SKILL KEEPS ITS OWN COOLDOWN AND ITS OWN CHARGES, ON THE KEY IT SITS ON"). A choice refills the
+keys, and the refill takes back the abilities and what the ability set granted, but never a cooldown effect an ability
+applied itself, nor the charges `UCataclysmAbilitySystemComponent::SkillCharges` keeps by key. So Pyroclasm used on the
+Ultimate key left `Cooldown.Ultimate` running; moved to the Heavy key, it was asked about `Cooldown.Heavy`, which was not
+running, and it was ready again.
+
+**What was built (option (c)).** `ACataclysmPlayerCharacter::RefillAbilitySlots`, which `AssignSkill` and
+`ClearSkillChoice` call and nothing else in the game does, reads the row on each key before and after the fill and
+hands both to the new `UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys`. That function, for every key whose row
+changed: reads, before anything is ended, the longest time left under the tag of the key the new row sat on before (as
+the skill bar reads a cooldown) and that key's charges entry; then returns the spent charges of every changed key and
+removes every cooldown effect under those keys' tags (the order a reset uses, so the removal starts no next recharge);
+then, for each skill that came from another key with time left, spends one charge on its new key through
+`SpendSkillCharge` (which registers the recharge listener and applies a cooldown effect of the time left) and writes
+back the uses still spent and the recharge length. A key whose skill came from no key, and a key left empty, start
+nothing.
+
+**A change of gear needs nothing, by reading.** `FillWithChoices` puts a chosen row that is in the pool on its chosen
+key and every other row only on the key it was made for, and a change of gear changes no choice. So a change of gear
+can put a skill on the keys or take it off them, and never move it from one key to another.
+
+**The count: 39 lines of code, not counting comment lines, blank lines or lines holding only a brace; 59 counting
+brace-only lines; 83 added lines with the comments.** `CarryCooldownsToNewKeys`, 26, 40 and 47 (`CataclysmAbilitySystemComponent.cpp`
+5106-5151); its declaration, 2, 2 and 12; the change to `RefillAbilitySlots`, 11, 17 and 24 (`CataclysmPlayerCharacter.cpp`
+2345-2372). **Option (c) was built.** The brief set "about forty lines of game code" as the line to stop at and the
+coordinating session "a few dozen lines": the 39 is under it, and the 59 is over it if a brace is a line; this entry
+gives both so the coordinating session can hold it to either. (b), refusing a move while either key's cooldown runs, was
+not built.
+
+**One charge test is not possible with the carrier's pool:** no skill in the Demonic Greataxe's pool holds more than one
+charge. Charges come only from enchantment rows (`skill_charges_bonus`), so the test asserts the cooldown and the
+refused press; the charges' `Spent` and recharge length are carried by the same code and are not tested.
+
+### THE REFUSAL SENTENCES, OLD AND NEW (Q5)
+
+`ACataclysmPlayerState::RefusalForSkillChoice` (`CataclysmPlayerState.cpp` 641-701) now names a skill by its pool entry's
+name, else the table row's `SkillName`, else (a row the workbook gave no name) its row name.
+
+| Sentence | OLD | NEW |
+| :-- | :-- | :-- |
+| a row not in the pool | "War_Greataxe_Heavy is not in your skill pool. Your weapons offer: Demonic_Greataxe_Heavy, ..." | "Sundering Arc is not in your skill pool. Your weapons offer: Molten Cleave, ..." |
+| a row chosen for this key | "Demonic_Greataxe_Ultimate is already chosen for the Heavy slot." | "Pyroclasm is already chosen for the Heavy slot." |
+| a row chosen for another key | "Demonic_Greataxe_Ultimate is already chosen for the Heavy slot. Clear that slot first." | "Pyroclasm is already chosen for the Heavy slot. Clear that slot first." |
+| a row the table does not have | "There is no skill row called No_Such_Row." | **unchanged**: such a row has no name, so it is named as it was typed |
+| the basic attack, not one of the six, no row named | unchanged | unchanged; they name no row |
+
+The slot is named by `SkillSlotName`, "Heavy", which is already the player's word. "Name the skill by its row, as
+Cataclysm.ShowSkills lists it." stays: it names no row, and the screen cannot reach it, because every click it sends
+carries a row. **The console's own lines are not refusals and are unchanged** (a judgement): `Cataclysm.AssignSkill`'s
+"Demonic_Greataxe_Ultimate is on the Heavy key." and `Cataclysm.ShowSkills`'s "default; kept: ... is not in your pool"
+echo the row the person typed or the table's key, which is what a console is for.
+
+**The ruled assertion changes, `CataclysmSkillAssignmentTests.cpp`, old and new:**
+
+1. Test 2, `AnyPoolSkillGoesOnAnyKeyAndTheKeyItLeftTakesTheNextOrStaysEmpty`: OLD
+   `Reason.StartsWith(TEXT("War_Greataxe_Heavy is not in your skill pool. Your weapons offer: ")) && Reason.Contains(MoltenCleaveRow.ToString())`;
+   NEW `Reason.StartsWith(TEXT("Sundering Arc is not in your skill pool. Your weapons offer: ")) && Reason.Contains(TEXT("Molten Cleave"))`.
+2. Test 2: OLD `"Demonic_Greataxe_Ultimate is already chosen for the Heavy slot. Clear that slot first."`; NEW
+   `"Pyroclasm is already chosen for the Heavy slot. Clear that slot first."`.
+3. Test 6, `TheConsoleCommandsAssignClearAndRefuse`: OLD `.Contains(TEXT("War_Greataxe_Heavy is not in your skill pool."))`;
+   NEW `.Contains(TEXT("Sundering Arc is not in your skill pool."))`.
+4. Test 6: OLD `.Contains(TEXT("is already chosen for the Heavy slot. Clear that slot first."))`; NEW
+   `.Contains(TEXT("Pyroclasm is already chosen for the Heavy slot. Clear that slot first."))`. The old one named no row
+   and still passed; it was made to assert the new sentence whole.
+
+"There is no skill row called No_Such_Row." is asserted twice and unchanged. The assertion counts of both tests are
+unchanged (15 and 17).
+
+### THE KEY K: THE FOUR EDITS THAT MUST AGREE (Q1)
+
+1. `game/Source/Cataclysm/Input/CataclysmInputConfig.h`: `CataclysmInputActionNames::ToggleSkillAssignment`, the last
+   name in the namespace.
+2. `tools/generate_input_assets.py`: `("IA_ToggleSkillAssignment", "ToggleSkillAssignment", BOOLEAN, "Toggle Skill
+   Assignment")` at the end of `NATIVE_ACTIONS`, and `("IA_ToggleSkillAssignment", "K", [])` at the end of both
+   `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS`. K was free in both: neither list bound it, and no C++ names `EKeys::K`
+   (searched `.py`, `.cpp`, `.h`, `.ini` for `EKeys::K` and `"K"`: 0 matches before this change).
+3. `ACataclysmPlayerController::SetupInputComponent` (`CataclysmPlayerController.cpp` 235-238): `BindNativeAction(Config,
+   Names::ToggleSkillAssignment, ETriggerEvent::Started, ..., Input_ToggleSkillAssignment)`. Until the input assets are
+   regenerated the config does not list the action, and `BindNativeAction` binds nothing, silently, by design.
+4. `docs/Cataclysm_GDD_v2.md`, both controls tables: "| K | Open and close the skill choice screen: which skill from the
+   pool goes on which key |", after the P row.
+
+And a fifth that follows from the fourth, a lookup table in a check (see "CHANGES TO WHAT A CHECK ACCEPTS"):
+`tools/tests/test_controls_table_matches_the_input_assets.py` gains `"K": ("K",)` and `"Open and close the skill choice
+screen": "IA_ToggleSkillAssignment"`.
+
+**The Python tests that read these, run without the editor, before the commit:** `test_native_input_actions_match_the_engine.py`
+(reads the header and the generator), `test_controls_table_matches_the_input_assets.py` (reads the design document and
+the generator) and `test_one_input_mode.py` (counts `ApplyPlayingInputMode();` in the controller, at least 5; there are
+14): "17 passed" with the new check's file. **None needs the regenerated assets; all pass now.**
+`Cataclysm.Input.ConfigListsEverySlotAndNativeAction` reads `DA_InputConfig` on disk: after the editor run it will read
+twelve native actions, all twelve named in its list since the second commit (SAID FIRST).
+`Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions` reads both contexts: K is a new key in each, owned by
+one action, so no collision; it needs nothing.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE CARRY IS IN THE REFILL, NOT IN `AssignSkill` AND `ClearSkillChoice`**, because the refill is the one place both
+  reach and it can read the keys before and after the fill without either duplicating it. The option not taken: a
+  snapshot in each of the two player-state functions, the same code twice.
+- **EVERY KEY WHOSE SKILL CHANGED ENDS ITS COOLDOWN, NOT ONLY THE KEY A SKILL LEFT**, so a skill landing on a key never
+  inherits another skill's wait. The option not taken: leaving a key's cooldown for whatever lands there, which keeps
+  the skip closed for a skill that leaves and returns but makes a newcomer wait for a skill it is not.
+- **THE CARRIED COOLDOWN IS A NEW EFFECT OF THE TIME LEFT**, so the skill bar's sweep on the new key starts full from the
+  time left rather than part-way through. The option not taken: shortening a copied effect of the old length, which
+  needs effect bookkeeping this code base does not have.
+- **THE SCREEN'S ROWS AND POOL ARE WHAT THE LAST REDRAW READ**, not read live, so `RefreshIfGearChanged` is what makes a
+  change of gear appear, and a test can see it do so. The option not taken: reading the weapon slots on every call,
+  which no test could tell from a redraw.
+- **EVERY BUTTON IS MADE AGAIN ON A REDRAW**, as the character sheet makes its rows again: six keys and a pool of a dozen,
+  on a click or a change of gear, never on a frame. The option not taken: buttons made once and redescribed, which needs
+  a pairing of buttons to rows that a pool changing length breaks.
+- **A POOL BUTTON LOOKS CHOSEN WHILE ITS SKILL SITS ON A KEY**, so the pool shows what is in use. Every button stays
+  enabled, so a click on a skill in use reaches the player state's refusal and its sentence.
+- **THE KEPT LINE IS A RUN-TIME TEXT LINE UNDER ITS KEY'S BUTTON**, in a dimmed colour property, because a choice button
+  holds one label in one colour. The option not taken: a second line inside the button's label, which cannot be dimmed.
+- **THE MIDDLE DOT IS WRITTEN `\u00B7` IN THE SOURCE**, so the C++ stays ASCII as the rest of `Interface/` is.
+- **`Cataclysm.Input.ConfigListsEverySlotAndNativeAction` WAS NOT CHANGED by the writing session** (SAID FIRST): adding
+  the one name is an assertion change the brief says to stop on. It was ruled and made in the second commit.
+
+### WHAT WAS BUILT
+
+- **The screen**, `UCataclysmSkillAssignmentWidget` (`Interface/CataclysmSkillAssignmentWidget.h` 1-313, `.cpp` 1-445).
+  BindWidget: `StatusLabel`, `SlotBox`, `PoolBox`, `ClearButton`, `ClearLabel`, `DescriptionLabel`, `RefusalLabel`;
+  BindWidgetOptional `TitleLabel`; the soft `ChoiceButtonClass` (`WBP_ChoiceButton`). The model: `Refresh`,
+  `RefreshIfGearChanged`, `SelectSlot`, `PickSkill`, `ClearSelectedSlot`, `CanClearSelectedSlot`, `GetSelectedSlot`,
+  `SlotRows` (`FCataclysmSkillScreenRow`: the key, the held name and row, `bChosen`, `KeptSkillRow`, `KeptText`,
+  `AsLine` "Heavy: Molten Cleave (default)"), `PoolRows`, the statics `ToolTipFor` and `KeptTextFor`, the texts
+  `StatusText`, `RefusalText`, `DescriptionText`, and the seams `SetPlayerStateForTests` and `DescribeButtonForTests`.
+  Every click resolves against the model: a key by its name, a skill by its row. The status line: "Click a slot, then a
+  skill." or "The Heavy slot is selected. Click a skill to put on it." The tool tip (Q7): the name; "Made for the
+  Ultimate slot", with ", on the Heavy key" when it sits on another key; "Greataxe · Demonic"; the description. The
+  hover writes the same text in `DescriptionLabel`. The clear control says "Clear the slot" and is enabled only while
+  the selected key has a choice. `ApplyPlayingInputMode()` on opening and closing; no pause.
+- **The controller**: `ToggleSkillAssignment` (`CataclysmPlayerController.cpp` 937-976), the character sheet's shape,
+  refreshing on every opening; `Input_ToggleSkillAssignment`; `SkillAssignmentScreenClass` pointing at
+  `/Game/Interface/WBP_SkillAssignment.WBP_SkillAssignment_C`. Until the asset exists the toggle logs an error naming the
+  generator and does nothing, as the other screens do.
+- **The console command** `Cataclysm.ChooseSkills` (`CataclysmPlayerCharacter.cpp`, beside `Cataclysm.CharacterSheet`).
+- **The cooldown carry** and **the refusal sentences**, above.
+- **The generator**: `make_skill_assignment` (`tools/generate_interface_assets.py`), called in `main()` after
+  `make_choice_panel`, which is after `make_choice_button`: `RootCanvas`, `Backdrop`, `Body`, `TitleLabel`,
+  `StatusLabel`, `SlotBox` (a vertical box), `ClearButton` holding `ClearLabel`, `PoolScroll` (a scroll box taking the
+  remaining height) holding `PoolBox` (a wrap box), `DescriptionLabel` and `RefusalLabel`. Not run.
+
+### Tests
+
+**Eight Unreal tests in `Cataclysm.SkillChoiceScreen.`** (`CataclysmSkillChoiceScreenTests.cpp`, namespace
+`CataclysmSkillChoiceScreenTest`, its helpers copies of layer 3's: `SpawnScreenCarrier`, a possessed player wearing its
+starting Greataxe carrying Demonic with the screen made by `NewObject`, handed the player state and refreshed, one
+set-up check; `ScreenWeapon`; `WearForTheScreen`, one check; `ScreenRowFor`; `ScreenRowOn`; `PoolShows`). One character
+per world at the origin; no tick, no blow. Assertion counts include set-up checks, by reading.
+
+1. `TheSixSlotRowsShowWhatEachKeyHoldsInTheBarsOrder`, 7 (Q8): set-up; **control, nothing is chosen**; **six rows**;
+   **in the skill bar's order**; **each naming the skill on its key** ("Molten Cleave, Emberhurl, Burning Wrath,
+   Conflagration, Pyroclasm, Infernal Plunge"); **each saying it is the key's default** (6 of 6); **the basic attack is a
+   line, "Basic attack: from the weapon", and not a row**.
+2. `APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription`, 10 (Q7): set-up, the table gives Pyroclasm and
+   Molten Cleave with descriptions; **the tool tip names it**; **names the slot it was made for**; **"Greataxe ·
+   Demonic"**; **ends with its description**; **in four lines**; **control, Molten Cleave's tool tip does not carry
+   Pyroclasm's description**; **on another key it says which**; set-up; **a pool button the test made carries that tool
+   tip**.
+3. `ClickingASlotThenASkillPutsItOnThatKeyAndTheBarShowsIt`, 10: set-up; **control, the Special key holds Emberhurl**;
+   set-up, Special selected; **the status line says so**; **clicking Pyroclasm chooses it**; **with no refusal**; **the
+   player state records Pyroclasm on the Special key**; **the Special row shows it, chosen**; **the Ultimate key it left
+   is empty (O4)**; **the skill bar's Special box names Pyroclasm**.
+4. `ASkillPickedWithNoSlotSelectedIsRefusedAndChangesNothing`, 6 (Q5): set-up; **a skill clicked with no slot selected is
+   refused**; **with "Click a slot first, then a skill."**; **nothing is recorded**; **control, with the Heavy key
+   selected the same click works**; **control, and the refusal is cleared**.
+5. `ASkillChosenForAnotherKeyIsRefusedAndTheReasonIsShown`, 8 (Q3, Q5): set-up; set-up, Pyroclasm on Heavy through the
+   screen; **Pyroclasm clicked for Special is refused**; **the screen shows "Pyroclasm is already chosen for the Heavy
+   slot. Clear that slot first."**; **the choice is unchanged**; **the Special key still holds Emberhurl**; **control,
+   Molten Cleave may be chosen for Special**; **control, and that clears the refusal**.
+6. `ClearTheSlotForgetsTheChoiceAndTheKeyReturnsToItsDefault`, 10 (Q5, O5): set-up; set-up, Heavy selected; **control,
+   with nothing chosen the clear control is not enabled**; **control, clearing forgets nothing**; set-up, Pyroclasm
+   chosen; **the clear control is enabled**; **clearing forgets the choice**; **nothing is chosen**; **the Heavy row
+   shows Molten Cleave, its default**; **Pyroclasm is back on the Ultimate key**.
+7. `AKeptChoiceWhoseWeaponIsOffIsShownBesideTheDefault`, 13 (Q4): set-up; set-up, Pyroclasm on Heavy; **control, with
+   the Greataxe worn the Heavy row holds Pyroclasm, chosen, and keeps nothing**; set-up, a War Sword; set-up, the screen
+   redraws; set-up, a Heavy row; **the Heavy row shows Rending Strike, its default**; **the row keeps Pyroclasm's
+   choice**; **"Kept: Pyroclasm (Greataxe · Demonic). It returns when that weapon is worn."**; **Pyroclasm is not in the
+   pool**; **the choice is still saved**; set-up, the Greataxe back; **the Heavy row holds Pyroclasm, chosen, and keeps
+   nothing**.
+8. `TheScreenRedrawsWhenTheWornWeaponsChange`, 7 (Q9): set-up; **control, with nothing changed it redraws nothing**;
+   **control, its pool has no War Sword skill**; set-up, a War Sword; **a change of weapon redraws it**; **the pool it
+   shows is the Sword's**; **with nothing changed since, it redraws nothing again**.
+
+The plan's test 9 (the controller's toggle) was dropped: with the asset absent the toggle only logs, which checks
+nothing the others do not.
+
+**One Unreal test in `Cataclysm.SkillAssignment.`** (Q3a, layer 3's file): `AMovedSkillTakesItsRunningCooldownToTheKeyItLandsOn`,
+11: set-up; set-up, Molten Cleave unused chosen for Special; **control, it is ready there at once**; **control, no
+cooldown runs under Cooldown.Special**; (the choice cleared); set-up, Pyroclasm on the Ultimate key; its cooldown
+committed by its own `ApplyCooldown` and the clock run 2.5 s; set-up, it waits under `Cooldown.Ultimate` with less
+than its whole length left; set-up, chosen for Heavy; set-up, on the Heavy key; **it waits under Cooldown.Heavy the time
+it had left, within 0.05 s** (one clock step; both readings are on the world clock with no clock moved between);
+**Cooldown.Ultimate has ended**; **a press of the Heavy key cannot cast it**.
+
+82 assertions in nine new tests, by reading, set-up checks included. **Register: the last measured total plus nine**
+(4237 at t96w, `docs/DECISIONS.md`, layer 3's window, so 4246 if development's total is still 4237); 8 tests for the
+prefix `Cataclysm.SkillChoiceScreen.` and 14 for `Cataclysm.SkillAssignment.`. Quote only what the run prints.
+
+**Python:** `tools/tests/test_the_skill_assignment_screen_is_generated_with_its_bindings.py`, three tests, scoped to this
+screen and saying so: `main()` calls `make_skill_assignment` after `make_choice_button`; every `BindWidget` name of the
+header (comments removed by `//` and `/* */`, not by a line's first character; at least seven read, seven today) is
+added by an `add(blueprint, unreal.<T>, "<Name>"` call in `make_skill_assignment`; the controller's soft path names the
+generator's asset once and the generator's parent constant is the header's class. **Proved with `tools/prove_guard.py`**:
+`PoolBox` renamed `PoolBoxes` in `make_skill_assignment` (anchor counted 1): "PROVED: 1 failed, 2 passed | restored: 3
+passed", named failure
+`tools/tests/test_the_skill_assignment_screen_is_generated_with_its_bindings.py::test_every_bound_widget_of_the_skill_screen_is_added_by_its_generator`.
+
+**Existing tests, by reading.** Changed as ruled: layer 3's tests 2 and 6 (four assertions, above). Will move after the
+input editor run, and changed as ruled in the second commit: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+(SAID FIRST). Named because they reach the moved
+code and pass: the other twelve `Cataclysm.SkillAssignment.` tests (each choice in them is made before any cooldown
+runs, so the carry finds nothing to carry; test 12 commits Conflagration's nought-second cooldown, which applies no
+effect, before its choice, and Molten Cleave's after it; test 4 calls `RefillAbilitySlots` with nothing moved);
+`Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions` (K is a new key in both contexts). Nothing else calls
+`AssignSkill`, `ClearSkillChoice` or `RefillAbilitySlots` (searched `game/Source`).
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, int32, int32)`, `(const TCHAR*, const FString&, const
+FString&)`, `(const TCHAR*, FName, FName)` and `(const TCHAR*, float, float, float)`; `TestTrue` and `TestFalse` on
+`bool`; `TestNotNull` on `const FCataclysmSkillScreenRow*`.
+
+**The events the tests raise, with their depth:** none. No skill is pressed and no blow is dealt; the Q3a test commits a
+cooldown through `ApplyCooldown`, which raises no skill-use notice, and runs the clock 2.5 s with no creature in the
+world. Wearing a weapon raises `EquipmentChanged`, a delegate and not a combat event.
+
+**Not tested:** whether a hover shows the tool tip, the layout and whether it is legible, real mouse clicks, the K key
+itself and the console command (both reach `ToggleSkillAssignment`, which needs the asset), the clear button's click
+binding, the charges' `Spent` and recharge length carried (no pool skill holds a second charge), a cooldown carried on a
+"clear the slot" (the same code as a choice), two skills trading keys in one refill, and a networked client.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Three, prefix `Cataclysm.SkillChoiceScreen.` with its dot (8 tests; no other name in `game/` begins with
+`Cataclysm.SkillChoice`, case ignored). All three in `CataclysmSkillAssignmentWidget.cpp`, the plan's anchors unchanged.
+Each old text counted exactly once in its file and once in `game/Source` by a script (CRLF read as LF), each new text
+absent before the break. Brackets (round, curly, square), before and after: L4-G1 259/259, 71/71, 8/8 and 259/259,
+71/71, 8/8; L4-G2 the same; L4-G3 259/259 and 260/260 (one more pair), 71/71, 8/8; balanced in every case. Each
+compiles alone by reading: L4-G1 passes an enumerator where a member of the same type was; L4-G2 assigns `NAME_None` to
+an `FName` (and `Chosen` is still read on the next line); L4-G3 adds an `FString()` to a `TArray<FString>`.
+
+| Proof | Old text | New text | Stated to fail |
+| :-- | :-- | :-- | :-- |
+| L4-G1, the click uses the selected key | `State->AssignSkill(SelectedSlot, SkillRow, Reason)` | `State->AssignSkill(ECataclysmAbilitySlot::Heavy, SkillRow, Reason)` | `ClickingASlotThenASkillPutsItOnThatKeyAndTheBarShowsIt`, `ASkillChosenForAnotherKeyIsRefusedAndTheReasonIsShown` |
+| L4-G2, a kept choice is shown | `Row.KeptSkillRow = Chosen->SkillRow;` | `Row.KeptSkillRow = NAME_None;` | `AKeptChoiceWhoseWeaponIsOffIsShownBesideTheDefault` |
+| L4-G3, the tool tip carries the description | `Lines.Add(Skill.Description);` | `Lines.Add(FString());` | `APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription` |
+
+Failed assertions, by reading:
+
+- **L4-G1, 4 in 2 tests** (the plan estimated 4 in 1). Test 3: the pick lands on Heavy, so **the player state records
+  Pyroclasm on the Special key**, **the Special row shows it**, and **the bar's Special box names it** fail (3); the pick
+  still returns true with no refusal, and the Ultimate key is still empty, so those pass. Test 5: the refused pick asks
+  the Heavy key, which already holds Pyroclasm, so the sentence is "Pyroclasm is already chosen for the Heavy slot." and
+  **the screen shows "... Clear that slot first."** fails (1); its control picks Molten Cleave onto Heavy, which is
+  allowed, and passes. Tests 4, 6 and 7 select Heavy, so they pass; 1, 2 and 8 pick nothing.
+- **L4-G2, 1 in 1.** Test 7: **the row keeps Pyroclasm's choice**. The kept text is built from the choice, not from the
+  field, so it passes; the control and the end read a row that keeps nothing, and pass.
+- **L4-G3, 1 in 1.** Test 2: **ends with its description**. The four-line count still sees three line breaks, the other
+  lines are untouched, and the test-made button carries the same broken text, so the rest pass.
+
+The Q3a test is covered by the whole suite, not a fourth proof (ruled).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+`tools/tests/test_controls_table_matches_the_input_assets.py`: two entries added to its lookup tables,
+`KEY_LABEL_TO_ENGINE_KEYS["K"] = ("K",)` and `ACTION_PHRASE_TO_INPUT_ACTION["Open and close the skill choice screen"] =
+"IA_ToggleSkillAssignment"`, as every earlier key added them. Without them the test refuses the document's new rows as
+"not a key this test knows". It still requires the document and the generator to agree binding for binding.
+
+### WINDOW t99w: TWO STOPS, AND THE CORRECTED REGISTRATION (written by the enchantment session, before it went on)
+
+**The first start stopped on a check the enchantment session wrote wrongly.** The build plan cache was deleted and the
+build ran: "Build: Succeeded - 40 actions, 37 files compiled". The window script then looked in that line for the new
+files' names, and `tools/unreal_build.py` names files only when few compile, so the check could not pass. The new
+check, kept on the coordinating session's word ("it reads the build products, not one line of output"): for each new
+`.cpp`, the unity file that includes it must have an object newer than the source. It found
+`CataclysmSkillAssignmentWidget.cpp` in `Module.Cataclysm.10.cpp` and `CataclysmSkillChoiceScreenTests.cpp` in
+`Module.Cataclysm.28.cpp`. The coordinating session ruled a new start: "No game step ran before the stop, so this is a
+new start rather than a re-run of a failed suite."
+
+**The second start stopped on the enchantment session's registration of the input-asset run.** The build was up to
+date and the new check passed; `tools/generate_interface_assets.py` made exactly `WBP_SkillAssignment.uasset`, as
+registered; `tools/generate_input_assets.py` exited 0 and changed every tracked file under `game/Content/Input` (the 17
+existing action files, `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`) and
+`game/Content/Maps/L_Sandbox.umap`, and added `IA_ToggleSkillAssignment.uasset`. The registration had allowed only the
+config, the two mapping contexts, the new action and the map, copied from #2136's commit. The reason is in the
+generator's own docstring: "Re-running it overwrites every property of every asset it owns", and "two runs over
+unchanged input do not produce identical bytes". Nothing outside the files it owns changed.
+
+**The coordinating session's ruling, 2026-10-25, verbatim:** "**(a), following #2136's precedent.** Commit only:
+IA_ToggleSkillAssignment.uasset (new); DA_InputConfig.uasset; IMC_KeyboardMovement.uasset; IMC_MouseMovement.uasset;
+WBP_SkillAssignment.uasset (new). Restore the other 17 action files and L_Sandbox.umap with git checkout. Keep
+WBP_SkillAssignment as generated; do not regenerate it. **You need not start again from step 0.**"
+
+**The corrected registration, from step 1c:** step 1b's allowed changes are files under `game/Content/Input` and
+`L_Sandbox.umap`, and it must add `IA_ToggleSkillAssignment.uasset`; step 1c stages the five files above by name,
+restores the 17 action files and the map, checks that nothing else is changed, and commits; then the screen's tests
+alone (8 of 8), the whole suite (4254 performed, 0 failed), Python (JUnit 7007, 0 failures) and the three proofs, as
+registered.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-25, window t99w, under the editor lock as `enchant-t99w`, on
+`feat/skill-choice-screen-2`: the two commits moved from `169a0b75f` and `c8e839cc8` (on `b074a5090`) onto development
+`f9fa99a23` as `2f68241c2` and `716ffd0b0`, each keeping its zero-context patch id, whole and outside this file; this
+file conflicted in the first, resolved by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over
+the 14 C++ files the branch changes: "14 files read, 0 with complaints". Python before the window, at `716ffd0b0`:
+"6999 passed, 8 skipped". The two stops are recorded in the section above; the record of the stops is `cafc36d6b`, and
+the third part ran from step 1c, as ruled, at 10.8 GB free.
+
+- **The build, on the second start (the first start's build compiled them):** "Build: Succeeded - target already up to
+  date, 0 actions, nothing compiled"; "compiled: CataclysmSkillAssignmentWidget.cpp in Module.Cataclysm.10.cpp",
+  "compiled: CataclysmSkillChoiceScreenTests.cpp in Module.Cataclysm.28.cpp" (each unity file's object newer than the
+  source). The first start's build: "Build: Succeeded - 40 actions, 37 files compiled", after the build plan cache was
+  deleted.
+- **The two editor runs, as corrected:** the interface run made exactly `WBP_SkillAssignment.uasset`; the input run
+  changed only files under `game/Content/Input` and `L_Sandbox.umap`, and added `IA_ToggleSkillAssignment.uasset`
+  ("before 1c: 23 changed files, all registered"). The asset commit, `b27be77b8`, holds the five ruled files ("5 files
+  changed"); the other 18 were restored unchanged ("restoring: 18 files"), and the worktree was clean after it.
+- **The screen's tests alone, as registered:** `Cataclysm.SkillChoiceScreen.`: "8 tests performed, 8 succeeded, 0
+  failed".
+- **The whole Unreal suite, as registered:** "4254 tests performed, 4254 succeeded, 0 failed" (4245 on development + 9);
+  "Declared: 4254 tests in the tree at b27be77b8; 4254 performed, gap 0". 43 tests skipped part of what they check.
+  `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`, with its twelve names, passed against the regenerated config.
+  The memory summary line, quoted: "CataclysmTestMemorySummary: tests=4861 peak_used_virtual_mb=7987
+  final_used_virtual_mb=7632 collections=3235 collection_total_s=107.779 worlds_at_last_collection=1".
+- **Python of record, with the assets in the tree, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0
+  failures, 0 errors, 8 skipped. `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.SkillChoiceScreen.` (8 tests), each anchor counted once, 0 ensures, the file's
+  hash the same after, and every restored half 8 performed, 8 succeeded:**
+  - **L4-G1, the click assigns to the Heavy key instead of the selected key:** PROVED, AS REGISTERED. 2 failed,
+    `ClickingASlotThenASkillPutsItOnThatKeyAndTheBarShowsIt` and `ASkillChosenForAnotherKeyIsRefusedAndTheReasonIsShown`;
+    4 failed assertions, registered 4.
+  - **L4-G2, a kept choice is not recorded on its row:** PROVED, AS REGISTERED. 1 failed,
+    `AKeptChoiceWhoseWeaponIsOffIsShownBesideTheDefault`; 1 failed assertion, registered 1.
+  - **L4-G3, the tool tip loses the description:** PROVED, AS REGISTERED. 1 failed,
+    `APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription`; 1 failed assertion, registered 1.
+- Not checked by any run, as the Tests section says: the K key pressed in play, a hover showing the tool tip, the
+  layout, and a real click. The owner's play-check line above is how those are checked.
+
+---
+
 ## 2026-10-25 — The Corrupted Stalker chooses its skills and drinks its potions, and a fight model sets its multipliers (#1308, part B, layer 2)
 
 **Affects:** `ACataclysmCorruptedStalkerCharacter` (its brain, its quarter-second step, its skills);

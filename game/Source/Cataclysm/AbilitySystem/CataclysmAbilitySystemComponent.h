@@ -1910,6 +1910,18 @@ public:
 	FGameplayTagContainer CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot Designed) const;
 
 	/**
+	 * A skill that moved to another key takes its running cooldown and its spent charges with it. Issue #837 layer 4,
+	 * ruled Q3a 2026-10-25: "carry the running cooldown and charges with the skill", because the owner ruled "Each
+	 * skill its own cooldown". Called by `ACataclysmPlayerCharacter::RefillAbilitySlots`, the refill a choice makes.
+	 *
+	 * `KeysBefore` and `KeysAfter` give the row on each key before and after the refill. EVERY KEY WHOSE ROW CHANGED
+	 * ENDS WHAT RAN UNDER ITS TAG; then the key a skill landed on starts the time that was left on the key it came
+	 * from. A skill that was on no key before takes nothing, and nor does a key left empty.
+	 */
+	void CarryCooldownsToNewKeys(const TMap<ECataclysmAbilitySlot, FName>& KeysBefore,
+								 const TMap<ECataclysmAbilitySlot, FName>& KeysAfter);
+
+	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
 	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
 	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
