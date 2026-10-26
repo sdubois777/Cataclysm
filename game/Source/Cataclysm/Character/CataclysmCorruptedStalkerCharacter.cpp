@@ -184,8 +184,8 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	UCataclysmPlayerClassStats::ApplyTo(Abilities, ClassTable, Entry.ClassName, Level, &Modifiers,
 										ECataclysmPoolFill::FillToMaximum, &Bases);
 
-	// THE PLACEHOLDER MULTIPLIERS, ruled by the coordinating session on 2026-10-25: a working prototype first, and the
-	// simulation's fight model brings their replacements. See `CorruptedStalkerHealthMultiplier`.
+	// THE MULTIPLIERS, a table of eight each, ruled by the coordinating session on 2026-10-26 from the simulation's fight
+	// model. See `CorruptedStalkerHealthMultiplier` and `CorruptedStalkerDamageMultiplier`.
 	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
 	const float Health = Abilities->GetNumericAttribute(MaxHealth)
 		* Effects::CorruptedStalkerHealthMultiplier(DifficultyTier);
@@ -193,7 +193,7 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
 	const FGameplayAttribute AttackDamage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
 	Abilities->SetNumericAttributeBase(AttackDamage,
-		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier);
+		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier(DifficultyTier));
 
 	// AND NOTHING WRITES OVER IT FROM HERE ON. The diagnostic window w54d measured one archetype setter taking armour
 	// from 416.1 to 0 and crit from 0 to 5.

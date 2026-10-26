@@ -3306,10 +3306,22 @@ bool UCataclysmDungeonModifierEffects::CorruptedStalkerIsDue(float SecondsOnFloo
 	return SecondsOnFloor >= (bHuntedAnEarlierFloor ? CorruptedStalkerFollowSeconds : CorruptedStalkerFirstFloorSeconds);
 }
 
+namespace
+{
+	// TIERS 1 TO 8, RULED 2026-10-26. `sim/cataclysm_sim/fight.py` holds the same two tables and its test reads these
+	// back, so the two cannot drift apart in silence.
+	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.76f, 0.91f, 1.07f, 1.15f, 1.15f, 1.32f, 1.33f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {1.12f, 2.12f, 2.76f, 3.04f, 3.08f, 2.95f, 3.32f, 3.68f};
+}
+
 float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)
 {
-	const float Along = static_cast<float>(FMath::Clamp(DifficultyTier, 1, 8) - 1) / 7.0f;
-	return FMath::Lerp(CorruptedStalkerHealthMultiplierAtTierOne, CorruptedStalkerHealthMultiplierAtTierEight, Along);
+	return CorruptedStalkerHealthMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
+}
+
+float UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(int32 DifficultyTier)
+{
+	return CorruptedStalkerDamageMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
 }
 
 bool UCataclysmDungeonModifierEffects::WingsOfTheHostIsDue(float SecondsSinceLast)

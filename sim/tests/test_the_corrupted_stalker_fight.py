@@ -19,6 +19,7 @@ from cataclysm_sim import fight
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 STALKER_CPP = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character" / "CataclysmCorruptedStalkerCharacter.cpp"
+EFFECTS_CPP = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmDungeonModifierEffects.cpp"
 TIERS = range(1, 9)
 
 
@@ -59,14 +60,31 @@ def test_its_potions_are_counted(rows):
         assert r.health_multiplier < without, r.tier
 
 
-def test_the_placeholder_is_the_games(rows):
-    assert fight.placeholder_health_multiplier(1) == pytest.approx(1.2)
-    assert fight.placeholder_health_multiplier(8) == pytest.approx(5.0)
-    effects = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmDungeonModifierEffects.h").read_text(
-        encoding="utf-8")
-    assert "CorruptedStalkerHealthMultiplierAtTierOne = 1.2f" in effects
-    assert "CorruptedStalkerHealthMultiplierAtTierEight = 5.0f" in effects
-    assert "CorruptedStalkerDamageMultiplier = 1.0f" in effects
+def test_the_ruled_tables_are_the_model_fitted_to_the_games_measured_build():
+    """Ruled 2026-10-26: the tables are `fitted_to_the_game` to two decimals at every tier."""
+    for tier in TIERS:
+        game = fight.fitted_to_the_game(tier)
+        assert round(game.health_multiplier, 2) == fight.HEALTH_MULTIPLIERS[tier - 1], tier
+        assert round(game.damage_multiplier, 2) == fight.DAMAGE_MULTIPLIERS[tier - 1], tier
+
+
+def test_the_ruled_tables_are_the_games():
+    """The game's two tables, read out of its source, are this model's."""
+    source = EFFECTS_CPP.read_text(encoding="utf-8")
+    for name, model in (("CorruptedStalkerHealthMultipliers", fight.HEALTH_MULTIPLIERS),
+                        ("CorruptedStalkerDamageMultipliers", fight.DAMAGE_MULTIPLIERS)):
+        found = re.findall(r"constexpr float " + name + r"\[8\] = \{([^}]*)\};", source)
+        assert len(found) == 1, name
+        assert tuple(float(v.strip().rstrip("f")) for v in found[0].split(",")) == model, name
+
+
+def test_the_models_stalker_is_the_games_measured_one(rows):
+    """Its built health within 2.5% and its blow within 1.5% of what window w60 measured, at every tier: measured on
+    2026-10-26 as 1.7% to 2.2% above for health and 0.7% to 1.4% below for the blow, neither cause measured. Until
+    2026-10-26 its blow was the reference player's hit and a third short; `fight.stalker_hit` says what was missing."""
+    for r in rows:
+        assert r.stalker_built_health == pytest.approx(fight.GAME_BUILT_HEALTH[r.tier - 1], rel=0.025), r.tier
+        assert r.stalker_hit == pytest.approx(fight.GAME_BLOW[r.tier - 1], rel=0.015), r.tier
 
 
 def _affix_row(affix: af.StatAffix) -> str:

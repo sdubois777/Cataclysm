@@ -116,7 +116,8 @@ public:
 	/**
 	 * Wears the entry at a tier: gathers its pieces' modifiers, applies its class line at the tier's reference level, its passives
 	 * and its gear through `UCataclysmPlayerClassStats::ApplyTo`, multiplies its maximum health and its attack damage by
-	 * the placeholder multipliers (`UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier`), fills its
+	 * the tier's multipliers (`UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier` and
+	 * `CorruptedStalkerDamageMultiplier`), fills its
 	 * pools, and sets `bHoldsAPlayerBuild`, so no archetype setter or floor damage rule writes over it afterwards.
 	 *
 	 * @return false when a table could not be read or the creature has no ability system; nothing is set then
