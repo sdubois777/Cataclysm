@@ -2,6 +2,132 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Status rows whose numbers are all zero: 28 marked "(planned)", 2 retired, 2 descriptions corrected to what is built, and the owner puts every Buff row in the random-buff pool (#2533)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the "Buffs", "Debuffs" and "DoTs" sheets, column A of the rows named
+below, under the coordinating session's workbook grant of 2026-10-26 (those rows, until this branch merges; widened to
+the DoTs sheet's Void Rift row); `game/Data/StatusEffects.csv` (regenerated: 54 rows to 52); `game/Config/Tags/CataclysmTags.ini`
+(regenerated: the two retired rows' tags go, 199 tags to 197); `docs/README.md` (two counts);
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` (a count, one entry, the Dervish reason, two comments);
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (the pinned row count, 54 to 52);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`, `CataclysmDebuffs.h` and `.cpp` (comments
+only); the asset `game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json`, rebuilt in the
+enchantment session's window; this file. No game code changes.
+
+### SAID FIRST
+
+**39 of the 54 status rows had every number at zero and no stat** (counted by script at development `2732839ad`: 17
+Buff, 20 Debuff, 2 DoT). Game code finds a status row by name, which it does for none of the 39, or lays the row's bare
+tag; no screen shows a row's description. So for these rows the description is the only statement of what they do. A
+reading session checked each against the data and the code that would build it (scratch file `t107_zero_rows.md`, read
+at `2732839ad`).
+
+**The rule the marks follow**, relayed 2026-09-14 under the owner's delegation (issue #1832): "A StatusEffects.csv
+description describes what exists; a planned source is marked "(planned)"." An effect not built is marked the same way,
+at the front of its description: `Name: (planned) Description`. The mark goes after the colon, because
+`tools/generate_datatables.py` and the tag list take the name from the text before the first colon; a mark before the
+name would rename the row and its tag. No test or code reads the start of a description.
+
+### WHAT WAS RULED, 2026-10-26, BY THE COORDINATING SESSION, AND THE OWNER
+
+- **Leave (9), unchanged:** Commander, Infernal Brand, Knockdown, Necrotic Fog ("A, LEAVE (4): YES") and the five
+  random-buff entries Mana Surge, Tactical Advantage, Famished, Divine Aegis, Spellslinger ("B, LEAVE (5): YES"). Each
+  is built elsewhere and its tag or row is used.
+- **Retire (2):** "RETIRE NOW (2): YES: Warzone Control Points and Toxic Trail's own row. Move the pinned counts ... with
+  old and new." Warzone Control Points: the floor rule `War_Warzone_Control_Points` is whole without it, its sentence
+  states no effect, and its tag had no reader. Toxic Trail's own row: its effect is the Poison ailment, whose row
+  already names "the Toxic Trail enemy modifier (planned)", and nothing named this row. Retiring a row also removes its
+  gameplay tag, which is why no row whose tag code lays or reads was retired.
+- **Mark "(planned)":** "MARK "(planned)" (20): YES, all 20, including the 11 with no source. The owner keeps the
+  design over the code, so mark rather than retire. Use your leading "(planned)" form." Also "Starving Aura is marked
+  "(planned)" now and built later", and "Withered Touch: mark it "(planned)" now. YES"; Withered Touch is built in the
+  next branch, which will take the mark off.
+- **The owner, on which Buff rows Shard of Anarchy's random buff draws from: "Add everything".** All 17 Buff rows join
+  the pool. The coordinating session: "the eleven new members keep or get "(planned)" until each is built as a
+  standalone buff. The random-buff test's left-out list changes when they are built, not now." So the six set buffs
+  Warhound, Demonic Rage, Sanctified Power, Temporal Flux, Void and Dervish, each built only inside a set bonus, are
+  marked "(planned)" here as well.
+- **The corrections:** "Commander stays at 20%, unchanged"; "Tactical Advantage: no change"; "Sanctified Power and
+  Dervish: correct as drafted. Also correct the Dervish reason comment at line 49 of the random-buff test, so it is not
+  left untrue."
+
+**28 cells marked:** Buffs (10): Plague, Death, Chaotic Barrier, The Ascended, Warhound, Demonic Rage, Sanctified Power, Temporal Flux, Void, Dervish. Debuffs (17): Temporal Debt, Withered Touch, Haunting, Wither, Starforged, Nullifying, Echoing, Reality Bender, The Deceiver, Manic, Battle Cry, Contagion, Starving Aura, Final Curse, Shared Pain, Soul Tether, Touch of Nothing. DoTs (1): Void Rift. Each new cell is
+the old one with "(planned) " put straight after "Name: ".
+
+**Feasting is not marked, a judgement of the enchantment session, reported to the coordinating session.** It is one of
+the five the owner's answer names as not built, but its row describes an enemy ("This enemy gains a stack of "Feast"
+every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%"), and that is built: the
+`Feast` stack kind in `CataclysmStacks.cpp`, with numbers on the row (Strength 4). "(planned)" would say the enemy
+version does not exist. As a player's random buff it is not built, which the random-buff test's left-out list records.
+
+### THE TWO CORRECTIONS, OLD AND NEW
+
+- **Sanctified Power** (Buffs): "A stack gained every 10 seconds." becomes "A stack gained every 5 seconds." It now
+  matches the set sentence ruled verbatim on 2026-10-09, "Every 5 seconds, you gain a stack of 'Sanctified Power.' When
+  you block an attack, you consume all stacks of 'Sanctified Power' and all of your skills are instantly refreshed.",
+  the owner's "Make it every 5 seconds" (2026-10-08, the entry "Divine Retribution's ten-piece bonus is reworded from 10
+  seconds to 5"), and the built row's 5-second trigger cooldown.
+- **Dervish** (Buffs): "Increases your attack speed for melee attacks by 10% per stack." becomes "Increases your attack
+  speed by 10% per stack." It now matches the 2026-10-06 ruling "**Dervish raises every swing**: the attack speed read
+  stays without tags", the 2026-10-17 entry's "'FOR MELEE ATTACKS' IS NOT A SCOPE ON DERVISH", and the built row, which
+  has no required tag. The random-buff test's reason for leaving Dervish out, "its attack speed is for melee attacks",
+  became untrue, and now reads "it is not yet built as a standalone buff".
+- Both cells also carry the "(planned)" mark, as members of the pool not built as standalone buffs.
+
+### THE 2026-09-14 COMMANDER RULING IS SUPERSEDED
+
+The 2026-09-14 entry "Eight rulings made together under the owner's delegation, on questions the backlog triage raised"
+holds the heading "For Buff_Commander, the dungeon modifier row wins", on the reason "Movement speed does not reach
+creatures through that row, so the status effect row's version cannot be what the game does." **That ruling is
+superseded, as of 2026-10-26.** It was a coordinating-session ruling, not the owner's, and its premise was made false
+four days later, when the 2026-09-18 build gave Commander 20% movement and attack speed on creatures
+(`ACataclysmEnemyCharacter::CommanderMultiplier`). The owner's 2026-08-20 decision, "Movement speed and attack speed.
+Twenty per cent of each.", stands, and the Buffs row, which says the same, is unchanged. The old entry is left as
+written.
+
+### A CORRECTION TO THE 2026-10-01 ENTRY: NOTHING APPLIES Debuff_Contagion
+
+The 2026-10-01 entry "A status applied on an event: critical strikes bleed, retaliation bleeds, staggers and slows,
+Strike skills apply a random debuff, a first hit and a gadget stagger; a first hit is its own event" lists
+`Debuff_Contagion` among the Debuff rows left out of the random debuff pool as "applied by creatures, or a floor's rule,
+to the player". **That is not so: nothing in the game applies `Debuff_Contagion`.** Read at `2732839ad`: no file outside
+the generated CSV and tag list names `Status.Debuff.Contagion` or the row; `UCataclysmContagion` passes a debuff the
+player already carries on to an enemy and applies no row of its own; the floor rule Contagious Touch was built as a
+count each creature keeps and lays no tag; and the enemy modifier whose sentence the row repeats,
+`Pestilence_Contagion`, has no code. The pool is unchanged, because the row has no duration and was outside it either
+way. The 2026-10-01 entry is left as written. This branch marks the row "(planned)".
+
+### THE COUNTS THAT MOVE, OLD AND NEW
+
+| Where | Old | New |
+| :-- | :-- | :-- |
+| `game/Data/StatusEffects.csv` | 54 rows | 52 |
+| `game/Config/Tags/CataclysmTags.ini` | 199 tags | 197 (`Status.Buff.WarzoneControlPoints`, `Status.Debuff.ToxicTrail` gone) |
+| `docs/README.md`, the sheet table | Buffs 18, Debuffs 28 | Buffs 17, Debuffs 27 |
+| `test_the_random_buff_table_names_buff_rows.py` | `assert len(rows) == 18`; a `"Warzone Control Points"` entry | `== 17`; the entry removed |
+| `CataclysmDataTableTests.cpp`, `CHECK_TABLE` for StatusEffects.csv | 54 | 52 (also read by `tools/tests/test_unreal_pinned_row_counts.py`) |
+| `datatable_asset_sources.json`, StatusEffects | 54 rows | 52, written by the asset rebuild |
+
+Three comments that named the retired rows or counted them are brought up to date (`CataclysmAbilitySystemComponent.h`,
+the random-buff table's left-out list; `CataclysmDebuffs.h`, "27 named curses"; `CataclysmDebuffs.cpp`, "seventeen from
+the Buffs sheet").
+
+**How it was written:** one openpyxl script, each row found by its name before the first colon, exactly once on its
+sheet. A dry run on an exported copy of development first: `tools/generate_datatables.py` and
+`tools/generate_gameplay_tags.py` exited 0 and changed only `StatusEffects.csv` (28 descriptions and two rows removed)
+and the tag list (the two tags); a row-by-row comparison of every sheet by name found the two rows gone and 28 changed,
+each by the mark and, for Sanctified Power and Dervish, the ruled correction. In the copy, `tools/tests` failed exactly
+four tests, each one this branch moves: the asset hash, the README counts, the random-buff list and the Unreal pinned
+count. On this branch the CSV and tag list are byte-identical to the dry run's.
+
+**No guard proof**: no test reads these descriptions. The moved counts are each checked by their own test.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — The Corrupted Stalker arrives with its Ultimate's Fervour, and two dungeon rules no longer reach it (#1308, #2523)
 
 **Affects:** `ACataclysmCorruptedStalkerCharacter::WearTheBuild` (its starting Fervour); `UCataclysmFervour::DecayStep`

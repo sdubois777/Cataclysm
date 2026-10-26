@@ -1440,11 +1440,10 @@ public:
 	 * whose own description the existing stat lines and conditions can express: Mana Surge, Tactical Advantage,
 	 * Famished, Commander, Divine Aegis and Spellslinger. Each entry is the stat line its own description states.
 	 *
-	 * LEFT OUT BY THE SESSION THAT BUILT IT: Dervish, whose attack speed is for melee attacks, which no reader of
-	 * attack speed asks about; and Demonic Rage, whose ten seconds from the moment health falls below a quarter is
-	 * an event and not a condition. LEFT OUT AS RULED, PENDING THE OWNER: Warhound, Plague, Sanctified Power, Temporal
-	 * Flux, Void, Death, Warzone Control Points, Chaotic Barrier, The Ascended and Feasting, each of which describes
-	 * another set's own mechanic or an enemy's.
+	 * LEFT OUT FOR NOW: Dervish, Demonic Rage, Warhound, Plague, Sanctified Power, Temporal Flux, Void, Death,
+	 * Chaotic Barrier, The Ascended and Feasting. The owner answered on 2026-10-26, "Add everything": each joins the
+	 * table once it is built as a standalone buff (issue #2533). Until then most describe another set's own mechanic
+	 * or an enemy's.
 	 *
 	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
 	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what

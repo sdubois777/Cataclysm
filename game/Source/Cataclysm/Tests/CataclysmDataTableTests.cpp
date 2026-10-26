@@ -111,7 +111,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 50, not 46. Four player-applied debuffs were defined: Madness, Cripple,
 	// Shred and Weaken. Gems and affixes already named all four as effects they
 	// apply, and none of the four said what it did.
-	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          54)
+	// 52, not 54. Issue #2533 retired two rows whose effect is built elsewhere and nothing read: the Warzone Control
+	// Points buff (the floor rule is whole without it) and Toxic Trail's own debuff (its effect is Poison).
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          52)
 	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
 	// one status effect in the data that nothing applied, and the Of Embers gem
 	// to apply Burn, which every designed Demonic skill applies and which no gem

@@ -39,14 +39,17 @@ IN_THE_TABLE = (
     "Spellslinger",
 )
 
-#: Why ten of the Buff rows are not in the table, as ruled.
+#: Why nine of the Buff rows are not in the table, as ruled.
 ANOTHERS = "it describes another set's own mechanic or an enemy's"
 
 #: Every other Buff row, and why it is not in the table.
 LEFT_OUT = {
     # ITS DESCRIPTION CANNOT BE EXPRESSED WITH WHAT EXISTS. A judgement of the
     # session that built the table; the coordinating session rules on each.
-    "Dervish": "its attack speed is for melee attacks, and nothing reads attack speed with a melee tag",
+    # Dervish's row said "for melee attacks" until 2026-10-26, when it was corrected to the ruling "Dervish raises
+    # every swing" (issue #2533). It stays out of the table until it is built as a standalone buff; the owner has
+    # since answered "Add everything".
+    "Dervish": "it is not yet built as a standalone buff",
     "Demonic Rage": "ten seconds from the moment health falls below a quarter is an event, not a condition",
     # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12,
     # pending the owner.
@@ -56,7 +59,6 @@ LEFT_OUT = {
     "Temporal Flux": ANOTHERS,
     "Void": ANOTHERS,
     "Death": ANOTHERS,
-    "Warzone Control Points": ANOTHERS,
     "Chaotic Barrier": ANOTHERS,
     "The Ascended": ANOTHERS,
     "Feasting": ANOTHERS,
@@ -97,12 +99,13 @@ def test_every_buff_in_the_table_is_a_buff_row_of_the_status_table() -> None:
 
 def test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out() -> None:
     """Eighteen Buff rows on 2026-10-12: six in the table and twelve left out.
+    Seventeen since 2026-10-26 (issue #2533 retired Warzone Control Points): six and eleven.
     A row added to the status table fails here until somebody decides which
     list it joins."""
     rows = set(buff_rows())
     assert not set(IN_THE_TABLE) & set(LEFT_OUT)
     assert rows == set(IN_THE_TABLE) | set(LEFT_OUT)
-    assert len(rows) == 18
+    assert len(rows) == 17
 
 
 def test_the_pin_names_the_buffs_in_the_tables_order() -> None:

@@ -54,7 +54,7 @@ const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
 	// segment of the tag they all hang off this one parent.
 	//
 	// THE BUFFS ARE EXCLUDED BY NOT BEING UNDER IT, rather than by a list. The
-	// eighteen from the Buffs sheet are `Status.Buff.*`, so the Commander buff a
+	// seventeen from the Buffs sheet are `Status.Buff.*`, so the Commander buff a
 	// Succubus grants its allies cannot be counted as a debuff by forgetting to
 	// name it. That is the whole reason the branch was split.
 	//
