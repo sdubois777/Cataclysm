@@ -72,7 +72,7 @@ public:
 	 * THE SHEET AN EFFECT COMES FROM IS NOW A SEGMENT OF ITS TAG.
 	 * `tools/generate_gameplay_tags.py` emits `Status.Buff.DivineAegis` from the
 	 * Buffs sheet and `Status.Debuff.Cripple` from the Debuffs sheet, so naming
-	 * `Status.Debuff` here takes all 28 named curses and cannot take a buff. The
+	 * `Status.Debuff` here takes all 27 named curses and cannot take a buff. The
 	 * project owner chose this over an exclusion list on 2026-09-04; see
 	 * `docs/DECISIONS.md`.
 	 *

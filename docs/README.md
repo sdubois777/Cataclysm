@@ -68,8 +68,8 @@ heading row describe their layout instead. Issue #1884.
 | **Tags** | **145** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
 | Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost |
-| Buffs | 18 | one description per row, no heading row |
-| Debuffs | 28 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
+| Buffs | 17 | one description per row, no heading row |
+| Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, (blank), (blank), CR Metric, Formula, Outcome |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
