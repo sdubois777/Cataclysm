@@ -203,6 +203,33 @@ functions in WT-G1 take `(AActor*, AActor*, const FGameplayTag&, float)`). Prefi
   becomes `!bCastByAMinion ? 1.0f : 1.0f`. Predicted: `ItsCurseTakesAFifthOffThePlayersOwnBlowsAndTicks` fails, 1
   assertion (the tick at 80%). Every other test of the prefix passes.
 
+### THE FOUR POINTS RULED AFTER THE BUILD (the coordinating session, 2026-10-26, verbatim)
+
+> 1. **(i): accept #1757's rule, with no drain at the moment of landing.** My test sentence was too strong for a full
+>    pool. Record the full-pool case as #1757's rule, asserted neither way.
+> 2. **Damage over time is cut when laid: ACCEPTED** as the session's judgement, stated, for the minion-exclusion reason.
+> 3. **Leave ALL of the uncut sources as stated gaps, including the ground-zone line.** Do not add a line that cannot
+>    be tested in this branch. I will open one issue listing them: ground zones; Void Splinter's share; the released
+>    damage store; retaliation and reflection; Nova and GroundPound; smite by armour; the death and remaining-damage
+>    bursts. They get cut together when someone can test them.
+> 4. **The late gadget burn: accept and state it.**
+
+So, stated plainly:
+- **A full pool when the curse lands:** a player at 200 of 200 mana is cursed to a maximum of 160 and still holds 200
+  until something writes the pool, under #1757's rule that a lower maximum does not lower the current value. The
+  tests start both pools at 100 and assert nothing about this case.
+- **Damage over time is cut when it is laid, not on each tick:** an effect laid while cursed keeps 80% to its end, even
+  after the curse ends, and one laid before the curse keeps its whole figure. A tick cannot tell whether a minion cast
+  the use that laid it, so cutting each tick would lose the minion exclusion.
+- **Not cut, as stated gaps for one issue:** ground zones a cursed player's skill leaves (priced once when laid, in
+  `UCataclysmSkillTemplate::LeaveZoneAlong`); Void Splinter's share of current health (`ApplyShareOfHealthOverTime`);
+  and the direct damage paid from figures of its own rather than through `ApplyHit`: a released damage store,
+  retaliation and reflection, the Nova and GroundPound shares, the "smite by armour" row action, and the death and
+  remaining-damage bursts.
+- **One narrow case is cut that should not be:** a skill gadget's projectile burn that lands after the gadget's use has
+  ended. The skill's `FreeRepeatCastBy` is cleared at the end of the use and `ApplyBurn` carries no caster, so the burn
+  reads as the player's own. Not measured.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
