@@ -1413,4 +1413,136 @@ bool FCataclysmSkillAssignmentOffTheKeysCooldownTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentResetReachesOffTheKeysTest,
+	"Cataclysm.SkillAssignment.AResetOfEveryCooldownReachesASkillHeldOffTheKeys",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2528. Pyroclasm, used and then taken off the keys by choosing Emberhurl for the Ultimate key, keeps its
+ * cooldown (#2524); a reset of every cooldown and a death end it, as they end the running ones, and a reduction of
+ * every cooldown shortens it by the same seconds. The control, read first: with nothing in between, it comes back
+ * still waiting.
+ */
+bool FCataclysmSkillAssignmentResetReachesOffTheKeysTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	const FName EmberhurlRow(TEXT("Demonic_Greataxe_Special"));
+	const auto SecondsLeftOn = [](const UAbilitySystemComponent* System, ECataclysmAbilitySlot Key)
+	{
+		float Longest = 0.0f;
+		for (const TPair<float, float>& Wait : System->GetActiveEffectsTimeRemainingAndDuration(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(Key)))))
+		{
+			Longest = FMath::Max(Longest, Wait.Key);
+		}
+		return Longest;
+	};
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillAssignmentCarrier Carrier = SpawnAssignmentCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+	FString Reason;
+	const auto Pyroclasm = [&Carrier]() -> const UCataclysmGameplayAbility*
+	{
+		const UCataclysmGameplayAbility* Ability = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+		return Ability && Ability->DisplayedName() == TEXT("Pyroclasm") ? Ability : nullptr;
+	};
+	// PYROCLASM USED, ONE SECOND PASSES, AND EMBERHURL IS CHOSEN FOR ITS KEY: the seconds it had left, or -1.
+	const auto UseAndTakeOff = [&]() -> float
+	{
+		const UCataclysmGameplayAbility* Used = Pyroclasm();
+		if (!Used)
+		{
+			return -1.0f;
+		}
+		Used->ApplyCooldown(Used->GetCurrentAbilitySpecHandle(), Used->GetCurrentActorInfo(),
+							FGameplayAbilityActivationInfo());
+		CataclysmTestWorld::RunClock(World, 1.0f);
+		const float Left = SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+		return Carrier.State->AssignSkill(ECataclysmAbilitySlot::Ultimate, EmberhurlRow, Reason) && Left > 5.0f
+			? Left
+			: -1.0f;
+	};
+	const auto Return = [&]() -> const UCataclysmGameplayAbility*
+	{
+		Carrier.State->ClearSkillChoice(ECataclysmAbilitySlot::Ultimate);
+		return Pyroclasm();
+	};
+
+	// THE CONTROL: nothing in between, and it comes back still waiting.
+	if (!TestTrue(TEXT("set-up: Pyroclasm used and taken off the keys"), UseAndTakeOff() > 0.0f))
+	{
+		return false;
+	}
+	const UCataclysmGameplayAbility* Back = Return();
+	if (!TestNotNull(TEXT("set-up: Pyroclasm is back on the Ultimate key"), Back))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: with no reset in between, it cannot be cast"), KeyIsReady(Back));
+	TestTrue(TEXT("control: and it still waits"),
+			 SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate) > 0.0f);
+
+	// A RESET OF EVERY COOLDOWN, while it is off the keys.
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CooldownResetRoll"));
+	if (!TestNotNull(TEXT("set-up: the reset roll can be pinned"), Roll)
+		|| !TestTrue(TEXT("set-up: used and taken off again"), UseAndTakeOff() > 0.0f))
+	{
+		return false;
+	}
+	Roll->Set(0.0f, ECVF_SetByCode);
+	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+	FCataclysmPoolAction ResetAll;
+	ResetAll.CooldownReset = ECataclysmCooldownReset::All;
+	ResetAll.Percent = 100.0f;
+	Carrier.AbilitySystem->RollAndResetCooldowns(ResetAll, nullptr);
+	Back = Return();
+	if (!TestNotNull(TEXT("set-up: back after the reset"), Back))
+	{
+		return false;
+	}
+	TestTrue(TEXT("after a reset of every cooldown it comes back ready"), KeyIsReady(Back));
+	TestEqual(TEXT("and no cooldown runs under Cooldown.Ultimate"),
+			  CooldownEffectsOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), 0);
+
+	// A DEATH, while it is off the keys.
+	if (!TestTrue(TEXT("set-up: used and taken off a third time"), UseAndTakeOff() > 0.0f))
+	{
+		return false;
+	}
+	Carrier.AbilitySystem->ClearWhatDeathEnds();
+	Back = Return();
+	if (!TestNotNull(TEXT("set-up: back after the death"), Back))
+	{
+		return false;
+	}
+	TestTrue(TEXT("after a death it comes back ready"), KeyIsReady(Back));
+
+	// A REDUCTION OF EVERY COOLDOWN BY FIVE SECONDS, while it is off the keys.
+	const float LeftBefore = UseAndTakeOff();
+	if (!TestTrue(TEXT("set-up: used and taken off a fourth time, with more than five seconds left"), LeftBefore > 0.0f))
+	{
+		return false;
+	}
+	FCataclysmPoolAction ReduceAll;
+	ReduceAll.CooldownReduce = ECataclysmCooldownReset::All;
+	ReduceAll.Percent = 5.0f;
+	Carrier.AbilitySystem->ReduceCooldowns(ReduceAll);
+	Back = Return();
+	if (!TestNotNull(TEXT("set-up: back after the reduction"), Back))
+	{
+		return false;
+	}
+	TestEqual(TEXT("after a reduction of five seconds it waits five fewer"),
+			  SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), LeftBefore - 5.0f, 0.1f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

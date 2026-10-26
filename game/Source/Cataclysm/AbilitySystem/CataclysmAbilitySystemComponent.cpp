@@ -2758,6 +2758,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// EVERY SPENT CHARGE RETURNED FIRST, so that ending the cooldowns below
 	// starts no further recharge. Issue #1833, skill charges: a death refills.
 	RefillSkillCharges(CooldownTags);
+	// AND A SKILL HELD OFF THE KEYS KEEPS NO COOLDOWN PAST A DEATH, as the ones on the keys keep none. Issue #2528.
+	ForgetCooldownsOffTheKeys();
 
 	FGameplayEffectQuery Timed;
 	Timed.CustomMatchDelegate.BindLambda(
@@ -4705,6 +4707,11 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 			}
 		}
 	}
+	if (Action.CooldownReduce == ECataclysmCooldownReset::All)
+	{
+		// AND THE KEPT COOLDOWN OF EVERY SKILL OFF THE KEYS, by the same seconds. Issue #2528.
+		ShortenCooldownsOffTheKeys(Action.Percent);
+	}
 	else if (Action.CooldownReduce == ECataclysmCooldownReset::Heavy)
 	{
 		// THE SKILL MADE FOR THE HEAVY SLOT, ON WHICHEVER KEY IT SITS (O1, issue #837 layer 3).
@@ -4963,7 +4970,26 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	// EVERY CHARGE OF A CLEARED SLOT, ruled 2026-09-25 under the owner's
 	// delegation: a reset refills, rather than returning the one use recharging.
 	RefillSkillCharges(Clearing);
+	// A RESET OF EVERY COOLDOWN, OR OF EVERY OTHER, REACHES A SKILL HELD OFF THE KEYS too: it is never the skill that
+	// fired. A reset of one slot does not, since a kept cooldown records no slot. Issue #2528.
+	if (Action.CooldownReset == EReset::All || Action.CooldownReset == EReset::Others)
+	{
+		ForgetCooldownsOffTheKeys();
+	}
 	return RemoveActiveEffectsWithGrantedTags(Clearing);
+}
+
+void UCataclysmAbilitySystemComponent::ForgetCooldownsOffTheKeys()
+{
+	CooldownsOffTheKeys.Empty();
+}
+
+void UCataclysmAbilitySystemComponent::ShortenCooldownsOffTheKeys(float Seconds)
+{
+	for (TPair<FName, TPair<float, FSkillCharges>>& Kept : CooldownsOffTheKeys)
+	{
+		Kept.Value.Key -= Seconds;
+	}
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::SkillChargesBonusStat =

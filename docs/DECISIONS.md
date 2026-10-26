@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — A reset of every cooldown, a death and a reduction of every cooldown reach a skill held off the keys (#2528)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the new public
+`ForgetCooldownsOffTheKeys` and `ShortenCooldownsOffTheKeys`, called from `ClearWhatDeathEnds`, `RollAndResetCooldowns`
+and `ReduceCooldowns`); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (Rule of Chaos's clear);
+`game/Source/Cataclysm/Tests/CataclysmSkillAssignmentTests.cpp` (one new test); this file. No data, asset, tag or
+workbook change. Written by the enchantment session directly, at the coordinating session's word of 2026-10-25:
+"ForgetCooldownsOffTheKeys after the death refill, Rule of Chaos's clear, and the All and Others reset rows; not inside
+RefillSkillCharges. Include the two cooldown_reduce_all rows, since 4 lines makes the rule whole: shorten the record's
+end time by the same amount. Tests as you proposed, one proof."
+
+### SAID FIRST
+
+**#2524 kept the cooldown of a skill a choice takes off the keys, in `CooldownsOffTheKeys`, and nothing else read that
+record**, so a reset of every cooldown, a death, and the Rule of Chaos kill clear ended the running cooldowns and left
+the kept ones, and a skill returned still waiting after its fellows had been reset. Now:
+- **a death** (`ClearWhatDeathEnds`, after its refill of every charge) forgets every kept cooldown;
+- **the Rule of Chaos kill clear** (`CataclysmDungeonGameMode.cpp`, after it ends every cooldown) forgets them;
+- **a reset row of `All` or `Others`** (`RollAndResetCooldowns`, after its refill) forgets them: a skill off the keys is
+  never the one that fired, so "every other" reaches it. The rows: `cooldown_reset_all` on 2 rows, `cooldown_reset_others`
+  on 1 (counted in `game/Data/EnchantmentEffects.csv`);
+- **a reduction row of `All`** (`ReduceCooldowns`) takes the same seconds off each kept cooldown's end time, so it
+  returns with that much less to wait. The rows: `cooldown_reduce_all` on 2.
+
+`ForgetCooldownsOffTheKeys` is not called from `RefillSkillCharges`, because `CarryCooldownsToNewKeys` calls that just
+after it writes a record, and the record would be lost at once.
+
+**Not covered, stated:** a reset or reduction of ONE slot (Heavy, Special, Movement, the event's skill) does not reach a
+skill held off the keys, because a kept cooldown records the skill's row and not the slot it was made for.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- use a skill, take it off the keys with a choice (K), die or trigger a reset of every cooldown, then clear the slot:
+  the skill returns ready.
+
+### Tests
+
+`Cataclysm.SkillAssignment.AResetOfEveryCooldownReachesASkillHeldOffTheKeys`, 16 assertions. Pyroclasm is used, one
+second passes, and Emberhurl is chosen for the Ultimate key, four times: set-up, the carrier; **control, with nothing in
+between it comes back unable to be cast**, **and still waiting**; then **after a reset of every cooldown it comes back
+ready**, **with no cooldown under Cooldown.Ultimate**; then **after a death it comes back ready**; then **after a
+reduction of five seconds it waits five fewer, within 0.1 s**; the rest are set-up checks. The reset roll is pinned to
+0, as the charges test does. Not tested: the Rule of Chaos call (it needs a dungeon game mode; by reading, it is the
+same call after the same two lines) and a reset of `Others` (the same branch as `All`).
+
+### GUARD PROOF PROPOSED
+
+**#2528-G1, a reset of every cooldown leaves the kept ones:** in `CataclysmAbilitySystemComponent.cpp`'s
+`RollAndResetCooldowns`, `if (Action.CooldownReset == EReset::All || Action.CooldownReset == EReset::Others)` becomes
+`if (Action.CooldownReset == EReset::None)`, which is never true there. Predicted: the new test fails, 2 assertions (the
+reset case: ready, and no cooldown); the control, the death case and the reduction case pass. Prefix
+`Cataclysm.SkillAssignment.`.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-26, window t103w, under the editor lock as `enchant-t103w`, taken at 10.9 GB
+free, at `bfc9241f2` on `fix/a-reset-reaches-a-skill-off-the-keys-1`: the commit moved from `c1f546d4d` (on
+`abe7f7d59`) onto development `22b05a357`, keeping its zero-context patch id, whole and outside this file; this file
+conflicted, resolved by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over the 4 C++ files: "4
+files read, 0 with complaints".
+
+- **The test alone, as registered:** "Build: Succeeded - 39 actions, 36 files compiled"; "1 tests performed, 1
+  succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4264 tests performed, 4264 succeeded, 0 failed" (4263 on development + 1);
+  "Declared: 4264 tests in the tree at bfc9241f2; 4264 performed, gap 0". 43 tests skipped part of what they check. The
+  memory summary line, quoted: "CataclysmTestMemorySummary: tests=4871 peak_used_virtual_mb=7941
+  final_used_virtual_mb=7609 collections=3244 collection_total_s=106.715 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **#2528-G1, a reset of every cooldown leaves the kept ones:** PROVED, AS REGISTERED. Prefix
+  `Cataclysm.SkillAssignment.` (16 tests), the anchor counted once, 0 ensures, the file's hash the same after. 1 failed,
+  `AResetOfEveryCooldownReachesASkillHeldOffTheKeys`; 2 failed assertions, registered 2 (it did not come back ready, and
+  "to be 0, but it was 1" cooldown under `Cooldown.Ultimate`); the control, the death case and the reduction case passed;
+  restored, 16 performed, 16 succeeded.
+
+---
+
 ## 2026-10-25 — Cripple, Weaken, Shred and Stun are named on a creature's status line and above the player's bars (#2379)
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (four new text functions and the
