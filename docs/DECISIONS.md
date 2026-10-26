@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — A status effect's description marks each named source not built yet "(planned)"; Raw Sewage leaves the Disease row, and Warlord's Decree is spelt as the skill is (#1832)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, ten cells in column A of the "Debuffs" sheet (rows 21, 22, 23, 24, 26) and
+the "DoTs" sheet (rows 1, 2, 3, 4, 7), under the coordinating session's workbook grant of 2026-10-26 (those ten cells,
+until this branch merges); `game/Data/StatusEffects.csv`, regenerated, the ten description lines and nothing else; the
+asset `game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json`, rebuilt in the
+enchantment session's window; this file. No code changes.
+
+### SAID FIRST
+
+**The ruling this applies**, relayed 2026-09-14 under the owner's delegation and recorded on issue #1832: "A
+StatusEffects.csv description describes what exists; a planned source is marked "(planned)"."
+
+**What exists was measured against the data and the code that reads it, not by searching code for each name** (the
+issue's own method would have called the gems and affixes missing; they are data rows). Read at development
+`c85e507fa`:
+- **Built, unmarked:** the eight "chance to X" affixes (`CataclysmItem.cpp` about 710-738, read by
+  `CataclysmAilments.cpp` about 89-138); the Beguiling and Hellfire Aura enemy modifiers; "War skills apply it directly"
+  (bleed) and "Demonic skills apply it directly" (burn).
+- **Not built, marked "(planned)":** all nine gems named (Of Madness, Of Maiming, Of Shredding, Of Withering, Of
+  Rending, Of The Viper, Of Rot, Of Embers, Of The Abyss). Each has a row in `game/Data/Gems.csv`, but nothing outside
+  the tests reads `FCataclysmGemRow`, `CataclysmPotions.h` says "gems do not exist yet (issue #46)", and #46 is open.
+  Also the Primal Instinct enchantment (in no data row at all), the Toxic Trail enemy modifier, and the two Ultimates
+  on the Knockdown row, Warlord's Decree and Cataclysm (`game/Data/WeaponSkills.csv`: their Shape and ShapeParams are
+  empty, so nothing knocks down).
+- **Built, but not an applier of this effect:** the Raw Sewage dungeon modifier, removed from the Disease row (below).
+
+### WHAT WAS RULED, 2026-10-26, BY THE COORDINATING SESSION
+
+- **Q1, Raw Sewage, verbatim:** "YES, remove "the Raw Sewage dungeon modifier, " from the Disease row. Marking it
+  "(planned)" would contradict the 2026-09-25 ruling that it is not the Disease ailment. Quote that ruling in the
+  entry." The 2026-09-25 Raw Sewage entry: "**The burn is the rule's own, not the Disease ailment.** It is Plague
+  Convergence's pattern: a share of maximum health a second from the floor's hazard source."
+- **Q2, verbatim:** "YES, mark Primal Instinct "(planned)"."
+- **Q3, verbatim:** "the marking, plus one correction: spell it "Warlord's Decree" to match the skill's name. That is a
+  spelling fix in a status description, not War skill data. Leave the three built Demonic knockdowns out of this
+  branch. Record that the row is not exhaustive." **So the Knockdown row is not exhaustive:** it names the two planned
+  Ultimates, and three built Demonic skills that knock down are not named in it.
+- **Q4, verbatim:** "no edit to The Deceiver. I will open an issue for the roughly thirty all-zero Buff_ and Debuff_
+  rows whose descriptions describe effects that do nothing."
+- The four rows that describe a source without naming one (Haunting, Toxic Trail's own row, Necrotic Fog, Void Rift):
+  no edit.
+
+### THE TEN CELLS, OLD AND NEW (only the part that changed; the rest of each sentence is unchanged)
+
+| Sheet, row | Effect | Old | New |
+| :-- | :-- | :-- | :-- |
+| Debuffs 21 | Madness | the Of Madness gem and | the Of Madness gem (planned) and |
+| Debuffs 22 | Cripple | the Of Maiming gem and | the Of Maiming gem (planned) and |
+| Debuffs 23 | Shred | the Of Shredding gem and | the Of Shredding gem (planned) and |
+| Debuffs 24 | Weaken | the Of Withering gem and | the Of Withering gem (planned) and |
+| Debuffs 26 | Knockdown | Warlord Decree for 2 seconds and Cataclysm for 3, | Warlord's Decree (planned) for 2 seconds and Cataclysm (planned) for 3, |
+| DoTs 1 | Bleed | the Primal Instinct enchantment, the Of Rending gem and | the Primal Instinct enchantment (planned), the Of Rending gem (planned) and |
+| DoTs 2 | Poison | the Toxic Trail enemy modifier, the Of The Viper gem and | the Toxic Trail enemy modifier (planned), the Of The Viper gem (planned) and |
+| DoTs 3 | Disease | Applied by the Raw Sewage dungeon modifier, the Of Rot gem and | Applied by the Of Rot gem (planned) and |
+| DoTs 4 | Burn | the Of Embers gem and | the Of Embers gem (planned) and |
+| DoTs 7 | Void Splinter | Applied by the Of The Abyss gem. | Applied by the Of The Abyss gem (planned). |
+
+**How it was written:** one openpyxl script, each edit required to match its cell exactly once. A dry run on an
+exported copy of development first: `tools/generate_datatables.py` exited 0 and changed only
+`game/Data/StatusEffects.csv`, "10 insertions(+), 10 deletions(-)"; the ten test files that read the status data passed
+there ("231 passed"). On this branch the same script gave a CSV byte-identical to the dry run's, and a cell-by-cell
+comparison of every sheet against development's workbook found exactly these ten cells different.
+
+**No test reads these descriptions**, so there is no guard proof: a search of `game/Source`, `tools/tests` and
+`sim/tests` for the changed sentences found none, and the one description check (`CataclysmDataTableTests.cpp` about
+935-960) counts that every dungeon modifier has a description.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — The Corrupted Stalker's health and damage multipliers are a table of eight each, fitted to its measured build (#1308)
 
 **Affects:** `UCataclysmDungeonModifierEffects` (two tables replace three placeholder constants; a new
