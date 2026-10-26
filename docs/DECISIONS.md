@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — A move begun touching the floor is no longer refused: one helper through the engine's safe move (#2203, #2505)
+
+**Affects:** `UCataclysmMovement` (a new `MoveWithoutSticking`); the seven swept relocations in
+`CataclysmSkillEffects.cpp`, `CataclysmSkillTemplates.cpp` (three), `CataclysmTether.cpp`,
+`CataclysmEnemyCharacter.cpp` and `CataclysmEnemyModifiers.cpp`; a comment in `CataclysmDungeonModifierEffects.h`;
+four new Unreal tests and one set-up line in each of two others; a new Python guard. Closes
+[#2203](https://github.com/sdubois777/Cataclysm/issues/2203) and [#2505](https://github.com/sdubois777/Cataclysm/issues/2505).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **IN PLAY THE REACH IS NARROWER THAN THE ISSUE'S TITLE.** A walking character with a controller is lifted about
+  2.15 cm above the floor on its first walking update (`UCharacterMovementComponent::AdjustFloorHeight`, to the middle
+  of `MIN_FLOOR_DIST` 1.9 and `MAX_FLOOR_DIST` 2.4), and kept there. So in play a plain swept move was refused in the
+  frame a character is placed, in the frame after a teleport until its next update, and always for a character with
+  no controller -- a floor source, an Echo. **A test never updates movement**, so every character a test places stands
+  at gap 0, which is why every measurement of 0 cm was made in a test. Read from the engine's source, not measured.
+- **THE 2.4 AGAINST 2.15 QUESTION IS NOT SETTLED.** `ItPutsCreaturesOnTheFloorAndNotInsideIt` records creatures measured
+  at exactly 2.4 on 2026-08-21, before #849's re-placing; the engine's source reads 2.15. Nothing here depends on it.
+
+### Ruled by the coordinating session, 2026-10-26
+
+| Question | Ruled |
+|---|---|
+| One shared helper through the engine's safe move, or standing pawns 2.4 cm up | **the helper**: it works at any gap, covers characters with no controller and the frame after a teleport, and disturbs no placement test, where the 2.4 cm lift would have broken `ThePlayerIsStoodOnTheFloorAndNotInsideIt` and `ThePlayerArrivesAtTheNewFloorsEntrance`, both held to 1 cm |
+| Four tests on a real floor, each with a control | approved: knockback, the player's movement skill, tether, Phasewalker |
+| The two statue tests put the player back after their blink | approved as a set-up change only, no assertion changed |
+| The Python guard, two Unreal proofs and the guard's proof, the stale comment | approved |
+
+### What changed
+
+**`UCataclysmMovement::MoveWithoutSticking(Actor, Delta)`.** A character moves through its movement component's
+`SafeMoveUpdatedComponent`, which, when the move starts penetrating, lifts it out by the depth and 0.125 cm more and
+makes the same move again; a wall still stops the retried sweep. Anything with no character movement keeps the plain
+sweep it had. The Singularity Wells pull made this move first, in #1699; no helper existed.
+
+**The seven call sites:** the displacement every knockback, push-aside, pull and launch goes through; the swap
+partner; the caster's leap, charge, blink and recall; Flicker; the tether's two ends; holding against moving away; the
+Phasewalker step. **#2505 closes with it**: its case is the blink in the frame the player is placed, and the blink now
+goes through the helper. No row moves the player in that frame today (`floor_start`'s one row only caps health).
+
+**The movement skill pays before it moves** (`CommitAndBegin` precedes the move in
+`UCataclysmMovementSkill::ActivateAbility`), so the statue tests' "the nearest" assertions still read the place the
+player paid from.
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+Each asserts first that its character stands touching the floor, a gap of 0 within 0.1 cm, so none can pass on a
+character standing clear of it.
+
+| Test | What it asserts | Control |
+|---|---|---|
+| `AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance` | a creature knocked three metres moves what its crowd control resistance leaves of them, within 1 cm | six metres toward rock: it moves, and stops short of the face |
+| `ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem` | a blink aimed at the next cell's middle moves the player at least 300 cm | aimed four metres into rock: it moves, and stops short of the face. The game has no "dash" mode; leap, charge and blink end at the same move |
+| `ATetherDragsBothEndsBackOnAFloor` | two creatures 800 cm apart on a five-metre line: one check, back to 500 within 1 cm, one end 150 cm | the other end moves the same, within 1 cm |
+| `APhasewalkerStandingOnTheFloorPhasesItsWholeDistance` | on a cell with floor on all eight sides, the phase moves its 300 cm within 1 cm | without the modifier, sixteen steps move it nothing |
+
+Each prints its distance on a line beginning "MOVES ON A FLOOR:".
+
+**Set-up changed, no assertion:** `PayingUnderAbstinenceAndCallingVigilsSmiteEachWakeTheNearestStatue` and
+`TheEdictsThatForbidWakeNoStatue` cast a nine-metre blink on a floor, which moved 0 cm until now; each puts the player
+back where they stood straight after it (`StandThePlayerAt`), so the blink cannot carry them inside a statue's
+12-metre trigger. **Left as it is:** `ABlinkOrAStepPutsTheEdictOfVigilsThreeSecondsBackToNothing` keeps its hand-made
+2.4 cm lift.
+
+**The Python guard,** `tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py`: no plain swept
+`SetActorLocation` or `AddActorWorldOffset` anywhere in the game's source but inside the helper, which it also checks
+is found with at least eight callers. **PROVED** through `tools/prove_guard.py` in an archive copy of `763e22905`: the
+Phasewalker step put back to `AddActorWorldOffset(..., /*bSweep=*/true)` gave "2 failed"
+(`test_no_plain_swept_move_outside_the_helper` and `test_the_check_reads_the_game_and_finds_the_helper`), restored
+"2 passed".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4274 / 0: `development` at `697702601` measured 4270, and four tests are added |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| U1, the helper's character branch off, so every character takes the plain sweep | `AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance` fails |
+| U2, the caster's move put back to a plain swept `SetActorLocation` | `ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem` fails |
+| The distances | measured, quoted as printed on the "MOVES ON A FLOOR:" lines |
+
+**A risk registered rather than hidden:** other tests cast a movement skill on a floor where it moved 0 cm until now,
+among them the users of `RuleOfChaosGrantStep`. They were not read one by one; a test that reads the player's
+position after the skill could now see a different one. If one fails the window
+stops there and it is reported, not changed.
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-26 — Withered Touch takes 20% off the cursed player's own blows and ticks, and off its maximum mana and maximum energy shield, for 5 seconds (#2533 follow-up)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Debuffs sheet's Withered Touch row, and `game/Data/StatusEffects.csv`
