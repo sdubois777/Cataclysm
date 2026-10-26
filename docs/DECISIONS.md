@@ -533,7 +533,33 @@ the Ultimate key empty, that extra tag acts on nothing. The test's "and only it"
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-25, window t96w, the second window after the t95w stop above, under the
+editor lock as `enchant-t96w`, taken at 11.2 GB free, at `260cafb60` on `feat/any-skill-in-any-slot-1`: the first three
+commits as moved for t95w (`742180715`, `32f023494`, `9c72fc5e1`, on development `6a9edc26a`) and the ruled test change
+(`260cafb60`) on top. `tools/check_resolved_cpp.py` on the changed test file: "1 files read, 0 with complaints".
+
+- **The changed test alone, first:** `Cataclysm.SkillAssignment.AMovedUltimateIsReachedByUltimateRowsAndConvertedAsAnUltimate`:
+  "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.28.cpp"; "1 tests performed, 1 succeeded, 0
+  failed". As registered.
+- **The whole Unreal suite, as registered:** build already up to date; "4237 tests performed, 4237 succeeded, 0 failed"
+  (4224 on development + 13 of this layer); "Declared: 4237 tests in the tree at 260cafb60; 4237 performed, gap 0". 43
+  tests skipped part of what they check. The two tests changed under Q-L3c passed. The memory summary line, quoted:
+  "CataclysmTestMemorySummary: tests=4844 peak_used_virtual_mb=7964 final_used_virtual_mb=7634 collections=3218
+  collection_total_s=107.757 worlds_at_last_collection=1".
+- **Python of record, as registered:** "6990 passed, 8 skipped"; JUnit 6998 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **The three proofs, prefix `Cataclysm.SkillAssignment.` (13 tests), each anchor counted once, 0 ensures, the file's
+  hash the same after, and every restored half 13 performed, 13 succeeded:**
+  - **L3-G1, the numbers follow the key:** PROVED, AS REGISTERED. 4 failed,
+    `AMovedSkillKeepsTheNumbersOfTheSlotItWasMadeFor`,
+    `AnUltimateOnTheHeavyKeyWaitsTheUltimatesCooldownPaysItsFervourAndKeepsManaWeaver`,
+    `MoltenCleaveOnTheAuraKeyWaitsItsOwnCooldownAndAnAuraThereWaitsForNothing` and
+    `TwoSkillsMadeForOneSlotEachKeepTheirOwnCooldownOfThatSlotsLength`; 10 failed assertions, registered 10.
+  - **L3-G2, a kept choice empties its key instead of showing the default:** PROVED, AS REGISTERED. 2 failed,
+    `AChoiceIsKeptWhileItsWeaponIsOffAndReturnsWithIt` and
+    `WithNoChoiceTheKeysAreTheDefaultFillAndEachSkillSitsInTheSlotItWasMadeFor`; 2 failed assertions, registered 2.
+  - **L3-G3, the skill-use notice reads the key:** PROVED, AS REGISTERED. 1 failed,
+    `ASkillUseAnnouncesTheSlotTheSkillWasMadeFor`; 1 failed assertion, registered 1.
 
 ---
 
