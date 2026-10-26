@@ -324,7 +324,9 @@ public:
 	 * Fills the six ability slots again from what is worn and what the player chose. Issue #837 layer 3.
 	 *
 	 * WHAT `ACataclysmPlayerState::AssignSkill` AND `ClearSkillChoice` CALL, so a choice reaches the keys at once. The
-	 * private `FillAbilitySlotsFromWornWeapon` is the whole of it; no stat line is written.
+	 * private `FillAbilitySlotsFromWornWeapon`, and then, since layer 4 (ruled Q3a), a skill that changed keys takes
+	 * its running cooldown and charges with it (`UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys`). No stat
+	 * line is written.
 	 */
 	void RefillAbilitySlots();
 

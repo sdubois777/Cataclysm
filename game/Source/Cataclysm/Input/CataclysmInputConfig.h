@@ -110,6 +110,14 @@ namespace CataclysmInputActionNames
 	inline const FName DrinkPotion2 = FName(TEXT("DrinkPotion2"));
 	inline const FName DrinkPotion3 = FName(TEXT("DrinkPotion3"));
 	inline const FName DrinkPotion4 = FName(TEXT("DrinkPotion4"));
+
+	/**
+	 * Open and close the skill-choice screen: which pool skill sits on which key. Tapped, not held. Issue #837
+	 * layer 4, ruled Q1 2026-10-25: "K plus Cataclysm.ChooseSkills".
+	 *
+	 * K by default, free in both control schemes. S was not taken: it is a movement key under keyboard movement.
+	 */
+	inline const FName ToggleSkillAssignment = FName(TEXT("ToggleSkillAssignment"));
 }
 
 /**

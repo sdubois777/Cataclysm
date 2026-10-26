@@ -656,16 +656,29 @@ FString ACataclysmPlayerState::RefusalForSkillChoice(ECataclysmAbilitySlot Slot,
 		return TEXT("Name the skill by its row, as Cataclysm.ShowSkills lists it.");
 	}
 
+	// BY THE SKILL'S NAME, NEVER ITS ROW (ruled Q5 of layer 4, 2026-10-25: "A player-facing screen must not show row
+	// names"). The pool's name, else the table row's `SkillName`; the row name only for a row with no name.
+	const auto NameOf = [&Pool, Table](FName Row)
+	{
+		const FCataclysmWeaponSkill* InPool =
+			Pool.FindByPredicate([Row](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == Row; });
+		const FCataclysmWeaponSkillRow* InTable = InPool || !Table ? nullptr
+			: Table->FindRow<FCataclysmWeaponSkillRow>(Row, TEXT(""), /*bWarnIfRowMissing=*/false);
+		const FString Named = InPool ? InPool->Name : (InTable ? InTable->SkillName : FString());
+		return Named.IsEmpty() ? Row.ToString() : Named;
+	};
+
 	// FROM THE POOL THE WORN WEAPONS MAKE NOW, naming what they offer.
 	if (!Pool.ContainsByPredicate([SkillRow](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == SkillRow; }))
 	{
+		// A ROW THE TABLE DOES NOT HAVE HAS NO NAME, so it is named as it was typed.
 		if (Table && !Table->FindRowUnchecked(SkillRow))
 		{
 			return FString::Printf(TEXT("There is no skill row called %s."), *SkillRow.ToString());
 		}
 		const FString Offered = FString::JoinBy(Pool, TEXT(", "),
-			[](const FCataclysmWeaponSkill& Skill) { return Skill.RowName.ToString(); });
-		return FString::Printf(TEXT("%s is not in your skill pool. Your weapons offer: %s."), *SkillRow.ToString(),
+			[&NameOf](const FCataclysmWeaponSkill& Skill) { return NameOf(Skill.RowName); });
+		return FString::Printf(TEXT("%s is not in your skill pool. Your weapons offer: %s."), *NameOf(SkillRow),
 							   Offered.IsEmpty() ? TEXT("nothing") : *Offered);
 	}
 
@@ -678,11 +691,11 @@ FString ACataclysmPlayerState::RefusalForSkillChoice(ECataclysmAbilitySlot Slot,
 		}
 		if (Choice.Slot == Slot)
 		{
-			return FString::Printf(TEXT("%s is already chosen for the %s slot."), *SkillRow.ToString(),
+			return FString::Printf(TEXT("%s is already chosen for the %s slot."), *NameOf(SkillRow),
 								   *SkillSlotName(Slot));
 		}
 		return FString::Printf(TEXT("%s is already chosen for the %s slot. Clear that slot first."),
-							   *SkillRow.ToString(), *SkillSlotName(Choice.Slot));
+							   *NameOf(SkillRow), *SkillSlotName(Choice.Slot));
 	}
 	return FString();
 }

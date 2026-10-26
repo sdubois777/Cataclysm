@@ -470,15 +470,17 @@ bool FCataclysmSkillAssignmentAnyKeyTest::RunTest(const FString&)
 	TestEqual(TEXT("the basic attack's key is refused (O2)"), Reason,
 			  FString(TEXT("The basic attack comes from the weapon and cannot be chosen.")));
 	Carrier.State->AssignSkill(ECataclysmAbilitySlot::Special, FName(TEXT("War_Greataxe_Heavy")), Reason);
+	// BY THE SKILLS' NAMES AND NOT THEIR ROWS, ruled Q5 of layer 4 (2026-10-25); this and the last sentence below
+	// named rows until then.
 	TestTrue(TEXT("a row not in the pool is refused, naming the pool"),
-			 Reason.StartsWith(TEXT("War_Greataxe_Heavy is not in your skill pool. Your weapons offer: "))
-				 && Reason.Contains(MoltenCleaveRow.ToString()));
+			 Reason.StartsWith(TEXT("Sundering Arc is not in your skill pool. Your weapons offer: "))
+				 && Reason.Contains(TEXT("Molten Cleave")));
 	Carrier.State->AssignSkill(ECataclysmAbilitySlot::Special, FName(TEXT("No_Such_Row")), Reason);
 	TestEqual(TEXT("a row the table does not have is refused"), Reason,
 			  FString(TEXT("There is no skill row called No_Such_Row.")));
 	Carrier.State->AssignSkill(ECataclysmAbilitySlot::Special, PyroclasmRow, Reason);
 	TestEqual(TEXT("a row chosen for another key is refused, naming the key (O4)"), Reason,
-			  FString(TEXT("Demonic_Greataxe_Ultimate is already chosen for the Heavy slot. Clear that slot first.")));
+			  FString(TEXT("Pyroclasm is already chosen for the Heavy slot. Clear that slot first.")));
 	TestEqual(TEXT("and the refusals recorded nothing"), Carrier.State->GetSkillAssignment().Num(), 1);
 	return true;
 }
@@ -723,12 +725,13 @@ bool FCataclysmSkillAssignmentConsoleTest::RunTest(const FString&)
 				 .Contains(TEXT("The basic attack comes from the weapon and cannot be chosen.")));
 	TestTrue(TEXT("a row the table does not have is refused"),
 			 Run(Assign, {TEXT("Special"), TEXT("No_Such_Row")}).Contains(TEXT("There is no skill row called No_Such_Row.")));
+	// BY THE SKILL'S NAME, ruled Q5 of layer 4 (2026-10-25); it named the row until then.
 	TestTrue(TEXT("a row not in the pool is refused"),
 			 Run(Assign, {TEXT("Special"), TEXT("War_Greataxe_Heavy")})
-				 .Contains(TEXT("War_Greataxe_Heavy is not in your skill pool.")));
+				 .Contains(TEXT("Sundering Arc is not in your skill pool.")));
 	TestTrue(TEXT("a row chosen for another key is refused, naming it"),
 			 Run(Assign, {TEXT("Special"), PyroclasmRow.ToString()})
-				 .Contains(TEXT("is already chosen for the Heavy slot. Clear that slot first.")));
+				 .Contains(TEXT("Pyroclasm is already chosen for the Heavy slot. Clear that slot first.")));
 
 	// A KEPT CHOICE, NAMED.
 	if (!WearInTheRightHand(*this, Carrier, AssignmentWeapon(TEXT("Weapon_Sword"), {FName(TEXT("War"))})))
@@ -1227,6 +1230,96 @@ bool FCataclysmSkillAssignmentTrapSentenceTest::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("and the far enemy, so it was cast centred on the triggering enemy, by the Ultimate's "
 								   "sentence: %.2f"), AssignmentTakenFrom(MovedFar)),
 			 AssignmentTakenFrom(MovedFar) > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillAssignmentCarriedCooldownTest,
+	"Cataclysm.SkillAssignment.AMovedSkillTakesItsRunningCooldownToTheKeyItLandsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Layer 4, ruled Q3a 2026-10-25: "carry the running cooldown and charges with the skill". Pyroclasm used on the
+ * Ultimate key and then chosen for the Heavy key is still waiting the time it had left, now under `Cooldown.Heavy`;
+ * `Cooldown.Ultimate` has ended; and it cannot be pressed. The control, read first: Molten Cleave, never used, chosen
+ * for the Special key is ready there at once, so carrying invents no cooldown.
+ *
+ * The cooldown is committed by the ability's own `ApplyCooldown`, the call a press commits, as the Aura key test above
+ * does, because a press of a strike waits on clips and targets. The clock then runs 2.5 seconds, so what is carried is
+ * the time LEFT and not the whole length. The time left is read on the world clock before and after the move, with no
+ * clock moved between, so they agree to within 0.05 seconds (one clock step), which is the tolerance.
+ */
+bool FCataclysmSkillAssignmentCarriedCooldownTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	// THE LONGEST TIME LEFT UNDER A KEY'S COOLDOWN TAG, as the skill bar reads it; 0 for none.
+	const auto SecondsLeftOn = [](const UAbilitySystemComponent* System, ECataclysmAbilitySlot Key)
+	{
+		float Longest = 0.0f;
+		for (const TPair<float, float>& Wait : System->GetActiveEffectsTimeRemainingAndDuration(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(Key)))))
+		{
+			Longest = FMath::Max(Longest, Wait.Key);
+		}
+		return Longest;
+	};
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillAssignmentCarrier Carrier = SpawnAssignmentCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+
+	// THE CONTROL: an unused skill moved is ready at once, and nothing waits on the key it lands on.
+	FString Reason;
+	if (!TestTrue(TEXT("set-up: Molten Cleave, unused, is chosen for the Special key"),
+				  Carrier.State->AssignSkill(ECataclysmAbilitySlot::Special, MoltenCleaveRow, Reason)))
+	{
+		return false;
+	}
+	const UCataclysmGameplayAbility* CleaveOnSpecial = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Special);
+	TestTrue(TEXT("control: Molten Cleave moved unused is ready on the Special key at once"),
+			 CleaveOnSpecial && CleaveOnSpecial->DisplayedName() == TEXT("Molten Cleave") && KeyIsReady(CleaveOnSpecial));
+	TestEqual(TEXT("control: and no cooldown runs under Cooldown.Special"),
+			  CooldownEffectsOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Special), 0);
+	Carrier.State->ClearSkillChoice(ECataclysmAbilitySlot::Special);
+
+	// PYROCLASM USED ON ITS OWN KEY, and 2.5 seconds pass.
+	const UCataclysmGameplayAbility* OnUltimate = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+	if (!TestTrue(TEXT("set-up: Pyroclasm is on the Ultimate key"),
+				  OnUltimate && OnUltimate->DisplayedName() == TEXT("Pyroclasm")))
+	{
+		return false;
+	}
+	OnUltimate->ApplyCooldown(OnUltimate->GetCurrentAbilitySpecHandle(), OnUltimate->GetCurrentActorInfo(),
+							  FGameplayAbilityActivationInfo());
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float LeftBefore = SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate);
+	if (!TestTrue(TEXT("set-up: Pyroclasm waits under Cooldown.Ultimate, with less than its whole length left"),
+				  LeftBefore > 0.0f && LeftBefore < CooldownLengthOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate)))
+	{
+		return false;
+	}
+
+	// MOVED TO THE HEAVY KEY, IT TAKES THE TIME IT HAD LEFT WITH IT.
+	if (!TestTrue(TEXT("set-up: Pyroclasm is chosen for the Heavy key"),
+				  Carrier.State->AssignSkill(ECataclysmAbilitySlot::Heavy, PyroclasmRow, Reason)))
+	{
+		return false;
+	}
+	const UCataclysmGameplayAbility* OnHeavy = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Heavy);
+	if (!TestTrue(TEXT("set-up: Pyroclasm is on the Heavy key"), OnHeavy && OnHeavy->DisplayedName() == TEXT("Pyroclasm")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it waits under Cooldown.Heavy the time it had left on the Ultimate key"),
+			  SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Heavy), LeftBefore, 0.05f);
+	TestEqual(TEXT("and Cooldown.Ultimate has ended"),
+			  CooldownEffectsOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), 0);
+	TestFalse(TEXT("so a press of the Heavy key cannot cast it"), KeyIsReady(OnHeavy));
 	return true;
 }
 

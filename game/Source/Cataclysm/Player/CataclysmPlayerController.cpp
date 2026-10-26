@@ -11,6 +11,7 @@
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
+#include "Interface/CataclysmSkillAssignmentWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
@@ -230,6 +231,11 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::TogglePassiveTree,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_TogglePassiveTree);
+
+	// The skill-choice screen, on K. Issue #837 layer 4, ruled Q1.
+	Input->BindNativeAction(Config, Names::ToggleSkillAssignment,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleSkillAssignment);
 
 	// Started, so a potion is drunk as the key goes down. Issue #806.
 	Input->BindNativeAction(Config, Names::DrinkPotion1, ETriggerEvent::Started,
@@ -921,6 +927,52 @@ void ACataclysmPlayerController::ToggleCharacterSheet()
 	// resistance rows.
 	CharacterSheetScreen->Refresh();
 	CharacterSheetScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::Input_ToggleSkillAssignment()
+{
+	ToggleSkillAssignment();
+}
+
+void ACataclysmPlayerController::ToggleSkillAssignment()
+{
+	// THE CHARACTER SHEET'S SHAPE. Issue #837 layer 4.
+	if (!SkillAssignmentScreen)
+	{
+		UClass* ScreenClass = SkillAssignmentScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no skill-choice screen to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *SkillAssignmentScreenClass.ToString());
+			return;
+		}
+
+		SkillAssignmentScreen = CreateWidget<UCataclysmSkillAssignmentWidget>(this, ScreenClass);
+		if (!SkillAssignmentScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The skill-choice screen could not be created, so the key that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (SkillAssignmentScreen->IsInViewport())
+	{
+		SkillAssignmentScreen->RemoveFromParent();
+
+		// THE SAME INPUT MODE AS CLOSING EVERY OTHER SCREEN, for the reason issue #1015 recorded.
+		ApplyPlayingInputMode();
+		return;
+	}
+
+	// NO PAUSE (ruled Q2): no screen in this game pauses, so creatures go on while the player chooses.
+	ApplyPlayingInputMode();
+
+	// REFRESHED ON EVERY OPENING: the worn weapons, and so the pool, can have changed since it was last closed.
+	SkillAssignmentScreen->Refresh();
+	SkillAssignmentScreen->AddToViewport();
 }
 
 void ACataclysmPlayerController::ToggleCityScreen(int32 CityId)

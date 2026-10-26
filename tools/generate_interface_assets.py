@@ -17,6 +17,8 @@ WHAT IT MAKES, under `/Game/Interface`:
                             Leave, issues #1820 and #41
     WBP_FloorModifiers      the dungeon modifiers in force on the floor being
                             walked, and which of them do nothing yet, issue #41
+    WBP_SkillAssignment     which skill from the pool goes on which of the six
+                            keys, issue #837 layer 4
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -614,6 +616,75 @@ def make_choice_panel():
     log("created {}/{}".format(INTERFACE_DIR, CHOICE_PANEL_ASSET))
 
 
+SKILL_ASSIGNMENT_PARENT = "CataclysmSkillAssignmentWidget"
+SKILL_ASSIGNMENT_ASSET = "WBP_SkillAssignment"
+
+
+def make_skill_assignment():
+    """Which skill from the pool goes on which of the six keys, issue #837 layer 4.
+
+    THE WHOLE SCREEN, as the character sheet is, because it is opened to choose
+    and closed again: K or Cataclysm.ChooseSkills. It does not pause the game.
+    """
+    parent = parent_class(SKILL_ASSIGNMENT_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(SKILL_ASSIGNMENT_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Skills", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    # THE BASIC ATTACK'S LINE AND THE SIX KEYS, one copy of WBP_ChoiceButton
+    # each, and a kept choice's line under its key. A vertical box, because six
+    # keys and a line or two fit a window. EMPTY HERE AND FILLED AT RUN TIME by
+    # UCataclysmSkillAssignmentWidget, in the skill bar's order.
+    add(blueprint, unreal.VerticalBox, "SlotBox", "Body")
+
+    # "CLEAR THE SLOT", the owner's words. A button holds one child, its label.
+    add(blueprint, unreal.Button, "ClearButton", "Body")
+    clear = add(blueprint, unreal.TextBlock, "ClearLabel", "ClearButton")
+    set_text(clear, "Clear the slot", size=16)
+
+    # THE POOL, one button per skill. A scroll box holding a wrap box, because
+    # two weapons carrying two damage types make a pool far longer than a line,
+    # and `fill_remaining_height` stops the scroll box at the space available.
+    pool_scroll = add(blueprint, unreal.ScrollBox, "PoolScroll", "Body")
+    fill_remaining_height(pool_scroll)
+    add(blueprint, unreal.WrapBox, "PoolBox", "PoolScroll")
+
+    description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
+    set_text(description, "", size=16)
+    description.set_editor_property("auto_wrap_text", True)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            SKILL_ASSIGNMENT_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -625,6 +696,7 @@ def main():
     make_city_screen()
     make_floor_modifier_panel()
     make_choice_panel()
+    make_skill_assignment()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

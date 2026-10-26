@@ -74,6 +74,10 @@ NATIVE_ACTIONS = [
     ("IA_DrinkPotion2", "DrinkPotion2", BOOLEAN, "Drink Potion 2"),
     ("IA_DrinkPotion3", "DrinkPotion3", BOOLEAN, "Drink Potion 3"),
     ("IA_DrinkPotion4", "DrinkPotion4", BOOLEAN, "Drink Potion 4"),
+    # The skill-choice screen: which pool skill sits on which key. Issue #837
+    # layer 4, ruled Q1 2026-10-25: "K plus Cataclysm.ChooseSkills".
+    ("IA_ToggleSkillAssignment", "ToggleSkillAssignment", BOOLEAN,
+     "Toggle Skill Assignment"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -138,6 +142,10 @@ MOUSE_MAPPINGS = [
     ("IA_DrinkPotion2", "Three", []),
     ("IA_DrinkPotion3", "Four", []),
     ("IA_DrinkPotion4", "Five", []),
+    # The skill-choice screen. K in both schemes, and free in both: S, the
+    # other key considered, moves the character under keyboard movement.
+    # Issue #837 layer 4.
+    ("IA_ToggleSkillAssignment", "K", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -183,6 +191,10 @@ KEYBOARD_MAPPINGS = [
     ("IA_DrinkPotion2", "Three", []),
     ("IA_DrinkPotion3", "Four", []),
     ("IA_DrinkPotion4", "Five", []),
+    # The skill-choice screen. K in both schemes, and free in both: S, the
+    # other key considered, moves the character under keyboard movement.
+    # Issue #837 layer 4.
+    ("IA_ToggleSkillAssignment", "K", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------
