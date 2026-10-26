@@ -332,9 +332,13 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
 		// THE POOL, AND ITS DEFAULT FILL, since issue #837 layer 2: every worn
 		// weapon type with every carried damage type, and for each slot the first
 		// entry designed for it. One weapon of one type is `SkillsFor` exactly.
+		//
+		// AND THE PLAYER'S CHOICES, since issue #837 layer 3: a chosen row in the pool on its key, every other key its
+		// default (O4), and with no choice the default fill element for element. A chosen row not in the pool is kept
+		// by the player state and fills nothing here (Q5).
 		SkillPool = UCataclysmWeaponSkills::PoolFor(
 			WeaponSkillTable, WornWeaponTypes, DamageTypes);
-		AvailableSkills.Append(UCataclysmWeaponSkills::DefaultFillFrom(SkillPool));
+		AvailableSkills.Append(UCataclysmWeaponSkills::FillWithChoices(SkillPool, SkillChoices));
 	}
 	else
 	{
@@ -445,6 +449,8 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
 		{
 			Placeholder->SkillName = Skill.Name;
 			Placeholder->SkillDescription = Skill.Description;
+			// AND THE SLOT IT WAS MADE FOR, as `StampOnto` writes it on a template (issue #837 layer 3).
+			Placeholder->DesignedSlot = UCataclysmWeaponSkills::DesignedSlotOf(Skill);
 		}
 	}
 

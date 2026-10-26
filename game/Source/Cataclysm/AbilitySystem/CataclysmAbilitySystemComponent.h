@@ -1898,6 +1898,18 @@ public:
 	void RefillSkillCharges(const FGameplayTagContainer& CooldownTags);
 
 	/**
+	 * The cooldown tags of the skills MADE for `Designed`, whichever keys they sit on. Issue #837 layer 3.
+	 *
+	 * A COOLDOWN IS KEPT BY THE KEY A SKILL SITS ON, its length by the slot it was made for: the owner, 2026-10-25,
+	 * "Each skill its own cooldown", and a key holds one skill. So a row that names a slot's cooldown -- "reset your
+	 * heavy attack's cooldown", Follow Through's Movement refund -- reaches that slot's skills through this, as every
+	 * other rule follows the designed slot (O1). Each granted ability made for `Designed` gives its key's tag; and the
+	 * slot's own tag is added unless an ability made for another slot sits on that key, so a character nothing moved,
+	 * or a cooldown applied with no ability behind it, reads exactly `CooldownTag(Designed)` as before.
+	 */
+	FGameplayTagContainer CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot Designed) const;
+
+	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
 	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
 	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.

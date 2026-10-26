@@ -151,7 +151,8 @@ public:
 	const TArray<FString>& GetWornWeaponTypes() const { return WornWeaponTypes; }
 
 	/**
-	 * What fills the slots: the basic attack and, for each other slot, the default fill's skill. Granted or not.
+	 * What fills the slots: the basic attack and, for each other slot, the chosen skill or the default fill's. Granted
+	 * or not. Each entry's `Slot` is the key it sits on and `DesignedSlot` the slot it was made for (layer 3).
 	 *
 	 * ONE PER SLOT, AS IT ALWAYS WAS, and every reader that looks a held skill up here keeps meaning what it meant:
 	 * the skill bar, a triggered skill's held pool, a minion's copy. The whole pool is `GetSkillPool`.
@@ -161,8 +162,8 @@ public:
 
 	/**
 	 * Every skill the worn weapons and the carried damage types make available, more than one to a slot when two
-	 * weapons or two types are worn (`UCataclysmWeaponSkills::PoolFor`). Issue #837 layer 2. Nothing chooses from it
-	 * but the default fill yet; layer 3 lets the player.
+	 * weapons or two types are worn (`UCataclysmWeaponSkills::PoolFor`). Issue #837 layer 2. Since layer 3 the player
+	 * chooses from it (`ACataclysmPlayerState::AssignSkill`), and every key nothing was chosen for takes its default.
 	 */
 	const TArray<FCataclysmWeaponSkill>& GetSkillPool() const { return SkillPool; }
 
@@ -297,6 +298,17 @@ public:
 		}
 	}
 
+	/**
+	 * The player's chosen skills, for the next fill. Issue #837 layer 3. What the pawn hands over from
+	 * `ACataclysmPlayerState::GetSkillAssignment` before it fills the slots, as it hands the damage types; the fill reads
+	 * them through `UCataclysmWeaponSkills::FillWithChoices`. An empty list is the default fill. A component no pawn
+	 * hands anything -- a bare actor in a test -- keeps whatever it was handed last, empty at first.
+	 */
+	void UseSkillAssignment(const TArray<FCataclysmSkillChoice>& NewChoices) { SkillChoices = NewChoices; }
+
+	/** The choices the last fill was handed. */
+	const TArray<FCataclysmSkillChoice>& GetSkillChoices() const { return SkillChoices; }
+
 	/** Which weapon a character begins holding. For tests; see the field below. */
 	void SetStartingWeaponType(const FString& NewType) { StartingWeaponType = NewType; }
 
@@ -413,6 +425,9 @@ private:
 
 	/** The whole pool the last fill drew from. Issue #837 layer 2. */
 	UPROPERTY() TArray<FCataclysmWeaponSkill> SkillPool;
+
+	/** The player's choices the fills read, as `UseSkillAssignment` was handed them. Issue #837 layer 3. */
+	UPROPERTY() TArray<FCataclysmSkillChoice> SkillChoices;
 
 	/** What the current weapon granted, so it can all be taken back. */
 	FCataclysmAbilitySetHandles GrantedHandles;

@@ -380,6 +380,16 @@ only the true one shows the value survives a round trip. **Still version 3, and
 the run record still version 1**: a field with a default is not a version bump,
 and a file without it reads as false. Nothing loads a save yet (#753).
 
+`Character_v3.json` was edited under the exception again on 2026-10-25, for issue
+#837 layer 3: the record gained `SkillAssignment`, which pool skill the player chose
+for which key. **It holds one choice, `War_Greatsword_Heavy` on the `Ultimate` key**:
+an empty list is the field's default, so only a non-empty one shows the value survives
+a round trip, and a heavy attack on the Ultimate key shows the key is read by its
+NAME and not taken from the row.
+`Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` reads it
+back. **Still version 3** (ruled Q6): a file without the field reads as no choice,
+which is the default fill. Nothing loads a save yet (#753).
+
 **Once the game can load a save, this exception is gone.** From then on a
 file here is a file a player might have, and changing one means changing what
 an old build wrote -- which is a lie about history and defeats the whole point
@@ -392,7 +402,7 @@ of committing them. Add a schema version and a migration step instead.
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
-| `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet |
+| `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |

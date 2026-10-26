@@ -869,7 +869,8 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
 	const float Base = Skill.Cooldown >= 0.0f
 		? Skill.Cooldown
-		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).Cooldown;
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(),
+										   UCataclysmWeaponSkills::DesignedSlotOf(Skill)).Cooldown;
 	const float AfterRows = UCataclysmGameplayAbility::CooldownAfterReduction(Theirs, Base, Skill.Tags);
 
 	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
@@ -883,7 +884,7 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot
 	// table's cooldown is nought and states no wait. NOUGHT, "never swing", STAYS NOUGHT, which `StepSkillGadget`
 	// reads as never cast. The player's own Cripple reaches it, because it is read off the player's avatar.
-	if (Skill.Slot == ECataclysmAbilitySlot::BasicAttack)
+	if (UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::BasicAttack)
 	{
 		const float Swing = UCataclysmBasicAttack::SecondsBetweenSwingsFor(Cataclysm);
 		return Swing > 0.0f ? Swing / (1.0f + Faster) : 0.0f;
@@ -2265,10 +2266,12 @@ bool ACataclysmMinion::CastPlayersUltimateFromHere()
 
 	// WHAT THE COMMANDER HOLDS IN THE ULTIMATE SLOT NOW (T2), as `SkillGadgetsSkill` reads a slot, REFUSED AS A SKILL
 	// GADGET REFUSES (T2). NOT ASKED WHETHER THE SLOT IS CONVERTED: a converted Ultimate is still cast (T3).
+	// THE SKILL MADE FOR THE ULTIMATE SLOT, ON WHICHEVER KEY IT SITS, since issue #837 layer 3: "An Ultimate on the
+	// Heavy key is still an Ultimate in every rule" (O1, 2026-10-25).
 	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
 	const FCataclysmWeaponSkill* Held = Slots
-		? Slots->GetAvailableSkills().FindByPredicate(
-			  [](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Ultimate; })
+		? Slots->GetAvailableSkills().FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+			  { return UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::Ultimate; })
 		: nullptr;
 	if (!Held || !SkillGadgetMayCast(*Held))
 	{

@@ -4707,12 +4707,8 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 	}
 	else if (Action.CooldownReduce == ECataclysmCooldownReset::Heavy)
 	{
-		const FGameplayTag Cooldown =
-			UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
-		if (Cooldown.IsValid())
-		{
-			Reducing.AddTag(Cooldown);
-		}
+		// THE SKILL MADE FOR THE HEAVY SLOT, ON WHICHEVER KEY IT SITS (O1, issue #837 layer 3).
+		Reducing.AppendTags(CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Heavy));
 	}
 	if (Reducing.IsEmpty())
 	{
@@ -4909,14 +4905,13 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 		}
 	}
 
+	// A SLOT NAMED BY A ROW OR BY THE EVENT'S SKILL IS THE SLOT A SKILL WAS MADE FOR, and its cooldown is kept on the
+	// key that skill sits on: `CooldownTagsOfSkillsDesignedFor`. Issue #837 layer 3 (O1, and the owner's "Each skill
+	// its own cooldown"). For a character nothing moved it is the slot's own tag, as before.
 	FGameplayTagContainer Clearing;
-	const auto Add = [&Clearing](ECataclysmAbilitySlot Slot)
+	const auto Add = [this, &Clearing](ECataclysmAbilitySlot Slot)
 	{
-		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
-		if (Cooldown.IsValid())
-		{
-			Clearing.AddTag(Cooldown);
-		}
+		Clearing.AppendTags(CooldownTagsOfSkillsDesignedFor(Slot));
 	};
 	switch (Action.CooldownReset)
 	{
@@ -4933,6 +4928,11 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 				continue;
 			}
 			Add(Slot);
+		}
+		// AND NOT THE ONE THAT FIRED, ON WHICHEVER KEY IT SITS: a moved skill's key tag is another slot's.
+		if (Action.CooldownReset == EReset::Others && EventSlot != ECataclysmAbilitySlot::None)
+		{
+			Clearing.RemoveTags(CooldownTagsOfSkillsDesignedFor(EventSlot));
 		}
 		break;
 	case EReset::Heavy:
@@ -5063,6 +5063,44 @@ void UCataclysmAbilitySystemComponent::RefillSkillCharges(
 			Held.Value.Spent = 0;
 		}
 	}
+}
+
+FGameplayTagContainer UCataclysmAbilitySystemComponent::CooldownTagsOfSkillsDesignedFor(
+	ECataclysmAbilitySlot Designed) const
+{
+	// EACH GRANTED SKILL MADE FOR THE SLOT GIVES ITS KEY'S TAG, and the slot's own key keeps its tag unless a skill made
+	// for another slot sits there. Issue #837 layer 3; see the header.
+	FGameplayTagContainer Tags;
+	bool bItsOwnKeyHoldsAnotherSlotsSkill = false;
+	for (const FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
+	{
+		const UCataclysmGameplayAbility* Ability = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
+		Ability = Ability ? Ability : Cast<UCataclysmGameplayAbility>(Spec.Ability);
+		// ONLY A SKILL A KEY REACHES, which carries its key's tag on the spec: a free start has none and waits for none.
+		if (!Ability || Ability->Slot == ECataclysmAbilitySlot::None
+			|| !Spec.GetDynamicSpecSourceTags().HasTagExact(CataclysmAbilitySlots::Tag(Ability->Slot)))
+		{
+			continue;
+		}
+		if (Ability->GetDesignedSlot() == Designed)
+		{
+			const FGameplayTag OnItsKey = UCataclysmSkillSlots::CooldownTag(Ability->Slot);
+			if (OnItsKey.IsValid())
+			{
+				Tags.AddTag(OnItsKey);
+			}
+		}
+		else if (Ability->Slot == Designed)
+		{
+			bItsOwnKeyHoldsAnotherSlotsSkill = true;
+		}
+	}
+	const FGameplayTag OwnKey = UCataclysmSkillSlots::CooldownTag(Designed);
+	if (OwnKey.IsValid() && !bItsOwnKeyHoldsAnotherSlotsSkill)
+	{
+		Tags.AddTag(OwnKey);
+	}
+	return Tags;
 }
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
@@ -7997,7 +8035,11 @@ FGameplayTagContainer UCataclysmAbilitySystemComponent::SkillGadgetSlotTags(ECat
 {
 	// THE HELD SKILL'S OWN TAGS, which carry its `Slot.*` tag on every row, as the lock is asked with a skill's tags.
 	// And the slot's tag added, so a slot whose weapon holds no skill for it is still answered by its row.
+	// ONLY THEN, since issue #837 layer 3: a held skill's own tags carry the slot it was MADE for, which decides its
+	// conversion wherever it sits (O1, 2026-10-25), so the key's tag is not added beside them. For a skill on its own key
+	// the tag was in its tags already, so nothing changes for a character nothing moved.
 	FGameplayTagContainer Tags;
+	bool bHoldsASkill = false;
 	const AActor* Avatar = GetAvatarActor();
 	const UCataclysmWeaponSlotsComponent* Slots =
 		Avatar ? Avatar->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
@@ -8007,10 +8049,11 @@ FGameplayTagContainer UCataclysmAbilitySystemComponent::SkillGadgetSlotTags(ECat
 				[Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; }))
 		{
 			Tags = Held->Tags;
+			bHoldsASkill = true;
 		}
 	}
 	const FGameplayTag SlotTag = CataclysmAbilitySlots::Tag(Slot);
-	if (SlotTag.IsValid())
+	if (SlotTag.IsValid() && !bHoldsASkill)
 	{
 		Tags.AddTag(SlotTag);
 	}

@@ -145,5 +145,11 @@
 		}
 	],
 	"PrivateEmpireUpgradePoints": 0,
-	"PrivateStash": []
+	"PrivateStash": [],
+	"SkillAssignment": [
+		{
+			"Slot": "Ultimate",
+			"SkillRow": "War_Greatsword_Heavy"
+		}
+	]
 }

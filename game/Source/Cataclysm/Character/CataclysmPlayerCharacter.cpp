@@ -2292,6 +2292,10 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
 									   : UCataclysmCharacterCreation::DefaultDamageType;
+
+	// AND THE PLAYER'S CHOSEN SKILLS, since issue #837 layer 3, handed over before every fill as the types are. None
+	// with no player state, which is the default fill.
+	WeaponSlots->UseSkillAssignment(Chooser ? Chooser->GetSkillAssignment() : TArray<FCataclysmSkillChoice>());
 	if (Equipment)
 	{
 		WeaponSlots->UseDamageTypes(UCataclysmWeaponSlotsComponent::InFillOrder(
@@ -2336,6 +2340,13 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	}
 
 	WeaponSlots->EquipStartingWeapon();
+}
+
+void ACataclysmPlayerCharacter::RefillAbilitySlots()
+{
+	// THE SAME FILL A CHANGE OF GEAR MAKES, and nothing else: no stat line is written, for the reason
+	// `FillAbilitySlotsFromWornWeapon` gives. Issue #837 layer 3.
+	FillAbilitySlotsFromWornWeapon();
 }
 
 bool ACataclysmPlayerCharacter::ApplyCreationChoice()
@@ -2969,6 +2980,160 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 					Character->GetEquipment()->EquippedWeaponType().IsEmpty()
 						? TEXT("none")
 						: *Character->GetEquipment()->EquippedWeaponType());
+		}));
+
+// ---------------------------------------------------------------------------
+// Which pool skill sits on which key, from the console. Issue #837 layer 3.
+//
+// A STEPPING STONE TO THE SCREEN OF LAYER 4, as `Cataclysm.Equip` is to the gear
+// panel: the choice is a rule on the player state, and these two commands only
+// read it and hand it a choice. `Cataclysm.Skills.` is a test prefix, so the
+// commands are named for what they do.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSkillConsole
+{
+	/** The key a command line names, by its tag's leaf ("Heavy"), or None. "Basic" names the basic attack's. */
+	ECataclysmAbilitySlot KeyNamed(const FString& Name)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			if (ACataclysmPlayerState::SkillSlotName(Slot).Equals(Name, ESearchCase::IgnoreCase))
+			{
+				return Slot;
+			}
+		}
+		return ECataclysmAbilitySlot::None;
+	}
+}
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowSkills(
+	TEXT("Cataclysm.ShowSkills"),
+	TEXT("List what sits on each skill key, every skill in the pool the worn weapons make, and the saved choices."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			const UCataclysmWeaponSlotsComponent* Slots =
+				Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+			if (!Slots)
+			{
+				return;
+			}
+			const ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+			const TArray<FCataclysmSkillChoice> Choices =
+				State ? State->GetSkillAssignment() : TArray<FCataclysmSkillChoice>();
+			const TArray<FCataclysmWeaponSkill>& Held = Slots->GetAvailableSkills();
+			const TArray<FCataclysmWeaponSkill>& Pool = Slots->GetSkillPool();
+
+			Ar.Log(TEXT("--- keys ---"));
+			for (const ECataclysmAbilitySlot Key : CataclysmAbilitySlots::All())
+			{
+				const FCataclysmWeaponSkill* OnKey = Held.FindByPredicate(
+					[Key](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Key; });
+				const FCataclysmSkillChoice* Chosen = Choices.FindByPredicate(
+					[Key](const FCataclysmSkillChoice& Choice) { return Choice.Slot == Key; });
+				FString Standing = Key == ECataclysmAbilitySlot::BasicAttack ? TEXT("from the weapon") : TEXT("default");
+				if (Chosen && OnKey && OnKey->RowName == Chosen->SkillRow)
+				{
+					Standing = TEXT("chosen");
+				}
+				else if (Chosen)
+				{
+					Standing = FString::Printf(TEXT("default; kept: %s is not in your pool"),
+											   *Chosen->SkillRow.ToString());
+				}
+				const FString What = OnKey
+					? FString::Printf(TEXT("%s (%s, made for %s) %s"), *OnKey->Name, *OnKey->RowName.ToString(),
+									  *ACataclysmPlayerState::SkillSlotName(UCataclysmWeaponSkills::DesignedSlotOf(*OnKey)),
+									  *Standing)
+					: FString::Printf(TEXT("- %s"), *Standing);
+				Ar.Logf(TEXT("  %-9s %s"), *ACataclysmPlayerState::SkillSlotName(Key), *What);
+			}
+
+			Ar.Log(TEXT("--- pool ---"));
+			for (const FCataclysmWeaponSkill& Skill : Pool)
+			{
+				Ar.Logf(TEXT("  %s  %s, made for %s, %s, %s"), *Skill.RowName.ToString(), *Skill.Name,
+						*ACataclysmPlayerState::SkillSlotName(UCataclysmWeaponSkills::DesignedSlotOf(Skill)),
+						*Skill.WeaponType, *Skill.DamageType);
+			}
+
+			Ar.Log(TEXT("--- saved choices ---"));
+			if (Choices.IsEmpty())
+			{
+				Ar.Log(TEXT("  none"));
+			}
+			for (const FCataclysmSkillChoice& Choice : Choices)
+			{
+				Ar.Logf(TEXT("  %s: %s"), *ACataclysmPlayerState::SkillSlotName(Choice.Slot),
+						*Choice.SkillRow.ToString());
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmAssignSkill(
+	TEXT("Cataclysm.AssignSkill"),
+	TEXT("Put a skill from the pool on a key: Cataclysm.AssignSkill <slot> <row>. 'default' in place of the row "
+		 "clears the slot and forgets the choice."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character)
+			{
+				return;
+			}
+			if (Args.Num() < 2)
+			{
+				Ar.Log(TEXT("Cataclysm.AssignSkill <slot> <row | default>. Cataclysm.ShowSkills lists the pool."));
+				return;
+			}
+			ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+			if (!State)
+			{
+				Ar.Log(TEXT("The player character has no Cataclysm player state, so it has nowhere to keep a "
+							"skill choice."));
+				return;
+			}
+			const ECataclysmAbilitySlot Slot = CataclysmSkillConsole::KeyNamed(Args[0]);
+			if (Slot == ECataclysmAbilitySlot::None)
+			{
+				Ar.Logf(TEXT("There is no skill slot called %s. The six are: Heavy, Special, Support, Aura, "
+							 "Ultimate and Movement."), *Args[0]);
+				return;
+			}
+
+			// "CLEAR THE SLOT" (Q5) FORGETS THE CHOICE (O5).
+			if (Args[1].Equals(TEXT("default"), ESearchCase::IgnoreCase))
+			{
+				if (Slot == ECataclysmAbilitySlot::BasicAttack)
+				{
+					Ar.Log(TEXT("The basic attack comes from the weapon and cannot be chosen."));
+					return;
+				}
+				const FString Named = ACataclysmPlayerState::SkillSlotName(Slot);
+				if (State->ClearSkillChoice(Slot))
+				{
+					Ar.Logf(TEXT("The %s slot is back to its default, and the choice is forgotten."), *Named);
+				}
+				else
+				{
+					Ar.Logf(TEXT("Nothing was chosen for the %s slot, so it already shows its default."), *Named);
+				}
+				return;
+			}
+
+			FString Reason;
+			if (!State->AssignSkill(Slot, FName(*Args[1]), Reason))
+			{
+				Ar.Log(*Reason);
+				return;
+			}
+			Ar.Logf(TEXT("%s is on the %s key."), *Args[1], *ACataclysmPlayerState::SkillSlotName(Slot));
 		}));
 
 // ---------------------------------------------------------------------------

@@ -82,6 +82,54 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 
 	/** Mana one use costs at level 100, or -1 to take its slot's. */
 	float ManaCost = -1.0f;
+
+	/**
+	 * The slot this skill was MADE for: its row's Slot column, or Basic for the basic attack. Issue #837 layer 3.
+	 *
+	 * `Slot` ABOVE IS THE KEY IT SITS ON, and since layer 3 the player may put a skill on any of the six keys. Ruled
+	 * 2026-10-25 by the owner (O1): "A skill is already tagged as heavy/basic/support/etc. we don't need to do
+	 * anything. Where the user assigns it is irrelevant". So the KEY decides which button casts it and this decides
+	 * every rule: its numbers, the slot-scoped rows (its Tags keep their `Slot.<designed>` tag), its Fervour, Mana
+	 * Weaver's Ultimate rule, Edict of Stillness and the gadget conversions. The two are equal in the default fill.
+	 *
+	 * NONE MEANS THE SAME AS `Slot`, for a skill a test builds by hand. Read it through
+	 * `UCataclysmWeaponSkills::DesignedSlotOf`, which answers that.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	ECataclysmAbilitySlot DesignedSlot = ECataclysmAbilitySlot::None;
+
+	/** The row of game/Data/WeaponSkills.csv it was read from, e.g. `Demonic_Greataxe_Ultimate`. None for the basic attack. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FName RowName;
+
+	/** The row's weapon type, "All" for an Aura. The basic attack's is its weapon's. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString WeaponType;
+
+	/** The row's damage type. Empty for the basic attack, which no damage type designs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString DamageType;
+};
+
+/**
+ * One saved choice of which pool skill sits on which key. Issue #837 layer 3.
+ *
+ * BY ROW AND BY SLOT NAME: the row is `FCataclysmWeaponSkill::RowName` and the save writes the enum by its name
+ * ("Ultimate"), so neither the table's order nor the enum's moves a saved choice. Every field `SaveGame`, or the save
+ * writer writes an empty object.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSkillChoice
+{
+	GENERATED_BODY()
+
+	/** The key: one of the six, never the basic attack (O2). */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Weapon Skill")
+	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	/** The chosen skill's row in game/Data/WeaponSkills.csv. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Weapon Skill")
+	FName SkillRow;
 };
 
 /**
@@ -168,6 +216,32 @@ public:
 	 */
 	static TArray<FCataclysmWeaponSkill> DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool);
 
+	/**
+	 * THE FILL WITH THE PLAYER'S CHOICES. Issue #837 layer 3, ruled 2026-10-25 (Q5, O2, O4).
+	 *
+	 * Each of the six keys takes its chosen row when that row is IN THE POOL, with `Slot` the key and `DesignedSlot`
+	 * kept; a key or a row named twice, the first choice wins. Every other key takes the first pool entry designed for
+	 * it that is not already held (O4), or stays empty. A chosen row NOT in the pool fills nothing and is not dropped:
+	 * the key shows its default and the choice is kept for when the weapon returns (Q5), because the choices are the
+	 * player state's and this only reads them. With no choice that applies, element for element `DefaultFillFrom`: the
+	 * keys in the order `DefaultFillFrom` gives them, then any key only a choice filled, in `CataclysmAbilitySlots::All`
+	 * order.
+	 */
+	static TArray<FCataclysmWeaponSkill> FillWithChoices(const TArray<FCataclysmWeaponSkill>& Pool,
+														 const TArray<FCataclysmSkillChoice>& Choices);
+
+	/** The slot a skill was made for: `DesignedSlot`, or `Slot` when none is set. EVERY RULE reading a held skill asks this (O1). */
+	static ECataclysmAbilitySlot DesignedSlotOf(const FCataclysmWeaponSkill& Skill)
+	{
+		return Skill.DesignedSlot != ECataclysmAbilitySlot::None ? Skill.DesignedSlot : Skill.Slot;
+	}
+
+	/** Whether a skill may be chosen for this key: the six, and not the basic attack, which comes from the weapon (O2). */
+	static bool IsChoosableSlot(ECataclysmAbilitySlot Slot)
+	{
+		return Slot != ECataclysmAbilitySlot::None && Slot != ECataclysmAbilitySlot::BasicAttack;
+	}
+
 	/** The name every basic attack carries. See BasicAttackFor for why it is one name. */
 	static const TCHAR* BasicAttackName;
 
@@ -220,6 +294,9 @@ public:
 	 * offers, and `UCataclysmTriggeredSkill`, for a skill started without a key. Written twice, the second copy would
 	 * miss the next field added. IT DOES NOT SET THE SLOT, which each caller decides: a weapon's grant takes it from
 	 * `GiveAbilityInSlot`, and a triggered skill sets the property with no key behind it.
+	 *
+	 * IT DOES SET THE DESIGNED SLOT, since issue #837 layer 3: `DesignedSlotOf(Skill)`, which every rule on the ability
+	 * reads (`UCataclysmGameplayAbility::GetDesignedSlot`).
 	 */
 	static void StampOnto(UCataclysmSkillTemplate& Template, const FCataclysmWeaponSkill& Skill);
 

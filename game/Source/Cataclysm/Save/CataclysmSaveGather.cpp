@@ -400,6 +400,10 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		// mistake it for.
 		Record.PassiveAllocation = State->GetPassiveAllocation();
 		Record.DefeatedCataclysmBosses = State->GetDefeatedCataclysmBosses();
+
+		// AND THE CHOSEN SKILLS, since issue #837 layer 3 (Q6: one field, no version bump). UNCONDITIONALLY, for the
+		// passive tree's reason: an empty list means exactly "nothing chosen", the default fill.
+		Record.SkillAssignment = State->GetSkillAssignment();
 	}
 
 	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The residue and a Solo

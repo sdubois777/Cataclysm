@@ -154,9 +154,11 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 	}
 	bSlotNumbersLoaded = true;
 
+	// THE DESIGNED SLOT'S NUMBERS AND NOT THE KEY'S, ruled 2026-10-25 (Q7): a skill moved to another key keeps what it
+	// was made to cost and wait. Issue #837 layer 3. The same slot as before for every ability nothing moved.
 	const UDataTable* Table = UCataclysmSkillSlots::LoadGeneratedTable();
 	const FCataclysmSkillSlotNumbers Numbers =
-		UCataclysmSkillSlots::NumbersFor(Table, Slot);
+		UCataclysmSkillSlots::NumbersFor(Table, GetDesignedSlot());
 
 	if (!Numbers.bFound)
 	{
@@ -166,7 +168,7 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("%s is in slot %d, which has no row in the skill slot table. "
 				 "It will cost nothing and have no cooldown."),
-			*GetName(), static_cast<int32>(Slot));
+			*GetName(), static_cast<int32>(GetDesignedSlot()));
 		return;
 	}
 
@@ -192,7 +194,7 @@ float UCataclysmGameplayAbility::GetBaseCooldown() const
 	// none in that slot either. The character is the one this instance was granted to: `CurrentActorInfo`, read as
 	// the member because `GetCurrentActorInfo` ensures on a class default object, which has none and keeps its
 	// slot's figure.
-	if (Slot == ECataclysmAbilitySlot::Ultimate && CurrentActorInfo
+	if (GetDesignedSlot() == ECataclysmAbilitySlot::Ultimate && CurrentActorInfo
 		&& UltimateCostDoublesByARow(CurrentActorInfo->AbilitySystemComponent.Get()))
 	{
 		return 0.0f;
@@ -211,7 +213,7 @@ const TCHAR* UCataclysmGameplayAbility::UltimateCostDoublesInsteadOfCooldownStat
 bool UCataclysmGameplayAbility::UltimateCostDoublesByARow(const UAbilitySystemComponent* AbilitySystem) const
 {
 	// THE SLOT FIRST, so no other skill asks the stat line at all: this is on the path of every press.
-	if (Slot != ECataclysmAbilitySlot::Ultimate)
+	if (GetDesignedSlot() != ECataclysmAbilitySlot::Ultimate)
 	{
 		return false;
 	}
@@ -271,7 +273,7 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// worn row's kept stacks hold their cap, a use of any slot but the basic attack is free, and the use spends them in
 	// `UCataclysmSkillTemplate::CommitAndBegin`. Asked here, the one cost function, so the check, the payment and the
 	// bar agree. Not for an aura's upkeep, which is no use, nor for a free start, which spends no stack.
-	if (bForAUse && !bFreeRepeat && Slot != ECataclysmAbilitySlot::BasicAttack && Cataclysm
+	if (bForAUse && !bFreeRepeat && GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack && Cataclysm
 		&& Cataclysm->NextAbilityIsFree())
 	{
 		return 0.0f;
@@ -689,6 +691,11 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		return true;
 	}
 
+	// THE KEY'S TAG AND THE KEY'S CHARGES, AND THE DESIGNED SLOT'S LENGTH. Issue #837 layer 3. The owner, 2026-10-25:
+	// "Each skill its own cooldown". A key holds one skill, so keying the tag and the charges by the key keeps two
+	// skills made for one slot apart; `GetBaseCooldown` reads the length from `GetDesignedSlot`, so an Ultimate on the
+	// Heavy key waits 20 seconds under `Cooldown.Heavy`. THE AURA KEY HAS NO TAG, so a skill with a cooldown put there
+	// waits for nothing: not built, a tag would be needed (the layer's entry says so).
 	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
 	if (!Tag.IsValid() || GetBaseCooldown() <= 0.0f)
 	{
@@ -852,6 +859,7 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo) const
 {
+	// THE KEY'S TAG, AS `CheckCooldown` WAITS FOR IT, and the designed slot's length. See there. Issue #837 layer 3.
 	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
 	if (GetBaseCooldown() <= 0.0f || !Tag.IsValid())
 	{

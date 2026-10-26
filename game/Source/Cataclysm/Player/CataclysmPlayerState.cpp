@@ -21,6 +21,9 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmWearing.h"
+// For the pool a skill choice is made from. Issue #837 layer 3.
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Engine/DataTable.h"
 #include "Net/UnrealNetwork.h"
 
 ACataclysmPlayerState::ACataclysmPlayerState()
@@ -68,6 +71,7 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
 	DOREPLIFETIME(ACataclysmPlayerState, DefeatedCataclysmBosses);
 	DOREPLIFETIME(ACataclysmPlayerState, PointsAnAllocationWasHandedWith);
+	DOREPLIFETIME(ACataclysmPlayerState, SkillAssignment);
 }
 
 FCataclysmCreationChoice ACataclysmPlayerState::GetCreationChoice() const
@@ -619,4 +623,112 @@ void ACataclysmPlayerState::CarryTheChosenTypeOnTheCreationWeapon()
 		Character->GetEquipment()->CarryCreationDamageType(GetChosenWeaponType(),
 														   GetChosenDamageType());
 	}
+}
+
+FString ACataclysmPlayerState::SkillSlotName(ECataclysmAbilitySlot Slot)
+{
+	// THE TAG'S LEAF, as `UCataclysmWeaponSkills::SlotFromName` reads one, so the console spells a key the way the
+	// workbook does. Issue #837 layer 3.
+	FString Leaf = CataclysmAbilitySlots::Tag(Slot).ToString();
+	int32 Dot = INDEX_NONE;
+	if (Leaf.FindLastChar(TEXT('.'), Dot))
+	{
+		Leaf = Leaf.RightChop(Dot + 1);
+	}
+	return Leaf;
+}
+
+FString ACataclysmPlayerState::RefusalForSkillChoice(ECataclysmAbilitySlot Slot, FName SkillRow, const UDataTable* Table,
+													 const TArray<FCataclysmWeaponSkill>& Pool,
+													 const TArray<FCataclysmSkillChoice>& Choices)
+{
+	// ONLY THE SIX (O2, ruled 2026-10-25): the basic attack comes from the weapon.
+	if (Slot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		return TEXT("The basic attack comes from the weapon and cannot be chosen.");
+	}
+	if (!UCataclysmWeaponSkills::IsChoosableSlot(Slot))
+	{
+		return TEXT("That is not one of the six skill slots: Heavy, Special, Support, Aura, Ultimate and Movement.");
+	}
+	if (SkillRow.IsNone())
+	{
+		return TEXT("Name the skill by its row, as Cataclysm.ShowSkills lists it.");
+	}
+
+	// FROM THE POOL THE WORN WEAPONS MAKE NOW, naming what they offer.
+	if (!Pool.ContainsByPredicate([SkillRow](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == SkillRow; }))
+	{
+		if (Table && !Table->FindRowUnchecked(SkillRow))
+		{
+			return FString::Printf(TEXT("There is no skill row called %s."), *SkillRow.ToString());
+		}
+		const FString Offered = FString::JoinBy(Pool, TEXT(", "),
+			[](const FCataclysmWeaponSkill& Skill) { return Skill.RowName.ToString(); });
+		return FString::Printf(TEXT("%s is not in your skill pool. Your weapons offer: %s."), *SkillRow.ToString(),
+							   Offered.IsEmpty() ? TEXT("nothing") : *Offered);
+	}
+
+	// A ROW ALREADY CHOSEN FOR ANOTHER KEY IS REFUSED, NAMING IT, AND NOT MOVED (O4).
+	for (const FCataclysmSkillChoice& Choice : Choices)
+	{
+		if (Choice.SkillRow != SkillRow)
+		{
+			continue;
+		}
+		if (Choice.Slot == Slot)
+		{
+			return FString::Printf(TEXT("%s is already chosen for the %s slot."), *SkillRow.ToString(),
+								   *SkillSlotName(Slot));
+		}
+		return FString::Printf(TEXT("%s is already chosen for the %s slot. Clear that slot first."),
+							   *SkillRow.ToString(), *SkillSlotName(Choice.Slot));
+	}
+	return FString();
+}
+
+bool ACataclysmPlayerState::AssignSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason)
+{
+	ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const TArray<FCataclysmWeaponSkill> Pool = Slots ? Slots->GetSkillPool() : TArray<FCataclysmWeaponSkill>();
+	OutReason = RefusalForSkillChoice(Slot, SkillRow, UCataclysmWeaponSkills::LoadGeneratedTable(), Pool,
+									  SkillAssignment);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	// ONE CHOICE PER KEY: a new one for a key replaces the old.
+	if (FCataclysmSkillChoice* Existing = SkillAssignment.FindByPredicate(
+			[Slot](const FCataclysmSkillChoice& Choice) { return Choice.Slot == Slot; }))
+	{
+		Existing->SkillRow = SkillRow;
+	}
+	else
+	{
+		FCataclysmSkillChoice& Added = SkillAssignment.AddDefaulted_GetRef();
+		Added.Slot = Slot;
+		Added.SkillRow = SkillRow;
+	}
+
+	// AT ONCE, so the key casts it now.
+	if (Character)
+	{
+		Character->RefillAbilitySlots();
+	}
+	return true;
+}
+
+bool ACataclysmPlayerState::ClearSkillChoice(ECataclysmAbilitySlot Slot)
+{
+	// FORGOTTEN, NOT EMPTIED (O5, the owner: "Forget my choice"): the key returns to its default.
+	const int32 Removed = SkillAssignment.RemoveAll(
+		[Slot](const FCataclysmSkillChoice& Choice) { return Choice.Slot == Slot; });
+	if (ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn()))
+	{
+		Character->RefillAbilitySlots();
+	}
+	return Removed > 0;
 }

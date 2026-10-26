@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmLethality.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -580,6 +581,19 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmCarriedSlot> PrivateStash;
+
+	/**
+	 * Which pool skill the player chose for which key: `ACataclysmPlayerState::GetSkillAssignment`. Issue #837 layer 3.
+	 *
+	 * BY ROW AND BY SLOT NAME, so neither the table's order nor the enum's moves a choice; a choice whose weapon is off
+	 * is kept here as it is kept in play (Q5).
+	 *
+	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
+	 * default fill, so a file written before it reads as the character it always was (section 5 of
+	 * `docs/Save_System_Design.md`). NOTHING LOADS A SAVE YET (#753).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillChoice> SkillAssignment;
 };
 
 /**

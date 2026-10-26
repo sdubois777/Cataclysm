@@ -284,9 +284,11 @@ TArray<FCataclysmWeaponSkill> UCataclysmTriggeredSkill::HeldSkillsToTrigger(cons
 			}
 			continue;
 		}
-		// THE ROW'S OWN COOLDOWN WHEN IT STATES ONE, AND ITS SLOT'S WHEN IT DOES NOT, as the granted skill reads it.
-		const float Cooldown =
-			Skill.Cooldown >= 0.0f ? Skill.Cooldown : UCataclysmSkillSlots::NumbersFor(SlotTable, Skill.Slot).Cooldown;
+		// THE ROW'S OWN COOLDOWN WHEN IT STATES ONE, AND ITS SLOT'S WHEN IT DOES NOT, as the granted skill reads it:
+		// the slot it was MADE for, wherever it sits (Q7, issue #837 layer 3).
+		const float Cooldown = Skill.Cooldown >= 0.0f
+			? Skill.Cooldown
+			: UCataclysmSkillSlots::NumbersFor(SlotTable, UCataclysmWeaponSkills::DesignedSlotOf(Skill)).Cooldown;
 		if (Cooldown > 0.0f)
 		{
 			Pool.Add(Skill);

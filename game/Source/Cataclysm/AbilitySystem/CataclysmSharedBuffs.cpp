@@ -116,7 +116,7 @@ int32 UCataclysmSharedBuffs::Step(AActor* Wearer)
 				continue;
 			}
 			float Metres = SelfMetres;
-			if (Buff->Slot == ECataclysmAbilitySlot::Support)
+			if (Buff->GetDesignedSlot() == ECataclysmAbilitySlot::Support)
 			{
 				Metres = FMath::Max(Metres, SupportMetres);
 			}

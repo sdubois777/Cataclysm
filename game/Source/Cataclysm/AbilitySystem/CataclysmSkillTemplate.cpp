@@ -108,7 +108,7 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 	// #1243.
 	const UDataTable* Table = UCataclysmSkillSlots::LoadGeneratedTable();
 	const FCataclysmSkillSlotNumbers Numbers =
-		UCataclysmSkillSlots::NumbersFor(Table, Slot);
+		UCataclysmSkillSlots::NumbersFor(Table, GetDesignedSlot());
 	return Numbers.bFound ? Numbers.DamagePercent : 0.0f;
 }
 
@@ -221,7 +221,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// AND WHERE IT IS AIMED, read as the skill's own body will read it. `Chaos_Wild_Magic` aims the skill it
 		// triggers at the same point. Issue #41.
 		const FVector AimedAt = AimPoint();
-		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot, &AimedAt,
+		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, GetDesignedSlot(), &AimedAt,
 											  /*bHasCooldown=*/GetBaseCooldown() > 0.0f);
 
 		PayHealthCost();
@@ -289,7 +289,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// the commit above, so a press the cooldown, a lock or a short pool refused spends nothing. "100% more" is a
 		// more on the whole use, the effectiveness charges' multiplier, so 100 doubles it. A use that deals no damage
 		// itself, or that a row made deal none, still spends: it was the next ability, and it was free.
-		if (Slot != ECataclysmAbilitySlot::BasicAttack)
+		if (GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack)
 		{
 			const float FreeMore = Cataclysm->SpendFreeNextAbility();
 			if (!bThisUseDealsNoDamage && DeliversDamageItself())
@@ -362,7 +362,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			Cataclysm->NoteChargeSkillUsed();
 		}
 
-		if (Slot == ECataclysmAbilitySlot::BasicAttack)
+		if (GetDesignedSlot() == ECataclysmAbilitySlot::BasicAttack)
 		{
 			Cataclysm->NoteBasicAttackUsed();
 		}
@@ -396,12 +396,12 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// `Type.Spell` IS ON NINE SKILLS TODAY, ALL DEMONIC. Issue #2012. The
 		// other six Cataclysms' caster skills are untagged, so this window opens
 		// only for those nine until they are tagged.
-		if (Slot == ECataclysmAbilitySlot::Support)
+		if (GetDesignedSlot() == ECataclysmAbilitySlot::Support)
 		{
 			Cataclysm->NoteSupportSkillUsed();
 		}
 
-		if (Slot == ECataclysmAbilitySlot::Movement)
+		if (GetDesignedSlot() == ECataclysmAbilitySlot::Movement)
 		{
 			Cataclysm->NoteMovementSkillUsed();
 		}
@@ -838,7 +838,7 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// being true when #1819 merged, and it was corrected while building
 	// `Void_Anti_Magic_Zones`. The refusal still returns before `Super::`, so the
 	// engine's own checks never give the player a different reason.
-	if (Slot != ECataclysmAbilitySlot::BasicAttack)
+	if (GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack)
 	{
 		if (const UCataclysmAbilitySystemComponent* Cataclysm =
 				Cast<const UCataclysmAbilitySystemComponent>(
@@ -906,7 +906,7 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// the equipment component leave the planted weapon's lines out. Until then
 	// the swing still used the buried weapon's damage, because the item is still
 	// worn.
-	if (Slot != ECataclysmAbilitySlot::BasicAttack
+	if (GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack
 		&& !Params.bDisarmsUntilRecalled
 		&& ACataclysmPlantedWeapon::HeldBy(
 			   ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar()))
@@ -1345,12 +1345,33 @@ bool UCataclysmSkillTemplate::RefundCooldown()
 	// granted into; `Movement` is that slot's, whatever skill happens to be in
 	// it. Those are the only two values `REFUND_TARGETS` in
 	// `tools/generate_datatables.py` allows.
-	ECataclysmAbilitySlot Which = Slot;
+	//
+	// SINCE ISSUE #837 LAYER 3 A COOLDOWN IS KEPT BY THE KEY ITS SKILL SITS ON ("Each skill its own cooldown", the
+	// owner, 2026-10-25), so `Self` is this skill's key's tag, and `Movement` names the skill MADE for the Movement
+	// slot (O1), whichever key it sits on: `CooldownTagsOfSkillsDesignedFor`. Nothing moved, the tag as before.
+	FGameplayTagContainer Tags;
 	if (Params.RefundsCooldown.Equals(TEXT("Movement"), ESearchCase::IgnoreCase))
 	{
-		Which = ECataclysmAbilitySlot::Movement;
+		const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Avatar()));
+		if (Cataclysm)
+		{
+			Tags = Cataclysm->CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot::Movement);
+		}
+		else if (UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Movement).IsValid())
+		{
+			Tags.AddTag(UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Movement));
+		}
 	}
-	else if (!Params.RefundsCooldown.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+	else if (Params.RefundsCooldown.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+	{
+		const FGameplayTag Own = UCataclysmSkillSlots::CooldownTag(Slot);
+		if (Own.IsValid())
+		{
+			Tags.AddTag(Own);
+		}
+	}
+	else
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("'%s' says it refunds the '%s' cooldown, which is neither Self "
@@ -1359,22 +1380,21 @@ bool UCataclysmSkillTemplate::RefundCooldown()
 		return false;
 	}
 
-	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Which);
-	if (!Tag.IsValid())
-	{
-		return false;
-	}
-
 	// TAKEN OFF BY TAG, WHICH IS HOW IT WENT ON.
 	// `UCataclysmGameplayAbility::ApplyCooldown` builds a duration effect that
 	// grants the slot's tag and nothing else, so removing every effect granting
 	// that tag is exactly undoing it.
-	const int32 Removed =
-		UCataclysmSkillEffects::RemoveEffectsGranting(Avatar(), Tag);
-	if (Removed > 0)
+	int32 Removed = 0;
+	for (const FGameplayTag& Tag : Tags)
 	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' returned the %s cooldown."), *SkillName, *Tag.ToString());
+		const int32 RemovedHere =
+			UCataclysmSkillEffects::RemoveEffectsGranting(Avatar(), Tag);
+		if (RemovedHere > 0)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' returned the %s cooldown."), *SkillName, *Tag.ToString());
+		}
+		Removed += RemovedHere;
 	}
 	return Removed > 0;
 }
@@ -3662,7 +3682,7 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// BEFORE THE ABILITY SYSTEM IS EVEN LOOKED UP, because this decides nothing
 	// about the character. `Slot` is stamped onto the ability by
 	// `UCataclysmAbilitySystemComponent::GiveAbilityInSlot` when it is granted.
-	if (Slot == ECataclysmAbilitySlot::BasicAttack)
+	if (GetDesignedSlot() == ECataclysmAbilitySlot::BasicAttack)
 	{
 		return;
 	}

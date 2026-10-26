@@ -2,6 +2,390 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — Any skill in the pool goes on any of the six keys and is saved; the key decides only which button casts it and where its cooldown is kept, and the slot it was made for decides every other rule (#837, layer 3)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.h` and `.cpp` (`FCataclysmWeaponSkill` gains
+`DesignedSlot`, `RowName`, `WeaponType`, `DamageType`; the new `FCataclysmSkillChoice`; the new statics `FillWithChoices`,
+`DesignedSlotOf`, `IsChoosableSlot`; `StampOnto`, `BasicAttackFor` and the row reader set the new fields);
+`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the new `DesignedSlot` and
+`GetDesignedSlot`; the numbers, Mana Weaver and "next ability free" read it); `CataclysmSkillTemplate.cpp` (the damage
+fallback, the skill-use notice, five slot rules, `RefundCooldown`); `CataclysmAbilitySystemComponent.h` and `.cpp` (the
+new public `CooldownTagsOfSkillsDesignedFor`; `ReduceCooldowns`, `RollAndResetCooldowns`, `SkillGadgetSlotTags`);
+`CataclysmChorus.cpp`, `CataclysmFollowThrough.cpp`, `CataclysmSharedBuffs.cpp` (one line each); `CataclysmMinion.cpp`
+(the gadget's interval fallback, its basic-attack test, the Tyrant's minion); `CataclysmTriggeredSkill.cpp` (one
+fallback); `game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h` and `.cpp` (`UseSkillAssignment`,
+`GetSkillChoices`, the fill and the placeholder's designed slot); `game/Source/Cataclysm/Player/CataclysmPlayerState.h`
+and `.cpp` (`SkillAssignment`, Replicated, with `GetSkillAssignment`, `AssignSkill`, `ClearSkillChoice`,
+`RefusalForSkillChoice` and `SkillSlotName`); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`
+(the new public `RefillAbilitySlots`; the fill hands the choices over; the console commands `Cataclysm.ShowSkills` and
+`Cataclysm.AssignSkill`); `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `CataclysmSaveGather.cpp` (one
+`SaveGame` field, `UCataclysmCharacterSave::SkillAssignment`); `game/Tests/SaveFixtures/Character_v3.json` and its
+`README.md`; one block of three assertions added at the end of
+`Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`; the new
+`game/Source/Cataclysm/Tests/CataclysmSkillAssignmentTests.cpp` (eleven tests, the group `Cataclysm.SkillAssignment.`);
+this file. **No data row, no workbook cell, no tag, nothing under `game/Data/`, `game/Content/` or `game/Config/`. No
+screen, widget, key binding or tool tip** (layer 4, #1193). **It does not close #837.**
+
+### SAID FIRST
+
+**ANY SKILL IN THE POOL CAN BE PUT ON ANY OF THE SIX KEYS, BY CONSOLE FOR NOW, AND IT KEEPS EVERY RULE OF THE SLOT IT
+WAS MADE FOR.** Pyroclasm on the Heavy key is cast from the right mouse button and is an Ultimate in every other way:
+400% damage, a 20 second cooldown, 150 mana at level 100, 50 Fervour, reached by "Your ultimate ability ..." rows and
+not by "Your heavy attack ..." rows, converted by an Ultimate's gadget row, kept by Mana Weaver's ten-piece rule, and
+announced as an Ultimate to Edict of Stillness, Echo Chamber and Wild Magic.
+
+**EACH SKILL KEEPS ITS OWN COOLDOWN AND ITS OWN CHARGES, ON THE KEY IT SITS ON; THE LENGTH IS ITS DESIGNED SLOT'S.** The
+owner: "Each skill its own cooldown". So two skills made for the Heavy slot, one on the Heavy key and one on the Support
+key, do not block each other, and each waits the Heavy slot's 1.5 seconds. Pyroclasm on the Heavy key waits 20 seconds
+under `Cooldown.Heavy`. A key holds one skill, so keying the tag and the charges by the key keeps every skill apart with
+the tags that exist.
+
+**NOT BUILT, STOPPED ON: A SKILL WITH A COOLDOWN PUT ON THE AURA KEY HAS NO COOLDOWN AT ALL.** The Aura key has no
+cooldown tag (`UCataclysmSkillSlots::CooldownTag` answers none for it, and `Cooldown.Aura` does not exist in the
+workbook's Tags sheet), so Molten Cleave chosen for the Aura key could be cast every frame its mana allows. Keying a
+cooldown by the key needs a `Cooldown.Aura` tag for that one key, which is a workbook Tags-sheet row and a regenerated
+`game/Config/Tags/CataclysmTags.ini`, both outside this layer's limits. **The choice is not refused**: refusing cooldown
+skills on the Aura key contradicts the design's "two heavy attacks and no aura". A ruling is needed (see the hand-back).
+
+**A CHOICE WHOSE WEAPON COMES OFF IS KEPT; THE KEY SHOWS ITS DEFAULT; THE WEAPON BACK, THE CHOICE IS BACK.** "Clear the
+slot" (`Cataclysm.AssignSkill <slot> default`) forgets it for good.
+
+**THE KEY A MOVED SKILL LEFT TAKES THE NEXT POOL SKILL MADE FOR IT, OR STAYS EMPTY.** With one weapon of one type there is
+no second Ultimate, so moving Pyroclasm to the Heavy key leaves the Ultimate key empty and Molten Cleave out of the keys.
+
+**#836 IS NO LONGER #837'S BLOCKER**: a moved skill's fallback numbers come from the slot it was made for (Q7), so it is
+worth what it is worth wherever it is put.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 94, from development `57c108494`. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- you can put any skill from your pool on any key; it keeps every rule of the slot it was made for, and a choice whose
+  weapon comes off returns with the weapon. (By console until layer 4: `Cataclysm.ShowSkills`, then
+  `Cataclysm.AssignSkill Heavy Demonic_Greataxe_Ultimate`; `Cataclysm.AssignSkill Heavy default` clears it.)
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-25, relayed by the coordinating session, verbatim:
+
+- **Q5:** "the slot shows its default and the choice is kept for when the weapon returns. The screen offers "clear the
+  slot"."
+- **O1:** "A skill is already tagged as heavy/basic/support/etc. we don't need to do anything. Where the user assigns it
+  is irrelevant".
+- **O5:** "Forget my choice".
+- **On the shared cooldown:** "Each skill its own cooldown".
+
+The coordinating session, 2026-10-25, verbatim:
+
+> So the skill keeps its DESIGNED slot tag wherever it sits: option B, and wider than the question. The KEY decides only
+> which button casts it. The designed slot decides everything else: the slot-scoped enchantment rows; its cooldown tag;
+> its charges; its Fervour cost; Mana Weaver's Ultimate rules; Edict of Stillness; the gadget conversions; the Q7
+> numbers. An Ultimate on the Heavy key is still an Ultimate in every rule, only cast from the Heavy button. Check every
+> place that reads the key today and move it to the designed slot, except input. List each in the brief. Rewrite
+> L3-G3's proof to match.
+> **O5:** "Clear the slot" drops the kept choice, and the slot returns to its default.
+> **O2: YES.** Only the six can be chosen, and Basic is refused.
+> **O3: MOOT.** Under O1 the cooldown follows the designed slot, so a cooldown skill on the Aura key keeps its own
+> cooldown and no Cooldown.Aura tag is needed. If your reading shows otherwise, tell me before taking the workbook.
+> **O4: YES.** An empty designed slot takes the next unheld pool entry, or stays empty. A row already chosen for
+> another slot is refused.
+> **O6:** record as you said, adjusted for O1: a moved Ultimate pays its Fervour, and Mana Weaver follows the designed
+> slot.
+> **Q6:** one SaveGame field with no version bump. **Q7:** a moved skill's fallback numbers come from its DESIGNED slot.
+
+And on the owner's cooldown answer, later the same day, verbatim:
+
+> Two skills designed for the same slot, placed in two slots, each keep their own cooldown and their own charges. Using
+> one does not block the other.
+> - The cooldown and the charges are per skill, not per designed slot.
+> - Their LENGTH still comes from the designed slot (Q7 and O1: an Ultimate on the Heavy key keeps the Ultimate's
+>   cooldown length).
+> - If it needs a per-skill cooldown tag or keying that does not exist, the session says how it will key the cooldown,
+>   for example by the slot the skill sits in, carrying the designed slot's length. It stops and tells you only if that
+>   cannot work with the existing ability system.
+> - Change the planned test: two Heavy skills on two keys each have their own cooldown, with a Heavy and a Special as
+>   the control.
+> - Record the owner's words in the entry.
+
+**O3 IS NOT MOOT AFTER THE SECOND RULING**, which is what the stop above says: once the cooldown is kept per skill by the
+key, the Aura key needs a tag of its own.
+
+### THE SWEEP: EVERY READER OF "WHICH SLOT A SKILL SITS IN", AND WHERE IT WENT
+
+Searched for the operation, not the files: every read of an ability's `Slot`, of `FCataclysmWeaponSkill::Slot`, of
+`Notice.Slot`, every `CooldownTag(`, `SkillChargesHeld`/`SpendSkillCharge`, `SkillGadgetSlotTags`, every lookup in
+`GetAvailableSkills`, and every `ECataclysmAbilitySlot` in non-test code (208 occurrences in 28 files, by `Grep`, at
+`57c108494`). Lines are of this commit.
+
+**INPUT, STAYS ON THE KEY:**
+
+| Reader | Where | Why it stays |
+| :-- | :-- | :-- |
+| The spec's `Slot.*` tag a press finds | `GiveAbilityInSlot`, `CataclysmAbilitySystemComponent.cpp` 378-389 | It is the key |
+| The ability's `Slot` property, set by the grant | the same, 405-424; `CataclysmTriggeredSkill.cpp` 98 | It is the key; rules read `GetDesignedSlot` |
+| An ability set's slot | `CataclysmAbilitySet.cpp` 113-118 | Class defaults, never moved |
+| The basic key's gadget and trap presses | `CataclysmPlayerController.cpp` 1285-1363 | Input |
+| The skill bar: which ability each box shows, its name, its cost, its lock | `CataclysmSkillBar.cpp` 590-760 | Per-key display, layer 4 |
+| Which held skill a key's gadget or trap casts | `CataclysmMinion.cpp` 851-855, 2491-2495; `SkillGadgetSlotTags` 8045-8053 | The skill ON that key |
+| The held basic attack | `UCataclysmTriggeredSkill::HeldBasicAttack`; `CataclysmSkillBar.cpp` 472, 518 | The Basic key, never moved (O2) |
+| The two log lines naming "in Slot.X" | `CataclysmSkillTemplate.cpp` 3883; `CataclysmSkillTemplates.cpp` 5079 | Say which key was pressed |
+
+**KEYED PER SKILL, BY THE KEY IT SITS ON, LENGTH FROM THE DESIGNED SLOT** (the owner's "Each skill its own cooldown"):
+
+| Reader | Where | Old | New |
+| :-- | :-- | :-- | :-- |
+| The cooldown tag waited for and started | `CheckCooldown` 699, `ApplyCooldown` 863 | the key's tag | unchanged: the key's tag, one skill per key |
+| The charges held and spent | `CheckCooldown` 721, `ApplyCooldown` 921 | by the key | unchanged: by the key |
+| The cooldown's length | `GetBaseCooldown` through `EnsureSlotNumbersLoaded` 161 | the key's | **the designed slot's** |
+| The skill bar's cooldown and charges | `CataclysmSkillBar.cpp` 677-697 | the key's | unchanged, and now right for a moved skill: the box shows the cooldown of the skill on that key |
+| Death's refill and clear of every cooldown | `CataclysmAbilitySystemComponent.cpp` 2749-2760 | every slot's tag | unchanged: every key's tag |
+| "Self" cooldown refund | `RefundCooldown`, `CataclysmSkillTemplate.cpp` 1366-1372 | the key's | unchanged: this skill's key's tag |
+
+**RULES, MOVED TO THE DESIGNED SLOT** (O1):
+
+| Rule | Where | Old reading | New reading |
+| :-- | :-- | :-- | :-- |
+| Q7 numbers: cooldown, mana, mana on hit, Fervour | `EnsureSlotNumbersLoaded`, `CataclysmGameplayAbility.cpp` 161 | `NumbersFor(Slot)` | `NumbersFor(GetDesignedSlot())` |
+| Q7 damage fallback | `UCataclysmSkillTemplate::GetDamagePercent` 111 | `Slot` | `GetDesignedSlot()` |
+| Q7 a held skill's cooldown, for "trigger a held skill" | `HeldSkillsToTrigger`, `CataclysmTriggeredSkill.cpp` 289-291 | `Skill.Slot` | `DesignedSlotOf(Skill)` |
+| Q7 a gadget's cast interval | `SkillGadgetSecondsBetweenCasts`, `CataclysmMinion.cpp` 872-873 | `Skill.Slot` | `DesignedSlotOf(Skill)` |
+| Q7 Echo Chamber's self hit | `CataclysmDungeonGameMode.cpp` 13684 | `Skill.Slot` | **no change needed**: the skill comes from `SkillsOfDamageType`, the table's rows, whose `Slot` IS the designed slot |
+| Mana Weaver's "no cooldown" and cost doubling (O6) | `GetBaseCooldown` 197, `UltimateCostDoublesByARow` 216 | `Slot == Ultimate` | `GetDesignedSlot() == Ultimate` |
+| "Your next ability costs no mana" leaves out the basic attack | `ManaCostFor` 276 | `Slot` | `GetDesignedSlot()` |
+| The skill-use notice's slot: Edict of Stillness on Movement, the basic attack's exclusions from `skill_use`, Echo Chamber and Wild Magic | `CommitAndBegin` 224, read at `CataclysmDungeonGameMode.cpp` 7564, 7593, 13640, 13729 and `CataclysmPlayerCharacter.cpp` 1110 | the key | the designed slot, one change at the sender |
+| The free next ability spent by every use but the basic attack | `CommitAndBegin` 292 | `Slot` | `GetDesignedSlot()` |
+| The basic attack's window; "your support ability", "a movement ability" | `CommitAndBegin` 365, 399, 404 | `Slot` | `GetDesignedSlot()` |
+| The lock's basic-attack exemption; the planted weapon's | `CanActivateAbility` 841, 909 | `Slot` | `GetDesignedSlot()` |
+| A health cost spares the basic attack | `PayHealthCost` 3685 | `Slot` | `GetDesignedSlot()` |
+| A skill's Tags (`Slot.<designed>`): the 50 slot-scoped enchantment rows, skill charges' bonus rows, the lock, mana and cooldown rows | `StampOnto` copies the row's Tags | the row's | unchanged: "we don't need to do anything" (O1) |
+| The gadget conversion asked of a key | `SkillGadgetSlotTags`, `CataclysmAbilitySystemComponent.cpp` 8036-8061 | the held skill's tags **and** the key's tag | the held skill's tags only; the key's tag only when the key holds nothing |
+| Rows naming a slot's cooldown: reset Heavy, Special, Movement, the event skill's, "all other"; reduce Heavy; Follow Through's Movement refund | `RollAndResetCooldowns` 4908-4952, `ReduceCooldowns` 4710-4713, `RefundCooldown` 1355-1365 | `CooldownTag(slot)` | the new `CooldownTagsOfSkillsDesignedFor(slot)`: the key tag of each skill made for that slot, plus the slot's own tag unless its key holds another slot's skill |
+| Chorus leaves out the basic attack | `CataclysmChorus.cpp` 20 | `Ability->Slot` | `GetDesignedSlot()` |
+| Follow Through leaves out Movement; the basic attack's reach | `CataclysmFollowThrough.cpp` 80, 131 | `Skill->Slot` | `GetDesignedSlot()` |
+| A Support buff's wider sharing reach | `CataclysmSharedBuffs.cpp` 119 | `Buff->Slot` | `GetDesignedSlot()` |
+| The basic-attack gadget's clock | `SkillGadgetSecondsBetweenCasts`, `CataclysmMinion.cpp` 887 | `Skill.Slot` | `DesignedSlotOf(Skill)` |
+| The Tyrant's minion casts "your ultimate" | `CastPlayersUltimateFromHere`, `CataclysmMinion.cpp` 2269-2275 | the skill on the Ultimate key | the held skill made for the Ultimate slot |
+
+**RULES LEFT ON THE KEY, NOT MOVED, OUTSIDE THIS LAYER'S LIMITS ("anything a trap does"):** a skill trap's cast centred
+on its enemy and its fire at the nearest enemy (`ACataclysmMinion::SkillTrapCastsAroundItsEnemy` and
+`SkillTrapFiresAtTheNearestEnemy`, read with `SkillTrapSlot`, the key it was placed from, `CataclysmMinion.cpp`
+2483-2485 and 2569-2572), and the basic trap's interval (`PressOfASkillTrapSlot`, `Slot == BasicAttack`, the key; never
+moved). **The trap CONVERSION does follow the designed slot**, because `SlotIsASkillTrap` asks `SkillGadgetSlotTags`.
+So an Ultimate on the Heavy key converted by an Ultimate's trap row is placed from the Heavy key and casts as the Heavy's
+sentence says. Said in the hand-back for a ruling.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Lines are of this commit.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| O1, the designed slot decides every rule | `UCataclysmGameplayAbility::DesignedSlot` and `GetDesignedSlot`, `CataclysmGameplayAbility.h` 81-98; `UCataclysmWeaponSkills::DesignedSlotOf`, `CataclysmWeaponSkills.h` 234-238; set by `StampOnto` (`CataclysmWeaponSkills.cpp` 102-105), the placeholder branch (`CataclysmWeaponSlotsComponent.cpp` 452-453), the row reader (`CataclysmWeaponSkills.cpp` 138-144) and `BasicAttackFor` (311-313); the readers in the sweep |
+| "Each skill its own cooldown" | the tag and the charges stay keyed by `Slot` in `CheckCooldown` and `ApplyCooldown`; the comment at `CataclysmGameplayAbility.cpp` 694-698; `CooldownTagsOfSkillsDesignedFor`, `CataclysmAbilitySystemComponent.cpp` 5068-5104 |
+| O2, only the six | `IsChoosableSlot`, `CataclysmWeaponSkills.h` 240-243; `RefusalForSkillChoice`'s first two refusals, `CataclysmPlayerState.cpp` |
+| O4, the next unheld entry or empty; a row chosen elsewhere refused | `FillWithChoices`'s second loop, `CataclysmWeaponSkills.cpp` 513-527; `RefusalForSkillChoice`'s last loop |
+| Q5, kept and the default shown | `FillWithChoices`'s first loop skips a row not in the pool, `CataclysmWeaponSkills.cpp` 502-505; the player state keeps it |
+| O5, "Forget my choice" | `ACataclysmPlayerState::ClearSkillChoice`; `Cataclysm.AssignSkill <slot> default` |
+| Q6, one SaveGame field, no version bump | `UCataclysmCharacterSave::SkillAssignment`, `CataclysmSaveRecords.h` 584-596; `FCataclysmSaveGather::CharacterFrom`, `CataclysmSaveGather.cpp` 403-406 |
+| Q7, a moved skill's numbers from its designed slot | `EnsureSlotNumbersLoaded` 161, `GetDamagePercent` 111, the three `FCataclysmWeaponSkill` fallbacks through `DesignedSlotOf` |
+| O6, a moved Ultimate pays its Fervour; Mana Weaver follows the designed slot | `FervourCostFor` reads the designed slot's numbers; `GetBaseCooldown` 197, `UltimateCostDoublesByARow` 216 |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE COOLDOWN TAG AND THE CHARGES KEYED BY THE KEY**, the coordinating session's example, because each key holds
+  exactly one skill and the five keys with a tag (Heavy, Special, Support, Ultimate, Movement) already have one, so no
+  new tag, effect or bookkeeping is needed, and the skill bar, death's clear, and every reset and reduction keep working
+  by tag. The options not taken: a cooldown per ability instance with no tag (every reset, reduction, refund, death
+  clear and the bar's display read tags, so all of them would have to be rebuilt), and a tag per skill row (a new tag per
+  row, which is the workbook). **It fails only on the Aura key, which has no tag: stopped, above.**
+- **ROWS THAT NAME A SLOT'S COOLDOWN REACH THE SKILL MADE FOR THAT SLOT**, through `CooldownTagsOfSkillsDesignedFor`, as
+  every other rule follows the designed slot. So "reset your heavy attack's cooldown" resets the Heavy-made skill on
+  whichever key it sits, and "all other" leaves out the event skill's own key. A key holding another slot's skill gives
+  its own slot's tag to nobody. The option not taken: leaving them on the key's tag, which would reset an Ultimate put on
+  the Heavy key with a Heavy row.
+- **`FCataclysmWeaponSkill::Slot` AND `UCataclysmGameplayAbility::Slot` STAY THE KEY**, as the brief says, and the
+  designed slot is a new field on each, `None` meaning "the same as `Slot`" so every ability granted by hand in a test
+  keeps its meaning. The option not taken: `Slot` as the designed slot and a new field for the key, which would move
+  every input reader instead.
+- **THE ORDER OF THE KEYS IN `GetAvailableSkills`**: the basic attack, then the default fill's key order, then any key
+  only a choice filled. So no choice is the default fill element for element. The option not taken: the enum's order,
+  which would reorder today's list.
+- **A ROW CHOSEN TWICE OR A KEY CHOSEN TWICE IN A HANDED LIST: THE FIRST CHOICE WINS** in `FillWithChoices`; the player
+  state never records either, because `AssignSkill` replaces a key's choice and refuses a row chosen elsewhere.
+- **"NO SUCH ROW" IS ASKED OF THE GENERATED TABLE ONLY FOR A ROW NOT IN THE POOL**, so a test's hand-built table, whose
+  rows are in its pool, is never refused by it.
+- **THE GADGET CONVERSION ASKS THE HELD SKILL'S TAGS ALONE.** Every designed row carries its own `Slot.*` tag (117 of
+  117) and the basic attack carries `Slot.Basic`, so for a skill on its own key nothing changes. The option not taken:
+  keeping the key's tag beside them, which converts a moved skill by both slots' rows.
+- **A FREE START IS LEFT OUT OF `CooldownTagsOfSkillsDesignedFor`** (a spec with no key tag): it waits for no cooldown.
+- **THE CONSOLE NAMES A KEY BY ITS TAG'S LEAF** ("Heavy", "Basic"), as the workbook spells it, so `Basic` reaches the
+  basic attack's sentence rather than "no such slot".
+
+### THE GENRE SOURCE
+
+**Q5's evidence is UNCONFIRMED**, recorded as the reading of 2026-10-25 left it (no source was fetched by this
+session). poe2db.tw/us/Weapon_Set returned HTTP 404. maxroll.gg/poe2/resources/weapon-swap-mechanics (a guide, not the
+developer) was quoted: "when you use a Skill that does not meet the required Weapon conditions in one Weapon Set but
+does in the other". SUMMARY: Path of Exile 2 keeps a skill on the bar and swaps weapon sets to use it; whether a skill no
+worn weapon can use stays on the bar was not confirmed by any source read, and this game has no weapon sets. NOT
+REACHED: an official patch note or developer post. The owner's Q5 ruling stands on its own; this supports it at most.
+
+No source was fetched for O1 or for the cooldown; both are the owner's rulings.
+
+### WHAT WAS BUILT
+
+- **The data.** `FCataclysmWeaponSkill::DesignedSlot`, `RowName`, `WeaponType`, `DamageType`, set by the one row reader
+  (so `SkillsFor`, `SkillsOfDamageType` and `PoolFor` all carry them) and by `BasicAttackFor` (`DesignedSlot` Basic,
+  `WeaponType` the weapon's). `UCataclysmGameplayAbility::DesignedSlot`, stamped by `StampOnto` and the placeholder's
+  grant; `GetDesignedSlot()`.
+- **The fill.** `UCataclysmWeaponSkills::FillWithChoices(Pool, Choices)`: each chosen row in the pool on its key, keeping
+  its designed slot; every other key the first pool entry made for it not already held; then ordered as above. The
+  weapon slots component fills from it with the choices `UseSkillAssignment` was handed, and the pawn hands
+  `GetSkillAssignment()` over before every fill (`FillAbilitySlotsFromWornWeapon`).
+- **The assignment.** `ACataclysmPlayerState::SkillAssignment` (`{Slot, SkillRow}`, Replicated); `AssignSkill(slot,
+  row, OutReason)`; `ClearSkillChoice(slot)`; the static `RefusalForSkillChoice(slot, row, table, pool, choices)`, whose
+  sentences are: "The basic attack comes from the weapon and cannot be chosen."; "That is not one of the six skill
+  slots: Heavy, Special, Support, Aura, Ultimate and Movement."; "Name the skill by its row, as Cataclysm.ShowSkills
+  lists it."; "There is no skill row called X."; "X is not in your skill pool. Your weapons offer: ..."; "X is already
+  chosen for the Y slot."; "X is already chosen for the Y slot. Clear that slot first.". Assigning or clearing calls the
+  new public `ACataclysmPlayerCharacter::RefillAbilitySlots()`.
+- **The save.** `UCataclysmCharacterSave::SkillAssignment`, written by `CharacterFrom` unconditionally; no version bump
+  (Q6). `Character_v3.json` gains `War_Greatsword_Heavy` on the `Ultimate` key, non-default; the README says why.
+  **Nothing loads a save yet (#753).**
+- **The console.** `Cataclysm.ShowSkills` lists each key (skill, row, the slot it was made for, and "chosen",
+  "default", "from the weapon" or "default; kept: X is not in your pool"), the pool (row, name, designed slot, weapon
+  type, damage type) and the saved choices. `Cataclysm.AssignSkill <slot> <row | default>`, each refusal its sentence,
+  plus "Cataclysm.AssignSkill <slot> <row | default>. Cataclysm.ShowSkills lists the pool." for usage and "There is no
+  skill slot called X. ..." for a slot it does not know; `default` clears (O5).
+- **For layer 4**: `GetSkillPool`, `GetAvailableSkills`, `GetSkillAssignment`, `AssignSkill`, `ClearSkillChoice`,
+  `RefusalForSkillChoice`, `SkillSlotName`.
+
+### Tests
+
+Eleven Unreal tests in `Cataclysm.SkillAssignment.` (`CataclysmSkillAssignmentTests.cpp`), sharing
+`CataclysmSkillAssignmentTest`: `SpawnAssignmentCarrier` (a possessed player wearing its starting Greataxe carrying
+Demonic, one set-up check), `AssignmentWeapon`, `WearInTheRightHand` (`EquipInto` Weapon1, which announces and so
+refills; one check), `HeldOnKey`, `RowOnKey`, `AbilityOnKey` (the spec carrying the key's tag, as input finds it),
+`KeysAndNames`, `ChoiceOf`, `CooldownLengthOn` (the longest cooldown effect under a key's tag, its whole length), and
+`FSkillAssignmentCaster`, a bare caster with mana, Fervour and the combat set, granting a plain self buff on a key made
+for a slot through `StampOnto`. One character per world at the origin, a second caster 5 m away; no tick, no blow.
+Assertion counts include set-up checks, by reading.
+
+1. `WithNoChoiceTheKeysAreTheDefaultFillAndEachSkillSitsInTheSlotItWasMadeFor`, 8: set-up; **control, nothing chosen**;
+   **control, the pool is six**; **no choice fills the default fill, key and name in order**; **a choice not in the pool
+   changes nothing**; **every held skill sits on its designed key**; **seven abilities are granted**; **each one's
+   designed slot is its key**.
+2. `AnyPoolSkillGoesOnAnyKeyAndTheKeyItLeftTakesTheNextOrStaysEmpty`, 15: set-up; **control, Heavy holds Molten
+   Cleave**; **control, Ultimate holds Pyroclasm**; **Pyroclasm is chosen for Heavy**, **with no refusal**; **Heavy
+   holds Pyroclasm**; **a press of Heavy reaches Pyroclasm**; **the Ultimate key holds nothing (O4)**; **Molten Cleave is
+   held nowhere**; **with War carried too, the Ultimate key takes War's Greataxe Ultimate** (pure function); the
+   refusals: **Basic (O2)**, **a row not in the pool, naming the pool**, **a row the table lacks**, **a row chosen for
+   another key, naming it (O4)**; **the refusals recorded nothing**.
+3. `AMovedSkillKeepsTheNumbersOfTheSlotItWasMadeFor`, 17 (Q7): set-up, the slot table's Heavy and Ultimate rows differ;
+   set-up two; **control, Molten Cleave deals Heavy's damage**, **and waits Heavy's cooldown**; set-up two; **its key is
+   Heavy and its designed slot Ultimate**; **Pyroclasm on Heavy deals the Ultimate's damage**, **waits its cooldown**,
+   **costs its mana at its level**, **and its Fervour**; **the helper answers the designed slot**, **and the key with
+   none set**; set-up two, a Demonic Greatsword and The Whole Weight on Heavy; **it keeps its stated 350%**.
+4. `AChoiceIsKeptWhileItsWeaponIsOffAndReturnsWithIt`, 8 (Q5): set-up two; **control, the choice holds through a
+   refill**; set-up, a War Sword; **the Heavy key shows `War_Sword_Heavy`**, **the choice is kept**; set-up, the
+   Greataxe back; **Heavy holds Pyroclasm again**.
+5. `ClearingASlotForgetsTheChoice`, 12 (O5): set-up two; **control, Heavy holds Pyroclasm before the clear**; **the
+   clear forgets a choice**, **nothing is chosen**, **Heavy is Molten Cleave**, **Ultimate is Pyroclasm**, **a second
+   clear forgets nothing**; set-up two, chosen again and a War Sword on, cleared, set-up, the Greataxe back; **Heavy
+   holds Molten Cleave**.
+6. `TheConsoleCommandsAssignClearAndRefuse`, 17: set-up, both registered; set-up; **control, no saved choice listed**;
+   **the assignment's sentence**, **the state records it**, **ShowSkills names it chosen, made for Ultimate**; **usage**;
+   **no such slot**; **Basic**; **no such row**; **not in the pool**; **chosen for another key**; set-up, a War Sword;
+   **ShowSkills names the kept choice**; **`default` clears**, **the choice is forgotten**, **a second `default` says
+   nothing was chosen**.
+7. `TheChoiceIsWrittenToTheCharacterRecordBySlotName`, 9 (Q6): set-up; **control, gathered**, **control, no choice**;
+   set-up; **gathered again**; set-up, it writes; **the file holds one choice**; **its key is written "Heavy"**, **its
+   row by name**.
+8. `AMovedUltimateIsReachedByUltimateRowsAndConvertedAsAnUltimate`, 12 (O1): set-up two; **control, a Slot.Heavy row
+   reaches Molten Cleave**, **control, Heavy's gadget tags carry Slot.Heavy**, **control, an Ultimate-cooldown row names
+   Cooldown.Ultimate**; set-up two; **a Slot.Ultimate row reaches Pyroclasm on Heavy**, **a Slot.Heavy row does not**,
+   **the Heavy key's gadget conversion is asked as an Ultimate**, **an Ultimate-cooldown row reaches Cooldown.Heavy
+   alone**, **a Heavy-cooldown row reaches nothing**.
+9. `TwoSkillsMadeForOneSlotEachKeepTheirOwnCooldownOfThatSlotsLength`, 15 (the owner's ruling): set-up, the three
+   lengths differ; set-up, the control's two granted; **control, the Heavy skill is used**, **the Special is still ready**, **it is used**, **Heavy
+   waits Heavy's**, **Special waits Special's**; set-up; **the Heavy-key skill is used**, **it is on cooldown**, **the
+   Support-key Heavy skill is ready**, **it is used**, **it is on cooldown**, **the Heavy key waits Heavy's**, **the
+   Support key waits Heavy's too**.
+10. `AnUltimateOnTheHeavyKeyWaitsTheUltimatesCooldownPaysItsFervourAndKeepsManaWeaver`, 12 (O6): set-up; **control,
+    used**, **waits Heavy's**, **took no Fervour**; set-up; **the Ultimate on Heavy is used**, **waits the Ultimate's 20
+    s on Cooldown.Heavy**, **nothing waits on Cooldown.Ultimate**, **took 50 Fervour**; set-up; **with Mana Weaver's
+    row it has no cooldown**, **and a Heavy skill on the Ultimate key keeps Heavy's**.
+11. `ASkillUseAnnouncesTheSlotTheSkillWasMadeFor`, 6: set-up two; **control, used**, **announces Heavy**; **the
+    Movement skill on the Special key is used**, **announces Movement**.
+
+131 assertions in all, by reading, set-up checks included.
+
+**One existing test gains assertions, as the brief directs:** `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`,
+three at its end (one choice; on the Ultimate key; `War_Greatsword_Heavy`). **No existing assertion changes, by
+reading.** Every ability granted by hand has `DesignedSlot` None, which reads as its key; every weapon skill on its own
+key has the same designed slot and key; the gadget tags of a skill on its own key already carry the key's tag; and
+`CooldownTagsOfSkillsDesignedFor` is `CooldownTag(slot)` for a character nothing moved. Named because they read the
+moved readers: `Cataclysm.SkillPool.` (11, the default fill), `Cataclysm.WeaponSlots.` (17), the Mana Weaver ten-piece
+tests and `Cataclysm.UltimateFervour.` (hand-granted, the key), the Tyrant's Chains ten-piece tests (its table's whip
+Ultimate carries `Slot.Ultimate`), the skill gadget and trap tests (real rows, each carrying its own slot tag), the
+cooldown reset and reduction tests and `Cataclysm.FollowThrough.` (hand-granted, or bare cooldown effects with no
+ability behind them, which keep the slot's own tag), `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`
+(the fixture holds the new field).
+
+**`TestEqual` types used by the new tests:** `(const TCHAR*, int32, int32)`, `(const TCHAR*, const FString&, const
+FString&)`, `(const TCHAR*, FName, FName)` and `(const TCHAR*, float, float, float)`; `TestTrue` and `TestFalse` on
+`bool`; `TestNotNull` on `const UCataclysmSkillTemplate*`, `const UCataclysmGameplayAbility*`,
+`UCataclysmSelfBuffSkill*` and `UCataclysmCombatEvents*`.
+
+**The events the tests raise, with their depth:** tests 9, 10 and 11 use plain self buffs on bare casters, eleven uses
+in all, each one `skill_use` notice through `UCataclysmCombatEvents::NoteSkillUsed` at depth one and no blow; test 11
+listens to them. Everything else is `EquipmentChanged`, a delegate and not a combat event.
+
+**Not tested:** a cooldown skill on the Aura key (stopped, above); a press of a designed skill moved to another key (the
+abilities are read, not pressed, because a press waits on clips and targets); the Tyrant's minion casting a moved
+Ultimate; Chorus, Follow Through and the shared Support buff on a moved skill (one token each); "reset the event
+skill's cooldown" and "all other" on a moved skill (only the Ultimate and Heavy cases of the helper are tested); the
+`Cataclysm.ShowSkills` pool lines; a replicated choice on a client; a save loaded with a choice (#753); the trap rules
+left on the key.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Three, prefix `Cataclysm.SkillAssignment.` with its dot: 11 tests, the same 11 without the dot (a script over
+4,397 distinct `Cataclysm.*` name strings in `game/Source`, case ignored; `Cataclysm.SkillPool.` found 11 as the
+control). Each old text counted exactly once in its file by that script (CRLF read as LF), each new text absent before
+the break. Brackets before and after, round, curly, square, each pair balanced: L3-G1 302 and 301, 94 and 94, 3 and 3;
+L3-G2 202 and 204, 66 and 67, 11 and 12; L3-G3 1098 and 1097, 337 and 337, 3 and 3. Each compiles alone by reading:
+L3-G1 and L3-G3 pass the member `Slot`, an `ECataclysmAbilitySlot`, where `GetDesignedSlot()` was; L3-G2 adds an `||`
+operand, `TArray::ContainsByPredicate` with a lambda capturing the `const` local `Designed`.
+
+| Proof | File | Old text | New text | Stated to fail | Every other test of the prefix |
+|---|---|---|---|---|---|
+| L3-G1, the numbers follow the key (Q7) | `CataclysmGameplayAbility.cpp` | `UCataclysmSkillSlots::NumbersFor(Table, GetDesignedSlot());` | `UCataclysmSkillSlots::NumbersFor(Table, Slot);` | `AMovedSkillKeepsTheNumbersOfTheSlotItWasMadeFor`, `AnUltimateOnTheHeavyKeyWaitsTheUltimatesCooldownPaysItsFervourAndKeepsManaWeaver`, `TwoSkillsMadeForOneSlotEachKeepTheirOwnCooldownOfThatSlotsLength` | pass: they read no cooldown, mana or Fervour of a moved skill; the damage fallback is in another file and unbroken |
+| L3-G2, a kept choice empties its key instead of showing the default (Q5) | `CataclysmWeaponSkills.cpp` | `if (Designed == ECataclysmAbilitySlot::None \|\| OnKey.Contains(Designed)` | `if (Designed == ECataclysmAbilitySlot::None \|\| OnKey.Contains(Designed) \|\| Choices.ContainsByPredicate([Designed](const FCataclysmSkillChoice& Choice) { return Choice.Slot == Designed; })` | `WithNoChoiceTheKeysAreTheDefaultFillAndEachSkillSitsInTheSlotItWasMadeFor`, `AChoiceIsKeptWhileItsWeaponIsOffAndReturnsWithIt` | pass: every other choice they make is in the pool, so its key is filled by the choice either way |
+| L3-G3, one rule reads the key: the skill-use notice (O1) | `CataclysmSkillTemplate.cpp` | `NoteSkillUsed(Avatar(), SkillName, SkillTags, GetDesignedSlot(), &AimedAt,` | `NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot, &AimedAt,` | `ASkillUseAnnouncesTheSlotTheSkillWasMadeFor` | pass: no other test of the prefix listens to the notice |
+
+Failed assertions, by reading:
+
+- **L3-G1, 7 in 3 tests.** Test 3: waits the Ultimate's cooldown (reads 1.5), costs its mana (the Heavy's 15 at the
+  level), its Fervour (0): 3; its damage passes (`GetDamagePercent` is unbroken), and so do its controls. Test 10: waits
+  20 s on Cooldown.Heavy (1.5), took 50 Fervour (took 0): 2; and the Heavy skill on the Ultimate key keeps Heavy's
+  (reads 20): 1; Mana Weaver's nought passes (it reads `GetDesignedSlot`). Test 9: the Support key waits Heavy's (reads
+  Support's 4): 1.
+- **L3-G2, 2 in 2 tests.** Test 1: a choice not in the pool changes nothing (the Heavy key is empty). Test 4: the Heavy
+  key shows `War_Sword_Heavy` (reads None). Test 6's kept line still contains its words with the key empty.
+- **L3-G3, 1 in 1 test.** Test 11: announces Movement (reads Special); its control passes.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-25 — A self buff's More damage, its copy given to allies, and an aura's ally bonus raise ALL damage, not only the skill's own element's (the owner's "Make them generic")
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (`UCataclysmSelfBuffSkill::GrantIncrease`
