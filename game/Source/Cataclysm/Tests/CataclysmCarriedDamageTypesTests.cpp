@@ -32,8 +32,8 @@
  * every reader moved onto it: the reachable trees, the one-class rule, the refusal sentence, the equipment refresh
  * that decides whose effects apply, and the passive tree screen. And the starting weapon carrying the creation type.
  *
- * WHAT THEY DO NOT GUARD. The skills. The weapon slots still take one damage type, so the trees and the skills can
- * disagree until layer 2 (issue #837).
+ * WHAT THEY DO NOT GUARD. The skills, which follow the same list since layer 2 (issue #837) and are guarded by the
+ * group `Cataclysm.SkillPool.`.
  *
  * A REAL POSSESSED CHARACTER, wearing a two-handed Greataxe from `GiveStartingWeapon`, so every test that puts its own
  * weapons on takes everything off first and checks that nothing is worn.

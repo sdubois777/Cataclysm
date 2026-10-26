@@ -369,3 +369,101 @@ FCataclysmWeaponSkill UCataclysmWeaponSkills::BasicAttackFor(
 
 	return Basic;
 }
+
+TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* Table, const TArray<FString>& WeaponTypes,
+															  const TArray<FString>& DamageTypes)
+{
+	TArray<FCataclysmWeaponSkill> Pool;
+	if (!Table)
+	{
+		return Pool;
+	}
+
+	// A MATCHED PAIR COUNTS ONCE, and so does a damage type two weapons both carry: each list without its repeats, in
+	// its own order, the case ignored as every match in this file ignores it.
+	const auto Distinct = [](const TArray<FString>& Names)
+	{
+		TArray<FString> Kept;
+		for (const FString& Name : Names)
+		{
+			if (!Name.IsEmpty()
+				&& !Kept.ContainsByPredicate([&Name](const FString& Held) { return Held.Equals(Name, ESearchCase::IgnoreCase); }))
+			{
+				Kept.Add(Name);
+			}
+		}
+		return Kept;
+	};
+	const TArray<FString> Weapons = Distinct(WeaponTypes);
+	const TArray<FString> Types = Distinct(DamageTypes);
+
+	for (const FString& Type : Types)
+	{
+		const int32 FirstOfThisType = Pool.Num();
+
+		// EVERY WORN WEAPON TYPE WITH THIS DAMAGE TYPE, Q4: the rows `SkillsFor` reads for the pair, one per slot.
+		for (int32 WeaponAt = 0; WeaponAt < Weapons.Num(); ++WeaponAt)
+		{
+			const FString& Weapon = Weapons[WeaponAt];
+			TSet<ECataclysmAbilitySlot> TakenByThisPair;
+			Table->ForeachRow<FCataclysmWeaponSkillRow>(
+				TEXT("UCataclysmWeaponSkills::PoolFor"),
+				[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+				{
+					const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
+					if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None || TakenByThisPair.Contains(Slot)
+						|| !Row.DamageType.Equals(Type, ESearchCase::IgnoreCase)
+						|| Row.WeaponType.Equals(WeaponIndependent, ESearchCase::IgnoreCase)
+						|| !Row.WeaponType.Equals(Weapon, ESearchCase::IgnoreCase))
+					{
+						return;
+					}
+					TakenByThisPair.Add(Slot);
+					Pool.Add(WeaponSkillFromRow(Row, Slot));
+				});
+		}
+
+		// AND THE TYPE'S AURA ONCE, only when a weapon row of the type joined, as `SkillsFor` adds it. A slot this type's
+		// weapon rows already hold is left to them, which is `SkillsFor`'s rule for one pair.
+		if (Pool.Num() == FirstOfThisType)
+		{
+			continue;
+		}
+		TSet<ECataclysmAbilitySlot> TakenByThisType;
+		for (int32 At = FirstOfThisType; At < Pool.Num(); ++At)
+		{
+			TakenByThisType.Add(Pool[At].Slot);
+		}
+		Table->ForeachRow<FCataclysmWeaponSkillRow>(
+			TEXT("UCataclysmWeaponSkills::PoolFor"),
+			[&](const FName&, const FCataclysmWeaponSkillRow& Row)
+			{
+				const ECataclysmAbilitySlot Slot = SlotFromName(Row.Slot);
+				if (Row.SkillName.IsEmpty() || Slot == ECataclysmAbilitySlot::None || TakenByThisType.Contains(Slot)
+					|| !Row.DamageType.Equals(Type, ESearchCase::IgnoreCase)
+					|| !Row.WeaponType.Equals(WeaponIndependent, ESearchCase::IgnoreCase))
+				{
+					return;
+				}
+				TakenByThisType.Add(Slot);
+				Pool.Add(WeaponSkillFromRow(Row, Slot));
+			});
+	}
+	return Pool;
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool)
+{
+	// THE FIRST FOR EACH SLOT, in the pool's order, so one weapon of one type keeps `SkillsFor`'s order exactly.
+	TArray<FCataclysmWeaponSkill> Filled;
+	TSet<ECataclysmAbilitySlot> Taken;
+	for (const FCataclysmWeaponSkill& Skill : Pool)
+	{
+		if (Skill.Slot != ECataclysmAbilitySlot::None && !Taken.Contains(Skill.Slot))
+		{
+			Taken.Add(Skill.Slot);
+			Filled.Add(Skill);
+		}
+	}
+	return Filled;
+}

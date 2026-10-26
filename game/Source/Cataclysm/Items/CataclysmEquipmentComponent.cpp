@@ -664,7 +664,9 @@ FString UCataclysmEquipmentComponent::EquippedWeaponType() const
 			// THE ANSWER IS NOT TO PICK A BETTER WEAPON HERE. Both weapons
 			// contribute their skills to one pool and the player assigns any of
 			// them to any slot, which the design said before this was written.
-			// Issue #837 is that work and this function goes with it.
+			// Since issue #837 layer 2 the pool reads every worn weapon
+			// (`WornWeaponTypes`) and this decides no skill; the header lists
+			// what still reads it.
 			return Base->WeaponType;
 		}
 	}
@@ -733,6 +735,27 @@ TArray<FName> UCataclysmEquipmentComponent::CarriedDamageTypes(FName CreationDam
 	// a weapon slot off in play (`ACataclysmDungeonGameMode::ChooseTheScarceSlot` draws from the other slots), so
 	// `WornWeapons` is the whole answer and a slot switched off is not asked about.
 	return CarriedDamageTypesOf(WornWeapons(), CreationDamageType);
+}
+
+TArray<FString> UCataclysmEquipmentComponent::WornWeaponTypes() const
+{
+	// THE SAME LOOKUP `EquippedWeaponType` MAKES, over every worn weapon rather than the first. Issue #837 layer 2.
+	TArray<FString> Types;
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!BaseTable)
+	{
+		return Types;
+	}
+	for (const FCataclysmItem& Weapon : WornWeapons())
+	{
+		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Weapon.Base, TEXT("WornWeaponTypes"), /*bWarnIfMissing=*/false);
+		if (Base && !Base->WeaponType.IsEmpty())
+		{
+			Types.Add(Base->WeaponType);
+		}
+	}
+	return Types;
 }
 
 bool UCataclysmEquipmentComponent::CarryCreationDamageType(FName WeaponType, FName DamageType)

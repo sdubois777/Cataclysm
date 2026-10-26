@@ -34,7 +34,7 @@ static TAutoConsoleVariable<int32> CVarKeptStackCastsDraw(
  * a skill may change what the character holds.
  *
  * THE BASIC ATTACK COMES FROM THE WEAPON AND NOT FROM THE TABLE, so its name is looked up among the skills the
- * character holds. Every other name is looked up among the skills of the character's damage type.
+ * character holds. Every other name is looked up among the skills of the damage types the character carries.
  *
  * @return whether a skill of that name was found
  */
@@ -51,13 +51,18 @@ static bool FindTheSkillUsed(AActor* Character, FName Named, FCataclysmWeaponSki
 		return true;
 	}
 
-	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
-			 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
+	// AMONG THE SKILLS OF EVERY TYPE THE CHARACTER CARRIES, since issue #837 layer 2: the pool is the union (ruled
+	// 2026-10-25, Q8), so a skill of the second carried type is found as one of the first is. In fill order.
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	for (const FString& Carried : UCataclysmWeaponSlotsComponent::DamageTypesOf(Character))
 	{
-		if (FName(*Skill.Name) == Named)
+		for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(Table, Carried))
 		{
-			Out = Skill;
-			return true;
+			if (FName(*Skill.Name) == Named)
+			{
+				Out = Skill;
+				return true;
+			}
 		}
 	}
 	return false;

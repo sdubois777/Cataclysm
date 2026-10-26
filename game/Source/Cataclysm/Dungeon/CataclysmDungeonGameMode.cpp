@@ -1076,16 +1076,22 @@ namespace
 		return Pinned >= 0.0f ? FMath::DegreesToRadians(Pinned) : FMath::FRandRange(0.0f, 2.0f * PI);
 	}
 
-	/** The row of this name among the skills of the character's damage type that Echo Chamber copies, if there is one. */
+	/**
+	 * The row of this name among the skills of the character's damage types that Echo Chamber copies, if there is one.
+	 * EVERY CARRIED TYPE, in fill order, since issue #837 layer 2 (Q8, Q-P1, ruled 2026-10-25).
+	 */
 	bool DungeonGameModeEchoChamberSkill(const AActor* Character, FName SkillName, FCataclysmWeaponSkill& Out)
 	{
-		for (FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
-				 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
+		const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+		for (const FString& Carried : UCataclysmWeaponSlotsComponent::DamageTypesOf(Character))
 		{
-			if (FName(*Skill.Name) == SkillName && UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill))
+			for (FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(Table, Carried))
 			{
-				Out = MoveTemp(Skill);
-				return true;
+				if (FName(*Skill.Name) == SkillName && UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill))
+				{
+					Out = MoveTemp(Skill);
+					return true;
+				}
 			}
 		}
 		return false;
@@ -1104,11 +1110,20 @@ namespace
 		return Pinned >= 0 ? FMath::Min(Pinned, Count - 1) : FMath::RandRange(0, Count - 1);
 	}
 
-	/** Wild Magic's pool for this character: every skill of its damage type the rule lets through. */
+	/**
+	 * Wild Magic's pool for this character: every skill of its damage types the rule lets through. EVERY CARRIED TYPE,
+	 * in fill order, since issue #837 layer 2 (Q8, Q-P1, ruled 2026-10-25): "your class tree" is the skills of every type
+	 * the character carries.
+	 */
 	TArray<FCataclysmWeaponSkill> DungeonGameModeWildMagicPoolOf(const AActor* Character)
 	{
-		return UCataclysmDungeonModifierEffects::WildMagicPool(
-			UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character));
+		const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+		TArray<FCataclysmWeaponSkill> Pool;
+		for (const FString& Carried : UCataclysmWeaponSlotsComponent::DamageTypesOf(Character))
+		{
+			Pool.Append(UCataclysmDungeonModifierEffects::WildMagicPool(Table, Carried));
+		}
+		return Pool;
 	}
 
 	float DungeonGameModeInsanityBurstsRoll()
@@ -19861,7 +19876,10 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		const UWorld* PanelWorld = GetWorld();
 		const APlayerController* PanelController = PanelWorld ? PanelWorld->GetFirstPlayerController() : nullptr;
 		const APawn* PanelPlayer = PanelController ? PanelController->GetPawn() : nullptr;
-		const FString DamageType = PanelPlayer ? UCataclysmWeaponSlotsComponent::DamageTypeOf(PanelPlayer) : FString();
+		// EVERY CARRIED TYPE, joined by "and", since issue #837 layer 2 (Q-P1); one type reads as it did.
+		const FString DamageType = PanelPlayer
+			? FString::Join(UCataclysmWeaponSlotsComponent::DamageTypesOf(PanelPlayer), TEXT(" and "))
+			: FString();
 		const int32 InPool = PanelPlayer ? DungeonGameModeWildMagicPoolOf(PanelPlayer).Num() : 0;
 		Counting.Add(Wild, InPool == 0
 			? FString(TEXT("wild magic: no other skill to trigger"))

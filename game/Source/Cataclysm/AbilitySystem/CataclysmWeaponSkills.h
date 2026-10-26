@@ -138,6 +138,36 @@ public:
 	 */
 	static TArray<FCataclysmWeaponSkill> SkillsOfDamageType(const UDataTable* Table, const FString& DamageType);
 
+	/**
+	 * THE POOL: every skill a character wearing these weapon types and carrying these damage types may draw from. Issue
+	 * #837 layer 2, ruled 2026-10-25 (Q4, the owner: "every combination, as the design says").
+	 *
+	 * EVERY COMBINATION. For each damage type, each weapon type's designed rows, one per slot as `SkillsFor` reads one
+	 * pair, and then that damage type's weapon-independent rows (its Aura) once. `docs/Cataclysm_GDD_v2.md`: "Every
+	 * combination of an equipped weapon type and an available damage type contributes its skills to that pool." So a
+	 * Sword carrying Demonic beside an Axe carrying War pools the War Sword's rows and the Demonic Axe's too.
+	 *
+	 * A TYPE THAT GIVES NO WEAPON ROW GIVES NO AURA, for the reason `SkillsFor` gives: covered or not covered is all or
+	 * nothing, so a War Wand pools nothing at all.
+	 *
+	 * A MATCHED PAIR COUNTS ONCE: a weapon type or a damage type named twice is read once. One weapon type and one
+	 * damage type give exactly `SkillsFor`, in its order.
+	 *
+	 * IN ORDER: by damage type in the order given, and within a damage type by weapon type in the order given, each
+	 * pair in table order and the Aura after them. The order is what `DefaultFillFrom` reads, so the caller hands the
+	 * types in fill order (`UCataclysmWeaponSlotsComponent::InFillOrder`) and the weapons in slot order.
+	 */
+	static TArray<FCataclysmWeaponSkill> PoolFor(const UDataTable* Table, const TArray<FString>& WeaponTypes,
+												 const TArray<FString>& DamageTypes);
+
+	/**
+	 * THE DEFAULT FILL: for each slot, the first entry of the pool designed for it, in the pool's order. Issue #837
+	 * layer 2. "Keep the automatic filling as the starting point" (#837); the player cannot choose yet (layer 3).
+	 *
+	 * Each entry keeps the slot its row names, so a skill fills only its own designed slot here.
+	 */
+	static TArray<FCataclysmWeaponSkill> DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool);
+
 	/** The name every basic attack carries. See BasicAttackFor for why it is one name. */
 	static const TCHAR* BasicAttackName;
 

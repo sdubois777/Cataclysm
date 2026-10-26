@@ -1407,7 +1407,8 @@ bool FCataclysmStartingWeaponItemMatchesType::RunTest(const FString& Parameters)
  * because those are what a play report has to be matched against. And that
  * the paths which return early are covered too: taking a weapon off, and a
  * weapon type that grants nothing. Those are four separate returns inside
- * FillSlotsFromWeaponType, and each one used to say nothing.
+ * FillSlotsFromWeaponTypes (FillSlotsFromWeaponType until issue #837 layer 2),
+ * and each one used to say nothing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquipIsLoggedTest,
 	"Cataclysm.WeaponSlots.EveryEquipWritesOneLineTheLogFileKeeps",

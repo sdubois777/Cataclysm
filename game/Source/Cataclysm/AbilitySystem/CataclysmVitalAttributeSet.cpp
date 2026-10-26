@@ -2260,10 +2260,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// weapon slots are on its character, and asked of the player state
 				// this read "" for every player, so a hit of the player's own type
 				// opened the foreign-damage window too.
-				const FString Own = UCataclysmWeaponSlotsComponent::DamageTypeOf(
-					CataclysmDefendingBody(*this));
-				if (!Hit.DamageType.ToString().Equals(
-						Own, ESearchCase::IgnoreCase))
+				//
+				// "OWN" IS ANY TYPE THE CHARACTER CARRIES, ruled 2026-10-25 (Q8),
+				// issue #837 layer 2: a character whose weapons carry Demonic and
+				// War opens nothing on a War hit, and opens the window on a Void one.
+				if (!UCataclysmWeaponSlotsComponent::CarriesDamageType(
+						CataclysmDefendingBody(*this), Hit.DamageType))
 				{
 					if (UCataclysmAbilitySystemComponent* Cataclysm =
 							Cast<UCataclysmAbilitySystemComponent>(

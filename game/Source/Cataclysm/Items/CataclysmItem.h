@@ -189,13 +189,13 @@ struct CATACLYSM_API FCataclysmItem
 	 * UCataclysmDropRoll::RollDamageTypes does it and carries the design
 	 * document's wording for the rule.
 	 *
-	 * THE CLASS TREES READ IT, AND THE SKILLS DO NOT YET. Since issue #857
-	 * layer 1 the worn weapons' lists decide which class trees can be spent in
-	 * and whose effects apply (`UCataclysmEquipmentComponent::
-	 * CarriedDamageTypesOf`). UCataclysmWeaponSlotsComponent still picks a
-	 * character's skills from a single damage type held on the component as a
-	 * stand-in; moving that onto the worn weapon needs a rule for which six of
-	 * many skills fill the slots, and that chooser is issue #837.
+	 * THE CLASS TREES READ IT, AND SO DO THE SKILLS. Since issue #857 layer 1
+	 * the worn weapons' lists decide which class trees can be spent in and whose
+	 * effects apply (`UCataclysmEquipmentComponent::CarriedDamageTypesOf`). Since
+	 * issue #837 layer 2 the same list decides the skill pool: every combination
+	 * of a worn weapon type and a carried type, each slot filled by default
+	 * (`UCataclysmWeaponSkills::PoolFor`). The player choosing which skill goes
+	 * in which slot is issue #837's later layers.
 	 *
 	 * AND THE WEAPON CREATION GIVES CARRIES THE CHOSEN TYPE, not a roll. Ruled
 	 * 2026-10-25. A changed creation choice changes it in place

@@ -20,6 +20,9 @@ UCataclysmWeaponSlotsComponent::UCataclysmWeaponSlotsComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 
 	UndesignedSkillClass = UCataclysmUndesignedSkill::StaticClass();
+
+	// THE STAND-IN'S DEFAULT, the one damage type it held before issue #837 layer 2. See the field.
+	DamageTypes.Add(TEXT("Demonic"));
 }
 
 UCataclysmAbilitySystemComponent* UCataclysmWeaponSlotsComponent::GetAbilitySystem() const
@@ -136,13 +139,61 @@ FString UCataclysmWeaponSlotsComponent::DamageTypeOf(const AActor* Actor)
 	return FString();
 }
 
+TArray<FString> UCataclysmWeaponSlotsComponent::DamageTypesOf(const AActor* Actor)
+{
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Actor ? Actor->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	return Slots ? Slots->GetDamageTypes() : TArray<FString>();
+}
+
+bool UCataclysmWeaponSlotsComponent::CarriesDamageType(const AActor* Actor, FName DamageType)
+{
+	if (DamageType.IsNone())
+	{
+		return false;
+	}
+	const FString Asked = DamageType.ToString();
+	return DamageTypesOf(Actor).ContainsByPredicate(
+		[&Asked](const FString& Carried) { return Carried.Equals(Asked, ESearchCase::IgnoreCase); });
+}
+
+TArray<FString> UCataclysmWeaponSlotsComponent::InFillOrder(const TArray<FName>& Carried, FName CreationDamageType)
+{
+	// THE CREATION TYPE FIRST, WHEN IT IS CARRIED (Q11), and then the rest as the worn weapons list them.
+	TArray<FString> Ordered;
+	const bool bCreationFirst = !CreationDamageType.IsNone() && Carried.Contains(CreationDamageType);
+	if (bCreationFirst)
+	{
+		Ordered.Add(CreationDamageType.ToString());
+	}
+	for (const FName& Type : Carried)
+	{
+		if (!Type.IsNone() && !(bCreationFirst && Type == CreationDamageType))
+		{
+			Ordered.Add(Type.ToString());
+		}
+	}
+	return Ordered;
+}
+
 int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponType)
 {
-	const int32 Filled = FillSlotsFromWeaponType(NewWeaponType);
+	// ONE WEAPON TYPE IS A LIST OF ONE, AND NONE IS AN EMPTY LIST: taking the weapon off, as it always was.
+	TArray<FString> OneWeapon;
+	if (!NewWeaponType.IsEmpty())
+	{
+		OneWeapon.Add(NewWeaponType);
+	}
+	return EquipWeaponTypes(OneWeapon);
+}
+
+int32 UCataclysmWeaponSlotsComponent::EquipWeaponTypes(const TArray<FString>& NewWeaponTypes)
+{
+	const int32 Filled = FillSlotsFromWeaponTypes(NewWeaponTypes);
 
 	// ONE LINE PER EQUIP AT Log LEVEL, BECAUSE Verbose IS NOT WRITTEN TO THE
 	// FILE. LogCataclysm is declared with a default verbosity of Log, so the
-	// three Verbose lines inside FillSlotsFromWeaponType below never reach
+	// three Verbose lines inside FillSlotsFromWeaponTypes below never reach
 	// game/Saved/Logs/Cataclysm.log, and before this nothing about equipping a
 	// weapon appeared there at all.
 	//
@@ -162,24 +213,40 @@ int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponTy
 	// as many skills as the matrix and its own basic attack give it, and the
 	// two numbers differing is itself worth seeing: it means an ability the
 	// weapon has was not granted.
+	//
+	// EVERY WEAPON TYPE AND EVERY DAMAGE TYPE, joined by "and", since issue #837
+	// layer 2; one of each reads exactly as it did.
+	const FString Weapons = FString::Join(WornWeaponTypes, TEXT(" and "));
+	const FString Types = FString::Join(DamageTypes, TEXT(" and "));
 	UE_LOG(LogCataclysm, Log,
 		TEXT("Weapon change: %s, %s damage, %d of %d skill slots filled."),
-		NewWeaponType.IsEmpty() ? TEXT("no weapon") : *NewWeaponType,
-		DamageType.IsEmpty() ? TEXT("no") : *DamageType,
+		Weapons.IsEmpty() ? TEXT("no weapon") : *Weapons,
+		Types.IsEmpty() ? TEXT("no") : *Types,
 		Filled, AvailableSkills.Num());
 
 	return Filled;
 }
 
-int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
-	const FString& NewWeaponType)
+int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
+	const TArray<FString>& NewWeaponTypes)
 {
 	// Taken back first, and unconditionally. Refilling without emptying would
 	// leave the previous weapon's abilities granted alongside the new ones, and
 	// two abilities carrying the same slot tag means one key firing both.
+	// COPIED FIRST, because emptying clears the list a caller may have handed back.
+	const TArray<FString> Asked = NewWeaponTypes;
 	UnequipWeapon();
 
-	EquippedWeaponType = NewWeaponType;
+	// EVERY WORN WEAPON TYPE, IN SLOT ORDER, and the first is the one the basic
+	// attack, the sub-type and the hands are read off, as the one type was.
+	for (const FString& WeaponType : Asked)
+	{
+		if (!WeaponType.IsEmpty())
+		{
+			WornWeaponTypes.Add(WeaponType);
+		}
+	}
+	EquippedWeaponType = WornWeaponTypes.IsEmpty() ? FString() : WornWeaponTypes[0];
 	if (EquippedWeaponType.IsEmpty())
 	{
 		return 0;
@@ -205,7 +272,7 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
 		// THE ELEMENT TAG IS ADDED HERE BECAUSE ONLY THIS COMPONENT KNOWS IT.
 		// One Item Bases row serves a weapon across every damage type it can
 		// roll, so the row cannot state one; the equipped weapon's rolled type
-		// is what DamageType holds.
+		// is what DamageTypes holds, the first of them.
 		//
 		// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
 		// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
@@ -219,6 +286,19 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
 		// ErrorIfNotFound is false so a damage type with no registered tag adds
 		// nothing rather than raising during equip, matching what
 		// CataclysmAbilitySlots::Tag and UCataclysmSkillTemplate::ElementTag do.
+		//
+		// ONE ELEMENT, THE FIRST CARRIED TYPE, since issue #837 layer 2: the
+		// creation type when it is carried. The design says the basic attack "is
+		// enhanced by all damage types present"; the owner ruled on 2026-10-25 that
+		// nothing should say "increased X damage", which the coordinating session
+		// read as making a tag per type moot (Q9). NOT A TAG PER TYPE, because what
+		// does read the tag is a skill's own scoped bonus -- Burning Wrath's more
+		// damage and Conflagration's increase to allies, each scoped to its own
+		// element by UCataclysmSelfBuffSkill::GrantIncrease and
+		// UCataclysmAuraSkill::HelpAlliesInside -- and a tag per type
+		// would let a two-type basic attack take both elements' bonuses. With one
+		// type carried this is the tag it always was.
+		const FString DamageType = GetDamageType();
 		if (!DamageType.IsEmpty())
 		{
 			const FGameplayTag Element =
@@ -249,8 +329,12 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
 
 	if (WeaponSkillTable)
 	{
-		AvailableSkills.Append(UCataclysmWeaponSkills::SkillsFor(
-			WeaponSkillTable, EquippedWeaponType, DamageType));
+		// THE POOL, AND ITS DEFAULT FILL, since issue #837 layer 2: every worn
+		// weapon type with every carried damage type, and for each slot the first
+		// entry designed for it. One weapon of one type is `SkillsFor` exactly.
+		SkillPool = UCataclysmWeaponSkills::PoolFor(
+			WeaponSkillTable, WornWeaponTypes, DamageTypes);
+		AvailableSkills.Append(UCataclysmWeaponSkills::DefaultFillFrom(SkillPool));
 	}
 	else
 	{
@@ -292,7 +376,7 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("The %s has no %s skills and no basic attack, so no slot was "
 				 "filled."),
-			*EquippedWeaponType, *DamageType);
+			*EquippedWeaponType, *FString::Join(DamageTypes, TEXT(" or ")));
 		return 0;
 	}
 
@@ -410,7 +494,7 @@ int32 UCataclysmWeaponSlotsComponent::EquipStartingWeapon()
 			TEXT("The starting weapon is a %s and the damage type is %s, which "
 				 "grants no skills at all. Check StartingWeaponType against the "
 				 "Weapon Skills sheet of docs/All_Things_Cataclysm.xlsx."),
-			*StartingWeaponType, *DamageType);
+			*StartingWeaponType, *FString::Join(DamageTypes, TEXT(" and ")));
 	}
 
 	return Filled;
@@ -425,6 +509,10 @@ void UCataclysmWeaponSlotsComponent::UnequipWeapon()
 
 	AvailableSkills.Reset();
 	EquippedWeaponType.Reset();
+	// AND THE POOL AND THE WEAPON TYPES IT CAME FROM, issue #837 layer 2. The damage types stay: they are what the
+	// worn weapons carry, which the next fill is handed, and not something a weapon coming off takes away here.
+	WornWeaponTypes.Reset();
+	SkillPool.Reset();
 
 	// NO ATTRIBUTE IS WRITTEN HERE, AND THREE USED TO BE. Taking a weapon off
 	// has to leave the character hitting for nothing, swinging at nothing and

@@ -60426,4 +60426,138 @@ bool FCataclysmCorruptedStalkerWrathTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ISSUE #837 LAYER 2, Q-P1 (ruled 2026-10-25): Echo Chamber's lookup, Wild Magic's pool and Wild Magic's panel line read
+// every damage type the player carries, not the first alone. In the group `Cataclysm.SkillPool.` with the layer's other
+// tests, and here because the floor these rules need is built by this file's helpers. The types are handed to the
+// player's weapon slots as the pawn hands them (`UseDamageTypes`), after the floor is built, and nothing is worn or taken
+// off afterwards, so no refill replaces them. War's skills have no shape, so no War skill is copied or triggered.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillPoolEchoChamberTest,
+	"Cataclysm.SkillPool.EchoChamberCopiesASkillOfTheSecondCarriedType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillPoolEchoChamberTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	UCataclysmWeaponSlotsComponent* Slots =
+		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	// THE LIST IN A LOCAL, so the strike found in it is not a pointer into a temporary.
+	const TArray<FCataclysmWeaponSkill> DemonicSkills = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(DemonicSkills, 0.0f);
+	FEchoChamberAnglePinned Pinned(90.0f);
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots)
+		|| !TestNotNull(TEXT("set-up: a Demonic strike that is copied"), Strike)
+		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector From = Player.Character->GetActorLocation();
+
+	// THE CONTROL: CARRYING WAR ALONE, the Demonic strike is none of the player's skills, and nothing is drawn.
+	Slots->UseDamageTypes({TEXT("War")});
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, From + FVector(2000.0f, 0.0f, 0.0f));
+	TestTrue(TEXT("control: carrying War alone, the Demonic strike is not copied"), Mode->EchoChamberPendingSkill().IsNone());
+
+	// CARRYING WAR THEN DEMONIC: War is the first type, and the strike is found under Demonic.
+	Slots->UseDamageTypes({TEXT("War"), TEXT("Demonic")});
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, From + FVector(2000.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("carrying War and Demonic, the strike is the one to copy"), Mode->EchoChamberPendingSkill(),
+			  FName(*Strike->Name));
+	TestTrue(TEXT("and the copy is fired"), Mode->MakeTheEchoChamberCopy());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillPoolWildMagicPoolTest,
+	"Cataclysm.SkillPool.WildMagicDrawsFromEveryCarriedType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillPoolWildMagicPoolTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	UCataclysmWeaponSlotsComponent* Slots =
+		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const TArray<FCataclysmWeaponSkill> War = TheWildMagicPool(TEXT("War"));
+	const TArray<FCataclysmWeaponSkill> Demonic = TheWildMagicPool(TEXT("Demonic"));
+	FWildMagicPinned Pinned(TEXT("0"), 0);
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots)
+		|| !TestEqual(TEXT("set-up: War's pool is one skill"), War.Num(), 1)
+		|| !TestTrue(TEXT("set-up: Demonic's pool holds skills"), Demonic.Num() > 0)
+		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Pinned.IsUsable()))
+	{
+		return false;
+	}
+	const FVector Aim(100.0f, 0.0f, 0.0f);
+
+	// THE CONTROL: CARRYING WAR ALONE, using War's one skill leaves no different one to draw.
+	Slots->UseDamageTypes({TEXT("War")});
+	ThePlayerUses(Player, War[0].Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("control: carrying War alone, nothing is drawn"), Mode->WildMagicPendingSkill().IsNone());
+
+	// CARRYING WAR THEN DEMONIC: the pool is War's and Demonic's, in that order, so the first pick past the used War
+	// skill is Demonic's first.
+	Slots->UseDamageTypes({TEXT("War"), TEXT("Demonic")});
+	ThePlayerUses(Player, War[0].Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("carrying War and Demonic, the draw is Demonic's first skill"), Mode->WildMagicPendingSkill(),
+			  FName(*Demonic[0].Name));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillPoolWildMagicPanelTest,
+	"Cataclysm.SkillPool.TheWildMagicPanelNamesEveryCarriedTypeAndCountsTheirPool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillPoolWildMagicPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
+	UCataclysmWeaponSlotsComponent* Slots =
+		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const int32 Both = TheWildMagicPool(TEXT("War")).Num() + TheWildMagicPool(TEXT("Demonic")).Num();
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots))
+	{
+		return false;
+	}
+
+	// THE CONTROL: CARRYING WAR ALONE, the line the War weapon test reads.
+	Slots->UseDamageTypes({TEXT("War")});
+	TestEqual(TEXT("control: carrying War alone"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString(TEXT("wild magic: 0 triggered; pool of 1 War skill")));
+
+	// CARRYING WAR THEN DEMONIC: both named, and both pools counted.
+	Slots->UseDamageTypes({TEXT("War"), TEXT("Demonic")});
+	TestEqual(TEXT("carrying War and Demonic, both are named and both pools counted"),
+			  Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
+			  FString::Printf(TEXT("wild magic: 0 triggered; pool of %d War and Demonic skills"), Both));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

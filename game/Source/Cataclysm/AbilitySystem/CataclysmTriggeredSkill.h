@@ -115,7 +115,8 @@ public:
 
 	/**
 	 * Makes the repeat a row action recorded on the character's ability system, and clears it: the skill of that
-	 * name, among the skills of the character's damage type, started free at the recorded aim and share.
+	 * name, among the skills of every damage type the character carries (issue #837 layer 2), started free at the
+	 * recorded aim and share.
 	 *
 	 * THE BASIC ATTACK IS NOT A ROW OF THAT TABLE, so its name is looked up among the skills the character holds
 	 * (`HeldBasicAttack`), which is where the weapon's own basic attack is.

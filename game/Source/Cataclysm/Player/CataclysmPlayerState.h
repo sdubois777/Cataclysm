@@ -530,7 +530,8 @@ public:
 	 * pawn's equipment, `UCataclysmEquipmentComponent::CarriedDamageTypesOf` doing the work.
 	 *
 	 * WHAT READS IT: which trees are reachable, the one-class rule, the refusal sentence, the passive tree screen and
-	 * the passive console commands. NOT the skills: the weapon slots still take one damage type (layer 2, #837).
+	 * the passive console commands. The skills follow the same list since issue #837 layer 2, asked of the equipment
+	 * by the pawn when it fills its weapon slots (`ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon`).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	TArray<FName> CarriedDamageTypes() const;
