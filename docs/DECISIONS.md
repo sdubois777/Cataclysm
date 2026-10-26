@@ -59,8 +59,8 @@ in them (by reading).
 ### GUARD PROOF PROPOSED
 
 **#2524-G1, a skill returning from off the keys ignores its record:** in `CataclysmAbilitySystemComponent.cpp`,
-`!From && !Now.IsNone() && CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept)` becomes
-`false && !From && !Now.IsNone() && CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept)`. Predicted: the new test fails,
+`CooldownsOffTheKeys.RemoveAndCopyValue(Now, Kept)` becomes
+`CooldownsOffTheKeys.RemoveAndCopyValue(NAME_None, Kept)`, so a returning skill finds no record. Predicted: the new test fails,
 2 assertions (the time left, and that the key cannot cast it); its control passes. Prefix `Cataclysm.SkillAssignment.`.
 
 ### THE WINDOW'S RUN
