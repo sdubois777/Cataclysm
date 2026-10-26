@@ -57,7 +57,7 @@ not enter it; they enter the health multiplier.
 (-1, the drop row's roll, by default), `DropWhatItWore` (nothing by default); `HandleDeath` passes the first to the drop
 roll and the experience, the second to `UCataclysmDropSpawner::SpawnDropsFor` as its gear count, and calls the third
 after it, all under `PaysForItsDeath`. `ACataclysmCorruptedStalkerCharacter`: the Boss rung, no random gear, and its
-pieces through `WornPiecesThatDrop` and `ACataclysmDroppedItem::PutOnTheFloor`.
+pieces through `WornPiecesThatDrop` and `UCataclysmDropSpawner::PutOnTheFloor`.
 `CorruptedStalkerPieceDropChance` = 1/3. `BuiltStateOf`'s comment now names only the missing entries.
 
 ### Tests, all in `Cataclysm.DungeonModifierEffects.`
@@ -83,7 +83,11 @@ test is that one.
 
 ### Run
 
-Not run yet.
+**Window w59 (lock `dungeon-w59`, `feat/corrupted-stalker-death-1` at `5190eacee`, on `abe7f7d59`, 2026-10-25) stopped at
+the build**, with the six conditions checked before the lock was taken ("free GB: 10.9 of 31.1") and the lock released
+after: `Build: Failed - 72 actions, 62 files compiled`, "error C2039: 'PutOnTheFloor': is not a member of
+'ACataclysmDroppedItem'", and the same for `ScatterOffset`. Both are `UCataclysmDropSpawner`'s; the two calls were
+corrected as a compile fix. No test ran.
 
 ---
 

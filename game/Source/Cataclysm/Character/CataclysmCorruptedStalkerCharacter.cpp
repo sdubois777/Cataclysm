@@ -426,8 +426,8 @@ void ACataclysmCorruptedStalkerCharacter::DropWhatItWore(UWorld* World, const FV
 	const TArray<int32> Dropped = WornPiecesThatDrop(Pieces.Num(), Stream);
 	for (int32 Each = 0; Each < Dropped.Num(); ++Each)
 	{
-		ACataclysmDroppedItem* Drop = ACataclysmDroppedItem::PutOnTheFloor(
-			World, At + ACataclysmDroppedItem::ScatterOffset(Each, Dropped.Num()), Pieces[Dropped[Each]], NAME_None, 0);
+		ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
+			World, At + UCataclysmDropSpawner::ScatterOffset(Each, Dropped.Num()), Pieces[Dropped[Each]], NAME_None, 0);
 		if (Drop)
 		{
 			Drop->bDroppedByARaisedCreature = bRaisedByARule;
