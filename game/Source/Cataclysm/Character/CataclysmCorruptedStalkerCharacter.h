@@ -132,6 +132,46 @@ public:
 	/** Its weapon's basic attack once it wears a build, cast as a player's is; a creature's blow before. */
 	virtual void AttackTarget(AActor* Target) override;
 
+	// ----------------------------------------------------------------------
+	// Its brain and its potions -- layer 2, 2026-10-25
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The slots its choice pass asks for, in order: aura, support, movement, ultimate, heavy, special. Its weapon's
+	 * basic attack is the swing the controller makes when none of them is chosen.
+	 */
+	static TArray<ECataclysmAbilitySlot> ChoiceOrder();
+
+	/**
+	 * Its skills, one entry a slot in `ChoiceOrder`, ALWAYS ALL SIX AND IN THAT ORDER, because the controller keys each
+	 * skill's last use by its index. One that may not be used now is given a range nothing satisfies (a minimum of 1 cm
+	 * and a maximum of 0) instead of being left out: the aura when one runs or mana is below
+	 * `CorruptedStalkerAuraOffBelowManaShare`; the support skill at `CorruptedStalkerSupportBelowHealthShare` health or
+	 * above, or while its buff runs; the ultimate while it channels or without its Fervour; any without its mana.
+	 * The movement skill reaches only beyond `CorruptedStalkerMovementBeyondCm`; the others reach as far as their
+	 * shapes. Each cooldown is its slot's, after the Stalker's cooldown reduction, and the support skill's is at least
+	 * its buff's duration, so two of its buffs never stack.
+	 */
+	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const override;
+
+	/** Casts the chosen skill as a player's is, paying its mana and Fervour, aimed at the target. */
+	virtual void UseEnemyAbility(int32 Index, AActor* Target, const FVector& AimedAt) override;
+
+	/** `CorruptedStalkerSecondsBetweenSkillUses` once it wears a build: the gap between two skill uses or swings. */
+	virtual float DesignedSecondsBetweenAttacks() const override;
+
+	/**
+	 * Every quarter second: turns its aura off below `CorruptedStalkerAuraOffBelowManaShare` mana, drinks a health
+	 * potion below `CorruptedStalkerPotionBelowHealthShare` health under the player's rules, and runs a drink's heal.
+	 */
+	virtual void AfterRegenerationStep() override;
+
+	/** Its skill in a slot, or null. */
+	const FCataclysmWeaponSkill* SkillIn(ECataclysmAbilitySlot Slot) const;
+
+	/** Whether a copy of its skill in this slot is running now: an aura on, a buff held, a channel under way. */
+	bool IsRunningASkillIn(ECataclysmAbilitySlot Slot) const;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
 	TObjectPtr<UCataclysmPrimaryAttributeSet> PrimaryAttributes;
 
@@ -150,4 +190,7 @@ private:
 
 	FString WornEntryName;
 	FCataclysmWeaponSkill BasicAttack;
+
+	/** Its weapon's skills, from `UCataclysmWeaponSkills::SkillsFor` for its weapon type and damage type. */
+	TArray<FCataclysmWeaponSkill> Skills;
 };

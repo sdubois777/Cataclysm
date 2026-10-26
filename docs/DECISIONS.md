@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-25 — The Corrupted Stalker chooses its skills and drinks its potions, and a fight model sets its multipliers (#1308, part B, layer 2)
+
+**Affects:** `ACataclysmCorruptedStalkerCharacter` (its brain, its quarter-second step, its skills);
+`UCataclysmPotions::PotionHolderOf` (a creature wearing a player's build may hold potions); `ACataclysmDungeonGameMode`
+(its potion charges carried to the next floor, its kills refilling them); five numbers in
+`UCataclysmDungeonModifierEffects`; eight Unreal tests; a new simulation module, `sim/cataclysm_sim/fight.py`, and its
+tests. Issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308) stays open for layers 3 and 4.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.** The fight model was run; its table is below.
+- **THE FIGHT MODEL'S STALKER IS THE SIMULATION'S BUILD OF IT, NOT THE GAME'S.** The game test
+  `WhatACorruptedStalkerIsBuiltWithAtEachTier` prints the game's built health and attack damage at all eight tiers in
+  the window, to be compared before the multipliers are taken up. The multipliers are not changed by this entry: the
+  placeholders stay until the coordinating session rules on the figures.
+- **A READING, RECORDED AS RULED:** the game's own creatures are not scaled by tier. `ApplyDesignedStats` sets fixed
+  figures and a rung only multiplies them, so a Boss in the game is the same at tier 1 and tier 8; the fight model's
+  Boss is the simulation's, which is the design's. Not changed.
+- **FERVOUR MAY NOT BUILD ON A CREATURE.** Whether it does is measured in the window by
+  `WhetherFervourBuildsOnACorruptedStalkerInAFight`. If it does not, the Stalker's ultimate never fires in play: ruled
+  acceptable for layer 2, and to be recorded as a known gap.
+- **TWELVE DRINKS OF 35% ADD A GREAT DEAL OF STAYING POWER**, recorded as ruled; the fight model counts them.
+
+### The rulings (the coordinating session's, 2026-10-25, under the owner's delegation)
+
+| Rule | Decided |
+|---|---|
+| Where it decides | the creature controller's own choice pass, every quarter second (`Think`, `UseAbilitiesOn`) |
+| The order | aura, support, movement, ultimate, heavy, special; its weapon's basic attack when none is chosen |
+| Aura | on when it may; off below **30%** of its maximum mana, and not on below it |
+| Movement | its leap, when the player is farther than **15 m** |
+| Support | below **50%** of its maximum health; never a second buff while one runs |
+| Ultimate | with its Fervour; never while it channels |
+| Gap | at least **0.75 s** between two skill uses or swings |
+| Cooldowns | each skill's own designed slot's, after its cooldown reduction, on the controller's clock; the owner's of 2026-10-25, "A skill is already tagged as heavy/basic/support/etc. we don't need to do anything. Where the user assigns it is irrelevant" |
+| Costs | paid for real: `UCataclysmTriggeredSkill::Trigger` with its cost paid |
+| Potions | "Same as the player", the owner's: four slots of thirty charges, ten a drink, 35% of maximum health over three seconds, one heal at a time; drunk below **40%** health; the slots full when it is first raised in a dungeon; carried to the next floor with its health share, and not refilled on the stairs; its kills refill them as a player's kills refill a player's. A creature that holds no player's build still holds none |
+
+**Why the support skill's cooldown is its buff's duration.** Burning Wrath's slot cooldown is 4 s and its buff lasts
+10 s, and every `Trigger` grants a new copy, so on the slot's cooldown alone a second buff would stack its More
+modifier on the first. The cooldown is the longer of the two.
+
+### The fight model, `sim/cataclysm_sim/fight.py`
+
+The reference character at each tier (the reference build at the tier's level, affix tier and gear level) against the
+simulation's Boss on floor 25 of 50 of a Basic dungeon, and against the Stalker as the simulation builds it from the
+Demonic entry: the Ravager line at the reference level, its eighteen pieces at the tier's highest drop affix tier and a
+roll of one half, Thick Hide's twelve points. The health multiplier makes the player take as long to kill the Stalker,
+its drinks included, as to kill the Boss; the damage multiplier makes the Stalker, a blow every 0.75 s, kill the player
+as fast as the Boss does. Critical strikes are left out on both sides. Printed by `python -m cataclysm_sim.fight`:
+
+| Tier | Boss: seconds to kill / to kill the player | Stalker built health | Drinks | Health x (now) | Damage x (now) |
+|---|---|---|---|---|---|
+| 1 | 7.1 / 16.4 | 761 | 2 | 0.74 (1.20) | 1.73 (1.00) |
+| 2 | 13.0 / 10.4 | 1154 | 4 | 1.16 (1.74) | 3.27 (1.00) |
+| 3 | 16.3 / 11.0 | 1582 | 5 | 1.47 (2.29) | 4.25 (1.00) |
+| 4 | 17.2 / 10.4 | 2030 | 5 | 1.85 (2.83) | 4.66 (1.00) |
+| 5 | 16.7 / 10.9 | 2534 | 5 | 2.16 (3.37) | 4.69 (1.00) |
+| 6 | 15.3 / 12.4 | 3141 | 5 | 2.39 (3.91) | 4.44 (1.00) |
+| 7 | 17.5 / 12.0 | 3504 | 5 | 2.83 (4.46) | 5.01 (1.00) |
+| 8 | 19.7 / 11.7 | 3839 | 6 | 2.93 (5.00) | 5.55 (1.00) |
+
+**Read as:** by this model the placeholder health is too high and the placeholder damage far too low. A JUDGEMENT in the
+model: every drink a fight of the Boss's length allows is taken as poured in full.
+
+Tests, `sim/tests/test_the_corrupted_stalker_fight.py`, six: finite positive figures at every tier; the health
+multiplier reproduces the Boss's time to kill; the damage multiplier reproduces the Boss's time to kill the player when
+the blows are counted one at a time by `damage.hits_to_kill`, an independent path; the potions lower the health it
+needs; the placeholders read out of the game's header; the model's pieces read back out of the game's `DemonicEntry`.
+Proved by `tools/prove_guard.py`, 2026-10-25: the landed share taken out of the damage multiplier fails the blow-by-blow
+test, and one piece of the model's entry changed fails the entry test; both restored, six passed.
+
+### What changed in the game
+
+- `ACataclysmCorruptedStalkerCharacter`: `ChoiceOrder`, `EnemyAbilities` (six choices, always in the ruled order; one
+  that may not be used now is given a range nothing satisfies, because the controller keys a skill's last use by its
+  index), `UseEnemyAbility`, `DesignedSecondsBetweenAttacks`, `AfterRegenerationStep` (the aura off, the potion, the
+  heal), `SkillIn`, `IsRunningASkillIn`; its skills from `UCataclysmWeaponSkills::SkillsFor`.
+- `UCataclysmPotions::PotionHolderOf`: a creature with `bHoldsAPlayerBuild` holds potions.
+- `ACataclysmDungeonGameMode`: the Stalker's charges kept on the beat and given to the next floor's; its kills refill
+  it through `UCataclysmPotions::NoteEnemyKilled`; both the dungeon's, reset in `LeaveEmpireDungeon`.
+
+### Tests, all in `Cataclysm.DungeonModifierEffects.`
+
+`TheCorruptedStalkersChoicesAreInTheRuledOrderWithTheirSlotsCooldowns`;
+`TheCorruptedStalkersBrainChoosesTheFirstSkillItMayUseInTheRuledOrder` (with a distance nothing reaches as control);
+`ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana`;
+`ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` (with a Stalker above 40% and an ordinary
+creature as controls); `ACorruptedStalkersKillsRefillItsPotionsAsAPlayersKillsDo` (with the player's kill as control);
+`TheCorruptedStalkerFollowsWithThePotionChargesItHad`; and two measurements that fail nothing but their set-up,
+`WhatACorruptedStalkerIsBuiltWithAtEachTier` ("STALKER BUILD:") and `WhetherFervourBuildsOnACorruptedStalkerInAFight`
+("STALKER FERVOUR:").
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | the base's measured total + 8, 0 failed |
+| Memory | about 7,700 MB; reported if above 9,500 |
+| P1, the 40% potion threshold check never true | `ACorruptedStalkerDrinksAPotionBelowFortyPercentHealthUnderThePlayersRules` fails |
+| P2, the guard against a second running copy removed | `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` fails |
+| P3, the carried charges not given to the next floor's | `TheCorruptedStalkerFollowsWithThePotionChargesItHad` fails |
+| The two measurements | measured, either outcome reported; their lines quoted as printed |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-25 — Any skill in the pool goes on any of the six keys and is saved; the key decides only which button casts it and where its cooldown is kept, and the slot it was made for decides every other rule (#837, layer 3)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmWeaponSkills.h` and `.cpp` (`FCataclysmWeaponSkill` gains

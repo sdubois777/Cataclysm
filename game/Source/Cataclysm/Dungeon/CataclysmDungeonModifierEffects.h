@@ -7125,6 +7125,25 @@ public:
 	/** Mixed into the floor's seed for which entry it raises. The letters "stlk". */
 	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
 
+	// THE CORRUPTED STALKER'S BRAIN, layer 2. The coordinating session's numbers, 2026-10-25, under the owner's
+	// delegation; the order its choice pass asks in is aura, support, movement, ultimate, heavy, special, and its
+	// weapon's basic attack when none of those is chosen. Issue #1308.
+
+	/** Its aura is turned off below this share of its maximum mana, and not turned on below it. */
+	static constexpr float CorruptedStalkerAuraOffBelowManaShare = 0.30f;
+
+	/** It uses its movement skill when the player is farther than this. 15 m. */
+	static constexpr float CorruptedStalkerMovementBeyondCm = 1500.0f;
+
+	/** It uses its support skill below this share of its maximum health. */
+	static constexpr float CorruptedStalkerSupportBelowHealthShare = 0.50f;
+
+	/** It drinks a health potion below this share of its maximum health, under the player's potion rules. */
+	static constexpr float CorruptedStalkerPotionBelowHealthShare = 0.40f;
+
+	/** At least this long between two of its skill uses, its basic attack included. */
+	static constexpr float CorruptedStalkerSecondsBetweenSkillUses = 0.75f;
+
 	static_assert(CorruptedStalkerFirstFloorSeconds > CorruptedStalkerFollowSeconds
 					  && CorruptedStalkerFollowSeconds > 0.0f,
 				  "The Corrupted Stalker arrives later on its first floor than it follows on the next, and never with "
