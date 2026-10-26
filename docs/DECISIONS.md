@@ -2,6 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Three small fixes from the dungeon session's triage: a save comment, a per-beat guard, and the player's measured regeneration (#1958, #1765, #1940)
+
+**Affects:** `FCataclysmSaveApply::CreatureInto`'s comment (#1958); a new Python test,
+`tools/tests/test_a_per_beat_field_is_not_also_a_per_floor_rules.py` (#1765); one printed line, and then its comment,
+in `Cataclysm.DungeonModifierEffects.SporesFromADeathNearThePlayerPoisonThem` (#1940). No behaviour changes. Ruled by
+the coordinating session on 2026-10-26, after the triage of the dungeon session's older issues.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w63 below passed every registered figure.** The spores test's comment was corrected from
+  the printed figure in the record commit, after the run: a comment, so the run's head and the merged head differ by
+  those lines only.
+
+### What each does
+
+| Issue | Change |
+|---|---|
+| #1958 | The save restore's comment said rarity and health do not scale each other, "so the order is for a reader". Wrong since #848: `SetRarityStep` re-applies the stat block and refills health. The comment now says the order is load-bearing. No code change |
+| #1765 | A Python source-text guard: no field `PlayerEffectsFor` writes may be assigned with a plain `=` in `ApplyChangingFloorEffects`, which would erase a per-floor rule's figure on a floor that also carries a beat rule. `+=` is allowed, as Eternal Chorus uses beside Rule of Chaos. It also asserts its own scope, so an empty read cannot pass |
+| #1940 | The spores test said the player regenerates 1 health a second, never measured; the #1924 measurements implied about 4. It now prints the attribute and the rate regeneration asks for by name, on a line beginning "SPORES REGEN:" |
+
+### Proof
+
+The #1765 guard, through `tools/prove_guard.py` in an archive copy of `25aba9c5b`: Eternal Chorus's `+=` made `=`.
+**PROVED**: "2 failed" with the break in (`test_no_field_a_per_floor_rule_writes_is_assigned_over_by_the_beat` and
+`test_the_check_reads_both_functions`), "2 passed" restored.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4268 / 0: `development` at `dd6950c54` measured 4268, and no test is added |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| The player's regeneration | measured, quoted as printed on the "SPORES REGEN:" line |
+| Unreal proofs | none: no new Unreal test, and the one guard is Python |
+
+### Run
+
+**Window w63 (lock `dungeon-w63`, `chore/stalker-area-small-fixes` at `143e098cf`, on `dd6950c54`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`dd6950c54` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 11.0 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4268 / 0 | `4268 tests performed, 4268 succeeded, 0 failed`; declared 4268, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7900`, peak 8,240 |
+| The player's regeneration | measured, quoted as printed | "SPORES REGEN: the player's health regeneration attribute 3.850, the rate asked for by name 3.850" |
+| Python (JUnit) | | 7011 tests, 0 failures, 0 errors, 8 skipped ("7003 passed, 8 skipped"); ruff `All checks passed!` |
+
+**The player regenerates 3.85 health a second in that test's world, not 1.** The #1924 arithmetic's "about 4" agrees.
+The comment now says 3.85, and the assertion, at least 10 lost in 2.5 seconds against 20 a second of poison, holds
+either way.
+
+---
+
 ## 2026-10-26 — Status rows whose numbers are all zero: 28 marked "(planned)", 2 retired, 2 descriptions corrected to what is built, and the owner puts every Buff row in the random-buff pool (#2533)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the "Buffs", "Debuffs" and "DoTs" sheets, column A of the rows named

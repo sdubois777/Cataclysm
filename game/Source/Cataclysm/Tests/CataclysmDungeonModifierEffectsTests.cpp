@@ -6376,9 +6376,18 @@ bool FCataclysmSporeCloudsNearTest::RunTest(const FString& Parameters)
 			  UCataclysmSkillEffects::HasTag(Player.Character, Burn));
 
 	// AND IT COSTS HEALTH, WHICH IS WHAT "poison the player" PROMISES. The row
-	// states 20 a second and the player regenerates 1, so a couple of seconds
-	// cannot be a draw. At least 10 is asked for so a tick falling on the edge
-	// of a step cannot decide the result.
+	// states 20 a second and the player regenerates 3.85, measured in window w63
+	// on 2026-10-26 (the line below prints it), so a couple of seconds cannot be
+	// a draw. At least 10 is asked for so a tick falling on the edge of a step
+	// cannot decide the result. Issue #1940: this said 1 until the measurement.
+	//
+	// THE PLAYER'S REGENERATION, PRINTED FOR ISSUE #1940: the attribute and the
+	// rate regeneration asks for by name, which is the one it applies.
+	AddInfo(FString::Printf(
+		TEXT("SPORES REGEN: the player's health regeneration attribute %.3f, the rate asked for by name %.3f"),
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthRegenAttribute()),
+		Player.AbilitySystem->StatForSkill(FName(TEXT("health_regen")), FGameplayTagContainer(),
+			Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthRegenAttribute()))));
 	CataclysmTestWorld::RunClock(World, 2.5f);
 	const float After =
 		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());

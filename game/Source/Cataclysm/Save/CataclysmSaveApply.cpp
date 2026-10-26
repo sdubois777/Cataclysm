@@ -253,9 +253,11 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	}
 
 	// RARITY AND MODIFIERS BEFORE HEALTH, because rarity is what a creature is
-	// and health is what has happened to it. Neither scales the other today --
-	// rarity decides what drops and how the creature is labelled -- so the order
-	// is for a reader rather than for the arithmetic.
+	// and health is what has happened to it. THE ORDER IS LOAD-BEARING: rarity is
+	// part of the stat block since issue #848, so `SetRarityStep` re-applies it
+	// through `ApplyStartingAttributes` and refills health to the new maximum.
+	// Written after it, the saved figures below are what stand. Issue #1958; this
+	// said until then that neither scaled the other.
 	Creature->SetRarityStep(Saved.RarityStep);
 	Creature->ModifierRows = Saved.ModifierRows;
 	// A RISEN CREATURE STILL PAYS NOTHING WHEN IT DIES AGAIN, the owner's decision of 2026-09-17.
