@@ -12,7 +12,8 @@ four new Unreal tests and one set-up line in each of two others; a new Python gu
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w65 below passed every registered figure, and both proofs were PROVED.** The window before
+  it, w64, stopped on one failed control in a new test; recorded under Run.
 - **IN PLAY THE REACH IS NARROWER THAN THE ISSUE'S TITLE.** A walking character with a controller is lifted about
   2.15 cm above the floor on its first walking update (`UCharacterMovementComponent::AdjustFloorHeight`, to the middle
   of `MIN_FLOOR_DIST` 1.9 and `MAX_FLOOR_DIST` 2.4), and kept there. So in play a plain swept move was refused in the
@@ -116,6 +117,25 @@ coordinating session on 2026-10-26 as a set-up change with no assertion changed.
 **Registered for the next window, w65,** as for w64, with a step 1b first, ruled by the coordinating session: the
 movement-skill test alone by its full name, stopping there if it fails. 4274 / 0; P1 and P2 as above; the distances
 quoted as printed.
+
+**Window w65 (lock `dungeon-w65`, `fix/moves-that-start-on-the-floor` at `e12b6031b`, on `697702601`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: `development` still at `697702601`,
+whose two runs had succeeded; none in progress or queued; the lock free; no build or editor process; no open pull
+request; "free GB: 12.48 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.34.cpp` |
+| Step 1b, the movement-skill test alone | passes | `1 tests performed, 1 succeeded, 0 failed`; "the blink moved the player 400.0 cm toward a point 400.0 cm away" |
+| Whole Unreal suite | 4274 / 0 | `4274 tests performed, 4274 succeeded, 0 failed`; declared 4274, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7652`, peak 7,978 |
+| Python (JUnit) | | 7016 tests, 0 failures, 0 errors, 8 skipped ("7008 passed, 8 skipped"); ruff `All checks passed!` |
+| U1, the helper's character branch off | the knockback test fails | "1 tests performed, 0 succeeded, 1 failed: AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| U2, the caster's move back to a plain sweep | the movement-skill test fails | "1 tests performed, 0 succeeded, 1 failed: ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**The distances, as printed** ("MOVES ON A FLOOR:"): the knockback moved the creature 300.0 cm; the Phasewalker
+300.0 cm; the tether dragged one end 150.0 cm and the other 150.0 cm; the blink moved the player 400.0 cm toward a
+point 400.0 cm away. The same as w64's, and every statue test and every other test passed.
 
 ---
 
