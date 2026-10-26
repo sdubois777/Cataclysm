@@ -50,7 +50,26 @@ Prefix `Cataclysm.DebuffWords.`.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-26, window t102w, under the editor lock as `enchant-t102w`, taken at 11.2 GB
+free, at `8eedb5d54` on `fix/name-cripple-weaken-shred-stun-1`: the commit moved from `f2c809bd4` (on `abe7f7d59`) onto
+development `3680ec19b`, keeping its zero-context patch id, whole and outside this file; this file conflicted, resolved
+by placing the entry, its lines unchanged. `tools/check_resolved_cpp.py` over the 4 C++ files: "4 files read, 0 with
+complaints".
+
+- **The build, after the build plan cache was deleted:** "Build: Succeeded - 40 actions, 37 files compiled";
+  "compiled: CataclysmDebuffWordsTests.cpp in Module.Cataclysm.17.cpp.obj", "compiled: CataclysmCombatOverlay.cpp in
+  Module.Cataclysm.10.cpp.obj" (each object newer than its source).
+- **The four tests alone, as registered:** `Cataclysm.DebuffWords.`: "4 tests performed, 4 succeeded, 0 failed".
+- **The whole Unreal suite, as registered:** "4263 tests performed, 4263 succeeded, 0 failed" (4259 on development + 4);
+  "Declared: 4263 tests in the tree at 8eedb5d54; 4263 performed, gap 0". 43 tests skipped part of what they check. The
+  exact status-line tests named above as a risk all passed. The memory summary line, quoted: "CataclysmTestMemorySummary:
+  tests=4870 peak_used_virtual_mb=8001 final_used_virtual_mb=7662 collections=3243 collection_total_s=107.346
+  worlds_at_last_collection=1".
+- **Python of record, as registered:** "6999 passed, 8 skipped"; JUnit 7007 tests, 0 failures, 0 errors, 8 skipped.
+  `ruff check .`: "All checks passed!".
+- **#2379-G1, the words never follow the tag:** PROVED, AS REGISTERED. Prefix `Cataclysm.DebuffWords.` (4 tests), the
+  anchor counted once, 0 ensures, the file's hash the same after. All 4 failed; 8 failed assertions, registered 8 (each
+  word and its status line while the tag was held); every control passed; restored, 4 performed, 4 succeeded.
 
 ---
 
