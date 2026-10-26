@@ -12,7 +12,7 @@ Closes [#2523](https://github.com/sdubois777/Cataclysm/issues/2523), with the li
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w62 below passed every registered figure, and all three proofs were PROVED.**
 - **THE 28 WRITES WERE READ, NOT MEASURED.** Each verdict below comes from reading the write and the code that chooses
   its creature, at `c80760f5a`. #2523 counted 27; the 28th is the Stalker's own carried health, added by layer 3.
 
@@ -88,7 +88,20 @@ the part that holds in play and in no other test.
 
 ### Run
 
-Not run yet.
+**Window w62 (lock `dungeon-w62`, `feat/corrupted-stalker-fervour` at `ef84057ab`, on `2732839ad`, 2026-10-26)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`2732839ad` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.2 of 31.1". The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4268 / 0 | `4268 tests performed, 4268 succeeded, 0 failed`; declared 4268, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7866`, peak 8,193 |
+| Python (JUnit) | | 7009 tests, 0 failures, 0 errors, 8 skipped ("7001 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the decay skip removed | the starting Fervour test fails | "1 tests performed, 0 succeeded, 1 failed: ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, Volatile Evolution's skip removed | the Volatile Evolution test fails | "1 tests performed, 0 succeeded, 1 failed: VolatileEvolutionDoesNotRaiseACorruptedStalkersRung"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, Epidemic's spare removed | the Epidemic test fails | "1 tests performed, 0 succeeded, 1 failed: EpidemicsMassKillSparesACorruptedStalker"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
