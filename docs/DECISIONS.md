@@ -82,7 +82,8 @@ step function was read.
 `UCataclysmSkillTemplates`, `CataclysmSkillTemplates.cpp` about 2242-2258) makes everything the caster commands call
 `AttackTarget` on the bolt's target, asking no `CannotAct`; `ACataclysmMinion::AttackTarget` and
 `ACataclysmEnemyCharacter::AttackTarget` ask none either. Those creatures have brains, so (b) does not reach them, and
-whether a stunned minion or thrall should strike when Compelled is not decided here. Read, not measured.
+whether a stunned minion or thrall should strike when Compelled is not decided here. Read, not measured. Filed by
+the coordinating session as **#2560**, whose first step is to measure it.
 
 ### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
 
