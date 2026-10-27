@@ -96,6 +96,9 @@ measured; the coordinating session's first reading pointed at that log line, and
 player held no weapon, was wrong. **Corrected in the next commit** to `ApplyDirectDamage`, a fixed amount, as the
 file's other test that kills does; not run yet.
 
+**Registered for the next window, w67,** as for w66 -- 4279 / 0 on `54925981a`; P1, P2 and P3 as above -- with a step
+1b first: the kill-row test alone by its full name, stopping there if it fails.
+
 ---
 
 ## 2026-10-26 — A random buff can wear set rows: Shard of Anarchy's random buff can draw Sanctified Power, Demonic Rage, Temporal Flux and Void, batch 2 of the owner's "Add everything" (#2538)
