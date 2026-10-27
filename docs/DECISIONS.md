@@ -83,7 +83,7 @@ Window w73, registered before it runs:
 |---|---|
 | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` alone | 1 / 1; prints "-3.0 War resistance before leaving, 0.0 after" |
 | `LeavingTheDungeonEndsTheNihilsEmbracesReward` alone | 1 / 1; prints "10.0 War resistance before leaving, 0.0 after" |
-| Whole Unreal suite | 4332 / 0 |
+| Whole Unreal suite | 4337 / 0: `development` at `450afa681` (#2565) measured 4335, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-nihil-3` |
 | Python | of record, with JUnit |
 
 If either test alone does not print its value, the window stops there and nothing after it runs.
