@@ -2938,6 +2938,13 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target), Detonation);
 	}
 
+	// AND WITHERED TOUCH ON THE APPLIER, ruled 2026-10-26 (#2541), under the ruling that cuts "every damage-over-time
+	// tick it applies": the share is cut when it is laid, as `ApplyDamageOverTime` cuts a tick's figure, and before
+	// the comparison below, so a cursed one is weighed at what it will take. Only for an effect scaled by its applier
+	// and laid on another character, as there, so never a spread copy, which arrives with that off. A minion's is laid
+	// in its own name, and the curse is on the player.
+	SharePerTick *= bScalesWithInstigator && Instigator != Target ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+
 	// THE STRONGEST APPLICATION WINS, BY SHARE A SECOND, the comparison
 	// `ApplyDamageOverTime` makes by damage a second. Issue #1503. An equal or
 	// weaker one only refreshes how long the running one lasts and never

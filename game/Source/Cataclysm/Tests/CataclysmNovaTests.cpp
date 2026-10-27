@@ -9,6 +9,9 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmNova.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For the Withered Touch tag and the curse laid with it. #2541.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
@@ -331,6 +334,63 @@ CATACLYSM_NOVA_TEST(FCataclysmNovaReleasedWithNobodyNearTest,
 
 	TestEqual(TEXT("and a second on the same frame is refused"),
 		UCataclysmNova::Step(Alone.Actor), 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_NOVA_TEST(FCataclysmNovaWitheredTouchTest,
+	"Cataclysm.Nova.ACursedCharactersNovaIsAFifthSmallerAndSoIsWhatItTakes")
+{
+	using namespace CataclysmNovaTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	constexpr float M = NovaMetre;
+
+	// #2541, RULED 2026-10-26: Withered Touch cuts a share of one of the cursed
+	// player's own stats, and the nova is a share of its own missing health. TWO
+	// CHARACTERS ALIKE, ONE CURSED, 20 m apart, each with an enemy 2 m off, so
+	// each 6 m nova strikes its own enemy alone. THE CURSE IS THE TAG ALONE, laid
+	// by `ApplyTagForDuration` from the cursed one's enemy: the tag is all
+	// `KeptUnderWitheredTouch` asks for, and the 20 is the status table's row.
+	// THE CONTROL FIRST: the uncursed one's nova, 8% of the 950 it is missing.
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid()))
+	{
+		return false;
+	}
+	FNovaCombatant Uncursed(World, FVector::ZeroVector);
+	FNovaCombatant UncursedsEnemy(World, FVector(2 * M, 0.0f, 0.0f));
+	FNovaCombatant Cursed(World, FVector(0.0f, 20 * M, 0.0f));
+	FNovaCombatant CursedsEnemy(World, FVector(2 * M, 20 * M, 0.0f));
+	GiveUnstableAura(Uncursed);
+	GiveUnstableAura(Cursed);
+	Uncursed.Vitals->SetHealth(50.0f);
+	Cursed.Vitals->SetHealth(50.0f);
+	if (!TestTrue(TEXT("set-up: the curse is on the cursed character and not on the other"),
+			UCataclysmSkillEffects::ApplyTagForDuration(CursedsEnemy.Actor.Get(), Cursed.Actor.Get(), Withered, 60.0f)
+				&& UCataclysmSkillEffects::HasTag(Cursed.Actor.Get(), Withered)
+				&& !UCataclysmSkillEffects::HasTag(Uncursed.Actor.Get(), Withered)))
+	{
+		return false;
+	}
+
+	const float UncursedsEnemyBefore = UncursedsEnemy.Vitals->GetHealth();
+	const float CursedsEnemyBefore = CursedsEnemy.Vitals->GetHealth();
+	const float Control = UCataclysmNova::Step(Uncursed.Actor);
+	const float CursedNova = UCataclysmNova::Step(Cursed.Actor);
+	TestEqual(TEXT("control: the uncursed character's nova is 8% of the 950 it is missing, 76"), Control, 76.0f, 0.01f);
+	TestEqual(TEXT("the cursed character's is 80% of it"), CursedNova, 0.8f * Control, 0.01f);
+
+	const float ControlTaken = UncursedsEnemyBefore - UncursedsEnemy.Vitals->GetHealth();
+	TestEqual(TEXT("control: the uncursed character's enemy loses the 76"), ControlTaken, Control, 0.01f);
+	TestEqual(TEXT("and the cursed character's enemy loses 80% of what that one did"),
+		CursedsEnemyBefore - CursedsEnemy.Vitals->GetHealth(), 0.8f * ControlTaken, 0.01f);
 
 	return true;
 }

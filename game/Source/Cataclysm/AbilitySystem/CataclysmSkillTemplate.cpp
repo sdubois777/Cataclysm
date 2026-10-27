@@ -3411,13 +3411,22 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 	const float SkillHit = UCataclysmSkillEffects::SkillHitWithNoTarget(
 		AbilitySystem, SkillTags, GetDamagePercent(), /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 		/*ExtraIncreases=*/FMath::Max(0.0f, LastNextUseIncreasePercent) / 100.0f + TrapIncreases);
+	// AND WITHERED TOUCH ON THE CASTER, ruled 2026-10-26 (#2541): the curse cuts a figure priced through the player's
+	// own damage pricing, and a patch is priced so, here and once. A "less" on the whole tick, as `ApplyHit` takes it
+	// off the whole blow. NOT FOR A USE A MINION CAST IN THE CASTER'S NAME, a skill gadget's, a skill trap's or a
+	// gadget's copy: each names the minion in `FreeRepeatCastBy`, as `ApplyHit` leaves out a blow naming one in
+	// `NamedCastBy` and `ApplyDamageOverTime` an effect whose skill names one. A minion's own pool is laid in its own
+	// name, and the curse is on the player, not on the minion.
+	const float KeptUnderTheCurse =
+		FreeRepeatCastBy.IsExplicitlyNull() ? UCataclysmSkillEffects::KeptUnderWitheredTouch(Self) : 1.0f;
 	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
 							AbilitySystem,
 							SkillHit,
 							SkillTags)
 						* PercentPerSweep / 100.0f
 						// AND ANY EFFECTIVENESS SPENT, a "more" on the whole figure. Issue #1833.
-						* FMath::Max(0.0f, LastNextUseMoreMultiplier);
+						* FMath::Max(0.0f, LastNextUseMoreMultiplier)
+						* KeptUnderTheCurse;
 	PricedForTheGadget.End();
 
 	ACataclysmGroundZone* Zone = LeaveAZoneFor(

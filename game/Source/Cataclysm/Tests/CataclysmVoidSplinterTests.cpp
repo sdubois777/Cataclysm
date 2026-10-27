@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Withered Touch tag, by the one name-to-tag helper. #2541.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -687,6 +689,61 @@ CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterResistedBossTest,
 	TestTrue(FString::Printf(TEXT("and it did take damage, down from 10,000 to %.0f"),
 							 Left),
 		Left < StartingHealth - 1'000.0f);
+	return true;
+}
+
+CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterWitheredTouchTest,
+	"Cataclysm.VoidSplinter.ACursedAppliersShareIsAFifthSmallerAndSoIsWhatItsTickTakes")
+{
+	using namespace CataclysmVoidSplinterTest;
+
+	// #2541, RULED 2026-10-26: Withered Touch cuts Void Splinter under the ruling
+	// that cuts every damage over time effect a cursed player lays, when it is
+	// laid. Two appliers alike, one cursed, each laying 1% a tick on a target of
+	// its own. THE CURSE IS THE TAG ALONE, laid by `ApplyTagForDuration` from the
+	// cursed one's own target: the tag is all `KeptUnderWitheredTouch` asks for,
+	// and the 20 is the status table's row. THE CONTROL FIRST: the uncursed one's
+	// share and its first tick.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!TestTrue(TEXT("the vocabulary has Keyword.DoT.VoidSplinter"), SplinterTag().IsValid())
+		|| !TestTrue(TEXT("and the Withered Touch tag"), Withered.IsValid()))
+	{
+		return false;
+	}
+
+	const FSplinterFighter Uncursed(World);
+	const FSplinterFighter Cursed(World);
+	const FSplinterFighter UncursedsTarget(World);
+	const FSplinterFighter CursedsTarget(World);
+	if (!TestTrue(TEXT("set-up: the curse is on the cursed applier and not on the other"),
+			UCataclysmSkillEffects::ApplyTagForDuration(CursedsTarget.Actor, Cursed.Actor, Withered, 60.0f)
+				&& UCataclysmSkillEffects::HasTag(Cursed.Actor, Withered)
+				&& !UCataclysmSkillEffects::HasTag(Uncursed.Actor, Withered))
+		|| !TestTrue(TEXT("set-up: each applier's Void Splinter of 1% a tick lands"),
+			Uncursed.Splinter(UncursedsTarget, 0.01f) && Cursed.Splinter(CursedsTarget, 0.01f)))
+	{
+		return false;
+	}
+
+	const float Control = ShareOn(UncursedsTarget.AbilitySystem);
+	TestEqual(TEXT("control: the uncursed applier's carries the whole 1% a tick"), Control, 0.01f, 0.0001f);
+	TestEqual(TEXT("the cursed applier's carries 80% of it"),
+		ShareOn(CursedsTarget.AbilitySystem), 0.8f * Control, 0.00001f);
+
+	// THE FIRST TICK, AT ONE SECOND.
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	const float ControlTick = StartingHealth - UncursedsTarget.Health();
+	TestEqual(TEXT("control: the uncursed applier's first tick takes 1% of 10,000, which is 100"),
+		ControlTick, 100.0f, 0.01f);
+	TestEqual(TEXT("and the cursed applier's takes 80% of it"),
+		StartingHealth - CursedsTarget.Health(), 0.8f * ControlTick, 0.01f);
 	return true;
 }
 

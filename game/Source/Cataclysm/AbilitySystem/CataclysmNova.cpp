@@ -73,8 +73,12 @@ float UCataclysmNova::Step(AActor* Character)
 	const float SharePercent = AbilitySystem->StatForSkill(
 		FName(DamageStat), FGameplayTagContainer(), 0.0f);
 
+	// AND WITHERED TOUCH ON THE CHARACTER, ruled 2026-10-26 (#2541): the curse cuts a share of one of the player's own
+	// stats, and this is a share of its own missing health. `Character` is the one releasing it, which the curse lands
+	// on; a minion releases none and carries no curse. `AmountFrom` is the arithmetic and stays uncut.
 	const float Amount = AmountFrom(SharePercent, Vitals->GetHealth(),
-									Vitals->GetMaxHealth());
+									Vitals->GetMaxHealth())
+		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Character);
 	if (Amount <= 0.0f)
 	{
 		// EVERY CHARACTER WITHOUT THE NODE, every character holding it that is

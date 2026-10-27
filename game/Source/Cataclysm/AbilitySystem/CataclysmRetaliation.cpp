@@ -196,7 +196,12 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 								 AActor* Instigator, AActor* Attacker,
 								 float DamageTaken, float PercentInPlaceOfTheStat)
 {
-	const float Amount = AmountFor(Defender, DamageTaken, PercentInPlaceOfTheStat);
+	// AND WITHERED TOUCH ON THE DEFENDING BODY, ruled 2026-10-26 (#2541): the curse cuts a share of another's blow that
+	// the player's own increases raise, and `AmountFor` prices this one through the defender's, as a retaliation or as a
+	// reflected melee hit. `Instigator` is the defending body, the character the curse lands on. A minion carries no
+	// curse, so its payment keeps its whole figure. A block's reflect is not paid here, and no increase raises it.
+	const float Amount = AmountFor(Defender, DamageTaken, PercentInPlaceOfTheStat)
+		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Instigator);
 	if (Amount <= 0.0f)
 	{
 		// A CHARACTER WITH NONE OF THE STAT SENDS NOTHING BACK. Three things
