@@ -20804,6 +20804,84 @@ bool FCataclysmResurgenceNextFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A DEATH WAITING TO BE HEARD STILL STANDS IN THE PLACED COUNT. Issue #2546.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceWaitingDeathTest,
+	"Cataclysm.DungeonModifierEffects.ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A listener kills a second creature when it hears the first die, so the second death waits to be heard (#2482), and
+ * reads Divine Resurgence's placed count at that moment: it must equal the count before the first death. Until #2546
+ * both bodies were dead and neither heard, in neither count, and it read two short.
+ *
+ * ONE ORDER OF CALLING, NOT TWO: the dungeon binds to deaths in `StartPlay`, before this listener, and the engine calls
+ * the newer binding first, so the reading is always made before the dungeon has heard either death. Binding the
+ * dungeon again to try the other order would make it count every death twice.
+ *
+ * CONTROL: once both deaths have been heard, the count is still the same, and the fallen count is two.
+ */
+bool FCataclysmResurgenceWaitingDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!Mode || !TestNotNull(TEXT("set-up: the announcements"), Events))
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("set-up: a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+	const int32 Before = Mode->DivineResurgencePlacedCount();
+	if (!TestTrue(FString::Printf(TEXT("set-up: two deaths of %d placed do not bring the revival"), Before),
+				  !UCataclysmDungeonModifierEffects::DivineResurgenceIsDue(2, Before)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* const First = Placed[0];
+	ACataclysmEnemyCharacter* const Second = Placed[1];
+	int32 WhileItWaited = -1;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&WhileItWaited, Mode, First, Second](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == First)
+			{
+				UCataclysmSkillEffects::MarkDead(Second);
+				WhileItWaited = Mode->DivineResurgencePlacedCount();
+			}
+		});
+	const bool bFirstDied = ThePlayerKills(*this, Player, First);
+	Events->OnDeath.Remove(Heard);
+	if (!bFirstDied || !TestTrue(TEXT("set-up: the second creature died too"), UCataclysmSkillEffects::IsDead(Second)))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("Divine Resurgence: placed %d before, %d while the second death waited, %d after"),
+							Before, WhileItWaited, Mode->DivineResurgencePlacedCount()));
+	TestEqual(TEXT("while the second death waited to be heard, the placed count was what it was before"),
+			  WhileItWaited, Before);
+	TestEqual(TEXT("CONTROL: once both were heard it is still that"), Mode->DivineResurgencePlacedCount(), Before);
+	TestEqual(TEXT("CONTROL: and both are counted among the fallen"), Mode->DivineResurgenceFallenCount(), 2);
+	return true;
+}
+
 // Q4: A WRAITH IS A REVIVAL, ruled under the owner's delegation on 2026-09-23 and
 // vetoable. The row says the kill "stands back up"; the owner's decision of 2026-09-17 is
 // that one kill pays once.

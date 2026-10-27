@@ -18183,11 +18183,16 @@ int32 ACataclysmDungeonGameMode::DivineResurgencePlacedCount() const
 	// keeps an entry per creature added, but a destroyed creature's entry can be emptied
 	// by the engine at any time afterwards, so its length drifts; this count does not.
 	// A MARKED creature is neither: it is one of the floor's dead brought back.
+	//
+	// A DEAD CREATURE WHOSE DEATH HAS NOT BEEN HEARD YET STILL STANDS here. Issue #2546: a death raised while another
+	// is being announced waits to be heard (#2482), and until then it was in neither count, so the placed count read
+	// one short and the revival could come a death early. See `DivineResurgenceHeard`.
 	int32 Standing = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
-		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
-			&& Enemy->PaysForItsDeath())
+		if (IsValid(Enemy) && Enemy->PaysForItsDeath()
+			&& (!UCataclysmSkillEffects::IsDead(Enemy)
+				|| !DivineResurgenceHeard.Contains(TWeakObjectPtr<ACataclysmEnemyCharacter>(Enemy.Get()))))
 		{
 			++Standing;
 		}
@@ -18224,6 +18229,7 @@ void ACataclysmDungeonGameMode::NoteDeathForDivineResurgence(
 	// nothing else can be put back; the sandbox's plain creature is counted and not
 	// recorded, the same answer Vengeful Wraiths gives it.
 	++DivineResurgenceFallen;
+	DivineResurgenceHeard.Add(Fallen);
 	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
 	if (Kind != ECataclysmDungeonCreature::Count)
 	{
@@ -22276,6 +22282,7 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// as placed nor raises it again.
 		DivineResurgenceGraves.Reset();
 		DivineResurgenceFallen = 0;
+		DivineResurgenceHeard.Reset();
 		bDivineResurgenceDone = false;
 		DivineResurgenceRisen = 0;
 
