@@ -119,9 +119,36 @@ player dies (searched by the row's name).
 With `Cataclysm.DeathKeepsThePlayerInTheDungeon 1` and `Cataclysm.DungeonModifiers Void_The_Nihil_s_Embrace` typed
 at the console before a floor is built, walk until the character panel's resistances drop, die, and stand back up with them where they started.
 
-### THE WINDOW'S RUN
+### THE WINDOWS' RUNS, t144w AND t147w
 
-Not run. The enchantment session records its window here.
+Moved from `29c12743e` on `3b0c74ef3` to `7aa21eb43` on development `41cb7e3e3` as
+`fix/nihils-embrace-ends-at-the-players-death-1`; the only conflict was this file. Both windows ran with the project
+owner's one-time memory exception of 2026-10-27 in force (a floor of 9,800 MB, for t141w and this run only; the
+standing floor is 10 GiB, 10,240 MB). Neither needed it.
+
+**t144w, run 2026-10-27 under the lock as `enchant-t144w`, STOPPED AT ITS PROOF, on a test this change does not touch.**
+Free memory immediately before the lock, at 10:37:27, was 10,477 MB.
+
+| Step | Result |
+|---|---|
+| The two new tests, each alone | 1 of 1 each; the first build compiled 37 files in 40 actions |
+| The whole Unreal suite | "4308 tests performed, 4308 succeeded, 0 failed"; 4308 declared, gap 0 |
+| Memory | `tests=4915 peak_used_virtual_mb=8055 final_used_virtual_mb=7698` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| NE-G1, prefix `Cataclysm.DungeonModifierEffects.` (757 tests) | "NOT A PROOF": the two new tests failed with the break in on exactly the 18 predicted assertions, but `Cataclysm.DungeonModifierEffects.APhasewalkerStandingOnTheFloorPhasesItsWholeDistance` failed too, IN BOTH HALVES ("'its whole three metres along the ground' to be 300.000000, but it was 260.049225"): 754 of 757 with the break in, 756 of 757 restored |
+
+That Phasewalker test passed in the same window's whole suite, so it fails only when its group runs alone. It was added by
+`2c6da3ff2` (#2203, #2505) and nothing here touches it. Filed by the coordinating session as **#2556**: until it is
+fixed, any proof prefixed `Cataclysm.DungeonModifierEffects.` reads NOT A PROOF.
+
+**t147w, run 2026-10-27 under the lock as `enchant-t147w`, NE-G1 ALONE, as ruled after t144w.** Free memory immediately
+before the lock, at 11:14:42, was 11,500 MB. Steps 2a to 3 stand from t144w at the same head. The prefix
+`Cataclysm.DungeonModifierEffects.ThePlayersOwnDeath` selects three tests: the two new ones and the existing
+`ThePlayersOwnDeathClearsWastingSicknessAtOnce`, a control, since its floor carries no Nihil's Embrace row.
+
+| Proof | Result |
+|---|---|
+| NE-G1, the player's branch never fires (`Notice.Victim == Player` made `== Controller`) | PROVED: with the break in, 3 performed, 1 succeeded (the Wasting Sickness control), the 2 new tests failed on 18 of 18 assertions; 3 of 3 passed restored |
 
 ---
 
