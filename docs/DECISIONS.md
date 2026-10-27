@@ -186,9 +186,25 @@ The group counts are of test names in the tree by script; the count to quote is 
   the ground's ticks and the nova's numbers are a fifth smaller for as long as the curse holds; a skill gadget's
   ground is not.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t138w
 
-Not run. The enchantment session records its window here.
+Window t138w, run 2026-10-26 under the lock as `enchant-t138w` at 11,245 MB free, at `7cfe2d7ca` on development
+`c14da36bb`. No new source file and no status row changed, so it had no build-cache step and no asset rebuild. The
+coordinating session accepted on 2026-10-26, before the window, the ground's wider skip (every use cast in the player's
+name, the test reaching the gadget's case only), and, read and not measured, that a gadget- or trap-laid Void Splinter
+is cut and that a minion the Succubus cursed would have its own retaliation cut. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The six new tests, each alone | 1 of 1 each; the first build compiled 9 files in 12 actions |
+| The whole Unreal suite | "4300 tests performed, 4300 succeeded, 0 failed"; 4300 declared, gap 0 |
+| Memory | `tests=4907 peak_used_virtual_mb=8029 final_used_virtual_mb=7695` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| WT2-G1, the ground zone uncut (a skill hit) | PROVED: the new ground test failed, 1 of 1 assertion; 6 of 6 `Cataclysm.GroundPatchLine.` passed restored |
+| WT2-G2, retaliation uncut (an incoming share raised by increases) | PROVED: the new retaliation test failed, 2 of 2 assertions; 11 of 11 passed restored |
+| WT2-G3, the nova uncut (a share of the player's own stat) | PROVED: the new nova test failed, 2 of 2 assertions; 5 of 5 passed restored |
+
+Void Splinter's cut is proved by its own test's control only, as ruled.
 
 ---
 
