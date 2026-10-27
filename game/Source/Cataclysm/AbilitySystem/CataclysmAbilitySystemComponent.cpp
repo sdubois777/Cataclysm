@@ -8214,7 +8214,11 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 			const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
 			const float Armour = StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
 				Combat ? Combat->GetArmor() : 0.0f);
-			const float Amount = Armour * Action.Percent / 100.0f;
+			// AND WITHERED TOUCH ON THE WEARER, ruled 2026-10-26 (#2541): the curse cuts a share of one of the
+			// player's own stats, and this is a share of its own armour. `Self` is the avatar, which the curse
+			// lands on; a minion's rows are its own and it carries no curse.
+			const float Amount = Armour * Action.Percent / 100.0f
+				* UCataclysmSkillEffects::KeptUnderWitheredTouch(Self);
 			if (Amount > 0.0f)
 			{
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);

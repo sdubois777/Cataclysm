@@ -18515,6 +18515,83 @@ bool FCataclysmGroundLineBracketTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundLineWitheredTouchTest,
+	"Cataclysm.GroundPatchLine.ACursedCastersGroundTicksAFifthLessAndAGadgetsCastInItsNameDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * #2541, ruled 2026-10-26: Withered Touch cuts the ground a cursed caster's skill leaves, priced once when it is laid,
+ * and not the ground a skill gadget casts in the caster's name. THE CURSE IS THE TAG ALONE, laid by
+ * `UCataclysmSkillEffects::ApplyTagForDuration` from a stand-in 30 m off: the tag is all
+ * `UCataclysmSkillEffects::KeptUnderWitheredTouch` asks for, and the 20 is the status table's row. A skill gadget
+ * stands 10 m away, outside the strike's 4 m, and casts as the gadget test above has it cast, named in
+ * `FreeRepeatCastBy`. THE CONTROL FIRST: uncursed, the plain 41.75. Cursed, 80% of it. Cast by the gadget while the
+ * caster is cursed, the control's figure.
+ */
+bool FCataclysmGroundLineWitheredTouchTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundPatchLineTest;
+
+	// A skill gadget needs a world that has begun play (window t81w, 2026-10-25).
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Curser(World, FVector(30.0f * M, 0.0f, 0.0f));
+	UCataclysmStrikeSkill* Strike = AGroundStrike(Caster, TEXT("Element.Demonic"));
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable)
+		|| !TestNotNull(TEXT("set-up: the strike"), Strike)
+		|| !TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid()))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget =
+		ACataclysmMinion::PlaceSkillGadget(Caster.Actor, ECataclysmAbilitySlot::Heavy, FVector(10.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a skill gadget is placed. If not, DT_MinionTypes needs the SkillGadget row: run "
+						  "tools/generate_datatable_assets.py"), Gadget)
+		|| !TestTrue(TEXT("set-up: and it is a skill gadget"), Gadget->IsSkillGadget()))
+	{
+		return false;
+	}
+
+	float Tick = -1.0f;
+	float FirstSweep = -1.0f;
+	if (!TestTrue(TEXT("control: uncursed, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	const float Uncursed = Tick;
+	TestEqual(TEXT("control: and the patch ticks the plain 41.75"), Uncursed, PlainTick, 0.01f);
+
+	if (!TestTrue(TEXT("set-up: the curse is laid on the caster"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(Curser.Actor, Caster.Actor, Withered, 60.0f)
+					  && UCataclysmSkillEffects::HasTag(Caster.Actor, Withered)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("cursed, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the patch ticks 80% of the control's. If 100%, DT_StatusEffects may be older than the Withered "
+				   "Touch row: run tools/generate_datatable_assets.py"),
+			  Tick / Uncursed, 0.8f, 0.001f);
+
+	Strike->FreeRepeatCastBy = Gadget;
+	if (!TestTrue(TEXT("cursed, cast by the gadget in the caster's name, the strike is used and leaves one patch"),
+				  UseAndReadTheGround(Caster, Strike, Tick, FirstSweep)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the gadget's patch ticks the control's figure: a use a minion casts is not cut"),
+			  Tick / Uncursed, 1.0f, 0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseNotSpentTest,
 	"Cataclysm.Skills.AnAuraASummonADeployableAndASupportUseLeaveAHeldChargeUnspent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

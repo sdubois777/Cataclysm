@@ -10,6 +10,8 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Withered Touch tag, by the one name-to-tag helper. #2541.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -365,6 +367,68 @@ CATACLYSM_TEST(FCataclysmArmourNovaTest,
 		}
 		TestEqual(TEXT("the creature lost 300% of the wearer's 1000 armour"),
 			Before - HealthOf(Creature), 3000.0f, 0.5f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmArmourNovaWitheredTouchTest,
+	"Cataclysm.BlockReflect.UnderWitheredTouchAnArmourNovaIsAFifthSmallerThanTheSameWearersUncursedOne")
+{
+	using namespace CataclysmBlockReflectTest;
+	// #2541, RULED 2026-10-26: Withered Touch cuts a share of one of the cursed
+	// player's own stats, and this nova is a share of the wearer's armour. The
+	// armour nova above, read twice from one wearer. THE CONTROL FIRST: uncursed,
+	// the creature loses 3000. The creature then curses the wearer, with the tag
+	// alone, laid by `ApplyTagForDuration`: the tag is all
+	// `KeptUnderWitheredTouch` asks for, and the 20 is the status table's row. The
+	// next blocked blow's nova takes 80% of the control's.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Attacker(World, 100.0f);
+		const FFighter Defender(World, 0.0f);
+		Defender.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+		Defender.Set(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1000.0f);
+		FCataclysmPoolAction Nova = OnBlock(UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction, 300.0f);
+		Nova.Nearby = ECataclysmNearbyAction::SmiteByArmour;
+		Defender.AbilitySystem->SetPoolActions({Nova});
+		ACataclysmEnemyCharacter* Creature = CreatureBeside(World, Defender.Actor);
+		if (!TestNotNull(TEXT("a creature three metres away"), Creature))
+		{
+			return false;
+		}
+		float Before = HealthOf(Creature);
+		if (!TestTrue(TEXT("set-up: the first blow was blocked"), Blow(Attacker, Defender).bBlocked))
+		{
+			return false;
+		}
+		const float Uncursed = Before - HealthOf(Creature);
+		TestEqual(TEXT("control: uncursed, the creature lost 300% of the wearer's 1000 armour"), Uncursed, 3000.0f, 0.5f);
+
+		if (!TestTrue(TEXT("set-up: the creature's curse is on the wearer"),
+				UCataclysmSkillEffects::ApplyTagForDuration(Creature, Defender.Actor.Get(), Withered, 60.0f)
+					&& UCataclysmSkillEffects::HasTag(Defender.Actor.Get(), Withered)))
+		{
+			return false;
+		}
+		Before = HealthOf(Creature);
+		if (!TestTrue(TEXT("set-up: the second blow was blocked"), Blow(Attacker, Defender).bBlocked))
+		{
+			return false;
+		}
+		TestEqual(TEXT("cursed, the creature loses 80% of the control's"), Before - HealthOf(Creature),
+			0.8f * Uncursed, 0.5f);
 	}
 	return true;
 }

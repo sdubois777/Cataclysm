@@ -27,6 +27,8 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For the Withered Touch tag, by the one name-to-tag helper. #2541.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "HAL/IConsoleManager.h"
 
@@ -1746,6 +1748,77 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedStillNotAHitTest,
 	TestEqual(TEXT("it takes the 100 sent and not three times that"), Taken, Sent, 0.01f);
 	TestEqual(TEXT("and the holder is promised no leech for it"),
 		Three.Holder.AbilitySystem->GetLeechPayments().Num(), 0);
+
+	return true;
+}
+
+// #2541, RULED 2026-10-26: Withered Touch cuts retaliation and a reflected melee
+// hit, each a share of another's blow that the cursed defender's own increases
+// raise, at the one line in `UCataclysmRetaliation::Pay`. Named in the
+// `Cataclysm.Retaliation.` group, beside the test of the share, and written here
+// to borrow the reflect's helpers above.
+CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWitheredTouchTest,
+	"Cataclysm.Retaliation.ACursedDefenderSendsAFifthLessBackForAHitAndForAReflectedMeleeHit")
+{
+	using namespace CataclysmRetaliationUnmitigatedTest;
+
+	const FUnmitigatedPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// TWO DEFENDERS ALIKE, ONE CURSED, each holding the 20% of retaliation, and
+	// the attacker who strikes both for 500. THE CURSE IS THE TAG ALONE, laid by
+	// `ApplyTagForDuration` from the attacker: the tag is all
+	// `KeptUnderWitheredTouch` asks for, and the 20 is the status table's row.
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid()))
+	{
+		return false;
+	}
+	FRetaliator Uncursed(World, FVector(0.0f, 0.0f, 0.0f));
+	FRetaliator Cursed(World, FVector(0.0f, 300.0f, 0.0f));
+	FRetaliator Attacker(World, FVector(300.0f, 0.0f, 0.0f));
+	Uncursed.Combat->SetRetaliation(RetaliationHeld);
+	Cursed.Combat->SetRetaliation(RetaliationHeld);
+	Attacker.Combat->SetAttackDamage(BlowTaken);
+	if (!TestTrue(TEXT("set-up: the curse is on the cursed defender and not on the other"),
+			UCataclysmSkillEffects::ApplyTagForDuration(Attacker.Actor.Get(), Cursed.Actor.Get(), Withered, 60.0f)
+				&& UCataclysmSkillEffects::HasTag(Cursed.Actor.Get(), Withered)
+				&& !UCataclysmSkillEffects::HasTag(Uncursed.Actor.Get(), Withered)))
+	{
+		return false;
+	}
+
+	const auto SentBackBy = [&Attacker](const FRetaliator& Whom, const FCataclysmHitDelivery& Delivery) -> float
+	{
+		const float Before = Attacker.Vitals->GetHealth();
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor.Get(), Whom.Actor.Get(), /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), Delivery);
+		return Before - Attacker.Vitals->GetHealth();
+	};
+
+	// A HIT THAT GOT THROUGH. THE CONTROL FIRST.
+	const float Retaliated = SentBackBy(Uncursed, FCataclysmHitDelivery());
+	TestEqual(TEXT("control: the uncursed defender sends back its 20% of the 500, 100"), Retaliated, Sent, 0.01f);
+	TestEqual(TEXT("the cursed defender sends back 80% of that"),
+		SentBackBy(Cursed, FCataclysmHitDelivery()), 0.8f * Retaliated, 0.01f);
+
+	// A REFLECTED MELEE HIT, paid through the same line at 100%. Both defenders
+	// reflect every melee hit; a chance of 100 is not rolled.
+	const FName ReflectChance(UCataclysmDamageCalculation::MeleeReflectChanceStat);
+	UnmitigatedHoldFlats(Uncursed, {{ReflectChance, 100.0f}});
+	UnmitigatedHoldFlats(Cursed, {{ReflectChance, 100.0f}});
+	FCataclysmHitDelivery Melee;
+	Melee.bIsMelee = true;
+	const float Reflected = SentBackBy(Uncursed, Melee);
+	TestEqual(TEXT("control: the uncursed defender reflects the whole 500"), Reflected, BlowTaken, 0.05f);
+	TestEqual(TEXT("the cursed defender reflects 80% of it"), SentBackBy(Cursed, Melee), 0.8f * Reflected, 0.05f);
 
 	return true;
 }

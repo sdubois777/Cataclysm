@@ -123,7 +123,11 @@ int32 UCataclysmGroundPound::Step(AActor* Character)
 	const UCataclysmCombatAttributeSet* Combat = Wearer->GetSet<UCataclysmCombatAttributeSet>();
 	const float Armour = Wearer->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
 		Combat ? Combat->GetArmor() : 0.0f);
-	const float Amount = Armour * StatOf(Wearer, ArmourPercentStat) / 100.0f;
+	// AND WITHERED TOUCH ON THE WEARER, ruled 2026-10-26 (#2541): the curse cuts a share of one of the player's own
+	// stats, and this is a share of its own armour. `Character` is the wearer, which the curse lands on; a minion wears
+	// no pound and carries no curse. The stun is not cut.
+	const float Amount = Armour * StatOf(Wearer, ArmourPercentStat) / 100.0f
+		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Character);
 	const float StunSeconds = StatOf(Wearer, StunSecondsStat);
 	for (AActor* Other : Struck)
 	{

@@ -10,6 +10,8 @@
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Withered Touch tag, by the one name-to-tag helper. #2541.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -541,6 +543,58 @@ bool FCataclysmBruteTenTakenOffTest::RunTest(const FString&)
 	Wearer.Step();
 	TestEqual(TEXT("put on again, it is ready in 30 s and not in 10"), Wearer.SecondsUntilReady(),
 			  BruteTenEverySeconds, BruteTenClockAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteTenWitheredTouchTest,
+	"Cataclysm.SetBonus.Brute10.UnderWitheredTouchTheBlowIsAFifthSmallerThanTheSameWearersUncursedOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * #2541, ruled 2026-10-26: Withered Touch cuts a share of one of the cursed player's own stats, and the pound is a share
+ * of the wearer's armour. One enemy 7 m off, inside the 8 m. THE CONTROL IS READ FIRST: uncursed, the pound takes 500%
+ * of the 1000 armour. The enemy then curses the wearer, with the tag alone, laid by `ApplyTagForDuration`: the tag is
+ * all `UCataclysmSkillEffects::KeptUnderWitheredTouch` asks for, and the 20 is the status table's row. The next pound,
+ * 30 s on, takes 80% of the control's.
+ */
+bool FCataclysmBruteTenWitheredTouchTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetBonusBruteTenTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	FBruteTenWearer Wearer(World);
+	ACataclysmEnemyCharacter* Inside = BruteTenEnemyAt(World, FVector(7 * M, 0, 0));
+	if (!TestTrue(TEXT("set-up: the Withered Touch tag exists"), Withered.IsValid())
+		|| !TestNotNull(TEXT("set-up: an enemy 7 m off"), Inside))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { BruteTenClear({Inside}); };
+	Wearer.Wear();
+	Wearer.Step();
+
+	World->TimeSeconds += BruteTenEverySeconds;
+	TestEqual(TEXT("control: uncursed, the pound strikes one enemy"), Wearer.Step(), 1);
+	const float Uncursed = BruteTenLost(Inside);
+	TestEqual(TEXT("control: and it loses 500% of the wearer's 1000 armour"), Uncursed,
+			  BruteTenArmour * BruteTenArmourPercent / 100.0f, 0.5f);
+
+	if (!TestTrue(TEXT("set-up: the enemy's curse is on the wearer"),
+			UCataclysmSkillEffects::ApplyTagForDuration(Inside, Wearer.Actor, Withered, 600.0f)
+				&& UCataclysmSkillEffects::HasTag(Wearer.Actor, Withered)))
+	{
+		return false;
+	}
+	World->TimeSeconds += BruteTenEverySeconds;
+	TestEqual(TEXT("cursed, the next pound strikes one enemy"), Wearer.Step(), 1);
+	TestEqual(TEXT("and it takes 80% of the control's"), BruteTenLost(Inside) - Uncursed, 0.8f * Uncursed, 0.5f);
 	return true;
 }
 

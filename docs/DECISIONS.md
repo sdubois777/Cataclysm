@@ -2,6 +2,196 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Withered Touch cuts six more of the cursed player's own damage figures: its ground, its Void Splinter, its retaliation and reflected hits, its nova, its Ground Pound and its armour smite (#2541)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`LeaveZoneAlong`, one factor on the
+tick), `CataclysmSkillEffects.cpp` (`ApplyShareOfHealthOverTime`, one line on the share), `CataclysmRetaliation.cpp`
+(`Pay`, one factor), `CataclysmNova.cpp` (`Step`, one factor), `CataclysmGroundPound.cpp` (`Step`, one factor) and
+`CataclysmAbilitySystemComponent.cpp` (`ActOnNearby`, the `SmiteByArmour` branch, one factor); six tests, one in each
+of `CataclysmSkillTemplateTests.cpp`, `CataclysmVoidSplinterTests.cpp`, `CataclysmRetaliationTests.cpp`,
+`CataclysmNovaTests.cpp`, `CataclysmSetBonusBruteTenTests.cpp` and `CataclysmBlockReflectTests.cpp`, with one include
+added to each but the first; this file. No workbook, CSV or asset change. **Closes
+[#2541](https://github.com/sdubois777/Cataclysm/issues/2541).** It follows the entry "Withered Touch takes 20% off the
+cursed player's own blows and ticks", whose stated gaps it closes.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** while a Succubus's curse holds, the ground the player's skills leave burns a fifth less for
+  its whole life; a Void Splinter the player lays takes a fifth less a tick; retaliation and a reflected melee hit send
+  a fifth less back; the low-health nova, the Brute's Heart Ground Pound and the armour smite on a block each deal a
+  fifth less. A skill gadget's, a skill trap's or a gadget's copy's ground, cast in the player's name, is not cut; nor is
+  any minion's own damage.
+- **THE GROUND'S MINION SKIP IS WIDER THAN THE BRIEF'S WORDS.** The brief named a skill gadget's cast. The code skips
+  every use whose skill names a caster in `FreeRepeatCastBy`, which is a skill gadget, a skill trap and a gadget's copy,
+  because that is exactly what `ApplyHit` leaves out through `NamedCastBy` and `ApplyDamageOverTime` through the same
+  field. The test reaches the gadget's case only.
+- **ONE NARROW CASE IS CUT THAT A MINION'S CAST SHOULD NOT BE:** a Void Splinter laid by a use a skill gadget or trap
+  casts in the player's name. `ApplyShareOfHealthOverTime` is handed no skill, so it cannot ask who cast the use, and the
+  instigator is the cursed player. The same shape as the late gadget burn the earlier entry accepted. Not measured.
+- **A MINION IS LEFT OUT BECAUSE IT CARRIES NO CURSE**, at five of the six lines (all but the ground's, which also
+  skips a minion's cast). That holds while the Succubus curses the player. Its curse lands on whatever target its brain
+  chose (`ACataclysmSuccubusCharacter`, "THE TARGET THE BRAIN ALREADY CHOSE"); a minion it cursed would have its own
+  retaliation, if any, cut. Read, not measured.
+- **THE ISSUE'S "UNTESTABLE" LINE IS OUT OF DATE.** #2541 says the ground-zone line is "untestable without a live
+  skill use". Two existing tests already make one with `Activate` and read the patch:
+  `Cataclysm.Skills.BurningGroundIsPricedWithTheBuffThatWasUpWhenItWasLeft` reads `Zone->DamagePerTick`, and
+  `Cataclysm.Skills.APiercingProjectileLeavesItsWholeFlightPathBurning` sweeps the patch. The new ground test uses the
+  same route through the `Cataclysm.GroundPatchLine.` rig.
+- **ABOUT 13 LINES OF GAME CODE, NOT COUNTING COMMENTS** (38 added and 5 removed with the 25 comment lines). The brief
+  said about 15 to 25.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-26)
+
+> THE RULE is accepted. Withered Touch cuts a figure that is the player's own: priced through the player's damage
+> pricing, or a share of one of the player's own stats. It does not cut: a share of another character's blow or health
+> that none of the player's increases raise; a figure already cut upstream; damage the player pays itself. Reason: it
+> matches how the genre's "deals less damage" curses work. In Path of Exile, Enfeeble's "less damage" is a damage
+> modifier, and reflected damage takes no damage modifiers. So the curse reaches what the player's own modifiers reach.
+> Record that in the entry as the reason, labelled a judgement, and re-read the source before quoting it.
+>
+> EVERY ROW as you proposed:
+> - CUT: 1 (ground zone, at the pricing, skipping a gadget cast in the player's name), 2 (Void Splinter, under the
+>   existing damage-over-time ruling), 4a/4b (retaliation and reflected melee, one line), 5a (Nova), 5b (Ground
+>   Pound), 6 (smite by armour).
+> - DO NOT CUT: 3 (released store), 4c (block reflect), 7a (afflicted death blast), 7b, 7c, 7d (already cut), Nothing
+>   Wasted and the absorbed stores, Chorus, the self-hits, Brand of the Aggressor, Execute.
+> - State 7a and 2 side by side in the entry. Both are shares of an enemy's health. 2 is cut because it is a
+>   damage-over-time effect the player lays, which the earlier ruling covers; 7a is not, because it is a row's blast
+>   with none of the player's increases.
+>
+> THE ISSUE'S STALE LINE: the claim that ground zones are untestable is out of date. Say so in the entry, citing the
+> two live-skill tests.
+>
+> TESTS: six, one per cut path, each with an uncursed control, as you listed.
+> PROOFS: three, within the budget. Choose the ground zone, retaliation, and one of Nova, Ground Pound or smite, so a
+> proof covers each kind of figure: a skill hit, an incoming share raised by increases, and a share of the player's own
+> stat. Void Splinter's cut is proved by its own test's control only; state that.
+
+### THE RULE AND ITS REASON (A JUDGEMENT, AS RULED)
+
+Withered Touch cuts a figure that is the player's own: one priced through the player's damage pricing, or a share of
+one of the player's own stats. It does not cut a share of another character's blow or health that none of the player's
+increases raise, a figure already cut upstream, or damage the player pays itself. **The reason is a judgement:** the
+curse should reach what the player's own damage modifiers reach, as Path of Exile's Enfeeble does. Re-read on
+poedb.tw/us/Enfeeble on 2026-10-26 by the second session that wrote this:
+
+```
+Cursed Normal or Magic enemies deal (15—29)% less Damage
+Enfeeble does not reduce the amount or accuracy of reflected damage, because reflect is not based on defender's stats.
+```
+
+The second line is quoted there from the Community Wiki. What it settles: a "deals less damage" curse is a modifier on
+the cursed one's damage, and a figure the cursed one's modifiers do not price is not reduced. What it does not settle:
+where this game's figures fall on that line, which is the table below, and that this game's retaliation and reflected
+melee hit ARE priced through the defender's increases (`UCataclysmRetaliation::AmountFor` calls `ModifiedDamage` on
+the defender), so here they are cut, where Path of Exile's reflect is not.
+
+### EVERY SOURCE, CUT AND NOT CUT
+
+| # | Source | Where it is paid | Cut? | Why |
+|---|---|---|---|---|
+| 1 | The ground a skill leaves | `UCataclysmSkillTemplate::LeaveZoneAlong`, `PerTick` | **Cut**, unless a minion cast the use | Priced through the caster's damage pricing (`SkillHitWithNoTarget`, `ModifiedDamage`), once when laid |
+| 2 | Void Splinter | `UCataclysmSkillEffects::ApplyShareOfHealthOverTime`, `SharePerTick` | **Cut**, when laid | A damage over time effect the player lays, under the earlier ruling's "every damage-over-time tick it applies" |
+| 3 | A released damage store (Martyr's Ember) | `UCataclysmSelfBuffSkill::NoteBlowLanded` | Not cut | Filled from hits the player took (`StoresFromHitTaken` of what reached health), spent as an absolute amount: a share of another's blow none of the player's increases raise |
+| 4a | Retaliation | `UCataclysmRetaliation::Pay`, `Amount` | **Cut** | A share of another's blow, raised by the defender's own increases (`AmountFor`) |
+| 4b | A reflected melee hit | the same line, through `PayReflected` | **Cut** | The same: paid "as retaliation is priced", at 100% |
+| 4c | A block's reflect | `UCataclysmAbilitySystemComponent::ActOnEvent`, `bReflectBlocked` | Not cut | A share of what a block removed, "scaled by none of the wearer's increases" |
+| 5a | The low-health nova | `UCataclysmNova::Step`, `Amount` | **Cut** | A share of the player's own missing health |
+| 5b | Ground Pound | `UCataclysmGroundPound::Step`, `Amount` | **Cut** | A share of the player's own armour |
+| 6 | Smite by armour | `UCataclysmAbilitySystemComponent::ActOnNearby`, `SmiteByArmour` | **Cut** | A share of the player's own armour |
+| 7a | The afflicted-death blast | `UCataclysmContagion::BlastAt` | Not cut | A row's blast of a share of the dead enemy's maximum health, with none of the player's increases |
+| 7b | The overkill explosion | `UCataclysmSkillEffects::ExplodeForOverkill` | Not cut | A share of the overkill of a blow already cut in `ApplyHit` |
+| 7c | The explosion at an ailment's end | `UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd` | Not cut | Twice what the ailment was laid to deal, already cut when laid |
+| 7d | The remaining damage of a damage over time effect | `UCataclysmSkillEffects::DealRemainingDamageOverTime` | Not cut | What the effect has left, already cut when laid |
+| — | Nothing Wasted, and the two absorbed-damage stores | `ApplyHit`, after the blow is priced (`SpendStoredMitigatedDamage`, `SpendStoredAbsorbedDamage`) | Not cut | Shares of other characters' blows the player's defences removed or absorbed, added after the player's increases |
+| — | Chorus | `CataclysmChorus.cpp` | Not cut | Dealt by the minions, a share of the player's blow already cut |
+| — | The self-hits | the self-hit rows, the deployable self-blast, health costs | Not cut | Damage the player pays itself |
+| — | Brand of the Aggressor | the floor rule, `CataclysmDungeonGameMode.cpp` | Not cut | The floor's eruption, not the player's figure |
+| — | Execute | `UCataclysmAbilitySystemComponent::KillIfLeftBelow` | Not cut | Takes the health left; no figure to cut |
+
+**2 AND 7a SIDE BY SIDE, as ruled.** Both are shares of an enemy's health. Void Splinter (2) is cut because it is a
+damage over time effect the player lays, which the earlier ruling covers: it is cut when it is laid, as
+`ApplyDamageOverTime` cuts a tick's figure. The afflicted-death blast (7a) is not, because it is a row's blast with
+none of the player's increases: a share of the dead enemy's maximum health that nothing of the player's prices.
+
+### WHO THE ATTACKER IS AT EACH CUT
+
+- **1:** `Self`, `Avatar()`, the caster. Skipped (factor one) when `FreeRepeatCastBy` names anyone, which only a
+  minion's cast in the caster's name does.
+- **2:** `Instigator`, the applier. Asked only when `bScalesWithInstigator` and the target is another character, as in
+  `ApplyDamageOverTime`; a spread copy arrives with `bScalesWithInstigator` off.
+- **4a, 4b:** `Instigator`, which both callers in `UCataclysmVitalAttributeSet` pass as `CataclysmDefendingBody`, the
+  struck character's body.
+- **5a, 5b:** `Character`, the one the step is for.
+- **6:** `Self`, `GetAvatarActor()`, the wearer.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The ground's skip asks `FreeRepeatCastBy`, not `ACataclysmMinion::SkillGadgetCasting(this)`.** See SAID FIRST.
+  Not taken: the gadget alone, which would cut a skill trap's ground and a gadget's copy's ground in the player's name
+  while their blows are not cut.
+- **The curse in each test is the tag alone**, laid by `UCataclysmSkillEffects::ApplyTagForDuration` from a stand-in
+  enemy, because `KeptUnderWitheredTouch` reads the tag and the row's Strength and nothing else; the 20 still comes
+  from the status table. Not taken: a Succubus casting Wither the Living in each test, as the Succubus tests do. That
+  needs the Succubus's spawn helper in five more files, and its row's cuts to maximum mana and shield would sit beside
+  figures these tests read.
+- **Each test is named into the group of the mechanism it measures**, beside that group's figure test:
+  `Cataclysm.GroundPatchLine.` (the rig that reads a patch's tick from a live use, where `Cataclysm.Skills.` holds 281
+  test names by a static count and its ground test sits 14,000 lines before the rig's helpers), `Cataclysm.VoidSplinter.`,
+  `Cataclysm.Retaliation.`, `Cataclysm.Nova.`, `Cataclysm.SetBonus.Brute10.` (the Ground Pound mechanism's group; the
+  `Cataclysm.Enchantments.` test wears the real rows on a real player and says what the pound then does is
+  `Brute10.`'s) and `Cataclysm.BlockReflect.`.
+- **The third proof is the nova's.** It is a share of the player's own stat, its group is the smallest (5 tests), and
+  its test reads two figures that the break moves. Not taken: Ground Pound or smite, each a share of armour too.
+
+### TESTS
+
+Every figure is the cursed reading against the same figure from an uncursed control, the control read first.
+
+| Test | Assertions, in order |
+|---|---|
+| `Cataclysm.GroundPatchLine.ACursedCastersGroundTicksAFifthLessAndAGadgetsCastInItsNameDoesNot` (12) | set-up: the critical strike roll is pinned, the strike, the Withered Touch tag, a skill gadget placed, and it is one (5); control: uncursed, the strike leaves one patch, which ticks the plain 41.75 (2); set-up: the curse is on the caster; cursed, one patch; **it ticks 80% of the control's**; cast by the gadget in the cursed caster's name, one patch; **its patch ticks the control's figure** |
+| `Cataclysm.VoidSplinter.ACursedAppliersShareIsAFifthSmallerAndSoIsWhatItsTickTakes` (9) | a world; the Void Splinter and Withered Touch tags (2); set-up: the curse on one applier and not the other; set-up: each lays 1% a tick; control: the uncursed one's carries 1%; **the cursed one's carries 80% of it**; control: the uncursed one's first tick takes 100; **the cursed one's takes 80% of it** |
+| `Cataclysm.Retaliation.ACursedDefenderSendsAFifthLessBackForAHitAndForAReflectedMeleeHit` (7) | a world; the tag; set-up: the curse on one defender and not the other; control: the uncursed defender sends back 20% of a 500 blow, 100; **the cursed one 80% of it**; control: with every melee hit reflected, the uncursed one reflects the whole 500; **the cursed one 80% of it** |
+| `Cataclysm.Nova.ACursedCharactersNovaIsAFifthSmallerAndSoIsWhatItTakes` (7) | a world; the tag; set-up: the curse on one character and not the other; control: the uncursed nova is 8% of 950 missing, 76; **the cursed nova is 80% of it**; control: its enemy loses the 76; **the cursed one's enemy loses 80% of that** |
+| `Cataclysm.SetBonus.Brute10.UnderWitheredTouchTheBlowIsAFifthSmallerThanTheSameWearersUncursedOne` (8) | a world; the tag; an enemy 7 m off; control: uncursed, the pound strikes one enemy, which loses 500% of 1000 armour (2); set-up: the enemy's curse is on the wearer; cursed, the next pound strikes one; **it takes 80% of the control's** |
+| `Cataclysm.BlockReflect.UnderWitheredTouchAnArmourNovaIsAFifthSmallerThanTheSameWearersUncursedOne` (8) | a world; the tag; a creature 3 m off; set-up: the first blow is blocked; control: the creature loses 300% of 1000 armour; set-up: the creature's curse is on the wearer; set-up: the second blow is blocked; **the creature loses 80% of the control's** |
+
+**Void Splinter's cut is proved by its own test's control only**, as ruled: no guard proof is proposed for it.
+
+### NOT TESTED
+
+A skill trap's ground and a gadget's copy's ground under the curse (the skip reads the same field as the gadget's); a
+Void Splinter cast by a minion in the player's name (see SAID FIRST); a spread copy of a cursed player's Void
+Splinter; the six paths on a real player character rather than a stand-in; every source in the not-cut rows above,
+which are unchanged.
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in its file by `read_text`; each broken file's brackets balanced, and each break
+leaves the file using everything it includes.
+
+| Proof | File | Old text | New text | Prefix | Predicted |
+|---|---|---|---|---|---|
+| WT2-G1, the ground keeps its whole figure (a skill hit) | `CataclysmSkillTemplate.cpp` | `FreeRepeatCastBy.IsExplicitlyNull() ? UCataclysmSkillEffects::KeptUnderWitheredTouch(Self) : 1.0f;` | `FreeRepeatCastBy.IsExplicitlyNull() ? 1.0f : 1.0f;` | `Cataclysm.GroundPatchLine.` (6) | `ACursedCastersGroundTicksAFifthLessAndAGadgetsCastInItsNameDoesNot` fails, 1 assertion (the patch at 100% where 80%); its gadget half passes; the other 5 pass |
+| WT2-G2, retaliation keeps its whole figure (an incoming share raised by increases) | `CataclysmRetaliation.cpp` | `* UCataclysmSkillEffects::KeptUnderWitheredTouch(Instigator);` | `* 1.0f;` | `Cataclysm.Retaliation.` (11) | `ACursedDefenderSendsAFifthLessBackForAHitAndForAReflectedMeleeHit` fails, 2 assertions (100 where 80, 500 where 400); the other 10 pass |
+| WT2-G3, the nova keeps its whole figure (a share of the player's own stat) | `CataclysmNova.cpp` | `* UCataclysmSkillEffects::KeptUnderWitheredTouch(Character);` | `* 1.0f;` | `Cataclysm.Nova.` (5) | `ACursedCharactersNovaIsAFifthSmallerAndSoIsWhatItTakes` fails, 2 assertions (the nova 76 where 60.8, the enemy's loss 76 where 60.8); the other 4 pass |
+
+The group counts are of test names in the tree by script; the count to quote is the run's.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- let a Succubus curse you with Wither the Living, then leave burning ground and hold low health with Unstable Aura:
+  the ground's ticks and the nova's numbers are a fifth smaller for as long as the curse holds; a skill gadget's
+  ground is not.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — Starving Aura halves the health restored to whoever stands within 6 m of the creature carrying it (#2539)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Debuffs sheet's Starving Aura row, and
