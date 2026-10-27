@@ -10,10 +10,8 @@ this merge.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
-- **SILENCE'S LINE IS MEASURED BY AN EXISTING TEST, READ AND NOT YET PROVED.** If its proof below does not fail as
-  predicted, the line is reported as unprovable, naming the break, and no test is added inside the window; ruled by the
-  coordinating session.
+- **BUILT AND RUN: window w71 below passed every registered figure, and all three proofs were PROVED,** Silence's
+  through the existing test as read: none of the three lines is unprovable.
 
 ### What #1812 asks, and what was read
 
@@ -49,7 +47,27 @@ after it, which occurs once.
 
 ### Run
 
-Not run yet.
+**Window w71 (lock `dungeon-w71`, `test/leaving-the-dungeon-resets-1` at `7085850e6`, on `da1bb95cc`, 2026-10-27)
+passed.** Free memory read below the 10,240 MB floor at first (9,917 MB, then readings between 10,155 and 10,387 over ten
+minutes); the lock was taken only on a reading immediately before it of 10,361 MB, with the other five conditions met:
+both of `development`'s runs at `da1bb95cc` succeeded, none in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here. The move onto `da1bb95cc` met
+#2559's tests appended at the end of the same test file; development's file was taken and these two tests appended
+again by their script, the same 152 lines (`check_resolved_cpp.py --changed`: "1 files read, 0 with complaints"; patch
+ids before and after `2b381076bf53`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4322 / 0 | `4322 tests performed, 4322 succeeded, 0 failed`; declared 4322, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7976`, peak 8,316 |
+| The costs | quoted as printed | "Mortal Decay: a beat cost 1.275 at the full rate, 0.638 slowed, 1.275 after leaving" |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, Wasting Sickness's leaving reset deleted | `LeavingTheDungeonClearsWastingSickness` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonClearsWastingSickness"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, Mortal Decay's slow reset deleted | `LeavingTheDungeonEndsMortalDecaysSlow` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsMortalDecaysSlow"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, Silence's end reset deleted | `LeavingTheDungeonEndsTheSilenceAndItsClock` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsTheSilenceAndItsClock"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+Three of #1812's five lines are now measured. The two of The Nihil's Embrace follow in part 2.
 
 ---
 
