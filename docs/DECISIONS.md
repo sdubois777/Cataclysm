@@ -184,9 +184,32 @@ quotes the held Imps' `AttacksMade` and the enemy's health from the broken run's
 - With a Staff and Compel, summon two minions, let an enemy stun one of them (the Brute's stomp reaches them), and cast
   Compel on another enemy while it is stunned: the stunned minion does not strike; the other does.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t161w, AND THE MEASUREMENT OF #2560
 
-Not run. The enchantment session records its window here.
+Window t161w, run 2026-10-27 under the lock as `enchant-t161w`, at `ca4b3e037` on development `039f9dcb0`. Free memory
+immediately before the lock, at 15:04:24, was 10,545 MB, against the floor of 10 GiB (10,240 MB). No new source file and
+no status row changed, so the window had no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The four new tests, each alone | 1 of 1 each; the first build compiled 2 files in 5 actions |
+| The whole Unreal suite | "4330 tests performed, 4330 succeeded, 0 failed"; 4330 declared, gap 0 |
+| Memory | `tests=4937 peak_used_virtual_mb=8074 final_used_virtual_mb=7756` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| CH-G1, the skip is never true (prefix `Cataclysm.CompelHeld.`, 4 tests) | PROVED: all 4 failed, 11 of 11 assertions; 4 of 4 passed restored |
+
+**THE FAULT IS MEASURED, AS RULING 4 ASKED: CH-G1's broken half is today's code, and in it every held creature
+struck.** Quoted from the broken run:
+
+| Held creature | What the broken run read |
+|---|---|
+| A stunned Imp | "the held imp does not swing (1 attacks before the cast, 2 after)"; the enemy lost 691.0, the same as the control's 691.0, with the held one's blow 220.5; `CommandedStrikes` 2 where 1 |
+| A knocked-down Imp | the same: 1 then 2 attacks; 691.0 lost against the control's 691.0; `CommandedStrikes` 2 |
+| A feared Imp | the same: 1 then 2 attacks; 691.0 lost against the control's 691.0; `CommandedStrikes` 2 |
+| A stunned thrall | the enemy lost 450.0, the same as the control's 450.0, with the held one's blow 150.0; `CommandedStrikes` 2 |
+
+So before this change Compel did order a stunned, knocked-down or feared minion, and a stunned thrall, to strike, and
+each struck for its whole blow. With the change, none is ordered and the creature beside it still strikes.
 
 ---
 
