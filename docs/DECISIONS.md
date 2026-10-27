@@ -252,9 +252,32 @@ tests not named.
   4.5 s after the second kill, 1.1 (1.2 read). Chosen in place of the brief's `kill` made `hit_dealt`, whose
   prediction depends on whether an imp's blow raises `hit_dealt` on its summoner, which this session did not verify.
 
-### THE WINDOW'S RUN
+### A KILL THE KILLER'S OWN ROWS MAKE DOES NOT TRIGGER THE ASCENDED
 
-Not run. The enchantment session records its window here.
+Moved onto development `736411bc7`, which merged #2548 (issue #2482): a death caused while the killer's rows are acting
+on an event no longer raises `kill` for the killer (`ACataclysmPlayerCharacter::OnSomethingDied`, under
+`Notice.bWhileTheKillersRowsActed`). So a kill that one of the holder's own rows makes does not start The Ascended's 5
+seconds; a kill by an ordinary blow or skill does. The coordinating session accepted this on 2026-10-26 as the same
+no-chaining rule #2548 kept for kill rows. **Death's execute counting as an ordinary kill is read, not measured:** the
+execute is requested while the rows act on `hit_dealt`, and the comment above `if (Action.bExecuteTarget)` says the
+creature dies when the hit's damage is written, after that loop. No test measures a Death execute raising `kill`. The
+Ascended test raises `kill` by hand and is not touched by #2548.
+
+### THE WINDOW'S RUN, t127w
+
+Window t127w, run 2026-10-26 under the lock as `enchant-t127w` at 12,737 MB free, at `75ee7eb2d` on development
+`736411bc7`. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The DataTable asset rebuild | changed exactly `DT_StatusEffects.uasset` and its record, committed as `3f9d567ff` |
+| The three new tests, each alone | 1 of 1 each: Death, Feasting, The Ascended |
+| The whole Unreal suite | "4286 tests performed, 4286 succeeded, 0 failed"; 4286 declared, gap 0 |
+| Memory | `tests=4893 peak_used_virtual_mb=8044 final_used_virtual_mb=7712` |
+| Python of record | JUnit 7017 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| RB3-G1, Death's chance at nought | PROVED: the Death test failed, 4 of 4 assertions; 15 of 15 passed restored |
+| RB3-G2, a tick taken gains a stack again | PROVED: the Feasting test failed, 5 of 5 assertions; 15 of 15 passed restored |
+| RB3-G3, The Ascended stacking | PROVED: The Ascended test failed, 3 of 3 assertions; 15 of 15 passed restored |
 
 ---
 
