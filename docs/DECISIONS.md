@@ -72,7 +72,25 @@ depth-first order, could now see another. If one fails the window stops there an
 
 ### Run
 
-Not run yet.
+**Window w66 (lock `dungeon-w66`, `fix/deaths-heard-in-order-1` at `2a26b6db2`, on `54925981a`, 2026-10-26) STOPPED AT
+THE SUITE: one of the three new tests failed in its set-up.** The six conditions were checked immediately before the
+lock was taken: both of `development`'s runs at `54925981a` succeeded; none in progress or queued; the lock free; no
+build or editor process; no open pull request; "free GB: 12.33". The lock was released before anything was written
+here. No proof was run.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4279 / 0 | `4279 tests performed, 4278 succeeded, 1 failed: AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore`; declared 4279, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=8149`, peak 8,496 |
+| Python (JUnit) | | 7016 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**The other two new tests passed, `TheMassKillDoesNotFeedItself` passed, and no other test failed.**
+
+**What failed: "set-up: the plain blow killed the enemy struck".** The test's fault, not the queue's:
+`UCataclysmSkillEffects::ApplyHit` deals a percentage of the caster's weapon damage, the test's player holds no
+weapon, and the blow dealt nothing. **Corrected in the next commit** to `ApplyDirectDamage`, a fixed amount, as the
+file's other test that kills does; not run yet.
 
 ---
 
