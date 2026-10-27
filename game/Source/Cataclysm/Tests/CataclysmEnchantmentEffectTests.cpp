@@ -23477,7 +23477,11 @@ bool FCataclysmRandomBuffDemonicRageTest::RunTest(const FString&)
 	const auto Read = [&](const UCataclysmAbilitySystemComponent* Of)
 	{
 		FReadings Out;
-		Out.Resistance = Of->StatForSkill(Resistance, FGameplayTagContainer(), /*Fallback=*/0.0f);
+		// THE ATTRIBUTE AS THE FALLBACK, as `StatForSkill` asks: with 0, a reading taken before any refresh recorded
+		// the line hid the class's own resistance (the Ravager's 5 and 0.15 a level, 7.85 here), and window t122w
+		// stopped on that 7.85.
+		Out.Resistance = Of->StatForSkill(Resistance, FGameplayTagContainer(),
+			Of->GetNumericAttribute(UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute()));
 		Out.Attack = Of->MultiplierForStatAgainst(AttackDamage, FGameplayTagContainer(), /*Target=*/nullptr);
 		Out.Spell = Of->MultiplierForStatAgainst(SpellDamage, FGameplayTagContainer(), /*Target=*/nullptr);
 		return Out;

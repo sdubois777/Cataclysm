@@ -219,6 +219,25 @@ reading (batch 1's eight and these four). The count to quote is the run's. In ea
   refreshes, under the set's key). Demonic Rage 2 (three actions, for each wearer; the lines still work). Temporal Flux
   8 (one action, and the seven of RB2-G2). Void 5 (one action, and the four of RB2-G2).
 
+### THE FIRST WINDOW, t122w, STOPPED ON THE DEMONIC RAGE TEST'S READER (a test fault)
+
+Window t122w, run 2026-10-26 under the lock as `enchant-t122w` at 13.5 GB free, at `85c1c2470` on development
+`54925981a`: the asset rebuild changed exactly `DT_StatusEffects.uasset` and its record, committed as `cb9f441ee`; the
+Sanctified Power test alone passed, 1 of 1; the Demonic Rage test alone failed, "1 tests performed, 0 succeeded, 1
+failed", and the window stopped there, as written. Its six failed assertions were every crowd control resistance
+reading, each 7.85 above what was asserted (7.85 where 0, 107.85 where 100); the damage readings passed.
+
+**Where the 7.85 comes from:** the test player's own class line, `Ravager_crowd_control_resistance` in
+`game/Data/ClassStats.csv`, 5.0 and 0.15 a level, which is 7.85 at level 20. The test read the stat with
+`StatForSkill(..., /*Fallback=*/0.0f)`; before the draw no refresh had recorded a line for the stat, so the fallback 0
+was read, and once the drawn buff's row named the stat, the refresh recorded the line and its class base. So the
+reading before the draw hid the player's ordinary value. The coordinating session's ruling, 2026-10-26: "If it is the
+player's ordinary starting value, change the test to read the resistance before the fall and assert the rise ... That
+is allowed as a test fix, with no new proof needed for it." **The change:** the reader passes the crowd control
+resistance attribute as the fallback, as `StatForSkill`'s header asks ("Pass the attribute's own value"), so the
+reading before the draw is the class's own; every assertion is already a difference from that reading. Read, not
+measured until the next window.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
