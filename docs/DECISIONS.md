@@ -86,7 +86,9 @@ the lock was taken ("free GB: 11.33"). The lock was released before anything was
 | Python (JUnit) | | 7017 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
 
 The failure: "Expected 'and counts only the unmarked as placed' to be 6, but it was 8". The new test passed. The
-second form, under What changed, is registered for the next window; not run yet.
+second form, under What changed, is registered for the next window, w69: **4295 / 0 on `c14da36bb`** (#2551, measured
+4294, and the one test this branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-2`; P1 and P2
+as above; memory as above; the counts quoted as printed. Not run yet.
 
 ---
 
