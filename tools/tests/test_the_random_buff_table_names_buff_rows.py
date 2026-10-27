@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
           / "CataclysmAbilitySystemComponent.cpp")
 STATUS_TABLE = ROOT / "game" / "Data" / "StatusEffects.csv"
+EFFECT_TABLE = ROOT / "game" / "Data" / "EnchantmentEffects.csv"
 
 #: The buffs in the table, in the table's order, which is the order
 #: `Cataclysm.RandomBuffPick` counts in.
@@ -41,9 +42,15 @@ IN_THE_TABLE = (
     # that builds it. Appended, so places 0 to 5 keep their buffs.
     "Dervish",
     "Warhound",
+    # Batch 2 of issue #2538, 2026-10-26: each wears the set rows that build
+    # it, by name. Appended, so places 0 to 7 keep their buffs.
+    "Sanctified Power",
+    "Demonic Rage",
+    "Temporal Flux",
+    "Void",
 )
 
-#: Why eight of the Buff rows are not in the table, as ruled on 2026-10-12.
+#: Why eight of the Buff rows were not in the table, as ruled on 2026-10-12.
 ANOTHERS = "it describes another set's own mechanic or an enemy's"
 
 #: Every other Buff row, and why it is not in the table.
@@ -52,14 +59,8 @@ LEFT_OUT = {
     # the owner answered "Add everything" on 2026-10-26 (issue #2538). The
     # reasons are why each is not built yet.
     #
-    # ITS DESCRIPTION CANNOT BE EXPRESSED WITH WHAT EXISTS. A judgement of the
-    # session that built the table; the coordinating session rules on each.
-    "Demonic Rage": "ten seconds from the moment health falls below a quarter is an event, not a condition",
     # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12.
     "Plague": ANOTHERS,
-    "Sanctified Power": ANOTHERS,
-    "Temporal Flux": ANOTHERS,
-    "Void": ANOTHERS,
     "Death": ANOTHERS,
     "Chaotic Barrier": ANOTHERS,
     "The Ascended": ANOTHERS,
@@ -77,6 +78,17 @@ def table_names() -> tuple[str, ...]:
     return tuple(re.findall(r'Buff\.Name = TEXT\("([^"]+)"\);', body.group(1)))
 
 
+def worn_row_names() -> tuple[str, ...]:
+    """Every effect row an entry of `RandomBuffTable` names to wear, in order."""
+    text = SOURCE.read_text(encoding="utf-8")
+    body = re.search(
+        r"UCataclysmAbilitySystemComponent::RandomBuffTable\(\)\s*\{(.*?)\n\}",
+        text, re.DOTALL)
+    assert body, f"RandomBuffTable was not found in {SOURCE.name}"
+    return tuple(re.findall(
+        r'Buff\.WornRows\.Add\(FName\(TEXT\("([^"]+)"\)\)\);', body.group(1)))
+
+
 def buff_rows() -> dict[str, str]:
     """Every Buff row of the status table: its name and its description."""
     with STATUS_TABLE.open(encoding="utf-8", newline="") as handle:
@@ -86,7 +98,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 8
+    assert len(table_names()) == len(IN_THE_TABLE) == 12
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -103,6 +115,8 @@ def test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out() -> No
     """Eighteen Buff rows on 2026-10-12: six in the table and twelve left out.
     Seventeen since 2026-10-26 (issue #2533 retired Warzone Control Points): six and eleven.
     Eight and nine since batch 1 of issue #2538 added Dervish and Warhound.
+    Twelve and five since batch 2 added Sanctified Power, Demonic Rage,
+    Temporal Flux and Void.
     A row added to the status table fails here until somebody decides which
     list it joins."""
     rows = set(buff_rows())
@@ -120,3 +134,20 @@ def test_the_pin_names_the_buffs_in_the_tables_order() -> None:
     words = "".join(re.findall(r'"([^"]*)"', declaration))
     stated = ", ".join(f"{place} {name}" for place, name in enumerate(IN_THE_TABLE))
     assert stated in words, f"the help text does not say {stated!r}: {words!r}"
+
+
+def test_every_row_a_buff_wears_is_a_row_of_the_effect_table() -> None:
+    """Batch 2 of issue #2538: an entry may name effect rows to wear, and the
+    engine leaves out a named row the loaded table does not hold, with only a
+    warning in the log. So a row renamed in the workbook would make a buff do
+    nothing, and no automation test reads the names. They are read here.
+
+    THE COUNT IS PINNED, six rows from four entries (Sanctified Power one,
+    Demonic Rage three, Temporal Flux one, Void one), so a reader that finds
+    nothing cannot pass."""
+    worn = worn_row_names()
+    assert len(worn) == 6, worn
+    with EFFECT_TABLE.open(encoding="utf-8", newline="") as handle:
+        rows = {row["Name"] for row in csv.DictReader(handle)}
+    assert rows, f"no row was read from {EFFECT_TABLE.name}"
+    assert [name for name in worn if name not in rows] == []

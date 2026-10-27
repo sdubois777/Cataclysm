@@ -850,9 +850,22 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	TArray<FCataclysmPoolAction> Actions;
 	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
 		GatherModifiers(&Actions);
+	TMap<FName, TArray<FCataclysmStatModifier>> HeldBuffRowLines;
 	if (UCataclysmAbilitySystemComponent* Cataclysm =
 			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 	{
+		// AND WHAT THE ROWS A HELD RANDOM BUFF WEARS DO AND CHANGE, built by the
+		// worn rows' builder from copies renamed under the buff's own name. Issue
+		// #2538, batch 2. Their lines are kept apart and joined where the buff's
+		// stat lines are, below, after the class points are read.
+		const TArray<FCataclysmEnchantmentEffectRow> BuffRows = Cataclysm->HeldRandomBuffEffectRows();
+		if (!BuffRows.IsEmpty())
+		{
+			UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+				HeldBuffRowLines, TArray<FCataclysmItem>(), UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+				UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable(),
+				&Actions, &BuffRows);
+		}
 		// WHOLESALE, NOT MERGED, for the reason `SetStatInputs` is: a row that
 		// came off with the gear must stop firing rather than keep firing.
 		Cataclysm->SetPoolActions(MoveTemp(Actions));
@@ -1001,6 +1014,10 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		// AFTER THE CLASS POINTS WERE READ ABOVE, and no line of the table grants one.
 		const TMap<FName, TArray<FCataclysmStatModifier>> HeldBuff = Cataclysm->HeldRandomBuffStatModifiers();
 		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Line : HeldBuff)
+		{
+			Modifiers.FindOrAdd(Line.Key).Append(Line.Value);
+		}
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Line : HeldBuffRowLines)
 		{
 			Modifiers.FindOrAdd(Line.Key).Append(Line.Value);
 		}

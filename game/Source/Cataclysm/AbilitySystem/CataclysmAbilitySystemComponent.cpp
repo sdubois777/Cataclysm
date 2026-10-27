@@ -67,6 +67,9 @@
 #include "NavigationSystem.h"
 // For the swing interval and the swing's gate, which a basic attack's trap is placed by. Ruled 2026-10-21.
 #include "AbilitySystem/CataclysmBasicAttack.h"
+// For the effect rows a random buff wears, found in the loaded effect table. Issue #2538, batch 2.
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -4829,7 +4832,8 @@ static TAutoConsoleVariable<int32> CVarRandomBuffOrDebuffPick(
 static TAutoConsoleVariable<int32> CVarRandomBuffPick(
 	TEXT("Cataclysm.RandomBuffPick"), -1,
 	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
-		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound. -1 picks at random."),
+		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound, 8 Sanctified Power, "
+		 "9 Demonic Rage, 10 Temporal Flux, 11 Void. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -5634,7 +5638,9 @@ TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks>
 UCataclysmAbilitySystemComponent::OwnStacksByEnchantment() const
 {
 	// KEYED "ENCHANTMENT:STAT" by `UCataclysmItemModifiers::OwnStackKeyFor`, so
-	// the part before the colon groups one enchantment's rows together.
+	// the part before the colon groups one enchantment's rows together. THE LAST
+	// COLON, because a random buff's rows are worn under "RandomBuff:<name>"
+	// (issue #2538, batch 2), and a stat's name holds none.
 	TMap<FString, FHeldOwnStacks> ByEnchantment;
 	for (const TPair<FName, FOwnStack>& Each : OwnStacks)
 	{
@@ -5645,7 +5651,7 @@ UCataclysmAbilitySystemComponent::OwnStacksByEnchantment() const
 		}
 		FString Enchantment;
 		FString Stat;
-		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat))
+		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
 		{
 			Stat = Each.Key.ToString();
 		}
@@ -5672,7 +5678,7 @@ UCataclysmAbilitySystemComponent::OwnStacksByEnchantment() const
 		}
 		FString Enchantment;
 		FString Stat;
-		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat))
+		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
 		{
 			Stat = Each.Key.ToString();
 		}
@@ -7547,7 +7553,8 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 {
 	// BUILT ONCE ON FIRST USE. Every line is from an enchantment, which is the source a row's own lines carry and
 	// one that may grant a "more" multiplier. Each entry's lines are what its own description in the status
-	// table states; the description is quoted above each.
+	// table states; the description is quoted above each. AN ENTRY MAY INSTEAD NAME SET ROWS TO WEAR, since batch 2
+	// of issue #2538: see `HeldRandomBuffEffectRows`.
 	static const TArray<FRandomBuff> Table = []
 	{
 		using EBucket = ECataclysmStatBucket;
@@ -7666,6 +7673,57 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 			Buffs.Add(Buff);
 		}
 
+		// BATCH 2 OF ISSUE #2538, joined 2026-10-26: each wears the set rows that build it, by name, renamed under its
+		// own enchantment name, so every figure is the row's. EACH DESCRIPTION DESCRIBES THE BUFF AS ITS SET GRANTS IT,
+		// as ruled 2026-10-26; how the drawn form differs is said above each.
+		//
+		// "A stack gained every 5 seconds. When an attack is blocked, all of your skills are instantly refreshed."
+		// Divine Retribution's ten-piece row: while it is held, a block refreshes every skill, at most once in 5
+		// seconds. AS DRAWN IT COUNTS NO STACK, as the worn row counts none: "a stack every 5 seconds" is built as
+		// the row's 5-second trigger cooldown.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Sanctified Power");
+			Buff.WornRows.Add(FName(TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec#1")));
+			Buffs.Add(Buff);
+		}
+
+		// "When your health falls below 25%, you become immune to crowd control and deal 100% more damage for 10
+		// seconds." Demon King's Regalia's three six-piece rows: while it is held, health falling below a quarter
+		// gives 100 crowd control resistance and 100 more attack and spell damage for 10 seconds, at most once in
+		// 300 seconds, the rows' cooldown, counted under the buff's own keys.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Demonic Rage");
+			Buff.WornRows.Add(FName(TEXT("Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#1")));
+			Buff.WornRows.Add(FName(TEXT("Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#2")));
+			Buff.WornRows.Add(FName(TEXT("Positive_Demon_King_s_Regalia_6_Piece_Bonus_When_your#3")));
+			Buffs.Add(Buff);
+		}
+
+		// "A stack gained every 30 seconds. When a skill is used, it is cast a random number of times." Shard of
+		// Anarchy's ten-piece row, whose stacks are "Temporal Flux": a use spends them all and is cast again from 1 to
+		// the stacks held. AS DRAWN IT LAYS ITS CAP, 5, AT THE DRAW, the coordinating session's judgement of
+		// 2026-10-26: the row's clock gains one for each 30 seconds of fighting, which a 30-second hold would rarely see.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Temporal Flux");
+			Buff.WornRows.Add(FName(TEXT("Positive_Shard_of_Anarchy_10_Piece_Bonus_Every_30_seco#1")));
+			Buff.KeptStacksAtDraw = 5;
+			Buffs.Add(Buff);
+		}
+
+		// "At 10 stacks, your next ability costs no mana and deals 100% more damage." Null Emperor's six-piece row,
+		// whose stacks are "Void". AS DRAWN IT LAYS ITS CAP, 10, AT THE DRAW, the coordinating session's judgement of
+		// 2026-10-26: the row gains one only on a hit on a silenced enemy, which a 30-second hold would rarely see.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Void");
+			Buff.WornRows.Add(FName(TEXT("Positive_Null_Emperor_6_Piece_Bonus_Every_time_you_hit#1")));
+			Buff.KeptStacksAtDraw = 10;
+			Buffs.Add(Buff);
+		}
+
 		return Buffs;
 	}();
 	return Table;
@@ -7711,7 +7769,58 @@ bool UCataclysmAbilitySystemComponent::HoldARandomBuff()
 
 	// AND THE STAT LINE IS WRITTEN WITH IT. The refresh reads `HeldRandomBuffStatModifiers`.
 	RefreshWornStatLine();
+
+	// AND THE KEPT STACKS IT LAYS AT THE DRAW, on each row it wears that keeps them, found by the buff's own name at
+	// the start of the key. Issue #2538, batch 2. Each gain is capped by the row, so a draw of a buff already held
+	// tops it up to the cap and no further.
+	if (Drawn.KeptStacksAtDraw > 0)
+	{
+		const FString Prefix = RandomBuffEnchantmentName(Drawn.Name) + TEXT(":");
+		for (const FCataclysmPoolAction& Action : PoolActions)
+		{
+			if (Action.KeptStackKey.ToString().StartsWith(Prefix, ESearchCase::CaseSensitive))
+			{
+				for (int32 Laid = 0; Laid < Drawn.KeptStacksAtDraw; ++Laid)
+				{
+					GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+				}
+			}
+		}
+	}
 	return true;
+}
+
+FString UCataclysmAbilitySystemComponent::RandomBuffEnchantmentName(const TCHAR* BuffName)
+{
+	return FString::Printf(TEXT("RandomBuff:%s"), BuffName);
+}
+
+TArray<FCataclysmEnchantmentEffectRow> UCataclysmAbilitySystemComponent::HeldRandomBuffEffectRows() const
+{
+	TArray<FCataclysmEnchantmentEffectRow> Rows;
+	const FName Held = HeldRandomBuff();
+	const UDataTable* Effects = Held.IsNone() ? nullptr : UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	if (!Effects)
+	{
+		return Rows;
+	}
+	for (const FRandomBuff& Buff : RandomBuffTable())
+	{
+		if (Held != FName(Buff.Name))
+		{
+			continue;
+		}
+		for (const FName& RowName : Buff.WornRows)
+		{
+			if (const FCataclysmEnchantmentEffectRow* Row =
+					Effects->FindRow<FCataclysmEnchantmentEffectRow>(RowName, TEXT("HeldRandomBuffEffectRows")))
+			{
+				FCataclysmEnchantmentEffectRow& Copy = Rows.Add_GetRef(*Row);
+				Copy.Enchantment = RandomBuffEnchantmentName(Buff.Name);
+			}
+		}
+	}
+	return Rows;
 }
 
 FName UCataclysmAbilitySystemComponent::HeldRandomBuff() const

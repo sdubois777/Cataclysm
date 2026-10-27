@@ -739,6 +739,14 @@ public:
 	 *                piece at its own -- are the same for both kinds of row and
 	 *                must not be written twice.
 	 *
+	 * @param ExtraRows effect rows to grant as they are, after the worn items',
+	 *                at the set rows' roll, or null for none: the rows a held
+	 *                random buff wears, each already renamed under the buff's
+	 *                own enchantment name
+	 *                (`UCataclysmAbilitySystemComponent::HeldRandomBuffEffectRows`).
+	 *                Built by the same lines as a worn row, so no action is
+	 *                built a second way. Issue #2538, batch 2.
+	 *
 	 * @return how many modifiers were added. ACTIONS ARE NOT COUNTED IN IT: the
 	 *         figure has meant modifiers since issue #45 and a caller reading it
 	 *         as "did anything apply" would be told something different from
@@ -750,7 +758,8 @@ public:
 		const UDataTable* EffectTable,
 		const UDataTable* PositiveTable,
 		const UDataTable* NegativeTable,
-		TArray<FCataclysmPoolAction>* Actions = nullptr);
+		TArray<FCataclysmPoolAction>* Actions = nullptr,
+		const TArray<FCataclysmEnchantmentEffectRow>* ExtraRows = nullptr);
 
 	/**
 	 * The key a row's own stacks are counted under: its enchantment and its

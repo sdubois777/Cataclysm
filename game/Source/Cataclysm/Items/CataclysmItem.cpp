@@ -1097,7 +1097,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 	const TArray<FCataclysmItem>& Worn, const UDataTable* EffectTable,
 	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
-	TArray<FCataclysmPoolAction>* Actions)
+	TArray<FCataclysmPoolAction>* Actions,
+	const TArray<FCataclysmEnchantmentEffectRow>* ExtraRows)
 {
 	// ALL THREE TABLES OR NOTHING. The loaders report a missing table loudly, so
 	// it is not reported a second time here.
@@ -1133,19 +1134,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	int32 Added = 0;
 	// `ItemKills` IS THE COUNT OF THE ITEM THE ENCHANTMENT IS ON, which only a
 	// `weapon_kills` row reads. Issue #1833, the kill counter.
-	auto Grant = [&Totals, &EffectsFor, &Added, Actions](FName Enchantment,
-													  float Roll, int32 ItemKills)
+	//
+	// A LIST OF ROWS GRANTED AT ONE ROLL. `Grant` below hands it one enchantment's
+	// rows, and the rows a held random buff wears come to it at the end. Issue
+	// #2538, batch 2.
+	auto GrantRows = [&Totals, &Added, Actions](
+		const TArray<const FCataclysmEnchantmentEffectRow*>& Effects, float Roll, int32 ItemKills)
 	{
-		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
-			EffectsFor.Find(Enchantment);
-		if (!Effects)
-		{
-			// MOST ENCHANTMENTS ARE HERE, AND IT IS NOT A FAULT. A row is written
-			// for an enchantment once the game has what its sentence needs.
-			return;
-		}
-
-		for (const FCataclysmEnchantmentEffectRow* Effect : *Effects)
+		for (const FCataclysmEnchantmentEffectRow* Effect : Effects)
 		{
 			// A ROW SCALED BY ITS OWN STACKS ALSO NEEDS SOMETHING TO GRANT THEM:
 			// an action on its event that gains a stack instead of moving a pool.
@@ -1707,6 +1703,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			++Added;
 		}
 	};
+	auto Grant = [&EffectsFor, &GrantRows](FName Enchantment, float Roll, int32 ItemKills)
+	{
+		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
+			EffectsFor.Find(Enchantment);
+		if (!Effects)
+		{
+			// MOST ENCHANTMENTS ARE HERE, AND IT IS NOT A FAULT. A row is written
+			// for an enchantment once the game has what its sentence needs.
+			return;
+		}
+		GrantRows(*Effects, Roll, ItemKills);
+	};
 
 	// A BENEFIT ONCE HOWEVER MANY PIECES CARRY IT, AT THE HIGHER OF THEIR
 	// ROLLS, AND A DRAWBACK FOR EVERY PIECE AT ITS OWN. The header says why
@@ -1817,6 +1825,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			}
 			Grant(Set.Negative, SetRowRoll, /*ItemKills=*/0);
 		}
+	}
+
+	// AND THE ROWS A HELD RANDOM BUFF WEARS, as they are: each is already renamed
+	// under the buff's own enchantment name, so every key it keeps is its own.
+	// Issue #2538, batch 2. At the set rows' roll, as a set row's figure is; the
+	// six rows worn so far each state one figure, so the roll changes none.
+	if (ExtraRows)
+	{
+		TArray<const FCataclysmEnchantmentEffectRow*> Extra;
+		for (const FCataclysmEnchantmentEffectRow& Row : *ExtraRows)
+		{
+			Extra.Add(&Row);
+		}
+		GrantRows(Extra, SetRowRoll, /*ItemKills=*/0);
 	}
 
 	return Added;
