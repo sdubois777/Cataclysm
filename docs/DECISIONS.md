@@ -35,7 +35,7 @@ beginning "Nihil's Embrace".
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | 4328 / 0: `development` at `039f9dcb0` (#2562) measured 4326, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-nihil-1` |
+| Whole Unreal suite | 4332 / 0: `development` at `543a908bb` (#2564) measured 4330, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-nihil-2` |
 | Memory | about 7,900 MB; reported if above 9,500 |
 | P4, the leaving reset of the walking baseline deleted | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` fails |
 | P5, the leaving reset of the reward's end deleted | `LeavingTheDungeonEndsTheNihilsEmbracesReward` fails |
