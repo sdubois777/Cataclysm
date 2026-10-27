@@ -238,9 +238,24 @@ resistance attribute as the fallback, as `StatForSkill`'s header asks ("Pass the
 reading before the draw is the class's own; every assertion is already a difference from that reading. Read, not
 measured until the next window.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t123w
 
-Not run. The enchantment session records its window here.
+Window t123w, run 2026-10-26 under the lock as `enchant-t123w` at 13,474 MB free, at `9daf54aa7` on development
+`54925981a`. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The DataTable asset rebuild | changed nothing, so asset commit `cb9f441ee` stands |
+| The four new tests, each alone | 1 of 1 each: Sanctified Power, Demonic Rage, Temporal Flux, Void |
+| The whole Unreal suite | "4280 tests performed, 4280 succeeded, 0 failed"; 4280 declared, gap 0 |
+| Memory | `tests=4887 peak_used_virtual_mb=8031 final_used_virtual_mb=7699` |
+| Python of record | JUnit 7017 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| RB2-G1, the held buff's rows not worn | PROVED: the 4 predicted tests failed, 25 of 25 assertions; 12 of 12 passed restored |
+| RB2-G2, no stacks laid at the draw | PROVED: the 2 predicted tests failed, 11 of 11 assertions; 12 of 12 passed restored |
+| RB2-G3, a worn row keeps its set's name | PROVED: the 4 predicted tests failed, 16 of 16 assertions; 12 of 12 passed restored |
+
+The Demonic Rage test, changed after t122w to read the class's own resistance before the draw, passed alone and in the
+suite, which measures the change recorded above.
 
 ---
 
