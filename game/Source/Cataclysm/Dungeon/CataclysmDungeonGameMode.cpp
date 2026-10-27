@@ -19028,6 +19028,27 @@ void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
 		return;
 	}
 
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player
+		? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent())
+		: nullptr;
+
+	// THE PLAYER'S OWN DEATH ENDS THE LOSS AND THE REWARD, AND ENDS THEM NOW. Issue
+	// #1795. The ruling of 2026-09-10 ends anything that lasts only for a dungeon at
+	// a death, and the reward is temporary and is not an aura. Applied at once, as
+	// Wasting Sickness's is, rather than left to the beat.
+	if (AbilitySystem && Notice.Victim == Player)
+	{
+		MetresWalkedAtLastCleanse = AbilitySystem->MetresWalkedTotal();
+		NihilsEmbraceRewardUntilSeconds = -1.0f;
+		StepNihilsEmbrace(Player, AbilitySystem);
+		return;
+	}
+
 	// THE VICTIM'S OWN RARITY, NOT THE NOTICE'S BOSS FACT. That fact says whether
 	// a boss DEALT the last blow, and this row asks about who died.
 	//
@@ -19043,14 +19064,6 @@ void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
 		return;
 	}
 
-	UWorld* World = GetWorld();
-	APlayerController* Controller =
-		World ? World->GetFirstPlayerController() : nullptr;
-	const ACataclysmPlayerCharacter* Player =
-		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	const UCataclysmAbilitySystemComponent* AbilitySystem = Player
-		? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent())
-		: nullptr;
 	if (!World || !AbilitySystem)
 	{
 		return;

@@ -2,6 +2,156 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — The player's own death gives back every point The Nihil's Embrace took, and ends a boss kill's reward (#1795)
+
+**Affects:** `ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace` in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (and its comment in the `.h`); the paragraph above
+`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`; two new tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, in the `Cataclysm.DungeonModifierEffects.`
+group; this file. No workbook, CSV or asset change. **Closes
+[#1795](https://github.com/sdubois777/Cataclysm/issues/1795).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** on a floor carrying `Void_The_Nihil_s_Embrace`, a player who dies stands back up with
+  every point of resistance the walking had cost, and a boss kill's timed resistance reward that was still running
+  is gone. Walking afterwards costs resistance again from nothing.
+- **IN PLAY TODAY THIS MATTERS ONLY IN THREE CASES, AND THAT IS READ, NOT MEASURED.** A death in a bound empire
+  dungeon (an ordinary dungeon, a Quest dungeon, a Dungeon City) already took the loss off at the respawn:
+  `ACataclysmPlayerCharacter::Revive` calls `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, which leaves the
+  dungeon, and leaving empties the floor's modifiers, whose branch of `ApplyFloorRulesToPlayer` moves the baseline
+  and ends the reward (inferred from the order, not traced to the end). `EndTheDungeonForADeath` returns early, and
+  the player stands back up inside the level, in three cases: the playtest switch
+  `Cataclysm.DeathKeepsThePlayerInTheDungeon`; no bound empire dungeon (pressing Play in a level, and every test);
+  and the Cataclysm's own dungeon. Those three are where the loss used to survive a death.
+- **THE ISSUE'S TWO COMPLAINTS ABOUT THE COMMENT WERE ALREADY CORRECTED BEFORE THIS CHANGE.** #1795 said the
+  paragraph above `ClearWhatDeathEnds` claimed "none of it is built" and used the stale name Withering Touch. Both
+  were rewritten by `ff4131c9f` (#1798, Wasting Sickness). What was still wrong there is the sentence saying The
+  Nihil's Embrace has no clearing, and that is the paragraph rewritten here.
+- **13 LINES ADDED, 4 OF THEM COMMENT AND 2 BLANK, AND 8 MOVED**, all inside `NoteDeathForNihilsEmbrace`: the player lookup that
+  stood after the boss check now stands before it, without its two `const`s, so the new branch can use it. No other
+  function in that file changed, so the later move onto #2546's merge touches no line it touches.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-27)
+
+> 1. THE REWARD: cleared at the player's death. The 2026-09-10 entry (DECISIONS.md, "A respawn clears cooldowns as
+>    well...") states that "a death clears everything temporary on the player", and in that same ruling the owner kept
+>    only running auras. A boss kill's timed resistance bonus is temporary and is not an aura, so it ends at the death.
+>    Quote that sentence in the entry.
+> 2. THE PLAN is approved:
+>    - When the victim is the player, NoteDeathForNihilsEmbrace moves MetresWalkedAtLastCleanse to the player's
+>      MetresWalkedTotal, clears NihilsEmbraceRewardUntilSeconds, and applies the floor effects at once, following
+>      Wasting Sickness. This goes before the boss check.
+>    - The tests: the death test, with its no-death control, and the reward test.
+>    - One proof.
+>    - Rewrite the ClearWhatDeathEnds paragraph.
+>    State in the entry that in play today this matters only in the three cases you found (the playtest switch, no bound
+>    empire dungeon, the Cataclysm's own dungeon). That part is read, not measured.
+> 3. BUILD IT NOW, from 3b0c74ef3, with a second session, in parallel with the Ballista.
+
+**The sentence ruling 1 rests on**, re-read at `3b0c74ef3` in the entry "2026-09-10 — A respawn clears cooldowns as
+well, a running aura keeps running, and a planted sword returns at death while its fire stays": "The entry below, that
+a death clears everything temporary on the player, was built by pull request #1546". The ruling it points at is the
+entry "2026-09-10 — Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the
+player", whose section "Anything that lasts only for the dungeon ends at death, however it is worded" names
+`Void_The_Nihil_s_Embrace` among its five rows. The owner's answer kept only running auras.
+
+### WHAT WAS BUILT
+
+In `NoteDeathForNihilsEmbrace`, after the test that the floor carries the row and before the boss check: when the
+notice's victim is the player (found as `NoteDeathForWastingSickness` finds it, through the first player
+controller's pawn), `MetresWalkedAtLastCleanse` moves to the player's `MetresWalkedTotal()`,
+`NihilsEmbraceRewardUntilSeconds` is set to -1, and `StepNihilsEmbrace` runs at once, which works out a loss of 0 and
+no reward and, because those differ from what is applied, puts them on through `ApplyChangingFloorEffects`. Then it
+returns, so a player's death is never read as a boss's.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **`StepNihilsEmbrace` rather than a direct `ApplyChangingFloorEffects`.** The applier reads
+  `ResistanceLessApplied` and `ResistanceMoreApplied`, which only the step writes, so calling the applier alone
+  would put the old loss back on. Not taken: zeroing those two fields here and calling the applier, which duplicates
+  the step's arithmetic in a second place.
+- **Applied at once although no maximum is involved.** Wasting Sickness applies at once because `Revive` reads the
+  maximums; a resistance is not read by the refill, so a beat later would not be visible at the respawn. Applied at
+  once anyway, as the ruling says, so the player is never seen dead and still carrying the loss. Not taken: leaving
+  it to the beat.
+
+### NO GENRE SOURCE
+
+None was recorded. This is the project owner's own death rule applied to one more row, not a formula.
+
+### TESTS
+
+Both in `Cataclysm.DungeonModifierEffects.`, beside `ABossDeathCleansesTheNihilsEmbrace`, each with its control read
+before the death, and each reading the result with no beat between the death and the first reading.
+
+| Test | Asserts (in order) |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathGivesBackEveryPointTheNihilsEmbraceTook` (19) | a world; the game mode; a possessed player; the floor; walking 35 m put a dungeon-rule modifier on War resistance, worth -3; the control: 2 s and a beat later with no death it is still there, still -3; the player died; at once, no dungeon-rule modifier on each of the eight resistances (8); the player stood back up through `Revive`; the next beat does not put the War loss back |
+| `Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathEndsTheNihilsEmbracesReward` (22) | a world; the game mode; a possessed player; the floor; a boss spawned; it is a boss; it died; the reward is on War resistance, worth the reward's 10; the control: 5 s and a beat later with no death it is still held at 10; the player died; at once, nothing on each of the eight resistances (8); the player stood back up; the next beat does not put the reward back, though its 20 s have not run out |
+
+### NOT TESTED
+
+The three cases are covered only as the test world stands for the second one, no bound empire dungeon; the playtest
+switch and the Cataclysm's own dungeon are read, not tested. That a bound empire dungeon already lost the loss at the
+respawn is read, not measured. A player who died carrying both a loss and a running reward at once is not tested;
+the code clears both on one path.
+
+### GUARD PROOFS PROPOSED
+
+One, in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.`
+(with the dot). The anchor is counted exactly once by `read_text`; brackets are equal before and after.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| NE-G1, the player's branch never fires | `if (AbilitySystem && Notice.Victim == Player)` | `if (AbilitySystem && Notice.Victim == Controller)` | the two new tests and no other, 18 assertions: `ThePlayersOwnDeathGivesBackEveryPointTheNihilsEmbraceTook` 9 (the eight at-once readings and the reading after the beat), `ThePlayersOwnDeathEndsTheNihilsEmbracesReward` 9 (the same) |
+
+A controller never dies, so the break compiles, keeps both pointer types comparable, and leaves the player's death to
+fall through to the boss check, which refuses it because the player is not an enemy.
+`ABossDeathCleansesTheNihilsEmbrace` and the Wasting Sickness death test do not fail: the first kills no player and
+the second's floor does not carry this row. No other test in the group names `NihilsEmbrace` on a floor where the
+player dies (searched by the row's name).
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+With `Cataclysm.DeathKeepsThePlayerInTheDungeon 1` and `Cataclysm.DungeonModifiers Void_The_Nihil_s_Embrace` typed
+at the console before a floor is built, walk until the character panel's resistances drop, die, and stand back up with them where they started.
+
+### THE WINDOWS' RUNS, t144w AND t147w
+
+Moved from `29c12743e` on `3b0c74ef3` to `7aa21eb43` on development `41cb7e3e3` as
+`fix/nihils-embrace-ends-at-the-players-death-1`; the only conflict was this file. Both windows ran with the project
+owner's one-time memory exception of 2026-10-27 in force (a floor of 9,800 MB, for t141w and this run only; the
+standing floor is 10 GiB, 10,240 MB). Neither needed it.
+
+**t144w, run 2026-10-27 under the lock as `enchant-t144w`, STOPPED AT ITS PROOF, on a test this change does not touch.**
+Free memory immediately before the lock, at 10:37:27, was 10,477 MB.
+
+| Step | Result |
+|---|---|
+| The two new tests, each alone | 1 of 1 each; the first build compiled 37 files in 40 actions |
+| The whole Unreal suite | "4308 tests performed, 4308 succeeded, 0 failed"; 4308 declared, gap 0 |
+| Memory | `tests=4915 peak_used_virtual_mb=8055 final_used_virtual_mb=7698` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| NE-G1, prefix `Cataclysm.DungeonModifierEffects.` (757 tests) | "NOT A PROOF": the two new tests failed with the break in on exactly the 18 predicted assertions, but `Cataclysm.DungeonModifierEffects.APhasewalkerStandingOnTheFloorPhasesItsWholeDistance` failed too, IN BOTH HALVES ("'its whole three metres along the ground' to be 300.000000, but it was 260.049225"): 754 of 757 with the break in, 756 of 757 restored |
+
+That Phasewalker test passed in the same window's whole suite, so it fails only when its group runs alone. It was added by
+`2c6da3ff2` (#2203, #2505) and nothing here touches it. Filed by the coordinating session as **#2556**: until it is
+fixed, any proof prefixed `Cataclysm.DungeonModifierEffects.` reads NOT A PROOF.
+
+**t147w, run 2026-10-27 under the lock as `enchant-t147w`, NE-G1 ALONE, as ruled after t144w.** Free memory immediately
+before the lock, at 11:14:42, was 11,500 MB. Steps 2a to 3 stand from t144w at the same head. The prefix
+`Cataclysm.DungeonModifierEffects.ThePlayersOwnDeath` selects three tests: the two new ones and the existing
+`ThePlayersOwnDeathClearsWastingSicknessAtOnce`, a control, since its floor carries no Nihil's Embrace row.
+
+| Proof | Result |
+|---|---|
+| NE-G1, the player's branch never fires (`Notice.Victim == Player` made `== Controller`) | PROVED: with the break in, 3 performed, 1 succeeded (the Wasting Sickness control), the 2 new tests failed on 18 of 18 assertions; 3 of 3 passed restored |
+
+---
+
 ## 2026-10-27 — The Ballista fires at the furthest enemy within its reach, as its row and its skill text say (#2397, #1712)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the flag `bTargetsTheFurthest`, read

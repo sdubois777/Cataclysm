@@ -1731,6 +1731,9 @@ private:
 
 	/**
 	 * The Nihil's Embrace's cleanse, on a boss's defeat. Issue #41, slice 2.
+	 *
+	 * AND THE PLAYER'S OWN DEATH ENDS BOTH THE LOSS AND A BOSS'S REWARD, at once,
+	 * the shape `NoteDeathForWastingSickness` takes. Issue #1795.
 	 */
 	void NoteDeathForNihilsEmbrace(const struct FCataclysmDeathNotice& Notice);
 
