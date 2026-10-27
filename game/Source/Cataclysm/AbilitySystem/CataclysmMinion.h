@@ -256,6 +256,29 @@ public:
 	AActor* MostHealthWithinReach() const;
 
 	/**
+	 * Whether this minion's type row says `Furthest`, which today is the Ballista's alone. Read by `Spawn` from
+	 * `FCataclysmMinionTypeRow::TargetMode`; anything else, an empty column included, is nearest, as every minion
+	 * chose before the column was read. Issues #2397 and #1712.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bTargetsTheFurthest = false;
+
+	/**
+	 * The enemy within this minion's reach standing furthest from it, or null. Null for a minion whose row does not
+	 * say `Furthest`, and null when nothing is within reach.
+	 *
+	 * "FURTHEST" IS MEASURED ON `HostilesWithinReach`, ruled 2026-10-27: centre to centre along the floor, within
+	 * `ReachCm` as `minion_range` lengthened it, alive, and sight not asked. It is the measure the brain fires by, so
+	 * the Ballista cannot choose a target it never fires at. NOT the candidates of the nearest search, which admits a
+	 * body whose capsule edge reaches into its sphere while its centre stands beyond the reach. Two at the same
+	 * distance: the earlier in that list.
+	 *
+	 * CALLED BY `ACataclysmEnemyController::ChooseTarget` ON EVERY PASS, after the taunt, the Quarry mark and the
+	 * most-health row and before the search for the nearest.
+	 */
+	AActor* FurthestWithinReach() const;
+
+	/**
 	 * How many seconds apart a summoner's gadgets fire at every enemy within their reach. Ruled 2026-10-13 by the
 	 * coordinating session under the owner's delegation, for "Gadgets fire at all enemies within range
 	 * simultaneously once every 5-8 seconds". A row states it flat, scoped to `Type.Deployable`; nought or less is

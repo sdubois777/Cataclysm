@@ -574,6 +574,9 @@ public:
 	 * UCataclysmTeams's question, and it is what makes a maddened monster's
 	 * neighbours legal targets: Madness makes an actor hostile to everything.
 	 *
+	 * AND ASKED FIRST, IN THIS ORDER, before the nearest: a taunt, a Quarry mark, a gadget's most-health row, and a
+	 * minion whose type row says `Furthest`. The definition says each.
+	 *
 	 * SEARCHED FROM UCataclysmTargetCandidates's LISTS, NOT A PHYSICS SPHERE,
 	 * since issue #1547. They list Madness beside the sides for the reason above:
 	 * a maddened creature is a target for its own side as well.

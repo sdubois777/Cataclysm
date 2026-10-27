@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -1596,6 +1597,327 @@ CATACLYSM_TEST(FCataclysmGadgetDrainOthersTest,
 		HealthOf(FlagOnlyTurret), FlagOnlyPlaced, 0.001f);
 	TestEqual(TEXT("and a blow of 5 takes nothing from it"),
 		BlowTakes(AtFlagOnly, FlagOnlyTurret, 5.0f), 0.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// The Ballista's own row, `TargetMode` "Furthest": it "fires massive bolts at
+// the furthest enemy within 15 meters". Issues #2397 and #1712.
+// ==========================================================================
+
+namespace CataclysmBallistaTargetsTest
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	/**
+	 * A Ballista at `Origin`, its summoner 50 m off along -X, and four enemies about it: at 3, 10 and 14.9 m along X,
+	 * holding 300, 900 and 500, so the nearest, the one with the most health and the furthest within its 15 m reach
+	 * are three different enemies; and one at 15.3 m along Y holding 5,000, whose centre stands beyond the reach
+	 * while the edge of its 48 cm capsule is at 14.82 m, inside it. Every two of the four stand at least 4.9 m apart.
+	 */
+	struct FBallistaField
+	{
+		FBallistaField(FAutomationTestBase& Test, UWorld* World, const FVector& Origin)
+		{
+			Owner = Summoner(World, Origin + FVector(-50.0f * M, 0.0f, 0.0f));
+			Ballista = Owner ? Place(Test, Owner, TEXT("Ballista"), Origin) : nullptr;
+			Near = Enemy(World, Origin + FVector(3.0f * M, 0.0f, 0.0f), 300.0f);
+			Middle = Enemy(World, Origin + FVector(10.0f * M, 0.0f, 0.0f), 900.0f);
+			Far = Enemy(World, Origin + FVector(14.9f * M, 0.0f, 0.0f), 500.0f);
+			OnlyItsBodyReaches = Enemy(World, Origin + FVector(0.0f, 15.3f * M, 0.0f), 5000.0f);
+		}
+
+		bool IsWhole() const { return Owner && Ballista && Near && Middle && Far && OnlyItsBodyReaches; }
+
+		ACataclysmEnemyCharacter* Owner = nullptr;
+		ACataclysmMinion* Ballista = nullptr;
+		ACataclysmEnemyCharacter* Near = nullptr;
+		ACataclysmEnemyCharacter* Middle = nullptr;
+		ACataclysmEnemyCharacter* Far = nullptr;
+		ACataclysmEnemyCharacter* OnlyItsBodyReaches = nullptr;
+	};
+
+	/** What the ballista's brain chooses with its row's flag cleared by hand, as every ballista chose before. */
+	AActor* ChoiceWithoutTheFlag(ACataclysmMinion* Ballista)
+	{
+		const bool bRead = Ballista->bTargetsTheFurthest;
+		Ballista->bTargetsTheFurthest = false;
+		AActor* Chosen = ChoiceOf(Ballista);
+		Ballista->bTargetsTheFurthest = bRead;
+		return Chosen;
+	}
+}
+
+CATACLYSM_TEST(FCataclysmBallistaTargetsFurthestTest,
+	"Cataclysm.BallistaTargets.ItChoosesTheFurthestEnemyWithinItsReachAndNotOneWhoseBodyAloneReachesIn")
+{
+	using namespace CataclysmBallistaTargetsTest;
+
+	// THE FIELD, A BOLT TURRET OF THE SAME SUMMONER 2 m beside the ballista along -Y (the four enemies stand 3.6, 10.2,
+	// 15.0 and 17.3 m from it), AND A MONSTER 100 m off along Y with two of the players' side at 3 and 10 m from it.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FBallistaField Field(*this, World, FVector::ZeroVector);
+	ACataclysmMinion* Turret =
+		Field.Owner ? Place(*this, Field.Owner, TEXT("BoltTurret"), FVector(0.0f, -2.0f * M, 0.0f)) : nullptr;
+	const FVector MonsterAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Monster = Enemy(World, MonsterAt, 1000.0f);
+	ACataclysmEnemyCharacter* MonstersNearer = Summoner(World, MonsterAt + FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* MonstersFurther = Summoner(World, MonsterAt + FVector(-10.0f * M, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: the ballista, its summoner and its four enemies"), Field.IsWhole()) || !Turret
+		|| !TestTrue(TEXT("set-up: the monster and the two it could attack"),
+			Monster && MonstersNearer && MonstersFurther)
+		|| !TestTrue(TEXT("set-up: each has the shared brain"),
+			HasABrain(Field.Ballista) && HasABrain(Turret) && HasABrain(Monster)))
+	{
+		return false;
+	}
+
+	// THE PREMISE OF THE CAPSULE TRAP, read before anything is chosen. The ballista reaches 15 m; the enemy at 15.3 m
+	// stands beyond that, centre to centre along the floor; the sphere its reach is searched with still finds that
+	// enemy, as the furthest body it finds; and `HostilesWithinReach` has dropped it.
+	const FVector BallistaAt = Field.Ballista->GetActorLocation();
+	const TArray<AActor*> Sphere =
+		UCataclysmTargeting::FindEnemiesInSphere(World, Field.Ballista, BallistaAt, Field.Ballista->ReachCm);
+	const TArray<AActor*> WithinReach = Field.Ballista->HostilesWithinReach();
+	if (!TestEqual(TEXT("set-up: the ballista reaches 15 m"), Field.Ballista->ReachCm, 1500.0f, 0.01f)
+		|| !TestTrue(TEXT("set-up: the enemy at 14.9 m stands within that and the one at 15.3 m beyond it"),
+			FVector::Dist2D(BallistaAt, Field.Far->GetActorLocation()) <= Field.Ballista->ReachCm
+			&& FVector::Dist2D(BallistaAt, Field.OnlyItsBodyReaches->GetActorLocation()) > Field.Ballista->ReachCm)
+		|| !TestTrue(TEXT("set-up: the sphere finds the one beyond it, its body reaching in, as the furthest it finds"),
+			!Sphere.IsEmpty() && Sphere.Last() == Field.OnlyItsBodyReaches)
+		|| !TestTrue(TEXT("set-up: and the reach answers the three within it, the one beyond dropped"),
+			WithinReach.Num() == 3 && !WithinReach.Contains(Field.OnlyItsBodyReaches)))
+	{
+		return false;
+	}
+
+	// THE CONTROLS, READ FIRST: the turret, whose row says `Nearest`; the monster; and the ballista with its flag
+	// cleared by hand.
+	TestFalse(TEXT("control: the turret's row does not say Furthest"), Turret->bTargetsTheFurthest);
+	if (!TestTrue(TEXT("control: the turret beside it chooses the nearest, at 3 m"), ChoiceOf(Turret) == Field.Near)
+		|| !TestTrue(TEXT("control: the monster chooses the nearer of the two it could attack"),
+			ChoiceOf(Monster) == MonstersNearer))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the ballista's row is read as Furthest"), Field.Ballista->bTargetsTheFurthest);
+	if (!TestTrue(TEXT("control: with that flag cleared by hand the ballista chooses the nearest, as before"),
+			ChoiceWithoutTheFlag(Field.Ballista) == Field.Near))
+	{
+		return false;
+	}
+
+	// WITH THE FLAG AS ITS ROW SET IT: the enemy at 14.9 m, not the one at 15.3 m whose body alone reaches in.
+	TestTrue(TEXT("the ballista chooses the furthest enemy within its reach, at 14.9 m"),
+		ChoiceOf(Field.Ballista) == Field.Far);
+	TestFalse(TEXT("and not the enemy at 15.3 m whose body alone reaches into its sphere"),
+		ChoiceOf(Field.Ballista) == Field.OnlyItsBodyReaches);
+	TestTrue(TEXT("which is what it is offered as the furthest within its reach"),
+		Field.Ballista->FurthestWithinReach() == Field.Far);
+
+	// AND NOTHING ELSE MOVED, read again after the ballista chose.
+	TestNull(TEXT("the turret is offered no furthest target"), Turret->FurthestWithinReach());
+	TestTrue(TEXT("the turret still chooses the nearest"), ChoiceOf(Turret) == Field.Near);
+	TestTrue(TEXT("and the monster still the nearer of its two"), ChoiceOf(Monster) == MonstersNearer);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBallistaTargetsTauntAndQuarryFirstTest,
+	"Cataclysm.BallistaTargets.ATauntAndThenAQuarryMarkStillComeBeforeTheFurthest")
+{
+	using namespace CataclysmBallistaTargetsTest;
+
+	// THE CONTROL IS THE FURTHEST, at 14.9 m. Then the summoner marks the enemy at 3 m as its quarry, and then the
+	// enemy at 10 m taunts the ballista: each step moves the choice to a different enemy.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FBallistaField Field(*this, Scope.World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: the ballista, its summoner and its four enemies"), Field.IsWhole())
+		|| !TestTrue(TEXT("set-up: the ballista has the shared brain"), HasABrain(Field.Ballista)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("control: with no mark and no taunt the ballista chooses the furthest within its reach"),
+			ChoiceOf(Field.Ballista) == Field.Far))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the mark lands"), UCataclysmSkillEffects::ApplyNamedEffect(
+			Field.Owner, Field.Near, UCataclysmCommand::QuarryTag(), /*DurationSeconds=*/12.0f, /*Magnitude=*/0.0f,
+			NAME_None))
+		|| !TestTrue(TEXT("set-up: and the ballista is ordered onto the marked enemy"),
+			UCataclysmCommand::OrderedTargetFor(Field.Ballista) == Field.Near))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a quarry mark comes before the furthest: the ballista takes the marked enemy at 3 m"),
+		ChoiceOf(Field.Ballista) == Field.Near);
+
+	if (!TestTrue(TEXT("set-up: the enemy at 10 m taunts the ballista"),
+			UCataclysmTaunt::ApplyTaunt(Field.Middle, Field.Ballista, /*Seconds=*/10.0f)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a taunt comes first of all: the ballista takes its taunter, and neither the mark nor the furthest"),
+		ChoiceOf(Field.Ballista) == Field.Middle);
+	TestTrue(TEXT("and the furthest within its reach is still on offer beneath both"),
+		Field.Ballista->FurthestWithinReach() == Field.Far);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBallistaTargetsMostHealthFirstTest,
+	"Cataclysm.BallistaTargets.TheGadgetsMostHealthRowStillComesBeforeTheFurthest")
+{
+	using namespace CataclysmBallistaTargetsTest;
+
+	// ONE SUMMONER, READ BEFORE IT HOLDS "Your gadgets prioritize the highest HP enemy within their range" AND AFTER.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FBallistaField Field(*this, Scope.World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: the ballista, its summoner and its four enemies"), Field.IsWhole())
+		|| !TestTrue(TEXT("set-up: the ballista has the shared brain"), HasABrain(Field.Ballista))
+		|| !TestTrue(TEXT("set-up: the tag Type.Deployable exists"), DeployableTag().IsValid()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("control: with no row the ballista chooses the furthest within its reach, holding 500"),
+			ChoiceOf(Field.Ballista) == Field.Far))
+	{
+		return false;
+	}
+	TestNull(TEXT("control: and it is offered no target by health"), Field.Ballista->MostHealthWithinReach());
+
+	GiveGadgetRows(Field.Owner, {{FName(ACataclysmMinion::GadgetsTargetMostHealthStat), 1.0f}});
+	TestTrue(TEXT("with the row its summoner holds, the ballista takes the most health within its reach, the 900 at 10 m"),
+		ChoiceOf(Field.Ballista) == Field.Middle);
+	TestFalse(TEXT("and not the 5,000 whose body alone reaches in from 15.3 m"),
+		ChoiceOf(Field.Ballista) == Field.OnlyItsBodyReaches);
+	TestTrue(TEXT("and the furthest within its reach is still on offer beneath the row"),
+		Field.Ballista->FurthestWithinReach() == Field.Far);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBallistaTargetsFallsThroughTest,
+	"Cataclysm.BallistaTargets.WithNothingWithinItsReachItFallsThroughToTheNearestSearchAsBefore")
+{
+	using namespace CataclysmBallistaTargetsTest;
+
+	// THE THREE WITHIN REACH ARE REMOVED, which leaves the enemy at 15.3 m alone: beyond the reach, its body reaching
+	// into the 15 m sphere the nearest search looks in. Then two enemies arrive within the reach, at 5 m along -X and
+	// 13 m along -Y, 13.9 m apart.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FBallistaField Field(*this, World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: the ballista, its summoner and its four enemies"), Field.IsWhole())
+		|| !TestTrue(TEXT("set-up: the ballista has the shared brain"), HasABrain(Field.Ballista)))
+	{
+		return false;
+	}
+	Field.Near->Destroy();
+	Field.Middle->Destroy();
+	Field.Far->Destroy();
+	if (!TestTrue(TEXT("set-up: nothing is within its reach"), Field.Ballista->HostilesWithinReach().IsEmpty()))
+	{
+		return false;
+	}
+	TestNull(TEXT("so it is offered no furthest target"), Field.Ballista->FurthestWithinReach());
+
+	AActor* AsBefore = ChoiceWithoutTheFlag(Field.Ballista);
+	TestTrue(TEXT("control: with its flag cleared by hand it chooses the enemy whose body reaches in, as before"),
+		AsBefore == Field.OnlyItsBodyReaches);
+	TestTrue(TEXT("with its flag as its row set it, it chooses the same: it fell through to the nearest search"),
+		ChoiceOf(Field.Ballista) == AsBefore);
+
+	ACataclysmEnemyCharacter* ArrivedNearer = Enemy(World, FVector(-5.0f * M, 0.0f, 0.0f), 300.0f);
+	ACataclysmEnemyCharacter* ArrivedFurther = Enemy(World, FVector(0.0f, -13.0f * M, 0.0f), 300.0f);
+	if (!TestTrue(TEXT("set-up: two enemies within its reach"), ArrivedNearer && ArrivedFurther))
+	{
+		return false;
+	}
+	TestTrue(TEXT("once enemies stand within its reach it takes the further of them, at 13 m"),
+		ChoiceOf(Field.Ballista) == ArrivedFurther);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmBallistaTargetsThinkFiresTest,
+	"Cataclysm.BallistaTargets.ThinkingItFiresAtTheFurthestWithinItsReachAndItsSkillCopyIsAimedThere")
+{
+	using namespace CataclysmBallistaTargetsTest;
+
+	// THE FIELD AND A BOLT TURRET OF THE SAME SUMMONER 2 m beside the ballista along -Y, as in the first test. EVERY
+	// ENEMY HOLDS 50,000, so no blow kills and every fall is read as a difference. Each brain thinks once, the world's
+	// clock not moved, so each fires its first shot and nothing else.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FBallistaField Field(*this, Scope.World, FVector::ZeroVector);
+	ACataclysmMinion* Turret =
+		Field.Owner ? Place(*this, Field.Owner, TEXT("BoltTurret"), FVector(0.0f, -2.0f * M, 0.0f)) : nullptr;
+	if (!TestTrue(TEXT("set-up: the ballista, its summoner and its four enemies"), Field.IsWhole()) || !Turret
+		|| !TestTrue(TEXT("set-up: each has the shared brain"), HasABrain(Field.Ballista) && HasABrain(Turret)))
+	{
+		return false;
+	}
+	for (AActor* Each : {Field.Near, Field.Middle, Field.Far, Field.OnlyItsBodyReaches})
+	{
+		SetHealthOf(Each, 50000.0f);
+	}
+	ACataclysmEnemyController* TurretBrain = Cast<ACataclysmEnemyController>(Turret->GetController());
+	ACataclysmEnemyController* BallistaBrain = Cast<ACataclysmEnemyController>(Field.Ballista->GetController());
+
+	// THE CONTROL FIRST: the turret, whose row says `Nearest`, fires at the enemy at 3 m.
+	const float NearBeforeTheTurret = HealthOf(Field.Near);
+	const float FarBeforeTheTurret = HealthOf(Field.Far);
+	if (!TestEqual(TEXT("control: the turret thinking fires"), static_cast<int32>(TurretBrain->Think()),
+			static_cast<int32>(ECataclysmBrainAction::Attacking))
+		|| !TestTrue(TEXT("control: at the nearest, at 3 m"), TurretBrain->CurrentTarget.Get() == Field.Near)
+		|| !TestTrue(TEXT("control: whose health fell"), HealthOf(Field.Near) < NearBeforeTheTurret))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and the enemy at 14.9 m lost nothing to it"),
+		HealthOf(Field.Far), FarBeforeTheTurret, 0.001f);
+
+	// THE BALLISTA fires at the enemy at 14.9 m, the only one of the four whose health then falls.
+	const float NearHeld = HealthOf(Field.Near);
+	const float MiddleHeld = HealthOf(Field.Middle);
+	const float FarHeld = HealthOf(Field.Far);
+	const float BeyondHeld = HealthOf(Field.OnlyItsBodyReaches);
+	TestEqual(TEXT("the ballista thinking fires"), static_cast<int32>(BallistaBrain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("at the furthest enemy within its reach, at 14.9 m"),
+		BallistaBrain->CurrentTarget.Get() == Field.Far);
+	TestEqual(TEXT("it fired once"), Field.Ballista->AttacksMade, 1);
+	TestTrue(TEXT("and that enemy's health fell"), HealthOf(Field.Far) < FarHeld);
+	TestEqual(TEXT("the enemy at 3 m lost nothing to it"), HealthOf(Field.Near), NearHeld, 0.001f);
+	TestEqual(TEXT("nor did the one at 10 m"), HealthOf(Field.Middle), MiddleHeld, 0.001f);
+	TestEqual(TEXT("nor the one at 15.3 m whose body alone reaches in"),
+		HealthOf(Field.OnlyItsBodyReaches), BeyondHeld, 0.001f);
+
+	// AND A COPY OF ITS SUMMONER'S SKILL IS AIMED WHERE ITS BRAIN CHOOSES, `ACataclysmMinion::SkillCopyTarget`.
+	TestTrue(TEXT("a skill copy of the ballista's would be aimed at the furthest within its reach"),
+		Field.Ballista->SkillCopyTarget() == Field.Far);
+	TestTrue(TEXT("control: and the turret's at the nearest"), Turret->SkillCopyTarget() == Field.Near);
 	return true;
 }
 

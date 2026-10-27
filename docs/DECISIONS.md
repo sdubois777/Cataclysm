@@ -2,6 +2,195 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — The Ballista fires at the furthest enemy within its reach, as its row and its skill text say (#2397, #1712)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the flag `bTargetsTheFurthest`, read
+in `Spawn`, and `FurthestWithinReach`), `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`
+(`ChooseTarget`, one branch) and its header (a comment), `game/Source/Cataclysm/Data/CataclysmDataRows.h` (the comment
+on `FCataclysmMinionTypeRow::TargetMode`), `game/Source/Cataclysm/Tests/CataclysmGadgetBehaviourTests.cpp` (one
+include and five tests in a new group, `Cataclysm.BallistaTargets.`), this file. No new source file, no workbook, CSV or
+asset change: `game/Data/MinionTypes.csv` already says `Furthest` for the Ballista and `Nearest` for the other eight
+rows. **Closes [#2397](https://github.com/sdubois777/Cataclysm/issues/2397) and
+[#1712](https://github.com/sdubois777/Cataclysm/issues/1712).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** a deployed Ballista shoots the enemy furthest from it among those within its 15 m reach
+  (longer under "Gadgets have 20%-40% increased attack range"), not the nearest. A Bolt Turret, a Spike Trap, an imp,
+  every other minion and every monster choose as before. A taunt, a Quarry mark and "Your gadgets prioritize the highest
+  HP enemy within their range instead of the nearest" still come before it, in that order.
+- **"FURTHEST" IS FURTHEST WITHIN REACH, CENTRE TO CENTRE ALONG THE FLOOR**, the measure the Ballista fires by, and
+  not the furthest body the nearest search can see: see THE CAPSULE TRAP below. With nothing within its reach it does
+  exactly what it did before.
+- **A BALLISTA'S COPY OF ITS SUMMONER'S SKILL FOLLOWS THE CHANGE, MEASURED.** `ACataclysmMinion::SkillCopyTarget` asks
+  `ChooseTarget`, so the copy is aimed at the furthest within reach too; the fifth test reads it.
+- **#2397 NAMES THE WRONG PATH FOR THE ROW STRUCT.** It says `game/Source/Cataclysm/Items/CataclysmDataRows.h`; the
+  file is `game/Source/Cataclysm/Data/CataclysmDataRows.h`. Corrected here, not in the issue, as ruled.
+- **THE BURST ON A KILL STILL GOES TO THE NEAREST.** "When a gadget kills an enemy, it fires an additional burst at the
+  nearest enemy within its range" says nearest in its own words, and `AttackTarget` still takes `HostilesWithinReach`'s
+  first. Unchanged, by that row's text.
+- **ABOUT 28 LINES OF GAME CODE, NOT COUNTING COMMENTS** (18 without lone braces), 39 comment lines and one comment line
+  replaced. The brief said about 30 to 40.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-26 and 2026-10-27)
+
+> #2397 and #1712 are one fault, and one change closes both. ThreatPercent stays out. The fix goes in
+> ACataclysmEnemyController::ChooseTarget, as #1712 warns.
+>
+> 1. TAUNT FIRST: yes, as the owner ruled on 2026-10-17 and 2026-10-18. The full order is taunt, Quarry mark,
+>    highest-health gadget row, the row's TargetMode, and then the nearest search.
+> 2. FURTHEST: accepted as a judgement. It means the furthest hostile among HostilesWithinReach(): centre to centre
+>    along the floor, within ReachCm (scaled by minion_range), alive. It ignores sight. A tie goes to the earlier
+>    candidate. If nothing is within reach, it falls through to the nearest search as before. Reasons: it is the same
+>    measure the Ballista fires by, so it cannot choose a target it never fires at; it matches the highest-health row;
+>    it matches the text "within 15 meters". Record the capsule trap in the entry.
+> 3. THE BUILD, TESTS AND TWO PROOFS: approved as proposed, on a new branch from the #2552 merge. Copy from e51e3198 by
+>    hand only; nobody pushes to it. In the entry, state that a Ballista's skill copy follows the change through
+>    SkillCopyTarget. It is inferred; if a test can reach it cheaply, measure it instead. Correct #2397's wrong path
+>    (Items/ should be Data/) in the entry, not in the issue.
+> 4. THREATPERCENT: filed as #2553 from your draft, with the line that #1712's paragraph is out of date since #1515.
+
+The promise being kept, in the design document's skill table (`docs/Cataclysm_GDD_v2.md`): "Deploy a ballista that
+fires at the furthest enemy in 15m every 2 seconds, dealing enormous damage and pinning targets." And in
+`game/Data/WeaponSkills.csv`, `War_Spear_Special`: "fires massive bolts at the furthest enemy within 15 meters every 2
+seconds".
+
+**Where each is in the code.** The order (ruling 1): `ACataclysmEnemyController::ChooseTarget` asks
+`UCataclysmTaunt::TaunterOf`, then `UCataclysmCommand::OrderedTargetFor`, then, for a minion,
+`ACataclysmMinion::MostHealthWithinReach` and then the new `ACataclysmMinion::FurthestWithinReach`, each returning at
+once with what it answers, and only then `UCataclysmTargetCandidates::NearestHostile` and the Behind the Veil draw. The
+meaning (ruling 2): `FurthestWithinReach` walks `HostilesWithinReach()` and keeps the largest
+`FVector::DistSquared2D`, replacing only on a strictly larger one, so a tie goes to the earlier; it answers null for a
+minion whose flag is off and for an empty reach, and `ChooseTarget` then falls through. The read:
+`ACataclysmMinion::Spawn` sets `bTargetsTheFurthest` when the row's `TargetMode` equals "Furthest", case ignored;
+anything else, an empty column included, is nearest.
+
+### THE CAPSULE TRAP
+
+`UCataclysmTargetCandidates::NearestHostile` admits a body when ANY PART of its capsule reaches into the search sphere
+(`CapsuleReachesInto`, "ANY PART OF IT INSIDE, NOT ONLY ITS CENTRE"), and the physics sphere `HostilesWithin` starts
+from finds such a body too. `Think` fires only when the target's centre is within `Reach + ContactToleranceCm` (2 cm)
+along the floor. So the furthest of either set of candidates can be a body whose centre stands beyond the reach: a
+creature with a 48 cm capsule whose centre stands 15.3 m off has its edge at 14.82 m, inside a 15 m sphere. A Ballista that chose it would never fire
+at it, and would ignore every enemy it could hit. `HostilesWithin` drops every body whose centre is beyond
+`Reach + ReachAllowanceCm` (0.01 cm), so measuring "furthest" on `HostilesWithinReach()` cannot choose one. The first
+test places exactly that body and asserts both halves: the sphere finds it, as the furthest body it finds; the reach
+drops it; the Ballista takes the enemy at 14.9 m.
+
+### THE STOPPED BRANCH, READ AND NOT TAKEN
+
+`feat/a-minion-picks-its-target-the-way-its-row-says`, commit `e51e3198` (2026-09-12), was read and nothing was
+cherry-picked or merged from it; nobody pushed to it. Not taken as it stands because: its furthest helper,
+`UCataclysmTargetCandidates::HostileAtOneEnd`, reverses `NearestHostile`'s comparison, so it measures with the capsule
+and falls into the trap above; it predates the taunt, the most-health row and the Behind the Veil draw (it has the
+Quarry mark only), and a trial merge conflicts in `CataclysmEnemyController.cpp` and
+`CataclysmTargetCandidates.h`; its comments name issue #340 and describe a `ChooseTarget` that no longer exists. Copied
+by hand from it: the `Spawn` read (anything not "Furthest", empty included, is nearest, case ignored), and the shape of
+its three tests (a Ballista, a minion whose row says Nearest, and a creature that is not a minion, each placed among a
+nearer and a further candidate). Not copied: its `PicksTheFurthestTarget()` virtual on `ACataclysmCharacterBase`,
+because `ChooseTarget` already casts to `ACataclysmMinion` for the gadget row and the new check sits inside that cast.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **A public field, `bTargetsTheFurthest`, beside `bStaysWhereItIsPut`,** set once at the summoning and read by the
+  tests, which also clear it by hand for a control. Not taken: an accessor over a private flag, which the tests could not
+  clear.
+- **The check is inside the existing `Cast<ACataclysmMinion>` block of `ChooseTarget`, after the most-health row.** Not
+  taken: a second cast, or the stopped branch's virtual on the character base.
+- **The new tests are a group of their own, `Cataclysm.BallistaTargets.`, in the gadget tests' file**, so they use its
+  helpers (`Stand`, `Place`, `ChoiceOf`, `GiveGadgetRows`) and no new file needs a build-cache step. Not taken: tests
+  in `Cataclysm.GadgetTargets.`, which is the rows' group and whose prefix the proofs would then widen.
+
+### NO GENRE SOURCE SETTLES IT
+
+The meaning of "furthest" is this game's own, ruled as a judgement. The genre file of 2026-10-13, section "For the
+gadgets", as it stands:
+
+> REACHED: `poedb.tw/us/Totem` (Path of Exile), its first 100,000 of 155,748 characters, read once. SUMMARY, the
+> tool's words: the page states no rule for how a totem chooses its target, none for a totem immune to damage or
+> losing life each second, and nothing that happens when a totem kills an enemy. It gave two lines about several
+> shots of one attack, which are about projectiles and not about a volley at every enemy; they are not recorded.
+>
+> So no source was reached that settles any of the four gadget sentences. Every reading of them is this game's own.
+> NOT REACHED: Diablo, Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
+
+### THREATPERCENT
+
+The other unread column #1712 raises, `ThreatPercent`, stays out, as ruled: it is
+[#2553](https://github.com/sdubois777/Cataclysm/issues/2553). #1712's paragraph on it has been out of date since
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515): Behind the Veil reads it.
+
+### TESTS
+
+All in `CataclysmGadgetBehaviourTests.cpp`, group `Cataclysm.BallistaTargets.` (5 tests). Each places a Ballista at
+the origin with its summoner 50 m off and four enemies: at 3, 10 and 14.9 m along X holding 300, 900 and 500, and one at
+15.3 m along Y holding 5,000 whose centre is beyond the reach and whose capsule reaches in. Each control is read first.
+
+| Test | Assertions, in order |
+|---|---|
+| `ItChoosesTheFurthestEnemyWithinItsReachAndNotOneWhoseBodyAloneReachesIn` (19) | a world; set-up: the ballista, its summoner and its four enemies; the monster and the two of the players' side 3 and 10 m from it; each has the shared brain; the ballista reaches 15 m; the enemy at 14.9 m stands within that and the one at 15.3 m beyond it; the sphere finds the one beyond it, as the furthest it finds; the reach answers the three within it, the one beyond dropped; control: the turret 2 m beside it does not say Furthest; control: the turret chooses the nearest, at 3 m; control: the monster chooses the nearer of its two; the ballista's row is read as Furthest; control: with the flag cleared by hand the ballista chooses the nearest, as before; **the ballista chooses the enemy at 14.9 m**; **not the one at 15.3 m**; **it is offered that one as the furthest within its reach**; the turret is offered no furthest target; the turret still chooses the nearest; the monster still the nearer of its two |
+| `ATauntAndThenAQuarryMarkStillComeBeforeTheFurthest` (10) | a world; set-up: the field; the shared brain; control: with no mark and no taunt it chooses the furthest within reach; set-up: the summoner's mark lands on the enemy at 3 m; the ballista is ordered onto it; **a Quarry mark comes before the furthest: it takes the enemy at 3 m**; set-up: the enemy at 10 m taunts the ballista; **a taunt comes first of all: it takes the taunter**; the furthest within reach is still on offer beneath both |
+| `TheGadgetsMostHealthRowStillComesBeforeTheFurthest` (9) | a world; set-up: the field; the shared brain; the tag `Type.Deployable` exists; control: with no row it chooses the furthest within reach; control: it is offered no target by health; **with the row its summoner holds it takes the 900 at 10 m**; not the 5,000 whose body alone reaches in; the furthest within reach is still on offer beneath the row |
+| `WithNothingWithinItsReachItFallsThroughToTheNearestSearchAsBefore` (9) | a world; set-up: the field; the shared brain; with the three within reach removed, nothing is within its reach; it is offered no furthest target; control: with its flag cleared by hand it chooses the enemy whose body reaches in, the nearest search's answer; **with its flag as its row set it, it chooses the same**; set-up: two enemies arrive within its reach, at 5 m and 13 m; **it takes the further of them** |
+| `ThinkingItFiresAtTheFurthestWithinItsReachAndItsSkillCopyIsAimedThere` (16) | a world; set-up: the field and a turret 2 m beside it; each has the shared brain; control: the turret's `Think` fires, at the enemy at 3 m, whose health fell, and the enemy at 14.9 m lost nothing (4); **the ballista's `Think` fires**; **at the enemy at 14.9 m**; it fired once; **that enemy's health fell**; the enemies at 3 m, 10 m and 15.3 m lost nothing to it (3); **a skill copy of the ballista's would be aimed at the enemy at 14.9 m** (`SkillCopyTarget`); control: the turret's at the nearest |
+
+The existing tests read for this and expected to pass unchanged: `Cataclysm.GadgetTargets.` (its control Ballista,
+with no row, asserts only that it does not take the 900 at 7 m, and now takes the 500 at 13 m),
+`Cataclysm.Command.AQuarryOrdersCommandedCreaturesOntoIt`, the Behind the Veil tests (which read what a creature
+chooses, never a Ballista), `Cataclysm.AI.TheTargetListsChooseWhatTheSphereChose` and its siblings, and
+`Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer` (one hostile only). Every other test that
+summons a Ballista strikes with `AttackTarget` directly and does not ask for a choice.
+
+### NOT TESTED
+
+A Ballista under "Gadgets have 20%-40% increased attack range", whose reach and the furthest within it grow together
+(read: `HostilesWithinReach` takes the lengthened `ReachCm`); a tie of two enemies at exactly one distance (read: a
+strict comparison keeps the earlier of `HostilesWithinReach`'s order); a maddened or subjugated creature in reach;
+a Ballista's skill copy actually cast at the furthest, as opposed to `SkillCopyTarget` answering it.
+
+### GUARD PROOFS PROPOSED
+
+Both in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`, prefix `Cataclysm.BallistaTargets.` (with the dot; 5
+tests, none of another group sharing the prefix). Each anchor counted exactly once by `read_text`; each broken file's
+brackets balanced; each break compiles and leaves the file using everything it includes.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| BT-G1, the `Spawn` read forced to nearest | `Minion->bTargetsTheFurthest = Type->TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase);` | `Minion->bTargetsTheFurthest = false;` | all 5, 10 assertions: `ItChoosesTheFurthest...` 3 (the row read as Furthest, the enemy at 14.9 m, offered as the furthest); `ATauntAndThenAQuarryMark...` 1 (the control); `TheGadgetsMostHealthRow...` 1 (the control); `WithNothingWithinItsReach...` 1 (the further of the two arrivals); `ThinkingItFires...` 4 (at 14.9 m, its health fell, the enemy at 3 m lost nothing, the skill copy) |
+| BT-G2, the comparison reversed, so it keeps the nearest within reach | `if (!FurthestFound \|\| DistanceSquared > FurthestFoundDistanceSquared)` | `if (!FurthestFound \|\| DistanceSquared < FurthestFoundDistanceSquared)` | all 5, 9 assertions: as BT-G1 but for the row-read assertion, which passes: 2, 1, 1, 1, 4 |
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- deploy a Ballista with Spear / Special and let a pack close in: its bolts go to the enemy at the back of the pack
+  within 15 m, not the one in front of the player; a Bolt Turret beside it still shoots the nearest.
+
+### THE WINDOW'S RUN, t141w
+
+Window t141w, run 2026-10-27 under the lock as `enchant-t141w`, at `08fc59eda` on development `b83edbb97` (moved from
+`f05010909` on `3b0c74ef3` as `feat/the-ballista-fires-at-the-furthest-1`; the only conflict was this file).
+
+**MEMORY, AND THE OWNER'S EXCEPTION OF 2026-10-27.** Free memory stayed below the 10 GB floor for about two and a half
+hours (readings 9,629 to 10,117 MB). The project owner then allowed a one-time floor of 9,800 MB for this run and the
+#1795 run after it, the coordinating session reading the standing rule as 10 GiB (10,240 MB) for every later run. The
+reading taken immediately before the lock, at 09:51:56, was **10,496 MB**, which clears both floors, so the exception was
+granted and not needed. An hour earlier it had fallen to 3,455 MB for about twenty minutes, with no Unreal or build
+process running.
+
+No new source file and no status row changed, so the window had no build-cache step and no asset rebuild. Every step
+exited 0:
+
+| Step | Result |
+|---|---|
+| The five new tests, each alone | 1 of 1 each; the first build compiled 38 files in 41 actions |
+| The whole Unreal suite | "4306 tests performed, 4306 succeeded, 0 failed"; 4306 declared, gap 0 |
+| Memory | `tests=4913 peak_used_virtual_mb=8054 final_used_virtual_mb=7694` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| BT-G1, the row read forced to nearest | PROVED: all 5 `Cataclysm.BallistaTargets.` tests failed, 10 of 10 assertions; 5 of 5 passed restored |
+| BT-G2, the comparison reversed | PROVED: all 5 failed, 9 of 9 assertions; 5 of 5 passed restored |
+
+---
+
 ## 2026-10-26 — Divine Resurgence counts a dead creature as standing until it has heard its death (#2546)
 
 **Affects:** `ACataclysmDungeonGameMode::DivineResurgencePlacedCount`, `NoteDeathForDivineResurgence` and the
