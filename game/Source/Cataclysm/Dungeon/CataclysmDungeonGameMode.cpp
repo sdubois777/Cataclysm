@@ -18183,11 +18183,18 @@ int32 ACataclysmDungeonGameMode::DivineResurgencePlacedCount() const
 	// keeps an entry per creature added, but a destroyed creature's entry can be emptied
 	// by the engine at any time afterwards, so its length drifts; this count does not.
 	// A MARKED creature is neither: it is one of the floor's dead brought back.
+	//
+	// A DEAD CREATURE WHOSE DEATH THIS RULE HAS NOT BEEN TOLD OF STILL STANDS here. Issue #2546: a death being
+	// announced, or waiting to be heard (#2482), is in neither count until then, so the placed count read short and
+	// the revival could come a death early. See `DivineResurgenceHeard`. Window w68 measured a set emptied at each
+	// floor change counting a Horde wave's earlier dead as standing; window w69 measured asking the announcer's queue
+	// alone missing the death being announced.
 	int32 Standing = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
-		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
-			&& Enemy->PaysForItsDeath())
+		if (IsValid(Enemy) && Enemy->PaysForItsDeath()
+			&& (!UCataclysmSkillEffects::IsDead(Enemy)
+				|| !DivineResurgenceHeard.Contains(TWeakObjectPtr<ACataclysmEnemyCharacter>(Enemy.Get()))))
 		{
 			++Standing;
 		}
@@ -18199,6 +18206,13 @@ void ACataclysmDungeonGameMode::NoteDeathForDivineResurgence(
 	const FCataclysmDeathNotice& Notice)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
+
+	// TOLD OF, BEFORE ANY RETURN: on any floor, with or without the row, done or not. See `DivineResurgenceHeard`.
+	// `OnSomethingDied` calls this for every death the dungeon hears, with no return before it.
+	if (ACataclysmEnemyCharacter* Told = Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		DivineResurgenceHeard.Add(Told);
+	}
 
 	if (!FloorBrief.Modifiers.Contains(FName(Effects::DivineResurgenceKey))
 		|| bDivineResurgenceDone)
@@ -22276,6 +22290,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// as placed nor raises it again.
 		DivineResurgenceGraves.Reset();
 		DivineResurgenceFallen = 0;
+		// AND THE DEATHS IT WAS TOLD OF ARE KEPT, only the destroyed taken out. See `DivineResurgenceHeard`.
+		for (auto Told = DivineResurgenceHeard.CreateIterator(); Told; ++Told)
+		{
+			if (!Told->IsValid())
+			{
+				Told.RemoveCurrent();
+			}
+		}
 		bDivineResurgenceDone = false;
 		DivineResurgenceRisen = 0;
 
