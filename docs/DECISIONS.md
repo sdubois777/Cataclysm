@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Leaving the dungeon: three of its five unmeasured lines measured (#1812, part 1)
+
+**Affects:** two new Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp`; no game code. Part 1 of
+[#1812](https://github.com/sdubois777/Cataclysm/issues/1812); part 2, the two lines of The Nihil's Embrace, follows
+this merge.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w71 below passed every registered figure, and all three proofs were PROVED,** Silence's
+  through the existing test as read: none of the three lines is unprovable.
+
+### What #1812 asks, and what was read
+
+The branch of `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` for a brief with no modifiers -- the player out of
+the dungeon -- resets five pieces of rule state, and none of the five lines had been guard-proven. Each private field is
+read only in its own rule's beat step, which runs only on a floor carrying the rule, so a missing reset shows when the
+player enters another floor carrying it: before its time would have run out, for a timed one. A test's beat calls the
+game mode's `Tick`, which does not move the world clock, so "no time passed" is the default.
+
+| Line | Rule | How it is measured |
+|---|---|---|
+| `WastingSicknessStacks = 0` | Wasting Sickness | `LeavingTheDungeonClearsWastingSickness`: one stack from a creature's blow, the roll pinned; leave; `WastingSicknessStacksHeld()` is 0. Set-up: one is held before leaving |
+| `MortalDecaySlowedUntilSeconds = -1` | Mortal Decay | `LeavingTheDungeonEndsMortalDecaysSlow`: at the ceiling depth, a kill slows the decay (CONTROL: a beat costs less than the full rate); leave and enter another floor carrying it at the same depth; a beat costs the full rate again, within 0.01. Prints the three costs on a line beginning "Mortal Decay:" |
+| `EdictOfSilencedUntilSeconds = -1` | Edict of Silence | the existing `LeavingTheDungeonEndsTheSilenceAndItsClock`, which re-enters a floor carrying the Edict right after leaving and asserts "four beats short of due, no silence yet"; kept, the old silence's end would still be ahead of the clock |
+
+Both new tests leave the dungeon as the existing one does: modifiers emptied, the floor brief emptied,
+`ApplyFloorRulesToPlayer`.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4322 / 0: `development` at `da1bb95cc` (#2559) measured 4320, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-resets-1` |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P1, the leaving reset of Wasting Sickness's stacks deleted | `LeavingTheDungeonClearsWastingSickness` fails |
+| P2, the leaving reset of Mortal Decay's slow deleted | `LeavingTheDungeonEndsMortalDecaysSlow` fails |
+| P3, the leaving reset of Silence's end deleted | `LeavingTheDungeonEndsTheSilenceAndItsClock` fails |
+| The costs | quoted as printed on the "Mortal Decay:" line |
+
+Each proof names its test in full as the prefix, so none runs the group that #2556 found reads differently alone.
+`WastingSicknessStacks = 0;` occurs three times in the file; P1's break text takes the leaving line with the comment
+after it, which occurs once.
+
+### Run
+
+**Window w71 (lock `dungeon-w71`, `test/leaving-the-dungeon-resets-1` at `7085850e6`, on `da1bb95cc`, 2026-10-27)
+passed.** Free memory read below the 10,240 MB floor at first (9,917 MB, then readings between 10,155 and 10,387 over ten
+minutes); the lock was taken only on a reading immediately before it of 10,361 MB, with the other five conditions met:
+both of `development`'s runs at `da1bb95cc` succeeded, none in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here. The move onto `da1bb95cc` met
+#2559's tests appended at the end of the same test file; development's file was taken and these two tests appended
+again by their script, the same 152 lines (`check_resolved_cpp.py --changed`: "1 files read, 0 with complaints"; patch
+ids before and after `2b381076bf53`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4322 / 0 | `4322 tests performed, 4322 succeeded, 0 failed`; declared 4322, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7976`, peak 8,316 |
+| The costs | quoted as printed | "Mortal Decay: a beat cost 1.275 at the full rate, 0.638 slowed, 1.275 after leaving" |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, Wasting Sickness's leaving reset deleted | `LeavingTheDungeonClearsWastingSickness` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonClearsWastingSickness"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, Mortal Decay's slow reset deleted | `LeavingTheDungeonEndsMortalDecaysSlow` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsMortalDecaysSlow"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, Silence's end reset deleted | `LeavingTheDungeonEndsTheSilenceAndItsClock` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsTheSilenceAndItsClock"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+Three of #1812's five lines are now measured. The two of The Nihil's Embrace follow in part 2.
+
+---
+
 ## 2026-10-27 — A stunned, knocked-down or feared character uses no skill by any route, and a gadget still casts for a stunned player (#1627)
 
 **Affects:** `UCataclysmSkillTemplate::CanActivateAbility` in
