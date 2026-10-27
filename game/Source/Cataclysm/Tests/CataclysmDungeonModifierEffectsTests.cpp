@@ -62722,6 +62722,8 @@ bool FCataclysmLeavingForgetsNihilWalkingTest::RunTest(const FString& Parameters
 	{
 		return false;
 	}
+	// COPIED NOW: `Lost` points into the player's modifier list, which leaving empties.
+	const float LostBeforeLeaving = Lost->Value;
 
 	// OUT, AND INTO ANOTHER FLOOR CARRYING IT, WITH NO WALKING. Kept, the baseline would still count the stretches above.
 	LeaveTheDungeon(Mode);
@@ -62734,7 +62736,7 @@ bool FCataclysmLeavingForgetsNihilWalkingTest::RunTest(const FString& Parameters
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	const FCataclysmStatModifier* Carried = DungeonRuleOn(Player.AbilitySystem, *War);
 	AddInfo(FString::Printf(TEXT("Nihil's Embrace walking: %.1f War resistance before leaving, %.1f after"),
-							Lost->Value, Carried ? Carried->Value : 0.0f));
+							LostBeforeLeaving, Carried ? Carried->Value : 0.0f));
 	TestNull(TEXT("after leaving the dungeon nothing walked before it costs resistance"), Carried);
 	return true;
 }
@@ -62800,6 +62802,8 @@ bool FCataclysmLeavingEndsNihilRewardTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// COPIED NOW: `Reward` points into the player's modifier list, which leaving empties.
+	const float RewardBeforeLeaving = Reward->Value;
 
 	// OUT, AND INTO ANOTHER FLOOR CARRYING IT, WITH NO TIME PASSED. Kept, the reward's end would still be ahead.
 	LeaveTheDungeon(Mode);
@@ -62812,7 +62816,7 @@ bool FCataclysmLeavingEndsNihilRewardTest::RunTest(const FString& Parameters)
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	const FCataclysmStatModifier* Carried = DungeonRuleOn(Player.AbilitySystem, *War);
 	AddInfo(FString::Printf(TEXT("Nihil's Embrace reward: %.1f War resistance before leaving, %.1f after"),
-							Reward->Value, Carried ? Carried->Value : 0.0f));
+							RewardBeforeLeaving, Carried ? Carried->Value : 0.0f));
 	TestNull(TEXT("after leaving the dungeon the reward is not carried into the next one"), Carried);
 	return true;
 }

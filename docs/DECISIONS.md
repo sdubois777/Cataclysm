@@ -10,11 +10,13 @@ measured Wasting Sickness, Mortal Decay and Silence.
 
 ### SAID FIRST
 
-- **THE "BEFORE LEAVING" READINGS PRINTED BY BOTH TESTS ARE WRONG: 0.0 IN EVERY RUN.** Each test keeps the pointer
+- **THE "BEFORE LEAVING" READINGS PRINTED BY BOTH TESTS IN WINDOW W72 WERE WRONG: 0.0 IN EVERY RUN; CORRECTED
+  AFTER IT, AND THE CORRECTION NOT YET RUN (window w73 below).** Each test keeps the pointer
   `DungeonRuleOn` returns, which points into the player's list of stat modifiers; leaving empties that list, and the
   line that prints runs after leaving, so it reads memory the list no longer holds. The assertions are not affected: each
   CONTROL read the value before leaving, and each check after leaving takes a new pointer. The "after" readings are
-  correct.
+  correct. Reading a pointer after the list it points into is emptied is undefined behaviour, so another run could
+  have crashed rather than printed.
 - **BUILT AND RUN: window w72 below passed every registered figure except the readings, and both proofs were PROVED.**
 
 ### What was read
@@ -68,6 +70,25 @@ build or editor process, no open pull request. The lock was released before anyt
 
 The "after" figures with each break in, -3.0 and 10.0, are what a kept baseline and a kept reward would give. All five of
 #1812's lines are now measured.
+
+### The printed readings corrected
+
+Each test now copies its CONTROL's value into a local (`LostBeforeLeaving`, `RewardBeforeLeaving`) straight after the
+CONTROL's assertion, before `LeaveTheDungeon`, and prints the copy. No assertion changed. P4 and P5 stand from w72,
+ruled by the coordinating session: they break game code, and the correction changes only the printed line.
+
+Window w73, registered before it runs:
+
+| Figure | Registered |
+|---|---|
+| `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` alone | 1 / 1; prints "-3.0 War resistance before leaving, 0.0 after" |
+| `LeavingTheDungeonEndsTheNihilsEmbracesReward` alone | 1 / 1; prints "10.0 War resistance before leaving, 0.0 after" |
+| Whole Unreal suite | 4332 / 0 |
+| Python | of record, with JUnit |
+
+If either test alone does not print its value, the window stops there and nothing after it runs.
+
+Not run yet.
 
 ---
 
