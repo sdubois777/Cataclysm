@@ -2,6 +2,215 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Chorus makes no repeat by a stunned, knocked-down or feared minion or thrall (#2563)
+
+**Affects:** `UCataclysmChorus::Repeat` in `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp` (one block in its
+loop over what the caster commands, before the repeat is dealt, and one include); five new tests in a group of their own,
+`Cataclysm.ChorusHeld.`, at the end of `game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` after the
+`Cataclysm.CompelHeld.` tests, and two includes with their comment line in that file; this file. No new source file, so
+the window needs no build-cache step. No workbook, CSV or asset change. **Closes
+[#2563](https://github.com/sdubois777/Cataclysm/issues/2563) if the fault is measured**: see "The proof's broken half is
+the issue's measurement" below.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **THE FAULT IS READ, NOT YET MEASURED.** #2563 asks first whether a held creature makes its Chorus repeat. The proof's
+  broken half below is that measurement. If the held creatures make no repeat with the skip removed, the proof reads NOT
+  A PROOF, and #2563 closes as not a fault.
+- **WHAT A PLAYER NOTICES:** a Ritualist holding Chorus (The Final Pact, option 3) whose minion or thrall is stunned,
+  knocked down or feared when a skill of theirs lands gets no repeat from that creature. Every other creature they command
+  repeats the hit as before, for 30% each. **The held creature's 30% is not given to the others**: with three minions and
+  one stunned, a hit gains 60%, not 90%.
+- **THE RETURNED COUNT STILL MEANS "REPEATS DEALT".** A held creature deals no repeat and is not counted.
+- **TEN LINES OF GAME CODE ADDED IN ONE BLOCK** (three of comment) and one include, and nothing else in game code. The
+  header's description of `Repeat` is not edited (see the judgements).
+
+### THE RULING, VERBATIM (the coordinating session, 2026-10-27)
+
+> #2563: settled by the design and the recorded rulings, so I rule it. Chorus is each commanded creature acting. A
+> stunned, knocked-down or feared creature makes NO repeat. In the Chorus loop, skip a follower that CannotAct or has a
+> FleeSourceOf source, in the brain's order. Its share is not given to the others, because "30% each" is per creature
+> that repeats. Cite the option's sentence ("Your minions repeat each skill you cast"), the 2026-09-25 entry and the
+> owner's 2026-09-17 ruling that a minion's hits are its own.
+> - list the readers of the returned repeat count first, as with CommandedStrikes, and stop if anything reads it by
+>   another meaning;
+> - tests: a stunned, a knocked-down and a feared minion, and a stunned thrall, each make no repeat while the one beside
+>   makes its repeat; plus a control;
+> - one proof, whose broken half is the measurement. Quote the figures either way. If held creatures make no repeat
+>   today, stop and report; the issue then closes as not a fault.
+
+No owner sentence decides this; the coordinating session ruled it from the sources below.
+
+### THE SOURCES THE RULING CITES
+
+- **The option**, `Ritualist_capstone_200`, The Final Pact, option 3, Chorus (`game/Data/PassiveNodes.csv`): "Your minions
+  repeat each skill you cast, dealing 30% of its damage." The minions repeat: each repeat is a creature's act.
+- **The 2026-09-25 entry**, "Chorus, engine only: each of a caster's minions repeats each landed skill hit for 30% of what
+  it sent", below: each minion deals 30%, the owner's decision of that day ("No it should be 30% each"), so the share is
+  per creature that repeats and none is left over to pass on; and each repeat is the minion's own blow, through
+  `ApplyDirectDamage` with the minion's own delivery.
+- **The owner's ruling of 2026-09-17 that a minion's hits are its own**, as that entry records it: a repeat is the
+  creature's blow, so a creature that cannot strike makes none.
+- **The design's crowd-control table**, as #2563 quotes it from `docs/Cataclysm_GDD_v2.md`: Stun, "The target cannot act
+  at all"; Knockdown, "The target cannot act at all; it is simply on the floor while it happens"; Fear, "cannot attack or
+  use a skill".
+
+### THE READERS OF THE RETURNED COUNT, LISTED FIRST AS THE RULING ASKS
+
+Re-read at `543a908bb`, every caller of `UCataclysmChorus::Repeat` in `game/Source`:
+
+| Reader | What it does with the count |
+|---|---|
+| A projectile's contact, `CataclysmProjectile.cpp` line 778 | discards it |
+| A skill's hit, `UCataclysmSkillTemplate`, `CataclysmSkillTemplate.cpp` line 2601 | discards it |
+| A thrown axe's hit, `CataclysmSkillTemplates.cpp` line 1979 | discards it |
+| Its declaration, `CataclysmChorus.h` | "@return how many repeats were dealt" |
+| `CataclysmChorusTests.cpp`, lines 295, 392, 405, 407, 409, 421, 424 and 497 | asserts it as repeats dealt (3, 0, 0, 0, 0, 0, 2, 1); line 512 discards it |
+| The probe `ProbeChorus`, `CataclysmStatExemptionTests.cpp` line 1535 | asserts it as repeats dealt (0 without the stat, 1 with it) |
+
+`Repeat` is a plain static function with no `UFUNCTION`, so no Blueprint can call it. Nothing reads the count by another
+meaning; a skipped held creature deals no repeat, so "how many repeats were dealt" stays true. Every existing assertion
+on it is made with no creature held, and is not edited.
+
+### WHAT WAS BUILT
+
+In `UCataclysmChorus::Repeat`, in the loop over `UCataclysmCommand::ThingsCommandedBy(Caster)`, after the check that the
+target still stands and before `ApplyDirectDamage`: the follower is asked `UCataclysmSkillEffects::CannotAct`, then
+`UCataclysmFear::FleeSourceOf`, through one local, `const AActor* Striker = Minion;`, and is skipped (`continue`) when
+either answers true. That is the shape of Compel's check since #2560 and the echo strike's since #2558, and the order of
+the brain's `Think` (`CannotAct`, then the flee step). `Each` is worked out before the loop from `Sent` alone, so a
+skipped creature changes no other creature's repeat: the share is not redistributed. `FleeSourceOf` answers true for a
+feared character and for a creature a rule told to flee, so a thrall a rule put to flight makes no repeat either.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The check comes after the "target is dead" check and before the repeat.** Either order gives the same result, since
+  neither check changes anything. Not taken: before the dead check.
+- **The check is written through a local, `const AActor* Striker = Minion;`**, as #2558's and #2560's were, so one line
+  can be broken for the proof. Not taken: `Minion` passed to each question directly.
+- **The header is not edited.** Its "each of the caster's living minions strikes `Target` for its share" does not say a
+  held one strikes, and its `@return` stays true. Not taken: a sixth bullet in the header's list of rulings, which would
+  have widened a shared header for a statement the code and this entry already make.
+- **The tests sit beside the Compel tests in `CataclysmCommandTests.cpp`, and use that file's fixtures and the
+  `CataclysmCompelHeldTest` namespace's `ECompelHeldBy`, `ECompelHeldKind`, `IsHeldBy` and `StruckHealth`.** A thrall
+  needs a real `ACataclysmEnemyCharacter` taken by `UCataclysmCommand::Subjugate`, which that file has and
+  `CataclysmChorusTests.cpp`'s bare-actor rig does not. Not taken: a new rig in `CataclysmChorusTests.cpp`, or copies of
+  those four names.
+- **The caster holds Chorus by `SetStatInputs` with a base of 1**, as `Cataclysm.Resummon.ASummonersDeathEndsItsWaits` in
+  that file gives its stat, since the option has no row yet. **The skill is a Heavy `UCataclysmStrikeSkill`, granted and
+  not cast**, and `Repeat` is called directly for a hit that sent 1000, as `Cataclysm.Chorus.ThreeMinionsEachRepeatThirtyPercentOfTheHit`
+  does, so the strike's own hit plays no part.
+- **Which follower repeated is read from the hit notices** (`UCataclysmCombatEvents::OnHit`, the notice's `DealtBy` and
+  `Target`), counted while `Repeat` runs. Both followers' repeats are the same 300 on the same target, so the target's loss
+  says how many repeated and only the notices say which.
+- **A quarter of the control's loss is the allowance** in the health comparison, half of one repeat, so a small difference
+  in mitigation moves no verdict and a whole repeat too many or too few still does.
+- **The tests are in a group of their own, `Cataclysm.ChorusHeld.`**, so the proof's prefix selects exactly them. The
+  existing `Cataclysm.Chorus.` prefix, with its dot, does not select them.
+
+### NO GENRE SOURCE
+
+None was recorded. This applies the design's own crowd-control rule to one more route; no formula or mechanic is chosen.
+
+### TESTS
+
+Five, in `Cataclysm.ChorusHeld.`, at the end of `CataclysmCommandTests.cpp`, after
+`Cataclysm.CompelHeld.AStunnedThrallIsNotOrderedAndTheThrallBesideItStrikes`. Each scene is made by one helper,
+`ChorusWithOneHeld`, in a world of its own: the commander (`FScopedCaster`) at the origin; the target (`FScopedCreature`,
+10,000 health) fourteen metres along its facing; a creature that puts the hold on, ten metres behind the commander; and
+two followers twenty metres to either side, two Imps summoned by the commander or two creatures it took by `Subjugate`.
+The commander is given Chorus and a Heavy strike; the hold is put on the held follower (a designed stun of 10 s, a
+designed knockdown of 10 s, a fear of 10 s from the holder's place, or nothing); then `UCataclysmChorus::Repeat` is
+called once for a hit on the target that sent 1000, and its count, the target's loss and health after, and the hits on the
+target each follower dealt are read. No clock moves, so no hold runs out.
+
+A scene's set-up asserts, in order (10, 11 for fear): a world; the two followers (2: each Imp spawned, or each creature
+taken); the commander commands both; the Heavy strike is granted; the hold landed; it is on the held follower; the free
+follower may act and is not fleeing; (fear only: the feared follower is not under a hard stop); the world's hit notices
+exist; the hold is still on after `Repeat`.
+
+Then (4) **control**, nothing on either: `Repeat` returns 2; the follower held in the other scene repeats once; the other
+repeats once; the target loses health. And (4) **the held scene**: the follower beside it repeats once; **only the follower
+beside it repeats: `Repeat` returns 1; the held one deals the target nothing (0 hits by it); the target loses one repeat's
+worth, not two (half the control's loss, within a quarter of it)**. Every count and health message prints `Repeat`'s
+return, the loss, the target's health after and the control's loss, so the broken run records the measurement.
+
+| Test | Scenes | Total |
+|---|---|---|
+| `Cataclysm.ChorusHeld.WithNothingOnThemBothMinionsRepeatTheHit` | nothing (two Imps) | 14 |
+| `Cataclysm.ChorusHeld.AStunnedMinionMakesNoRepeatAndTheMinionBesideItDoes` | nothing; one Imp stunned | 28 |
+| `Cataclysm.ChorusHeld.AKnockedDownMinionMakesNoRepeatAndTheMinionBesideItDoes` | nothing; one Imp knocked down | 28 |
+| `Cataclysm.ChorusHeld.AFearedMinionMakesNoRepeatAndTheMinionBesideItDoes` | nothing; one Imp feared | 29 |
+| `Cataclysm.ChorusHeld.AStunnedThrallMakesNoRepeatAndTheThrallBesideItDoes` | nothing; one thrall stunned | 28 |
+
+Counts are every assertion reached when each set-up holds. **Bold** assertions fail with CR-G1's break. The six existing
+`Cataclysm.Chorus.` tests and the `ProbeChorus` probe are not edited and are expected to pass: no creature in them is
+held. That is a reading, not a run.
+
+### NOT TESTED
+
+A thrall a rule told to flee (`FleeFrom`): read, the same `FleeSourceOf` answer as fear. A knocked-down or feared thrall:
+read, the same two questions as for an Imp. A held creature through a real cast (a strike, a projectile's contact, a
+thrown axe) rather than `Repeat` called directly: read, all three callers reach the same loop. A hold that ends between
+two hits.
+
+### GUARD PROOFS PROPOSED
+
+One, CR-G1, in `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp`, prefix `Cataclysm.ChorusHeld.` (with the dot;
+it selects the 5 new tests and no other, counted by a script over every test name in `game/Source/`). The anchor is
+counted exactly once by `read_text`; the break leaves the brackets as they were (8 and 8) and `Minion` still used below
+it.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| CR-G1, the skip is never true | `const AActor* Striker = Minion;` | `const AActor* Striker = nullptr;` | 4 tests, 12 assertions: in each of the four held tests, "only the follower beside it repeats: Repeat returns 1", "the held one deals the target nothing" and "the target loses one repeat's worth, not two". `Cataclysm.ChorusHeld.WithNothingOnThemBothMinionsRepeatTheHit`, the control halves and every other assertion pass |
+
+With the break, `CannotAct(nullptr)` and `FleeSourceOf(nullptr, ...)` answer false, as they did for #2560's CH-G1, so
+every follower repeats, as before this change. What each failing assertion would read in the broken run: `Repeat`
+returned 2 against 1; 1 hit by the held one against 0; the held scene's loss equal to the control's (two repeats), against
+half of it within a quarter of it.
+
+**The proof's broken half is the issue's measurement**, as the ruling asks. If the held creatures make no repeat with the
+break in, the proof reads NOT A PROOF; that is reported and work stops, and #2563 closes as not a fault. Either way the
+window quotes `Repeat`'s count and the target's loss and health from the broken run's messages.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- With a Ritualist holding Chorus and two minions, let an enemy stun one of them (the Brute's stomp reaches them), and hit
+  another enemy with a skill while it is stunned: one damage number rises from the repeat of the minion still standing,
+  not two.
+
+### THE WINDOW'S RUN, t164w, AND THE MEASUREMENT OF #2563
+
+Window t164w, run 2026-10-27 under the lock as `enchant-t164w`, at `04603952e` on development `543a908bb`. Free memory
+immediately before the lock was taken (the stall guard started at 16:44:51) was 12,057 MB, against the floor of 10 GiB
+(10,240 MB). No new source file and no status row changed, so the window had no build-cache step and no asset rebuild.
+Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The five new tests, each alone | 1 of 1 each; the first build compiled 2 files in 5 actions |
+| The whole Unreal suite | "4335 tests performed, 4335 succeeded, 0 failed"; 4335 declared, gap 0 |
+| Memory | `tests=4942 peak_used_virtual_mb=8081 final_used_virtual_mb=7761` |
+| Python of record | "7010 passed, 8 skipped"; JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| CR-G1, the skip is never true (prefix `Cataclysm.ChorusHeld.`, 5 tests) | PROVED: the 4 held tests failed, 12 of 12 assertions as registered; the control passed; 5 of 5 passed restored |
+
+**THE FAULT IS MEASURED, AS THE RULING ASKED: CR-G1's broken half is today's code, and in it every held creature
+made its repeat.** Quoted from the broken run, the same in all four held tests:
+
+| Held creature | What the broken run read |
+|---|---|
+| A stunned Imp | "Repeat returns 1 (it returned 2; 600.0 lost, health 9400.0 after; the control lost 600.0)"; "the held one deals the target nothing (1 hits by it)" |
+| A knocked-down Imp | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+| A feared Imp | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+| A stunned thrall | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+
+So before this change Chorus made a stunned, knocked-down or feared minion, and a stunned thrall, repeat the caster's
+hit for its whole 300. With the change, the held one makes no repeat and the creature beside it still repeats for 300.
+
+---
+
 ## 2026-10-27 — Compel orders no stunned, knocked-down or feared creature to strike (#2560)
 
 **Affects:** `UCataclysmProjectileSkill::Land` in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (one

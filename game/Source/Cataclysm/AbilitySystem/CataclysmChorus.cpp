@@ -4,6 +4,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -48,6 +49,16 @@ int32 UCataclysmChorus::Repeat(AActor* Caster, AActor* Target, float Sent,
 		if (UCataclysmSkillEffects::IsDead(Target))
 		{
 			break;
+		}
+		// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE MAKES NO REPEAT (#2563): "Your minions
+		// repeat each skill you cast" is each one acting, its hits its own (owner, 2026-09-17).
+		// Brain's order, as Compel (#2560). Uncounted; 30% is each's (2026-09-25), not passed on.
+		const AActor* Striker = Minion;
+		FVector FleeSource;
+		if (UCataclysmSkillEffects::CannotAct(Striker)
+			|| UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+		{
+			continue;
 		}
 		if (UCataclysmSkillEffects::ApplyDirectDamage(
 				Minion, Target, Each, ACataclysmMinion::OwnBlowDelivery(Minion)))
