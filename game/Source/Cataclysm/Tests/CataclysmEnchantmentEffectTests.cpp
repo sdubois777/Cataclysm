@@ -29002,6 +29002,9 @@ bool FCataclysmRandomBuffFeastingTest::RunTest(const FString&)
 	TestEqual(TEXT("control: held, with no blow taken, no attack speed is added"), Increases(), Before, 0.0001f);
 	System->NoteHitTaken(/*bLanded=*/false, Attacker.Actor, /*bDamageOverTime=*/false);
 	TestEqual(TEXT("control: held, an evaded blow adds no attack speed"), Increases(), Before, 0.0001f);
+	System->NoteHitTaken(/*bLanded=*/true, Attacker.Actor, /*bDamageOverTime=*/true);
+	TestEqual(TEXT("control: held, a damage-over-time tick taken adds no attack speed, as ruled"), Increases(), Before,
+		0.0001f);
 
 	// FIVE LANDED BLOWS HALF A SECOND APART, 4 FOR EACH, TO 20; AND A SIXTH ADDS NOTHING.
 	for (int32 Blows = 1; Blows <= 5; ++Blows)

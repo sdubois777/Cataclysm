@@ -8,7 +8,7 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Data/StatusEffects.csv` (the branch's first commit, `22d434919`, by the enchantment session under the
 coordinating session's grant for those two cells only: Death loses "(planned) ", and The Ascended gains its player
 form before a "(planned)" that marks its enemy form); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
-(a `.cpp`-local `RandomBuffRowsOfItsOwn`; `HeldRandomBuffEffectRows` appends its rows; three entries at the end of
+(a `.cpp`-local `RandomBuffRowsOfItsOwn`; in `ActOnEvent`, the own-stack grant refuses a tick taken on `hit_taken`; `HeldRandomBuffEffectRows` appends its rows; three entries at the end of
 `RandomBuffTable`; the help text of `Cataclysm.RandomBuffPick`; the table's opening comment) and `.h` (comments only);
 `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (three tests, and one pinned name string with its
 label); `tools/tests/test_the_random_buff_table_names_buff_rows.py` (both lists, the count, the docstring); this file.
@@ -18,16 +18,18 @@ enchantment session's window. Issue #2538 stays open: Plague and Chaotic Barrier
 ### SAID FIRST
 
 - **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
-- **FEASTING'S RULING IS NOT WHAT IS BUILT FOR A TICK.** The ruling says "Only a landed blow counts; damage-over-time
-  ticks and evaded blows do not." The row is built, as the brief says, on the builder's own-stack path, and that path
-  grants a stack on every landed `hit_taken`. A damage-over-time tick raises `hit_taken` as landed
-  (`CataclysmVitalAttributeSet.cpp`, the `NoteHitTaken(!Outcome.bEvaded, ..., Hit.bIsDamageOverTime)` call), and the
-  own-stack grant in `ActOnEvent` asks `bLanded` and not `bHitBeingAnnouncedIsATick`, as the Warhound roll and
-  `TeleportRandomlyAction` do. **So, as built, a tick on the holder gains a Feast stack. An evaded blow does not.** Not
-  changed here, because that is more code than the brief gives; it needs a ruling. The smallest change read: add
-  `&& !bHitBeingAnnouncedIsATick` to the own-stack grant's condition in `ActOnEvent`. On 2026-10-26 no own-stack row of
-  `game/Data/EnchantmentEffects.csv` is on `hit_taken` (counted by script), so that change would move no authored row.
-  The test does not assert the tick either way.
+- **A TICK TAKEN GAINS NO STACK, ON `hit_taken` ONLY: ONE LINE OF `ActOnEvent` CHANGED FOR FEASTING.** The ruling
+  says "Only a landed blow counts; damage-over-time ticks and evaded blows do not." The second session found that the
+  builder's own-stack path, which Feasting's row is built on, granted a stack on every landed `hit_taken`, and a tick
+  raises `hit_taken` as landed (`CataclysmVitalAttributeSet.cpp`, the `NoteHitTaken(!Outcome.bEvaded, ...,
+  Hit.bIsDamageOverTime)` call). The coordinating session ruled, 2026-10-26: "yes, add it before the window ... a
+  damage-over-time tick does not gain a Feast stack", scoped to `hit_taken` if any own-stack row is on another hit
+  event. The enchantment session added `!(bHitBeingAnnouncedIsATick && Event == FName(TEXT("hit_taken")))` to the
+  own-stack grant's condition. **What it can move, counted by script on 2026-10-26:** no own-stack row of
+  `game/Data/EnchantmentEffects.csv` is on `hit_taken`. One is on `melee_hit_taken`
+  (`Negative_Melee_attacks_that_hit_you_reduce_your_armor_by#1`), which `NoteMeleeHitTaken` raises outside the scope
+  in which `NoteHitTaken` holds the flag, and which the `hit_taken` clause leaves alone either way. So no authored row
+  changes. The Feasting test asserts the tick (below).
 - **WHAT A PLAYER NOTICES:** a wearer of two pieces of Shard of Anarchy whose 30-second roll draws a buff can now be
   given, for 30 seconds: **Death** (a hit that leaves an enemy below half its health has a 25% chance to kill it
   outright, at most once in 10 seconds after a kill, never a Boss or a Cataclysm Boss); **Feasting** (each blow taken
@@ -189,12 +191,12 @@ half at roll 0 lives**, **and was reached** (2); **an ordinary creature struck a
 spared the Boss**; **after 30.5 s no buff is held**, **no action of the buff's**; 33 s after the draw, past every
 cooldown, **a blow at roll 0 does not kill**, **and reached it** (2).
 
-`TheRandomBuffFeastingIsFourIncreasedAttackSpeedForEachLandedBlowTakenUpToFiveForFiveSeconds`, 24 assertions, on batch
+`TheRandomBuffFeastingIsFourIncreasedAttackSpeedForEachLandedBlowTakenUpToFiveForFiveSeconds`, 25 assertions, on batch
 2's bare wearer at 100,000 health and a bare attacker, each blow `ApplyDirectDamage` of 1 with `bCannotBeMitigated`,
 read by `IncreasesForStat("attack_speed")`: a world; **control: no action of the buff's**; set-up, the blow is dealt;
 **control: with no buff a landed blow adds nothing**; the four draw checks; **one action of the buff's** (a row left
 out fails here); **control: held, no blow, nothing**; **control: held, an evaded blow (`NoteHitTaken` not landed) adds
-nothing**; **1 to 5 landed blows half a second apart add 4, 8, 12, 16, 20** (5); **a sixth adds nothing, 20**; **4.5 s
+nothing**; **control: held, a damage-over-time tick (`NoteHitTaken` landed, a tick) adds nothing**, as ruled; **1 to 5 landed blows half a second apart add 4, 8, 12, 16, 20** (5); **a sixth adds nothing, 20**; **4.5 s
 after the last, 20 still**; **5.5 s after it, nothing**; **28 s after the draw, a blow adds 4**; **after 30.5 s no buff
 is held**, **no action of the buff's**, **and the 4 is gone**; **and a blow after it adds nothing**.
 
@@ -237,8 +239,14 @@ tests not named.
   `Row.ValueLow = Row.ValueHigh = 0.0f;`. The action is still built, at a chance of 0, which no roll is under.
   Predicted: the Death test fails, 4 assertions: chance 25; the roll of 24.5 kills; 10.5 s after, the thrust kills;
   the ordinary creature after the Boss dies. Every "lives" assertion passes.
-- **RB3-G2, Feasting's cap at 50:** `Row.ScaleMaxSteps = 5;` becomes `Row.ScaleMaxSteps = 50;`. Predicted: the
-  Feasting test fails, 2 assertions: a sixth adds nothing (24 read); 4.5 s after the last blow, 20 (24 read).
+- **RB3-G2, a tick taken gains a stack again:** in `ActOnEvent`,
+  `if (bLanded && !(bHitBeingAnnouncedIsATick && Event == FName(TEXT("hit_taken")))` becomes `if (bLanded`, so the
+  condition reads `bLanded && !StackedThisEvent.Contains(...) && TriggerReady(Action)` as before this change.
+  Predicted: the Feasting test fails, 5 assertions. The tick adds nothing (4 read). The tick's stack is held 5 s,
+  so 1 to 4 landed blows read one stack more (8, 12, 16, 20 where 4, 8, 12, 16 are asserted). The fifth reaches the cap
+  of 5 and reads 20 as asserted, and so does every reading after it. The other 14 random-buff tests pass.
+  Chosen by the coordinating session, 2026-10-26, in place of the cap at 50, because the new line is what needs
+  proving; the cap is still asserted by the sixth-blow check.
 - **RB3-G3, The Ascended stacking:** `Row.ScaleMaxSteps = 1;` becomes `Row.ScaleMaxSteps = 2;`. Predicted: The
   Ascended test fails, 3 assertions: a second kill adds nothing, the blow (1.2 read); and the interval (1 / 1.2 read);
   4.5 s after the second kill, 1.1 (1.2 read). Chosen in place of the brief's `kill` made `hit_dealt`, whose

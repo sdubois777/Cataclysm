@@ -6411,7 +6411,11 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			// AND A COOLDOWN, WHEN THE ROW'S SENTENCE STATES ONE. Issue #1833
 			// group D part 2, ruled 2026-09-30: an own stack takes none by
 			// default, and an explicit one starts when the stack is granted.
-			if (bLanded && !StackedThisEvent.Contains(Action.StackKey)
+			// AND NO STACK FOR A TICK TAKEN, on `hit_taken` only. Ruled 2026-10-26 for Feasting's random buff (issue
+			// #2538, batch 3): "Only a landed blow counts; damage-over-time ticks and evaded blows do not." No authored
+			// own-stack row was on `hit_taken` that day, and every other event is left as it was.
+			if (bLanded && !(bHitBeingAnnouncedIsATick && Event == FName(TEXT("hit_taken")))
+				&& !StackedThisEvent.Contains(Action.StackKey)
 				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.StackKey);
