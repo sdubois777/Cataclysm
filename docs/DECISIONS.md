@@ -2,6 +2,162 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Starving Aura halves the health restored to whoever stands within 6 m of the creature carrying it (#2539)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Debuffs sheet's Starving Aura row, and
+`game/Data/StatusEffects.csv` (the branch's first commit, `837e16ca0`, by the enchantment session under the
+coordinating session's grant: "(planned) " off the description, Duration 2, Strength 50, MovesStat and MovesStatBy
+empty); `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` (`StarvingAuraRow`) and `.cpp` (the row constant,
+four includes, the file-local `EnemyModifiersApplyStarvingAura`, and a branch in `AuraStep` beside Abyssal Aura's);
+`game/Source/Cataclysm/Tests/CataclysmStarvingAuraTests.cpp` (new: six tests in the `Cataclysm.EnemyModifiers.`
+group); `tools/tests/test_a_status_effects_strength_says_what_it_moves.py` (one test); this file. The asset
+`game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json` are rebuilt in the
+enchantment session's window; until then `test_every_csv_still_hashes_to_what_was_recorded` fails. **Closes
+[#2539](https://github.com/sdubois777/Cataclysm/issues/2539).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** standing within 6 m of a creature that drew the Famine modifier Starving Aura, every heal
+  of health restores half: regeneration, potions, leech, kill heals, item and set-row restores, Living Pyre. It lapses
+  2 seconds after the player walks out. Two such creatures still halve it (not stacked). The player's minions within
+  the 6 m are halved too; the creature's own allies are not. A floor's Medic carrying it halves nobody.
+- **IT ADDS TO THE FLOOR RULES' SHARE**, so a player at five Death's Embrace stacks, or in Necrotic Ground's fog,
+  standing in a Starving Aura restores no health at all: the sum is clamped at 100.
+- **I15 AND J15 STAY EMPTY, AND THE STRENGTH'S TARGET IS NAMED IN CODE**, as ruled: the Debuffs row's MovesStat and
+  MovesStatBy are empty, and `EnemyModifiersApplyStarvingAura` names `HealingReceivedReduction`. That is the pairing
+  in C++ that [#1144](https://github.com/sdubois777/Cataclysm/issues/1144) is the open concern about. The named-effect
+  path that reads the column (`UCataclysmSkillEffects::ApplyNamedEffectOnly`) only LOWERS the stats it names, so it
+  could not carry an effect that raises one.
+- **ABOUT 54 LINES OF GAME CODE NOT COUNTING BRACES** (70 with braces, the four includes and the row constant's three
+  lines), and about 35 lines of comments; three existing lines changed. The brief said about 40 to 60.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-26)
+
+> 1. BUILD: option A. Add a branch in AuraStep beside Abyssal's. It gives a 2 s single-stack effect tagged
+>    Status.Debuff.StarvingAura, which adds the row's Strength to HealingReceivedReduction. Reasons: it uses the
+>    attribute the owner's 2026-09-12 ruling already made cover every route that restores health; it follows Abyssal's
+>    existing shape; B widens the shared effect path and the generator's column rules for one row. State in the entry
+>    that I15/J15 stay empty and that the Strength's target is named in code, with #1144 cited as the open concern.
+> 2. j1, accepted as a judgement: two Starving creatures do not stack (one single-stack effect, stays 50, as Abyssal
+>    does). It does add to the floor rules' reduction, and TopUp clamps the total at 100.
+> 3. j2, accepted: it reaches whatever the creature's sphere search counts as its enemy, the player and the player's
+>    minions, as Abyssal does. It does not reach the creature's own allies.
+> 5. TESTS AND PROOFS: as planned, with one addition. One test reads the heal paths through a path other than
+>    regeneration and potions, leech or a kill heal, so the claim "all go through TopUp" is measured on a third path,
+>    not only read. Two proofs as you listed: the add removed, and the radius.
+
+The owner's 2026-09-12 choice that the ruling rests on is recorded in the entry "Healing received is one stat covering
+every route that restores health": of three options put to them, "healing received" covers everything that restores
+health, regeneration, life leech and direct healing alike.
+
+**Where each is in the code.** Ruling 1: `bStarves` and the branch in `UCataclysmEnemyModifiers::AuraStep`, under the
+same pulse (`AuraPulseIntervalSeconds`), the same gates (`TakesNoHostileAction`, dead) and the same search
+(`FindEnemiesInSphere` at `AuraRadiusCm`, 6 m) as Hellfire and Abyssal Aura; the numbers read with
+`NumbersForEffectTag` from `Debuff_Starving_Aura`, as Abyssal's duration is; the effect built in
+`EnemyModifiersApplyStarvingAura`. j1: that function takes off whatever grants `Status.Debuff.StarvingAura` before
+applying, so a target carries one. j2: the shared search's own answer.
+
+### HOW ITS SHARE COMBINES WITH THE FLOOR RULES'
+
+The floor rules write their share as the attribute's **base**: `ACataclysmDungeonGameMode::ApplyChangingFloorEffects`
+puts Death's Embrace plus Necrotic Ground into `FCataclysmPlayerFloorEffects::HealingReceivedLessPercent`;
+`UCataclysmDungeonModifierEffects` turns it into a flat stat modifier on `healing_received_reduction`; and the stat
+refresh writes the resolved total with `SetNumericAttributeBase` (`UCataclysmPlayerClassStats`, pass two). The aura is
+an **active gameplay effect with one additive modifier**, so it is on the **current** value, which is base plus
+modifiers. A base write leaves a running modifier standing, and the aura never writes the base, so neither replaces
+the other: they add. `UCataclysmVitalAttributeSet::PreAttributeChange` holds the current value between 0 and 100, and
+`UCataclysmRegeneration::TopUp`, the one place it is read, adds the ailment rider and clamps the total at 100 again.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The precedent copied:** `UCataclysmSkillEffects::ApplyNamedEffectOnly`'s effect (a fresh object per application,
+  `HasDuration`, one `Additive` modifier, the tag through `UTargetTagsGameplayEffectComponent`, whatever already
+  grants the tag removed first, applied in the instigator's context), and `UCataclysmGameplayAbility::
+  ApplyCooldownEffect` for doing it outside that file with public calls only. Its file-local helpers
+  (`MakeRuntimeEffect`, `TagAndReplaceAnyExisting`, `ApplyStating`) cannot be called from here. Not taken: making
+  those helpers public, which widens a shared file for one row.
+- **The debuff rules Abyssal Aura's path asks are asked here too:** `UCataclysmDebuffs::RefusedByARow` (a row giving
+  immunity to debuffs refuses it), `UCataclysmDebuffs::DurationOn` (the target's own stat lengthens it), and
+  `UCataclysmDebuffs::NoteLaid`. Not taken: building it without them, which would make Starving Aura the one debuff
+  an immune player still carries.
+- **The application replaces rather than refreshes.** A re-application each pulse takes the running one off and puts
+  a new 2 s one on, which lasts exactly as a refresh would. It states no strength for strongest-wins: every
+  application states the row's 50. Not taken: carrying `ApplyStating`'s stated magnitude.
+- **The third heal path is an item row's restore**, "on a block, restore 10% of maximum health", through
+  `UCataclysmAbilitySystemComponent::ApplyPoolAction`, fired by `NoteBlocked`. It is the route item and set-row
+  restores take, and it is reached from a test by two public calls with a precedent test
+  (`Cataclysm.Enchantments.AnActionFiresOnItsOwnEventAndOnNoOther`). Not taken: Living Pyre, which needs a skill cast.
+
+### NO GENRE SOURCE
+
+No genre source was found for the stacking judgement: poewiki.net refused the fetch, and poedb.tw's Aura page states
+no stacking rule. Both j1 and j2 are judgements specific to this game, ruled as such above, and follow Abyssal Aura.
+
+### HEAL PATHS, REACHED AND NOT
+
+Every heal of health that goes through `UCataclysmRegeneration::TopUp` is reduced on a character carrying it: the
+regeneration step
+(`ApplyStep`), potions (`UCataclysmPotions::HealStep`), the leech payout (`CataclysmLeech.cpp`), the kill heals
+(`CataclysmFervour.cpp`), Living Pyre (`CataclysmSkillTemplates.cpp`), item and set-row restores (`ApplyPoolAction`),
+the nearby-action heal, and the death-sentence kill heal. **Measured by the tests below:** regeneration, a potion and an
+item row's restore on the player; `TopUp` itself on a minion. **Not reached, and not healing by ruling:** a respawn
+(`ACataclysmPlayerCharacter::Revive` writes health directly) and a save load.
+
+### TESTS
+
+All in `game/Source/Cataclysm/Tests/CataclysmStarvingAuraTests.cpp`. Every figure is a ratio to the same character's
+reading with no aura, from 100 health of 1000; regeneration is one second at 40 a second, a potion is one drink paid
+over its three seconds, the item row restores 10% of maximum.
+
+| Test | Asserts (in order) |
+|---|---|
+| `Cataclysm.EnemyModifiers.StarvingAuraHalvesRegenerationPotionsAndAnItemRestoreOfWhoeverStandsNear` (13) | a world; set-up: the modifier row is in the table; the status row states 50 and 2 s; a creature and a player 10 m away; at 10 m the pulse catches nobody; set-up: outside, each of the three heals restores something (the control); at 3 m the pulse catches the player and puts 50 on them; regeneration, a potion and the item row each restore half |
+| `Cataclysm.EnemyModifiers.StarvingAuraLapsesTwoSecondsAfterThePlayerLeaves` (10) | a world; a creature; a player at 3 m; set-up: regeneration before any pulse (the control); the pulse catches the player; inside, half; moved to 10 m, after 1.5 s the 50 is still on and regeneration still restores half; after 2.5 s it has lapsed and regeneration restores in full |
+| `Cataclysm.EnemyModifiers.TwoStarvingCreaturesStillHalveHealingAndNoMore` (12) | a world; two creatures 4 m apart; a player 3 m from one and 5 m from the other; its ability system; set-up: the control; the second creature alone catches the player and puts 50 on; the first then catches them too; the reduction is still 50; one effect carries the tag; regeneration restores half |
+| `Cataclysm.EnemyModifiers.StarvingAuraAddsToAFloorRulesShareAndTheSumRestoresNothing` (12) | a world; a creature; a player at 3 m; its ability system; set-up: the control; a floor's 50 written to the base alone halves regeneration; the pulse catches the player; 100 is in force; the base is still the floor's 50; regeneration restores nothing; neither does a potion; after the floor writes its 50 again, 100 is still in force |
+| `Cataclysm.EnemyModifiers.AMedicCarryingStarvingAuraReducesNobody` (11) | a world; a creature; a player at 3 m; the ordinary creature catches the player and puts 50 on (the control); a second player 3 m the other way; set-up: its regeneration before; set-up: as the floor's medic it takes no hostile action; the medic catches nobody, puts nothing on the second player, whose regeneration restores in full |
+| `Cataclysm.EnemyModifiers.StarvingAuraReachesThePlayersMinionAndNotTheCreaturesAlly` (14) | a world; a creature; its ally 3 m away; a player 10 m away; the player's minion 3 m from the creature; set-up: the creature's search counts the minion as an enemy and not the ally; set-up: a heal of each before the pulse (the control); the pulse catches the minion alone; the minion carries 50 and is healed half; the ally carries nothing and is healed in full; the player 10 m away carries nothing |
+
+And `tools/tests/test_a_status_effects_strength_says_what_it_moves.py::
+test_starving_aura_carries_its_numbers_and_names_no_stat`: the row states Strength 50 and DurationSeconds 2, names no
+stat in MovesStat or MovesStatBy, and its description no longer begins "(planned)".
+
+### NOT TESTED
+
+Leech, the kill heals, Living Pyre, the nearby-action heal and the death-sentence heal under the aura: read to go
+through `TopUp`, not measured. The aura's interaction with a row that lengthens debuffs on the wearer, and with a
+debuff-immunity row: read, not measured. A creature of the player's side carrying the modifier (a thrall): not
+considered. The floor rule's own write path (the stat refresh) is stood in for by a base write, which is how that
+path ends.
+
+### GUARD PROOFS PROPOSED
+
+Both in `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp`, prefix `Cataclysm.EnemyModifiers.` (with the
+dot; 52 tests). Each anchor counted exactly once by `read_text`, brackets equal before and after.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| P1, the add made 0 | `Modifier.ModifierMagnitude = FScalableFloat(StarvingPoints);` | `Modifier.ModifierMagnitude = FScalableFloat(StarvingPoints * 0.0f);` | the six new tests and no other, 17 assertions: Halves 4 (the 50 and the three halves), Lapses 3, TwoStarving 3, AddsToAFloor 4, Medic 1, Minion 2 |
+| P2, the search reaching 2.4 m | `const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(` then the next line `World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);` | the same with `AuraRadiusCm * 0.4f);` | the six new tests and no other, 25 assertions: Halves 5, Lapses 4, TwoStarving 6, AddsToAFloor 5, Medic 2, Minion 3 |
+
+**Why 0.4 and not the half (3 m).** The search counts a capsule that overlaps the sphere. The player's capsule is 42 cm,
+so a player 3 m away overlaps a 3 m sphere and would still be caught; at 2.4 m neither the player (2.58 m to its edge)
+nor the minion (2.70 m) is. The shared search also serves Hellfire and Abyssal Aura: the group's only targets of it
+stand at 2 m (Abyssal Aura's test and the medic burn test), 1.58 m to the capsule's edge, inside 2.4 m, so neither
+fails.
+
+### PLAY-CHECK
+
+On a Famine floor, stand next to a creature whose hover panel lists Starving Aura and watch the health bar refill at
+half its rate; step 7 m away and it returns to full speed two seconds later.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — The last two: Shard of Anarchy's random buff can draw Plague and Chaotic Barrier, batch 4 of the owner's "Add everything", and the pool is complete (#2538)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Plague and Chaotic Barrier rows, and

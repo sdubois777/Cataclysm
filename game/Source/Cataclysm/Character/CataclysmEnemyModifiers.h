@@ -153,6 +153,8 @@ public:
 	static const TCHAR* UnholySigilsRow;
 	static const TCHAR* SacrificialBondRow;
 	static const TCHAR* InfernoChargeRow;
+	/** Starving Aura, issue #2539: built in `AuraStep`, beside Abyssal Aura. */
+	static const TCHAR* StarvingAuraRow;
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);

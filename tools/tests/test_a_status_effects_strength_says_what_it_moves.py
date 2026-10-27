@@ -194,3 +194,33 @@ def test_the_two_effects_that_triggered_this_carry_what_they_should(rows):
         "Abyssal Aura's description says 25%, so its Strength column says 25")
     assert float(aura["DurationSeconds"]) > 0.0, (
         "an effect with no duration is never applied at all")
+
+
+def test_starving_aura_carries_its_numbers_and_names_no_stat(rows):
+    """Starving Aura, issue #2539: a Strength of 50 for 2 seconds, and no stat named.
+
+    THE COLUMN IS EMPTY BY RULING, NOT BY OVERSIGHT. Its Strength is ADDED to the
+    healing a target receives less of, and the named-effect path this column
+    feeds only lowers the stats it names. So the target,
+    `HealingReceivedReduction`, is named in `CataclysmEnemyModifiers.cpp`, which
+    builds the effect, and issue #1144 is the open concern about a pairing
+    written in C++ rather than in data.
+
+    THE 2 SECONDS ARE WHAT MAKE IT AN AURA: re-applied each one-second pulse, it
+    holds while the player stands inside and lapses two seconds after leaving.
+    """
+    by_name = {row["Name"]: row for row in rows}
+
+    aura = by_name.get("Debuff_Starving_Aura")
+    assert aura is not None, "Debuff_Starving_Aura is not in StatusEffects.csv"
+    assert float(aura["Strength"]) == 50.0, (
+        "Starving Aura's description says healing is reduced by 50%, so its "
+        "Strength column says 50")
+    assert float(aura["DurationSeconds"]) == 2.0, (
+        "Starving Aura lasts 2 seconds, re-applied every pulse, as ruled for #2539")
+    assert aura["MovesStat"].strip() == "" and aura["MovesStatBy"].strip() == "", (
+        "Starving Aura names no stat: the named-effect path would LOWER whatever "
+        "it named, and this effect raises HealingReceivedReduction, which the "
+        "code that builds it names")
+    assert not aura["Description"].startswith("(planned)"), (
+        "Starving Aura is built, so its description no longer says it is planned")
