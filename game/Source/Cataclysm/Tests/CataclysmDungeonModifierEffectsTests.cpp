@@ -2507,6 +2507,215 @@ bool FCataclysmModifierCleanseTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNihilPlayerDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathGivesBackEveryPointTheNihilsEmbraceTook",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNihilPlayerDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CURE THE ROW DOES NOT STATE, AND THE ONE ISSUE #1795 FOUND MISSING. The
+	// project owner's ruling of 2026-09-10 ends anything lasting only for a dungeon
+	// at the player's death and names this row as one of the five it covers.
+	//
+	// CHECKED WITH NO BEAT BETWEEN THE DEATH AND THE FIRST READING, as the Wasting
+	// Sickness death test is, so a cure left to the beat fails here.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE DEATH HANDLER IS BOUND THE WAY StartPlay BINDS IT.
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// THREE AND A HALF STRETCHES, SO THE LOSS IS THREE WHOLE POINTS with half a
+	// stretch to spare either side of the rounding.
+	Player.Walk(0.0f);
+	Player.Walk(Effects::NihilsEmbraceMetresPerResistancePercent * 3.5f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FString War =
+		UCataclysmItemModifiers::ResistanceStatFor(TEXT("War")).ToString();
+	const FCataclysmStatModifier* Lost = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("walking cost some War resistance"), Lost))
+	{
+		return false;
+	}
+	TestEqual(TEXT("three points of it"), Lost->Value, -3.0f, 0.001f);
+
+	// THE CONTROL, READ FIRST: THE SAME WALK WITH NO DEATH KEEPS THE LOSS. Time
+	// passes and the beat runs again, and nothing gives the points back.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Kept = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("with no death the loss is still on the player"), Kept))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and still three points"), Kept->Value, -3.0f, 0.001f);
+
+	// NOW KILL THE PLAYER. Health is written directly rather than through a blow,
+	// because what this checks is the death and not what dealt it.
+	UCataclysmSkillEffects::ReduceHealthDirectly(
+		Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"),
+				  UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	// EVERY POINT BACK, ON ALL EIGHT RESISTANCES, WITH NO BEAT RUN SINCE.
+	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(Type);
+		TestNull(*FString::Printf(TEXT("the death gave back %s at once"),
+								  *Stat.ToString()),
+				 DungeonRuleOn(Player.AbilitySystem, *Stat.ToString()));
+	}
+
+	// AND THE PLAYER STANDS BACK UP WITHOUT IT, and the next beat does not put it
+	// back, which says the baseline moved rather than only the applied figure.
+	// Driven directly: a test world's timers fire only when its clock is run.
+	Player.Character->Revive();
+	TestFalse(TEXT("the player stood back up"),
+			  UCataclysmSkillEffects::IsDead(Player.Character));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put the loss back"),
+			 DungeonRuleOn(Player.AbilitySystem, *War));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNihilRewardDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathEndsTheNihilsEmbracesReward",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNihilRewardDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A BOSS KILL'S REWARD IS TEMPORARY AND IS NOT AN AURA, so the player's death
+	// ends it. Ruled by the coordinating session on 2026-10-27 for issue #1795.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Player.Walk(0.0f);
+
+	// A BOSS, KILLED WITH A REAL BLOW, as `ABossDeathCleansesTheNihilsEmbrace` kills
+	// one and for its reason: the announcement travels the path the game uses.
+	FActorSpawnParameters BossSpawn;
+	BossSpawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, BossSpawn);
+	if (!TestNotNull(TEXT("a boss spawned"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestTrue(TEXT("and it really is a boss"), Boss->IsBoss());
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	if (!TestTrue(TEXT("the boss died"), UCataclysmSkillEffects::IsDead(Boss)))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FString War =
+		UCataclysmItemModifiers::ResistanceStatFor(TEXT("War")).ToString();
+	const FCataclysmStatModifier* Reward = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("the boss's death granted the reward"), Reward))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth the reward's points"), Reward->Value,
+			  Effects::NihilsEmbraceRewardResistancePercent, 0.001f);
+
+	// THE CONTROL, READ FIRST: WITH NO DEATH THE REWARD IS STILL HELD. Five
+	// seconds is well inside its twenty, so only a death can have ended it below.
+	CataclysmTestWorld::RunClock(World, 5.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Held = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("with no death the reward is still held"), Held))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at the same points"), Held->Value,
+			  Effects::NihilsEmbraceRewardResistancePercent, 0.001f);
+
+	// NOW KILL THE PLAYER, inside the reward's time.
+	UCataclysmSkillEffects::ReduceHealthDirectly(
+		Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"),
+				  UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	// THE REWARD IS GONE FROM ALL EIGHT RESISTANCES, WITH NO BEAT RUN SINCE.
+	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(Type);
+		TestNull(*FString::Printf(TEXT("the death ended the reward on %s at once"),
+								  *Stat.ToString()),
+				 DungeonRuleOn(Player.AbilitySystem, *Stat.ToString()));
+	}
+
+	// AND STANDING BACK UP DOES NOT BRING IT BACK, nor does the next beat, though
+	// its twenty seconds have not run out.
+	Player.Character->Revive();
+	TestFalse(TEXT("the player stood back up"),
+			  UCataclysmSkillEffects::IsDead(Player.Character));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put the reward back"),
+			 DungeonRuleOn(Player.AbilitySystem, *War));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEmbraceStacksTest,
 	"Cataclysm.DungeonModifierEffects.EmbraceOfDeathArrivesEveryTenSecondsToFive",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

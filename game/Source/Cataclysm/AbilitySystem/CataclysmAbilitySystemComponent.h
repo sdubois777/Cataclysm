@@ -3556,12 +3556,14 @@ public:
 	 * modifiers held by `ACataclysmDungeonGameMode` and written through
 	 * `SetDungeonStatModifiers`, which this function does not touch.
 	 *
-	 * WASTING SICKNESS ADDED ITS OWN CLEARING AND THE NIHIL'S EMBRACE HAS NONE.
-	 * `ACataclysmDungeonGameMode::NoteDeathForWastingSickness` clears that row's
-	 * stacks on the player's death, at once rather than on the next beat, because
+	 * BOTH CLEAR AT THE PLAYER'S DEATH, EACH IN ITS OWN DEATH LISTENER ON
+	 * `ACataclysmDungeonGameMode`, at the moment of death rather than here.
+	 * `NoteDeathForWastingSickness` empties that row's stacks, and
+	 * `NoteDeathForNihilsEmbrace` gives back every point of resistance the walk
+	 * has cost and ends a boss kill's timed reward, since issue #1795. Both apply
+	 * at once rather than on the next beat, because
 	 * `ACataclysmPlayerCharacter::Revive` refills the vitals by reading the
-	 * maximums. The Nihil's Embrace does not, so its permanent resistance loss
-	 * survives a death today, which that ruling forbids. That is issue #1795.
+	 * maximums, and so nothing of either is still on the player when this runs.
 	 *
 	 * THE ROW NAMED "WITHERING TOUCH" HERE UNTIL 2026-09-13 IS NOW WASTING
 	 * SICKNESS, on the dungeon side only. `game/Data/EnemyModifiers.csv` still
