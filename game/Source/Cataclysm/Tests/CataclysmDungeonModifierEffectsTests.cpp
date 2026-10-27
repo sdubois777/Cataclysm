@@ -62220,4 +62220,156 @@ bool FCataclysmEchoChamberStunnedPlayerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Leaving the dungeon forgets what a rule was holding. Issue #1812: the lines of `ApplyFloorRulesToPlayer`'s branch for
+// a brief with no modifiers, each measured by a test that leaves while the rule's state is held. Silence's end is held
+// by `LeavingTheDungeonEndsTheSilenceAndItsClock`, which re-enters with no time passed.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** Leave the dungeon the way the game sees a player out of it: a brief with no modifiers, applied. */
+	void LeaveTheDungeon(ACataclysmDungeonGameMode* Mode)
+	{
+		Mode->DungeonModifiers.Reset();
+		Mode->FloorBrief = FCataclysmFloorBrief();
+		Mode->ApplyFloorRulesToPlayer();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeavingClearsWastingTest,
+	"Cataclysm.DungeonModifierEffects.LeavingTheDungeonClearsWastingSickness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** A Wasting Sickness stack from a creature's blow, then out of the dungeon: none is held. Set-up: one is held first. */
+bool FCataclysmLeavingClearsWastingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {WastingSickness};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// A STACK FROM A CREATURE'S BLOW, the roll pinned so the chance cannot decide, as
+	// `ItLeavesWastingSicknessAndVoidParasite` makes one.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	ACataclysmEnemyCharacter* Striker = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("set-up: a creature that can hit"), Striker)
+		|| !TestTrue(TEXT("set-up: its blow landed"),
+					 UCataclysmSkillEffects::ApplyHit(Striker, Player.Character, 50.0f) > 0.0f)
+		|| !TestEqual(TEXT("set-up: one Wasting Sickness stack is held"), Mode->WastingSicknessStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	LeaveTheDungeon(Mode);
+	TestEqual(TEXT("leaving the dungeon leaves no Wasting Sickness stack"), Mode->WastingSicknessStacksHeld(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeavingEndsMortalDecaySlowTest,
+	"Cataclysm.DungeonModifierEffects.LeavingTheDungeonEndsMortalDecaysSlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A kill slows Mortal Decay; the player leaves and enters another floor carrying it, with no time passed, and a beat
+ * costs the full rate again. CONTROL: before leaving, a beat costs less, so the test can see the slow.
+ */
+bool FCataclysmLeavingEndsMortalDecaySlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	// AT THE CEILING DEPTH, as `ReapingAnEnemySlowsMortalDecayAndOtherDeathsDoNot` sets it.
+	const int32 CeilingFloor = FMath::RoundToInt(
+		Effects::MortalDecayMostPercentPerSecond / Effects::MortalDecayPercentPerSecondPerFloor);
+	Mode->DungeonModifiers = {MortalDecay};
+	Mode->FloorNumber = CeilingFloor;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// WHAT ONE BEAT COSTS. The world clock does not move inside this, so nothing regenerates between the two reads.
+	const auto SappedOnOneBeat = [&Player, Mode]() -> float
+	{
+		const float Before = Player.Read(Vital::GetHealthAttribute());
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		return Before - Player.Read(Vital::GetHealthAttribute());
+	};
+	const float AtFullRate = SappedOnOneBeat();
+	if (!TestTrue(TEXT("set-up: the decay saps something"), AtFullRate > 0.0f))
+	{
+		return false;
+	}
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Reaped = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(600.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("set-up: a creature to reap"), Reaped))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Reaped, 100000.0f);
+	if (!TestTrue(TEXT("set-up: the player's blow killed it"), UCataclysmSkillEffects::IsDead(Reaped)))
+	{
+		return false;
+	}
+	const float WhileSlowed = SappedOnOneBeat();
+	if (!TestTrue(FString::Printf(TEXT("CONTROL: the kill slowed the decay: %.3f against %.3f"), WhileSlowed,
+								  AtFullRate),
+				  WhileSlowed < AtFullRate))
+	{
+		return false;
+	}
+
+	// OUT, AND INTO ANOTHER FLOOR CARRYING IT AT THE SAME DEPTH, WITH NO TIME PASSED. Kept, the slow would still run.
+	LeaveTheDungeon(Mode);
+	Mode->DungeonModifiers = {MortalDecay};
+	Mode->FloorNumber = CeilingFloor;
+	if (!TestNotNull(TEXT("set-up: the next floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	const float AfterReturning = SappedOnOneBeat();
+	AddInfo(FString::Printf(TEXT("Mortal Decay: a beat cost %.3f at the full rate, %.3f slowed, %.3f after leaving"),
+							AtFullRate, WhileSlowed, AfterReturning));
+	TestEqual(TEXT("after leaving the dungeon a beat costs the full rate again"), AfterReturning, AtFullRate, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
