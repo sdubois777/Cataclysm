@@ -48,6 +48,12 @@ IN_THE_TABLE = (
     "Demonic Rage",
     "Temporal Flux",
     "Void",
+    # Batch 3 of issue #2538, 2026-10-26: each wears rows of its own, written
+    # in code, because no row of the effect table states them. Appended, so
+    # places 0 to 11 keep their buffs.
+    "Death",
+    "Feasting",
+    "The Ascended",
 )
 
 #: Why eight of the Buff rows were not in the table, as ruled on 2026-10-12.
@@ -61,10 +67,7 @@ LEFT_OUT = {
     #
     # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12.
     "Plague": ANOTHERS,
-    "Death": ANOTHERS,
     "Chaotic Barrier": ANOTHERS,
-    "The Ascended": ANOTHERS,
-    "Feasting": ANOTHERS,
 }
 
 
@@ -98,7 +101,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 12
+    assert len(table_names()) == len(IN_THE_TABLE) == 15
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -117,6 +120,7 @@ def test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out() -> No
     Eight and nine since batch 1 of issue #2538 added Dervish and Warhound.
     Twelve and five since batch 2 added Sanctified Power, Demonic Rage,
     Temporal Flux and Void.
+    Fifteen and two since batch 3 added Death, Feasting and The Ascended.
     A row added to the status table fails here until somebody decides which
     list it joins."""
     rows = set(buff_rows())

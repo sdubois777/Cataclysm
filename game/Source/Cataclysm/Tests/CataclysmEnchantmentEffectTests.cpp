@@ -22751,9 +22751,9 @@ bool FCataclysmShardOfAnarchyTwoPieceRowTest::RunTest(const FString&)
 	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
 	if (!TestTrue(TEXT("set-up: the four pins exist"), BuffOrDebuff.Variable && WhichBuff.Variable
 			&& WhichDebuff.Variable && WhichResistance.Variable)
-		|| !TestEqual(TEXT("set-up: the twelve buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
+		|| !TestEqual(TEXT("set-up: the fifteen buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
 			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger, Dervish, Warhound, "
-						 "Sanctified Power, Demonic Rage, Temporal Flux, Void")))
+						 "Sanctified Power, Demonic Rage, Temporal Flux, Void, Death, Feasting, The Ascended")))
 		|| !TestTrue(TEXT("set-up: Commander is in the table and the Cripple tag exists"),
 			Commander >= 0 && Cripple.IsValid()))
 	{
@@ -28737,6 +28737,404 @@ bool FCataclysmTrapLayerSixRowsTest::RunTest(const FString&)
 			  CountGadgetShots(EveryThirdWearer, /*EveryNthWanted=*/3, /*ReachMetres=*/0.0f), 1);
 	TestTrue(TEXT("wearing the pull row, a trap pulls enemies within its radius.") + Stale,
 			 ACataclysmMinion::SkillTrapPullRadiusCmFor(PullWearer.Character) > 0.0f);
+	return true;
+}
+
+// THE THREE RANDOM BUFFS OF BATCH 3 OF ISSUE #2538, 2026-10-26, EACH WEARING ROWS OF ITS OWN, WRITTEN IN CODE. Named in
+// `Cataclysm.StatExemption.TheRandomBuff` with batches 1 and 2, so one prefix selects every per-buff test; written at
+// the end of this file because every rig they are measured with is above: the player character and creatures of
+// `CataclysmFourSingleRowsTest::FRowStriker` for the execute, batch 2's bare wearer for the blows taken, and
+// `CataclysmDeployableTest::FSummoner` for the minions.
+//
+// NO GENERATOR READS THESE ROWS, so a row the builder could not read would be left out with a warning in the log and
+// nothing else. Each test therefore asserts that the buff's actions are there and what each row does.
+//
+// EACH TEST READS ITS CONTROL FIRST, with no buff drawn; every figure is a difference from, or a ratio to, the same
+// character's reading before the draw; the draw is pinned by `CataclysmRandomBuffRowsTest::DrawsTheBuff`; and after the
+// buff's 30 seconds, moved by hand to 30.5 and stepped, each effect is gone.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffDeathTest,
+	"Cataclysm.StatExemption.TheRandomBuffDeathExecutesWhatAHitLeavesBelowHalfAtATwentyFivePercentChanceOnceInTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health." The buff
+ * wears one row of its own: `execute_target` on `hit_dealt`, unscoped, the chance 25, condition `target_health_below`
+ * 50, Trigger Cooldown 10. Measured as the Strike execute row's test measures it: a player character on a player
+ * state, its blows of 100% at an attack damage of 100, creatures of 10,000 health 4 m apart along +X, and the roll of
+ * every blow pinned by `Cataclysm.ExecuteRoll`; a roll under the chance executes.
+ *
+ * EVERY CREATURE STRUCK BELOW HALF IS HELD AT 40% OF ITS MAXIMUM, below half before the blow and after it whatever the
+ * blow takes. The creature that tests the share is held at 60% and what one blow takes, so the blow leaves it at 60%.
+ *
+ * THE CLOCK IS MOVED BY HAND, AND THE COOLDOWN STARTS AT AN EXECUTE, as the action is built. An execute 1 s after the
+ * draw; a qualifying blow 5 s later is refused; one 10.5 s after the execute executes again. The Boss is struck 22 s
+ * after the draw, past that second execute's 10 s, and an ordinary creature struck after it is executed, so no cooldown
+ * spared the Boss. The blow after the buff is 33 s after the draw, past every cooldown.
+ *
+ * A GEAR REFRESH WRITES AN ATTACK DAMAGE OF NOTHING for a character holding no weapon, and the draw and the end each run
+ * one, so the attack damage is written again after each.
+ */
+bool FCataclysmRandomBuffDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourSingleRowsTest;
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("Death");
+
+	FRowStriker Striker(HelmWithNoRow());
+	if (!TestTrue(TEXT("set-up: a player character wearing a helm with no row, in a world"), Striker.Ready()))
+	{
+		return false;
+	}
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	CataclysmShardOfAnarchyRowsTest::FRollPin Roll(TEXT("Cataclysm.ExecuteRoll"), 100.0f);
+	if (!TestNotNull(TEXT("set-up: the pin for the execute roll"), Roll.Variable))
+	{
+		return false;
+	}
+	UWorld* World = Striker.World;
+	UCataclysmAbilitySystemComponent* System = Striker.ASC;
+	const auto Arm = [System]()
+	{
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	};
+
+	// NINE CREATURES 4 M APART, EACH STRUCK ONCE BUT THE FIRST, AND THE BOSS 8 M BEYOND THEM: a boss's body is larger.
+	ACataclysmEnemyCharacter* Measured = Striker.CreatureNumber(1);
+	ACataclysmEnemyCharacter* BeforeTheDraw = Striker.CreatureNumber(2);
+	ACataclysmEnemyCharacter* AtSixty = Striker.CreatureNumber(3);
+	ACataclysmEnemyCharacter* RollAbove = Striker.CreatureNumber(4);
+	ACataclysmEnemyCharacter* Executed = Striker.CreatureNumber(5);
+	ACataclysmEnemyCharacter* InsideTen = Striker.CreatureNumber(6);
+	ACataclysmEnemyCharacter* AfterTen = Striker.CreatureNumber(7);
+	ACataclysmEnemyCharacter* AfterTheBoss = Striker.CreatureNumber(8);
+	ACataclysmEnemyCharacter* AfterTheBuff = Striker.CreatureNumber(9);
+	ACataclysmEnemyCharacter* Boss = Striker.CreatureNumber(11);
+	if (!TestTrue(TEXT("set-up: the ten creatures"), Measured && BeforeTheDraw && AtSixty && RollAbove && Executed
+			&& InsideTen && AfterTen && AfterTheBoss && AfterTheBuff && Boss))
+	{
+		return false;
+	}
+
+	// MEASURED, with the roll at 100, which no chance below 100 passes: what a blow of no skill and a thrust take.
+	const float TakenByNoSkill = Striker.Blow(Measured, nullptr);
+	const float TakenByThrust = Striker.Blow(Measured, Striker.Thrust);
+	const float Maximum = FourRowsMaximumOf(Measured);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: a blow of no skill and a thrust each take something, and under a tenth "
+			"of the maximum: %.2f and %.2f of %.2f"), TakenByNoSkill, TakenByThrust, Maximum),
+			FMath::Min(TakenByNoSkill, TakenByThrust) > 1.0f
+				&& FMath::Max(TakenByNoSkill, TakenByThrust) < Maximum / 10.0f))
+	{
+		return false;
+	}
+
+	const auto HoldBelowHalf = [](ACataclysmEnemyCharacter* Creature)
+	{
+		FourRowsHoldAt(Creature, FourRowsMaximumOf(Creature) * 0.4f);
+	};
+	const auto Strike = [&Striker, &Roll](ACataclysmEnemyCharacter* Creature, float Pinned, UCataclysmStrikeSkill* Skill)
+	{
+		Roll.Set(Pinned);
+		Striker.Blow(Creature, Skill);
+		return FourRowsIsGone(Creature);
+	};
+	const auto LivesBelowHalf = [this](const TCHAR* What, const ACataclysmEnemyCharacter* Creature)
+	{
+		TestFalse(*FString::Printf(TEXT("%s: the creature lives"), What), FourRowsIsGone(Creature));
+		TestTrue(*FString::Printf(TEXT("%s: and the blow reached it below half: %.2f of %.2f"), What,
+				FourRowsHealthOf(Creature), FourRowsMaximumOf(Creature)),
+			FourRowsHealthOf(Creature) > 0.0f && FourRowsHealthOf(Creature) < FourRowsMaximumOf(Creature) * 0.4f);
+	};
+
+	// THE CONTROL, READ FIRST: with no buff, the same blow at a roll of 24.5 leaves the creature below half and alive.
+	TestEqual(TEXT("control: with no buff, the player holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	HoldBelowHalf(BeforeTheDraw);
+	Strike(BeforeTheDraw, 24.5f, nullptr);
+	LivesBelowHalf(TEXT("control: with no buff, a blow of no skill at a roll of 24.5"), BeforeTheDraw);
+
+	// DRAWN: ONE ACTION UNDER THE BUFF'S OWN NAME, WITH THE ROW'S FIGURES.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	Arm();
+	if (!TestEqual(TEXT("the buff wears one row, built as an action under its own name. If not, the row written in "
+			"code was left out"), ActionsOfTheBuff(System, Buff), 1))
+	{
+		return false;
+	}
+	for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+	{
+		if (Action.TriggerKey.ToString().StartsWith(KeyPrefixOf(Buff), ESearchCase::CaseSensitive))
+		{
+			TestTrue(TEXT("it executes, on hit_dealt, judged below a share of health, scoped to nothing"),
+				Action.bExecuteTarget && Action.Event == FName(TEXT("hit_dealt"))
+					&& Action.Condition == ECataclysmStatCondition::TargetHealthBelowPercent
+					&& Action.RequiredTags.IsEmpty());
+			TestEqual(TEXT("its chance is 25"), Action.Percent, 25.0f, 0.001f);
+			TestEqual(TEXT("its share of health is 50"), Action.ConditionValue, 50.0f, 0.001f);
+			TestEqual(TEXT("its trigger cooldown is 10 seconds"), Action.TriggerCooldownSeconds, 10.0f, 0.001f);
+		}
+	}
+
+	// HELD, 1 SECOND AFTER THE DRAW: A BLOW THAT LEAVES IT AT 60% IS NO EXECUTE, NOR IS A ROLL OF 25.5.
+	World->TimeSeconds = DrawnAt + 1.0;
+	FourRowsHoldAt(AtSixty, FourRowsMaximumOf(AtSixty) * 0.6f + TakenByNoSkill);
+	TestFalse(TEXT("control: held, a blow of no skill that leaves it at 60%, roll 0: the creature lives"),
+		Strike(AtSixty, 0.0f, nullptr));
+	TestEqual(TEXT("control: and it is left at 60% of its maximum"), FourRowsHealthOf(AtSixty) / FourRowsMaximumOf(AtSixty),
+		0.6f, 0.001f);
+	HoldBelowHalf(RollAbove);
+	Strike(RollAbove, 25.5f, nullptr);
+	LivesBelowHalf(TEXT("control: held, a blow of no skill at a roll of 25.5"), RollAbove);
+
+	// AND A ROLL OF 24.5 EXECUTES, ON A BLOW OF NO SKILL: every landed hit counts, as ruled.
+	HoldBelowHalf(Executed);
+	TestTrue(TEXT("held, a blow of no skill that leaves it below half, roll 24.5: the creature is dead"),
+		Strike(Executed, 24.5f, nullptr));
+
+	// AT MOST ONCE IN 10 SECONDS, COUNTED FROM THE EXECUTE.
+	World->TimeSeconds = DrawnAt + 6.0;
+	HoldBelowHalf(InsideTen);
+	Strike(InsideTen, 0.0f, nullptr);
+	LivesBelowHalf(TEXT("5 seconds after the execute, a blow of no skill at a roll of 0"), InsideTen);
+	World->TimeSeconds = DrawnAt + 11.5;
+	HoldBelowHalf(AfterTen);
+	TestTrue(TEXT("10.5 seconds after the execute, a thrust that leaves it below half, roll 24.5: the creature is dead"),
+		Strike(AfterTen, 24.5f, Striker.Thrust));
+
+	// NEVER A BOSS, 22 SECONDS AFTER THE DRAW, past the second execute's 10. Its rung is set first, because a rung is
+	// part of its stat block and puts back an evasion of its own.
+	World->TimeSeconds = DrawnAt + 22.0;
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	UAbilitySystemComponent* BossSystem = Boss->GetAbilitySystemComponent();
+	BossSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+	BossSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	BossSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	if (!TestTrue(TEXT("set-up: the Boss is a boss"), Boss->IsBoss()))
+	{
+		return false;
+	}
+	HoldBelowHalf(Boss);
+	Strike(Boss, 0.0f, nullptr);
+	LivesBelowHalf(TEXT("a Boss, a blow of no skill at a roll of 0"), Boss);
+	World->TimeSeconds = DrawnAt + 22.5;
+	HoldBelowHalf(AfterTheBoss);
+	TestTrue(TEXT("and an ordinary creature struck after it, roll 24.5, is dead: no cooldown spared the Boss"),
+		Strike(AfterTheBoss, 24.5f, nullptr));
+
+	// ITS 30 SECONDS PASS: THE ROW IS GONE, AND 33 SECONDS AFTER THE DRAW, PAST EVERY COOLDOWN, NOTHING IS EXECUTED.
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	Arm();
+	TestTrue(TEXT("once its 30 seconds have passed the player holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	World->TimeSeconds = DrawnAt + 33.0;
+	HoldBelowHalf(AfterTheBuff);
+	Strike(AfterTheBuff, 0.0f, nullptr);
+	LivesBelowHalf(TEXT("after the buff, a blow of no skill at a roll of 0"), AfterTheBuff);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffFeastingTest,
+	"Cataclysm.StatExemption.TheRandomBuffFeastingIsFourIncreasedAttackSpeedForEachLandedBlowTakenUpToFiveForFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "This enemy gains a stack of "Feast" every time it is hit, up to 5 stacks, and for every stack its attack speed is
+ * increased by 4%. A stack lasts 5 seconds." The enemy's form, as ruled. Drawn, the buff wears one row of its own:
+ * `attack_speed` increased 4, `own_stacks` step 1 on `hit_taken`, at most 5, lasting 5 seconds. Read as
+ * `IncreasesForStat` reads it with no skill in hand.
+ *
+ * A BARE WEARER AND A BARE ATTACKER, each blow unmitigated and of 1, as the Warhound buff's test deals one, so no evasion
+ * or block refuses it. An evaded blow is said by hand, as the attribute set says one to `NoteHitTaken`: not landed.
+ *
+ * A GEAR REFRESH WRITES THE STAT LINE WHOLE, and the draw and the end each run one, so the health is written again
+ * after each.
+ */
+bool FCataclysmRandomBuffFeastingTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	using CataclysmHealthThresholdRowTest::SetHealth;
+	const TCHAR* const Buff = TEXT("Feasting");
+	const FName AttackSpeed(UCataclysmItemModifiers::AttackSpeedStat);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+	CataclysmEnchantmentEffectTest::FWearer Attacker(World);
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	Wearer.Equipment->RefreshAttributes(System);
+	SetHealth(System, 100000.0f, 100000.0f);
+	const auto Increases = [System, &AttackSpeed]()
+	{
+		return System->IncreasesForStat(AttackSpeed, FGameplayTagContainer());
+	};
+	FCataclysmHitDelivery Unmitigated;
+	Unmitigated.bCannotBeMitigated = true;
+	const auto TakesABlow = [&Attacker, &Wearer, &Unmitigated]()
+	{
+		return UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, /*Damage=*/1.0f, Unmitigated);
+	};
+
+	// THE CONTROL, READ FIRST: with no buff, a landed blow taken adds nothing.
+	const float Before = Increases();
+	TestEqual(TEXT("control: with no buff, the wearer holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	if (!TestTrue(TEXT("set-up: with no buff, the blow is dealt"), TakesABlow()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and it adds no attack speed"), Increases(), Before, 0.0001f);
+
+	// DRAWN: ONE OWN-STACK GRANT UNDER THE BUFF'S OWN NAME, AND NOTHING YET.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	SetHealth(System, 100000.0f, 100000.0f);
+	TestEqual(TEXT("the buff wears one row, built as an own-stack grant under its own name. If not, the row written in "
+		"code was left out"), ActionsOfTheBuff(System, Buff), 1);
+	TestEqual(TEXT("control: held, with no blow taken, no attack speed is added"), Increases(), Before, 0.0001f);
+	System->NoteHitTaken(/*bLanded=*/false, Attacker.Actor, /*bDamageOverTime=*/false);
+	TestEqual(TEXT("control: held, an evaded blow adds no attack speed"), Increases(), Before, 0.0001f);
+	System->NoteHitTaken(/*bLanded=*/true, Attacker.Actor, /*bDamageOverTime=*/true);
+	TestEqual(TEXT("control: held, a damage-over-time tick taken adds no attack speed, as ruled"), Increases(), Before,
+		0.0001f);
+
+	// FIVE LANDED BLOWS HALF A SECOND APART, 4 FOR EACH, TO 20; AND A SIXTH ADDS NOTHING.
+	for (int32 Blows = 1; Blows <= 5; ++Blows)
+	{
+		World->TimeSeconds = DrawnAt + 0.5 * Blows;
+		TakesABlow();
+		TestEqual(*FString::Printf(TEXT("held, %d landed blows taken add %d increased attack speed"), Blows, 4 * Blows),
+			Increases() - Before, 0.04f * static_cast<float>(Blows), 0.0001f);
+	}
+	World->TimeSeconds = DrawnAt + 3.0;
+	TakesABlow();
+	TestEqual(TEXT("a sixth adds nothing: at most 5 stacks, 20 increased"), Increases() - Before, 0.20f, 0.0001f);
+
+	// HELD 5 SECONDS FROM THE LAST STACK GAINED.
+	World->TimeSeconds = DrawnAt + 3.0 + 4.5;
+	TestEqual(TEXT("4.5 seconds after the last blow, all 20 are held"), Increases() - Before, 0.20f, 0.0001f);
+	World->TimeSeconds = DrawnAt + 3.0 + 5.5;
+	TestEqual(TEXT("5.5 seconds after it, none is"), Increases(), Before, 0.0001f);
+
+	// ITS 30 SECONDS PASS WITH A STACK HELD: THE LINE IS GONE, AND A BLOW TAKEN AFTER IT ADDS NOTHING.
+	World->TimeSeconds = DrawnAt + 28.0;
+	TakesABlow();
+	TestEqual(TEXT("28 seconds after the draw, a blow taken adds 4"), Increases() - Before, 0.04f, 0.0001f);
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	SetHealth(System, 100000.0f, 100000.0f);
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and the 4 its stack added 2.5 seconds before is gone"), Increases(), Before, 0.0001f);
+	TakesABlow();
+	TestEqual(TEXT("and a blow taken after it adds nothing"), Increases(), Before, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffTheAscendedTest,
+	"Cataclysm.StatExemption.TheRandomBuffTheAscendedMakesAKillGiveMinionsTenMoreDamageAndTenIncreasedAttackSpeedForFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When you kill an enemy, your minions deal 10% more damage and have 10% increased attack speed for 5 seconds." The
+ * player's form, as ruled. The buff wears two rows of its own: `minion_damage` more 10 and `minion_attack_speed`
+ * increased 10, each `own_stacks` step 1 on `kill`, at most 1, lasting 5 seconds.
+ *
+ * MEASURED AS THE GADGET ROWS' TESTS MEASURE A SUMMONER'S MINION STATS: `CataclysmDeployableTest::FSummoner`, a bare
+ * wearer whose `Blow` spawns an imp to strike a fresh creature with no armour, evasion, block or resistance, and whose
+ * `IntervalScaleOf` reads a fresh imp's attack interval scale. Those are the two reads the game makes:
+ * `SummonerMultiplierAgainst` at the imp's blow, with the "more" bucket, and `AttackIntervalScaleFor`, through the
+ * summoner's increases. Each reading is a ratio to the same summoner's before the draw.
+ *
+ * THE KILL IS RAISED BY HAND, as the kill-reset rows' test raises it: `kill` on the summoner's ability system, which is
+ * what a player character raises for a kill credited to it.
+ */
+bool FCataclysmRandomBuffTheAscendedTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("The Ascended");
+	const TCHAR* const Imp = TEXT("Imp");
+
+	CataclysmDeployableTest::FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	CataclysmDeployableTest::FSummoner Summoner(World, nullptr);
+	UCataclysmAbilitySystemComponent* System = Summoner.ASC();
+	const auto Kills = [System]()
+	{
+		System->ActOnEvent(FName(TEXT("kill")));
+	};
+
+	// THE CONTROL, READ FIRST: an imp's blow and attack interval scale with no buff, and a kill with no buff moves neither.
+	const float PlainBlow = Summoner.Blow(Imp);
+	const float PlainInterval = Summoner.IntervalScaleOf(Imp);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: with no buff, an imp's blow lands and its interval scale is read: %.3f "
+			"and %.3f"), PlainBlow, PlainInterval), PlainBlow > 0.0f && PlainInterval > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with no buff, the summoner holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	Kills();
+	TestEqual(TEXT("control: with no buff, after a kill an imp's blow is what it was"), Summoner.Blow(Imp) / PlainBlow,
+		1.0f, 0.001f);
+	TestEqual(TEXT("control: and so is its interval"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f, 0.001f);
+
+	// DRAWN: TWO OWN-STACK GRANTS UNDER THE BUFF'S OWN NAME, AND NOTHING UNTIL A KILL.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	TestEqual(TEXT("the buff wears two rows, each built as an own-stack grant under its own name. If not, the rows "
+		"written in code were left out"), ActionsOfTheBuff(System, Buff), 2);
+	TestEqual(TEXT("control: held, with no kill, an imp's blow is what it was"), Summoner.Blow(Imp) / PlainBlow, 1.0f,
+		0.001f);
+	TestEqual(TEXT("control: and so is its interval"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f, 0.001f);
+
+	// A KILL: 10% MORE DAMAGE, AND 10% INCREASED ATTACK SPEED, WHICH IS AN INTERVAL OF 1 / 1.1.
+	World->TimeSeconds = DrawnAt + 1.0;
+	Kills();
+	TestEqual(TEXT("held, after a kill an imp's blow is 1.1 times"), Summoner.Blow(Imp) / PlainBlow, 1.1f, 0.001f);
+	TestEqual(TEXT("and its interval is 1 / 1.1 times"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f / 1.1f,
+		0.001f);
+
+	// A SECOND KILL 3 SECONDS LATER STARTS THE 5 AGAIN AND ADDS NOTHING.
+	World->TimeSeconds = DrawnAt + 4.0;
+	Kills();
+	TestEqual(TEXT("a second kill inside the 5 seconds adds nothing: the blow is still 1.1 times"),
+		Summoner.Blow(Imp) / PlainBlow, 1.1f, 0.001f);
+	TestEqual(TEXT("and the interval still 1 / 1.1 times"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f / 1.1f,
+		0.001f);
+	World->TimeSeconds = DrawnAt + 4.0 + 4.5;
+	TestEqual(TEXT("4.5 seconds after the second kill, 7.5 after the first, the blow is still 1.1 times: the second kill "
+		"started the 5 again"), Summoner.Blow(Imp) / PlainBlow, 1.1f, 0.001f);
+	World->TimeSeconds = DrawnAt + 4.0 + 5.5;
+	TestEqual(TEXT("5.5 seconds after it, the blow is what it was"), Summoner.Blow(Imp) / PlainBlow, 1.0f, 0.001f);
+	TestEqual(TEXT("and so is the interval"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f, 0.001f);
+
+	// ITS 30 SECONDS PASS 2.5 SECONDS AFTER A KILL: THE LINES ARE GONE, AND A KILL AFTER IT MOVES NOTHING.
+	World->TimeSeconds = DrawnAt + 28.0;
+	Kills();
+	TestEqual(TEXT("28 seconds after the draw, a kill makes the blow 1.1 times"), Summoner.Blow(Imp) / PlainBlow, 1.1f,
+		0.001f);
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	TestTrue(TEXT("once its 30 seconds have passed the summoner holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and an imp's blow is what it was, 2.5 seconds after that kill"), Summoner.Blow(Imp) / PlainBlow, 1.0f,
+		0.001f);
+	TestEqual(TEXT("and so is its interval"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f, 0.001f);
+	Kills();
+	TestEqual(TEXT("and a kill after it moves nothing"), Summoner.Blow(Imp) / PlainBlow, 1.0f, 0.001f);
 	return true;
 }
 
