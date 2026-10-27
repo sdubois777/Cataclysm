@@ -4836,12 +4836,16 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances
 			const float Penalty =
 				UCataclysmDamageCalculation::ResistancePenaltyFor(ASC);
 
+			// THE CHARACTER'S OWN CAP, read once and used for every figure below.
+			// Issue #1617: this printed the constant 70 while a blow and the
+			// character sheet meet ResistanceCapOf (#1833), so "+10 maximum
+			// resists" worn read 70 here where a hit meets 80.
+			const float Cap = UCataclysmDamageCalculation::ResistanceCapOf(ASC);
+
 			Ar.Logf(TEXT("Difficulty tier %d takes %.0f resistance off every "
 						 "type. The cap is %.0f, so %.0f is what it takes to "
 						 "sit at it."),
-					Tier, Penalty,
-					UCataclysmDamageCalculation::ResistanceCap,
-					UCataclysmDamageCalculation::ResistanceCap + Penalty);
+					Tier, Penalty, Cap, Cap + Penalty);
 
 			// THE GENERIC FIGURE APPLIES TO EVERY TYPE BY DEFINITION, so it is
 			// shown once rather than folded silently into all eight.
@@ -4866,8 +4870,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances
 				// less the penalty, then bounded. Printing the raw total alone
 				// would disagree with what the player takes.
 				const float Held = Generic + Typed;
-				const float Effective = UCataclysmDamageCalculation::EffectiveResistance(
-					Held - Penalty, /*Penetration=*/0.0f);
+				const float Effective = UCataclysmDamageCalculation::EffectiveResistanceUnderCap(
+					Held - Penalty, /*Penetration=*/0.0f, Cap);
 
 				Ar.Logf(TEXT("  %-12s held %6.1f, after the penalty %6.1f, "
 							 "and a hit meets %6.1f"),

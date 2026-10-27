@@ -767,4 +767,217 @@ bool FCataclysmConditionedResistanceShownTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+// 6. `Cataclysm.ShowResistances` PRINTS THE CHARACTER'S OWN RESISTANCE CAP, AND A HIT MEETS IT. Issue #1617
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Issue #1617, ruled 2026-10-27 by the coordinating session. The command printed the constant 70 as the cap and bounded
+ * each type's "a hit meets" by it, while a blow and the character sheet meet `ResistanceCapOf` (#1833). It now reads
+ * `ResistanceCapOf` once and uses it for both. The tests are in a group of their own, `Cataclysm.ShowResistancesCap.`.
+ *
+ * TEST 5's RIG: a possessed player, the command run as a person types it, into an output device that keeps the lines.
+ * The player holds 85 Void in all, and its stat lines are replaced by one `resistance_cap` line or by none, so no class
+ * line plays a part. The test world has no game mode, so the difficulty tier is the lowest and takes nothing off: that
+ * is asserted, not assumed, because "a hit meets 80.0" needs it.
+ */
+namespace CataclysmShowResistancesCapTest
+{
+	using namespace CataclysmConditionedResistanceTest;
+
+	/** What the player holds on Void: above the base cap of 70, and below the ceiling of 90. */
+	constexpr float ShowResistancesCapHeld = 85.0f;
+
+	/** What one run of the command printed, and the player's cap and penalty while it ran. */
+	struct FShowResistancesCapRun
+	{
+		FString CapLine;
+		FString VoidLine;
+		float CapOf = -1.0f;
+		float Penalty = -1.0f;
+	};
+
+	/** The first printed line holding `Needle`, or a marker that none did. */
+	FString ShowResistancesCapLineWith(const TArray<FString>& Lines, const FString& Needle)
+	{
+		for (const FString& Line : Lines)
+		{
+			if (Line.Contains(Needle))
+			{
+				return Line;
+			}
+		}
+		return TEXT("(no such line was printed)");
+	}
+
+	/**
+	 * Run the command once for a player holding 85 Void, with one `resistance_cap` flat line of `CapPoints` when
+	 * `bWithCapRow` and no stat line at all otherwise. False when a set-up step failed, which it has reported.
+	 */
+	bool ShowResistancesCapRun(FAutomationTestBase& Test, bool bWithCapRow, float CapPoints,
+							   FShowResistancesCapRun& Out)
+	{
+		IConsoleObject* Object = IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.ShowResistances"));
+		IConsoleCommand* Command = Object ? Object->AsCommand() : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: Cataclysm.ShowResistances is registered"), Command))
+		{
+			return false;
+		}
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("set-up: a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (State && Controller && Character)
+		{
+			Controller->SetPlayerState(State);
+			Controller->Possess(Character);
+		}
+		UCataclysmAbilitySystemComponent* ASC = Character
+			? Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent())
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a possessed player with an ability system"), ASC))
+		{
+			return false;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Lines;
+		if (bWithCapRow)
+		{
+			FCataclysmStatInputs& Line = Lines.FindOrAdd(FName(UCataclysmDamageCalculation::ResistanceCapStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {ConditionedResistanceModifier(ECataclysmStatBucket::Flat,
+															ECataclysmModifierSource::Enchantment, CapPoints,
+															/*bBelowHalf=*/false)};
+		}
+		ASC->SetStatInputs(MoveTemp(Lines));
+
+		// THE GENERIC FIGURE IS READ AS THE COMMAND READS IT, and the typed one written so the two come to 85. A player
+		// has no generic set today, so this writes 85.
+		float Generic = 0.0f;
+		if (const UCataclysmAllResistanceAttributeSet* All = ASC->GetSet<UCataclysmAllResistanceAttributeSet>())
+		{
+			Generic = All->GetAllResistance();
+		}
+		ASC->SetNumericAttributeBase(ConditionedResistanceSlot(TEXT("Void")), ShowResistancesCapHeld - Generic);
+
+		Out.Penalty = UCataclysmDamageCalculation::ResistancePenaltyFor(ASC);
+		if (!Test.TestEqual(TEXT("set-up: the test world's difficulty tier takes no resistance off"), Out.Penalty,
+							0.0f, ConditionedResistanceAllowance)
+			|| !Test.TestEqual(TEXT("set-up: the player holds 85 Void in all"),
+							   Generic + ConditionedResistanceRead(ASC, TEXT("Void")), ShowResistancesCapHeld,
+							   ConditionedResistanceAllowance))
+		{
+			return false;
+		}
+
+		Out.CapOf = UCataclysmDamageCalculation::ResistanceCapOf(ASC);
+		FConditionedResistanceOutput Printed;
+		Command->Execute(TArray<FString>(), World, Printed);
+		Out.CapLine = ShowResistancesCapLineWith(Printed.Lines, TEXT("The cap is"));
+		Out.VoidLine = ShowResistancesCapLineWith(Printed.Lines, FString::Printf(TEXT("  %-12s held"), TEXT("Void")));
+		return true;
+	}
+
+	/**
+	 * The three assertions every test makes: the player's cap is `WantedCap`; the first line prints that cap, as
+	 * `ResistanceCapOf` gives it, and what it takes to sit at it; and Void's line says a hit meets `WantedMet`.
+	 */
+	void ShowResistancesCapAssert(FAutomationTestBase& Test, const TCHAR* Stage, const FShowResistancesCapRun& Shown,
+								  float WantedCap, float WantedMet)
+	{
+		Test.TestEqual(*FString::Printf(TEXT("%s: ResistanceCapOf, which a blow and the sheet ask, is %.0f"), Stage,
+										WantedCap),
+					   Shown.CapOf, WantedCap, ConditionedResistanceAllowance);
+
+		const FString CapText = FString::Printf(TEXT("The cap is %.0f, so %.0f is what it takes to sit at it."),
+												Shown.CapOf, Shown.CapOf + Shown.Penalty);
+		Test.TestTrue(*FString::Printf(TEXT("%s: the command prints the cap ResistanceCapOf gives, \"%s\" (it printed "
+											"\"%s\")"),
+									   Stage, *CapText, *Shown.CapLine),
+					  Shown.CapLine.Contains(CapText));
+
+		const FString VoidText = FString::Printf(TEXT("  %-12s held %6.1f, after the penalty %6.1f, "
+													  "and a hit meets %6.1f"),
+												 TEXT("Void"), ShowResistancesCapHeld,
+												 ShowResistancesCapHeld - Shown.Penalty, WantedMet);
+		Test.TestTrue(*FString::Printf(TEXT("%s: Void's line says a hit meets %.1f, \"%s\" (it printed \"%s\")"), Stage,
+									   WantedMet, *VoidText, *Shown.VoidLine),
+					  Shown.VoidLine.Contains(VoidText));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShowResistancesCapControlTest,
+	"Cataclysm.ShowResistancesCap.WithNoCapRowItPrintsTheCapOfSeventyAndAHitOnEightyFiveMeetsSeventy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE CONTROL: no `resistance_cap` line. The cap is 70, the first line reads "The cap is 70, so 70 is what it takes to sit
+ * at it.", and Void, holding 85 with no penalty, reads "a hit meets 70.0". This passes before and after the change.
+ */
+bool FCataclysmShowResistancesCapControlTest::RunTest(const FString&)
+{
+	using namespace CataclysmShowResistancesCapTest;
+
+	FShowResistancesCapRun Shown;
+	if (!ShowResistancesCapRun(*this, /*bWithCapRow=*/false, /*CapPoints=*/0.0f, Shown))
+	{
+		return false;
+	}
+	const float Seventy = UCataclysmDamageCalculation::ResistanceCap;
+	ShowResistancesCapAssert(*this, TEXT("control, no row"), Shown, Seventy,
+							 FMath::Min(ShowResistancesCapHeld - Shown.Penalty, Seventy));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShowResistancesCapRaisedTest,
+	"Cataclysm.ShowResistancesCap.WithPlusTenMaximumResistsItPrintsTheCapOfEightyAndAHitOnEightyFiveMeetsEighty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You have +10 maximum resists", as a `resistance_cap` flat 10 line, as `GrantResistanceCap` gives it in
+ * `CataclysmEnchantmentEffectTests.cpp`. The cap is 80, the first line prints 80, and Void, holding 85, reads "a hit
+ * meets 80.0", which is what a blow meets. Before #1617 the command printed 70 for both.
+ */
+bool FCataclysmShowResistancesCapRaisedTest::RunTest(const FString&)
+{
+	using namespace CataclysmShowResistancesCapTest;
+
+	FShowResistancesCapRun Shown;
+	if (!ShowResistancesCapRun(*this, /*bWithCapRow=*/true, /*CapPoints=*/10.0f, Shown))
+	{
+		return false;
+	}
+	ShowResistancesCapAssert(*this, TEXT("+10"), Shown, 80.0f, 80.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShowResistancesCapLoweredTest,
+	"Cataclysm.ShowResistancesCap.WithMinusEightyItPrintsTheCapHeldAtNoughtAndAHitOnEightyFiveMeetsNought",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A `resistance_cap` flat -80 line. 70 less 80 is -10, and `ResistanceCapOf` holds it at nought, so the first line prints
+ * 0, not -10. Void, holding 85, reads "a hit meets 0.0": `EffectiveResistanceUnderCap(85, 0, 0)` leaves 85 after no
+ * penetration and clamps it between the floor of -100 and the cap of 0. Before #1617 the command printed 70 for both.
+ */
+bool FCataclysmShowResistancesCapLoweredTest::RunTest(const FString&)
+{
+	using namespace CataclysmShowResistancesCapTest;
+
+	FShowResistancesCapRun Shown;
+	if (!ShowResistancesCapRun(*this, /*bWithCapRow=*/true, /*CapPoints=*/-80.0f, Shown))
+	{
+		return false;
+	}
+	ShowResistancesCapAssert(*this, TEXT("-80"), Shown, 0.0f, 0.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
