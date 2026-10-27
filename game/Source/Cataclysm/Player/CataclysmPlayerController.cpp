@@ -275,9 +275,14 @@ bool ACataclysmPlayerController::IsPawnStunned() const
 	//
 	// THE FUNCTION KEEPS ITS NAME, because a stun is still the only thing in the
 	// game that reaches a PLAYER: all three rows that knock down are player
-	// skills aimed at enemies. Renaming it would rename it in the header, both
-	// tests that call it and every log line, to describe a case nothing can
-	// currently produce.
+	// skills aimed at enemies. Renaming it would rename it in the header, its
+	// callers in this file and every log line, to describe a case nothing can
+	// currently produce. NO TEST CALLS IT: this said "both tests that call it",
+	// and none did when that was corrected (issue #1627, 2026-10-27).
+	//
+	// THE SKILL ASKS THE SAME, since #1627, in
+	// `UCataclysmSkillTemplate::CanActivateAbility`, for every route; this check
+	// stays, and drops a press before it is queued.
 	//
 	// AND FEARED, since fear exists. A feared player can neither attack, use a
 	// skill nor choose where to walk; `PostProcessInput` walks them away from

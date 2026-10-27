@@ -21,6 +21,8 @@
 // For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+// For refusing a feared character's skill, as the key press refuses it. Issue #1627.
+#include "AbilitySystem/CataclysmFear.h"
 // For turning a health cost into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the part of a cost that is taken later instead of now. Issue #991.
@@ -851,6 +853,19 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 				return false;
 			}
 		}
+	}
+
+	// A STUNNED, KNOCKED-DOWN OR FEARED CHARACTER USES NO SKILL, BY ANY ROUTE. Issue #1627, ruled 2026-10-27 by the
+	// coordinating session: Stun and Knockdown "cannot act at all", Fear "cannot attack or use a skill". The key press
+	// asked this (`ACataclysmPlayerController::IsPawnStunned`); a repeat, a kept-stack cast, a held trigger and a dungeon
+	// rule's copy did not. Beside the lock, for the lock's reason. THE BASIC ATTACK IS INCLUDED: every caller of
+	// `UCataclysmBasicAttack::Swing` asks `MaySwing`, the same question, first. NOT A CAST NAMING ITS CASTER (Q1): a
+	// gadget, trap or Tyrant's Minion casting in the player's name asks its own `CannotAct`; read as Withered Touch reads it.
+	const AActor* HardStopped = ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar();
+	if (FreeRepeatCastBy.IsExplicitlyNull()
+		&& (UCataclysmSkillEffects::CannotAct(HardStopped) || UCataclysmFear::IsFeared(HardStopped)))
+	{
+		return false;
 	}
 
 	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags,
