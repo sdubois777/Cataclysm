@@ -682,8 +682,9 @@ bool FCataclysmARowsKillFiresNoKillRowTest::RunTest(const FString&)
 	const float BesideTheBurningBefore = HealthOf(BesideTheBurning);
 	const float BesideTheStruckBefore = HealthOf(BesideTheStruck);
 
-	// A FIXED AMOUNT, NOT A HIT: `ApplyHit` deals a percentage of the caster's weapon damage, and this player holds no
-	// weapon. Window w66 ran it with `ApplyHit` and the blow killed nothing.
+	// A FIXED AMOUNT, NOT A HIT: `ApplyHit` deals a percentage of the caster's attack damage, and this player's is never
+	// applied -- `SpawnPlayer` gives it a player state and no controller, and the class stat line that sets attack damage
+	// runs only in `PossessedBy`. Window w66 ran it with `ApplyHit` and the blow killed nothing.
 	UCataclysmSkillEffects::ApplyDirectDamage(Player, Struck, 100000.0f);
 	if (!TestTrue(TEXT("set-up: the plain blow killed the enemy struck"), UCataclysmSkillEffects::IsDead(Struck))
 		|| !TestTrue(TEXT("set-up: and its kill row's remaining burn killed the burning enemy"),

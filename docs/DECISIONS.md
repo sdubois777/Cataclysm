@@ -88,8 +88,12 @@ here. No proof was run.
 **The other two new tests passed, `TheMassKillDoesNotFeedItself` passed, and no other test failed.**
 
 **What failed: "set-up: the plain blow killed the enemy struck".** The test's fault, not the queue's:
-`UCataclysmSkillEffects::ApplyHit` deals a percentage of the caster's weapon damage, the test's player holds no
-weapon, and the blow dealt nothing. **Corrected in the next commit** to `ApplyDirectDamage`, a fixed amount, as the
+`UCataclysmSkillEffects::ApplyHit` deals a percentage of the caster's attack damage, and the test's player never
+had one applied: `SpawnPlayer` gives it a player state and no controller, and the class stat line that sets attack
+damage from the weapon runs only in `ACataclysmPlayerCharacter::PossessedBy`. Its "Weapon change: Greataxe ... 7 of 7
+skill slots filled" in the log is the equipment and skill slots, which are set either way. Read from the code, not
+measured; the coordinating session's first reading pointed at that log line, and an earlier reading here, that the
+player held no weapon, was wrong. **Corrected in the next commit** to `ApplyDirectDamage`, a fixed amount, as the
 file's other test that kills does; not run yet.
 
 ---
