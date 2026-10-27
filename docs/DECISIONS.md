@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Divine Resurgence counts a dead creature as standing until it has heard its death (#2546)
+
+**Affects:** `ACataclysmDungeonGameMode::DivineResurgencePlacedCount`, `NoteDeathForDivineResurgence` and the
+per-floor reset in `ApplyFloorRulesToPlayer`; a new `DivineResurgenceHeard`; one new Unreal test. Closes
+[#2546](https://github.com/sdubois777/Cataclysm/issues/2546).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **THE TEST READS IN ONE ORDER OF CALLING, NOT TWO.** The dungeon binds to deaths in `StartPlay`, before any test
+  listener, and the engine calls the newer binding first, so the test's reading is always made before the dungeon has
+  heard either death. Binding the dungeon again to try the other order would make it count every death twice.
+
+### What was wrong
+
+The placed count is the fallen plus the unmarked creatures still standing. The fallen count rose only when the
+dungeon heard a death; standing counted creatures not tagged dead. A creature is tagged dead in `MarkDead` before its
+death is announced, and since #2482 a death raised while another is being announced waits to be heard, so for that
+wait it was in neither count: the placed count read one short for each death waiting. `DivineResurgenceIsDue`
+compares the fallen against a share of the placed count, so the revival could come a death early, and the floor
+panel's "comes at" read one lower.
+
+### Ruled by the coordinating session, 2026-10-27
+
+| Question | Ruled |
+|---|---|
+| Count a creature as standing until its death is heard, or raise the fallen count when it is tagged dead | **standing until heard**: it changes only the placed count's two readers, the due check and the panel line; the fallen count and `IsDead` are unchanged; it needs no new event from `MarkDead`, which every death passes through; it stays in the dungeon game mode. Raising the fallen count at `MarkDead` would also have run ahead of the graves list, filled when the death is heard |
+| Where the new set is emptied | wherever the fallen count and the graves are reset for a new floor, checked against what runs first at a floor change |
+
+### What changed
+
+`DivineResurgenceHeard`, the creatures whose deaths Divine Resurgence has heard: added beside `++DivineResurgenceFallen`,
+and **emptied on the line after `DivineResurgenceFallen = 0`** in `ApplyFloorRulesToPlayer`, which `GoToFloor`
+reaches through `ApplyFloorRulesKeepingHealth` at its end, after the floor is built and its creatures placed and
+before the floor start is raised. A creature is in the set only when it was counted among the fallen, and the two are
+emptied together, so whatever runs first at a floor change they cannot disagree. The placed count counts a creature
+that pays for its death and is either alive or dead and not yet in the set.
+
+### Test
+
+`Cataclysm.DungeonModifierEffects.ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas`: on a Divine
+Resurgence floor with eight creatures placed, a listener kills a second creature when it hears the first die and reads
+the placed count then, while the second death waits; it must equal the count before the first death. Before this
+change it read two short. Set-up asserts two deaths do not bring the revival. **Controls:** once both are heard the
+count is still the same, and the fallen count is two. It prints the three counts on a line beginning "Divine
+Resurgence:".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4287 / 0: `development` at `12803ce06` measured 4286, and one test is added |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P1, a dead creature never counted as standing however its death waits | `ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas` fails |
+| The counts | quoted as printed on the "Divine Resurgence:" line |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-26 — Withered Touch cuts six more of the cursed player's own damage figures: its ground, its Void Splinter, its retaliation and reflected hits, its nova, its Ground Pound and its armour smite (#2541)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`LeaveZoneAlong`, one factor on the
