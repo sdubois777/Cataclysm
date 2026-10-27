@@ -53,7 +53,7 @@ Resurgence:".
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | 4287 / 0: `development` at `12803ce06` measured 4286, and one test is added |
+| Whole Unreal suite | 4289 / 0: `development` at `90e9e1010` (#2550) measured 4288, and one test is added; the branch moved onto it as `fix/divine-resurgence-placed-count-1` |
 | Memory | about 7,900 MB; reported if above 9,500 |
 | P1, a dead creature never counted as standing however its death waits | `ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas` fails |
 | The counts | quoted as printed on the "Divine Resurgence:" line |
