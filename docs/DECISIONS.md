@@ -164,9 +164,26 @@ one's. The control scene of each test, and every set-up, read nothing the skip d
 - With `Cataclysm.DungeonModifiers Death_Echoes_of_the_Past` typed at the console before a floor is built, kill a few
   creatures, go down a floor, and stun one echo in the second after they appear: it does not strike; the others do.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t156w
 
-Not run. The enchantment session records its window here.
+Moved from `4bec019ef` and `68f2a664e` on `da1bb95cc` to `1267519ce` and `527b3d634` on development `911bfb1bc`
+(#1812 part 1) as `fix/a-stunned-echo-does-not-strike-1`; the only conflict was this file, and the test file merged
+beside #1812's two new tests by itself. **The fix commit's patch id changed** (`b29507a7736f` before, `e29027fed4eb`
+after) **while its content did not**: the coordinating session checked that the added and removed lines under `game/` in
+`da1bb95cc..68f2a664e` and in `911bfb1bc..527b3d634` are identical and in the same order, and only the hunk positions
+differ (the 298-line test block now starts at line 27217 instead of 27216, below #1812's insertion).
+
+Window t156w, run 2026-10-27 under the lock as `enchant-t156w`, at `527b3d634`. Free memory immediately before the lock,
+at 14:03:12, was 10,693 MB, against the floor of 10 GiB (10,240 MB). No new source file and no status row changed, so
+the window had no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The four new tests, each alone | 1 of 1 each; the first build compiled 2 files in 5 actions |
+| The whole Unreal suite | "4326 tests performed, 4326 succeeded, 0 failed"; 4326 declared, gap 0 |
+| Memory | `tests=4933 peak_used_virtual_mb=8052 final_used_virtual_mb=7755` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| EH-G1, the skip is never true (prefix `Cataclysm.EchoesHeld.`, 4 tests) | PROVED: the stun, knockdown and fear tests failed, 3 of 3 assertions; the control passed; 4 of 4 passed restored |
 
 ---
 
