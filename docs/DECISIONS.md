@@ -96,8 +96,9 @@ measured; the coordinating session's first reading pointed at that log line, and
 player held no weapon, was wrong. **Corrected in the next commit** to `ApplyDirectDamage`, a fixed amount, as the
 file's other test that kills does; not run yet.
 
-**Registered for the next window, w67,** as for w66 -- 4279 / 0 on `54925981a`; P1, P2 and P3 as above -- with a step
-1b first: the kill-row test alone by its full name, stopping there if it fails.
+**Registered for the next window, w67,** with a step 1b first, the kill-row test alone by its full name, stopping
+there if it fails: **4283 / 0 on `baad8a763`**, #2547's measured 4280 and the three tests this branch adds by name, the
+branch moved onto that merge as `fix/deaths-heard-in-order-2`; memory as above; P1, P2 and P3 as above.
 
 ---
 
