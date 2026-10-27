@@ -161,7 +161,7 @@
       "asset": "DT_StatusEffects",
       "csv": "StatusEffects.csv",
       "rows": 52,
-      "csv_sha256": "be8bbe97e34ebbed23d3019fd437209aa94bc24e01db7672e34d978e24313396"
+      "csv_sha256": "7813d6b224c406b5e49b26c03a53dc3fa7c4ba88532106b43e569ed955ea81af"
     },
     {
       "asset": "DT_WeaponMeshes",
