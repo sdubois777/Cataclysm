@@ -304,9 +304,23 @@ every test of batches 1 to 3 passes, and so does the batch 4 test not named.
   no action of the barrier's (1 where 0). Its own 30 seconds, the cooldown inside 10 s, Dervish after it and the end
   all pass.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t131w
 
-Not run. The enchantment session records its window here.
+Window t131w, run 2026-10-26 under the lock as `enchant-t131w` at 11,397 MB free, at `c88cfed09` on development
+`12803ce06`. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The DataTable asset rebuild | changed exactly `DT_StatusEffects.uasset` and its record, committed as `b29346acc` |
+| The two new tests, each alone | 1 of 1 each: Plague, Chaotic Barrier |
+| The whole Unreal suite | "4288 tests performed, 4288 succeeded, 0 failed"; 4288 declared, gap 0 |
+| Memory | `tests=4895 peak_used_virtual_mb=8019 final_used_virtual_mb=7690` |
+| Python of record | JUnit 7017 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| RB4-G1, Plague's reach at 5 m | PROVED: the Plague test failed, 3 of 3 assertions; 17 of 17 passed restored |
+| RB4-G2, no Plague stack gained | PROVED: the Plague test failed, 16 of 16 assertions; 17 of 17 passed restored |
+| RB4-G3, the barrier draws itself | PROVED: the Chaotic Barrier test failed, 2 of 2 assertions; 17 of 17 passed restored |
+
+With this window the random-buff pool of issue #2538 holds all 17 Buff rows of the status table.
 
 ---
 
