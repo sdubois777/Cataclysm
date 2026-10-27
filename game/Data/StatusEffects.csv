@@ -30,7 +30,7 @@ Debuff_The_Deceiver,Debuff,The Deceiver,(planned) A debuff applied to the player
 Debuff_Manic,Debuff,Manic,(planned) An aura of chaos that causes all nearby enemies to deal more damage but also take more damage.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Debuff_Battle_Cry,Debuff,Battle Cry,(planned) A terrifying shout that reduces the player's resistances or armor for 5 seconds.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Debuff_Contagion,Debuff,Contagion,(planned) A debuff that mirrors DoTs and debuffs back onto the player.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
-Debuff_Starving_Aura,Debuff,Starving Aura,(planned) An aura that reduces healing and health regeneration effects by 50%.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
+Debuff_Starving_Aura,Debuff,Starving Aura,An aura that reduces healing and health regeneration effects by 50%.,2.0,0.0,50.0,0.0,0.0,0.0,0.0,,
 Debuff_Final_Curse,Debuff,Final Curse,"(planned) Upon death, this enemy curses the player for 5 seconds, causing them to take damage when using abilities.",0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Debuff_Shared_Pain,Debuff,Shared Pain,(planned) A debuff that distributes damage taken across nearby allies.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Debuff_Soul_Tether,Debuff,Soul Tether,(planned) A debuff that transfers a portion of damage taken to the player as health degeneration over time.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
