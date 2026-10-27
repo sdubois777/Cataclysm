@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Leaving the dungeon: The Nihil's Embrace's two lines measured, the last of the five (#1812, part 2)
+
+**Affects:** two new Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp`; no game code. Part 2 of
+[#1812](https://github.com/sdubois777/Cataclysm/issues/1812), which it closes if the window passes: part 1 (#2561)
+measured Wasting Sickness, Mortal Decay and Silence.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **IF A PROOF DOES NOT FAIL AS PREDICTED,** its line is reported as unprovable, naming the break, and no test is added
+  inside the window; ruled by the coordinating session.
+
+### What was read
+
+The leaving branch of `ApplyFloorRulesToPlayer` sets The Nihil's Embrace's walking baseline to the distance walked so
+far and ends its reward. Since #1795 the player's own death resets both as well, and nothing else does on leaving. Both
+are read only in `StepNihilsEmbrace`, which runs only on a floor carrying the row, so a missing reset shows when the
+player enters another floor carrying it: walking done before leaving would still cost resistance, and a reward granted
+before leaving would still be held, its end still ahead of a clock no test beat moves.
+
+| Line | How it is measured |
+|---|---|
+| `MetresWalkedAtLastCleanse = Cataclysm->MetresWalkedTotal()` | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking`: three and a half stretches walked cost three points of War resistance (CONTROL); leave; enter another floor carrying the row without walking; a beat takes nothing |
+| `NihilsEmbraceRewardUntilSeconds = -1` | `LeavingTheDungeonEndsTheNihilsEmbracesReward`: a boss's death grants the reward's points on War resistance (CONTROL); leave; enter another floor carrying the row with no time passed; a beat grants nothing |
+
+Both copy #1795's tests' set-up (`Player.Walk`, a boss of `FirstBossRarityStep` killed by the player,
+`DungeonRuleOn(…, War resistance)`) and leave with part 1's `LeaveTheDungeon`. Each prints both readings on a line
+beginning "Nihil's Embrace".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | the base's measured total + 2, 0 failed |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P4, the leaving reset of the walking baseline deleted | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` fails |
+| P5, the leaving reset of the reward's end deleted | `LeavingTheDungeonEndsTheNihilsEmbracesReward` fails |
+| The readings | quoted as printed on the "Nihil's Embrace" lines |
+
+Each proof names its test in full as the prefix (#2556). The reward's reset occurs twice in the file, at the player's
+death and on leaving; P5's break text takes the leaving line with the blank line and comment after it, which occurs
+once. The walking line on leaving occurs once.
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-27 — Chorus makes no repeat by a stunned, knocked-down or feared minion or thrall (#2563)
 
 **Affects:** `UCataclysmChorus::Repeat` in `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp` (one block in its
