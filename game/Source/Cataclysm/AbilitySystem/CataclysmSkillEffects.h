@@ -2026,6 +2026,13 @@ public:
 									 const FRunningAilment& Applied, int32 Count);
 
 	/**
+	 * How near the struck enemy another must stand to be given the random buff Plague's spread, in metres. Ruled
+	 * 2026-10-26 (issue #2538, batch 4): "every enemy within 3 m". Not `UCataclysmContagion::SpreadFromTheDyingMetres`,
+	 * the Plague Doctor blast's 5, which stays as it is. See `ApplyDamageOverTime`.
+	 */
+	static constexpr float PlagueSpreadMetres = 3.0f;
+
+	/**
 	 * Deal `Percent` of the remaining damage of every damage over time effect
 	 * `Owner` placed on `Target`, each as ONE damage instance delivered as its
 	 * ticks are: the effect's own context, so its instigator and causer, and its

@@ -4493,6 +4493,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bKeptStacksFreeNextAbility = false;
 
 	/**
+	 * Set, this action GAINS ONE KEPT STACK UNDER `KeptStackKey` ON EACH LANDED `Event` IT IS ALLOWED, to at most
+	 * `KeptStackCap`, with no clock, as `bKeptStacksFreeNextAbility` does; and WHILE THE STACKS HOLD THAT CAP, THE
+	 * WEARER'S NEXT DAMAGE OVER TIME APPLICATION SPREADS EVERY DAMAGE OVER TIME OF THE WEARER'S ON ITS TARGET to the
+	 * enemies near it, and spends every stack. Ruled 2026-10-26 for the random buff Plague (issue #2538, batch 4): "At
+	 * 10 stacks, spreads all DoTs to nearby enemies". `StatusName` is what the row calls its stacks. See
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` and `UCataclysmSkillEffects::PlagueSpreadMetres`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksSpreadDots = false;
+
+	/**
 	 * Set, this action triggers a DIFFERENT skill the character holds that has a cooldown, free, with `Percent` as
 	 * its chance out of 100. Ruled 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% chance to
 	 * trigger an ability with a cooldown". The triggered skill's cooldown is not waited for and none is started.

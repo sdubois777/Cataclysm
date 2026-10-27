@@ -2,6 +2,328 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — The last two: Shard of Anarchy's random buff can draw Plague and Chaotic Barrier, batch 4 of the owner's "Add everything", and the pool is complete (#2538)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Plague and Chaotic Barrier rows, and
+`game/Data/StatusEffects.csv` (the branch's first commit, `41b7edf10`, by the enchantment session under the
+coordinating session's workbook grant: "(planned) " comes off both descriptions);
+`game/Source/Cataclysm/AbilitySystem/CataclysmContagion.cpp` and `.h` (the copies split out of `BlastAt` into
+`GiveSpreadCopiesNear`, which takes the reach); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` and
+`.h` (Plague's spread in `ApplyDamageOverTime`, beside `SpreadOnApplication`; `PlagueSpreadMetres`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bKeptStacksSpreadDots`);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the row builder sets that flag from
+`KeptStacksSpreadDotsAction`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and `.h`
+(`KeptStacksSpreadDotsAction` and `RandomBuffStatus`; in `ActOnEvent`, the stack gain, and a tick refused on
+`hit_taken` for `RandomBuffStatus` only; `ApplyStatusToTheWearer` routes `RandomBuffStatus` to `HoldARandomBuff`, which
+may now leave one buff out of its draw; two rows in `RandomBuffRowsOfItsOwn`; two entries at the end of
+`RandomBuffTable`; the help text of `Cataclysm.RandomBuffPick`; comments);
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (two tests, and one pinned name string with its
+label); `tools/tests/test_the_random_buff_table_names_buff_rows.py` (`IN_THE_TABLE`, the count, `LEFT_OUT` and
+`ANOTHERS` deleted, one test renamed, the prose); this file. The asset `game/Content/Data/DT_StatusEffects.uasset` and
+`game/Data/datatable_asset_sources.json` are rebuilt in the enchantment session's window. **With this batch issue
+#2538's pool is complete: every Buff row of the status table is in the table, and the list of those left out is
+gone.**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** a wearer of two pieces of Shard of Anarchy whose 30-second roll draws a buff can now be
+  given, for 30 seconds: **Plague** (each damage over time the player lays gains a stack, shown as "Plague 3/10"; the
+  application that makes the tenth spreads every one of the player's damage over time effects on that enemy, the new one
+  included, to every other enemy within 3 m, each with the time it has left, and the stacks start again from none);
+  **Chaotic Barrier** (the next landed blow taken replaces it with another buff drawn at random, never Chaotic Barrier,
+  held for its own 30 seconds; at most once in 10 seconds). Each of the seventeen buffs is now drawn one time in
+  seventeen, where each of fifteen was one in fifteen.
+- **THE PLAGUE DOCTOR BLAST IS UNCHANGED IN WHAT IT DOES.** Its copies moved into a function of their own, which the
+  blast calls with its 5 m. One difference in how, read and not measured: the copies' enemies are now FOUND AGAIN after
+  the blast's damage, where they were the blast's own list. The search refuses the dead, and the copies passed the dead
+  over already, so an enemy the blast killed still receives nothing. An enemy that came into the 5 m DURING the blast's
+  damage (one spawned by a death inside it, say) would now receive copies; none of the blast's tests has one. Its four
+  tests and the authored row's are not edited.
+- **A TICK TAKEN DRAWS NO BUFF, FOR CHAOTIC BARRIER'S STATUS ONLY: ONE CONDITION OF `ActOnEvent`'S WEARER-STATUS BRANCH
+  CHANGED.** As ruled ("Damage-over-time ticks and evaded blows do not trigger it ... on hit_taken only"). The branch
+  also serves the authored `Negative_Taking_a_hit_has_a_15_25_chance_to_trigger_a_r#1` (`apply_status_to_self` on
+  `hit_taken`, "Random Debuff"), counted by script on 2026-10-26 as the one authored wearer-status row on `hit_taken`.
+  So the clause is scoped to the status `RandomBuffStatus` as well as to `hit_taken`, and that row is left as it was:
+  it still rolls on a tick. An evaded blow was already refused by the branch, which acts on a landed event only.
+- **THE TENTH APPLICATION SPREADS, AS RULED AFTER THE HAND-BACK.** The application that gains the tenth stack spreads
+  and spends them. The coordinating session, 2026-10-26: "(a), the tenth, as built. The row says "At 10 stacks", and
+  reaching 10 is the plain reading. My "with 10 stacks held, the next application spreads" was imprecise; this ruling
+  replaces it." So the earlier wording quoted below is replaced by this ruling.
+- **AN EARLIER APPLICATION OF THE SAME AILMENT, RUNNING AT THE TENTH, IS NOW TESTED,** as the coordinating session asked
+  before the window: a weaker poison running under a stronger tenth spreads the stronger with its whole duration, and a
+  stronger, longer poison running under a weaker tenth spreads the stronger with what it has left.
+- **THE BUFFS' PLACES IN `Cataclysm.RandomBuffPick` 0 TO 14 DO NOT MOVE.** The two are appended as 15 and 16.
+
+### THE RULINGS, VERBATIM (the owner and the coordinating session, 2026-10-26)
+
+After the hand-back, the coordinating session, "batch 4 rulings":
+
+> 1. WHICH APPLICATION SPREADS: (a), the tenth, as built. The row says "At 10 stacks", and reaching 10 is the plain
+>    reading. My "with 10 stacks held, the next application spreads" was imprecise; this ruling replaces it. Record in
+>    the entry that the tenth application gains the tenth stack, spreads and spends, and that this replaces my earlier
+>    wording.
+> 2. CHAOTIC BARRIER at about 32 net lines: accepted. Scoping ticks out for the "Random Buff" status on hit_taken only,
+>    so the authored Random Debuff row still rolls on ticks, is accepted. State it in the entry.
+> 3. LEFT_OUT deleted and the test renamed to assert all 17: accepted, with the second session's reason in the entry.
+> 4. GiveSpreadCopiesNear searching again: accepted. State in the entry, as read and not measured, that an enemy
+>    entering the 5 m during the Plague Doctor blast's own damage now gets copies.
+> 5. ONE ADDITION BEFORE THE WINDOW. The merge of an earlier running application of the same ailment at the cap is new
+>    game logic with no test. Add assertions to the Plague test ...
+
+Before it, as the build was briefed:
+
+The owner, on the random-buff pool: "Add everything".
+
+The coordinating session, "rulings on #2538":
+
+> 4. **Plague: the proposal is accepted as a judgement.**
+>    - A stack each time the wearer lays a damage-over-time effect.
+>    - At 10 stacks, the next damage-over-time effects on the struck enemy spread to every enemy within 3 m, with the
+>      time each has left. Then the stacks clear.
+>    - Verify whether BlastFromTheDying can be reused before sizing it.
+> 5. **Chaotic Barrier: the proposal is accepted as a judgement:** when hit, at most once per 10 s, draw another random
+>    buff other than itself, which replaces it.
+
+And on Plague, after the enchantment session's reading of `BlastFromTheDying`:
+
+> With 10 stacks held, the next damage-over-time application spreads every damage-over-time ailment of the wearer's
+> that is running on the struck enemy, the one being laid included. Each spreads to every enemy within 3 m with the time
+> it has left, and then the stacks clear. That is the row's "spreads all DoTs to nearby enemies". Only the wearer's own
+> ailments spread, not other sources'. An enemy already carrying an ailment is passed over for that ailment, as BlastAt
+> does. Spread copies raise no dot_applied, so they gain no stacks and do not spread again. The design you set out
+> holds: the copy loop is split out with a reach parameter, and the Plague Doctor blast stays at 5 m; Plague's spread
+> sits beside SpreadOnApplication.
+
+And the batch 4 rulings:
+
+> 1. STACK LIFETIME: accepted as you recommend, as a judgement. Plague's stacks are kept stacks with no lifetime of
+>    their own. They end when the spread spends them, or when the buff ends (30 s, or a replacement draw). The reasons
+>    go in the entry as you gave them: the row states no lifetime; the buff's own 30 s already limits it; this is how
+>    Void's kept stacks end; no new spend code is needed. Record Path of Exile's 10 s charge duration as the
+>    alternative considered and not taken.
+> 2. CHAOTIC BARRIER: "when attacked" means a landed blow taken. Damage-over-time ticks and evaded blows do not trigger
+>    it, as for Feasting. If its row's trigger path counts ticks, scope them out the same way, on hit_taken only.
+> 3. LEFT_OUT: the second session decides, and says which and why in its hand-back.
+
+### WHAT WAS READ OF `BlastFromTheDying`, AND THE SPLIT
+
+Read at `41b7edf10`. `UCataclysmContagion::BlastFromTheDying` and `BlastAt` each return nought when the damage is
+nought or less, so neither can be called for a spread alone. `ReadForABlast` reads the centre's position and which of
+the listed ailments the wearer has running on it, with what each has left; nothing in it asks for a death, so it is
+called for Plague with the creature struck as the centre. `BlastAt`'s second loop was the copies: each enemy caught and
+still alive is given a spread copy (`ApplySpreadCopy`) of each carried ailment it does not already carry.
+
+**The split:** that loop is now `UCataclysmContagion::GiveSpreadCopiesNear(Wearer, Read, ReachInMetres)`, which finds
+the wearer's enemies within the reach of `Read.Position`, leaves `Read.Dead` out, passes over the dead, and gives the
+copies. `BlastAt` calls it with `SpreadFromTheDyingMetres`, 5, after its damage. Plague calls it with
+`UCataclysmSkillEffects::PlagueSpreadMetres`, 3. See SAID FIRST for the one difference in how.
+
+**Where the spread sits:** in `UCataclysmSkillEffects::ApplyDamageOverTime`, directly after `SpreadOnApplication`'s
+block and guarded as it is (not on oneself, not for a spread copy). `dot_applied` is raised earlier in the same
+function, before the application lands; the stack is gained there, so the application that gains the tenth stack is
+the one that spreads. **THE APPLICATION BEING LAID IS NOT RUNNING ON THE TARGET WHEN THE SPREAD RUNS** (it lands
+further down), so `ReadForABlast` cannot see it, and it is added by hand, as `SpreadOnApplication`'s `Applied` is built,
+with its whole duration. Adding it by hand double-counts only when an EARLIER application of the same ailment by the
+wearer is still running on the target. Then the two are one entry: the stronger by damage a second (the strongest
+application wins, issue #1503), with the longer of the two times when the running one is the stronger, because a weaker
+application only refreshes it and a refresh never shortens.
+
+### THE STACK LIFETIME, AS RULED
+
+Plague's stacks are kept stacks (`GainKeptStack`), with no lifetime of their own. They end when the spread spends them
+(`SpendKeptStacks`), or when the buff ends, by its 30 seconds or a replacement draw: the refresh that follows builds no
+Plague row, and `SetPoolActions` forgets every kept stack no worn action carries. The reasons, as given and accepted:
+the row states no lifetime; the buff's own 30 seconds already limit it; this is how Void's kept stacks end; no new
+spend code is needed. A death and leaving the dungeon end them too, as for every kept stack.
+
+**The alternative considered and not taken, Path of Exile's charges,** read by the enchantment session on maxroll.gg
+(maxroll.gg/poe/resources/charges): "Charge base duration is 10 seconds". A lifetime of that kind would let stacks
+lapse inside the 30 seconds, which the row does not state.
+
+### THE TWO ENTRIES AND THEIR ROWS
+
+| Place, entry | Row of its own | Figures from the sentence | Figures that are rulings or judgements |
+| :-- | :-- | :-- | :-- |
+| 15 Plague | `kept_stacks_spread_dots` on `dot_applied`, Scale Max Steps 10, Ailment cell "Plague" (the stacks' name), no value | 10 stacks | the gain, one stack each damage over time laid (ruled as a judgement); "nearby" as 3 m (ruled); every damage over time of the wearer's on the struck enemy, the one being laid included, with the time each has left (ruled); stacks kept with no lifetime (ruled as a judgement); the six damage over time ailments as "all DoTs", the list `AnnounceAfflictedDeath` reads (this session's judgement, below) |
+| 16 Chaotic Barrier | `apply_status_to_self` on `hit_taken`, value 100 (the chance), Ailment cell "Random Buff" (`RandomBuffStatus`), Trigger Cooldown 10 | none: "a random buff when attacked" | a landed blow, not a tick or an evaded blow (ruled); at most once in 10 s (ruled); never itself, and the draw replaces it (ruled); always, a chance of 100 (this session's judgement, below) |
+
+- **The action `kept_stacks_spread_dots` and the status "Random Buff" have no twin in `tools/generate_datatables.py`.**
+  This session searched `tools/tests` for a check that every action-name constant has a generator twin (plan risk 10):
+  there is none. `test_charge_and_placed_action_names_match_the_engine.py` checks one way only, that each name it lists
+  is found in the engine, and `test_pool_action_names_match_the_engine.py` compares pools and events. So no twin was
+  added, and the generator refuses both names in a sheet (an unknown action is refused as "not one the game has"; a
+  wearer's status outside `APPLY_STATUSES_TO_SELF_ONLY` is refused). Only the rows written in code name them.
+- **Each row's action is pinned by its test** (no generator refuses a row written in code; plan risk 11).
+- Void Splinter is applied by `ApplyShareOfHealthOverTime`, which raises no `dot_applied` and does not pass through
+  the spread, so laying one gains no Plague stack. A Void Splinter already running on the struck enemy spreads with the
+  rest. As built, for every row on `dot_applied`.
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **`LEFT_OUT` is deleted, with `ANOTHERS` and the disjoint assertion** (ruling 3, this session's decision). The
+  status table's Buff rows are now compared with `IN_THE_TABLE` alone, still pinned at 17, and the test that compared
+  them with both lists is renamed `test_every_buff_row_is_in_the_table`. Why: an empty dict unioned into a comparison
+  is a structure that says nothing, its comment would be the only thing left to read, and issue #2538's "done" is "the
+  left-out list emptied". A Buff row added to the status table still fails the comparison until somebody builds it or
+  brings back a list with the reason. Not taken: keeping `LEFT_OUT = {}` with its assertion.
+- **"All DoTs" is the six damage over time ailments** of `UCataclysmContagion::AnnounceAfflictedDeath`'s list (Bleed,
+  Poison, Disease, Necrosis, Burn, Void Splinter), written a second time in the spread with a comment that keeps it in
+  step. Not taken: a shared function for the list, which would move `AnnounceAfflictedDeath`'s lines.
+- **Chaotic Barrier's chance is 100.** The sentence states no chance and the ruling says "when hit ... draw". Not taken:
+  a chance below 100.
+- **The tick is refused for `RandomBuffStatus` only, in the branch's condition,** so the cooldown is not started by a
+  tick. Not taken: refusing every tick in the branch, which would change the authored "Random Debuff" row on
+  `hit_taken` (SAID FIRST); and refusing it inside `ApplyStatusToTheWearer`, away from the trigger path the ruling names.
+- **The barrier leaves itself out of its draw by name**, through a new parameter of `HoldARandomBuff`, `Excluded`, which
+  defaults to none, so every other caller draws as before. A pin naming the place left out draws among the others, at
+  random. Not taken: a second held slot (plan option b), new state, display and end.
+- **Plague's reach is a constant of its own, `PlagueSpreadMetres` = 3,** in `CataclysmSkillEffects.h` beside the spread.
+  Not taken: `NearbyActionRadiusCm` or `SpreadFromTheDyingMetres`, both 5.
+- **When an earlier application of the same ailment is running, one entry spreads** (see the split). Not taken: the
+  running one always, or the one being laid always.
+- **The two tests are at the end of `CataclysmEnchantmentEffectTests.cpp`, named in
+  `Cataclysm.StatExemption.TheRandomBuff`,** beside batch 3's, because the rigs are there (the bare wearer, the
+  creatures and hand-laid ailments of the Plague Doctor blast's tests).
+
+### WHAT MOVED, OLD AND NEW
+
+- `tools/tests/test_the_random_buff_table_names_buff_rows.py`: `IN_THE_TABLE` gains "Plague" and "Chaotic Barrier" at
+  its end, 15 names to 17; `LEFT_OUT` (2 entries) is deleted with `ANOTHERS` and `assert not set(IN_THE_TABLE) &
+  set(LEFT_OUT)`; `test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out` becomes
+  `test_every_buff_row_is_in_the_table`, asserting `rows == set(IN_THE_TABLE)`; `test_the_reader_finds_the_table`'s
+  count 15 becomes 17; the module docstring and that test's docstring are rewritten ("Seventeen and none since batch
+  4"). `assert len(rows) == 17` and the six worn row names do not move. The Python test count does not move.
+- `Cataclysm.RandomBuffPick`'s help text: "... 13 Feasting, 14 The Ascended. -1 picks at random." becomes "... 13
+  Feasting, 14 The Ascended, 15 Plague, 16 Chaotic Barrier. -1 picks at random."
+- `CataclysmEnchantmentEffectTests.cpp`, the Shard of Anarchy two-piece test's set-up: "the fifteen buffs of the table"
+  becomes "the seventeen buffs of the table", and the joined names gain ", Plague, Chaotic Barrier".
+- `CataclysmAbilitySystemComponent.h`, the comment above `RandomBuffTable`: "It holds fifteen" becomes "It holds
+  seventeen, every Buff row" with the two named, and "LEFT OUT FOR NOW: Plague and Chaotic Barrier. ..." becomes "NONE
+  IS LEFT OUT, since batch 4."; `HeldRandomBuffEffectRows`' and `HoldARandomBuff`'s comments name the batch 4 additions.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear two pieces of Shard of Anarchy and pin `Cataclysm.RandomBuffPick 15`: lay damage over time on one enemy of a
+  group; "Plague" counts up to 10 above the bars, and at the tenth the enemies within 3 m start burning, bleeding or
+  poisoned as that one is, and the count starts again. Pin `16`: take a hit and Chaotic Barrier turns into another buff
+  for 30 seconds; a damage-over-time tick or a dodged blow does not turn it.
+
+### Tests
+
+Both in `Cataclysm.StatExemption.`, selected with batches 1 to 3 by the prefix `Cataclysm.StatExemption.TheRandomBuff`
+(17 test names begin with it, counted by script: 8 in `CataclysmStatExemptionTests.cpp` and 9 in
+`CataclysmEnchantmentEffectTests.cpp`), written at the end of `CataclysmEnchantmentEffectTests.cpp`. Each reads its
+control before the draw; each figure is a difference from the reading before it; the draw is pinned through
+`Cataclysm.RandomBuffPick` by batch 2's `DrawsTheBuff` (four set-up checks: in the table, the pin exists, the draw lays
+a buff, the buff held is it); the end is read after the clock is moved by hand to 30.5 seconds past the draw and
+`StepTimedGrants` runs. "The buff's actions" are those whose trigger key begins with `RandomBuff:<buff>:`. Assertion
+counts are by reading. The window registers 4286 plus these two, 4288.
+
+`TheRandomBuffPlagueGainsAStackForEachDamageOverTimeLaidAndAtTenSpreadsEveryOneOfTheHoldersWithinThreeMetres`, 64
+assertions, on batch 2's bare wearer and a second bare character, creatures of `CataclysmSpreadOnDeathTest::Beside`
+(10 m out along X, then metres from it), each ailment laid by hand with `Ail` (one a tick for 10 s), stacks read by
+`KeptStacksHeldNamed("Plague")`, and time left by `RunningAilmentOn` with its applier: a world; set-up, four tags and
+nine creatures (2); **control: no action of the buff's**; set-up, ten applications laid with no buff; **control: they
+gain no Plague**, **and the creature 2 m away carries no poison**, **and no bleed** (3); set-up, the other character
+lays a necrosis on the creature struck and a poison on the one 2 m the other side; the four draw checks; **one action
+of the buff's** (a row left out fails here); **it gains kept stacks on `dot_applied` towards a spread, named Plague,
+scoped to nothing**, **at most 10** (2); **control: held, before any application, none**; set-up, eight poisons;
+**8**; set-up, 2.5 s later a burn; **9**, **and nothing spread: no poison 2 m away**, **and no burn** (3); set-up, the
+wearer's poison runs, and a spread copy of it is put on a creature standing alone (2); **control: a spread copy gains
+no stack, still 9**; set-up, 1.25 s later a bleed, the tenth; **2 m away: the wearer's poison with 6.25 s left**,
+**its burn with 8.75**, **the bleed being laid with its whole 10** (3); **another character's necrosis does not
+spread**; **4 m away: no poison**, **no burn**, **no bleed** (3); **2 m the other side, passed over for the poison it
+carried, still the other character's**, **given the burn with 8.75**, **and the bleed with 10** (3); **the stacks are
+spent, 0**; **an application after it gains 1**; **eight more make 9**; **after 30.5 s no buff is held**, **no action
+of the buff's**, **no Plague** (3); set-up, ten applications on another pair after it; **they gain no Plague**, **no
+poison 2 m away**, **no bleed** (3); the four draw checks again; **drawn again it starts at none: the 9 held when it
+ended were forgotten**. Then, added by the enchantment session as ruled (12): set-up, five creatures 20 m from the
+rest; set-up, a poison of one a tick on the first and eight bleeds on one standing alone; set-up, the weaker poison
+states something a second; **9 held**; the tenth, a poison of three a tick: **the copy 2 m away deals three times as
+much a second**, **with its whole 10 s**, **the stacks are spent**; set-up, a poison of three a tick for 20 s on the
+second and eight more bleeds; 2.5 s later **9 held**; the tenth, a poison of one a tick: **the copy 2 m away deals the
+stronger's three times as much a second**, **with the 17.5 s it had left, longer than the weaker's 10**, **the stacks
+are spent**.
+
+`TheRandomBuffChaoticBarrierMakesALandedBlowTakenDrawAnotherBuffInItsPlaceOnceInTenSeconds`, 31 assertions, on batch
+2's bare wearer and a bare attacker, each blow `ApplyDirectDamage` of 1 with `bCannotBeMitigated` and health written
+again before each, the Warhound roll pinned to never: a world; set-up, Chaotic Barrier and Dervish are in the table and
+the roll is pinned; **control: no action of the buff's**; set-up, the blow is dealt; **control: with no buff, a landed
+blow draws no buff**; the four draw checks; **one action of the buff's** (a row left out fails here); **it lays "Random
+Buff" on the wearer at a chance, on `hit_taken`, scoped to nothing**, **chance 100**, **cooldown 10** (3); the draw then
+pinned to Chaotic Barrier's own place, 1 s after the draw: **control: an evaded blow (`NoteHitTaken` not landed) draws
+nothing**, **control: a tick (`NoteHitTaken` landed, a tick) draws nothing, as ruled** (2); **a landed blow draws
+another buff, never Chaotic Barrier**, **the barrier is gone, no action of its**, **the buff drawn has its own 30
+seconds** (3); the four draw checks again at 5 s, the pin moved to Dervish; **a landed blow 4 s after the draw it made
+draws nothing**; **10.5 s after it, a landed blow draws Dervish**; the four draw checks again at 12 s; **after 30.5 s
+no buff is held**, **no action of the buff's**, **and a landed blow after it draws nothing** (3).
+
+The Plague Doctor blast's tests, `Cataclysm.Enchantments.AnAfflictedEnemysDeathBlastsThoseWithinFiveMetresAndPassesTheWearersAilmentsToThem`,
+`...ThreeDeathsInARowEachBlastForAShareOfTheirOwnMaximumHealthAndStrikeEachEnemyOnce`,
+`...AnEnemyTheBlastKillsBlastsInItsTurnForAShareOfItsOwnMaximumHealth` and
+`...PlagueDoctorsTenPiecesBlastFromAnEnemyThatDiesCarryingTheWearersAilment`, are not edited and must pass.
+
+**The depth each event is raised at.** `dot_applied` is raised by `ApplyDamageOverTime`, which the Plague test calls
+directly, so at depth nought; the spread runs in `ApplyDamageOverTime` after `ActOnEvent` has returned, not inside it,
+and the copies it makes raise nothing. `hit_taken` is raised by `NoteHitTaken`, called by the attribute set for the
+test's blows and by the test itself for the evaded blow and the tick, each at depth nought. Chaotic Barrier's draw runs
+inside that `ActOnEvent`, at depth one: `HoldARandomBuff` refreshes the gear, which replaces `PoolActions` while the
+loop reads its copy, `Firing`, as every refresh inside the loop does.
+
+### Not tested
+
+A Void Splinter running on the struck enemy (it would spread, read and not run); a damage over time laid by one of the
+wearer's own rows while it acts on an event, whose `dot_applied` is dropped at depth one and so gains no stack, though
+at the cap it would still spread; a minion's damage over time (the minion's own, not the summoner's); Chaotic Barrier
+drawing at random rather than by the pin, beyond "not itself"; Chaotic Barrier on an enemy, which wears no rows; a real
+blow that is evaded rather than `NoteHitTaken` said by hand; the display "Plague n/10" (`KeptStacksForDisplay` reads
+it as it reads Void's).
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in its file by script; each break changes one line or one token and moves no
+bracket, counted by script (balance unchanged), so the file compiles alone as before. Prefix for all three:
+`Cataclysm.StatExemption.TheRandomBuff`, which 17 test names begin with; no other group's name begins with it. In each,
+every test of batches 1 to 3 passes, and so does the batch 4 test not named.
+
+- **RB4-G1, Plague's reach at 5:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`,
+  `static constexpr float PlagueSpreadMetres = 3.0f;` becomes `static constexpr float PlagueSpreadMetres = 5.0f;`.
+  Predicted: the Plague test fails, 3 assertions: the creature 4 m away carries no poison, no burn, no bleed.
+- **RB4-G2, no stack gained:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`, in the new
+  branch of `ActOnEvent`, the anchor `if (Action.bKeptStacksSpreadDots)` / `{` / `if (bLanded && ` (three lines, as one
+  anchor) becomes the same with `if (!bLanded && `. Every `dot_applied` is landed, so no stack is gained. Predicted:
+  the Plague test fails, 16 assertions: 8; 9; still 9 after the copy; 2 m away the poison, the burn and the bleed (3);
+  2 m the other side the burn and the bleed (2); an application after it gains 1; eight more make 9; and, of the 12
+  added before the window, 6: both "9 held", and both copies' a second and time left. Every "nothing" and "0"
+  assertion passes. The anchor's lines are joined by `
+`, as `read_text` gives the file to the helper.
+- **RB4-G3, the barrier draws itself:** the same file, `const bool bThePinIsDrawable = Table.IsValidIndex(Pinned) &&
+  FName(Table[Pinned].Name) != Excluded;` becomes `const bool bThePinIsDrawable = Table.IsValidIndex(Pinned);`.
+  Predicted: the Chaotic Barrier test fails, 2 assertions: the blow draws another buff (it holds Chaotic Barrier), and
+  no action of the barrier's (1 where 0). Its own 30 seconds, the cooldown inside 10 s, Dervish after it and the end
+  all pass.
+
+### THE WINDOW'S RUN, t131w
+
+Window t131w, run 2026-10-26 under the lock as `enchant-t131w` at 11,397 MB free, at `c88cfed09` on development
+`12803ce06`. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The DataTable asset rebuild | changed exactly `DT_StatusEffects.uasset` and its record, committed as `b29346acc` |
+| The two new tests, each alone | 1 of 1 each: Plague, Chaotic Barrier |
+| The whole Unreal suite | "4288 tests performed, 4288 succeeded, 0 failed"; 4288 declared, gap 0 |
+| Memory | `tests=4895 peak_used_virtual_mb=8019 final_used_virtual_mb=7690` |
+| Python of record | JUnit 7017 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| RB4-G1, Plague's reach at 5 m | PROVED: the Plague test failed, 3 of 3 assertions; 17 of 17 passed restored |
+| RB4-G2, no Plague stack gained | PROVED: the Plague test failed, 16 of 16 assertions; 17 of 17 passed restored |
+| RB4-G3, the barrier draws itself | PROVED: the Chaotic Barrier test failed, 2 of 2 assertions; 17 of 17 passed restored |
+
+With this window the random-buff pool of issue #2538 holds all 17 Buff rows of the status table.
+
+---
+
 ## 2026-10-26 — Rows of its own: Shard of Anarchy's random buff can draw Death, Feasting and The Ascended, batch 3 of the owner's "Add everything" (#2538)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Death and The Ascended rows, and

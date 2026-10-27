@@ -2535,6 +2535,74 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// AND AT PLAGUE'S CAP EVERY DAMAGE OVER TIME OF THE APPLIER'S ON THE TARGET SPREADS, THEN THE STACKS ARE SPENT. Ruled
+	// 2026-10-26 for the random buff Plague (issue #2538, batch 4): "With 10 stacks held, the next damage-over-time
+	// application spreads every damage-over-time ailment of the wearer's that is running on the struck enemy, the one
+	// being laid included. Each spreads to every enemy within 3 m with the time it has left". The stacks are gained on
+	// `dot_applied` above, so the application that gains the tenth is the one that spreads. Guarded as the spread above
+	// is: not on oneself, and not for a copy, which raises no `dot_applied` and so neither gains a stack nor spreads.
+	//
+	// THE APPLICATION BEING LAID IS NOT RUNNING YET: it lands below. So it is added by hand, as the spread above builds
+	// it, with its whole duration. Only an earlier application of the same ailment can already be running, and then one
+	// spreads: the stronger a second, as the target keeps the stronger, with the longer time if the running one is kept.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		if (UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			TArray<FName> AtTheirCap;
+			for (const FCataclysmPoolAction& Action : Own->GetPoolActions())
+			{
+				if (Action.bKeptStacksSpreadDots && Action.KeptStackCap > 0
+					&& Own->KeptStacksHeld(Action.KeptStackKey) >= Action.KeptStackCap)
+				{
+					AtTheirCap.AddUnique(Action.KeptStackKey);
+				}
+			}
+			if (!AtTheirCap.IsEmpty())
+			{
+				// THE SIX AILMENTS THAT DEAL DAMAGE OVER TIME, kept in step with the list in
+				// `UCataclysmContagion::AnnounceAfflictedDeath`.
+				FGameplayTagContainer DamageOverTime;
+				for (const TCHAR* Name : {TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"),
+						 TEXT("Keyword.DoT.Disease"), TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"),
+						 TEXT("Keyword.DoT.VoidSplinter")})
+				{
+					const FGameplayTag Each = FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+					if (Each.IsValid())
+					{
+						DamageOverTime.AddTag(Each);
+					}
+				}
+				// ONLY THE APPLIER'S OWN, as ruled: `ReadForABlast` keeps an ailment only when the applier's is running.
+				FCataclysmBlastRead Read = UCataclysmContagion::ReadForABlast(Instigator, Target, &DamageOverTime);
+				FRunningAilment Applied;
+				Applied.Ailment = EffectTag;
+				Applied.DamagePerSecond = Stated;
+				Applied.SecondsLeft = Numbers.DurationSeconds;
+				Applied.Applier = Instigator;
+				FRunningAilment* Earlier = Read.Carried.FindByPredicate(
+					[&EffectTag](const FRunningAilment& One) { return One.Ailment == EffectTag; });
+				if (!Earlier)
+				{
+					Read.Carried.Add(Applied);
+				}
+				else if (Earlier->DamagePerSecond >= Applied.DamagePerSecond)
+				{
+					Earlier->SecondsLeft = FMath::Max(Earlier->SecondsLeft, Applied.SecondsLeft);
+				}
+				else
+				{
+					*Earlier = Applied;
+				}
+				UCataclysmContagion::GiveSpreadCopiesNear(Instigator, Read, PlagueSpreadMetres);
+				for (const FName& Key : AtTheirCap)
+				{
+					Own->SpendKeptStacks(Key);
+				}
+			}
+		}
+	}
+
 	// AND WHAT THE APPLIER'S WORN ROWS HANG ON THIS AILMENT GOES ONTO THE
 	// CARRIER. Issue #1833, ruled 2026-10-06: "Bleeding enemies take 20%-40%
 	// increased damage from all sources". HERE, BEFORE THE TWO BRANCHES BELOW, so

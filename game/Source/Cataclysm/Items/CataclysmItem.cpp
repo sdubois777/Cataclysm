@@ -1521,6 +1521,19 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.KeptStackCap = Effect->ScaleMaxSteps;
 						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
 					}
+					// AND WHETHER IT GAINS A KEPT STACK ON ITS EVENT AND, AT ITS CAP, MAKES THE NEXT DAMAGE OVER TIME
+					// APPLICATION SPREAD EVERY ONE OF THE WEARER'S ON ITS TARGET, spending them all. Ruled 2026-10-26 for
+					// the random buff Plague (issue #2538, batch 4). Scale Max Steps is the cap; the Ailment cell is what
+					// the row calls its stacks. Keyed by the row's trigger key, as the action above is.
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::KeptStacksSpreadDotsAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.bKeptStacksSpreadDots = true;
+						Action.KeptStackKey = Action.TriggerKey;
+						Action.KeptStackCap = Effect->ScaleMaxSteps;
+						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
+					}
 					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
 					// pays its cost. Ruled 2026-10-06. The value is the chance.
 					Action.bTriggerHeldSkill = Effect->Action.Equals(

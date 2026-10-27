@@ -530,7 +530,6 @@ int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Re
 	{
 		return 0;
 	}
-	const TArray<UCataclysmSkillEffects::FRunningAilment>& Carried = Read.Carried;
 
 	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 		Wearer->GetWorld(), Wearer, Read.Position,
@@ -563,7 +562,26 @@ int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Re
 		UCataclysmSkillEffects::ApplyDirectDamage(Wearer, Target, Damage, Delivery);
 	}
 
-	// THEN THE COPIES, TO THOSE THE BLAST LEFT ALIVE.
+	// THEN THE COPIES, TO THOSE THE BLAST LEFT ALIVE, within the same reach.
+	GiveSpreadCopiesNear(Wearer, Read, SpreadFromTheDyingMetres);
+	return Caught.Num();
+}
+
+int32 UCataclysmContagion::GiveSpreadCopiesNear(AActor* Wearer, const FCataclysmBlastRead& Read, float ReachInMetres)
+{
+	if (!Wearer || ReachInMetres <= 0.0f || Read.Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	// FOUND AGAIN AND NOT HANDED OVER BY THE BLAST: the search refuses the dead, so an enemy the blast killed is not
+	// among them, and the dead are passed over below as well.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Read.Position, ReachInMetres * CentimetresPerMetre);
+	// THE POINTER IS COMPARED AND NOT READ.
+	Caught.Remove(Read.Dead.Get(/*bEvenIfPendingKill=*/true));
+
+	int32 Copies = 0;
 	for (AActor* Target : Caught)
 	{
 		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Target);
@@ -571,15 +589,16 @@ int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Re
 		{
 			continue;
 		}
-		for (const UCataclysmSkillEffects::FRunningAilment& Running : Carried)
+		for (const UCataclysmSkillEffects::FRunningAilment& Running : Read.Carried)
 		{
-			if (!Its->HasMatchingGameplayTag(Running.Ailment))
+			if (!Its->HasMatchingGameplayTag(Running.Ailment)
+				&& UCataclysmSkillEffects::ApplySpreadCopy(Wearer, Target, Running))
 			{
-				UCataclysmSkillEffects::ApplySpreadCopy(Wearer, Target, Running);
+				++Copies;
 			}
 		}
 	}
-	return Caught.Num();
+	return Copies;
 }
 
 int32 UCataclysmContagion::StunNearTheDying(AActor* Wearer, AActor* Dead, float Seconds)

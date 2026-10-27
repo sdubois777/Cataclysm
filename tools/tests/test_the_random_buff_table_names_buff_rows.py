@@ -1,12 +1,12 @@
 """The buffs a row's random buff may draw are Buff rows of the status table,
-and every Buff row is either in the table or on the list of those left out.
+and every Buff row is in the table.
 
 Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (2-Piece
 Bonus): Every 30 seconds, a random buff or debuff is applied to you". A drawn
 buff is one entry of `UCataclysmAbilitySystemComponent::RandomBuffTable`, a
 table in code. THE OWNER ANSWERED ON 2026-10-26, "Add everything": every Buff
-row joins the pool once it is built as a standalone buff (issue #2538). Each
-batch that builds some appends them to the table and moves them here.
+row joins the pool once it is built as a standalone buff (issue #2538). Four
+batches appended them to the table, and since batch 4 every Buff row is in it.
 
 WHAT THIS FILE IS FOR. The table names each buff by the name of its row in
 `game/Data/StatusEffects.csv`, and nothing in the engine compares the two: a
@@ -15,9 +15,10 @@ under a name no row has. And a Buff row added to or taken out of the status
 table changes what "a random buff" could mean without anybody deciding whether
 it joins the draw. Both are refused here.
 
-AS EACH BATCH LANDS, the table in the engine changes, and `IN_THE_TABLE`
-and `LEFT_OUT` below change with it. That is the point of the second list: it
-is the record of what is still left out and why.
+THE LIST OF THOSE LEFT OUT WAS DELETED WITH ITS LAST ENTRY, in batch 4. A Buff
+row added to the status table fails `test_every_buff_row_is_in_the_table` until
+somebody builds it into the table, or brings back a list of those left out with
+the reason.
 """
 import csv
 import re
@@ -54,21 +55,12 @@ IN_THE_TABLE = (
     "Death",
     "Feasting",
     "The Ascended",
+    # Batch 4 of issue #2538, 2026-10-26, the last two: each wears a row of its
+    # own, written in code, as batch 3's do. Appended, so places 0 to 14 keep
+    # their buffs.
+    "Plague",
+    "Chaotic Barrier",
 )
-
-#: Why eight of the Buff rows were not in the table, as ruled on 2026-10-12.
-ANOTHERS = "it describes another set's own mechanic or an enemy's"
-
-#: Every other Buff row, and why it is not in the table.
-LEFT_OUT = {
-    # EVERY ONE OF THESE JOINS THE TABLE once it is built as a standalone buff:
-    # the owner answered "Add everything" on 2026-10-26 (issue #2538). The
-    # reasons are why each is not built yet.
-    #
-    # EACH DESCRIBES ANOTHER SET'S OWN MECHANIC OR AN ENEMY'S. Ruled 2026-10-12.
-    "Plague": ANOTHERS,
-    "Chaotic Barrier": ANOTHERS,
-}
 
 
 def table_names() -> tuple[str, ...]:
@@ -101,7 +93,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 15
+    assert len(table_names()) == len(IN_THE_TABLE) == 17
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -114,18 +106,19 @@ def test_every_buff_in_the_table_is_a_buff_row_of_the_status_table() -> None:
     assert [name for name in table_names() if name not in rows] == []
 
 
-def test_every_buff_row_is_in_the_table_or_on_the_list_of_those_left_out() -> None:
+def test_every_buff_row_is_in_the_table() -> None:
     """Eighteen Buff rows on 2026-10-12: six in the table and twelve left out.
     Seventeen since 2026-10-26 (issue #2533 retired Warzone Control Points): six and eleven.
     Eight and nine since batch 1 of issue #2538 added Dervish and Warhound.
     Twelve and five since batch 2 added Sanctified Power, Demonic Rage,
     Temporal Flux and Void.
     Fifteen and two since batch 3 added Death, Feasting and The Ascended.
-    A row added to the status table fails here until somebody decides which
-    list it joins."""
+    Seventeen and none since batch 4 added Plague and Chaotic Barrier, and the
+    list of those left out was deleted with its last entry.
+    A row added to the status table fails here until somebody decides whether
+    it joins the table."""
     rows = set(buff_rows())
-    assert not set(IN_THE_TABLE) & set(LEFT_OUT)
-    assert rows == set(IN_THE_TABLE) | set(LEFT_OUT)
+    assert rows == set(IN_THE_TABLE)
     assert len(rows) == 17
 
 

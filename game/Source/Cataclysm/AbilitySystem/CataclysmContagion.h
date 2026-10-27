@@ -369,6 +369,18 @@ public:
 	static int32 BlastAt(AActor* Wearer, const FCataclysmBlastRead& Read, float Damage);
 
 	/**
+	 * The copies of `BlastAt`, split out of it with the reach as a parameter. Issue #2538, batch 4, 2026-10-26: the
+	 * random buff Plague spreads with them at 3 metres, and the blast still passes `SpreadFromTheDyingMetres`.
+	 *
+	 * EVERY ENEMY OF `Wearer` WITHIN `ReachInMetres` OF `Read.Position`, `Read.Dead` left out and the dead passed over,
+	 * is given a spread copy of each of `Read.Carried` it does not already carry. An enemy already carrying an ailment
+	 * is passed over for that ailment only.
+	 *
+	 * @return how many copies were applied
+	 */
+	static int32 GiveSpreadCopiesNear(AActor* Wearer, const FCataclysmBlastRead& Read, float ReachInMetres);
+
+	/**
 	 * The freeze of "Chronomancer's Time-Lock (6-Piece Bonus)". The owner,
 	 * 2026-10-08: "Yes it acts like a stun".
 	 *
