@@ -10,8 +10,9 @@ per-floor step in `ApplyFloorRulesToPlayer`; a new `DivineResurgenceHeard`; one 
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN, IN THIS FORM, THE THIRD.** The first form failed an existing test
-  in window w68 and the second failed the new one in window w69; both are recorded below.
+- **BUILT AND RUN: window w70 below passed every registered figure with the third form, and both proofs were
+  PROVED.** The first form failed an existing test in window w68 and the second failed the new one in window w69;
+  both are recorded below.
 - **THE TEST READS IN ONE ORDER OF CALLING, NOT TWO.** The dungeon binds to deaths in `StartPlay`, before any test
   listener, and the engine calls the newer binding first, so the test's reading is always made before the dungeon has
   heard either death. Binding the dungeon again to try the other order would make it count every death twice.
@@ -124,7 +125,27 @@ The failure: "Expected 'while the second death waited to be heard, the placed co
 but it was 7". `ARisenCreatureDoesNotCountTowardTheNextFloor` passed. The third form, under What changed, is
 registered for the next window, w70: **4301 / 0 on `3b0c74ef3`** (#2552, the Withered Touch merge, measured 4300, and
 the one test this branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-3`; P1 and P2 as above; memory as above;
-the counts quoted as printed. Not run yet.
+the counts quoted as printed.
+
+**Window w70 (lock `dungeon-w70`, `fix/divine-resurgence-placed-count-3` at `904bcb391`, on `3b0c74ef3`, 2026-10-27)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`3b0c74ef3` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 10.16 of 31.1", just above the floor. The lock was released before anything was written here. The move onto
+`3b0c74ef3` left the code as it was: the patch ids of the branch's changes but this file match before and after
+(`d1ef045db4ed`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 40 actions, 37 files compiled` |
+| Whole Unreal suite | 4301 / 0 | `4301 tests performed, 4301 succeeded, 0 failed`; declared 4301, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7642`, peak 7,982 |
+| The counts | quoted as printed | "Divine Resurgence: placed 8 before, 8 while the second death waited, 8 after" |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the "not yet in the set" clause removed | the new test fails | "1 tests performed, 0 succeeded, 1 failed: ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the set emptied at the floor change | the Horde wave test fails | "1 tests performed, 0 succeeded, 1 failed: ARisenCreatureDoesNotCountTowardTheNextFloor"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+Both cases the earlier forms failed now pass: the new test (w69's) and `ARisenCreatureDoesNotCountTowardTheNextFloor`
+(w68's).
 
 ---
 
