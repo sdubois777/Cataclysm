@@ -11,6 +11,9 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For fear, put on a commanded creature in the Compel tests. Issue #2560.
 #include "AbilitySystem/CataclysmFear.h"
+// For Chorus and the hit notices its repeats raise, in the ChorusHeld tests. Issue #2563.
+#include "AbilitySystem/CataclysmChorus.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -4936,6 +4939,338 @@ bool FCataclysmCompelHeldStunnedThrallTest::RunTest(const FString&)
 	TestTrue(TEXT("the held thrall hits harder than the other, so the enemy's loss says which struck"),
 			 Control.BlowOfTheHeld > Control.BlowOfTheFree + 1.0f);
 	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Stunned, TEXT("one stunned"), /*bMinions=*/false);
+	return true;
+}
+
+// ==========================================================================
+// Chorus makes no repeat by a stunned, knocked-down or feared creature. Issue #2563.
+// ==========================================================================
+
+namespace CataclysmChorusHeldTest
+{
+	using CataclysmCompelHeldTest::ECompelHeldBy;
+	using CataclysmCompelHeldTest::ECompelHeldKind;
+
+	/** What one scene measured. */
+	struct FChorusHeldRead
+	{
+		bool bSetUp = false;
+		/** What `UCataclysmChorus::Repeat` returned. */
+		int32 Repeats = -1;
+		/** What the repeats took off the target's health, and the health they left. */
+		float Lost = 0.0f;
+		float HealthAfter = 0.0f;
+		/** The hits on the target each follower dealt while `Repeat` ran. */
+		int32 HitsByTheHeld = 0;
+		int32 HitsByTheFree = 0;
+	};
+
+	/** What the caster's hit sent, so each repeat sends 30% of it, 300. */
+	constexpr float SentByTheHit = 1000.0f;
+
+	/**
+	 * One scene in a world of its own, rigged as the Compel tests' scenes are:
+	 * the commander at the origin, the target fourteen metres along its facing,
+	 * two followers twenty metres to either side, and a creature behind the
+	 * commander that puts `By` on the held one. The commander holds Chorus, given
+	 * by hand as its row will give it, and a Heavy strike, which is not the
+	 * basic attack. Then `UCataclysmChorus::Repeat` is called once, for a hit on
+	 * the target that sent 1000, and its count, the target's loss and the hits
+	 * each follower dealt are read.
+	 *
+	 * BOTH FOLLOWERS' REPEATS ARE THE SAME 300 ON THE SAME TARGET, so the loss
+	 * says how many repeated and the hit notices say which.
+	 */
+	FChorusHeldRead ChorusWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who,
+									  ECompelHeldKind Kind, ECompelHeldBy By)
+	{
+		using namespace CataclysmCommandTest;
+		FChorusHeldRead Read;
+		const auto Named = [Who](const TCHAR* What)
+		{
+			return FString::Printf(TEXT("%s: %s"), Who, What);
+		};
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedCaster Commander(World, FVector::ZeroVector);
+		FScopedCreature Struck(World, FVector(14 * M, 0, 0),
+							   ECataclysmTeam::Monsters, CataclysmCompelHeldTest::StruckHealth);
+		FScopedCreature Holder(World, FVector(-10 * M, 0, 0));
+
+		ACataclysmCharacterBase* Held = nullptr;
+		ACataclysmCharacterBase* Free = nullptr;
+		ACataclysmMinion* HeldMinion = nullptr;
+		ACataclysmMinion* FreeMinion = nullptr;
+		TUniquePtr<FScopedCreature> HeldThrall;
+		TUniquePtr<FScopedCreature> FreeThrall;
+		ON_SCOPE_EXIT
+		{
+			if (IsValid(HeldMinion)) { HeldMinion->Destroy(); }
+			if (IsValid(FreeMinion)) { FreeMinion->Destroy(); }
+		};
+		if (Kind == ECompelHeldKind::Minions)
+		{
+			HeldMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, 20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			FreeMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, -20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			if (!Test.TestNotNull(*Named(TEXT("set-up: the held imp")), HeldMinion)
+				|| !Test.TestNotNull(*Named(TEXT("set-up: the free imp")), FreeMinion))
+			{
+				return Read;
+			}
+			Held = HeldMinion;
+			Free = FreeMinion;
+		}
+		else
+		{
+			HeldThrall = MakeUnique<FScopedCreature>(World, FVector(0, 20 * M, 0));
+			FreeThrall = MakeUnique<FScopedCreature>(World, FVector(0, -20 * M, 0));
+			if (!Test.TestTrue(*Named(TEXT("set-up: the held creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, HeldThrall->Actor))
+				|| !Test.TestTrue(*Named(TEXT("set-up: the free creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, FreeThrall->Actor)))
+			{
+				return Read;
+			}
+			Held = HeldThrall->Actor;
+			Free = FreeThrall->Actor;
+		}
+		if (!Test.TestEqual(*Named(TEXT("set-up: the commander commands both")),
+				UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 2))
+		{
+			return Read;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmChorus::Stat)).Base = 1.0f;
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Commander, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=120"),
+			TEXT("Chorus Held Test Skill"));
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a Heavy strike is granted")), Strike))
+		{
+			return Read;
+		}
+
+		// WHAT IS PUT ON THE HELD FOLLOWER, designed and for ten seconds, by a
+		// creature behind the commander. No clock moves, so none of it runs out.
+		bool bLanded = true;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			bLanded = UCataclysmSkillEffects::ApplyStun(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Knockdown:
+			bLanded = UCataclysmSkillEffects::ApplyKnockdown(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Fear:
+			bLanded = UCataclysmFear::ApplyFear(Holder.Actor, Held, /*Seconds=*/10.0f,
+				Holder.Actor->GetActorLocation());
+			break;
+		default:
+			break;
+		}
+		if (!Test.TestTrue(*Named(TEXT("set-up: what is put on the held follower landed")), bLanded)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and is on it")), CataclysmCompelHeldTest::IsHeldBy(Held, By))
+			|| !Test.TestTrue(*Named(TEXT("set-up: the free follower may act and is not fleeing")),
+				CataclysmCompelHeldTest::IsHeldBy(Free, ECompelHeldBy::Nothing)))
+		{
+			return Read;
+		}
+		// A FEARED FOLLOWER MAY STILL ACT, so only the flee step can refuse it.
+		if (By == ECompelHeldBy::Fear
+			&& !Test.TestFalse(*Named(TEXT("set-up: the feared follower is not under a hard stop")),
+				UCataclysmSkillEffects::CannotAct(Held)))
+		{
+			return Read;
+		}
+
+		// EVERY HIT ON THE TARGET WHILE `Repeat` RUNS, counted by which follower dealt it.
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the world's hit notices")), Events))
+		{
+			return Read;
+		}
+		AActor* const Target = Struck.Actor;
+		const FDelegateHandle Heard = Events->OnHit.AddLambda(
+			[&Read, Held, Free, Target](const FCataclysmHitNotice& Notice)
+			{
+				if (Notice.Target == Target && Notice.DealtBy == Held)
+				{
+					++Read.HitsByTheHeld;
+				}
+				if (Notice.Target == Target && Notice.DealtBy == Free)
+				{
+					++Read.HitsByTheFree;
+				}
+			});
+		const float Before = Struck.Health();
+		Read.Repeats = UCataclysmChorus::Repeat(Commander.Actor, Target, SentByTheHit, Strike);
+		Events->OnHit.Remove(Heard);
+		Read.HealthAfter = Struck.Health();
+		Read.Lost = Before - Read.HealthAfter;
+		if (!Test.TestTrue(*Named(TEXT("set-up: and what was put on the held follower is still on it")),
+				CataclysmCompelHeldTest::IsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		Read.bSetUp = true;
+		return Read;
+	}
+
+	/** The control, with nothing on either follower: both repeat, once each, and the target loses health. */
+	void ExpectBothRepeat(FAutomationTestBase& Test, const FChorusHeldRead& Control)
+	{
+		Test.TestEqual(*FString::Printf(TEXT("control: with nothing on them, both followers repeat the hit "
+											 "(Repeat returned %d; %.1f lost, health %.1f after)"),
+										Control.Repeats, Control.Lost, Control.HealthAfter),
+					   Control.Repeats, 2);
+		Test.TestEqual(TEXT("control: the follower held in the other scene repeats once"), Control.HitsByTheHeld, 1);
+		Test.TestEqual(TEXT("control: the other follower repeats once"), Control.HitsByTheFree, 1);
+		Test.TestTrue(*FString::Printf(TEXT("control: and the target loses health (%.1f lost, health %.1f after)"),
+									   Control.Lost, Control.HealthAfter),
+					  Control.Lost > 1.0f);
+	}
+
+	/**
+	 * The scene with one held: the follower beside it repeats, the held one does
+	 * not, so `Repeat` returns 1 and the target loses half what the control lost.
+	 *
+	 * A QUARTER OF THE CONTROL'S LOSS IS THE ALLOWANCE, half of one repeat, so a
+	 * small difference in how the target mitigates moves no verdict and a whole
+	 * repeat too many or too few still does.
+	 */
+	void ExpectTheHeldFollowerMakesNoRepeat(FAutomationTestBase& Test, const FChorusHeldRead& Control,
+											const FChorusHeldRead& Held, const TCHAR* Hold)
+	{
+		ExpectBothRepeat(Test, Control);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the follower beside it repeats once"), Hold),
+					   Held.HitsByTheFree, 1);
+		Test.TestEqual(*FString::Printf(TEXT("%s: only the follower beside it repeats: Repeat returns 1 "
+											 "(it returned %d; %.1f lost, health %.1f after; the control lost %.1f)"),
+										Hold, Held.Repeats, Held.Lost, Held.HealthAfter, Control.Lost),
+					   Held.Repeats, 1);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the held one deals the target nothing (%d hits by it)"),
+										Hold, Held.HitsByTheHeld),
+					   Held.HitsByTheHeld, 0);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the target loses one repeat's worth, not two (%.1f lost, "
+											 "health %.1f after; the control lost %.1f for two; Repeat returned %d)"),
+										Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.Repeats),
+					   Held.Lost, Control.Lost / 2.0f, Control.Lost / 4.0f);
+	}
+}
+
+// WITH NOTHING ON EITHER FOLLOWER, BOTH REPEAT. The control the four tests
+// below each run beside their held scene, on its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldControlTest,
+	"Cataclysm.ChorusHeld.WithNothingOnThemBothMinionsRepeatTheHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldControlTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	if (!Control.bSetUp)
+	{
+		return false;
+	}
+	ExpectBothRepeat(*this, Control);
+	return true;
+}
+
+// A STUNNED MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. `CannotAct`,
+// the brain's hard stop.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldStunnedMinionTest,
+	"Cataclysm.ChorusHeld.AStunnedMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldStunnedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Stunned = ChorusWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Minions, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Stunned, TEXT("one stunned"));
+	return true;
+}
+
+// A KNOCKED-DOWN MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. The
+// same hard stop as a stun.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldKnockedDownMinionTest,
+	"Cataclysm.ChorusHeld.AKnockedDownMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldKnockedDownMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead KnockedDown = ChorusWithOneHeld(
+		*this, TEXT("one knocked down"), ECompelHeldKind::Minions, ECompelHeldBy::Knockdown);
+	if (!Control.bSetUp || !KnockedDown.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, KnockedDown, TEXT("one knocked down"));
+	return true;
+}
+
+// A FEARED MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. The brain's
+// flee step: it is not under a hard stop, so only that step refuses it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldFearedMinionTest,
+	"Cataclysm.ChorusHeld.AFearedMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldFearedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Feared = ChorusWithOneHeld(
+		*this, TEXT("one feared"), ECompelHeldKind::Minions, ECompelHeldBy::Fear);
+	if (!Control.bSetUp || !Feared.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Feared, TEXT("one feared"));
+	return true;
+}
+
+// A STUNNED THRALL MAKES NO REPEAT, AND THE THRALL BESIDE IT DOES. A thrall is
+// commanded as a minion is, and `ThingsCommandedBy` lists it for Chorus.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldStunnedThrallTest,
+	"Cataclysm.ChorusHeld.AStunnedThrallMakesNoRepeatAndTheThrallBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldStunnedThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Thralls, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Stunned = ChorusWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Thralls, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Stunned, TEXT("one stunned"));
 	return true;
 }
 
