@@ -165,9 +165,29 @@ brackets balanced; each break compiles and leaves the file using everything it i
 - deploy a Ballista with Spear / Special and let a pack close in: its bolts go to the enemy at the back of the pack
   within 15 m, not the one in front of the player; a Bolt Turret beside it still shoots the nearest.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t141w
 
-Not run. The enchantment session records its window here.
+Window t141w, run 2026-10-27 under the lock as `enchant-t141w`, at `08fc59eda` on development `b83edbb97` (moved from
+`f05010909` on `3b0c74ef3` as `feat/the-ballista-fires-at-the-furthest-1`; the only conflict was this file).
+
+**MEMORY, AND THE OWNER'S EXCEPTION OF 2026-10-27.** Free memory stayed below the 10 GB floor for about two and a half
+hours (readings 9,629 to 10,117 MB). The project owner then allowed a one-time floor of 9,800 MB for this run and the
+#1795 run after it, the coordinating session reading the standing rule as 10 GiB (10,240 MB) for every later run. The
+reading taken immediately before the lock, at 09:51:56, was **10,496 MB**, which clears both floors, so the exception was
+granted and not needed. An hour earlier it had fallen to 3,455 MB for about twenty minutes, with no Unreal or build
+process running.
+
+No new source file and no status row changed, so the window had no build-cache step and no asset rebuild. Every step
+exited 0:
+
+| Step | Result |
+|---|---|
+| The five new tests, each alone | 1 of 1 each; the first build compiled 38 files in 41 actions |
+| The whole Unreal suite | "4306 tests performed, 4306 succeeded, 0 failed"; 4306 declared, gap 0 |
+| Memory | `tests=4913 peak_used_virtual_mb=8054 final_used_virtual_mb=7694` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| BT-G1, the row read forced to nearest | PROVED: all 5 `Cataclysm.BallistaTargets.` tests failed, 10 of 10 assertions; 5 of 5 passed restored |
+| BT-G2, the comparison reversed | PROVED: all 5 failed, 9 of 9 assertions; 5 of 5 passed restored |
 
 ---
 
