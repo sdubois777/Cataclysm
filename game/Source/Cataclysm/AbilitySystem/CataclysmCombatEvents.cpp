@@ -336,14 +336,10 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		const bool bHasSkillTags = Notice.KillingSkillTags != nullptr;
 		const FGameplayTagContainer SkillTags = bHasSkillTags ? *Notice.KillingSkillTags : FGameplayTagContainer();
 		const TWeakObjectPtr<UCataclysmCombatEvents> Announcer(Events);
-		const TWeakObjectPtr<const AActor> Waiting(Notice.Victim);
-		Events->DeathsWaiting.Add(Waiting);
-		Events->WorkAfterDeaths.Add([Announcer, Waiting, Notice, KillingTags, bHasSkillTags, SkillTags]()
+		Events->WorkAfterDeaths.Add([Announcer, Notice, KillingTags, bHasSkillTags, SkillTags]()
 		{
 			if (UCataclysmCombatEvents* Still = Announcer.Get())
 			{
-				// NO LONGER WAITING, from the moment it is told. See `IsWaitingToBeHeard`.
-				Still->DeathsWaiting.Remove(Waiting);
 				FCataclysmDeathNotice Heard = Notice;
 				Heard.KillingTags = &KillingTags;
 				Heard.KillingSkillTags = bHasSkillTags ? &SkillTags : nullptr;
@@ -377,11 +373,6 @@ void UCataclysmCombatEvents::AfterThisDeathIsHeard(TFunction<void()> Work)
 		return;
 	}
 	WorkAfterDeaths.Add(MoveTemp(Work));
-}
-
-bool UCataclysmCombatEvents::IsWaitingToBeHeard(const AActor* Victim) const
-{
-	return Victim && DeathsWaiting.Contains(TWeakObjectPtr<const AActor>(Victim));
 }
 
 void UCataclysmCombatEvents::DoWorkAfterDeaths()

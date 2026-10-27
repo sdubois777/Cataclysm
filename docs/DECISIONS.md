@@ -4,14 +4,14 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-26 — Divine Resurgence counts a dead creature as standing until it has heard its death (#2546)
 
-**Affects:** `ACataclysmDungeonGameMode::DivineResurgencePlacedCount`; `UCataclysmCombatEvents` (a set of the
-deaths waiting to be heard, and `IsWaitingToBeHeard`); one new Unreal test. Closes
+**Affects:** `ACataclysmDungeonGameMode::DivineResurgencePlacedCount`, `NoteDeathForDivineResurgence` and the
+per-floor step in `ApplyFloorRulesToPlayer`; a new `DivineResurgenceHeard`; one new Unreal test. Closes
 [#2546](https://github.com/sdubois777/Cataclysm/issues/2546).
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN, IN THIS FORM.** The first form, window w68 below, failed an
-  existing test, and was replaced.
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN, IN THIS FORM, THE THIRD.** The first form failed an existing test
+  in window w68 and the second failed the new one in window w69; both are recorded below.
 - **THE TEST READS IN ONE ORDER OF CALLING, NOT TWO.** The dungeon binds to deaths in `StartPlay`, before any test
   listener, and the engine calls the newer binding first, so the test's reading is always made before the dungeon has
   heard either death. Binding the dungeon again to try the other order would make it count every death twice.
@@ -41,16 +41,36 @@ wave's dead on `FloorEnemies`, the set was emptied at the change, and those bodi
 standing -- 8 placed where the test expects 6, two extra for the two killed. "Not in the heard set" also covered deaths
 heard before the set was emptied. Read from the code and the test's set-up, and the arithmetic; not measured further.
 
-**Ruled by the coordinating session, 2026-10-26, and built:** "waiting to be heard" is asked of the death announcer,
-which holds the queue. `UCataclysmCombatEvents` keeps `DeathsWaiting`, the victims of the queued deaths, held weakly
-(`TWeakObjectPtr`) so a victim destroyed while it waits leaves no dangling entry: added where `NoteDeath` queues a
-death, removed just before that death is announced. `IsWaitingToBeHeard` reads it. **No path removes a queued death
-without announcing it**, as the coordinating session asked to be checked: `WorkAfterDeaths` is changed only by its two
-`Add`s and by `DoWorkAfterDeaths`, which runs every entry it takes off; a queued death's entry announces it, unless the
-announcer itself is gone, and the set goes with it. The placed count counts a creature that pays for its death and is
-either alive or dead and waiting to be heard. `DivineResurgenceHeard`, its add and its reset are removed: nothing is
-reset at a floor change, and a creature that died earlier, a Horde dungeon's last wave included, is in neither count,
-as before. The fallen count, `IsDead` and every death listener are unchanged.
+**Second, measured wrong in window w69:** "waiting to be heard" asked of the death announcer, which kept the victims
+of queued deaths. **It failed the new test,** placed 7 where 8 was expected: the test reads the count during the first
+death's announcement, before the dungeon, which is bound first and so called last, has heard it; that death is being
+announced, not waiting, and was in neither count. Exactly one was missing, so the waiting creature was counted, and the
+queue worked; two missing would have read 6. Read from the code and the arithmetic.
+
+**Third, ruled by the coordinating session on 2026-10-27, and built:** `DivineResurgenceHeard`, held weakly, records
+every creature whose death Divine Resurgence's listener is told of: added at the very top of
+`NoteDeathForDivineResurgence`, before its returns for a floor without the row, a revival already done, or a creature
+that does not pay. `OnSomethingDied` calls it for every death the dungeon hears, with no return before it. It is **never
+emptied at a floor change**: at each, beside `DivineResurgenceFallen = 0` in `ApplyFloorRulesToPlayer`, only the entries
+whose creature has been destroyed are removed. The placed count counts a creature that pays for its death and is
+either alive or not yet in the set. The announcer's waiting set and `IsWaitingToBeHeard` are removed;
+`CataclysmCombatEvents.cpp/.h` are as `development` has them. The fallen count, `IsDead` and every death listener are
+unchanged.
+
+**Two points the coordinating session asked to be stated, read from the code:**
+
+1. **A creature brought back.** None is brought back as the same actor: `UCataclysmSkillEffects::ClearDead`, the one
+   place a Dead tag comes off, is called only by `ACataclysmPlayerCharacter::Revive`. The three rules that raise the
+   dead -- Vengeful Wraiths, Dead Rising and Divine Resurgence -- each spawn a new actor and set
+   `bRisenFromTheDead = true`, which makes `PaysForItsDeath()` false, so the risen stay out of the placed count.
+2. **How long the set lives.** As long as the dungeon game mode, pruned at every floor change. The dungeon run ends in
+   `LeaveEmpireDungeon`, which reaches the same `ApplyFloorRulesToPlayer` through `ApplyFloorRulesKeepingHealth`, so
+   the set is pruned there and not emptied; `LeaveEmpireDungeon` does not clear `FloorEnemies`. The next floor's
+   `GoToFloor` clears them with `ClearFloorEnemies`, which destroys them, except on a Horde dungeon's next wave, and
+   their entries are taken out at the next prune.
+
+The cases measured, against the third form: w68's Horde dead were told of on the earlier wave, are still in the set,
+and are out of both counts (6); w69's announced death and waiting death are both not yet told of, so both stand (8).
 
 ### Test
 
@@ -67,8 +87,8 @@ Resurgence:".
 |---|---|
 | Whole Unreal suite | 4289 / 0: `development` at `90e9e1010` (#2550) measured 4288, and one test is added; the branch moved onto it as `fix/divine-resurgence-placed-count-1` |
 | Memory | about 7,900 MB; reported if above 9,500 |
-| P1, a dead creature never counted as standing however its death waits | `ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas` fails |
-| P2, every dead creature counted as standing, w68's fault | `ARisenCreatureDoesNotCountTowardTheNextFloor` fails |
+| P1, the "not yet in the set" clause removed | `ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas` fails |
+| P2, the set emptied at the floor change, w68's fault | `ARisenCreatureDoesNotCountTowardTheNextFloor` fails |
 | The counts | quoted as printed on the "Divine Resurgence:" line |
 
 ### Run
@@ -85,10 +105,26 @@ the lock was taken ("free GB: 11.33"). The lock was released before anything was
 | The counts | quoted as printed | "Divine Resurgence: placed 8 before, 8 while the second death waited, 8 after" |
 | Python (JUnit) | | 7017 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
 
-The failure: "Expected 'and counts only the unmarked as placed' to be 6, but it was 8". The new test passed. The
-second form, under What changed, is registered for the next window, w69: **4295 / 0 on `c14da36bb`** (#2551, measured
-4294, and the one test this branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-2`; P1 and P2
-as above; memory as above; the counts quoted as printed. Not run yet.
+The failure: "Expected 'and counts only the unmarked as placed' to be 6, but it was 8". The new test passed.
+
+**Window w69 (lock `dungeon-w69`, `fix/divine-resurgence-placed-count-2` at `e61b4b13e`, on `c14da36bb`, 2026-10-26)
+STOPPED AT THE SUITE on the new test, the second form's fault.** The six conditions were checked immediately before the
+lock was taken, after waiting for `development`'s CI run at `c14da36bb` to finish ("completed success"; "free GB:
+10.97"). The lock was released before anything was written here. No proof was run.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 40 actions, 37 files compiled` |
+| Whole Unreal suite | 4295 / 0 | `4295 tests performed, 4294 succeeded, 1 failed: ADeathWaitingToBeHeardLeavesDivineResurgencesPlacedCountWhereItWas`; declared 4295, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7894`, peak 8,228 |
+| The counts | quoted as printed | "Divine Resurgence: placed 8 before, 7 while the second death waited, 8 after" |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+The failure: "Expected 'while the second death waited to be heard, the placed count was what it was before' to be 8,
+but it was 7". `ARisenCreatureDoesNotCountTowardTheNextFloor` passed. The third form, under What changed, is
+registered for the next window, w70: **4301 / 0** on the Withered Touch merge (measured 4300, and the one test this
+branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-3`; P1 and P2 as above; memory as above;
+the counts quoted as printed. Not run yet.
 
 ---
 

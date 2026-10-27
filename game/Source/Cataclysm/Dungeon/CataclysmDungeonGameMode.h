@@ -5085,6 +5085,16 @@ private:
 	 */
 	TArray<FDivineResurgenceGrave> DivineResurgenceGraves;
 	int32 DivineResurgenceFallen = 0;
+
+	/**
+	 * Every creature whose death Divine Resurgence's listener has been told of, on any floor, with or without the row.
+	 * Issue #2546. `DivineResurgencePlacedCount` counts a dead creature as standing until it is in here: a death being
+	 * announced, or waiting to be heard (#2482), is in neither of its counts until then. NEVER EMPTIED AT A FLOOR
+	 * CHANGE, because a Horde dungeon's next wave keeps the last wave's dead on `FloorEnemies` and they must stay out
+	 * of both counts; window w68 measured a set emptied there counting two such bodies as standing. Held weakly, and
+	 * only the destroyed are removed, at each floor change; see `ApplyFloorRulesToPlayer`.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> DivineResurgenceHeard;
 	bool bDivineResurgenceDone = false;
 	int32 DivineResurgenceRisen = 0;
 
