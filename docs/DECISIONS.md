@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-27 — Divine Resurgence counts a dead creature as standing until it has heard its death (#2546)
+## 2026-10-26 — Divine Resurgence counts a dead creature as standing until it has heard its death (#2546)
 
 **Affects:** `ACataclysmDungeonGameMode::DivineResurgencePlacedCount`, `NoteDeathForDivineResurgence` and the
 per-floor reset in `ApplyFloorRulesToPlayer`; a new `DivineResurgenceHeard`; one new Unreal test. Closes
@@ -24,7 +24,7 @@ wait it was in neither count: the placed count read one short for each death wai
 compares the fallen against a share of the placed count, so the revival could come a death early, and the floor
 panel's "comes at" read one lower.
 
-### Ruled by the coordinating session, 2026-10-27
+### Ruled by the coordinating session, 2026-10-26
 
 | Question | Ruled |
 |---|---|
