@@ -11,7 +11,7 @@ measured Wasting Sickness, Mortal Decay and Silence.
 ### SAID FIRST
 
 - **THE "BEFORE LEAVING" READINGS PRINTED BY BOTH TESTS IN WINDOW W72 WERE WRONG: 0.0 IN EVERY RUN; CORRECTED
-  AFTER IT, AND THE CORRECTION NOT YET RUN (window w73 below).** Each test keeps the pointer
+  AFTER IT; window w73 below printed -3.0 and 10.0 before leaving, as registered.** Each test keeps the pointer
   `DungeonRuleOn` returns, which points into the player's list of stat modifiers; leaving empties that list, and the
   line that prints runs after leaving, so it reads memory the list no longer holds. The assertions are not affected: each
   CONTROL read the value before leaving, and each check after leaving takes a new pointer. The "after" readings are
@@ -88,7 +88,20 @@ Window w73, registered before it runs:
 
 If either test alone does not print its value, the window stops there and nothing after it runs.
 
-Not run yet.
+**Window w73 (lock `dungeon-w73`, `test/leaving-the-dungeon-nihil-3` at `535978ec3`, on `450afa681`, 2026-10-27)
+passed every registered figure.** The lock was taken at 17:40 on a free-memory reading immediately before it of
+10,790 MB, with the other five conditions met: both of `development`'s runs at `450afa681` succeeded, none in progress
+or queued, the lock free, no build or editor process, no open pull request. The lock was released before anything was
+written here. The move onto `450afa681` met only the top of this file (patch ids before and after `cdc6f45c62be`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 6 actions, 3 files compiled` |
+| Walking test alone | 1 / 1; "-3.0 … before leaving, 0.0 after" | "1 tests performed, 1 succeeded, 0 failed"; "Nihil's Embrace walking: -3.0 War resistance before leaving, 0.0 after" |
+| Reward test alone | 1 / 1; "10.0 … before leaving, 0.0 after" | "1 tests performed, 1 succeeded, 0 failed"; "Nihil's Embrace reward: 10.0 War resistance before leaving, 0.0 after" |
+| Whole Unreal suite | 4337 / 0 | `4337 tests performed, 4337 succeeded, 0 failed`; declared 4337, gap 0; it printed the same two lines |
+| Memory | quoted; reported if above 9,500 | `final_used_virtual_mb=7774`, peak 8,092 |
+| Python (JUnit) | of record | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
 
 ---
 
