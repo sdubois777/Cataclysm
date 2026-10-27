@@ -1422,4 +1422,84 @@ CATACLYSM_TEST(FCataclysmSkillGadgetBarTest,
 	return true;
 }
 
+// ==========================================================================
+// A stunned player's gadget still casts; a stunned gadget does not. Issue #1627, Q1, ruled 2026-10-27 by the
+// coordinating session: a gadget is a separate actor acting on its own, names itself in `FreeRepeatCastBy`, and asks its
+// own `CannotAct` (`ACataclysmMinion::CastPlayersSkillFromHere`). In the `Cataclysm.TriggeredSkill.` group, beside the
+// check's other tests, and in this file because its rig is here. Three players 60 m apart, each with an enemy 3 m from
+// where its gadget stands. THE STUN IS THE TAG `ApplyStun` LAYS, put on by hand.
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmSkillGadgetStunnedPlayerTest,
+	"Cataclysm.TriggeredSkill.AStunnedPlayersSkillGadgetStillCastsAndAStunnedGadgetDoesNot")
+{
+	using namespace CataclysmSkillGadgetTest;
+
+	FGadgetTestWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FGadgetTestRig Free(World, FVector::ZeroVector);
+	const FVector StunnedHome(60.0f * M, 0.0f, 0.0f);
+	FGadgetTestRig StunnedPlayer(World, StunnedHome);
+	const FVector OwnHome(120.0f * M, 0.0f, 0.0f);
+	FGadgetTestRig StunnedGadgets(World, OwnHome);
+	if (!Free.IsUsable(*this) || !StunnedPlayer.IsUsable(*this) || !StunnedGadgets.IsUsable(*this))
+	{
+		return false;
+	}
+	Free.Holds({ConvertsSlot(TEXT("Slot.Heavy"))});
+	StunnedPlayer.Holds({ConvertsSlot(TEXT("Slot.Heavy"))});
+	StunnedGadgets.Holds({ConvertsSlot(TEXT("Slot.Heavy"))});
+	const FVector FreeAt(0.0f, 20.0f * M, 0.0f);
+	const FVector StunnedAt = StunnedHome + FVector(0.0f, 20.0f * M, 0.0f);
+	const FVector OwnAt = OwnHome + FVector(0.0f, 20.0f * M, 0.0f);
+	ACataclysmMinion* FreeGadget = GadgetTestPlace(*this, Free, ECataclysmAbilitySlot::Heavy, FreeAt);
+	ACataclysmMinion* StunnedPlayersGadget = GadgetTestPlace(*this, StunnedPlayer, ECataclysmAbilitySlot::Heavy, StunnedAt);
+	ACataclysmMinion* StunnedGadget = GadgetTestPlace(*this, StunnedGadgets, ECataclysmAbilitySlot::Heavy, OwnAt);
+	ACataclysmEnemyCharacter* FreeEnemy = GadgetTestEnemy(World, FreeAt + FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StunnedPlayersEnemy = GadgetTestEnemy(World, StunnedAt + FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StunnedGadgetsEnemy = GadgetTestEnemy(World, OwnAt + FVector(3.0f * M, 0.0f, 0.0f));
+	if (!FreeGadget || !StunnedPlayersGadget || !StunnedGadget
+		|| !TestTrue(TEXT("set-up: three enemies"), FreeEnemy && StunnedPlayersEnemy && StunnedGadgetsEnemy))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: neither the player nor the gadget stunned.
+	GadgetTestStep(FreeGadget);
+	TestEqual(TEXT("control: an unstunned player's gadget casts"), FreeGadget->SkillGadgetCastsMade, 1);
+
+	// THE PLAYER STUNNED, ITS GADGET NOT.
+	StunnedPlayer.System->AddLooseGameplayTag(UCataclysmSkillEffects::StunnedTag());
+	if (!TestTrue(TEXT("set-up: the player cannot act"), UCataclysmSkillEffects::CannotAct(StunnedPlayer.Player))
+		|| !TestFalse(TEXT("set-up: and its gadget can"), UCataclysmSkillEffects::CannotAct(StunnedPlayersGadget)))
+	{
+		return false;
+	}
+	GadgetTestStep(StunnedPlayersGadget);
+	TestEqual(TEXT("a stunned player's gadget still casts the player's skill"),
+			  StunnedPlayersGadget->SkillGadgetCastsMade, 1);
+	TestTrue(TEXT("and strikes its enemy"), GadgetTestHealthOf(StunnedPlayersEnemy) < 50000.0f);
+
+	// THE GADGET STUNNED, ITS PLAYER NOT.
+	UAbilitySystemComponent* GadgetsOwn = UCataclysmTargeting::AbilitySystemOf(StunnedGadget);
+	if (!TestNotNull(TEXT("set-up: the gadget has an ability system"), GadgetsOwn))
+	{
+		return false;
+	}
+	GadgetsOwn->AddLooseGameplayTag(UCataclysmSkillEffects::StunnedTag());
+	if (!TestTrue(TEXT("set-up: the gadget cannot act"), UCataclysmSkillEffects::CannotAct(StunnedGadget))
+		|| !TestFalse(TEXT("set-up: and its player can"), UCataclysmSkillEffects::CannotAct(StunnedGadgets.Player)))
+	{
+		return false;
+	}
+	GadgetTestStep(StunnedGadget);
+	TestEqual(TEXT("a stunned gadget casts nothing"), StunnedGadget->SkillGadgetCastsMade, 0);
+	TestEqual(TEXT("so its enemy keeps its health"), GadgetTestHealthOf(StunnedGadgetsEnemy), 50000.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -5,13 +5,17 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -400,6 +404,344 @@ bool FCataclysmTriggeredSkillShareTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("a later strike with no share stated deals the whole"), 10000.0f - Left.Health(), Whole, 0.01f);
+	return true;
+}
+
+// ==========================================================================
+// A character that cannot act uses no skill, by any route. Issue #1627, ruled 2026-10-27 by the coordinating session:
+// the check is in `UCataclysmSkillTemplate::CanActivateAbility`, and it refuses a stunned, knocked-down or feared
+// avatar unless the use names another actor casting it (`FreeRepeatCastBy`). The design's crowd-control table: Stun and
+// Knockdown, "The target cannot act at all"; Fear, "cannot attack or use a skill". One caster per case, 30 m apart.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillStunnedCasterTest,
+	"Cataclysm.TriggeredSkill.AStunnedCharacterStartsNoSkillAndAnUnstunnedOneDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillStunnedCasterTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedBody Free(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody FreeEnemy(World, FVector(1 * M, 0, 0), 10000.0f);
+	FScopedBody Stunned(World, FVector(30 * M, 0, 0), 10000.0f);
+	FScopedBody StunnedEnemy(World, FVector(31 * M, 0, 0), 10000.0f);
+	const FGameplayAbilitySpecHandle FreeHeld = GrantAHeldCleave(Free);
+	const FGameplayAbilitySpecHandle StunnedHeld = GrantAHeldCleave(Stunned);
+
+	// THE CONTROL FIRST: unstunned, a free start and the character's own skill both start.
+	TestTrue(TEXT("control: an unstunned character's free start starts"),
+			 UCataclysmTriggeredSkill::Trigger(Free.Actor, ACleaveRow(TEXT("Free Cleave")),
+											   FreeEnemy.Actor->GetActorLocation()));
+	TestTrue(TEXT("control: and strikes"), FreeEnemy.Health() < 10000.0f);
+	TestTrue(TEXT("control: and its own held skill is used"), Free.AbilitySystem->TryActivateAbility(FreeHeld));
+
+	// A DESIGNED STUN, AS A SKILL LAYS ONE, by the enemy in front of it.
+	if (!TestTrue(TEXT("set-up: the designed stun lands"),
+				  UCataclysmSkillEffects::ApplyStun(StunnedEnemy.Actor, Stunned.Actor, /*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		|| !TestTrue(TEXT("set-up: and the character cannot act"), UCataclysmSkillEffects::CannotAct(Stunned.Actor)))
+	{
+		return false;
+	}
+	const int32 HeldBefore = SkillsHeld(Stunned);
+	TestFalse(TEXT("a stunned character's free start does not start"),
+			  UCataclysmTriggeredSkill::Trigger(Stunned.Actor, ACleaveRow(TEXT("Stunned Cleave")),
+												StunnedEnemy.Actor->GetActorLocation()));
+	TestEqual(TEXT("and struck nothing"), StunnedEnemy.Health(), 10000.0f);
+	TestEqual(TEXT("and leaves nothing held"), SkillsHeld(Stunned), HeldBefore);
+	TestFalse(TEXT("and its own held skill is refused too, as the key press refuses it"),
+			  Stunned.AbilitySystem->TryActivateAbility(StunnedHeld));
+	TestEqual(TEXT("so its enemy still has its whole health"), StunnedEnemy.Health(), 10000.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillKnockedDownOrFearedTest,
+	"Cataclysm.TriggeredSkill.AKnockedDownOrFearedCharacterStartsNoSkillAndAPinnedOneDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillKnockedDownOrFearedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE TAG EACH STATE'S OWN FUNCTION LAYS, PUT ON BY HAND: `UCataclysmFear::ApplyFear` refuses anything that is not a
+	// character, and these casters are plain actors. The check reads the tags and nothing else (`CannotAct`,
+	// `IsFeared`). A PIN IS THE CONTROL: it stops movement and takes no skill away, which issue #1627 says must survive.
+	FScopedBody Pinned(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody PinnedEnemy(World, FVector(1 * M, 0, 0), 10000.0f);
+	FScopedBody KnockedDown(World, FVector(30 * M, 0, 0), 10000.0f);
+	FScopedBody KnockedDownEnemy(World, FVector(31 * M, 0, 0), 10000.0f);
+	FScopedBody Feared(World, FVector(60 * M, 0, 0), 10000.0f);
+	FScopedBody FearedEnemy(World, FVector(61 * M, 0, 0), 10000.0f);
+	Pinned.AbilitySystem->AddLooseGameplayTag(UCataclysmSkillEffects::PinnedTag());
+	KnockedDown.AbilitySystem->AddLooseGameplayTag(UCataclysmSkillEffects::KnockedDownTag());
+	Feared.AbilitySystem->AddLooseGameplayTag(UCataclysmFear::FearedTag());
+	if (!TestTrue(TEXT("set-up: the pinned character is pinned and may act"),
+				  UCataclysmSkillEffects::IsPinned(Pinned.Actor) && !UCataclysmSkillEffects::CannotAct(Pinned.Actor)
+					  && !UCataclysmFear::IsFeared(Pinned.Actor))
+		|| !TestTrue(TEXT("set-up: the knocked-down one cannot act"), UCataclysmSkillEffects::CannotAct(KnockedDown.Actor))
+		|| !TestTrue(TEXT("set-up: the feared one is feared"), UCataclysmFear::IsFeared(Feared.Actor)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("control: a pinned character's free start starts"),
+			 UCataclysmTriggeredSkill::Trigger(Pinned.Actor, ACleaveRow(TEXT("Pinned Cleave")),
+											   PinnedEnemy.Actor->GetActorLocation()));
+	TestTrue(TEXT("control: and strikes"), PinnedEnemy.Health() < 10000.0f);
+	TestFalse(TEXT("a knocked-down character's free start does not start"),
+			  UCataclysmTriggeredSkill::Trigger(KnockedDown.Actor, ACleaveRow(TEXT("Knocked Down Cleave")),
+												KnockedDownEnemy.Actor->GetActorLocation()));
+	TestEqual(TEXT("and struck nothing"), KnockedDownEnemy.Health(), 10000.0f);
+	TestFalse(TEXT("a feared character's free start does not start"),
+			  UCataclysmTriggeredSkill::Trigger(Feared.Actor, ACleaveRow(TEXT("Feared Cleave")),
+												FearedEnemy.Actor->GetActorLocation()));
+	TestEqual(TEXT("and struck nothing"), FearedEnemy.Health(), 10000.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillCastByAnotherTest,
+	"Cataclysm.TriggeredSkill.AFreeStartCastByAnotherActorIsNotStoppedByItsCastersStun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillCastByAnotherTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// A GADGET, A TRAP OR A TYRANT'S MINION CASTS ITS PLAYER'S SKILL BY NAMING ITSELF, and is not stopped by its player's
+	// stun (Q1, ruled 2026-10-27). The actor named here stands 5 m from the stunned caster, with an enemy 1 m in front
+	// of it; the caster's own enemy stands 1 m in front of the caster, and each strike reaches 3 m.
+	FScopedBody Caster(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody CastersEnemy(World, FVector(1 * M, 0, 0), 10000.0f);
+	FScopedBody CastingFor(World, FVector(0, 5 * M, 0), 10000.0f);
+	FScopedBody ItsEnemy(World, FVector(1 * M, 5 * M, 0), 10000.0f);
+	if (!TestTrue(TEXT("set-up: the designed stun lands"),
+				  UCataclysmSkillEffects::ApplyStun(CastersEnemy.Actor, Caster.Actor, /*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		|| !TestTrue(TEXT("set-up: and the caster cannot act"), UCataclysmSkillEffects::CannotAct(Caster.Actor)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the same caster, stunned, casting in its own name.
+	TestFalse(TEXT("control: cast in its own name, the stunned caster's free start does not start"),
+			  UCataclysmTriggeredSkill::Trigger(Caster.Actor, ACleaveRow(TEXT("Own Cleave")),
+												CastersEnemy.Actor->GetActorLocation()));
+	TestEqual(TEXT("control: and struck nothing"), CastersEnemy.Health(), 10000.0f);
+
+	const FVector From = CastingFor.Actor->GetActorLocation();
+	TestTrue(TEXT("cast by another actor from its place, the stunned caster's skill starts"),
+			 UCataclysmTriggeredSkill::Trigger(Caster.Actor, ACleaveRow(TEXT("Cast For It")),
+											   ItsEnemy.Actor->GetActorLocation(), /*DamageShare=*/1.0f,
+											   /*bPaysCost=*/false, &From, /*CastBy=*/CastingFor.Actor));
+	TestTrue(TEXT("and strikes the enemy in front of that actor"), ItsEnemy.Health() < 10000.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillChargeSelfStunTest,
+	"Cataclysm.TriggeredSkill.AChargeSkillsOwnStunStopsTheFreeStartThatFollowsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillChargeSelfStunTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// "After using a charge skill you are briefly stunned for 0.5-1 second": the row as the item builds it, on
+	// `skill_end` asking for `Keyword.Charge`, as `Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer` builds it. A
+	// charge ends inside its own activation in an unticked world, so its stun is on before anything follows it, as it is
+	// before a repeat made on the next tick. THE FREE START STANDS FOR THAT REPEAT: `MakePendingRepeat` ends in the same
+	// `Trigger`. A blink, which does not carry the keyword, is the control.
+	FCataclysmPoolAction Stun;
+	Stun.Event = FName(TEXT("skill_end"));
+	Stun.ApplyStatus = ECataclysmApplyStatus::Seconds;
+	Stun.bStatusOnTheWearer = true;
+	Stun.StatusName = TEXT("Stun");
+	Stun.Percent = 0.75f;
+	Stun.TriggerKey = FName(TEXT("a charge stuns its user"));
+	Stun.RequiredTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Keyword.Charge"));
+	const auto UseAMove = [&Stun](FScopedBody& Mover, const TCHAR* ParamsCell, const TCHAR* TagsCell) -> bool
+	{
+		Mover.Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		Mover.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		Mover.AbilitySystem->SetPoolActions({Stun});
+		const FGameplayAbilitySpecHandle Handle = Mover.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmMovementSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, Mover.Actor);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Mover.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmSkillTemplate* Skill = Spec ? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Skill)
+		{
+			return false;
+		}
+		Skill->SkillName = TEXT("A move that may stun its user");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(ParamsCell);
+		Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagsCell);
+		return Mover.AbilitySystem->TryActivateAbility(Handle);
+	};
+	FScopedBody Blinker(World, FVector(0, 30 * M, 0), 10000.0f);
+	FScopedBody Charger(World, FVector(0, 60 * M, 0), 10000.0f);
+	if (!TestTrue(TEXT("set-up: the blink ran"), UseAMove(Blinker, TEXT("Mode=Blink; Range=8; Radius=3.5"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Slot.Movement")))
+		|| !TestTrue(TEXT("set-up: the charge ran"), UseAMove(Charger, TEXT("Mode=Charge; Range=8; Radius=1.5"),
+		TEXT("Item.Weapon.Sword, Element.Demonic, Keyword.Charge, Slot.Movement"))))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("control: the blink leaves its user able to act"), UCataclysmSkillEffects::CannotAct(Blinker.Actor));
+	TestTrue(TEXT("control: so the free start that follows it starts"),
+			 UCataclysmTriggeredSkill::Trigger(Blinker.Actor, ACleaveRow(TEXT("After The Blink")),
+											   Blinker.Actor->GetActorLocation() + FVector(1 * M, 0, 0)));
+	if (!TestTrue(TEXT("set-up: the charge's own row stunned its user"), UCataclysmSkillEffects::IsStunned(Charger.Actor)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the free start that follows the charge does not start"),
+			  UCataclysmTriggeredSkill::Trigger(Charger.Actor, ACleaveRow(TEXT("After The Charge")),
+												Charger.Actor->GetActorLocation() + FVector(1 * M, 0, 0)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillStunnedAuraTest,
+	"Cataclysm.TriggeredSkill.ARunningAuraKeepsPulsingWhileItsCasterIsStunned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillStunnedAuraTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// UNCHANGED BY THE CHECK: it refuses an activation, and a running aura's pulse is not one. The aura is switched on
+	// unstunned; the stun lands while it runs.
+	FScopedBody Caster(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody Enemy(World, FVector(2 * M, 0, 0), 10000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+	const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+		UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura, /*Level=*/1, Caster.Actor);
+	FGameplayAbilitySpec* Spec = Handle.IsValid() ? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+	UCataclysmAuraSkill* Aura = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the aura is granted"), Aura))
+	{
+		return false;
+	}
+	Aura->SkillName = TEXT("Test Aura");
+	Aura->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Interval=1"));
+	if (!TestTrue(TEXT("set-up: it is switched on"),
+				  Caster.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+
+	Aura->Pulse();
+	const float AfterTheFirst = Enemy.Health();
+	TestTrue(TEXT("control: its first pulse strikes the enemy inside it"), AfterTheFirst < 10000.0f);
+
+	if (!TestTrue(TEXT("set-up: the designed stun lands"),
+				  UCataclysmSkillEffects::ApplyStun(Enemy.Actor, Caster.Actor, /*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		|| !TestTrue(TEXT("set-up: and the caster cannot act"), UCataclysmSkillEffects::CannotAct(Caster.Actor)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the aura still runs once its caster is stunned"), Aura->IsActive());
+	Aura->Pulse();
+	TestEqual(TEXT("and pulses again"), Aura->Pulses, 2);
+	TestTrue(TEXT("striking the enemy again"), Enemy.Health() < AfterTheFirst);
+	TestTrue(TEXT("and runs on after it"), Aura->IsActive());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTriggeredSkillStunnedBasicAttackTest,
+	"Cataclysm.TriggeredSkill.AStunnedCharactersBasicAttackIsRefusedByItsOwnCheckAndByTheSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTriggeredSkillStunnedBasicAttackTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTriggeredSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE BASIC ATTACK IS NOT EXEMPT FROM THE CHECK. Every caller of `UCataclysmBasicAttack::Swing` in the game asks
+	// `MaySwing` first, which is the same question, so that refusal is unchanged; the check refuses a swing started by
+	// any other route as well. Granted as `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill` grants it.
+	FScopedBody Free(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody FreeTarget(World, FVector(2 * M, 0, 0), 10000.0f);
+	FScopedBody Stunned(World, FVector(30 * M, 0, 0), 10000.0f);
+	FScopedBody StunnedTarget(World, FVector(32 * M, 0, 0), 10000.0f);
+	const auto GrantTheBasicAttack = [](const FScopedBody& Swinger) -> bool
+	{
+		const FGameplayAbilitySpecHandle Handle = Swinger.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::BasicAttack, /*Level=*/100, Swinger.Actor);
+		FGameplayAbilitySpec* Spec = Swinger.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Swing)
+		{
+			return false;
+		}
+		Swing->SkillName = TEXT("Basic Attack");
+		Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2.4; Angle=120; MaxTargets=1"));
+		return true;
+	};
+	if (!TestTrue(TEXT("set-up: both are granted a basic attack"), GrantTheBasicAttack(Free) && GrantTheBasicAttack(Stunned)))
+	{
+		return false;
+	}
+	constexpr float ReachCm = 240.0f;
+
+	TestTrue(TEXT("control: an unstunned character may swing"), UCataclysmBasicAttack::MaySwing(Free.Actor));
+	TestTrue(TEXT("control: and swings"), UCataclysmBasicAttack::Swing(Free.AbilitySystem));
+
+	if (!TestTrue(TEXT("set-up: the designed stun lands"),
+				  UCataclysmSkillEffects::ApplyStun(StunnedTarget.Actor, Stunned.Actor, /*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a stunned character may not swing, by the basic attack's own check"),
+			  UCataclysmBasicAttack::MaySwing(Stunned.Actor));
+	TestFalse(TEXT("so it does not swing at what stands in its reach"),
+			  UCataclysmBasicAttack::ShouldSwingNow(Stunned.Actor, ReachCm));
+	TestFalse(TEXT("and a swing started past that check is refused by the skill"),
+			  UCataclysmBasicAttack::Swing(Stunned.AbilitySystem));
 	return true;
 }
 

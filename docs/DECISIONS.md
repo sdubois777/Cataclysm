@@ -2,6 +2,204 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — A stunned, knocked-down or feared character uses no skill by any route, and a gadget still casts for a stunned player (#1627)
+
+**Affects:** `UCataclysmSkillTemplate::CanActivateAbility` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (one block before `Super::`, and one include); the
+comment in `ACataclysmPlayerController::IsPawnStunned` in `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`;
+twelve new tests in the `Cataclysm.TriggeredSkill.` group, in five existing test files (below); this file. No new
+source file, so the window needs no build-cache step. No workbook, CSV or asset change. **Closes
+[#1627](https://github.com/sdubois777/Cataclysm/issues/1627).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** while stunned, knocked down or feared, nothing of the player's own starts: not a key press
+  (as before), and now not a repeat row's repeat, a kept-stack row's extra casts, a held-trigger row's trigger, an Echo
+  Chamber copy or a Wild Magic trigger either. The repeat, the held trigger and the copy are lost, not kept for when the
+  state ends; KEPT STACKS ARE KEPT, because a cast refused at the first leaves them held, as for any skill that refuses
+  itself. A skill gadget, a skill trap and a Tyrant's Minion go on casting the player's skill while the player is
+  stunned; each stops when it is stunned itself. A running aura keeps pulsing.
+- **THE CHARGE SKILL'S OWN STUN NOW STOPS WHAT FOLLOWS IT, ACCEPTED BY THE RULING.** "After using a charge skill you are
+  briefly stunned for 0.5-1 second" (`Negative_After_using_a_charge_skill_you_are_briefly_stunn#1`) lays its stun on
+  `skill_end`. A charge that ends inside its own activation is stunned before its repeat is made on the next tick, so a
+  player wearing both that drawback and a repeat row loses the repeat of the charge.
+- **THE BASIC ATTACK IS INCLUDED.** See the judgements.
+- **ISSUE #1627 IS WRONG IN TWO PLACES, CORRECTED HERE AND NOT IN THE ISSUE.** It says creatures "do not use the
+  ability system at all"; the Corrupted Stalker does (`ACataclysmCorruptedStalkerCharacter::UseEnemyAbility` and
+  `AttackTarget` start its skills and its basic attack through `UCataclysmTriggeredSkill::Trigger`), and its brain
+  already refuses while it cannot act (`ACataclysmEnemyController::Think` returns before any skill or swing when
+  `CannotAct`, `CataclysmEnemyController.cpp` about 381). The issue's table names "grant-time auto-activation" as an
+  uncovered route; nothing sets `bActivateOnGranted`, so no skill reaches it today. And the echo creatures of Echoes of
+  the Past, which strike without a brain and without asking `CannotAct`, are a separate fault:
+  [#2558](https://github.com/sdubois777/Cataclysm/issues/2558), not touched here. Echo Chamber is in this change only as
+  the player's own route through `Trigger`.
+- **THIRTEEN LINES OF GAME CODE ADDED IN ONE BLOCK** (six of comment, one blank) and an include with its comment line;
+  the controller's comment has three lines replaced by eight.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-27; the owner may overrule them)
+
+> Q2, FEAR: INCLUDED. The check refuses when the avatar CannotAct or IsFeared, the same as the key press. Reason: the
+> design says fear "cannot attack or use a skill", and every route should refuse what the key press refuses. Quote the
+> GDD lines in the entry.
+>
+> Q1, GADGETS, TRAPS AND THE TYRANT MINION: NOT STOPPED by the player's stun. They are told apart by FreeRepeatCastBy
+> naming the caster, and each still asks its own CannotAct. Reasons: each is a separate actor acting on its own; a
+> gadget's death cast is already allowed even for a DEAD player (bEvenForADeadPlayer), so a stunned player cannot be
+> stricter than that; Withered Touch already ruled that these casts are not the player's own action. Record it as a
+> coordinator ruling built on those precedents, and say the owner may overrule it.
+>
+> THE PLAN: approved as you set it out. The check goes in UCataclysmSkillTemplate::CanActivateAbility, beside the skill
+> lock. The charge-skill self-stun stopping a following repeat is accepted and stated. The tests are approved as listed,
+> including fear and the gadget-while-stunned test and its stunned-gadget control. Two proofs. Correct the IsPawnStunned
+> comment.
+>
+> ECHOES OF THE PAST: filed separately as #2558. Leave the Echo Chamber copy in #1627 only as the player's route through
+> Trigger; the echo creatures' strike is #2558's.
+
+**Q1 is a coordinator ruling built on three precedents, and the owner may overrule it.** No owner sentence decides it.
+
+**The design, re-read at `d16f34517`** in `docs/Cataclysm_GDD_v2.md`, the table under "What this rule covers: hard
+stops, and nothing else":
+
+> | Stun | **Yes** | The target cannot act at all |
+> | Knockdown | **Yes** | The target cannot act at all; it is simply on the floor while it happens |
+
+> | Fear | **Partly** | The target moves, but only away from what frightened it, and cannot attack or use a skill. It is treated as Madness is: the immunity window and boss immunity, and not the damage threshold. See below |
+
+And the paragraph below it: "A feared character walks away from the point the fear came from and cannot attack or use
+a skill". No sentence makes a skill usable while stunned, and a pin, whose row says a pinned target "still turns,
+attacks and uses any skill that does not need movement", is not in the check.
+
+**Where each is in the code.** The check (Q2 and the plan) is the block after the skill lock and before `Super::` in
+`UCataclysmSkillTemplate::CanActivateAbility`: it reads the avatar from the actor information the engine hands in, as
+the pit refusal below it does, and returns false when `UCataclysmSkillEffects::CannotAct` or `UCataclysmFear::IsFeared`
+answers true. The exemption (Q1) is `FreeRepeatCastBy.IsExplicitlyNull()`, the same test the Withered Touch read on a
+ground patch makes (`CataclysmSkillTemplate.cpp`, the `KeptUnderTheCurse` line): `UCataclysmTriggeredSkill::Trigger`
+writes the caster into `FreeRepeatCastBy` before it activates, and every minion cast passes itself as `CastBy` (the
+gadget copy, `CopySummonersLastSkill`; the skill gadget and the skill trap, through `StartPlayersSkillFromHere`; the
+Tyrant's Minion, the same). Every other use has it null, since `EndAbility` resets it. The comment (the plan's last
+line) says no test calls `IsPawnStunned`, which was measured: no file under `game/`, `tools/`, `sim/` or `docs/` names it
+but the controller's own two.
+
+### EVERY ROUTE TO AN ACTIVATION, AND WHICH ALREADY REFUSED
+
+Every game route ends in `TryActivateAbility`, which asks `CanActivateAbility` on the granted instance.
+
+| Route | Refused a stunned character before this change? | Now |
+|---|---|---|
+| The key press, `ACataclysmPlayerController::Input_AbilitySlotPressed` | yes, `IsPawnStunned` (stun, knockdown, fear) | yes, by both |
+| The basic attack, `UCataclysmBasicAttack::Swing` from `TrySwingAt` and the automatic swing | yes, `MaySwing` (stun, knockdown, fear) | yes, by both |
+| Follow Through, `UCataclysmFollowThrough::MakePendingRepeat` | stun and knockdown, by its own `CannotAct`; fear not | all three |
+| A repeat row's repeat, `UCataclysmTriggeredSkill::MakePendingRepeat` | no | yes |
+| A kept-stack row's casts, `MakePendingKeptStackCasts` | no | yes; the stacks are kept |
+| A held-trigger row's trigger, `MakePendingHeldTrigger` | no | yes |
+| Echo Chamber's copy, `ACataclysmDungeonGameMode::MakeTheEchoChamberCopy` | no | yes |
+| Wild Magic's trigger (the same file, about 13807) | no | yes (read, not tested) |
+| The Corrupted Stalker's skills and basic attack, through `Trigger` | yes, by its brain | yes, by both |
+| A gadget's copy, a skill gadget's and a skill trap's cast, the Tyrant's Minion's Ultimate | the minion's own `CannotAct` | unchanged: the player's state is not asked (Q1) |
+| Grant-time auto-activation, `UCataclysmGameplayAbility::OnAvatarSet` | no | yes; nothing sets `bActivateOnGranted` |
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The basic attack is not exempt.** A stun takes the basic attack away by the design's words, and every caller of
+  `Swing` in the game asks `MaySwing` first, which is the same question, so nothing the game reaches today is refused
+  that was not already. It does close one route: a repeat row's repeat of the basic attack starts it through
+  `Trigger` (`FindTheSkillUsed` looks it up by `BasicAttackName`), which no `MaySwing` guards. Not taken: exempting the
+  basic attack as the skill lock does. The lock exempts it because Edict of Silence says "Only basic attacks function
+  during this period"; nothing says a basic attack functions during a stun.
+- **`IsExplicitlyNull` rather than `IsValid`.** A cast named by a gadget destroyed during the activation keeps its
+  exemption, as the Withered Touch read keeps its. Not taken: `IsValid`, which would refuse such a cast part-way.
+- **The new tests are in the `Cataclysm.TriggeredSkill.` group and in five files**, each beside the rig it needs, so
+  both proofs run one prefix of 16 tests (the four tests already there and the twelve new). Not taken: a test of each
+  route in its own file's group, which would have needed a prefix for each, and the Echo Chamber test in
+  `Cataclysm.DungeonModifierEffects.`, whose prefix proofs read NOT A PROOF until
+  [#2556](https://github.com/sdubois777/Cataclysm/issues/2556) is fixed.
+- **The possessed players' stun is the tag `ApplyStun` lays, put on by hand**, so one player can be the control and
+  then be stunned, and no resistance of the test player's class shortens it; the plain actors' stun is `ApplyStun`
+  itself, a designed stun. Knockdown and fear are the tags their own functions lay, because `ApplyFear` refuses a plain
+  actor. Not taken: `ApplyStun` on the possessed players, which opens the immunity window and cannot be taken off.
+
+### NO GENRE SOURCE
+
+None was recorded. This applies the design document's own crowd-control rule to every route; no formula or new
+mechanic is chosen. The genre file of 2026-10-13 has no section for crowd control.
+
+### TESTS
+
+Twelve, each with its control read first. In `CataclysmTriggeredSkillTests.cpp` the caster is a plain actor, as in its
+neighbours; elsewhere it is the rig of the file the test is in.
+
+| Test | File | Asserts (in order) |
+|---|---|---|
+| `AStunnedCharacterStartsNoSkillAndAnUnstunnedOneDoes` (11) | TriggeredSkill | a world; control: an unstunned free start starts, strikes, and its own held skill is used; set-up: a designed stun lands and the caster cannot act; **its free start does not start**; **and struck nothing**; and leaves nothing held; **its own held skill is refused too**; **its enemy still has its whole health** |
+| `AKnockedDownOrFearedCharacterStartsNoSkillAndAPinnedOneDoes` (10) | TriggeredSkill | a world; set-up: the pinned one is pinned and may act, the knocked-down one cannot act, the feared one is feared; control: the pinned one's free start starts and strikes; **the knocked-down one's does not start**; **and struck nothing**; **the feared one's does not start**; **and struck nothing** |
+| `AFreeStartCastByAnotherActorIsNotStoppedByItsCastersStun` (7) | TriggeredSkill | a world; set-up: the stun lands and the caster cannot act; **control: cast in its own name it does not start**; **and struck nothing**; *cast by another actor from its place it starts*; *and strikes the enemy in front of that actor* |
+| `AChargeSkillsOwnStunStopsTheFreeStartThatFollowsIt` (7) | TriggeredSkill | a world; set-up: the blink ran, the charge ran; control: the blink leaves its user able to act, and the free start after it starts; set-up: the charge's own row stunned its user; **the free start that follows the charge does not start** |
+| `ARunningAuraKeepsPulsingWhileItsCasterIsStunned` (10) | TriggeredSkill | a world; set-up: granted, switched on; control: its first pulse strikes; set-up: the stun lands, the caster cannot act; it still runs; pulses again (2); strikes again; runs on |
+| `AStunnedCharactersBasicAttackIsRefusedByItsOwnCheckAndByTheSkill` (8) | TriggeredSkill | a world; set-up: both granted a basic attack; control: the unstunned one may swing and swings; set-up: the stun lands; `MaySwing` refuses the stunned one; `ShouldSwingNow` refuses it; **a swing started past that check is refused by the skill** |
+| `AStunnedPlayersRepeatIsNotMadeAndAnUnstunnedPlayersIs` (10) | EnchantmentEffect | a world; set-up: the player, Carom, the pinned roll; control: the repeat is made, and one runs; set-up: the player cannot act; the use still asks for a repeat; **stunned, the repeat is not made**; **and none more runs**; it is not kept; once the stun is gone the next use is repeated |
+| `AStunnedPlayersKeptStackCastIsNotMadeAndItsStackIsKept` (10) | EnchantmentEffect | a world; set-up; control: one cast more is made and the stack is spent; set-up: the player cannot act, one stack is held; the use still asks for the cast; **no cast is made**; **none more runs**; **the stack is kept** |
+| `AStunnedPlayersHeldTriggerIsNotMadeAndAnUnstunnedPlayersIs` (10) | EnchantmentEffect | a world; set-up: the player, the pins, a Sword; control: a trigger is recorded and made; set-up: the player cannot act; the use still records a trigger; **stunned, it is not made**; it is not kept |
+| `AStunnedPlayersEchoChamberCopyIsNotFiredAndAnUnstunnedPlayersIs` (10) | DungeonModifierEffects | a world; (the floor, by `AnObstacleFloor`); set-up: a copied strike, the angle pinned; control: the copy is fired, one fired; set-up: the player cannot act; the use still draws a copy; **stunned, the copy is not fired**; **the count is still one**; nothing waits |
+| `AStunnedPlayersSkillGadgetStillCastsAndAStunnedGadgetDoesNot` (12) | SkillGadget | a world; set-up: three enemies; control: an unstunned player's gadget casts; set-up: the player cannot act and its gadget can; *the stunned player's gadget still casts*; *and strikes its enemy*; set-up: the gadget has an ability system, cannot act, and its player can; a stunned gadget casts nothing; its enemy keeps its health |
+| `AStunnedKillersFollowThroughIsRefusedByItsOwnCheckAndTheClockIsUnspent` (11) | FollowThrough | a world; set-up: each killer kills and earns a repeat (2); control: the unstunned repeat is made and strikes; set-up: the stun lands, the killer cannot act; the repeat is not made; the enemy beside keeps its health; the clock is unspent; nothing waits |
+
+Counts are every assertion reached when each set-up holds. **Bold** assertions fail with SK-G1's break; *italic* ones
+with SK-G2's.
+
+The existing tests read for this and expected to pass unchanged: a read-only search of every test that stuns, knocks down or fears an actor (calls to `ApplyStun`, `ApplyKnockdown`, `ApplyFear` and the three tags, at `d16f34517`) found none in which that actor later starts a skill while the state is on it. In each, the actor is a creature run by its brain, the activation comes before the state lands (`Cataclysm.StatExemption.ARowLaysAStatusOnItsOwnWearer`, `Cataclysm.Skills.ASkillCanStateWhatItsCasterCannotBeSubjectedTo`), or the only later question is `MaySwing`, which already refuses (`Cataclysm.Fear.AFearedPlayerCannotAttackAndIsWalkedAwayFromTheSource`, the crowd-control ceiling tests). `Cataclysm.SetBonus.Tyrant10.NothingIsCastWhileTheMinionCannotActOrThePlayerIsDead` stuns the minion, whose own `CannotAct` refuses before its exempt cast. That was a search, not a run. ONE HAZARD READ AND NOT MET: a blunt blow stuns at random 10% of the time when `Cataclysm.AilmentRoll` is not pinned, so a test in which a player takes such a blow and then casts would now fail at random; none was found.
+
+### NOT TESTED
+
+Wild Magic's trigger for a stunned player (read: the same `Trigger` call as Echo Chamber's copy, with no `CastBy`); a
+skill trap's and a Tyrant's Minion's cast for a stunned player (read: both pass `CastBy=this` through
+`StartPlayersSkillFromHere`, as the skill gadget does); a feared killer's Follow Through, which only the new check
+refuses (read); the key press itself, which no test drives, as #1627 says; a stun that lands while a skill is already
+running, which the issue leaves out of scope and this change does not touch; the Corrupted Stalker under a stun.
+
+### GUARD PROOFS PROPOSED
+
+Both in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`, prefix `Cataclysm.TriggeredSkill.` (with the
+dot; 16 tests, no other group shares the prefix). Each anchor is counted exactly once by `read_text`; each break
+leaves the brackets as balanced as before and every name it touches still used elsewhere in the file.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| SK-G1, the check never fires | `const AActor* HardStopped = ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar();` | `const AActor* HardStopped = nullptr;` | 9 tests, 20 assertions: `AStunnedCharacterStartsNoSkill...` 4, `AKnockedDownOrFeared...` 4, `AFreeStartCastByAnotherActor...` 2 (its control), `AChargeSkillsOwnStun...` 1, `AStunnedCharactersBasicAttack...` 1, `AStunnedPlayersRepeat...` 2, `AStunnedPlayersKeptStackCast...` 3, `AStunnedPlayersHeldTrigger...` 1, `AStunnedPlayersEchoChamberCopy...` 2. The aura, gadget and Follow Through tests and the four tests already in the group pass |
+| SK-G2, a cast naming its caster is refused too | `if (FreeRepeatCastBy.IsExplicitlyNull()` | `if (Handle.IsValid()` | 2 tests, 4 assertions: `AFreeStartCastByAnotherActor...` 2, `AStunnedPlayersSkillGadget...` 2 (the cast and its strike). The other 14 pass |
+
+SK-G1 leaves `CannotAct(nullptr)` and `IsFeared(nullptr)`, which answer false, so nothing else in the function moves.
+SK-G2's handle is the granted spec's, valid on every activation, so the check applies to every use whoever names the
+caster; the stunned-gadget half of the gadget test still passes, refused by the gadget's own `CannotAct`.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear a repeat row (or Echo Chamber's floor) and get stunned by a creature just as a skill is used: no repeat, and no
+  copy, follows it.
+- with a skill gadget placed, get stunned: the gadget goes on casting.
+
+### THE WINDOW'S RUN, t151w
+
+Window t151w, run 2026-10-27 under the lock as `enchant-t151w`, at `2e8b8f640` on development `d16f34517`. Free memory
+immediately before the lock, at 12:01:11, was 10,335 MB, against the standing floor of 10 GiB (10,240 MB). No new source
+file and no status row changed, so the window had no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The twelve new tests, each alone | 1 of 1 each; the first build compiled 7 files in 10 actions |
+| The whole Unreal suite | "4320 tests performed, 4320 succeeded, 0 failed"; 4320 declared, gap 0 |
+| Memory | `tests=4927 peak_used_virtual_mb=8064 final_used_virtual_mb=7708` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SK-G1, the check never fires | PROVED: 9 of the 16 `Cataclysm.TriggeredSkill.` tests failed, 20 of 20 assertions; 16 of 16 passed restored |
+| SK-G2, a cast naming its caster is refused too | PROVED: 2 tests failed (the free start cast by another actor, and the skill gadget), 4 of 4 assertions; 16 of 16 passed restored |
+
+SK-G2 also measures what was read and not checked in the engine source: `Trigger` sets `FreeRepeatCastBy` on the spec's
+primary instance before `TryActivateAbility`, and the engine asks that instance's `CanActivateAbility`. Had the engine
+asked the class default, the gadget test would have failed with the file restored as well.
+
+---
+
 ## 2026-10-27 — The player's own death gives back every point The Nihil's Embrace took, and ends a boss kill's reward (#1795)
 
 **Affects:** `ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace` in

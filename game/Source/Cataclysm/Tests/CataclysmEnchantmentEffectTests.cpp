@@ -29530,4 +29530,168 @@ bool FCataclysmRandomBuffChaoticBarrierTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// A stunned player's repeat, kept-stack cast and held trigger are not made. Issue #1627, ruled 2026-10-27 by the
+// coordinating session: `UCataclysmSkillTemplate::CanActivateAbility` refuses a stunned, knocked-down or feared avatar,
+// and each of these three ends in `UCataclysmTriggeredSkill::Trigger`, which names no other caster. In the
+// `Cataclysm.TriggeredSkill.` group and in this file, because their rigs are here. THE STUN IS THE TAG `ApplyStun` LAYS,
+// put on and taken off by hand, so the control and the stunned use are the same player.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunnedPlayersRepeatTest,
+	"Cataclysm.TriggeredSkill.AStunnedPlayersRepeatIsNotMadeAndAnUnstunnedPlayersIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunnedPlayersRepeatTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FRepeatRollPinned Pinned(TEXT("0"));
+	if (!TestTrue(TEXT("set-up: a possessed player, the Carom row and the roll pinned"), Rig.IsUsable() && Pinned.Variable))
+	{
+		return false;
+	}
+	Rig.System->SetPoolActions({ARepeatRow(TEXT("Test:stunned_repeat"), 15.0f, 100.0f)});
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	const auto Use = [&]()
+	{
+		ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	};
+
+	// THE CONTROL FIRST.
+	Use();
+	TestTrue(TEXT("control: unstunned, the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("control: and one runs"), RepeatsRunning(Rig.System, Carom), 1);
+
+	const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+	Rig.System->AddLooseGameplayTag(Stunned);
+	if (!TestTrue(TEXT("set-up: the player cannot act"), UCataclysmSkillEffects::CannotAct(Rig.Player)))
+	{
+		return false;
+	}
+	Use();
+	TestEqual(TEXT("the use still asks for a repeat: the row is not what refuses"), Rig.System->PendingRepeatSkill(),
+			  FName(*Carom));
+	const int32 RunningBefore = RepeatsRunning(Rig.System, Carom);
+	TestFalse(TEXT("stunned, the repeat is not made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("and none more runs"), RepeatsRunning(Rig.System, Carom), RunningBefore);
+	TestTrue(TEXT("and it is not kept for when the stun ends"), Rig.System->PendingRepeatSkill().IsNone());
+
+	// AND THE STUN IS THE ONLY DIFFERENCE: taken off, the next use is repeated.
+	Rig.System->RemoveLooseGameplayTag(Stunned);
+	Use();
+	TestTrue(TEXT("once the stun is gone, the next use is repeated"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunnedPlayersKeptStackCastTest,
+	"Cataclysm.TriggeredSkill.AStunnedPlayersKeptStackCastIsNotMadeAndItsStackIsKept",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunnedPlayersKeptStackCastTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FKeptDrawPinned Pinned(1);
+	if (!TestTrue(TEXT("set-up: a possessed player, the Carom row and the draw pinned"), Rig.IsUsable() && Pinned.Variable))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5)});
+	const auto Use = [&]()
+	{
+		ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	};
+
+	// THE CONTROL FIRST: one stack, one cast more, the stack spent.
+	Rig.System->GainKeptStack(Key, 5);
+	Use();
+	TestEqual(TEXT("control: unstunned, one cast more is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 1);
+	TestEqual(TEXT("control: and the stack is spent"), Rig.System->KeptStacksHeld(Key), 0);
+
+	Rig.System->AddLooseGameplayTag(UCataclysmSkillEffects::StunnedTag());
+	Rig.System->GainKeptStack(Key, 5);
+	if (!TestTrue(TEXT("set-up: the player cannot act"), UCataclysmSkillEffects::CannotAct(Rig.Player))
+		|| !TestEqual(TEXT("set-up: one stack is held"), Rig.System->KeptStacksHeld(Key), 1))
+	{
+		return false;
+	}
+	Use();
+	TestEqual(TEXT("the use still asks for the cast"), Rig.System->PendingKeptStackCastSkill(), FName(*Carom));
+	const int32 RunningBefore = RepeatsRunning(Rig.System, Carom);
+	TestEqual(TEXT("stunned, no cast is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and none more runs"), RepeatsRunning(Rig.System, Carom), RunningBefore);
+	TestEqual(TEXT("and the stack is kept, as for any skill that refuses itself"), Rig.System->KeptStacksHeld(Key), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunnedPlayersHeldTriggerTest,
+	"Cataclysm.TriggeredSkill.AStunnedPlayersHeldTriggerIsNotMadeAndAnUnstunnedPlayersIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunnedPlayersHeldTriggerTest::RunTest(const FString&)
+{
+	using namespace CataclysmHeldTriggerTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// AS `Cataclysm.Enchantments.AnAttackTriggersADifferentHeldSkillWithACooldownFree`: a Demonic Sword's basic attack,
+	// the roll pinned under the chance and the pick pinned to Quench.
+	FRepeatRig Rig(World);
+	FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("0"));
+	FHeldTriggerPinned Pick(TEXT("Cataclysm.TriggerHeldSkillPick"), TEXT("0"));
+	FCataclysmWeaponSkill Basic;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Rig.IsUsable())
+		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Roll.Variable && Pick.Variable)
+		|| !TestTrue(TEXT("set-up: a Sword and its basic attack"), HoldTheBasicAttackOf(Rig.Player, TEXT("Sword"), Basic)))
+	{
+		return false;
+	}
+	const FName BasicName(*Basic.Name);
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(200.0f, 50.0f, 0.0f);
+	Rig.System->SetPoolActions({ATriggerRow(TEXT("Test:stunned_trigger"), /*bSpell=*/false, TEXT("Type.Melee"))});
+
+	// THE CONTROL FIRST.
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestEqual(TEXT("control: a melee basic attack records a trigger"), Rig.System->PendingHeldTriggerUsedSkill(), BasicName);
+	TestTrue(TEXT("control: unstunned, the trigger is made"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+
+	Rig.System->AddLooseGameplayTag(UCataclysmSkillEffects::StunnedTag());
+	if (!TestTrue(TEXT("set-up: the player cannot act"), UCataclysmSkillEffects::CannotAct(Rig.Player)))
+	{
+		return false;
+	}
+	ThePlayerUses(Rig.Player, Basic.Name, Basic.Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestEqual(TEXT("the use still records a trigger"), Rig.System->PendingHeldTriggerUsedSkill(), BasicName);
+	TestFalse(TEXT("stunned, the trigger is not made"), UCataclysmTriggeredSkill::MakePendingHeldTrigger(Rig.Player));
+	TestTrue(TEXT("and it is not kept for when the stun ends"), Rig.System->PendingHeldTriggerUsedSkill().IsNone());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

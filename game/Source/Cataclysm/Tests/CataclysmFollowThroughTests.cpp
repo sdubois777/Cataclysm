@@ -551,4 +551,71 @@ bool FCataclysmFollowThroughLineTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * Issue #1627, ruled 2026-10-27 by the coordinating session. UNCHANGED BY THE SKILL'S NEW CHECK: Follow Through refuses
+ * a killer that cannot act before it starts anything (`UCataclysmFollowThrough::MakePendingRepeat`), so the clock is
+ * left unspent and nothing waits. In the `Cataclysm.TriggeredSkill.` group, beside the check's other tests, and in this
+ * file because its rig is here. Two killers 30 m apart, each with an enemy in front to kill and one to the side.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFollowThroughStunnedKillerTest,
+	"Cataclysm.TriggeredSkill.AStunnedKillersFollowThroughIsRefusedByItsOwnCheckAndTheClockIsUnspent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFollowThroughStunnedKillerTest::RunTest(const FString&)
+{
+	using namespace CataclysmFollowThroughTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBody Free(World, FVector::ZeroVector, 10000.0f);
+	FScopedBody FreeInFront(World, FVector(1 * M, 0, 0), 1.0f);
+	FScopedBody FreeBeside(World, FVector(0, 2 * M, 0), 10000.0f);
+	FScopedBody Stunned(World, FVector(30 * M, 0, 0), 10000.0f);
+	FScopedBody StunnedInFront(World, FVector(31 * M, 0, 0), 1.0f);
+	FScopedBody StunnedBeside(World, FVector(30 * M, 2 * M, 0), 10000.0f);
+
+	// EACH KILLS THE ENEMY IN FRONT AND EARNS A REPEAT, as `AMeleeKillRepeatsTheAttackAtTheNearestEnemyAndPaysNothing`.
+	const auto KillsAndEarns = [](FScopedBody& Killer, FScopedBody& InFront) -> bool
+	{
+		FGameplayAbilitySpecHandle Handle;
+		if (!GrantCleave(Killer.AbilitySystem, Killer.Actor, ECataclysmAbilitySlot::Heavy, Handle))
+		{
+			return false;
+		}
+		HoldFollowThrough(Killer.AbilitySystem, 3.0f);
+		Killer.AbilitySystem->TryActivateAbility(Handle);
+		const bool bNoHealthLeft = InFront.Health() <= 0.0f;
+		UCataclysmSkillEffects::MarkDead(InFront.Actor);
+		return bNoHealthLeft && UCataclysmFollowThrough::NoteMeleeKill(Killer.Actor, FName(CleaveName));
+	};
+	if (!TestTrue(TEXT("set-up: the first killer kills and earns a repeat"), KillsAndEarns(Free, FreeInFront))
+		|| !TestTrue(TEXT("set-up: and so does the second"), KillsAndEarns(Stunned, StunnedInFront)))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST.
+	TestTrue(TEXT("control: an unstunned killer's repeat is made"), UCataclysmFollowThrough::MakePendingRepeat(Free.Actor));
+	TestTrue(TEXT("control: and strikes the enemy beside it"), FreeBeside.Health() < 10000.0f);
+
+	// STUNNED AFTER THE KILL AND BEFORE THE REPEAT, by the enemy beside it.
+	if (!TestTrue(TEXT("set-up: the designed stun lands"),
+				  UCataclysmSkillEffects::ApplyStun(StunnedBeside.Actor, Stunned.Actor, /*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		|| !TestTrue(TEXT("set-up: and the killer cannot act"), UCataclysmSkillEffects::CannotAct(Stunned.Actor)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a stunned killer's repeat is not made"), UCataclysmFollowThrough::MakePendingRepeat(Stunned.Actor));
+	TestEqual(TEXT("so the enemy beside it keeps its health"), StunnedBeside.Health(), 10000.0f);
+	TestEqual(TEXT("and the clock is unspent"), Stunned.AbilitySystem->FollowThroughSecondsLeft(), 0.0f);
+	TestFalse(TEXT("and nothing waits for when the stun ends"), Stunned.AbilitySystem->PendingFollowThrough().IsValid());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

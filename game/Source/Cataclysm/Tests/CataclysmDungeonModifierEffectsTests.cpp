@@ -62165,4 +62165,59 @@ bool FCataclysmPhasewalkerOnAFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A STUNNED PLAYER'S ECHO CHAMBER COPY IS NOT FIRED. Issue #1627, ruled 2026-10-27 by the coordinating session: the copy
+// is the player's own skill started through `UCataclysmTriggeredSkill::Trigger`, which names no other caster, so
+// `UCataclysmSkillTemplate::CanActivateAbility` refuses it while the player cannot act. In the `Cataclysm.TriggeredSkill.`
+// group, beside its route's other tests, and in this file because its rig is here. The echo creatures' own strike, of
+// Echoes of the Past, is #2558's and is not this. THE STUN IS THE TAG `ApplyStun` LAYS, put on by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberStunnedPlayerTest,
+	"Cataclysm.TriggeredSkill.AStunnedPlayersEchoChamberCopyIsNotFiredAndAnUnstunnedPlayersIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoChamberStunnedPlayerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 0.0f);
+	FEchoChamberAnglePinned Pinned(90.0f);
+	if (!TestNotNull(TEXT("set-up: a strike that is copied"), Strike)
+		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FVector Aim = Player.Character->GetActorLocation() + FVector(2000.0f, 0.0f, 0.0f);
+
+	// THE CONTROL FIRST: aimed 20 metres away, so no copy hits the player.
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("control: unstunned, the copy is fired"), Mode->MakeTheEchoChamberCopy());
+	TestEqual(TEXT("control: one copy fired"), Mode->EchoChamberCopiesFired(), 1);
+
+	Player.AbilitySystem->AddLooseGameplayTag(UCataclysmSkillEffects::StunnedTag());
+	if (!TestTrue(TEXT("set-up: the player cannot act"), UCataclysmSkillEffects::CannotAct(Player.Character)))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Strike->Name, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the use still draws a copy"), Mode->EchoChamberPendingSkill(), FName(*Strike->Name));
+	TestFalse(TEXT("stunned, the copy is not fired"), Mode->MakeTheEchoChamberCopy());
+	TestEqual(TEXT("so the count is still one"), Mode->EchoChamberCopiesFired(), 1);
+	TestTrue(TEXT("and nothing waits for when the stun ends"), Mode->EchoChamberPendingSkill().IsNone());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
