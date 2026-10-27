@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFervour.h"
+// For fear, put on a commanded creature in the Compel tests. Issue #2560.
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -4565,6 +4567,375 @@ bool FCataclysmResummonDeathClearsTest::RunTest(const FString&)
 	TestEqual(TEXT("its death ended the wait"), Theirs->PendingResummons.Num(), 0);
 	TestNull(TEXT("and a dead summoner is given nothing even when asked"),
 		UCataclysmSummonSkill::ResummonNow(Summoner, Skill));
+	return true;
+}
+
+// ==========================================================================
+// Compel orders no stunned, knocked-down or feared creature. Issue #2560.
+// ==========================================================================
+
+namespace CataclysmCompelHeldTest
+{
+	/** What is put on the creature called the held one. */
+	enum class ECompelHeldBy : uint8
+	{
+		Nothing,
+		Stun,
+		Knockdown,
+		Fear,
+	};
+
+	/** What the commander commands: two Imps it summoned, or two creatures it took. */
+	enum class ECompelHeldKind : uint8
+	{
+		Minions,
+		Thralls,
+	};
+
+	/** What one scene measured. */
+	struct FCompelHeldRead
+	{
+		bool bSetUp = false;
+		/** What each follower's blow took off the target's health, struck by hand before the cast. */
+		float BlowOfTheHeld = 0.0f;
+		float BlowOfTheFree = 0.0f;
+		/** What the cast took off the target's health, and the health it left. */
+		float Lost = 0.0f;
+		float HealthAfter = 0.0f;
+		/** `CommandedStrikes` after the cast. */
+		int32 Ordered = -1;
+		/** Each minion's `AttacksMade` either side of the cast; nought for a thrall, which counts none. */
+		int32 HeldAttacksBefore = 0;
+		int32 HeldAttacksAfter = 0;
+		int32 FreeAttacksBefore = 0;
+		int32 FreeAttacksAfter = 0;
+	};
+
+	/** Ten thousand, so no blow here reaches the tenth of it a stun's damage threshold asks. */
+	constexpr float StruckHealth = 10000.0f;
+
+	/** Whether what `By` puts on a creature is on it now; with nothing, that nothing is: it may act and not flee. */
+	bool IsHeldBy(const AActor* Creature, ECompelHeldBy By)
+	{
+		FVector From;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			return UCataclysmSkillEffects::IsStunned(Creature);
+		case ECompelHeldBy::Knockdown:
+			return UCataclysmSkillEffects::IsKnockedDown(Creature);
+		case ECompelHeldBy::Fear:
+			return UCataclysmFear::IsFeared(Creature);
+		default:
+			return !UCataclysmSkillEffects::CannotAct(Creature)
+				&& !UCataclysmFear::FleeSourceOf(Creature, From);
+		}
+	}
+
+	/**
+	 * One scene in a world of its own, rigged as
+	 * `Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy` is: the
+	 * commander at the origin, the enemy the bolt hits fourteen metres along
+	 * its facing, and two followers twenty metres to either side of it. Each
+	 * follower's blow is struck at the enemy by hand first, its health put back
+	 * after each. Then `By` is put on the held follower, by a creature standing
+	 * behind the commander, and the cast is read as what it took off the enemy.
+	 *
+	 * THE BOLT DEALS DAMAGE OF ITS OWN, AND NOTHING HERE SAYS HOW MUCH. So a
+	 * held scene is read against a control scene with nothing on either
+	 * follower, which loses the enemy the bolt and both blows.
+	 *
+	 * TWO IMPS, OR TWO TAKEN CREATURES OF WHICH THE HELD ONE HITS THREE TIMES AS
+	 * HARD. A thrall counts no attacks, so for thralls the enemy's loss is what
+	 * says which struck.
+	 */
+	FCompelHeldRead CompelWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who,
+									  ECompelHeldKind Kind, ECompelHeldBy By)
+	{
+		using namespace CataclysmCommandTest;
+		FCompelHeldRead Read;
+		const auto Named = [Who](const TCHAR* What)
+		{
+			return FString::Printf(TEXT("%s: %s"), Who, What);
+		};
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedCaster Commander(World, FVector::ZeroVector);
+		FScopedCreature Struck(World, FVector(14 * M, 0, 0),
+							   ECataclysmTeam::Monsters, StruckHealth);
+		FScopedCreature Holder(World, FVector(-10 * M, 0, 0));
+
+		ACataclysmCharacterBase* Held = nullptr;
+		ACataclysmCharacterBase* Free = nullptr;
+		ACataclysmMinion* HeldMinion = nullptr;
+		ACataclysmMinion* FreeMinion = nullptr;
+		TUniquePtr<FScopedCreature> HeldThrall;
+		TUniquePtr<FScopedCreature> FreeThrall;
+		ON_SCOPE_EXIT
+		{
+			if (IsValid(HeldMinion)) { HeldMinion->Destroy(); }
+			if (IsValid(FreeMinion)) { FreeMinion->Destroy(); }
+		};
+		if (Kind == ECompelHeldKind::Minions)
+		{
+			HeldMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, 20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			FreeMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, -20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			if (!Test.TestNotNull(*Named(TEXT("set-up: the held imp")), HeldMinion)
+				|| !Test.TestNotNull(*Named(TEXT("set-up: the free imp")), FreeMinion))
+			{
+				return Read;
+			}
+			Held = HeldMinion;
+			Free = FreeMinion;
+		}
+		else
+		{
+			HeldThrall = MakeUnique<FScopedCreature>(World, FVector(0, 20 * M, 0));
+			FreeThrall = MakeUnique<FScopedCreature>(World, FVector(0, -20 * M, 0));
+			HeldThrall->Actor->SetAttackDamage(150.0f);
+			FreeThrall->Actor->SetAttackDamage(50.0f);
+			if (!Test.TestTrue(*Named(TEXT("set-up: the held creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, HeldThrall->Actor))
+				|| !Test.TestTrue(*Named(TEXT("set-up: the free creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, FreeThrall->Actor)))
+			{
+				return Read;
+			}
+			Held = HeldThrall->Actor;
+			Free = FreeThrall->Actor;
+		}
+		if (!Test.TestEqual(*Named(TEXT("set-up: the commander commands both")),
+				UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 2))
+		{
+			return Read;
+		}
+
+		UCataclysmProjectileSkill* Compel = GrantSkill<UCataclysmProjectileSkill>(
+			Commander, ECataclysmAbilitySlot::Heavy,
+			TEXT("Range=14; Radius=5; Pierce=0; Speed=0; Burn=1; CommandStrike=1"),
+			TEXT("Compel"));
+		if (!Test.TestNotNull(*Named(TEXT("set-up: Compel is granted")), Compel))
+		{
+			return Read;
+		}
+
+		// EACH BLOW MEASURED BY HAND, and the enemy put back to full after each.
+		const float Full = Struck.Health();
+		Free->AttackTarget(Struck.Actor);
+		Read.BlowOfTheFree = Full - Struck.Health();
+		Struck.SetHealthTo(Full);
+		Held->AttackTarget(Struck.Actor);
+		Read.BlowOfTheHeld = Full - Struck.Health();
+		Struck.SetHealthTo(Full);
+		if (!Test.TestTrue(*Named(TEXT("set-up: the free follower's blow, struck by hand, takes health")),
+				Read.BlowOfTheFree > 1.0f)
+			|| !Test.TestTrue(*Named(TEXT("set-up: the held follower's blow, struck by hand, takes health")),
+				Read.BlowOfTheHeld > 1.0f))
+		{
+			return Read;
+		}
+
+		// WHAT IS PUT ON THE HELD FOLLOWER, designed and for ten seconds, by a
+		// creature behind the commander. No clock moves, so none of it runs out.
+		bool bLanded = true;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			bLanded = UCataclysmSkillEffects::ApplyStun(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Knockdown:
+			bLanded = UCataclysmSkillEffects::ApplyKnockdown(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Fear:
+			bLanded = UCataclysmFear::ApplyFear(Holder.Actor, Held, /*Seconds=*/10.0f,
+				Holder.Actor->GetActorLocation());
+			break;
+		default:
+			break;
+		}
+		if (!Test.TestTrue(*Named(TEXT("set-up: what is put on the held follower landed")), bLanded)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and is on it")), IsHeldBy(Held, By))
+			|| !Test.TestTrue(*Named(TEXT("set-up: the free follower may act and is not fleeing")),
+				IsHeldBy(Free, ECompelHeldBy::Nothing)))
+		{
+			return Read;
+		}
+		// A FEARED FOLLOWER MAY STILL ACT, so only the flee step can refuse it.
+		if (By == ECompelHeldBy::Fear
+			&& !Test.TestFalse(*Named(TEXT("set-up: the feared follower is not under a hard stop")),
+				UCataclysmSkillEffects::CannotAct(Held)))
+		{
+			return Read;
+		}
+
+		Read.HeldAttacksBefore = HeldMinion ? HeldMinion->AttacksMade : 0;
+		Read.FreeAttacksBefore = FreeMinion ? FreeMinion->AttacksMade : 0;
+		const float Before = Struck.Health();
+		if (!Test.TestTrue(*Named(TEXT("set-up: Compel activates")), Activate(Commander, Compel))
+			|| !Test.TestTrue(*Named(TEXT("set-up: and what was put on the held follower is still on it")),
+				IsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		Read.HealthAfter = Struck.Health();
+		Read.Lost = Before - Read.HealthAfter;
+		Read.Ordered = Compel->CommandedStrikes;
+		Read.HeldAttacksAfter = HeldMinion ? HeldMinion->AttacksMade : 0;
+		Read.FreeAttacksAfter = FreeMinion ? FreeMinion->AttacksMade : 0;
+		Read.bSetUp = true;
+		return Read;
+	}
+
+	/**
+	 * The control, nothing on either follower, orders both and loses the enemy
+	 * both blows; the scene with one held orders the other only, and loses the
+	 * enemy everything the control did but the held one's blow.
+	 *
+	 * HALF THE SMALLER BLOW IS THE ALLOWANCE, so a blow struck by hand that
+	 * differs a little from the same blow struck at the cast moves no verdict,
+	 * and a whole blow too many or too few still does.
+	 */
+	void ExpectTheHeldFollowerIsNotOrdered(FAutomationTestBase& Test, const FCompelHeldRead& Control,
+										   const FCompelHeldRead& Held, const TCHAR* Hold, bool bMinions)
+	{
+		const float Margin = FMath::Min(Held.BlowOfTheHeld, Held.BlowOfTheFree) / 2.0f;
+
+		Test.TestEqual(TEXT("control: with nothing on them, both followers are ordered"), Control.Ordered, 2);
+		Test.TestTrue(*FString::Printf(TEXT("control: and the enemy loses at least both blows "
+											"(%.1f lost, the blows %.1f and %.1f)"),
+									   Control.Lost, Control.BlowOfTheHeld, Control.BlowOfTheFree),
+					  Control.Lost >= Control.BlowOfTheHeld + Control.BlowOfTheFree - Margin);
+		if (bMinions)
+		{
+			Test.TestEqual(TEXT("control: the imp later held swings once"),
+						   Control.HeldAttacksAfter, Control.HeldAttacksBefore + 1);
+			Test.TestEqual(TEXT("control: the other imp swings once"),
+						   Control.FreeAttacksAfter, Control.FreeAttacksBefore + 1);
+			Test.TestEqual(*FString::Printf(TEXT("%s: the imp beside it swings once"), Hold),
+						   Held.FreeAttacksAfter, Held.FreeAttacksBefore + 1);
+		}
+		Test.TestTrue(*FString::Printf(TEXT("%s: the enemy loses everything the control lost but the held one's blow, "
+											"at least (%.1f lost, health %.1f after; the control lost %.1f; "
+											"the held one's blow %.1f)"),
+									   Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.BlowOfTheHeld),
+					  Held.Lost >= Control.Lost - Held.BlowOfTheHeld - Margin);
+		Test.TestTrue(*FString::Printf(TEXT("%s: the held one does not strike: the enemy loses no more than that "
+											"(%.1f lost, health %.1f after; the control lost %.1f; "
+											"the held one's blow %.1f)"),
+									   Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.BlowOfTheHeld),
+					  Held.Lost <= Control.Lost - Held.BlowOfTheHeld + Margin);
+		if (bMinions)
+		{
+			Test.TestEqual(*FString::Printf(TEXT("%s: the held imp does not swing (%d attacks before the cast, "
+												 "%d after)"),
+											Hold, Held.HeldAttacksBefore, Held.HeldAttacksAfter),
+						   Held.HeldAttacksAfter, Held.HeldAttacksBefore);
+		}
+		Test.TestEqual(*FString::Printf(TEXT("%s: only the follower beside it is ordered: the held one does not "
+											 "raise CommandedStrikes"),
+										Hold),
+					   Held.Ordered, 1);
+	}
+}
+
+// A STUNNED MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES.
+// `CannotAct`, the brain's hard stop.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldStunnedMinionTest,
+	"Cataclysm.CompelHeld.AStunnedMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldStunnedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Stunned = CompelWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Minions, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Stunned, TEXT("one stunned"), /*bMinions=*/true);
+	return true;
+}
+
+// A KNOCKED-DOWN MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES.
+// The same hard stop as a stun.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldKnockedDownMinionTest,
+	"Cataclysm.CompelHeld.AKnockedDownMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldKnockedDownMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead KnockedDown = CompelWithOneHeld(
+		*this, TEXT("one knocked down"), ECompelHeldKind::Minions, ECompelHeldBy::Knockdown);
+	if (!Control.bSetUp || !KnockedDown.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, KnockedDown, TEXT("one knocked down"), /*bMinions=*/true);
+	return true;
+}
+
+// A FEARED MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES. The
+// brain's flee step: it is not under a hard stop, so only that step refuses
+// it. Fear and not `FleeFrom`, which is a member of the enemy character and
+// cannot be told to a minion.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldFearedMinionTest,
+	"Cataclysm.CompelHeld.AFearedMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldFearedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Feared = CompelWithOneHeld(
+		*this, TEXT("one feared"), ECompelHeldKind::Minions, ECompelHeldBy::Fear);
+	if (!Control.bSetUp || !Feared.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Feared, TEXT("one feared"), /*bMinions=*/true);
+	return true;
+}
+
+// A STUNNED THRALL IS NOT ORDERED, AND THE THRALL BESIDE IT STRIKES. A thrall
+// keeps its brain and its own attack, and counts no attacks, so the enemy's
+// loss is what is read.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldStunnedThrallTest,
+	"Cataclysm.CompelHeld.AStunnedThrallIsNotOrderedAndTheThrallBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldStunnedThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Thralls, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Stunned = CompelWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Thralls, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	TestTrue(TEXT("the held thrall hits harder than the other, so the enemy's loss says which struck"),
+			 Control.BlowOfTheHeld > Control.BlowOfTheFree + 1.0f);
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Stunned, TEXT("one stunned"), /*bMinions=*/false);
 	return true;
 }
 

@@ -2,6 +2,217 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Compel orders no stunned, knocked-down or feared creature to strike (#2560)
+
+**Affects:** `UCataclysmProjectileSkill::Land` in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (one
+block at the top of Compel's loop over what the caster commands, and one include with its comment line); four new tests
+in a group of their own, `Cataclysm.CompelHeld.`, at the end of `game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp`
+beside the Compel test, and one include with its comment line in that file; this file. No new source file, so the window
+needs no build-cache step. No workbook, CSV or asset change. **Closes
+[#2560](https://github.com/sdubois777/Cataclysm/issues/2560) if the fault is measured**: see "The proof's broken half is
+the issue's measurement" below.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **THE FAULT IS READ, NOT YET MEASURED.** #2560 asks first whether a held creature strikes when Compelled. The proof's
+  broken half below is that measurement. If the held creatures do not strike with the skip removed, the proof reads
+  NOT A PROOF, and #2560 closes as not a fault.
+- **WHAT A PLAYER NOTICES:** when the player casts the Staff's Compel, a minion or thrall of theirs that is stunned,
+  knocked down or feared at that moment does not strike the bolt's target. Everything else they command strikes as
+  before. The held creature's strike is not made later.
+- **`CommandedStrikes` STILL MEANS "ORDERED".** A held creature is skipped before the order, so it is neither ordered nor
+  counted, and the field's comment, the log line and the existing test all stay true.
+- **TWELVE LINES OF GAME CODE ADDED IN ONE BLOCK** (five of comment) and one include with its comment line, and nothing
+  else in game code.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-27)
+
+> 1. PLACEMENT: Compel's loop, as you recommend. Skip a creature that CannotAct or has a FleeSourceOf source, in the
+>    brain's order, as the echo fix does. Reason: AttackTarget is the act, and each decision layer asks before calling
+>    it. Putting the check in AttackTarget would change the gadget volley and other callers, and would still miss the
+>    overrides that never call Super. State the alternative in the entry as considered and not taken.
+> 2. FEAR: included, as for the echo.
+> 4. MEASUREMENT AS THE PROOF'S BROKEN HALF: accepted. If the held creatures do not strike with the skip removed, the
+>    proof reads NOT A PROOF; report it and stop, and #2560 closes as not a fault. Separately, also quote the held
+>    creature's AttacksMade and the target's health from the broken run, so the measurement is on the record either way.
+> 5. The tests in their own group (Cataclysm.CompelHeld. or similar), with the prefix counted, are approved, as is the
+>    one proof.
+> 6. CHORUS: filed as #2563. It asks first whether Chorus is each creature acting or the player's skill counting
+>    creatures. Leave it out of this change.
+>
+> (Ruling 3, replaced:) Keep CommandedStrikes as "ordered", with no semantic change. The skip comes before the order, so
+> a held creature is not ordered and is not counted, and the comment, the log line and the existing test all stay true.
+> Add one assertion to a new test: a held creature does not raise CommandedStrikes. State in the entry that the Content
+> search for Blueprint readers is weak evidence, since .uasset files are binary.
+
+No owner sentence decides this; the rulings rest on the design's crowd-control table, quoted in the #1627 entry below
+("Stun ... The target cannot act at all"; "Knockdown ... The target cannot act at all; it is simply on the floor while
+it happens"; Fear, "cannot attack or use a skill").
+
+### WHAT WAS BUILT, AND WHERE EACH RULING IS
+
+Rulings 1 and 2: in `UCataclysmProjectileSkill::Land`, inside `if (Params.bCommandStrike && !Targets.IsEmpty())`, in
+the loop over `UCataclysmCommand::ThingsCommandedBy(Self)` and after the cast to `ACataclysmCharacterBase`, before
+`Body->AttackTarget(Targets[0])`: the follower is asked `UCataclysmSkillEffects::CannotAct`, then
+`UCataclysmFear::FleeSourceOf`, through one local, `const AActor* Striker = Body;`, and is skipped (`continue`) when
+either answers true. That is the shape of the echo strike's check since #2558, and the order of the brain's `Think`
+(`CataclysmEnemyController.cpp`, `CannotAct` at line 381, the flee step at 452). `FleeSourceOf` answers true for a
+feared character and for a creature a rule told to flee (`ACataclysmEnemyCharacter::FleeSourceNow`), so a thrall a rule
+put to flight is not ordered either.
+
+Ruling 3 as replaced: `++CommandedStrikes` stays after the order, unchanged. Its readers are its declaration
+(`CataclysmSkillTemplates.h`, "How many commanded creatures this use ordered onto its target"), the Verbose log line
+"'%s' ordered %d commanded creatures onto '%s'.", and `Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy`
+("one commanded creature was ordered"), which is not edited. It is `BlueprintReadOnly`; a search of `game/Content` found
+no Blueprint reading it, and **that is weak evidence, since `.uasset` files are binary**.
+
+Ruling 6: Chorus is not touched; [#2563](https://github.com/sdubois777/Cataclysm/issues/2563) carries it.
+
+### THE ALTERNATIVE CONSIDERED AND NOT TAKEN: THE CHECK IN `AttackTarget` ITSELF
+
+`AttackTarget` is the act, and each layer that decides to act asks before calling it. Every caller in game code
+(`game/Source/`, test files excluded), read at `039f9dcb0`:
+
+| Caller | Asks `CannotAct` | Asks the flee step |
+|---|---|---|
+| The brain, `ACataclysmEnemyController` (`CataclysmEnemyController.cpp` line 792), driving creatures and minions alike | yes, in `Think` (381) | yes (452) |
+| A gadget's volley, `ACataclysmMinion::FireVolley` (`CataclysmMinion.cpp` 693), from the gadget's step | yes (640, 667) | no |
+| A gadget's burst on a kill, inside `ACataclysmMinion::AttackTarget` (1699) | after a blow already made | no |
+| The echo strike, `ACataclysmDungeonGameMode::StepEchoesOfThePast` (`CataclysmDungeonGameMode.cpp` 3678) | yes, since #2558 | yes, since #2558 |
+| Compel (`CataclysmSkillTemplates.cpp` 2269) | **yes, from this change** | **yes, from this change** |
+| `ACataclysmMinion::AttackOnce` (1429) | no | no; called by tests only |
+| The overrides of the Abyssal Warden, Brute, Hellhound, Imp and Corrupted Stalker | each calls `Super::AttackTarget` | |
+
+The Corrupted Sentinel's, the Succubus's and the Gatekeeper's overrides never call `Super`, so a check in the base
+class's `AttackTarget` would not reach them. Not taken, for the ruling's reasons: it would change the gadget volley (which
+asks `CannotAct` and not fear) and every other caller at once, and would still miss those three overrides.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The check is written through a local, `const AActor* Striker = Body;`**, as #2558's was, so one line can be broken
+  for the proof and both questions go with it. Not taken: `Body` passed to each question directly.
+- **Fear on a minion is `UCataclysmFear::ApplyFear`, not `FleeFrom`.** `FleeFrom` is a member of
+  `ACataclysmEnemyCharacter`, and `ACataclysmMinion` derives from `ACataclysmCharacterBase`, so a minion cannot be told
+  to flee by a rule; fear is the one flight a minion can carry. Whether fear lands on a minion in play was not read
+  through every route; the test puts it on by hand, from a creature standing behind the commander.
+- **The minions are two Imps** (`MinionTypes.csv`, `Imp`), because a minion spawned with no type deals no blow of its
+  own (`OwnDamagePerHit` is set only from a type row), so the target's health could not show its strike. The existing
+  Compel test's untyped minion is read by `AttacksMade` alone.
+- **The thralls are two taken creatures, the held one with three times the other's attack damage** (150 and 50), as
+  #2558's echoes were, because a thrall counts no attacks and the target's loss is what says which struck.
+- **The held scene is read against a control scene.** The bolt deals damage of its own, and nothing here says how much,
+  so each test runs a scene with nothing on either follower and a scene with one held, each in a world of its own. Not
+  taken: setting the commander's attack damage to nought to silence the bolt, which reads how a blow of nothing is
+  handled and not what Compel orders.
+- **Half the smaller blow is the allowance** in the health comparisons, so a blow struck by hand that differs a little
+  from the same blow at the cast moves no verdict, and a whole blow too many or too few still does.
+- **The tests are in a group of their own, `Cataclysm.CompelHeld.`**, so the proof's prefix selects exactly them. Not
+  taken: `Cataclysm.Command.` with a narrow name prefix.
+
+### NO GENRE SOURCE
+
+None was recorded. This applies the design's own crowd-control rule to one more route; no formula or mechanic is
+chosen.
+
+### TESTS
+
+Four, in `Cataclysm.CompelHeld.`, at the end of `CataclysmCommandTests.cpp`, after
+`Cataclysm.Resummon.ASummonersDeathEndsItsWaits`, using the file's own fixtures from the Compel test's rig. Each
+runs two scenes by one helper, `CompelWithOneHeld`, each scene in a world of its own: the commander (`FScopedCaster`) at
+the origin; the enemy the bolt hits (`FScopedCreature`, 10,000 health) fourteen metres along the commander's facing; a
+creature that puts the hold on, ten metres behind the commander; and two followers twenty metres to either side, two
+Imps summoned by the commander or two creatures it took by `UCataclysmCommand::Subjugate`. Each follower's blow is
+struck at the enemy by hand and read, the enemy put back to full after each; the hold is put on the held follower (a
+designed stun of 10 s, a designed knockdown of 10 s, a fear of 10 s from the holder's place, or nothing); Compel
+(`Range=14; Radius=5; Pierce=0; Speed=0; Burn=1; CommandStrike=1`, the existing test's row) is cast; and the enemy's
+loss, its health after, `CommandedStrikes` and each Imp's `AttacksMade` either side of the cast are read. No clock
+moves, so no hold runs out.
+
+A scene's set-up asserts, in order (12, 13 for fear): a world; the two followers (2: each Imp spawned, or each creature
+taken); the commander commands both; Compel is granted; each blow struck by hand takes health (2); the hold landed; it
+is on the held follower; the free follower may act and is not fleeing; (fear only: the feared follower is not under a
+hard stop); Compel activates; the hold is still on after the cast.
+
+Then, for the Imps (9): **control:** both are ordered (`CommandedStrikes` 2); the enemy loses at least both blows; the
+Imp later held swings once; the other swings once. **Held scene:** the Imp beside it swings once; the enemy loses
+everything the control lost but the held one's blow, at least; **the held one does not strike: the enemy loses no more
+than that; the held Imp does not swing (its `AttacksMade` before and after are printed); only the follower beside it is
+ordered: the held one does not raise `CommandedStrikes` (1)**. For the thralls (6): the held thrall hits harder than the
+other; the two control assertions on `CommandedStrikes` and the enemy's loss; the held scene's two health assertions and
+the `CommandedStrikes` assertion. Every health message prints the loss, the enemy's health after, the control's loss and
+the held one's blow, so the broken run records the measurement.
+
+| Test | Scenes | Total |
+|---|---|---|
+| `Cataclysm.CompelHeld.AStunnedMinionIsNotOrderedAndTheMinionBesideItStrikes` | nothing; one Imp stunned | 33 |
+| `Cataclysm.CompelHeld.AKnockedDownMinionIsNotOrderedAndTheMinionBesideItStrikes` | nothing; one Imp knocked down | 33 |
+| `Cataclysm.CompelHeld.AFearedMinionIsNotOrderedAndTheMinionBesideItStrikes` | nothing; one Imp feared | 34 |
+| `Cataclysm.CompelHeld.AStunnedThrallIsNotOrderedAndTheThrallBesideItStrikes` | nothing; one thrall stunned | 30 |
+
+Counts are every assertion reached when each set-up holds. **Bold** assertions fail with CH-G1's break. The existing
+`Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy` is not edited and is expected to pass: its one minion
+is not held. That is a reading, not a run.
+
+### NOT TESTED
+
+A thrall a rule told to flee (`FleeFrom`): read, the same `FleeSourceOf` answer as fear. A knocked-down or feared
+thrall: read, the same two questions as for an Imp. A held creature whose hold ends between two casts. Chorus (#2563).
+
+### GUARD PROOFS PROPOSED
+
+One, CH-G1, in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`, prefix `Cataclysm.CompelHeld.` (with
+the dot; it selects the 4 new tests and no other, counted by a script over every test name in
+`game/Source/Cataclysm/Tests/`). The anchor is counted exactly once by `read_text`; the break leaves the brackets as
+they were and `Body` still used below it.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| CH-G1, the skip is never true | `const AActor* Striker = Body;` | `const AActor* Striker = nullptr;` | 4 tests, 11 assertions: in each of the three Imp tests, "the held one does not strike", "the held Imp does not swing" and "only the follower beside it is ordered"; in the thrall test, "the held one does not strike" and "only the follower beside it is ordered". The control halves and every other assertion pass |
+
+With the break, `CannotAct(nullptr)` and `FleeSourceOf(nullptr, ...)` answer false (`HasTag` of no actor is false, and
+the cast to an enemy fails), so every follower is ordered, as before this change. What each failing assertion would
+read in the broken run: the held scene's loss equal to the control's, against a limit of the control's loss less half
+the held blow; the held Imp's `AttacksMade` one more after the cast than before; `CommandedStrikes` 2 against 1.
+
+**The proof's broken half is the issue's measurement**, ruling 4. If the held creatures do not strike with the break in,
+the proof reads NOT A PROOF; that is reported and work stops, and #2560 closes as not a fault. Either way the window
+quotes the held Imps' `AttacksMade` and the enemy's health from the broken run's messages.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- With a Staff and Compel, summon two minions, let an enemy stun one of them (the Brute's stomp reaches them), and cast
+  Compel on another enemy while it is stunned: the stunned minion does not strike; the other does.
+
+### THE WINDOW'S RUN, t161w, AND THE MEASUREMENT OF #2560
+
+Window t161w, run 2026-10-27 under the lock as `enchant-t161w`, at `ca4b3e037` on development `039f9dcb0`. Free memory
+immediately before the lock, at 15:04:24, was 10,545 MB, against the floor of 10 GiB (10,240 MB). No new source file and
+no status row changed, so the window had no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The four new tests, each alone | 1 of 1 each; the first build compiled 2 files in 5 actions |
+| The whole Unreal suite | "4330 tests performed, 4330 succeeded, 0 failed"; 4330 declared, gap 0 |
+| Memory | `tests=4937 peak_used_virtual_mb=8074 final_used_virtual_mb=7756` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| CH-G1, the skip is never true (prefix `Cataclysm.CompelHeld.`, 4 tests) | PROVED: all 4 failed, 11 of 11 assertions; 4 of 4 passed restored |
+
+**THE FAULT IS MEASURED, AS RULING 4 ASKED: CH-G1's broken half is today's code, and in it every held creature
+struck.** Quoted from the broken run:
+
+| Held creature | What the broken run read |
+|---|---|
+| A stunned Imp | "the held imp does not swing (1 attacks before the cast, 2 after)"; the enemy lost 691.0, the same as the control's 691.0, with the held one's blow 220.5; `CommandedStrikes` 2 where 1 |
+| A knocked-down Imp | the same: 1 then 2 attacks; 691.0 lost against the control's 691.0; `CommandedStrikes` 2 |
+| A feared Imp | the same: 1 then 2 attacks; 691.0 lost against the control's 691.0; `CommandedStrikes` 2 |
+| A stunned thrall | the enemy lost 450.0, the same as the control's 450.0, with the held one's blow 150.0; `CommandedStrikes` 2 |
+
+So before this change Compel did order a stunned, knocked-down or feared minion, and a stunned thrall, to strike, and
+each struck for its whole blow. With the change, none is ordered and the creature beside it still strikes.
+
+---
+
 ## 2026-10-27 — A stunned, knocked-down or feared echo of Echoes of the Past does not strike (#2558)
 
 **Affects:** `ACataclysmDungeonGameMode::StepEchoesOfThePast` in

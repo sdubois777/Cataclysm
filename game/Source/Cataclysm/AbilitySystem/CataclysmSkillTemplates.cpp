@@ -27,6 +27,8 @@
 // Issue #1515. `CataclysmSkillEffects.h` only declares the result.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmFervour.h"
+// For the flee step Compel's order asks. Issue #2560.
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For telling a player character's throw from any other, where Cripple is read. Issue #2273.
 #include "Character/CataclysmPlayerCharacter.h"
@@ -2247,6 +2249,18 @@ int32 UCataclysmProjectileSkill::Land()
 			if (ACataclysmCharacterBase* Body =
 					Cast<ACataclysmCharacterBase>(Follower))
 			{
+				// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled
+				// 2026-10-27 (#2560), as the echo strike asks since #2558:
+				// `CannotAct`, then the flee step, in the brain's order. Skipped
+				// before the order, so it is neither ordered nor counted, and
+				// `CommandedStrikes` still means "ordered".
+				const AActor* Striker = Body;
+				FVector FleeSource;
+				if (UCataclysmSkillEffects::CannotAct(Striker)
+					|| UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+				{
+					continue;
+				}
 				// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING,
 				// so ordering one is the same act the creature would have taken
 				// itself. A minion swings; a subjugated enemy uses its own
