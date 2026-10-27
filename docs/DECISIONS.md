@@ -2,6 +2,254 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-26 — Rows of its own: Shard of Anarchy's random buff can draw Death, Feasting and The Ascended, batch 3 of the owner's "Add everything" (#2538)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, the Buffs sheet's Death and The Ascended rows, and
+`game/Data/StatusEffects.csv` (the branch's first commit, `22d434919`, by the enchantment session under the
+coordinating session's grant for those two cells only: Death loses "(planned) ", and The Ascended gains its player
+form before a "(planned)" that marks its enemy form); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
+(a `.cpp`-local `RandomBuffRowsOfItsOwn`; `HeldRandomBuffEffectRows` appends its rows; three entries at the end of
+`RandomBuffTable`; the help text of `Cataclysm.RandomBuffPick`; the table's opening comment) and `.h` (comments only);
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (three tests, and one pinned name string with its
+label); `tools/tests/test_the_random_buff_table_names_buff_rows.py` (both lists, the count, the docstring); this file.
+The asset `game/Content/Data/DT_StatusEffects.uasset` and `game/Data/datatable_asset_sources.json` are rebuilt in the
+enchantment session's window. Issue #2538 stays open: Plague and Chaotic Barrier are still left out.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **FEASTING'S RULING IS NOT WHAT IS BUILT FOR A TICK.** The ruling says "Only a landed blow counts; damage-over-time
+  ticks and evaded blows do not." The row is built, as the brief says, on the builder's own-stack path, and that path
+  grants a stack on every landed `hit_taken`. A damage-over-time tick raises `hit_taken` as landed
+  (`CataclysmVitalAttributeSet.cpp`, the `NoteHitTaken(!Outcome.bEvaded, ..., Hit.bIsDamageOverTime)` call), and the
+  own-stack grant in `ActOnEvent` asks `bLanded` and not `bHitBeingAnnouncedIsATick`, as the Warhound roll and
+  `TeleportRandomlyAction` do. **So, as built, a tick on the holder gains a Feast stack. An evaded blow does not.** Not
+  changed here, because that is more code than the brief gives; it needs a ruling. The smallest change read: add
+  `&& !bHitBeingAnnouncedIsATick` to the own-stack grant's condition in `ActOnEvent`. On 2026-10-26 no own-stack row of
+  `game/Data/EnchantmentEffects.csv` is on `hit_taken` (counted by script), so that change would move no authored row.
+  The test does not assert the tick either way.
+- **WHAT A PLAYER NOTICES:** a wearer of two pieces of Shard of Anarchy whose 30-second roll draws a buff can now be
+  given, for 30 seconds: **Death** (a hit that leaves an enemy below half its health has a 25% chance to kill it
+  outright, at most once in 10 seconds after a kill, never a Boss or a Cataclysm Boss); **Feasting** (each blow taken
+  gives 4% increased attack speed, up to 20%, until 5 seconds pass with no blow); **The Ascended** (a kill gives the
+  player's minions 10% more damage and 10% increased attack speed for 5 seconds; a kill inside them starts the 5 again).
+  Each of the fifteen buffs is now drawn one time in fifteen, where each of twelve was one in twelve.
+- **THE EXIT'S GATEKEEPER IS REFUSED BY DEATH ONLY WHEN IT DREW THE BOSS OR THE CATACLYSM BOSS RUNG.** Death uses the
+  execute every execute uses, and that refuses a creature by `IsBoss()`, its rarity rung, and by nothing else. A
+  Gatekeeper that drew a lower rung can be killed by Death once a hit leaves it below 50%.
+- **THE DESCRIPTIONS STAND,** as ruled: Feasting's describes the enemy's form, and The Ascended's carries both forms.
+  How the drawn forms read is said below and in the comments on the table's entries.
+- **The buffs' places in `Cataclysm.RandomBuffPick` 0 to 11 do not move.** The three are appended as 12 to 14.
+
+### THE RULINGS, VERBATIM (the owner and the coordinating session, 2026-10-26)
+
+The owner, on the random-buff pool: "Add everything"; on The Ascended: "Kills buff your minions".
+
+The coordinating session:
+
+> THE ASCENDED: accepted as proposed. When the player kills an enemy, the player's minions deal 10% more damage and
+> have 10% increased attack speed for 5 s. A kill in that time restarts the 5 s and does not stack. Built as two
+> own-stack rows on `kill`, following the Starvation 10-piece precedent. Movement speed is left out because no minion
+> movement speed stat exists. Record Feeding Frenzy (poedb.tw) as the source in the entry, re-read when you write it.
+> "Nearby" dropped: accepted. The owner's answer was "Kills buff your minions", with no distance in it, and Feeding
+> Frenzy also reaches every minion. State it as a judgement in the entry.
+>
+> DEATH: accepted. execute_target on hit_dealt, chance 25, target_health_below 50, trigger cooldown 10.
+> - (a) Every landed hit counts, the basic attack included: accepted.
+> - (b) The 10 s starts when the execute fires: accepted, as the action is built.
+> - "Boss" means IsBoss(), the Boss and Cataclysm Boss rarity rungs, which CanBeExecuted already refuses. Every
+>   execute in the game uses that test. State in the entry, in plain words, that the exit's Gatekeeper is refused only
+>   when it drew one of those rungs; otherwise Death can kill it below 50%. No new check.
+>
+> FEASTING: accepted. One own-stack row: attack_speed increased 4 per stack, on hit_taken, at most 5 stacks, 5 s each.
+> Only a landed blow counts; damage-over-time ticks and evaded blows do not.
+>
+> 3. Feasting: no change [to the workbook]. One row serves both forms, the enemy form is built, and the sentence
+> describes it, as your 10-09 judgement held. The player form's difference goes in the entry and the table comment, as
+> for batch 2.
+
+"(b) The 10 s starts when the execute fires", as the action is built, is: the trigger cooldown starts when an execute
+kills (`NoteExecuteMade`, from `ExecuteIfLeftBelow`). A roll that comes up on a hit that leaves the enemy at or above
+50% starts nothing.
+
+### THE MECHANISM: ROWS OF ITS OWN, WRITTEN IN CODE
+
+The reading session's plan's "Batch 3's kind", built. **`RandomBuffRowsOfItsOwn(FName Buff)`**, in an anonymous
+namespace in `CataclysmAbilitySystemComponent.cpp`, returns the `FCataclysmEnchantmentEffectRow`s a buff wears that no
+row of `game/Data/EnchantmentEffects.csv` states, keyed by the buff's name. **`HeldRandomBuffEffectRows`** appends them
+after the rows copied from `WornRows`, each renamed `RandomBuff:<buff>` as a worn row is, so the same builder
+(`AccumulateEnchantmentsInto`'s `ExtraRows`, batch 2) builds them at the set rows' roll and every key they keep is the
+buff's own. `CataclysmAbilitySystemComponent.h` still does not include `Data/CataclysmDataRows.h`.
+
+Size, counted by script over the diff, lines that are not comments or blank: 72 in the `.cpp`. Of them 12 are the
+function's frame (8) and the append loop in `HeldRandomBuffEffectRows` (4), 44 are the three buffs' rows, 15 the
+three table entries, and 1 the help text.
+
+**No generator refuses these rows.** A row the builder cannot read is left out with a warning in the log and nothing
+else (plan risk 11). Each test therefore asserts the buff's actions and what each row does; a row left out fails it.
+Every name the rows use was swept by script against where it is defined (below).
+
+### THE THREE ENTRIES AND THEIR ROWS
+
+| Place, entry | Row(s) of its own | Figures from the sentence | Figures that are rulings or judgements |
+| :-- | :-- | :-- | :-- |
+| 12 Death | `execute_target` on `hit_dealt`, no Required Tags, Condition `target_health_below` 50, Trigger Cooldown 10, value 25 | 25%, below 50%, every 10 seconds | unscoped, so every landed hit counts (ruling a); the cooldown counted from an execute (ruling b, as built) |
+| 13 Feasting | `attack_speed` increased 4, Scale `own_stacks` step 1, on `hit_taken`, Scale Max Steps 5, Stack Seconds 5 | 4% a stack, up to 5, 5 seconds; 4 is also the row's Strength | on `hit_taken`, a landed blow (ruled; see SAID FIRST for a tick); one window for all the stacks, from the last gained, as every own stack's is (as built) |
+| 14 The Ascended | `minion_damage` more 10 and `minion_attack_speed` increased 10, each Scale `own_stacks` step 1, on `kill`, Scale Max Steps 1, Stack Seconds 5 | 10% more damage, 10% increased attack speed, 5 seconds (the player form in the workbook cell) | the reading itself, a kill buffing the player's minions (the owner's "Kills buff your minions" and the coordinating session's ruling); at most one stack, so a kill restarts the 5 and adds nothing (ruled) |
+
+- **"More" reaches a minion's blow.** `ACataclysmMinion::AttackTarget` multiplies its blow by
+  `UCataclysmCommand::SummonerMultiplierAgainst(Summoner, "minion_damage", Target, TypeTags)`, which is
+  `MultiplierForStatAgainst`: the increases, then the "more" product. Set the Pack On's row is the precedent for a
+  "more" on `minion_damage`. The own stack is read off the summoner's component, which `CurrentConditions` names as the
+  one asking.
+- **`minion_attack_speed` is read only as increases**, by `MinionAttackSpeedFor` in `CataclysmCommand.cpp`
+  (`IncreasesForStat`), and divides the interval in `AttackIntervalScaleFor`. So the row is "increased", and 10
+  increased is an interval of 1 / 1.1.
+- **The Ascended's kill is the holder's `kill` event.** `ACataclysmPlayerCharacter` raises it for a kill credited to it.
+  Whether a kill made by one of the player's minions is credited to the player is what the game already does for
+  every `kill` row; this entry does not change or test it.
+
+### JUDGEMENTS, WITH THE OPTIONS NOT TAKEN
+
+- **"Nearby" dropped from The Ascended (a judgement, accepted by the coordinating session):** every minion of the
+  holder's, wherever it stands. The owner's answer named no distance, and Feeding Frenzy reaches every minion. Not
+  taken: a reach of 5 m, the project's "nearby" (`NearbyActionRadiusCm`).
+- **Movement speed left out of The Ascended (ruled):** no minion movement speed stat exists.
+- **The rows are written in a `.cpp`-local function keyed by name**, not as fields of `FRandomBuff`, so the header
+  does not need the row struct. Not taken: an array of rows on `FRandomBuff`.
+- **The in-code rows sit inside `HeldRandomBuffEffectRows`' existing early return**, which returns no rows when the
+  effect table cannot be loaded. Not taken: moving that return so the in-code rows survive a missing table; with no
+  table the gear refresh grants no row at all, so nothing is lost by it.
+- **The three tests are in `CataclysmEnchantmentEffectTests.cpp`, at its end, named in
+  `Cataclysm.StatExemption.TheRandomBuff`,** because the rigs they need (the execute's player character, the bare
+  wearer, the summoner) are all above. Not taken: `CataclysmStatExemptionTests.cpp` beside batch 1's, which has none of
+  the three.
+
+### THE GENRE SOURCES
+
+- **Culling Strike (Path of Exile 2), poe2db.tw/us/Culling_Strike**, read by the enchantment session 2026-10-26: "Culling
+  Strikes kill Normal enemies if their life is at 35% or below." "Magic enemies are instead killed at 20%." Rare at
+  10%, Unique at 5%. "These thresholds are checked before the damage of the Hit is applied." It is not a chance. For
+  Death: the genre's execute is refused or lowered by rarity, as Death is refused by the boss rungs. Not settled by it:
+  Death's 25% chance, its 50% share and its 10 seconds, which are the sentence's. Death's share is judged after the
+  hit, as every execute in this game is (2026-10-12), where Culling Strike judges before it.
+- **Frenzy Charge (Path of Exile), maxroll.gg/poe/resources/charges**, read by the enchantment session 2026-10-26: "4%
+  increased Attack Speed per Frenzy Charge"; "a default maximum of 3"; "Charge base duration is 10 seconds". For
+  Feasting: the row's own 4% a stack is the genre's figure a charge. The 5 stacks and 5 seconds are the sentence's.
+- **Feeding Frenzy (Path of Exile), poedb.tw/us/Feeding_Frenzy_Support**, re-read by this session 2026-10-26 as the
+  coordinating session asked: "Feeding Frenzy grants 10% more Minion Damage, 10% increased Minion Movement Speed" and
+  "10% increased Minion Attack and Cast Speed"; "Feeding Frenzy base Duration is (4—5.9) seconds". It is granted by
+  the minions' hits ("Minions from Supported Skills have (25—44)% chance to grant Feeding Frenzy to you on Hit"), not
+  by kills. For The Ascended: the 10% more damage, the 10% increased attack speed, and a window of about 5 seconds are
+  the genre's shape. The trigger on a kill is the owner's ("Kills buff your minions"), not Feeding Frenzy's.
+
+### WHAT MOVED, OLD AND NEW
+
+- `tools/tests/test_the_random_buff_table_names_buff_rows.py`: `IN_THE_TABLE` gains "Death", "Feasting" and "The
+  Ascended" at its end, 12 names to 15; `LEFT_OUT` loses them, 5 to 2 (Plague and Chaotic Barrier stay);
+  `test_the_reader_finds_the_table`'s count 12 becomes 15; the docstring gains "Fifteen and two since batch 3".
+  `assert len(rows) == 17` and the six worn row names do not move.
+- `Cataclysm.RandomBuffPick`'s help text: "... 10 Temporal Flux, 11 Void. -1 picks at random." becomes "... 10 Temporal
+  Flux, 11 Void, 12 Death, 13 Feasting, 14 The Ascended. -1 picks at random."
+- `CataclysmEnchantmentEffectTests.cpp`, the Shard of Anarchy two-piece test's set-up: "the twelve buffs of the table"
+  becomes "the fifteen buffs of the table", and the joined names gain ", Death, Feasting, The Ascended".
+- `CataclysmAbilitySystemComponent.h`, the comment above `RandomBuffTable`: "It holds twelve" becomes "It holds
+  fifteen" with the three named, and "LEFT OUT FOR NOW: Plague, Death, Chaotic Barrier, The Ascended and Feasting"
+  becomes "LEFT OUT FOR NOW: Plague and Chaotic Barrier". `HeldRandomBuffEffectRows`' comment names the rows of its own.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- wear two pieces of Shard of Anarchy and pin `Cataclysm.RandomBuffPick 12` to `14`: with Death, hit enemies below
+  half health and some die at once, no more than one in 10 seconds, and a boss never does; with Feasting, take hits and
+  attack faster, and the speed goes 5 seconds after the last hit; with The Ascended, kill an enemy with minions out and
+  they hit harder and faster for 5 seconds. Each ends with the buff's 30 seconds.
+
+### Tests
+
+All three in `Cataclysm.StatExemption.`, selected with batches 1 and 2 by the prefix
+`Cataclysm.StatExemption.TheRandomBuff`, written at the end of `CataclysmEnchantmentEffectTests.cpp`. Each reads its
+control before the draw; each figure is a difference from, or a ratio to, that reading; the draw is pinned through
+`Cataclysm.RandomBuffPick` by batch 2's `DrawsTheBuff` (four set-up checks: in the table, the pin exists, the draw
+lays a buff, the buff held is it); the end is read after the clock is moved by hand to 30.5 seconds past the draw and
+`StepTimedGrants` runs. "The buff's actions" are those whose trigger key begins with `RandomBuff:<buff>:`. Assertion
+counts are by reading.
+
+`TheRandomBuffDeathExecutesWhatAHitLeavesBelowHalfAtATwentyFivePercentChanceOnceInTenSeconds`, 32 assertions, on the
+player character of `CataclysmFourSingleRowsTest::FRowStriker` wearing a helm with no row, its blows at an attack
+damage of 100 written again after each refresh, ten creatures (nine 4 m apart from 4 m, the Boss at 44 m),
+`Cataclysm.CritRoll` 100 and `Cataclysm.ExecuteRoll` pinned at each blow: set-up, the rig, the pin and the creatures
+(3); set-up, a blow of no skill and a thrust each take something and under a tenth of the maximum; **control: no
+action of the buff's**; **control: with no buff, a blow of no skill at a roll of 24.5 leaves the creature at 40% alive**,
+**and below half** (2); the four draw checks; **one action of the buff's** (a row left out fails here); **it executes,
+on `hit_dealt`, below a share, unscoped**, **chance 25**, **share 50**, **cooldown 10** (4); 1 s after the draw,
+**control: a blow that leaves it at 60%, roll 0, does not kill**, **and leaves it at 60%**; **control: a roll of 25.5
+does not kill** (2); **a roll of 24.5 on a blow of no skill kills**; **5 s after that, a blow at roll 0 does not kill**
+(2); **10.5 s after it, a thrust at 24.5 kills**; set-up, the Boss is a boss; 22 s after the draw, **a Boss left below
+half at roll 0 lives**, **and was reached** (2); **an ordinary creature struck after it at 24.5 dies, so no cooldown
+spared the Boss**; **after 30.5 s no buff is held**, **no action of the buff's**; 33 s after the draw, past every
+cooldown, **a blow at roll 0 does not kill**, **and reached it** (2).
+
+`TheRandomBuffFeastingIsFourIncreasedAttackSpeedForEachLandedBlowTakenUpToFiveForFiveSeconds`, 24 assertions, on batch
+2's bare wearer at 100,000 health and a bare attacker, each blow `ApplyDirectDamage` of 1 with `bCannotBeMitigated`,
+read by `IncreasesForStat("attack_speed")`: a world; **control: no action of the buff's**; set-up, the blow is dealt;
+**control: with no buff a landed blow adds nothing**; the four draw checks; **one action of the buff's** (a row left
+out fails here); **control: held, no blow, nothing**; **control: held, an evaded blow (`NoteHitTaken` not landed) adds
+nothing**; **1 to 5 landed blows half a second apart add 4, 8, 12, 16, 20** (5); **a sixth adds nothing, 20**; **4.5 s
+after the last, 20 still**; **5.5 s after it, nothing**; **28 s after the draw, a blow adds 4**; **after 30.5 s no buff
+is held**, **no action of the buff's**, **and the 4 is gone**; **and a blow after it adds nothing**.
+
+`TheRandomBuffTheAscendedMakesAKillGiveMinionsTenMoreDamageAndTenIncreasedAttackSpeedForFiveSeconds`, 25 assertions, on
+`CataclysmDeployableTest::FSummoner` with nothing worn: each reading spawns a fresh imp, `Blow` measures its strike on
+a fresh creature and `IntervalScaleOf` its attack interval scale, each a ratio to the summoner's before the draw; the
+kill is `ActOnEvent("kill")` on the summoner, as the kill-reset rows' test raises it: a world; set-up, the blow lands
+and the interval is read; **control: no action of the buff's**; **control: with no buff, after a kill, the blow is 1
+times**, **and the interval 1 times**; the four draw checks; **two actions of the buff's** (a row left out fails here);
+**control: held, no kill, the blow 1 times**, **the interval 1 times**; **1 s after the draw, a kill: the blow 1.1
+times**, **the interval 1 / 1.1 times**; **a second kill 3 s later adds nothing: 1.1**, **and 1 / 1.1**; **4.5 s after
+the second kill, 7.5 after the first, still 1.1: the second started the 5 again**; **5.5 s after it, 1 times**, **and
+the interval 1 times**; **28 s after the draw a kill gives 1.1**; **after 30.5 s no buff is held**, **no action of the
+buff's**, **the blow 1 times**, **the interval 1 times**; **and a kill after it moves nothing**.
+
+The events these tests rely on are each raised at depth nought, outside any `ActOnEvent`: `hit_dealt` by the test's
+`ApplyHit` (the execute is asked there and done when the damage is written, after the call returns), `hit_taken` by
+the attribute set's `NoteHitTaken`, and `kill` by hand. None is dropped by `PoolActionDepth`.
+
+### Not tested
+
+A damage-over-time tick on a Feasting holder (it gains a stack as built; SAID FIRST); a real Gatekeeper; a kill made by
+the player's minion and whether it raises the player's `kill`; a minion's real attack speed over time (the interval
+scale is read, not swings counted); a subjugated thrall's damage under The Ascended (it reads `minion_damage` through
+`ThrallDamageMultiplierAgainst`, so it should rise too, read and not run); Death on a creature exactly at 50%; a buff
+replaced by a different buff; a wearer of Starvation's ten-piece drawing The Ascended (different stats, so nothing
+shared).
+
+### GUARD PROOFS PROPOSED
+
+Each anchor counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` by
+script. Each break changes one number on one line and moves no bracket, so the file compiles alone as before. Prefix
+for all three: `Cataclysm.StatExemption.TheRandomBuff`, as for batch 2. It has no trailing dot because the names run
+on from it; it is a string prefix that 15 test names begin with, counted by script (batch 1's eight in
+`CataclysmStatExemptionTests.cpp`, batch 2's four and these three), and no other group's name begins with it. The
+count to quote is the run's. In each, every test of batches 1 and 2 passes, and so do the two batch 3
+tests not named.
+
+- **RB3-G1, Death's chance at nought:** `Row.ValueLow = Row.ValueHigh = 25.0f;` becomes
+  `Row.ValueLow = Row.ValueHigh = 0.0f;`. The action is still built, at a chance of 0, which no roll is under.
+  Predicted: the Death test fails, 4 assertions: chance 25; the roll of 24.5 kills; 10.5 s after, the thrust kills;
+  the ordinary creature after the Boss dies. Every "lives" assertion passes.
+- **RB3-G2, Feasting's cap at 50:** `Row.ScaleMaxSteps = 5;` becomes `Row.ScaleMaxSteps = 50;`. Predicted: the
+  Feasting test fails, 2 assertions: a sixth adds nothing (24 read); 4.5 s after the last blow, 20 (24 read).
+- **RB3-G3, The Ascended stacking:** `Row.ScaleMaxSteps = 1;` becomes `Row.ScaleMaxSteps = 2;`. Predicted: The
+  Ascended test fails, 3 assertions: a second kill adds nothing, the blow (1.2 read); and the interval (1 / 1.2 read);
+  4.5 s after the second kill, 1.1 (1.2 read). Chosen in place of the brief's `kill` made `hit_dealt`, whose
+  prediction depends on whether an imp's blow raises `hit_dealt` on its summoner, which this session did not verify.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-26 — A death raised while another is being announced waits until every listener has heard that one (#2482)
 
 **Affects:** `UCataclysmCombatEvents::NoteDeath` and a new private `Announce`; a new `bWhileTheKillersRowsActed` on

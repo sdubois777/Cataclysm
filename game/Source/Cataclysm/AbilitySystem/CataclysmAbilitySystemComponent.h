@@ -1457,14 +1457,15 @@ public:
 	 *
 	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner answered on 2026-10-26,
 	 * "Add everything": every Buff row of the status table joins the pool once it is built as a standalone buff
-	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds twelve: Mana Surge,
+	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds fifteen: Mana Surge,
 	 * Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own description
-	 * states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds it; and
+	 * states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds it;
 	 * Sanctified Power, Demonic Rage, Temporal Flux and Void (2026-10-26, batch 2), each wearing the set rows that
-	 * build it, by name (`FRandomBuff::WornRows`).
+	 * build it, by name (`FRandomBuff::WornRows`); and Death, Feasting and The Ascended (2026-10-26, batch 3), each
+	 * wearing rows of its own written in code, in the `.cpp`, so this header need not know the row.
 	 *
-	 * LEFT OUT FOR NOW: Plague, Death, Chaotic Barrier, The Ascended and Feasting. Each needs rows of its own or a
-	 * new action, or a ruling on what it means for a player, before it can join.
+	 * LEFT OUT FOR NOW: Plague and Chaotic Barrier. Each needs a new action or a ruling on what it means for a
+	 * player before it can join.
 	 *
 	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
 	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what
@@ -1521,6 +1522,9 @@ public:
 	 * THEY END WITH THE BUFF: once it is replaced or its seconds pass, the refresh that follows builds none of them,
 	 * and `SetPoolActions` forgets every kept stack no action carries. A named row the loaded table does not hold is
 	 * left out, with the table's own warning.
+	 *
+	 * AND, SINCE BATCH 3 (2026-10-26), THE ROWS OF ITS OWN that the `.cpp` writes for Death, Feasting and The
+	 * Ascended, after the worn rows and renamed the same way.
 	 */
 	TArray<FCataclysmEnchantmentEffectRow> HeldRandomBuffEffectRows() const;
 

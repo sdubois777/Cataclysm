@@ -4833,7 +4833,7 @@ static TAutoConsoleVariable<int32> CVarRandomBuffPick(
 	TEXT("Cataclysm.RandomBuffPick"), -1,
 	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
 		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound, 8 Sanctified Power, "
-		 "9 Demonic Rage, 10 Temporal Flux, 11 Void. -1 picks at random."),
+		 "9 Demonic Rage, 10 Temporal Flux, 11 Void, 12 Death, 13 Feasting, 14 The Ascended. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -7554,7 +7554,8 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 	// BUILT ONCE ON FIRST USE. Every line is from an enchantment, which is the source a row's own lines carry and
 	// one that may grant a "more" multiplier. Each entry's lines are what its own description in the status
 	// table states; the description is quoted above each. AN ENTRY MAY INSTEAD NAME SET ROWS TO WEAR, since batch 2
-	// of issue #2538: see `HeldRandomBuffEffectRows`.
+	// of issue #2538: see `HeldRandomBuffEffectRows`. AND AN ENTRY MAY WEAR ROWS OF ITS OWN, written in code, since batch
+	// 3: see `RandomBuffRowsOfItsOwn`.
 	static const TArray<FRandomBuff> Table = []
 	{
 		using EBucket = ECataclysmStatBucket;
@@ -7724,6 +7725,39 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 			Buffs.Add(Buff);
 		}
 
+		// BATCH 3 OF ISSUE #2538, joined 2026-10-26: each wears rows of its own, which no row of the effect table states,
+		// written in code by `RandomBuffRowsOfItsOwn` and renamed under its own enchantment name as a worn row is. The
+		// figures are said above each.
+		//
+		// "Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health." An
+		// execute on every landed hit, the basic attack's included, as ruled: a 25% chance on a hit that leaves the enemy
+		// below 50% of its health, at most once in 10 seconds counted from an execute. Never a Boss or a Cataclysm Boss,
+		// which no execute kills.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Death");
+			Buffs.Add(Buff);
+		}
+
+		// "This enemy gains a stack of "Feast" every time it is hit, up to 5 stacks, and for every stack its attack speed
+		// is increased by 4%. A stack lasts 5 seconds." THE DESCRIPTION IS THE ENEMY'S FORM, as ruled. As drawn, the
+		// holder gains a stack for each landed blow taken, 4 increased attack speed a stack, up to 5, and the stacks are
+		// held 5 seconds from the last one gained, as an own stack's window is.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Feasting");
+			Buffs.Add(Buff);
+		}
+
+		// "When you kill an enemy, your minions deal 10% more damage and have 10% increased attack speed for 5 seconds."
+		// The player's form, as ruled; the enemy's, after "(planned)" in the description, is not built. A kill inside
+		// the 5 seconds starts them again and adds nothing. Every minion of the holder's, wherever it stands.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("The Ascended");
+			Buffs.Add(Buff);
+		}
+
 		return Buffs;
 	}();
 	return Table;
@@ -7795,6 +7829,73 @@ FString UCataclysmAbilitySystemComponent::RandomBuffEnchantmentName(const TCHAR*
 	return FString::Printf(TEXT("RandomBuff:%s"), BuffName);
 }
 
+namespace
+{
+	/**
+	 * The effect rows a buff of `RandomBuffTable` wears that no row of `game/Data/EnchantmentEffects.csv` states, by the
+	 * buff's name, or none. Issue #2538, batch 3, 2026-10-26. Written in this file so that the header need not know the
+	 * row; `HeldRandomBuffEffectRows` renames each as it renames a worn row.
+	 *
+	 * NO GENERATOR REFUSES THESE. A row the builder cannot read is left out with a warning in the log and nothing
+	 * else, so each is pinned by an automation test that fails when it is left out.
+	 */
+	TArray<FCataclysmEnchantmentEffectRow> RandomBuffRowsOfItsOwn(FName Buff)
+	{
+		TArray<FCataclysmEnchantmentEffectRow> Rows;
+		if (Buff == FName(TEXT("Death")))
+		{
+			// `execute_target` on `hit_dealt`, unscoped, as the Strike execute row is written: the chance 25, below 50% of
+			// health, and a Trigger Cooldown of 10, which the action starts only when an execute kills.
+			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+			Row.Action = UCataclysmAbilitySystemComponent::ExecuteTargetAction;
+			Row.ActionEvent = TEXT("hit_dealt");
+			Row.ValueLow = Row.ValueHigh = 25.0f;
+			Row.Condition = TEXT("target_health_below");
+			Row.ConditionValue = 50.0f;
+			Row.TriggerCooldown = 10.0f;
+		}
+		else if (Buff == FName(TEXT("Feasting")))
+		{
+			// An own-stack row on `hit_taken`, as Spellblade's Will's six-piece attack speed row is one on `spell`: 4
+			// increased attack speed a stack, at most 5 stacks, held 5 seconds.
+			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+			Row.Stat = UCataclysmItemModifiers::AttackSpeedStat;
+			Row.ValueKind = TEXT("increased");
+			Row.ValueLow = Row.ValueHigh = 4.0f;
+			Row.Scale = TEXT("own_stacks");
+			Row.ScaleStep = 1.0f;
+			Row.ActionEvent = TEXT("hit_taken");
+			Row.ScaleMaxSteps = 5;
+			Row.StackSeconds = 5.0f;
+		}
+		else if (Buff == FName(TEXT("The Ascended")))
+		{
+			// Two own-stack rows on `kill`, as Starvation's ten-piece rows are: 10 more minion damage and 10 increased
+			// minion attack speed, at most one stack each, held 5 seconds.
+			struct FAscendedLine
+			{
+				const TCHAR* Stat;
+				const TCHAR* Kind;
+			};
+			const FAscendedLine AscendedLines[] = {{TEXT("minion_damage"), TEXT("more")},
+				{TEXT("minion_attack_speed"), TEXT("increased")}};
+			for (const FAscendedLine& Each : AscendedLines)
+			{
+				FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+				Row.Stat = Each.Stat;
+				Row.ValueKind = Each.Kind;
+				Row.ValueLow = Row.ValueHigh = 10.0f;
+				Row.Scale = TEXT("own_stacks");
+				Row.ScaleStep = 1.0f;
+				Row.ActionEvent = TEXT("kill");
+				Row.ScaleMaxSteps = 1;
+				Row.StackSeconds = 5.0f;
+			}
+		}
+		return Rows;
+	}
+}
+
 TArray<FCataclysmEnchantmentEffectRow> UCataclysmAbilitySystemComponent::HeldRandomBuffEffectRows() const
 {
 	TArray<FCataclysmEnchantmentEffectRow> Rows;
@@ -7818,6 +7919,11 @@ TArray<FCataclysmEnchantmentEffectRow> UCataclysmAbilitySystemComponent::HeldRan
 				FCataclysmEnchantmentEffectRow& Copy = Rows.Add_GetRef(*Row);
 				Copy.Enchantment = RandomBuffEnchantmentName(Buff.Name);
 			}
+		}
+		// AND THE ROWS OF ITS OWN, written in code, renamed the same way. Issue #2538, batch 3.
+		for (const FCataclysmEnchantmentEffectRow& Own : RandomBuffRowsOfItsOwn(Held))
+		{
+			Rows.Add_GetRef(Own).Enchantment = RandomBuffEnchantmentName(Buff.Name);
 		}
 	}
 	return Rows;
