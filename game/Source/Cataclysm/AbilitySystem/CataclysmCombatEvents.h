@@ -539,6 +539,13 @@ public:
 	void AfterThisDeathIsHeard(TFunction<void()> Work);
 
 	/**
+	 * Whether `Victim`'s death has been raised and is waiting to be heard, because it was raised while another death
+	 * was being announced. See `NoteDeath`. Issue #2546: Divine Resurgence's placed count counts such a creature as
+	 * still standing, since it is in neither of its other counts yet.
+	 */
+	bool IsWaitingToBeHeard(const AActor* Victim) const;
+
+	/**
 	 * Announces a skill paid for. Called by
 	 * `UCataclysmSkillTemplate::CommitAndBegin` once `CommitAbility` succeeds,
 	 * which every one of the eight skill shapes and the basic attack pass through.
@@ -585,4 +592,12 @@ private:
 
 	/** Work waiting for the announcements in progress to finish. See `AfterThisDeathIsHeard`. */
 	TArray<TFunction<void()>> WorkAfterDeaths;
+
+	/**
+	 * The victims of the deaths waiting in `WorkAfterDeaths`: added as a death is queued, removed just before it is
+	 * announced. Held weakly, so a victim destroyed while it waits leaves no dangling entry. Nothing removes a queued
+	 * death from the list without announcing it: `DoWorkAfterDeaths` runs every entry it takes off. See
+	 * `IsWaitingToBeHeard`.
+	 */
+	TSet<TWeakObjectPtr<const AActor>> DeathsWaiting;
 };

@@ -5085,14 +5085,6 @@ private:
 	 */
 	TArray<FDivineResurgenceGrave> DivineResurgenceGraves;
 	int32 DivineResurgenceFallen = 0;
-
-	/**
-	 * The creatures whose deaths Divine Resurgence has heard and counted among `DivineResurgenceFallen`. Issue #2546.
-	 * `DivineResurgencePlacedCount` counts a dead creature as standing until it is in here, because a death raised
-	 * while another is being announced waits to be heard (#2482) and was in neither count until then. Emptied with
-	 * the fallen count, so the two always agree.
-	 */
-	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> DivineResurgenceHeard;
 	bool bDivineResurgenceDone = false;
 	int32 DivineResurgenceRisen = 0;
 

@@ -18184,15 +18184,18 @@ int32 ACataclysmDungeonGameMode::DivineResurgencePlacedCount() const
 	// by the engine at any time afterwards, so its length drifts; this count does not.
 	// A MARKED creature is neither: it is one of the floor's dead brought back.
 	//
-	// A DEAD CREATURE WHOSE DEATH HAS NOT BEEN HEARD YET STILL STANDS here. Issue #2546: a death raised while another
-	// is being announced waits to be heard (#2482), and until then it was in neither count, so the placed count read
-	// one short and the revival could come a death early. See `DivineResurgenceHeard`.
+	// A DEAD CREATURE WHOSE DEATH IS WAITING TO BE HEARD STILL STANDS here. Issue #2546: a death raised while another
+	// is being announced waits (#2482), and until it is heard it is in neither count, so the placed count read one
+	// short and the revival could come a death early. "Waiting" is asked of the announcer, which holds the queue: a
+	// creature that died earlier, a Horde dungeon's last wave included, is not waiting and is in neither count, as
+	// before. Window w68 measured the first answer, a set this rule emptied at the floor change, counting two such
+	// bodies as standing.
+	const UCataclysmCombatEvents* Announcer = UCataclysmCombatEvents::In(GetWorld());
 	int32 Standing = 0;
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
 		if (IsValid(Enemy) && Enemy->PaysForItsDeath()
-			&& (!UCataclysmSkillEffects::IsDead(Enemy)
-				|| !DivineResurgenceHeard.Contains(TWeakObjectPtr<ACataclysmEnemyCharacter>(Enemy.Get()))))
+			&& (!UCataclysmSkillEffects::IsDead(Enemy) || (Announcer && Announcer->IsWaitingToBeHeard(Enemy))))
 		{
 			++Standing;
 		}
@@ -18229,7 +18232,6 @@ void ACataclysmDungeonGameMode::NoteDeathForDivineResurgence(
 	// nothing else can be put back; the sandbox's plain creature is counted and not
 	// recorded, the same answer Vengeful Wraiths gives it.
 	++DivineResurgenceFallen;
-	DivineResurgenceHeard.Add(Fallen);
 	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
 	if (Kind != ECataclysmDungeonCreature::Count)
 	{
@@ -22282,7 +22284,6 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// as placed nor raises it again.
 		DivineResurgenceGraves.Reset();
 		DivineResurgenceFallen = 0;
-		DivineResurgenceHeard.Reset();
 		bDivineResurgenceDone = false;
 		DivineResurgenceRisen = 0;
 
