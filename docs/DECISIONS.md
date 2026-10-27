@@ -122,8 +122,8 @@ lock was taken, after waiting for `development`'s CI run at `c14da36bb` to finis
 
 The failure: "Expected 'while the second death waited to be heard, the placed count was what it was before' to be 8,
 but it was 7". `ARisenCreatureDoesNotCountTowardTheNextFloor` passed. The third form, under What changed, is
-registered for the next window, w70: **4301 / 0** on the Withered Touch merge (measured 4300, and the one test this
-branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-3`; P1 and P2 as above; memory as above;
+registered for the next window, w70: **4301 / 0 on `3b0c74ef3`** (#2552, the Withered Touch merge, measured 4300, and
+the one test this branch adds), the branch moved onto it as `fix/divine-resurgence-placed-count-3`; P1 and P2 as above; memory as above;
 the counts quoted as printed. Not run yet.
 
 ---
