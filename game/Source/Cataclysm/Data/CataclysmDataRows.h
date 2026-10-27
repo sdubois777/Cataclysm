@@ -1146,7 +1146,12 @@ struct FCataclysmMinionTypeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	float NoticeRadiusCm = 0.0f;
 
-	/** "Nearest" or "Furthest". The Ballista deliberately picks the furthest. */
+	/**
+	 * "Nearest" or "Furthest". The Ballista's says "Furthest", and it takes the furthest enemy within its reach:
+	 * `ACataclysmMinion::Spawn` reads this into `bTargetsTheFurthest`, anything else being nearest, and
+	 * `ACataclysmEnemyController::ChooseTarget` asks `ACataclysmMinion::FurthestWithinReach` after a taunt, a Quarry
+	 * mark and the gadgets' most-health row. Nothing read it until issues #2397 and #1712.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	FString TargetMode;
 

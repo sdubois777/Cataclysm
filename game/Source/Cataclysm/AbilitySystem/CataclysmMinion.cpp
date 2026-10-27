@@ -516,6 +516,30 @@ AActor* ACataclysmMinion::MostHealthWithin(float Reach) const
 	return Most;
 }
 
+AActor* ACataclysmMinion::FurthestWithinReach() const
+{
+	if (!bTargetsTheFurthest)
+	{
+		return nullptr;
+	}
+
+	// THE FURTHEST ALONG THE FLOOR OF THOSE WITHIN REACH, AND OF TWO AT THE SAME DISTANCE THE EARLIER. Compared by
+	// hand, as `MostHealthWithin` compares health, so the rule for a tie is written where it is applied.
+	const FVector Here = GetActorLocation();
+	AActor* FurthestFound = nullptr;
+	double FurthestFoundDistanceSquared = 0.0;
+	for (AActor* Each : HostilesWithinReach())
+	{
+		const double DistanceSquared = FVector::DistSquared2D(Here, Each->GetActorLocation());
+		if (!FurthestFound || DistanceSquared > FurthestFoundDistanceSquared)
+		{
+			FurthestFound = Each;
+			FurthestFoundDistanceSquared = DistanceSquared;
+		}
+	}
+	return FurthestFound;
+}
+
 const TCHAR* ACataclysmMinion::GadgetVolleyEverySecondsStat = TEXT("gadget_volley_every_seconds");
 
 float ACataclysmMinion::VolleyEverySeconds() const
@@ -1258,6 +1282,11 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		Minion->ReachCm = Type->ReachCm * Lengthened;
 		Minion->NoticeRadiusCm = Type->NoticeRadiusCm * Lengthened;
 		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
+
+		// AND WHETHER IT TAKES THE FURTHEST ENEMY WITHIN ITS REACH, which only the Ballista's row says. Issues #2397
+		// and #1712. ANYTHING THAT IS NOT "Furthest", IN ANY CASE, IS NEAREST, an empty column included, so a value
+		// the generator should have refused leaves the minion choosing as every minion did before the column was read.
+		Minion->bTargetsTheFurthest = Type->TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase);
 
 		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
 		// centimetres, the same conversion the shape parameters make.

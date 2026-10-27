@@ -248,6 +248,18 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 		{
 			return Healthiest;
 		}
+
+		// AND THEN A MINION WHOSE TYPE ROW SAYS `Furthest` TAKES THE FURTHEST ENEMY WITHIN ITS REACH: the Ballista,
+		// which "fires massive bolts at the furthest enemy within 15 meters". Issues #2397 and #1712, ruled 2026-10-26
+		// and 2026-10-27 by the coordinating session: after the taunt, the order and the row above, before the search
+		// below. MEASURED ON `HostilesWithinReach` AND NOT ON THE SEARCH'S CANDIDATES, which admit a body whose capsule
+		// only reaches in; `ACataclysmMinion::FurthestWithinReach` says why. Every other minion is answered null, and
+		// so is a Ballista with nothing within its reach; each falls through to the search exactly as before. It
+		// returns here, as the row above does.
+		if (AActor* FurthestInReach = Gadget->FurthestWithinReach())
+		{
+			return FurthestInReach;
+		}
 	}
 
 	// `NoticesFromCm` AND NOT `SightRadiusCm`, so the floor the creature is
