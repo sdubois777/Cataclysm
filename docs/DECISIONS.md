@@ -36,7 +36,7 @@ Both new tests leave the dungeon as the existing one does: modifiers emptied, th
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | the base's measured total + 2, 0 failed |
+| Whole Unreal suite | 4322 / 0: `development` at `da1bb95cc` (#2559) measured 4320, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-resets-1` |
 | Memory | about 7,900 MB; reported if above 9,500 |
 | P1, the leaving reset of Wasting Sickness's stacks deleted | `LeavingTheDungeonClearsWastingSickness` fails |
 | P2, the leaving reset of Mortal Decay's slow deleted | `LeavingTheDungeonEndsMortalDecaysSlow` fails |
