@@ -22,6 +22,11 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+// For Starving Aura's debuff, built here. Issue #2539.
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+#include "UObject/Package.h"
 
 const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
 
@@ -61,6 +66,8 @@ const TCHAR* UCataclysmEnemyModifiers::SacrificialBondRow =
 	TEXT("Demonic_Sacrificial_Bond");
 const TCHAR* UCataclysmEnemyModifiers::InfernoChargeRow =
 	TEXT("Demonic_Inferno_Charge");
+const TCHAR* UCataclysmEnemyModifiers::StarvingAuraRow =
+	TEXT("Famine_Starving_Aura");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -384,6 +391,83 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 	return true;
 }
 
+namespace
+{
+	/**
+	 * Starving Aura's debuff on one target: the row's Strength ADDED to
+	 * `UCataclysmVitalAttributeSet::HealingReceivedReduction` for the row's
+	 * duration, under `Status.Debuff.StarvingAura`. Issue #2539.
+	 *
+	 * NOT THROUGH `UCataclysmSkillEffects::ApplyNamedEffect`, which only LOWERS
+	 * the stats a row's `MovesStat` names. The row leaves that column empty and
+	 * the stat is named here, ruled 2026-10-26; #1144 is the open concern.
+	 *
+	 * BUILT AS `ApplyNamedEffectOnly` BUILDS ITS EFFECT, with the public calls
+	 * that file's private helpers make: an object of its own (#1501), a
+	 * duration, one additive modifier, the tag, and whatever already grants the
+	 * tag taken off first. So TWO STARVING CREATURES DO NOT STACK (ruled): the
+	 * later application replaces the earlier and the cut stays at the row's 50.
+	 *
+	 * ON THE CURRENT VALUE, NEVER THE BASE, which is why it ADDS to the floor
+	 * rules' share. Death's Embrace and Necrotic Ground reach the attribute as
+	 * its base through the stat refresh's `SetNumericAttributeBase`, which leaves
+	 * a running modifier standing, and this leaves their base alone. `TopUp`
+	 * clamps the sum at 100.
+	 *
+	 * AND THE DEBUFF RULES ABYSSAL AURA'S PATH ASKS: a row refusing debuffs
+	 * refuses it, the target's own stat sets how long it lasts, and the laying
+	 * is recorded.
+	 */
+	bool EnemyModifiersApplyStarvingAura(AActor* Starver, AActor* Starved,
+										 const FGameplayTag& StarvingTag,
+										 float StarvingSeconds, float StarvingPoints)
+	{
+		UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Starved);
+		const FGameplayAttribute StarvedStat =
+			UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute();
+		if (!Defender || !Defender->HasAttributeSetForAttribute(StarvedStat)
+			|| UCataclysmDebuffs::RefusedByARow(Starver, Starved, StarvingTag))
+		{
+			return false;
+		}
+		const float StarvedSeconds = UCataclysmDebuffs::DurationOn(
+			Defender, StarvingSeconds, FGameplayTagContainer(StarvingTag));
+		if (StarvedSeconds <= 0.0f)
+		{
+			return false;
+		}
+		UCataclysmDebuffs::NoteLaid(Starver, Starved, StarvingTag, /*bIsASpreadCopy=*/false);
+		UCataclysmSkillEffects::RemoveEffectsGranting(Starved, StarvingTag);
+
+		UObject* StarvingOuter = GetTransientPackage();
+		UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+			StarvingOuter, MakeUniqueObjectName(StarvingOuter, UGameplayEffect::StaticClass(),
+												FName(TEXT("CataclysmStatus_StarvingAura"))));
+		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Effect->DurationMagnitude =
+			FGameplayEffectModifierMagnitude(FScalableFloat(StarvedSeconds));
+
+		FGameplayModifierInfo& Modifier = Effect->Modifiers.AddDefaulted_GetRef();
+		Modifier.Attribute = StarvedStat;
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(StarvingPoints);
+
+		UTargetTagsGameplayEffectComponent& TagsComponent =
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
+		FInheritedTagContainer Granted;
+		Granted.Added.AddTag(StarvingTag);
+		TagsComponent.SetAndApplyTargetTagChanges(Granted);
+
+		// IN THE CREATURE'S NAME, as `ApplyStating` applies Abyssal Aura's.
+		UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Starver);
+		FGameplayEffectContextHandle Context = (Source ? Source : Defender)->MakeEffectContext();
+		Context.AddInstigator(Starver, Starver);
+		const FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+		return true;
+	}
+}
+
 int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 {
 	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
@@ -412,6 +496,8 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		bHostile && Carries(Enemy->ModifierRows, HellfireAuraRow);
 	const bool bStripsResistance =
 		bHostile && Carries(Enemy->ModifierRows, AbyssalAuraRow);
+	const bool bStarves =
+		bHostile && Carries(Enemy->ModifierRows, StarvingAuraRow);
 
 	// AND WHETHER THE FLOOR MADE THIS ONE ITS MEDIC. TODAY THIS IS EXACTLY THE
 	// OPPOSITE OF `bHostile` ABOVE, AND BOTH NAMES ARE KEPT ON PURPOSE. They
@@ -427,7 +513,7 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 	// field's own comment says why the two are kept apart.
 	const bool bHealsAllies = Enemy->bHealsAlliesForTheFloorRule;
 
-	if (!bBurns && !bStripsResistance && !bHealsAllies)
+	if (!bBurns && !bStripsResistance && !bStarves && !bHealsAllies)
 	{
 		// EVERY COMMON CREATURE COMES THROUGH HERE, carrying no aura and not
 		// being the floor's medic. The check that used to stand here asked
@@ -462,9 +548,9 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		Touched += HealAlliesPulse(Enemy);
 	}
 
-	if (!bBurns && !bStripsResistance)
+	if (!bBurns && !bStripsResistance && !bStarves)
 	{
-		// A MEDIC CARRYING NEITHER AURA IS FINISHED. What follows searches for
+		// A MEDIC CARRYING NO AURA IS FINISHED. What follows searches for
 		// this creature's ENEMIES, which for a medic is work with no result.
 		return Touched;
 	}
@@ -494,6 +580,16 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		AbyssalTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Abyssal Aura"));
 		AbyssalSeconds =
 			UCataclysmSkillEffects::NumbersForEffectTag(AbyssalTag).DurationSeconds;
+	}
+
+	// AND STARVING AURA'S, from `Debuff_Starving_Aura` in the same table: a
+	// strength of 50 and a duration of 2 seconds. Issue #2539.
+	FGameplayTag StarvingTag;
+	FCataclysmStatusEffectNumbers Starving;
+	if (bStarves)
+	{
+		StarvingTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Starving Aura"));
+		Starving = UCataclysmSkillEffects::NumbersForEffectTag(StarvingTag);
 	}
 
 	for (AActor* Target : Caught)
@@ -532,6 +628,16 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 			&& UCataclysmSkillEffects::ApplyNamedEffect(
 				Enemy, Target, AbyssalTag, AbyssalSeconds, /*Magnitude=*/0.0f,
 				Enemy->DamageType))
+		{
+			bAnythingLanded = true;
+		}
+
+		// AND STARVING AURA'S CUT TO THE HEALTH THAT ARRIVES, re-applied every
+		// pulse as Abyssal Aura's is, so it holds while the target stands in the
+		// aura and lapses two seconds after it leaves. Issue #2539.
+		if (bStarves && Starving.DurationSeconds > 0.0f && Starving.Strength > 0.0f
+			&& EnemyModifiersApplyStarvingAura(Enemy, Target, StarvingTag,
+											   Starving.DurationSeconds, Starving.Strength))
 		{
 			bAnythingLanded = true;
 		}
