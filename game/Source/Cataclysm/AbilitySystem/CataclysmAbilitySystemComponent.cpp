@@ -4260,6 +4260,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::StunStatus = TEXT("Stun");
 const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied DoT");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus = TEXT("Random Resistance At Nought");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus = TEXT("Random Buff or Debuff");
+const TCHAR* UCataclysmAbilitySystemComponent::RandomBuffStatus = TEXT("Random Buff");
 const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
@@ -4581,6 +4582,7 @@ float UCataclysmAbilitySystemComponent::DebuffDamageCutPercentNow() const
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction = TEXT("kept_stacks_repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction = TEXT("kept_stacks_free_next_ability");
+const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksSpreadDotsAction = TEXT("kept_stacks_spread_dots");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSkillAction = TEXT("trigger_held_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSpellAction = TEXT("trigger_held_spell");
 const TCHAR* UCataclysmAbilitySystemComponent::UseNoDamageAction = TEXT("use_no_damage");
@@ -4833,7 +4835,8 @@ static TAutoConsoleVariable<int32> CVarRandomBuffPick(
 	TEXT("Cataclysm.RandomBuffPick"), -1,
 	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
 		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound, 8 Sanctified Power, "
-		 "9 Demonic Rage, 10 Temporal Flux, 11 Void, 12 Death, 13 Feasting, 14 The Ascended. -1 picks at random."),
+		 "9 Demonic Rage, 10 Temporal Flux, 11 Void, 12 Death, 13 Feasting, 14 The Ascended, 15 Plague, "
+		 "16 Chaotic Barrier. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -6727,6 +6730,19 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// A KEPT STACK GAINED ON THE ROW'S EVENT, TOWARDS A SPREAD OF EVERY DAMAGE OVER TIME. Ruled 2026-10-26 for the random
+		// buff Plague (issue #2538, batch 4): "A stack each time the wearer lays a damage-over-time effect." Gained as the
+		// row above gains, landed only, once per row per event, to the cap, with no trigger cooldown. What the stacks buy is
+		// asked where an application is laid, after `dot_applied` returns: see `UCataclysmSkillEffects::ApplyDamageOverTime`.
+		if (Action.bKeptStacksSpreadDots)
+		{
+			if (bLanded && !Action.KeptStackKey.IsNone() && !StackedThisEvent.Contains(Action.KeptStackKey))
+			{
+				StackedThisEvent.Add(Action.KeptStackKey);
+				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+			}
+			continue;
+		}
 		// A ROLL FOR THE USE IN HAND: IT DEALS NO DAMAGE, OR INCREASED DAMAGE. Ruled 2026-10-06. Asked as a repeat
 		// is: only when the event names a skill, once per row per event, rolled against the row's value. A row for
 		// cooldown abilities is not rolled at all for a skill without one. The use takes the answer as it is paid
@@ -6874,7 +6890,14 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// seconds form and the times form always apply.
 		if (Action.ApplyStatus != ECataclysmApplyStatus::None && Action.bStatusOnTheWearer)
 		{
-			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			// AND NO DRAW FOR A TICK TAKEN, for Chaotic Barrier's `RandomBuffStatus` on `hit_taken` only. Ruled 2026-10-26
+			// (issue #2538, batch 4): "a landed blow taken. Damage-over-time ticks and evaded blows do not trigger it", as
+			// batch 3's own-stack clause reads a tick. Scoped to the status, so the authored "Random Debuff" row on
+			// `hit_taken` (`Negative_Taking_a_hit_has_a_15_25_chance_to_trigger_a_r#1`) is left as it was.
+			const bool bATickDrawsNoBuff = bHitBeingAnnouncedIsATick && Event == FName(TEXT("hit_taken"))
+				&& Action.StatusName.Equals(RandomBuffStatus, ESearchCase::IgnoreCase);
+			if (bLanded && !bATickDrawsNoBuff && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
@@ -7494,6 +7517,12 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPo
 	{
 		return ApplyRandomBuffOrDebuff();
 	}
+	// A RANDOM BUFF, NEVER CHAOTIC BARRIER, WHICH REPLACES THE BUFF HELD. Ruled 2026-10-26 for the random buff Chaotic
+	// Barrier (issue #2538, batch 4): "draw another random buff other than itself, which replaces it".
+	if (Action.StatusName.Equals(RandomBuffStatus, ESearchCase::IgnoreCase))
+	{
+		return HoldARandomBuff(FName(TEXT("Chaotic Barrier")));
+	}
 	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
 	if (!Kind)
 	{
@@ -7559,7 +7588,7 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 	// one that may grant a "more" multiplier. Each entry's lines are what its own description in the status
 	// table states; the description is quoted above each. AN ENTRY MAY INSTEAD NAME SET ROWS TO WEAR, since batch 2
 	// of issue #2538: see `HeldRandomBuffEffectRows`. AND AN ENTRY MAY WEAR ROWS OF ITS OWN, written in code, since batch
-	// 3: see `RandomBuffRowsOfItsOwn`.
+	// 3: see `RandomBuffRowsOfItsOwn`. Since batch 4 it holds every Buff row of the status table.
 	static const TArray<FRandomBuff> Table = []
 	{
 		using EBucket = ECataclysmStatBucket;
@@ -7762,6 +7791,26 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 			Buffs.Add(Buff);
 		}
 
+		// BATCH 4 OF ISSUE #2538, joined 2026-10-26, the last two: each wears a row of its own, as batch 3's do.
+		//
+		// "At 10 stacks, spreads all DoTs to nearby enemies." A stack for each damage over time the holder lays, kept with
+		// no lifetime of its own, at most 10, shown as "Plague". The application that gains the tenth spreads every damage
+		// over time of the holder's on its target, itself included, to every enemy within 3 m with the time each has left,
+		// and spends the stacks. They end with the buff otherwise, as ruled.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Plague");
+			Buffs.Add(Buff);
+		}
+
+		// "Temporarily grants a random buff when attacked." A landed blow taken, not a tick and not an evaded blow, draws
+		// another buff of this table, never Chaotic Barrier, which replaces it, at most once in 10 seconds.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Chaotic Barrier");
+			Buffs.Add(Buff);
+		}
+
 		return Buffs;
 	}();
 	return Table;
@@ -7789,19 +7838,33 @@ bool UCataclysmAbilitySystemComponent::ApplyRandomBuffOrDebuff()
 		/*bWithoutABlow=*/true) != nullptr;
 }
 
-bool UCataclysmAbilitySystemComponent::HoldARandomBuff()
+bool UCataclysmAbilitySystemComponent::HoldARandomBuff(FName Excluded)
 {
 	const UWorld* World = GetWorld();
 	const TArray<FRandomBuff>& Table = RandomBuffTable();
-	if (!World || Table.IsEmpty())
+
+	// EVERY PLACE BUT THE ONE LEFT OUT, in the table's order. Issue #2538, batch 4: Chaotic Barrier's draw leaves itself
+	// out. With none left out this is every place, and the draw below is the one it always was.
+	TArray<int32> Drawable;
+	for (int32 Place = 0; Place < Table.Num(); ++Place)
+	{
+		if (FName(Table[Place].Name) != Excluded)
+		{
+			Drawable.Add(Place);
+		}
+	}
+	if (!World || Drawable.IsEmpty())
 	{
 		// NO WORLD MEANS NO CLOCK to end the buff by, so none is held.
 		return false;
 	}
 
-	// ONE NAME IS KEPT, so a new buff takes the place of the one held, and its seconds are counted from now.
+	// ONE NAME IS KEPT, so a new buff takes the place of the one held, and its seconds are counted from now. A PIN
+	// NAMING THE PLACE LEFT OUT DRAWS AMONG THE OTHERS.
 	const int32 Pinned = CVarRandomBuffPick.GetValueOnAnyThread();
-	const FRandomBuff& Drawn = Table[Table.IsValidIndex(Pinned) ? Pinned : FMath::RandRange(0, Table.Num() - 1)];
+	const bool bThePinIsDrawable = Table.IsValidIndex(Pinned) && FName(Table[Pinned].Name) != Excluded;
+	const FRandomBuff& Drawn =
+		Table[bThePinIsDrawable ? Pinned : Drawable[FMath::RandRange(0, Drawable.Num() - 1)]];
 	HeldRandomBuffName = FName(Drawn.Name);
 	HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + RandomBuffSeconds;
 
@@ -7837,8 +7900,8 @@ namespace
 {
 	/**
 	 * The effect rows a buff of `RandomBuffTable` wears that no row of `game/Data/EnchantmentEffects.csv` states, by the
-	 * buff's name, or none. Issue #2538, batch 3, 2026-10-26. Written in this file so that the header need not know the
-	 * row; `HeldRandomBuffEffectRows` renames each as it renames a worn row.
+	 * buff's name, or none. Issue #2538, batches 3 and 4, 2026-10-26. Written in this file so that the header need not
+	 * know the row; `HeldRandomBuffEffectRows` renames each as it renames a worn row.
 	 *
 	 * NO GENERATOR REFUSES THESE. A row the builder cannot read is left out with a warning in the log and nothing
 	 * else, so each is pinned by an automation test that fails when it is left out.
@@ -7895,6 +7958,26 @@ namespace
 				Row.ScaleMaxSteps = 1;
 				Row.StackSeconds = 5.0f;
 			}
+		}
+		else if (Buff == FName(TEXT("Plague")))
+		{
+			// A kept-stack row on `dot_applied`, gaining as Null Emperor's six-piece row gains on `hit_dealt`: at most 10
+			// stacks, named "Plague". What they buy is asked in `UCataclysmSkillEffects::ApplyDamageOverTime`.
+			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+			Row.Action = UCataclysmAbilitySystemComponent::KeptStacksSpreadDotsAction;
+			Row.ActionEvent = TEXT("dot_applied");
+			Row.ScaleMaxSteps = 10;
+			Row.Ailment = TEXT("Plague");
+		}
+		else if (Buff == FName(TEXT("Chaotic Barrier")))
+		{
+			// The wearer's status on `hit_taken`, always, with a Trigger Cooldown of 10: a random buff other than itself.
+			FCataclysmEnchantmentEffectRow& Row = Rows.AddDefaulted_GetRef();
+			Row.Action = UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction;
+			Row.ActionEvent = TEXT("hit_taken");
+			Row.ValueLow = Row.ValueHigh = 100.0f;
+			Row.Ailment = UCataclysmAbilitySystemComponent::RandomBuffStatus;
+			Row.TriggerCooldown = 10.0f;
 		}
 		return Rows;
 	}

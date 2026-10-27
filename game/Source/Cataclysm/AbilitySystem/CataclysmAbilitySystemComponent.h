@@ -1423,6 +1423,15 @@ public:
 	 */
 	static const TCHAR* RandomBuffOrDebuffStatus;
 
+	/**
+	 * And one more status only `ApplyStatusToSelfAction` may name: A RANDOM BUFF, NEVER CHAOTIC BARRIER, laid on the
+	 * wearer in place of the buff held. Ruled 2026-10-26 for the random buff Chaotic Barrier (issue #2538, batch 4):
+	 * "when hit, at most once per 10 s, draw another random buff other than itself, which replaces it". ONLY THE ROW
+	 * WRITTEN IN CODE FOR THAT BUFF NAMES IT, so `tools/generate_datatables.py` holds no twin and refuses it in a sheet.
+	 * See `HoldARandomBuff`.
+	 */
+	static const TCHAR* RandomBuffStatus;
+
 	/** How long a buff drawn from `RandomBuffTable` is held, in seconds. Ruled 2026-10-12. Not the row's period. */
 	static constexpr float RandomBuffSeconds = 30.0f;
 
@@ -1457,19 +1466,19 @@ public:
 	 *
 	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner answered on 2026-10-26,
 	 * "Add everything": every Buff row of the status table joins the pool once it is built as a standalone buff
-	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds fifteen: Mana Surge,
-	 * Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own description
-	 * states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds it;
-	 * Sanctified Power, Demonic Rage, Temporal Flux and Void (2026-10-26, batch 2), each wearing the set rows that
-	 * build it, by name (`FRandomBuff::WornRows`); and Death, Feasting and The Ascended (2026-10-26, batch 3), each
-	 * wearing rows of its own written in code, in the `.cpp`, so this header need not know the row.
+	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds seventeen, every Buff
+	 * row: Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own
+	 * description states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds
+	 * it; Sanctified Power, Demonic Rage, Temporal Flux and Void (2026-10-26, batch 2), each wearing the set rows that
+	 * build it, by name (`FRandomBuff::WornRows`); and Death, Feasting and The Ascended (2026-10-26, batch 3), and
+	 * Plague and Chaotic Barrier (2026-10-26, batch 4), each wearing rows of its own written in code, in the `.cpp`, so
+	 * this header need not know the row.
 	 *
-	 * LEFT OUT FOR NOW: Plague and Chaotic Barrier. Each needs a new action or a ruling on what it means for a
-	 * player before it can join.
+	 * NONE IS LEFT OUT, since batch 4.
 	 *
 	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
-	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what
-	 * that test reads.
+	 * holds the list. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what that
+	 * test reads.
 	 */
 	static const TArray<FRandomBuff>& RandomBuffTable();
 
@@ -1501,9 +1510,13 @@ public:
 	 * `FRandomBuff::KeptStacksAtDraw` of them, to its own cap. Issue #2538, batch 2. A character with no equipment
 	 * component wears no row and so gains none.
 	 *
+	 * AND A BUFF MAY BE LEFT OUT OF THE DRAW, by name, since batch 4 (2026-10-26): Chaotic Barrier's draw leaves out
+	 * Chaotic Barrier. The others are drawn as before, each equally likely; a pin naming the one left out draws among
+	 * the others.
+	 *
 	 * @return whether a buff is now held
 	 */
-	bool HoldARandomBuff();
+	bool HoldARandomBuff(FName Excluded = NAME_None);
 
 	/** The name of the buff held, or none: none once its seconds have passed, whether or not anything has noticed. */
 	FName HeldRandomBuff() const;
@@ -1524,7 +1537,7 @@ public:
 	 * left out, with the table's own warning.
 	 *
 	 * AND, SINCE BATCH 3 (2026-10-26), THE ROWS OF ITS OWN that the `.cpp` writes for Death, Feasting and The
-	 * Ascended, after the worn rows and renamed the same way.
+	 * Ascended, and since batch 4 for Plague and Chaotic Barrier, after the worn rows and renamed the same way.
 	 */
 	TArray<FCataclysmEnchantmentEffectRow> HeldRandomBuffEffectRows() const;
 
@@ -1727,6 +1740,15 @@ public:
 	 * name in `KEPT_STACKS_FREE_NEXT_ABILITY_ACTION`. See `FCataclysmPoolAction::bKeptStacksFreeNextAbility`.
 	 */
 	static const TCHAR* KeptStacksFreeNextAbilityAction;
+
+	/**
+	 * The action that gains a kept stack on its event and, while the stacks are at their cap, makes the wearer's next
+	 * damage over time application spread every damage over time of the wearer's on its target to the enemies near it,
+	 * spending them all. Ruled 2026-10-26 for the random buff Plague (issue #2538, batch 4). ONLY THE ROW WRITTEN IN
+	 * CODE FOR THAT BUFF NAMES IT, so `tools/generate_datatables.py` holds no twin and refuses it in a sheet. See
+	 * `FCataclysmPoolAction::bKeptStacksSpreadDots`.
+	 */
+	static const TCHAR* KeptStacksSpreadDotsAction;
 
 	/**
 	 * The two actions that trigger a different held skill, with the value as the chance: one with a cooldown, free;

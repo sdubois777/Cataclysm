@@ -22751,9 +22751,10 @@ bool FCataclysmShardOfAnarchyTwoPieceRowTest::RunTest(const FString&)
 	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
 	if (!TestTrue(TEXT("set-up: the four pins exist"), BuffOrDebuff.Variable && WhichBuff.Variable
 			&& WhichDebuff.Variable && WhichResistance.Variable)
-		|| !TestEqual(TEXT("set-up: the fifteen buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
+		|| !TestEqual(TEXT("set-up: the seventeen buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
 			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger, Dervish, Warhound, "
-						 "Sanctified Power, Demonic Rage, Temporal Flux, Void, Death, Feasting, The Ascended")))
+						 "Sanctified Power, Demonic Rage, Temporal Flux, Void, Death, Feasting, The Ascended, Plague, "
+						 "Chaotic Barrier")))
 		|| !TestTrue(TEXT("set-up: Commander is in the table and the Cripple tag exists"),
 			Commander >= 0 && Cripple.IsValid()))
 	{
@@ -29135,6 +29136,336 @@ bool FCataclysmRandomBuffTheAscendedTest::RunTest(const FString&)
 	TestEqual(TEXT("and so is its interval"), Summoner.IntervalScaleOf(Imp) / PlainInterval, 1.0f, 0.001f);
 	Kills();
 	TestEqual(TEXT("and a kill after it moves nothing"), Summoner.Blow(Imp) / PlainBlow, 1.0f, 0.001f);
+	return true;
+}
+
+// THE TWO RANDOM BUFFS OF BATCH 4 OF ISSUE #2538, 2026-10-26, THE LAST TWO, EACH WEARING A ROW OF ITS OWN WRITTEN IN
+// CODE, as batch 3's do. Named in `Cataclysm.StatExemption.TheRandomBuff` with batches 1 to 3 and written beside batch 3's,
+// on batch 2's bare wearer: for Plague with the creatures and the hand-laid ailments of the Plague Doctor blast's tests,
+// and for Chaotic Barrier with the blows of Feasting's.
+//
+// EACH TEST READS ITS CONTROL FIRST, with no buff drawn; every figure is a difference from the reading before the draw;
+// the draw is pinned by `CataclysmRandomBuffRowsTest::DrawsTheBuff`; and after the buff's 30 seconds, moved by hand to
+// 30.5 and stepped, the buff is gone.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffPlagueTest,
+	"Cataclysm.StatExemption.TheRandomBuffPlagueGainsAStackForEachDamageOverTimeLaidAndAtTenSpreadsEveryOneOfTheHoldersWithinThreeMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "At 10 stacks, spreads all DoTs to nearby enemies." The buff wears one row of its own: `kept_stacks_spread_dots` on
+ * `dot_applied`, at most 10 stacks, named "Plague". Ruled: the application that gains the tenth spreads every damage
+ * over time of the holder's running on the creature struck, itself included, to every enemy of the holder's within 3 m
+ * of it with the time each has left, and the stacks are spent.
+ *
+ * A LINE OF CREATURES ALONG X, as the Plague Doctor blast's tests stand them, each ailment laid by hand at one a tick for
+ * 10 seconds. Struck at 0; 2 m away on either side, one bare and one already poisoned by another character; 4 m away,
+ * one outside the reach. The clock is run 2.5 and then 1.25 seconds, so no reading sits on a tick: the wearer's poison
+ * has 6.25 seconds left at the tenth application, its burn 8.75, and the bleed being laid its whole 10.
+ *
+ * THE CONTROLS AND THE END STAND 16 M OR MORE FROM THE REST, so no spread reaches across.
+ */
+bool FCataclysmRandomBuffPlagueTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmBlastFromTheDyingTest;
+	using namespace CataclysmRandomBuffRowsTest;
+	const TCHAR* const Buff = TEXT("Plague");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FWearer Wearer(World);
+	FWearer Other(World);
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	Wearer.Equipment->RefreshAttributes(System);
+	const FGameplayTag Bleed = Ailment(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Poison = Ailment(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Burn = Ailment(TEXT("Keyword.DoT.Burn"));
+	const FGameplayTag Necrosis = Ailment(TEXT("Keyword.DoT.Necrosis"));
+	ACataclysmEnemyCharacter* ControlStruck = Beside(World, -20.0f);
+	ACataclysmEnemyCharacter* ControlNear = Beside(World, -18.0f);
+	ACataclysmEnemyCharacter* Carrier = Beside(World, -2.0f);
+	ACataclysmEnemyCharacter* Struck = Beside(World, 0.0f);
+	ACataclysmEnemyCharacter* Near = Beside(World, 2.0f);
+	ACataclysmEnemyCharacter* Far = Beside(World, 4.0f);
+	ACataclysmEnemyCharacter* AfterStruck = Beside(World, 20.0f);
+	ACataclysmEnemyCharacter* AfterNear = Beside(World, 22.0f);
+	ACataclysmEnemyCharacter* Lone = Beside(World, 40.0f);
+	if (!TestTrue(TEXT("set-up: the four ailment tags are registered"),
+			Bleed.IsValid() && Poison.IsValid() && Burn.IsValid() && Necrosis.IsValid())
+		|| !TestTrue(TEXT("set-up: the nine creatures"), ControlStruck && ControlNear && Carrier && Struck && Near && Far
+			&& AfterStruck && AfterNear && Lone))
+	{
+		return false;
+	}
+	const auto Stacks = [System]()
+	{
+		return System->KeptStacksHeldNamed(TEXT("Plague"));
+	};
+	const auto Lays = [&Wearer](ACataclysmEnemyCharacter* On, const FGameplayTag& Tag, int32 Times)
+	{
+		bool bEveryOneLaid = true;
+		for (int32 Laid = 0; Laid < Times; ++Laid)
+		{
+			bEveryOneLaid = Ail(Wearer.Actor, On, Tag) && bEveryOneLaid;
+		}
+		return bEveryOneLaid;
+	};
+	// WHAT AN AILMENT RUNNING ON A CREATURE HAS LEFT, WHEN `From` LAID IT, or -1.
+	const auto TimeLeftOn = [](ACataclysmEnemyCharacter* On, const FGameplayTag& Tag, const AActor* From)
+	{
+		UCataclysmSkillEffects::FRunningAilment Running;
+		return UCataclysmSkillEffects::RunningAilmentOn(On, Tag, Running) && Running.Applier.Get() == From
+			? Running.SecondsLeft
+			: -1.0f;
+	};
+
+	// THE CONTROL, READ FIRST: WITH NO BUFF, TEN APPLICATIONS GAIN NOTHING AND SPREAD NOTHING.
+	TestEqual(TEXT("control: with no buff, the wearer holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	if (!TestTrue(TEXT("set-up: with no buff, ten applications are laid"),
+			Lays(ControlStruck, Poison, 9) && Lays(ControlStruck, Bleed, 1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with no buff, ten applications gain no Plague"), Stacks(), 0);
+	TestFalse(TEXT("control: and spread nothing: the creature 2 m away carries no poison"), Carries(ControlNear, Poison));
+	TestFalse(TEXT("control: and no bleed"), Carries(ControlNear, Bleed));
+
+	// ANOTHER CHARACTER'S AILMENTS: A NECROSIS ON THE CREATURE STRUCK, AND A POISON ON THE ONE 2 M THE OTHER SIDE.
+	if (!TestTrue(TEXT("set-up: another character lays a necrosis on the creature struck and a poison on the one 2 m "
+			"the other side"), Ail(Other.Actor, Struck, Necrosis) && Ail(Other.Actor, Carrier, Poison)))
+	{
+		return false;
+	}
+
+	// DRAWN: ONE ACTION UNDER THE BUFF'S OWN NAME, WITH THE ROW'S FIGURES.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	if (!TestEqual(TEXT("the buff wears one row, built as an action under its own name. If not, the row written in "
+			"code was left out"), ActionsOfTheBuff(System, Buff), 1))
+	{
+		return false;
+	}
+	for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+	{
+		if (Action.TriggerKey.ToString().StartsWith(KeyPrefixOf(Buff), ESearchCase::CaseSensitive))
+		{
+			TestTrue(TEXT("it gains kept stacks on dot_applied towards a spread, named Plague, scoped to nothing"),
+				Action.bKeptStacksSpreadDots && Action.Event == FName(TEXT("dot_applied"))
+					&& Action.StatusName.Equals(TEXT("Plague")) && Action.RequiredTags.IsEmpty());
+			TestEqual(TEXT("at most 10 of them"), Action.KeptStackCap, 10);
+		}
+	}
+	TestEqual(TEXT("control: held, before any application, no Plague"), Stacks(), 0);
+
+	// NINE APPLICATIONS: EIGHT POISONS, AND 2.5 SECONDS LATER A BURN. NINE STACKS, AND NOTHING SPREADS.
+	if (!TestTrue(TEXT("set-up: eight poisons are laid on the creature struck"), Lays(Struck, Poison, 8)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("held, eight applications gain 8 Plague"), Stacks(), 8);
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	if (!TestTrue(TEXT("set-up: 2.5 seconds later, a burn"), Lays(Struck, Burn, 1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nine gain 9"), Stacks(), 9);
+	TestFalse(TEXT("and nine spread nothing: the creature 2 m away carries no poison"), Carries(Near, Poison));
+	TestFalse(TEXT("and no burn"), Carries(Near, Burn));
+
+	// A SPREAD COPY IS NOT AN APPLICATION, SO IT GAINS NO STACK.
+	UCataclysmSkillEffects::FRunningAilment WearersPoison;
+	if (!TestTrue(TEXT("set-up: the wearer's poison runs on the creature struck"),
+			UCataclysmSkillEffects::RunningAilmentOn(Struck, Poison, WearersPoison))
+		|| !TestTrue(TEXT("set-up: a spread copy of it is put on a creature standing alone"),
+			UCataclysmSkillEffects::ApplySpreadCopy(Wearer.Actor, Lone, WearersPoison)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a spread copy gains no stack: still 9"), Stacks(), 9);
+
+	// THE TENTH, A BLEED 1.25 SECONDS LATER: EVERYTHING OF THE WEARER'S ON THE CREATURE STRUCK SPREADS WITHIN 3 M.
+	CataclysmTestWorld::RunClock(World, 1.25f);
+	if (!TestTrue(TEXT("set-up: 1.25 seconds later, a bleed, the tenth"), Lays(Struck, Bleed, 1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the tenth spreads: the creature 2 m away carries the wearer's poison, with the 6.25 seconds it had "
+		"left"), TimeLeftOn(Near, Poison, Wearer.Actor), 6.25f, 0.1f);
+	TestEqual(TEXT("and the wearer's burn, with the 8.75 it had left"), TimeLeftOn(Near, Burn, Wearer.Actor), 8.75f,
+		0.1f);
+	TestEqual(TEXT("and the bleed being laid, with its whole 10"), TimeLeftOn(Near, Bleed, Wearer.Actor), 10.0f, 0.1f);
+	TestFalse(TEXT("another character's necrosis on the creature struck does not spread"), Carries(Near, Necrosis));
+	TestFalse(TEXT("the creature 4 m away carries no poison"), Carries(Far, Poison));
+	TestFalse(TEXT("nor a burn"), Carries(Far, Burn));
+	TestFalse(TEXT("nor a bleed"), Carries(Far, Bleed));
+	TestTrue(TEXT("the creature 2 m the other side is passed over for the poison it carried: its poison is still the "
+		"other character's"), TimeLeftOn(Carrier, Poison, Other.Actor) > 0.0f);
+	TestEqual(TEXT("and it is given the burn, with the 8.75 it had left"), TimeLeftOn(Carrier, Burn, Wearer.Actor),
+		8.75f, 0.1f);
+	TestEqual(TEXT("and the bleed, with its whole 10"), TimeLeftOn(Carrier, Bleed, Wearer.Actor), 10.0f, 0.1f);
+	TestEqual(TEXT("and the stacks are spent"), Stacks(), 0);
+	Lays(Struck, Bleed, 1);
+	TestEqual(TEXT("an application after the spread gains one again"), Stacks(), 1);
+
+	// ITS 30 SECONDS PASS WITH 9 HELD: NONE IS HELD AFTER, TEN APPLICATIONS SPREAD NOTHING, AND A NEW DRAW STARTS AT NONE.
+	Lays(Struck, Bleed, 8);
+	TestEqual(TEXT("eight more make 9"), Stacks(), 9);
+	PassTheBuffsSeconds(World, System, DrawnAt);
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and no Plague"), Stacks(), 0);
+	if (!TestTrue(TEXT("set-up: after it, ten applications are laid"),
+			Lays(AfterStruck, Poison, 9) && Lays(AfterStruck, Bleed, 1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("after it, ten applications gain no Plague"), Stacks(), 0);
+	TestFalse(TEXT("and spread nothing: the creature 2 m away carries no poison"), Carries(AfterNear, Poison));
+	TestFalse(TEXT("and no bleed"), Carries(AfterNear, Bleed));
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	TestEqual(TEXT("drawn again, it starts at none: the 9 held when it ended were forgotten"), Stacks(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffChaoticBarrierTest,
+	"Cataclysm.StatExemption.TheRandomBuffChaoticBarrierMakesALandedBlowTakenDrawAnotherBuffInItsPlaceOnceInTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Temporarily grants a random buff when attacked." The buff wears one row of its own: `apply_status_to_self` on
+ * `hit_taken`, always, the status "Random Buff", Trigger Cooldown 10. Ruled: a landed blow taken draws another random
+ * buff, never Chaotic Barrier, which replaces it; a damage-over-time tick and an evaded blow draw nothing.
+ *
+ * A BARE WEARER AND A BARE ATTACKER, each blow unmitigated and of 1, as Feasting's test deals them. An evaded blow and a
+ * tick are said by hand, as the attribute set says them to `NoteHitTaken`. THE DRAW IS PINNED TO CHAOTIC BARRIER'S OWN
+ * PLACE, so the barrier's draw would take it if it were not left out; and then to Dervish's, so the draw is seen to
+ * take a pinned buff. The Warhound roll is pinned to never, so a Warhound drawn at random summons nothing.
+ *
+ * A GEAR REFRESH WRITES THE STAT LINE WHOLE, and every draw runs one, so the health is written again before each blow.
+ */
+bool FCataclysmRandomBuffChaoticBarrierTest::RunTest(const FString&)
+{
+	using namespace CataclysmRandomBuffRowsTest;
+	using CataclysmHealthThresholdRowTest::SetHealth;
+	const TCHAR* const Buff = TEXT("Chaotic Barrier");
+	const FName Barrier(Buff);
+	const FName Dervish(TEXT("Dervish"));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+	CataclysmEnchantmentEffectTest::FWearer Attacker(World);
+	UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+	Wearer.Equipment->RefreshAttributes(System);
+	const int32 OwnPlace = CataclysmShardOfAnarchyRowsTest::PlaceOfBuff(Buff);
+	const int32 DervishPlace = CataclysmShardOfAnarchyRowsTest::PlaceOfBuff(TEXT("Dervish"));
+	CataclysmShardOfAnarchyRowsTest::FRollPin NoWarhound(TEXT("Cataclysm.WarhoundRoll"), 100.0f);
+	if (!TestTrue(TEXT("set-up: Chaotic Barrier and Dervish are in the table, and the Warhound roll is pinned"),
+			OwnPlace >= 0 && DervishPlace >= 0 && NoWarhound.Variable))
+	{
+		return false;
+	}
+	FCataclysmHitDelivery Unmitigated;
+	Unmitigated.bCannotBeMitigated = true;
+	const auto TakesABlow = [&Attacker, &Wearer, &Unmitigated, System]()
+	{
+		SetHealth(System, 100000.0f, 100000.0f);
+		return UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, /*Damage=*/1.0f, Unmitigated);
+	};
+
+	// THE CONTROL, READ FIRST: WITH NO BUFF, A LANDED BLOW TAKEN DRAWS NOTHING.
+	TestEqual(TEXT("control: with no buff, the wearer holds no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	if (!TestTrue(TEXT("set-up: with no buff, the blow is dealt"), TakesABlow()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: with no buff, a landed blow taken draws no buff"), System->HeldRandomBuff().IsNone());
+
+	// DRAWN: ONE ACTION UNDER THE BUFF'S OWN NAME, WITH THE ROW'S FIGURES.
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	const double DrawnAt = World->GetTimeSeconds();
+	if (!TestEqual(TEXT("the buff wears one row, built as an action under its own name. If not, the row written in "
+			"code was left out"), ActionsOfTheBuff(System, Buff), 1))
+	{
+		return false;
+	}
+	for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+	{
+		if (Action.TriggerKey.ToString().StartsWith(KeyPrefixOf(Buff), ESearchCase::CaseSensitive))
+		{
+			TestTrue(TEXT("it lays the status \"Random Buff\" on the wearer at a chance, on hit_taken, scoped to nothing"),
+				Action.ApplyStatus == ECataclysmApplyStatus::Chance && Action.bStatusOnTheWearer
+					&& Action.Event == FName(TEXT("hit_taken"))
+					&& Action.StatusName.Equals(UCataclysmAbilitySystemComponent::RandomBuffStatus)
+					&& Action.RequiredTags.IsEmpty());
+			TestEqual(TEXT("its chance is 100"), Action.Percent, 100.0f, 0.001f);
+			TestEqual(TEXT("its trigger cooldown is 10 seconds"), Action.TriggerCooldownSeconds, 10.0f, 0.001f);
+		}
+	}
+
+	// FROM HERE THE DRAW IS PINNED TO CHAOTIC BARRIER'S OWN PLACE. An evaded blow and a tick draw nothing.
+	CataclysmShardOfAnarchyRowsTest::FWholePin Pin(TEXT("Cataclysm.RandomBuffPick"), OwnPlace);
+	World->TimeSeconds = DrawnAt + 1.0;
+	System->NoteHitTaken(/*bLanded=*/false, Attacker.Actor, /*bDamageOverTime=*/false);
+	TestTrue(TEXT("control: held, an evaded blow draws nothing: Chaotic Barrier is still held"),
+		System->HeldRandomBuff() == Barrier);
+	System->NoteHitTaken(/*bLanded=*/true, Attacker.Actor, /*bDamageOverTime=*/true);
+	TestTrue(TEXT("control: held, a damage-over-time tick taken draws nothing, as ruled"),
+		System->HeldRandomBuff() == Barrier);
+
+	// A LANDED BLOW DRAWS ANOTHER BUFF, NEVER CHAOTIC BARRIER, IN ITS PLACE AND FOR ITS OWN 30 SECONDS.
+	TakesABlow();
+	const FName DrawnByTheBlow = System->HeldRandomBuff();
+	TestTrue(*FString::Printf(TEXT("held, a landed blow taken, the draw pinned to Chaotic Barrier's own place, draws "
+		"another buff: it holds '%s'"), *DrawnByTheBlow.ToString()), !DrawnByTheBlow.IsNone() && DrawnByTheBlow != Barrier);
+	TestEqual(TEXT("and the barrier is gone: no action of its is worn"), ActionsOfTheBuff(System, Buff), 0);
+	TestEqual(TEXT("and the buff drawn is held for its own 30 seconds"), System->HeldRandomBuffSecondsLeft(), 30.0f,
+		0.01f);
+
+	// DRAWN AGAIN 4 SECONDS LATER, THE PIN ON DERVISH: AT MOST ONCE IN 10 SECONDS, COUNTED FROM THE DRAW IT MADE.
+	World->TimeSeconds = DrawnAt + 5.0;
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	Pin.Set(DervishPlace);
+	TakesABlow();
+	TestTrue(TEXT("drawn again 4 seconds after it drew, a landed blow draws nothing: Chaotic Barrier is still held"),
+		System->HeldRandomBuff() == Barrier);
+	World->TimeSeconds = DrawnAt + 11.5;
+	TakesABlow();
+	TestTrue(TEXT("10.5 seconds after it drew, a landed blow draws the buff pinned: Dervish is held"),
+		System->HeldRandomBuff() == Dervish);
+
+	// ITS 30 SECONDS PASS WITH NO BLOW: THE ROW IS GONE, AND A BLOW AFTER IT DRAWS NOTHING.
+	World->TimeSeconds = DrawnAt + 12.0;
+	if (!DrawsTheBuff(*this, System, Buff))
+	{
+		return false;
+	}
+	PassTheBuffsSeconds(World, System, DrawnAt + 12.0);
+	TestTrue(TEXT("once its 30 seconds have passed the wearer holds no buff"), System->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and no action of the buff's"), ActionsOfTheBuff(System, Buff), 0);
+	TakesABlow();
+	TestTrue(TEXT("and a landed blow taken after it draws nothing"), System->HeldRandomBuff().IsNone());
 	return true;
 }
 
