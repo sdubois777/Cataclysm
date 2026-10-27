@@ -10,9 +10,12 @@ measured Wasting Sickness, Mortal Decay and Silence.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
-- **IF A PROOF DOES NOT FAIL AS PREDICTED,** its line is reported as unprovable, naming the break, and no test is added
-  inside the window; ruled by the coordinating session.
+- **THE "BEFORE LEAVING" READINGS PRINTED BY BOTH TESTS ARE WRONG: 0.0 IN EVERY RUN.** Each test keeps the pointer
+  `DungeonRuleOn` returns, which points into the player's list of stat modifiers; leaving empties that list, and the
+  line that prints runs after leaving, so it reads memory the list no longer holds. The assertions are not affected: each
+  CONTROL read the value before leaving, and each check after leaving takes a new pointer. The "after" readings are
+  correct.
+- **BUILT AND RUN: window w72 below passed every registered figure except the readings, and both proofs were PROVED.**
 
 ### What was read
 
@@ -47,7 +50,24 @@ once. The walking line on leaving occurs once.
 
 ### Run
 
-Not run yet.
+**Window w72 (lock `dungeon-w72`, `test/leaving-the-dungeon-nihil-2` at `af498fc98`, on `543a908bb`, 2026-10-27)
+passed its suite and both proofs.** Free memory read below the 10,240 MB floor from 16:05 (between 9,475 and 10,199 MB,
+once a minute); the lock was taken at 16:18 on a reading immediately before it of 10,275 MB, with the other five
+conditions met: both of `development`'s runs at `543a908bb` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4332 / 0 | `4332 tests performed, 4332 succeeded, 0 failed`; declared 4332, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=8025`, peak 8,346 |
+| The readings | quoted as printed | "Nihil's Embrace reward: 0.0 War resistance before leaving, 0.0 after"; "Nihil's Embrace walking: 0.0 War resistance before leaving, 0.0 after". **The "before" figures are wrong; see SAID FIRST** |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+| P4, the leaving reset of the walking baseline deleted | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonForgetsTheNihilsEmbracesWalking", printing "0.0 … before leaving, -3.0 after"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P5, the leaving reset of the reward's end deleted | `LeavingTheDungeonEndsTheNihilsEmbracesReward` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsTheNihilsEmbracesReward", printing "0.0 … before leaving, 10.0 after"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+The "after" figures with each break in, -3.0 and 10.0, are what a kept baseline and a kept reward would give. All five of
+#1812's lines are now measured.
 
 ---
 
