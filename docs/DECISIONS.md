@@ -179,9 +179,24 @@ caster; the stunned-gadget half of the gadget test still passes, refused by the 
   copy, follows it.
 - with a skill gadget placed, get stunned: the gadget goes on casting.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t151w
 
-Not run. The enchantment session records its window here.
+Window t151w, run 2026-10-27 under the lock as `enchant-t151w`, at `2e8b8f640` on development `d16f34517`. Free memory
+immediately before the lock, at 12:01:11, was 10,335 MB, against the standing floor of 10 GiB (10,240 MB). No new source
+file and no status row changed, so the window had no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The twelve new tests, each alone | 1 of 1 each; the first build compiled 7 files in 10 actions |
+| The whole Unreal suite | "4320 tests performed, 4320 succeeded, 0 failed"; 4320 declared, gap 0 |
+| Memory | `tests=4927 peak_used_virtual_mb=8064 final_used_virtual_mb=7708` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SK-G1, the check never fires | PROVED: 9 of the 16 `Cataclysm.TriggeredSkill.` tests failed, 20 of 20 assertions; 16 of 16 passed restored |
+| SK-G2, a cast naming its caster is refused too | PROVED: 2 tests failed (the free start cast by another actor, and the skill gadget), 4 of 4 assertions; 16 of 16 passed restored |
+
+SK-G2 also measures what was read and not checked in the engine source: `Trigger` sets `FreeRepeatCastBy` on the spec's
+primary instance before `TryActivateAbility`, and the engine asks that instance's `CanActivateAbility`. Had the engine
+asked the class default, the gadget test would have failed with the file restored as well.
 
 ---
 
