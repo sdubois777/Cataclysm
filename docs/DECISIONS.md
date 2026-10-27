@@ -11,7 +11,8 @@ new Unreal tests. Closes [#2482](https://github.com/sdubois777/Cataclysm/issues/
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w67 below passed every registered figure, and all three proofs were PROVED.** The window
+  before it, w66, stopped on a set-up check in one new test; recorded under Run.
 - **ORDER CHANGES, BY DESIGN, IN THE RULES THAT HEAR TWO DEATHS.** Read, not run: Hellfire now chains in rounds
   rather than depth-first; Epidemic, Echoes of the Past, Soul Harvest, Blood-Forged Champions and Plague Harbingers
   hear the first death before one a listener caused, so a soul or a champion's feeding can go to a different creature.
@@ -99,6 +100,25 @@ file's other test that kills does; not run yet.
 **Registered for the next window, w67,** with a step 1b first, the kill-row test alone by its full name, stopping
 there if it fails: **4283 / 0 on `baad8a763`**, #2547's measured 4280 and the three tests this branch adds by name, the
 branch moved onto that merge as `fix/deaths-heard-in-order-2`; memory as above; P1, P2 and P3 as above.
+
+**Window w67 (lock `dungeon-w67`, `fix/deaths-heard-in-order-2` at `8da4a4e61`, on `baad8a763`, 2026-10-27)
+passed.** The six conditions were checked immediately before the lock was taken: both of `development`'s runs at
+`baad8a763` succeeded; none in progress or queued; the lock free; no build or editor process; no open pull request;
+"free GB: 12.21 of 31.1". The lock was released before anything was written here. The move onto `baad8a763` left the
+code as it was: the patch ids of the branch's changes but this file match before and after (`b7d14a2e2ea1`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 41 actions, 38 files compiled` |
+| Step 1b, the kill-row test alone | passes | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4283 / 0 | `4283 tests performed, 4283 succeeded, 0 failed`; declared 4283, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=7678`, peak 8,013 |
+| Python (JUnit) | | 7017 tests, 0 failures, 0 errors, 8 skipped ("7009 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the queue off | the order test fails | "1 tests performed, 0 succeeded, 1 failed: AKillMadeInsideADeathListenerIsHeardAfterEveryListenerHasHeardTheFirst"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, Epidemic's flag cleared at once as well | `TheMassKillDoesNotFeedItself` fails | "1 tests performed, 0 succeeded, 1 failed: TheMassKillDoesNotFeedItself"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P3, the kill-row flag never set | the kill-row test fails | "1 tests performed, 0 succeeded, 1 failed: AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**No other test failed**, so the order change in the rules that hear two deaths broke no existing assertion.
 
 ---
 
