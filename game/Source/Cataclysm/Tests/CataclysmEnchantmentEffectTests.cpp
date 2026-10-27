@@ -29335,6 +29335,67 @@ bool FCataclysmRandomBuffPlagueTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("drawn again, it starts at none: the 9 held when it ended were forgotten"), Stacks(), 0);
+
+	// AN EARLIER APPLICATION OF THE SAME AILMENT, RUNNING WHEN THE TENTH IS LAID. Asked for by the coordinating session,
+	// 2026-10-26: one spreads, the stronger a second, with the longer time if the running one is the stronger. Each pair
+	// stands 20 m from every other creature, and the eight stacks between are laid on a creature standing alone.
+	ACataclysmEnemyCharacter* WeakerFirst = Beside(World, 60.0f);
+	ACataclysmEnemyCharacter* NearWeakerFirst = Beside(World, 62.0f);
+	ACataclysmEnemyCharacter* StackedAlone = Beside(World, 80.0f);
+	ACataclysmEnemyCharacter* StrongerFirst = Beside(World, 100.0f);
+	ACataclysmEnemyCharacter* NearStrongerFirst = Beside(World, 102.0f);
+	if (!TestTrue(TEXT("set-up: the five creatures of the earlier-application half"), WeakerFirst && NearWeakerFirst
+			&& StackedAlone && StrongerFirst && NearStrongerFirst))
+	{
+		return false;
+	}
+	// WHAT AN AILMENT OF `From`'S RUNNING ON A CREATURE DEALS A SECOND, AS STATED WHEN IT WAS APPLIED, or -1.
+	const auto PerSecondOn = [](ACataclysmEnemyCharacter* On, const FGameplayTag& Tag, const AActor* From)
+	{
+		UCataclysmSkillEffects::FRunningAilment Running;
+		return UCataclysmSkillEffects::RunningAilmentOn(On, Tag, Running) && Running.Applier.Get() == From
+			? Running.DamagePerSecond
+			: -1.0f;
+	};
+
+	// A WEAKER POISON RUNNING, AND THE TENTH A STRONGER: THE COPY IS THE STRONGER, WITH ITS WHOLE 10 SECONDS.
+	if (!TestTrue(TEXT("set-up: a poison of one a tick on the first creature, then eight bleeds on the one alone"),
+			Lays(WeakerFirst, Poison, 1) && Lays(StackedAlone, Bleed, 8)))
+	{
+		return false;
+	}
+	const float OneATick = PerSecondOn(WeakerFirst, Poison, Wearer.Actor);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the weaker poison runs and states something a second: %.3f"), OneATick),
+			OneATick > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nine applications held before the stronger poison"), Stacks(), 9);
+	UCataclysmSkillEffects::ApplyDamageOverTime(Wearer.Actor, WeakerFirst, 3.0f, 10.0f, Poison,
+		/*bScalesWithInstigator=*/false);
+	TestEqual(TEXT("the tenth, a poison of three a tick over one of one: the copy 2 m away deals three times as much a "
+		"second"), PerSecondOn(NearWeakerFirst, Poison, Wearer.Actor) / OneATick, 3.0f, 0.01f);
+	TestEqual(TEXT("and carries the stronger's whole 10 seconds"), TimeLeftOn(NearWeakerFirst, Poison, Wearer.Actor),
+		10.0f, 0.1f);
+	TestEqual(TEXT("and the stacks are spent"), Stacks(), 0);
+
+	// A STRONGER AND LONGER POISON RUNNING, AND THE TENTH A WEAKER: THE COPY IS THE STRONGER, WITH WHAT IT HAS LEFT.
+	if (!TestTrue(TEXT("set-up: a poison of three a tick for 20 seconds on the second creature, then eight bleeds on "
+			"the one alone"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Wearer.Actor, StrongerFirst, 3.0f, 20.0f, Poison,
+				/*bScalesWithInstigator=*/false)
+				&& Lays(StackedAlone, Bleed, 8)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	TestEqual(TEXT("nine applications held before the weaker poison"), Stacks(), 9);
+	Lays(StrongerFirst, Poison, 1);
+	TestEqual(TEXT("the tenth, a poison of one a tick under one of three: the copy 2 m away deals the stronger's three "
+		"times as much a second"), PerSecondOn(NearStrongerFirst, Poison, Wearer.Actor) / OneATick, 3.0f, 0.01f);
+	TestEqual(TEXT("and carries the 17.5 seconds the stronger had left, longer than the weaker's 10"),
+		TimeLeftOn(NearStrongerFirst, Poison, Wearer.Actor), 17.5f, 0.1f);
+	TestEqual(TEXT("and the stacks are spent"), Stacks(), 0);
 	return true;
 }
 

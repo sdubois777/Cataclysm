@@ -46,9 +46,32 @@ gone.**
   `hit_taken`, "Random Debuff"), counted by script on 2026-10-26 as the one authored wearer-status row on `hit_taken`.
   So the clause is scoped to the status `RandomBuffStatus` as well as to `hit_taken`, and that row is left as it was:
   it still rolls on a tick. An evaded blow was already refused by the branch, which acts on a landed event only.
+- **THE TENTH APPLICATION SPREADS, AS RULED AFTER THE HAND-BACK.** The application that gains the tenth stack spreads
+  and spends them. The coordinating session, 2026-10-26: "(a), the tenth, as built. The row says "At 10 stacks", and
+  reaching 10 is the plain reading. My "with 10 stacks held, the next application spreads" was imprecise; this ruling
+  replaces it." So the earlier wording quoted below is replaced by this ruling.
+- **AN EARLIER APPLICATION OF THE SAME AILMENT, RUNNING AT THE TENTH, IS NOW TESTED,** as the coordinating session asked
+  before the window: a weaker poison running under a stronger tenth spreads the stronger with its whole duration, and a
+  stronger, longer poison running under a weaker tenth spreads the stronger with what it has left.
 - **THE BUFFS' PLACES IN `Cataclysm.RandomBuffPick` 0 TO 14 DO NOT MOVE.** The two are appended as 15 and 16.
 
 ### THE RULINGS, VERBATIM (the owner and the coordinating session, 2026-10-26)
+
+After the hand-back, the coordinating session, "batch 4 rulings":
+
+> 1. WHICH APPLICATION SPREADS: (a), the tenth, as built. The row says "At 10 stacks", and reaching 10 is the plain
+>    reading. My "with 10 stacks held, the next application spreads" was imprecise; this ruling replaces it. Record in
+>    the entry that the tenth application gains the tenth stack, spreads and spends, and that this replaces my earlier
+>    wording.
+> 2. CHAOTIC BARRIER at about 32 net lines: accepted. Scoping ticks out for the "Random Buff" status on hit_taken only,
+>    so the authored Random Debuff row still rolls on ticks, is accepted. State it in the entry.
+> 3. LEFT_OUT deleted and the test renamed to assert all 17: accepted, with the second session's reason in the entry.
+> 4. GiveSpreadCopiesNear searching again: accepted. State in the entry, as read and not measured, that an enemy
+>    entering the 5 m during the Plague Doctor blast's own damage now gets copies.
+> 5. ONE ADDITION BEFORE THE WINDOW. The merge of an earlier running application of the same ailment at the cap is new
+>    game logic with no test. Add assertions to the Plague test ...
+
+Before it, as the build was briefed:
 
 The owner, on the random-buff pool: "Add everything".
 
@@ -197,7 +220,7 @@ a buff, the buff held is it); the end is read after the clock is moved by hand t
 `StepTimedGrants` runs. "The buff's actions" are those whose trigger key begins with `RandomBuff:<buff>:`. Assertion
 counts are by reading. The window registers 4286 plus these two, 4288.
 
-`TheRandomBuffPlagueGainsAStackForEachDamageOverTimeLaidAndAtTenSpreadsEveryOneOfTheHoldersWithinThreeMetres`, 52
+`TheRandomBuffPlagueGainsAStackForEachDamageOverTimeLaidAndAtTenSpreadsEveryOneOfTheHoldersWithinThreeMetres`, 64
 assertions, on batch 2's bare wearer and a second bare character, creatures of `CataclysmSpreadOnDeathTest::Beside`
 (10 m out along X, then metres from it), each ailment laid by hand with `Ail` (one a tick for 10 s), stacks read by
 `KeptStacksHeldNamed("Plague")`, and time left by `RunningAilmentOn` with its applier: a world; set-up, four tags and
@@ -215,7 +238,13 @@ carried, still the other character's**, **given the burn with 8.75**, **and the 
 spent, 0**; **an application after it gains 1**; **eight more make 9**; **after 30.5 s no buff is held**, **no action
 of the buff's**, **no Plague** (3); set-up, ten applications on another pair after it; **they gain no Plague**, **no
 poison 2 m away**, **no bleed** (3); the four draw checks again; **drawn again it starts at none: the 9 held when it
-ended were forgotten**.
+ended were forgotten**. Then, added by the enchantment session as ruled (12): set-up, five creatures 20 m from the
+rest; set-up, a poison of one a tick on the first and eight bleeds on one standing alone; set-up, the weaker poison
+states something a second; **9 held**; the tenth, a poison of three a tick: **the copy 2 m away deals three times as
+much a second**, **with its whole 10 s**, **the stacks are spent**; set-up, a poison of three a tick for 20 s on the
+second and eight more bleeds; 2.5 s later **9 held**; the tenth, a poison of one a tick: **the copy 2 m away deals the
+stronger's three times as much a second**, **with the 17.5 s it had left, longer than the weaker's 10**, **the stacks
+are spent**.
 
 `TheRandomBuffChaoticBarrierMakesALandedBlowTakenDrawAnotherBuffInItsPlaceOnceInTenSeconds`, 31 assertions, on batch
 2's bare wearer and a bare attacker, each blow `ApplyDirectDamage` of 1 with `bCannotBeMitigated` and health written
@@ -244,8 +273,7 @@ loop reads its copy, `Firing`, as every refresh inside the loop does.
 
 ### Not tested
 
-A Void Splinter running on the struck enemy (it would spread, read and not run); an earlier application of the same
-ailment running when the tenth is laid (one entry spreads, read and not run); a damage over time laid by one of the
+A Void Splinter running on the struck enemy (it would spread, read and not run); a damage over time laid by one of the
 wearer's own rows while it acts on an event, whose `dot_applied` is dropped at depth one and so gains no stack, though
 at the cap it would still spread; a minion's damage over time (the minion's own, not the summoner's); Chaotic Barrier
 drawing at random rather than by the pin, beyond "not itself"; Chaotic Barrier on an enemy, which wears no rows; a real
@@ -265,9 +293,11 @@ every test of batches 1 to 3 passes, and so does the batch 4 test not named.
 - **RB4-G2, no stack gained:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`, in the new
   branch of `ActOnEvent`, the anchor `if (Action.bKeptStacksSpreadDots)` / `{` / `if (bLanded && ` (three lines, as one
   anchor) becomes the same with `if (!bLanded && `. Every `dot_applied` is landed, so no stack is gained. Predicted:
-  the Plague test fails, 10 assertions: 8; 9; still 9 after the copy; 2 m away the poison, the burn and the bleed (3);
-  2 m the other side the burn and the bleed (2); an application after it gains 1; eight more make 9. Every "nothing"
-  and "0" assertion passes.
+  the Plague test fails, 16 assertions: 8; 9; still 9 after the copy; 2 m away the poison, the burn and the bleed (3);
+  2 m the other side the burn and the bleed (2); an application after it gains 1; eight more make 9; and, of the 12
+  added before the window, 6: both "9 held", and both copies' a second and time left. Every "nothing" and "0"
+  assertion passes. The anchor's lines are joined by `
+`, as `read_text` gives the file to the helper.
 - **RB4-G3, the barrier draws itself:** the same file, `const bool bThePinIsDrawable = Table.IsValidIndex(Pinned) &&
   FName(Table[Pinned].Name) != Excluded;` becomes `const bool bThePinIsDrawable = Table.IsValidIndex(Pinned);`.
   Predicted: the Chaotic Barrier test fails, 2 assertions: the blow draws another buff (it holds Chaotic Barrier), and
