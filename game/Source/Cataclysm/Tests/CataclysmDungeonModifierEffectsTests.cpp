@@ -109,6 +109,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Player/CataclysmPowerScore.h"
+#include "AbilitySystem/CataclysmSilence.h"
 
 /**
  * What the dungeon modifiers do on a floor. Issue #41.
@@ -27209,6 +27210,304 @@ bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 							 HealthOf(Player.Character)),
 			 HealthOf(Player.Character) < Before);
 	TestTrue(TEXT("and stunned them, which only the stomp does"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Echoes of the Past: a stunned, knocked-down or feared echo does not strike. Issue #2558, ruled 2026-10-27 by the
+// coordinating session: before the strike, an echo that `CannotAct` or that `FleeSourceOf` gives a source is skipped,
+// in the brain's order. A group of its own, `Cataclysm.EchoesHeld.`, so a guard proof needs no wider prefix (#2556).
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** What is put on one of the two echoes before they strike. */
+	enum class EEchoHeldBy : uint8
+	{
+		Nothing,
+		Stun,
+		Knockdown,
+		Fear,
+		Silence,
+	};
+
+	/** What one scene of two echoes measured. */
+	struct FEchoHeldRead
+	{
+		bool bSetUp = false;
+		/** What each echo's blow took off the player's health, struck by hand before the rule's strike. */
+		float BlowOfTheFree = 0.0f;
+		float BlowOfTheHeld = 0.0f;
+		/** What the rule's strike took off the player's health. */
+		float Lost = 0.0f;
+	};
+
+	/** The echo's blows against the player's hundred thousand health: a float steps by less than a hundredth there. */
+	constexpr float EchoHeldBlowTolerance = 1.0f;
+
+	/** Whether what `By` puts on an echo is on it now; with nothing, that nothing is: it may act, flee and swing. */
+	bool EchoIsHeldBy(const ACataclysmEnemyCharacter* Echo, EEchoHeldBy By)
+	{
+		FVector From;
+		switch (By)
+		{
+		case EEchoHeldBy::Stun:
+			return UCataclysmSkillEffects::IsStunned(Echo);
+		case EEchoHeldBy::Knockdown:
+			return UCataclysmSkillEffects::IsKnockedDown(Echo);
+		case EEchoHeldBy::Fear:
+			return UCataclysmFear::IsFeared(Echo);
+		case EEchoHeldBy::Silence:
+			return UCataclysmSilence::IsSilenced(Echo);
+		default:
+			return !UCataclysmSkillEffects::CannotAct(Echo) && !UCataclysmFear::FleeSourceOf(Echo, From)
+				&& !UCataclysmSilence::IsSilenced(Echo);
+		}
+	}
+
+	/**
+	 * One scene in a world of its own, driven as `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish` drives
+	 * the rule. Two Common Imps die on floor 2, which carries no row, and come back as two echoes five seconds into floor
+	 * 3, which carries Echoes of the Past. The one called the held echo is given three times the other's attack damage,
+	 * so the player's loss says which struck. Each echo's blow is measured by hand first, with the player's evasion and
+	 * block taken away and the player put back to full health after each. Then `By` is put on the held echo, by the
+	 * player, and the rule's strike a second later is read as what it took off the player's health.
+	 *
+	 * COMMONS, AND NOT `TwoDieOnFloorTwo`'s COMMON AND MAGIC, so neither echo carries a rung's modifier rows, whose
+	 * effects could make a blow struck by hand differ from the same echo's blow a second later.
+	 */
+	FEchoHeldRead EchoesStrikeWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who, EEchoHeldBy By)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		FEchoHeldRead Read;
+		const auto Named = [Who](const TCHAR* What) { return FString::Printf(TEXT("%s: %s"), Who, What); };
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FPossessedPlayer Player(World);
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode || !GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return Read;
+		}
+		Mode->DungeonModifiers = {};
+		if (!Test.TestTrue(*Named(TEXT("set-up: floor 2 was reached")), Mode->GoToFloor(2)))
+		{
+			return Read;
+		}
+		Mode->ClearFloorEnemies();
+		ACataclysmEnemyCharacter* First = PlaceCreatureAtRung(World, Mode, FVector(300.0f, 0.0f, 0.0f), 0);
+		ACataclysmEnemyCharacter* Second = PlaceCreatureAtRung(World, Mode, FVector(-300.0f, 0.0f, 0.0f), 0);
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the first Common")), First)
+			|| !Test.TestNotNull(*Named(TEXT("set-up: the second Common")), Second))
+		{
+			return Read;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Second, 100000.0f);
+		if (!Test.TestTrue(*Named(TEXT("set-up: the first died")), UCataclysmSkillEffects::IsDead(First))
+			|| !Test.TestTrue(*Named(TEXT("set-up: the second died")), UCataclysmSkillEffects::IsDead(Second)))
+		{
+			return Read;
+		}
+
+		Mode->DungeonModifiers = {EchoesRow};
+		if (!Test.TestTrue(*Named(TEXT("set-up: floor 3 was reached")), Mode->GoToFloor(3)))
+		{
+			return Read;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+		if (!Test.TestEqual(*Named(TEXT("set-up: two echoes stand")), Echoes.Num(), 2))
+		{
+			return Read;
+		}
+		ACataclysmEnemyCharacter* Held = Echoes[0];
+		ACataclysmEnemyCharacter* Free = Echoes[1];
+		if (!Test.TestTrue(*Named(TEXT("set-up: the held echo is given a blow")), GiveCreatureAttackDamage(Held, 300.0f) > 0.0f)
+			|| !Test.TestTrue(*Named(TEXT("set-up: the free echo is given a blow")),
+							  GiveCreatureAttackDamage(Free, 100.0f) > 0.0f))
+		{
+			return Read;
+		}
+
+		// EACH BLOW MEASURED BY HAND, with nothing the player could evade or block with and nothing a shield could
+		// soak, and the player put back to full health after each.
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		const float Full = HealthOf(Player.Character);
+		Free->AttackTarget(Player.Character);
+		Read.BlowOfTheFree = Full - HealthOf(Player.Character);
+		Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+		Held->AttackTarget(Player.Character);
+		Read.BlowOfTheHeld = Full - HealthOf(Player.Character);
+		Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+		if (!Test.TestTrue(*Named(TEXT("set-up: the free echo's blow, struck by hand, takes health")),
+						   Read.BlowOfTheFree > EchoHeldBlowTolerance)
+			|| !Test.TestTrue(*Named(TEXT("set-up: the held echo's blow, struck by hand, takes health")),
+							  Read.BlowOfTheHeld > EchoHeldBlowTolerance))
+		{
+			return Read;
+		}
+
+		// WHAT IS PUT ON THE HELD ECHO, by the player. The beat moves no world clock, so none of it runs out.
+		if (!Test.TestTrue(*Named(TEXT("set-up: the held echo cannot be hurt, as every echo")), Held->bCannotBeHurt))
+		{
+			return Read;
+		}
+		bool bLanded = true;
+		switch (By)
+		{
+		case EEchoHeldBy::Stun:
+			bLanded = UCataclysmSkillEffects::ApplyStun(Player.Character, Held, /*DurationSeconds=*/10.0f,
+														/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case EEchoHeldBy::Knockdown:
+			bLanded = UCataclysmSkillEffects::ApplyKnockdown(Player.Character, Held, /*DurationSeconds=*/10.0f,
+															 /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case EEchoHeldBy::Fear:
+			bLanded = UCataclysmFear::ApplyFear(Player.Character, Held, /*Seconds=*/10.0f,
+												Player.Character->GetActorLocation());
+			break;
+		case EEchoHeldBy::Silence:
+			bLanded = UCataclysmSilence::ApplySilence(Player.Character, Held, /*Seconds=*/10.0f);
+			break;
+		default:
+			break;
+		}
+		if (!Test.TestTrue(*Named(TEXT("set-up: what is put on the held echo landed")), bLanded)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and is on it")), EchoIsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		// A FEARED ECHO MAY STILL ACT, so only the flee step can refuse it.
+		if (By == EEchoHeldBy::Fear
+			&& !Test.TestFalse(*Named(TEXT("set-up: the feared echo is not under a hard stop")),
+							   UCataclysmSkillEffects::CannotAct(Held)))
+		{
+			return Read;
+		}
+
+		const float Before = HealthOf(Player.Character);
+		Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds));
+		if (!Test.TestEqual(*Named(TEXT("set-up: both echoes still stand when they have struck")),
+							Mode->EchoesStandingNow().Num(), 2)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and what was put on the held echo is still on it")),
+							  EchoIsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		Read.Lost = Before - HealthOf(Player.Character);
+		Read.bSetUp = true;
+		return Read;
+	}
+
+	/**
+	 * The three tests of a held echo: the control, nothing on either echo, loses the player both blows; the scene with
+	 * one echo held loses the player the other echo's blow and not the held one's.
+	 */
+	void ExpectTheHeldEchoDoesNotStrike(FAutomationTestBase& Test, const FEchoHeldRead& Control,
+										const FEchoHeldRead& Held, const TCHAR* Hold)
+	{
+		Test.TestEqual(TEXT("control: with nothing on them, both echoes strike and the player loses both blows"),
+					   Control.Lost, Control.BlowOfTheFree + Control.BlowOfTheHeld, EchoHeldBlowTolerance);
+		Test.TestTrue(*FString::Printf(TEXT("%s: the echo beside it strikes, and the player loses at least its blow "
+											"(%.1f lost, its blow %.1f)"),
+									   Hold, Held.Lost, Held.BlowOfTheFree),
+					  Held.Lost >= Held.BlowOfTheFree - EchoHeldBlowTolerance);
+		Test.TestTrue(*FString::Printf(TEXT("%s: the held echo does not strike, and the player loses no more than that "
+											"(%.1f lost, the held echo's blow %.1f)"),
+									   Hold, Held.Lost, Held.BlowOfTheHeld),
+					  Held.Lost <= Held.BlowOfTheFree + EchoHeldBlowTolerance);
+	}
+}
+
+// A STUNNED ECHO DOES NOT STRIKE, AND THE ECHO BESIDE IT DOES. #2558: `CannotAct`, the brain's hard stop.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHeldStunTest,
+	"Cataclysm.EchoesHeld.AStunnedEchoDoesNotStrikeAndTheEchoBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHeldStunTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	const FEchoHeldRead Control = EchoesStrikeWithOneHeld(*this, TEXT("control"), EEchoHeldBy::Nothing);
+	const FEchoHeldRead Stunned = EchoesStrikeWithOneHeld(*this, TEXT("one stunned"), EEchoHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldEchoDoesNotStrike(*this, Control, Stunned, TEXT("one stunned"));
+	return true;
+}
+
+// A KNOCKED-DOWN ECHO DOES NOT STRIKE, AND THE ECHO BESIDE IT DOES. The same hard stop as a stun.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHeldKnockdownTest,
+	"Cataclysm.EchoesHeld.AKnockedDownEchoDoesNotStrikeAndTheEchoBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHeldKnockdownTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	const FEchoHeldRead Control = EchoesStrikeWithOneHeld(*this, TEXT("control"), EEchoHeldBy::Nothing);
+	const FEchoHeldRead KnockedDown = EchoesStrikeWithOneHeld(*this, TEXT("one knocked down"), EEchoHeldBy::Knockdown);
+	if (!Control.bSetUp || !KnockedDown.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldEchoDoesNotStrike(*this, Control, KnockedDown, TEXT("one knocked down"));
+	return true;
+}
+
+// A FEARED ECHO DOES NOT STRIKE, AND THE ECHO BESIDE IT DOES. `FleeSourceOf`, the brain's flee step: it is not under a
+// hard stop, so only that step refuses it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHeldFearTest,
+	"Cataclysm.EchoesHeld.AFearedEchoDoesNotStrikeAndTheEchoBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHeldFearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	const FEchoHeldRead Control = EchoesStrikeWithOneHeld(*this, TEXT("control"), EEchoHeldBy::Nothing);
+	const FEchoHeldRead Feared = EchoesStrikeWithOneHeld(*this, TEXT("one feared"), EEchoHeldBy::Fear);
+	if (!Control.bSetUp || !Feared.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldEchoDoesNotStrike(*this, Control, Feared, TEXT("one feared"));
+	return true;
+}
+
+// THE CONTROL: WITH NOTHING ON THEM EVERY ECHO STRIKES, AS BEFORE #2558, AND A SILENCED ECHO STILL SWINGS ITS BASIC
+// ATTACK. Silence is not a hard stop and not a flight; the owner's O1 of 2026-10-17 leaves an echo its basic attack.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHeldControlTest,
+	"Cataclysm.EchoesHeld.EveryEchoStrikesWithNothingOnItAndASilencedEchoStillSwings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHeldControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	const FEchoHeldRead Control = EchoesStrikeWithOneHeld(*this, TEXT("nothing on them"), EEchoHeldBy::Nothing);
+	const FEchoHeldRead Silenced = EchoesStrikeWithOneHeld(*this, TEXT("one silenced"), EEchoHeldBy::Silence);
+	if (!Control.bSetUp || !Silenced.bSetUp)
+	{
+		return false;
+	}
+	TestTrue(TEXT("the held echo hits harder than the other, so the player's loss says which struck"),
+			 Control.BlowOfTheHeld > Control.BlowOfTheFree + EchoHeldBlowTolerance);
+	TestEqual(TEXT("with nothing on them, both echoes strike and the player loses both blows"),
+			  Control.Lost, Control.BlowOfTheFree + Control.BlowOfTheHeld, EchoHeldBlowTolerance);
+	TestEqual(TEXT("one silenced, both still strike: the silenced echo swings its basic attack"),
+			  Silenced.Lost, Silenced.BlowOfTheFree + Silenced.BlowOfTheHeld, EchoHeldBlowTolerance);
 	return true;
 }
 

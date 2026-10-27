@@ -2,6 +2,173 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — A stunned, knocked-down or feared echo of Echoes of the Past does not strike (#2558)
+
+**Affects:** `ACataclysmDungeonGameMode::StepEchoesOfThePast` in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (one block at the top of the stage-1 strike loop); four
+new tests in a group of their own, `Cataclysm.EchoesHeld.`, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` beside the Echoes of the Past tests, and one
+include in that file; this file. No new source file, so the window needs no build-cache step. No workbook, CSV or asset
+change. **Closes [#2558](https://github.com/sdubois777/Cataclysm/issues/2558).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **WHAT A PLAYER NOTICES:** on a floor carrying Echoes of the Past, an echo the player stuns, knocks down or frightens
+  in the second between the echoes appearing and their strike does not strike. The other echoes strike as before. A
+  silenced echo still swings its basic attack, as before.
+- **SKIP, NOT HOLD, IS A JUDGEMENT, ACCEPTED BY THE RULING.** An echo held at the strike loses its strike for good:
+  it is not made later when the stun, knockdown or fear ends. The echoes' stage 1 still ends on that beat, and they
+  vanish a second later as before. Not taken: holding the strike until the echo may act, which would need a new
+  timer for a creature that is gone about two seconds later.
+- **ONLY THE ECHOES ARE CHANGED: NO OTHER BRAINLESS CREATURE IS MADE TO ACT, AS FAR AS WAS READ.** That is ruling
+  (b), and it is a search of game code, not an exhaustive reading; see "The scope of (b)" below.
+- **NINE LINES OF GAME CODE ADDED IN ONE BLOCK** (three of comment), and nothing else in game code.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-27)
+
+> (a) Accepted. Before the strike, skip an echo that CannotAct or that FleeSourceOf gives a source, in the brain's order.
+> Reason: an echo should refuse exactly what a brain-driven creature refuses. Fear is included, because the brain's flee
+> step means a feared creature makes no attack.
+> SKIP, NOT HOLD: accepted as a judgement. The echo's turn is spent and stage 1 still ends. A held strike would need a
+> new timer for a creature that leaves about 2 s later. State it in the entry.
+> (b) Accepted: no other brainless creature is made to act. Keep the scope you stated (game code only, the props' step
+> functions not all read) in the entry, worded as read and not exhaustive.
+> (c) The test, its controls and one proof are approved. Count what your prefix selects before registering, as you said.
+
+No owner sentence decides this; the rulings rest on the design's crowd-control table, quoted in the #1627 entry below
+("Stun ... The target cannot act at all"; "Knockdown ... The target cannot act at all; it is simply on the floor while
+it happens"; Fear, "cannot attack or use a skill").
+
+### WHAT THE BRAIN REFUSES, RE-READ AT `da1bb95cc`
+
+`ACataclysmEnemyController::Think` (`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`) asks, in this
+order, about `const ACataclysmCharacterBase* Driven = Body()`:
+
+1. `if (UCataclysmSkillEffects::CannotAct(Driven))` (line 381): the wind-up is dropped, a charge stops, the marker
+   goes, it stops moving, and it returns `ECataclysmBrainAction::Stunned`. Nothing is swung or used.
+2. After the Demonic Guide's branch, the flee step (lines 447-452), whose comment reads "FLEEING OUTRANKS EVERYTHING
+   BUT A HARD STOP. A feared creature, or one a rule told to flee, drops what it was winding up and moves away from the
+   point, as the stun above drops it, and makes no attack. BELOW THE STUN because a stunned creature cannot act at all,
+   flight included.", asked as `FVector FleeSource; if (UCataclysmFear::FleeSourceOf(Driven, FleeSource))`.
+
+The signatures, read whole: `static bool CannotAct(const AActor* Actor);` (`CataclysmSkillEffects.h` 3068, public)
+and `static bool FleeSourceOf(const AActor* Character, FVector& OutFrom);` (`CataclysmFear.h` 95, public).
+`FleeSourceOf` answers true for a feared character (`State.Feared`, with its `FearSource`) and for a creature a rule
+told to flee (`ACataclysmEnemyCharacter::FleeSourceNow`), so a rule's flight refuses the strike too, as it refuses the
+brain's attack.
+
+### WHAT WAS BUILT, AND WHERE EACH RULING IS
+
+Ruling (a): in `StepEchoesOfThePast`, stage 1, at the top of the loop over `EchoesStanding` and after the null check,
+before the Silence check and the strike: the echo is asked `CannotAct`, then `FleeSourceOf`, and is skipped
+(`continue`) when either answers true. The loop goes on to the next echo and `EchoesStage = 2` still follows it, so
+the skip spends the echo's strike. The echo stays standing and vanishes with the others.
+
+A stun, a knockdown and a fear can land on an echo: `bCannotBeHurt` is read where damage is written
+(`CataclysmVitalAttributeSet.cpp`) and by some rule filters, and not by `ApplyStun`, `ApplyKnockdown` or `ApplyFear`
+(read, not measured; each new test's set-up asserts that the state landed on an echo carrying `bCannotBeHurt`).
+
+### THE SCOPE OF (b), READ AND NOT EXHAUSTIVE
+
+Searched in game code only (`game/Source/`, test files excluded), at `da1bb95cc`: `UnPossess()` is called only by the
+echo line in `StepEchoesOfThePast`; `AutoPossessAI` is disabled only by `ACataclysmFloorSourceCharacter` and one
+creature in `CataclysmClothStress.cpp`, and `AIControllerClass = nullptr` only by the first; no `SpawnDefaultController`
+call. Neither of those two calls `AttackTarget` or `UseEnemyAbility`. The callers of `->AttackTarget(` and
+`->UseEnemyAbility(` in game code are the echo strike (two), the enemy brain (three) and one more, below. Not every prop's
+step function was read.
+
+**ONE ROUTE READ AND LEFT ALONE, BECAUSE IT IS NOT A BRAINLESS CREATURE.** The Staff's Compel (`CommandStrike=1`, in
+`UCataclysmSkillTemplates`, `CataclysmSkillTemplates.cpp` about 2242-2258) makes everything the caster commands call
+`AttackTarget` on the bolt's target, asking no `CannotAct`; `ACataclysmMinion::AttackTarget` and
+`ACataclysmEnemyCharacter::AttackTarget` ask none either. Those creatures have brains, so (b) does not reach them, and
+whether a stunned minion or thrall should strike when Compelled is not decided here. Read, not measured.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The check is written through a local, `const AActor* Striker = Echo;`**, so one line can be broken for the proof
+  and both questions go with it. Not taken: `Echo` passed to each question directly, whose break would need two edits.
+- **Before the Silence check, not beside it.** A held echo does nothing at all; a silenced one still swings. Not
+  taken: folding the two into the strike's condition, which would make a stunned echo swing its basic attack.
+- **The tests are in a group of their own, `Cataclysm.EchoesHeld.`**, so the proof's prefix selects exactly them
+  ([#2556](https://github.com/sdubois777/Cataclysm/issues/2556)). Not taken: `Cataclysm.DungeonModifierEffects.` with a
+  narrow name prefix, which keeps the file's group but makes the proof depend on no other test's name starting the
+  same way.
+- **Two Common echoes, each blow measured by hand first.** The held echo is given three times the other's attack
+  damage, and each echo's blow is struck at the player by hand before anything is put on it, so the player's loss at
+  the rule's strike says which echoes struck. Not taken: `TwoDieOnFloorTwo`'s Common and Magic, whose Magic echo may
+  carry a rung's modifier rows.
+
+### NO GENRE SOURCE
+
+None was recorded. This applies the design's own crowd-control rule to one more route; no formula or mechanic is
+chosen.
+
+### TESTS
+
+Four, in `Cataclysm.EchoesHeld.`, in `CataclysmDungeonModifierEffectsTests.cpp` after
+`AnEchoRepeatsTheAbilityItsCreatureLastUsed`. Each runs two scenes, each in a world of its own, by one helper,
+`EchoesStrikeWithOneHeld`: two Commons die on floor 2, which carries no row; their two echoes appear five seconds into
+floor 3, which carries Echoes of the Past; the held echo is given 300 attack damage and the free one 100; the player's
+evasion, block chance and energy shield are set to 0; each echo's blow is struck at the player by hand and read, the
+player put back to full health after each; the hold is put on the held echo by the player (a designed stun of 10 s, a
+designed knockdown of 10 s, a fear of 10 s from the player's place, a silence of 10 s, or nothing); and a second later
+the rule's strike is read as what it took off the player. The beat moves no world clock, so no hold runs out.
+
+A scene's set-up asserts, in order (24 when nothing is put on, 25 for fear): a world; the dungeon game mode, a
+possessed player, deaths announced, floor 1, no curse (5, `ACurseDungeon`); the player's health (2); floor 2; the two
+Commons (2); both died (2); floor 3; two echoes stand; each is given a blow (2); each blow struck by hand takes health
+(2); the held echo cannot be hurt; the hold landed; it is on the echo; (fear only: the feared echo is not under a hard
+stop); both echoes still stand after the strike; the hold is still on.
+
+| Test | Scenes | Then asserts (in order) | Total |
+|---|---|---|---|
+| `Cataclysm.EchoesHeld.AStunnedEchoDoesNotStrikeAndTheEchoBesideItDoes` | nothing; one stunned | control: both strike, the player loses both blows; the echo beside it strikes, at least its blow; **the stunned echo does not strike: no more than that** | 51 |
+| `Cataclysm.EchoesHeld.AKnockedDownEchoDoesNotStrikeAndTheEchoBesideItDoes` | nothing; one knocked down | the same three | 51 |
+| `Cataclysm.EchoesHeld.AFearedEchoDoesNotStrikeAndTheEchoBesideItDoes` | nothing; one feared | the same three | 52 |
+| `Cataclysm.EchoesHeld.EveryEchoStrikesWithNothingOnItAndASilencedEchoStillSwings` | nothing; one silenced | the held echo hits harder than the other; with nothing on them both strike, both blows lost; one silenced, both still strike | 51 |
+
+Counts are every assertion reached when each set-up holds. **Bold** assertions fail with EH-G1's break.
+
+The existing tests read for this and expected to pass unchanged: the four Echoes of the Past tests in
+`Cataclysm.DungeonModifierEffects.` and `Cataclysm.Silence.ASilencedEchoUsesNoAbilityButItsBasicAttack`. None stuns,
+knocks down or frightens an echo: the player's blows on the echoes in
+`EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish` come from the possessed player's Slashing Greataxe,
+which carries no stun, and an echo takes no damage to clear the incidental stun's threshold. That was a reading, not a
+run.
+
+### NOT TESTED
+
+A creature a rule told to flee (`FleeFrom`, The Plaguebearer, Morale Break) standing as an echo: read, the same
+`FleeSourceOf` answer as fear. An echo whose recorded attack is an ability (`UseEnemyAbility`) under a stun: read, the
+skip comes before both branches. A hold that lands or ends between the echoes appearing and the strike other than by
+the test's hand. The Compel route above.
+
+### GUARD PROOFS PROPOSED
+
+One, EH-G1, in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.EchoesHeld.` (with the
+dot; it selects the 4 new tests and no other, counted below). The anchor is counted exactly once by `read_text`; the
+break leaves the brackets as they were.
+
+| Proof | Old text | New text | Predicted to fail |
+|---|---|---|---|
+| EH-G1, the skip is never true | `const AActor* Striker = Echo;` | `const AActor* Striker = nullptr;` | 3 tests, 3 assertions: in each of the stun, knockdown and fear tests, "the held echo does not strike: no more than that". The control test and every other assertion pass |
+
+With the break, `CannotAct(nullptr)` and `FleeSourceOf(nullptr, ...)` answer false (`HasTag` of no actor is false, and
+the cast to an enemy fails), so every echo strikes as before this change: the held echo's blow is lost with the free
+one's. The control scene of each test, and every set-up, read nothing the skip decides, so they pass.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- With `Cataclysm.DungeonModifiers Death_Echoes_of_the_Past` typed at the console before a floor is built, kill a few
+  creatures, go down a floor, and stun one echo in the second after they appear: it does not strike; the others do.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-27 — Leaving the dungeon: three of its five unmeasured lines measured (#1812, part 1)
 
 **Affects:** two new Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp`; no game code. Part 1 of

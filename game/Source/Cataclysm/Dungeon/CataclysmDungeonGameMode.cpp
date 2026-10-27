@@ -3658,6 +3658,15 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			{
 				continue;
 			}
+			// A STUNNED, KNOCKED-DOWN OR FEARED ECHO DOES NOT STRIKE, ruled 2026-10-27 (#2558): it refuses what the brain's
+			// `Think` refuses, `CannotAct` and then the flee step, in that order. SKIPPED, NOT HELD: its strike is spent,
+			// and stage 1 still ends below.
+			const AActor* Striker = Echo;
+			FVector FleeSource;
+			if (UCataclysmSkillEffects::CannotAct(Striker) || UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+			{
+				continue;
+			}
 			// A SILENCED ECHO USES NO ABILITY BUT ITS BASIC ATTACK, the owner's O1 of 2026-10-17, as `ChooseAbility` refuses one.
 			if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack)
 				&& !(UCataclysmSilence::IsSilenced(Echo) && !Echo->EnemyAbilities()[One.Attack].bIsBasicAttack))
