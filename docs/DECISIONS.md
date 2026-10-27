@@ -152,9 +152,21 @@ fails.
 On a Famine floor, stand next to a creature whose hover panel lists Starving Aura and watch the health bar refill at
 half its rate; step 7 m away and it returns to full speed two seconds later.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t135w
 
-Not run. The enchantment session records its window here.
+Window t135w, run 2026-10-26 under the lock as `enchant-t135w` at 11,507 MB free, at `35769d1be` on development
+`90e9e1010`. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| Step 0, the build plan cache deleted for the new file, then a build | "14 actions, 11 files compiled"; `CataclysmStarvingAuraTests.cpp` in `Module.Cataclysm.30.cpp.obj` and `CataclysmEnemyModifiers.cpp` in `Module.Cataclysm.7.cpp.obj`, each newer than its source |
+| The DataTable asset rebuild | changed exactly `DT_StatusEffects.uasset` and its record, committed as `206f9e134` |
+| The six new tests, each alone | 1 of 1 each |
+| The whole Unreal suite | "4294 tests performed, 4294 succeeded, 0 failed"; 4294 declared, gap 0 |
+| Memory | `tests=4901 peak_used_virtual_mb=8032 final_used_virtual_mb=7686` |
+| Python of record | JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SA-G1, the aura adds nothing | PROVED: the six new tests failed, 17 of 17 assertions; 52 of 52 passed restored |
+| SA-G2, the aura reaches 2.4 m | PROVED: the six new tests failed, 25 of 25 assertions; the other 46, Abyssal's and Hellfire's among them, passed; 52 of 52 passed restored |
 
 ---
 
