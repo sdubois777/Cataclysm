@@ -181,9 +181,33 @@ window quotes `Repeat`'s count and the target's loss and health from the broken 
   another enemy with a skill while it is stunned: one damage number rises from the repeat of the minion still standing,
   not two.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t164w, AND THE MEASUREMENT OF #2563
 
-Not run. The enchantment session records its window here.
+Window t164w, run 2026-10-27 under the lock as `enchant-t164w`, at `04603952e` on development `543a908bb`. Free memory
+immediately before the lock was taken (the stall guard started at 16:44:51) was 12,057 MB, against the floor of 10 GiB
+(10,240 MB). No new source file and no status row changed, so the window had no build-cache step and no asset rebuild.
+Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The five new tests, each alone | 1 of 1 each; the first build compiled 2 files in 5 actions |
+| The whole Unreal suite | "4335 tests performed, 4335 succeeded, 0 failed"; 4335 declared, gap 0 |
+| Memory | `tests=4942 peak_used_virtual_mb=8081 final_used_virtual_mb=7761` |
+| Python of record | "7010 passed, 8 skipped"; JUnit 7018 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| CR-G1, the skip is never true (prefix `Cataclysm.ChorusHeld.`, 5 tests) | PROVED: the 4 held tests failed, 12 of 12 assertions as registered; the control passed; 5 of 5 passed restored |
+
+**THE FAULT IS MEASURED, AS THE RULING ASKED: CR-G1's broken half is today's code, and in it every held creature
+made its repeat.** Quoted from the broken run, the same in all four held tests:
+
+| Held creature | What the broken run read |
+|---|---|
+| A stunned Imp | "Repeat returns 1 (it returned 2; 600.0 lost, health 9400.0 after; the control lost 600.0)"; "the held one deals the target nothing (1 hits by it)" |
+| A knocked-down Imp | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+| A feared Imp | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+| A stunned thrall | the same: returned 2; 600.0 lost against the control's 600.0; 1 hit by the held one |
+
+So before this change Chorus made a stunned, knocked-down or feared minion, and a stunned thrall, repeat the caster's
+hit for its whole 300. With the change, the held one makes no repeat and the creature beside it still repeats for 300.
 
 ---
 
