@@ -321,13 +321,44 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 
 	++Events->Deaths;
 
-	// COUNTED WHILE IT IS IN PROGRESS, so work a listener hands over waits until every listener has heard this
-	// death. See `AfterThisDeathIsHeard`. A death a listener causes from inside its own call is announced inside
-	// this one, and the count is then two.
-	++Events->DeathsBeingAnnounced;
-	Events->OnDeath.Broadcast(Notice);
-	--Events->DeathsBeingAnnounced;
-	Events->DoWorkAfterDeaths();
+	// WHETHER THE KILLER'S ROWS WERE ACTING, read now, while they still are. See `bWhileTheKillersRowsActed`.
+	if (const UCataclysmAbilitySystemComponent* KillersRows =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Notice.Killer)))
+	{
+		Notice.bWhileTheKillersRowsActed = KillersRows->IsActingOnAnEvent();
+	}
+
+	// A DEATH RAISED DURING ANOTHER'S ANNOUNCEMENT WAITS FOR IT, with its own copies of what its notice points at:
+	// the victim's record may change before it is heard. Issue #2482. See `NoteDeath`.
+	if (Events->DeathsBeingAnnounced > 0)
+	{
+		const FGameplayTagContainer KillingTags = *Notice.KillingTags;
+		const bool bHasSkillTags = Notice.KillingSkillTags != nullptr;
+		const FGameplayTagContainer SkillTags = bHasSkillTags ? *Notice.KillingSkillTags : FGameplayTagContainer();
+		const TWeakObjectPtr<UCataclysmCombatEvents> Announcer(Events);
+		Events->WorkAfterDeaths.Add([Announcer, Notice, KillingTags, bHasSkillTags, SkillTags]()
+		{
+			if (UCataclysmCombatEvents* Still = Announcer.Get())
+			{
+				FCataclysmDeathNotice Heard = Notice;
+				Heard.KillingTags = &KillingTags;
+				Heard.KillingSkillTags = bHasSkillTags ? &SkillTags : nullptr;
+				Still->Announce(Heard);
+			}
+		});
+		return;
+	}
+	Events->Announce(Notice);
+}
+
+void UCataclysmCombatEvents::Announce(const FCataclysmDeathNotice& Notice)
+{
+	// COUNTED WHILE IT IS IN PROGRESS, so work a listener hands over, and a death a listener causes, waits until every
+	// listener has heard this death. See `AfterThisDeathIsHeard` and `NoteDeath`.
+	++DeathsBeingAnnounced;
+	OnDeath.Broadcast(Notice);
+	--DeathsBeingAnnounced;
+	DoWorkAfterDeaths();
 }
 
 void UCataclysmCombatEvents::AfterThisDeathIsHeard(TFunction<void()> Work)

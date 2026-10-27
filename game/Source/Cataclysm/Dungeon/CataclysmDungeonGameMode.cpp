@@ -18815,7 +18815,24 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 
 	// AND THE CHAIN IS OVER. It starts again from nothing, so a floor may have another.
 	EpidemicChain = 0;
-	bEpidemicKilling = false;
+
+	// THE FLAG COMES OFF ONLY ONCE THE MASS KILL'S DEATHS HAVE BEEN HEARD. They were raised inside this death's
+	// announcement, so they wait for it, and the flag cleared here would be off when they arrive. Handed to the same
+	// list after them, it comes off once they are heard. Issue #2482.
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World))
+	{
+		Events->AfterThisDeathIsHeard([Mode = TWeakObjectPtr<ACataclysmDungeonGameMode>(this)]()
+		{
+			if (ACataclysmDungeonGameMode* Still = Mode.Get())
+			{
+				Still->bEpidemicKilling = false;
+			}
+		});
+	}
+	else
+	{
+		bEpidemicKilling = false;
+	}
 
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("Epidemic: a chain of %d killed %d creature(s) within %.0f cm and brought "

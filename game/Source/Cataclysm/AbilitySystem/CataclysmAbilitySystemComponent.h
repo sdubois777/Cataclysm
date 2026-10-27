@@ -618,6 +618,9 @@ public:
 					float EventAmount = 0.0f, bool bLanded = true,
 					const AActor* EventTarget = nullptr);
 
+	/** Whether this character's worn rows are acting on an event now. See `PoolActionDepth`. Issue #2482. */
+	bool IsActingOnAnEvent() const { return PoolActionDepth > 0; }
+
 	/**
 	 * The `skill_use` event, with the skill it is about. Mechanism B2.
 	 *

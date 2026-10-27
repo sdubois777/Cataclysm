@@ -22475,6 +22475,190 @@ bool FCataclysmWorkAfterADeathTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A death raised while another is being announced waits for it. Issue #2482, ruled by the coordinating session on
+// 2026-10-26.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmADeathAListenerCausesWaitsTest,
+	"Cataclysm.DeathsHeardInOrder.AKillMadeInsideADeathListenerIsHeardAfterEveryListenerHasHeardTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `WorkHandedOverAtADeathRunsAfterEveryListenerHasHeardThatDeath`'s two scenes, with the second creature KILLED
+ * INSIDE THE LISTENER rather than handed over: the way Hellfire, Epidemic and Blood Bond kill. Each listener must hear
+ * the first death and then the second, in both orders of binding. CONTROL: a death while none is being announced is
+ * heard at once, before the call that raised it returns.
+ */
+bool FCataclysmADeathAListenerCausesWaitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	const auto Scene = [this](const TCHAR* Which, bool bTheOneThatKillsIsBoundFirst)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Which), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the announcements"), Which), Events))
+		{
+			return;
+		}
+		FScopedFighter First(World, FVector::ZeroVector);
+		FScopedFighter Second(World, FVector(3 * M, 0, 0));
+		AActor* const FirstBody = First.Actor;
+		AActor* const SecondBody = Second.Actor;
+
+		TArray<const AActor*> HeardByTheOneThatKills;
+		TArray<const AActor*> HeardByTheOther;
+		const auto BindTheOneThatKills = [&]()
+		{
+			Events->OnDeath.AddLambda(
+				[&HeardByTheOneThatKills, FirstBody, SecondBody](const FCataclysmDeathNotice& Notice)
+				{
+					HeardByTheOneThatKills.Add(Notice.Victim);
+					if (Notice.Victim == FirstBody)
+					{
+						UCataclysmSkillEffects::MarkDead(SecondBody);
+					}
+				});
+		};
+		const auto BindTheOther = [&]()
+		{
+			Events->OnDeath.AddLambda(
+				[&HeardByTheOther](const FCataclysmDeathNotice& Notice) { HeardByTheOther.Add(Notice.Victim); });
+		};
+		if (bTheOneThatKillsIsBoundFirst)
+		{
+			BindTheOneThatKills();
+			BindTheOther();
+		}
+		else
+		{
+			BindTheOther();
+			BindTheOneThatKills();
+		}
+
+		UCataclysmSkillEffects::MarkDead(FirstBody);
+		Events->OnDeath.Clear();
+
+		if (!TestEqual(*FString::Printf(TEXT("%s: control: the listener that kills heard two deaths"), Which),
+					   HeardByTheOneThatKills.Num(), 2)
+			|| !TestEqual(*FString::Printf(TEXT("%s: control: the other listener heard two deaths"), Which),
+						  HeardByTheOther.Num(), 2))
+		{
+			return;
+		}
+		TestTrue(*FString::Printf(TEXT("%s: the listener that kills heard the first death and then the second"), Which),
+				 HeardByTheOneThatKills[0] == FirstBody && HeardByTheOneThatKills[1] == SecondBody);
+		TestTrue(*FString::Printf(TEXT("%s: the other listener heard the first death and then the second"), Which),
+				 HeardByTheOther[0] == FirstBody && HeardByTheOther[1] == SecondBody);
+	};
+
+	Scene(TEXT("the listener that kills bound first, so called last"), true);
+	Scene(TEXT("the listener that kills bound second, so called first"), false);
+
+	// CONTROL: A DEATH WHILE NONE IS BEING ANNOUNCED IS HEARD AT ONCE.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events))
+	{
+		return false;
+	}
+	FScopedFighter Alone(World, FVector::ZeroVector);
+	int32 Heard = 0;
+	Events->OnDeath.AddLambda([&Heard](const FCataclysmDeathNotice&) { ++Heard; });
+	UCataclysmSkillEffects::MarkDead(Alone.Actor);
+	TestEqual(TEXT("CONTROL: a death while none is being announced is heard before the call returns"), Heard, 1);
+	Events->OnDeath.Clear();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAWaitingDeathKeepsItsRecordTest,
+	"Cataclysm.DeathsHeardInOrder.ADeathThatWaitsIsHeardWithTheKillerAndTagsItHadWhenItDied",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A death that waits is heard as it was when it happened: the second creature dies to one killer with one tag on its
+ * record, and its record is written over before its death is heard. Its notice must still name the first killer and
+ * carry the first tag. CONTROL: the record really was written over.
+ */
+bool FCataclysmAWaitingDeathKeepsItsRecordTest::RunTest(const FString&)
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events) || !TestTrue(TEXT("set-up: a tag"), Burn.IsValid()))
+	{
+		return false;
+	}
+	FScopedFighter First(World, FVector::ZeroVector);
+	FScopedFighter Second(World, FVector(3 * M, 0, 0));
+	FScopedFighter KillerOne(World, FVector(0, 3 * M, 0));
+	FScopedFighter KillerTwo(World, FVector(0, -3 * M, 0));
+	AActor* const FirstBody = First.Actor;
+	AActor* const SecondBody = Second.Actor;
+	UCataclysmAbilitySystemComponent* SecondRecord = Second.AbilitySystem;
+	AActor* const One = KillerOne.Actor;
+	AActor* const Two = KillerTwo.Actor;
+
+	FCataclysmLastBlow ByOne;
+	ByOne.Attacker = One;
+	ByOne.WorldSeconds = World->GetTimeSeconds();
+	ByOne.KillingTags.AddTag(Burn);
+	SecondRecord->RecordLastBlow(MoveTemp(ByOne));
+
+	const AActor* HeardKiller = nullptr;
+	bool bHeardTheTag = false;
+	bool bHeardTheSecond = false;
+	Events->OnDeath.AddLambda(
+		[&, FirstBody, SecondBody, SecondRecord, Two](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == FirstBody)
+			{
+				UCataclysmSkillEffects::MarkDead(SecondBody);
+				// WRITTEN OVER BEFORE THE SECOND DEATH IS HEARD: another killer, no tag.
+				FCataclysmLastBlow ByTwo;
+				ByTwo.Attacker = Two;
+				ByTwo.WorldSeconds = World->GetTimeSeconds();
+				SecondRecord->RecordLastBlow(MoveTemp(ByTwo));
+			}
+			else if (Notice.Victim == SecondBody)
+			{
+				bHeardTheSecond = true;
+				HeardKiller = Notice.Killer;
+				bHeardTheTag = Notice.KillingTags && Notice.KillingTags->HasTagExact(Burn);
+			}
+		});
+	UCataclysmSkillEffects::MarkDead(FirstBody);
+	Events->OnDeath.Clear();
+
+	if (!TestTrue(TEXT("set-up: the second death was heard"), bHeardTheSecond))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: the second creature's record was written over before its death was heard"),
+			 SecondRecord->GetLastBlow().Attacker.Get() == Two);
+	TestTrue(TEXT("its notice names the killer it had when it died"), HeardKiller == One);
+	TestTrue(TEXT("and carries the tag that was on its record then"), bHeardTheTag);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlastIsNotTheWearersBlowTest,
 	"Cataclysm.OverkillExplosion.ABlastFromTheDyingIsNotABlowTheWearerStruckEither",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
