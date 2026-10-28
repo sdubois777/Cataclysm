@@ -29695,4 +29695,263 @@ bool FCataclysmStunnedPlayersHeldTriggerTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScopedEnchantmentRowsKeepTheirTagsTest,
+	"Cataclysm.ScopedEnchantmentRows.EveryScopedStatRowKeepsItsRequiredTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScopedEnchantmentRowsKeepTheirTagsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// EVERY SCOPED STAT ROW OF THE REAL TABLE, AND NOT ONE. Issue #1659. A modifier with no required tags applies to
+	// every skill, because `UCataclysmStatPipeline::ModifierApplies` only refuses a tag the skill lacks, so a converter
+	// that drops a row's tags turns "your ultimate deals 40%-80% increased damage" into every skill's damage. Before
+	// `Cataclysm.Enchantments.AWornLockReachesOnlyTheSlotAndTheStateItNames` nothing noticed; that test wears one row
+	// through the whole worn route and stays as the worked example. This one asks the converter the equipment calls,
+	// `UCataclysmItemModifiers::AccumulateEnchantmentsInto`, about every row with a Stat, no Action and a RequiredTags
+	// cell, so a scoped row added later is covered without anyone extending a list. Ruled by the coordinating session on
+	// 2026-10-28. The action rows are issue #2577's.
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: an unscoped row through the same call gives a modifier with no tags, so an empty
+	// container below is a dropped scope and not a call that gives back empty containers whatever the row says. Its
+	// pair has no effect row, so the shield is all this item grants.
+	FTotals Control;
+	FModifiers::AccumulateEnchantmentsInto(
+		Control, {Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect)}, Tables.Effects,
+		Tables.Positive, Tables.Negative, /*Actions=*/nullptr);
+	const TArray<FCataclysmStatModifier>* Shield = Control.Find(FName(TEXT("max_energy_shield")));
+	if (!TestNotNull(TEXT("control: the unscoped shield row gives its modifier"), Shield)
+		|| !TestEqual(TEXT("control: exactly one"), Shield->Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: and it carries no required tag"), (*Shield)[0].RequiredTags.IsEmpty());
+
+	// A ROW'S TAGS AS THE GENERATOR WRITES THEM: comma-separated, each trimmed. False when a name is not a registered
+	// tag, which `RequestGameplayTag` would turn into nothing on both sides and so compare equal.
+	const auto TagsOfRow = [](const FCataclysmEnchantmentEffectRow& Row, FGameplayTagContainer& Out)
+	{
+		Out.Reset();
+		bool bAllRegistered = true;
+		TArray<FString> Names;
+		Row.RequiredTags.ParseIntoArray(Names, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+			if (Name.IsEmpty())
+			{
+				continue;
+			}
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Out.AddTag(Tag);
+			}
+			else
+			{
+				bAllRegistered = false;
+			}
+		}
+		return bAllRegistered && !Out.IsEmpty();
+	};
+
+	// SORTED BY ROW NAME, so a failure lists its rows in the same order every run.
+	TArray<TPair<FName, const FCataclysmEnchantmentEffectRow*>> Scoped;
+	for (const TPair<FName, uint8*>& Row : Tables.Effects->GetRowMap())
+	{
+		const FCataclysmEnchantmentEffectRow* Effect =
+			reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+		if (Effect && !Effect->Stat.IsEmpty() && Effect->Action.IsEmpty()
+			&& !Effect->RequiredTags.TrimStartAndEnd().IsEmpty())
+		{
+			Scoped.Add(TPair<FName, const FCataclysmEnchantmentEffectRow*>(Row.Key, Effect));
+		}
+	}
+	Scoped.Sort([](const TPair<FName, const FCataclysmEnchantmentEffectRow*>& Left,
+				   const TPair<FName, const FCataclysmEnchantmentEffectRow*>& Right)
+	{
+		return Left.Key.LexicalLess(Right.Key);
+	});
+	if (!TestTrue(FString::Printf(TEXT("the table holds scoped stat rows: %d"), Scoped.Num()), Scoped.Num() > 0))
+	{
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	UCataclysmDropRoll::EveryEnchantmentSet(Tables.Positive, Tables.Negative, Sets);
+
+	TArray<FString> NotInItsTable;
+	TArray<FString> UnregisteredTag;
+	TArray<FString> Unreadable;
+	TArray<FString> NoWornSet;
+	TArray<FString> TagsLost;
+	int32 WornAsASet = 0;
+	for (const TPair<FName, const FCataclysmEnchantmentEffectRow*>& Each : Scoped)
+	{
+		const FString RowName = Each.Key.ToString();
+		const FCataclysmEnchantmentEffectRow& Effect = *Each.Value;
+		const FName Enchantment(*Effect.Enchantment);
+
+		// ITS ENCHANTMENT IS A ROW OF THE TABLE ITS NAME SAYS.
+		const bool bBenefit = Effect.Enchantment.StartsWith(TEXT("Positive_"));
+		const bool bDrawback = Effect.Enchantment.StartsWith(TEXT("Negative_"));
+		const UDataTable* Own = bBenefit ? Tables.Positive : (bDrawback ? Tables.Negative : nullptr);
+		const FCataclysmEnchantmentRow* EnchantmentRow = Own
+			? Own->FindRow<FCataclysmEnchantmentRow>(Enchantment, TEXT("ScopedRows"), /*bWarnIfMissing=*/false)
+			: nullptr;
+		if (!EnchantmentRow)
+		{
+			NotInItsTable.Add(RowName);
+			continue;
+		}
+
+		FGameplayTagContainer Expected;
+		if (!TagsOfRow(Effect, Expected))
+		{
+			UnregisteredTag.Add(FString::Printf(TEXT("%s (%s)"), *RowName, *Effect.RequiredTags));
+			continue;
+		}
+
+		// A ROW WHOSE CONDITION OR SCALE THIS BUILD DOES NOT KNOW grants nothing, with a warning, which the converter
+		// does on purpose. It is listed under its own assertion rather than as a lost scope, because the tags are not
+		// what went wrong.
+		ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+		ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+		if ((!Effect.Condition.IsEmpty() && !UCataclysmStatPipeline::ConditionNamed(Effect.Condition, Condition))
+			|| (!Effect.Condition2.IsEmpty() && !UCataclysmStatPipeline::ConditionNamed(Effect.Condition2, Condition))
+			|| (!Effect.Scale.IsEmpty() && !UCataclysmStatPipeline::ScaleNamed(Effect.Scale, Scale)))
+		{
+			Unreadable.Add(RowName);
+			continue;
+		}
+
+		// WHAT IS WORN, AND WHICH ENCHANTMENTS IT GRANTS. One item carrying the enchantment on its own side, at the
+		// default roll of 1; the tags do not depend on the roll. A SET'S ROW IS GRANTED BY NO SINGLE PIECE, so for one
+		// of those the set is worn whole: as many pieces as its highest threshold, each carrying its lowest bonus,
+		// which grants every bonus of the set and its drawback.
+		TArray<FCataclysmItem> Worn;
+		TSet<FString> Granted;
+		if (EnchantmentRow->EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))
+		{
+			const FCataclysmEnchantmentSet* Set = Sets.FindByPredicate(
+				[Enchantment](const FCataclysmEnchantmentSet& Candidate)
+			{
+				return Candidate.Positives.Contains(Enchantment) || Candidate.Negative == Enchantment;
+			});
+			if (!Set || Set->Positives.IsEmpty() || Set->Thresholds.IsEmpty())
+			{
+				NoWornSet.Add(RowName);
+				continue;
+			}
+			int32 Pieces = 0;
+			for (const int32 Threshold : Set->Thresholds)
+			{
+				Pieces = FMath::Max(Pieces, Threshold);
+			}
+			for (int32 Piece = 0; Piece < Pieces; ++Piece)
+			{
+				FCataclysmItem Item;
+				Item.Base = FName(TEXT("Head_Helm"));
+				FCataclysmRolledEnchantment Rolled;
+				Rolled.Positive = Set->Positives[0];
+				Item.Enchantments.Add(Rolled);
+				Item.EnchantmentCount = 1;
+				Worn.Add(Item);
+			}
+			for (const FName& Positive : Set->Positives)
+			{
+				Granted.Add(Positive.ToString());
+			}
+			Granted.Add(Set->Negative.ToString());
+			++WornAsASet;
+		}
+		else
+		{
+			FCataclysmItem Item;
+			Item.Base = FName(TEXT("Head_Helm"));
+			FCataclysmRolledEnchantment Rolled;
+			if (bBenefit)
+			{
+				Rolled.Positive = Enchantment;
+			}
+			else
+			{
+				Rolled.Negative = Enchantment;
+			}
+			Item.Enchantments.Add(Rolled);
+			Item.EnchantmentCount = 1;
+			Worn.Add(Item);
+			Granted.Add(Effect.Enchantment);
+		}
+
+		FTotals Totals;
+		FModifiers::AccumulateEnchantmentsInto(Totals, Worn, Tables.Effects, Tables.Positive, Tables.Negative,
+											   /*Actions=*/nullptr);
+
+		// MATCHED BY COUNT ON THE ROW'S STAT. A modifier does not say which row made it, so this counts the granted
+		// stat rows on this stat whose tags equal this row's, and the enchantment modifiers on it carrying exactly those
+		// tags, and asks for the same number. Today every scoped row is the only granted row on its stat, so both
+		// counts are 1; two rows of one set on one stat would each be matched by the same count.
+		int32 Want = 0;
+		for (const TPair<FName, uint8*>& Row : Tables.Effects->GetRowMap())
+		{
+			const FCataclysmEnchantmentEffectRow* Other =
+				reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+			FGameplayTagContainer OtherTags;
+			if (Other && Granted.Contains(Other->Enchantment) && Other->Stat == Effect.Stat
+				&& Other->Action.IsEmpty() && TagsOfRow(*Other, OtherTags) && OtherTags == Expected)
+			{
+				++Want;
+			}
+		}
+		int32 Got = 0;
+		TArray<FString> Carried;
+		if (const TArray<FCataclysmStatModifier>* OnTheStat = Totals.Find(FName(*Effect.Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : *OnTheStat)
+			{
+				if (Modifier.Source != ECataclysmModifierSource::Enchantment)
+				{
+					continue;
+				}
+				Carried.Add(FString::Printf(TEXT("[%s]"), *Modifier.RequiredTags.ToStringSimple()));
+				if (Modifier.RequiredTags == Expected)
+				{
+					++Got;
+				}
+			}
+		}
+		if (Got != Want)
+		{
+			TagsLost.Add(FString::Printf(TEXT("%s (%s wants %d modifier(s) carrying [%s], carries %s)"), *RowName,
+										 *Effect.Stat, Want, *Expected.ToStringSimple(),
+										 Carried.IsEmpty() ? TEXT("none") : *FString::Join(Carried, TEXT(" "))));
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("%d scoped stat rows read, %d of them worn as a whole set."), Scoped.Num(),
+							WornAsASet));
+	TestEqual(FString::Printf(TEXT("every scoped row's enchantment is a row of its own table: %s"),
+							  *FString::Join(NotInItsTable, TEXT(", "))),
+			  NotInItsTable.Num(), 0);
+	TestEqual(FString::Printf(TEXT("every scoped row names registered tags: %s"),
+							  *FString::Join(UnregisteredTag, TEXT(", "))),
+			  UnregisteredTag.Num(), 0);
+	TestEqual(FString::Printf(TEXT("every scoped row's condition and scale are known to this build: %s"),
+							  *FString::Join(Unreadable, TEXT(", "))),
+			  Unreadable.Num(), 0);
+	TestEqual(FString::Printf(TEXT("every scoped set row's set can be worn whole: %s"),
+							  *FString::Join(NoWornSet, TEXT(", "))),
+			  NoWornSet.Num(), 0);
+	TestEqual(FString::Printf(TEXT("every scoped stat row's modifier carries exactly the row's required tags: %s"),
+							  *FString::Join(TagsLost, TEXT("; "))),
+			  TagsLost.Num(), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

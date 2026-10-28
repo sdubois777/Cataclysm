@@ -2,6 +2,173 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — Every scoped enchantment stat row's required tags reach its modifier, and a test over the real table says so (#1659)
+
+**Affects:** one new Unreal test, `Cataclysm.ScopedEnchantmentRows.EveryScopedStatRowKeepsItsRequiredTags`, appended to
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; this file. No game code, no workbook, no CSV, no
+asset. **Closes [#1659](https://github.com/sdubois777/Cataclysm/issues/1659).** The action rows are left to the
+companion issue [#2577](https://github.com/sdubois777/Cataclysm/issues/2577), filed by the coordinating session.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN WHEN THIS WAS WRITTEN.** The test and its proof are registered below for the enchantment
+  session's window.
+- **NOTHING CHANGES IN PLAY.** A test only.
+- **THE TEST GOES THROUGH THE CONVERTER AND NOT THROUGH A CHARACTER.** It reads the modifiers
+  `UCataclysmItemModifiers::AccumulateEnchantmentsInto` builds, as ruled, and asks no character for a stat. The issue's
+  fuller form, wearing each row and reading `StatForSkill` for a skill with the tag and one without, is not built: it
+  would need its own state for the 35 conditioned or scaled rows. What a scoped modifier then does to a skill is still
+  covered for one row, the movement lock, by `Cataclysm.Enchantments.AWornLockReachesOnlyTheSlotAndTheStateItNames`,
+  which stays as it is.
+- **THREE SCOPED ROWS ARE SET ROWS, WHICH NO SINGLE ITEM GRANTS**, so the brief's "an item carrying that row's
+  enchantment" cannot reach them. For those the test wears the whole set; see the judgements.
+
+### WHAT THE ISSUE ASKED, AND WHAT ALREADY COVERED IT
+
+#1659 broke the tag parse in `EnchantmentModifierFor` and found that one test noticed, the lock test, which was added in
+the change that found the gap. It asked for a test over the real table, so that every scoped row is covered and a new
+one is covered without anyone extending a list. The lock test wears one row scoped to `Slot.Movement` through the
+equipment, refreshes the character and asserts the lock is set for a movement skill and nought for a heavy skill; it is
+the only test that reads a scoped enchantment's effect on a skill through the worn route.
+
+### THE RULING, VERBATIM (the coordinating session, 2026-10-28)
+
+> Coordinator, #1659: the converter check, as you recommend.
+> - One test runs over every stat row with RequiredTags, the count read and asserted above 0. For each row it uses
+>   ModifiersFor, the converter RefreshAttributes uses, and asserts that the enchantment's modifier carries exactly the
+>   row's required tags. A failure names the rows.
+> - Reason: the tags break at CataclysmItem.cpp 950 is in that converter, and the full StatForSkill form would need its
+>   own state for 35 conditioned or scaled rows. The lock test stays as the full worn-route example.
+> - The proof is the issue's own break at 950, under the new group's prefix.
+> - The window: build, the test alone, the suite (4345), Python, and the proof.
+> THE ACTION ROWS: [...] Leave them out of this change.
+
+**The enchantment session's correction, which governs the function name:** the converter is
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto`, not `ModifiersFor`; `ModifiersFor` builds an item's base and
+affix modifiers only.
+
+Read at `c120310b7`, and so: `AccumulateEnchantmentsInto` is defined at `CataclysmItem.cpp` 1096 and declared at
+`CataclysmItem.h` 755; `ModifiersFor` is at `CataclysmItem.cpp` 566; the equipment calls `AccumulateEnchantmentsInto` at
+`CataclysmEquipmentComponent.cpp` 631 and 864; it calls `EnchantmentModifierFor` (917) for each stat row (1683), whose
+tag parse is at 950; a row scaled by `own_stacks` or `consecutive_hits` adds its stack grant at 1155 to 1200, only when
+an `Actions` array is passed, and then goes on to `EnchantmentModifierFor` as a stat row. Two further facts read there
+that the test depends on: a row whose condition or scale the build does not know is skipped with a warning (1683 to
+1692), and a set's rows are granted only by a count of worn pieces (1762 and 1820 to 1840), never by one item.
+
+### THE MEASUREMENT
+
+`game/Data/EnchantmentEffects.csv`, measured by the enchantment session at `060470dfb` and by this session at `c120310b7`,
+the same: 186 rows carry `RequiredTags`, on 163 enchantments. 153 are stat rows (a `Stat`, no `Action`): 118 plain, 19 with a
+`Condition`, 16 with a `Scale`, none with both and none with a `Condition2`. 33 are action rows, out of scope. Of the
+153, 108 belong to an enchantment of `EnchantmentsPositive.csv` and 45 to one of `EnchantmentsNegative.csv`; 150 are
+ordinary enchantments and 3 are set rows (`Negative_Melee_damage_is_reduced_by_50`, set 10;
+`Negative_Your_own_ultimate_ability_is_disabled`, set 14; `Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use`, set
+10). Every one names a single tag, and no two stat rows of one enchantment, or of one set, share a stat.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **A set's row is checked by wearing the whole set**: as many pieces as the set's highest threshold, each carrying the
+  set's lowest bonus, which grants every bonus of the set and its drawback, as `AccumulateEnchantmentsInto` counts
+  pieces. Not taken: passing the row alone as `ExtraRows`, which reaches the same `EnchantmentModifierFor` but is the
+  random-buff door and not the worn one; and leaving the three rows out, which would leave them uncovered.
+- **A modifier is matched to its row by count on the row's stat.** A modifier does not record which row made it, so for
+  each row the test counts the granted stat rows on that stat whose parsed tags equal the row's, and the
+  enchantment-sourced modifiers on that stat whose `RequiredTags` equal them exactly (`FGameplayTagContainer::operator==`,
+  the same tags and the same number), and asks for the same count. Today both are 1 for every row. Not taken: asserting
+  exactly one modifier on the stat, which would fail spuriously the day two rows of one set share a stat.
+- **A row naming a tag the build does not register is its own failure.** `RequestGameplayTag` with no error turns an
+  unknown name into nothing on both sides, which would compare equal and pass. Not taken: letting such a row through.
+- **A row whose condition or scale the build does not know is its own failure, and is not matched.** The converter
+  grants it nothing on purpose; the test asks `UCataclysmStatPipeline::ConditionNamed` and `ScaleNamed` first and lists
+  such a row under its own assertion, so a lost scope is never confused with a skipped row. None is expected: the
+  generator refuses every unknown name.
+- **The rows' failures are gathered and asserted once each**, so the test makes the same number of assertions whatever
+  the row count, and its message names every row.
+- **The group is `Cataclysm.ScopedEnchantmentRows.`** A sweep of every quoted `Cataclysm.` name in `game/Source` (5,013
+  at `c120310b7`) finds none beginning with it, with or without the dot; the control prefix `Cataclysm.Enchantments.`
+  finds 366. Not taken: `Cataclysm.EnchantmentScopes.`, which the undotted prefix `Cataclysm.Enchantments` (the one
+  #1659's own run used) would also select, because the engine's filter is a case-insensitive string prefix.
+
+### NO GENRE SOURCE
+
+None. This is a test of the data's path into the game, not a mechanic.
+
+### WHAT WAS BUILT
+
+`Cataclysm.ScopedEnchantmentRows.EveryScopedStatRowKeepsItsRequiredTags`, appended at the end of
+`CataclysmEnchantmentEffectTests.cpp` and reusing its `LoadAll`, `FTables`, `Carrying` and the real tables. For every
+row of `EnchantmentEffects.csv` with a `Stat`, no `Action` and a non-empty `RequiredTags`, sorted by row name: it finds
+the row's enchantment in the table its name says (`Positive_` or `Negative_`); parses the row's tags as the generator
+writes them, comma-separated and trimmed; checks its condition and scale are known; wears one `Head_Helm` carrying the
+enchantment on its own side at the default roll (a set row: the whole set, above); calls `AccumulateEnchantmentsInto`
+with a null `Actions`; and compares the modifiers on the row's stat, as above.
+
+### THE TEST, EVERY ASSERTION IN ORDER
+
+Nine assertions, the same number whatever the row count; `LoadAll`'s own checks come first, as in every test of the file.
+
+1. `control: the unscoped shield row gives its modifier` — `Positive_Double_your_energy_shield` through the same call
+   gives a `max_energy_shield` modifier.
+2. `control: exactly one`.
+3. `control: and it carries no required tag` — so an empty container below means a dropped scope, not a call that
+   returns empty containers.
+4. `the table holds scoped stat rows: N` — N above 0, and N is printed (153 at `c120310b7`; not asserted exactly).
+5. `every scoped row's enchantment is a row of its own table: <rows>` — 0 such rows.
+6. `every scoped row names registered tags: <rows>` — 0.
+7. `every scoped row's condition and scale are known to this build: <rows>` — 0.
+8. `every scoped set row's set can be worn whole: <rows>` — 0.
+9. `every scoped stat row's modifier carries exactly the row's required tags: <rows>` — 0; each failing row is named
+   with its stat, the tags it wants and the tags its modifiers carry.
+
+An `AddInfo` line reports how many rows were read and how many were worn as a whole set (3).
+
+### NOT TESTED
+
+- What a scoped modifier does to a skill, for any row but the movement lock (the lock test). The ruling chose the
+  converter check.
+- The 33 action rows, whose tags are parsed by a second copy of the same lines in `AccumulateEnchantmentsInto` (1647): [#2577](https://github.com/sdubois777/Cataclysm/issues/2577).
+- The consecutive-hit stack's own tag parse (1187), which only runs when `Actions` is passed.
+- A roll other than 1. The tags do not read the roll.
+- The held random buff's door (`ExtraRows`), which reaches the same `EnchantmentModifierFor`.
+
+### GUARD PROOFS PROPOSED
+
+One, the issue's own break, with `prove_cpp_guard` and the prefix `Cataclysm.ScopedEnchantmentRows.`:
+
+| | |
+|---|---|
+| File | `game/Source/Cataclysm/Items/CataclysmItem.cpp` |
+| Old text | `Effect.RequiredTags.ParseIntoArray(Tags, TEXT(","), /*InCullEmpty=*/true);` (counted once by `read_text`: 1) |
+| New text | `FString().ParseIntoArray(Tags, TEXT(","), /*InCullEmpty=*/true);` |
+| Compiles | the same call on an empty temporary; `Effect` is still read below it, so nothing becomes unused |
+| Predicted, broken | 1 test performed, 1 failed: `EveryScopedStatRowKeepsItsRequiredTags`, on assertion 9 alone, which names all 153 rows (each "wants 1 modifier(s) carrying [<tag>], carries []"); assertions 1 to 8 pass, because the control row is unscoped and the other lists do not read the converter's tags |
+| Predicted, restored | 1 test performed, 1 succeeded |
+| Outside the prefix, also expected to fail | `Cataclysm.Enchantments.AWornLockReachesOnlyTheSlotAndTheStateItNames` (#1659's own measurement); and, by a read-only search of the tests (not run, so a reading and not a measurement), about 58 more: some 55 in this file that wear a scoped stat row and assert a skill without the tag is untouched or read a gadget or trap row by its tag (for example `TheUltimateLockHoldsAtExactlyHalfHealthAndReleasesBelowIt`, `AWornChargeKnockdownReachesOnlyChargeSkills`, `EachChargesRowAddsUsesToTheSkillsItNames`, `TheTrapDamageRowRaisesWhatASpikeTrapDealsAndNotWhatABallistaDeals`), and the two `Cataclysm.SetBonus.Spellblade6.` tests, whose fixture row requires `Type.Spell`. None is under the proof's prefix |
+
+### THE WINDOW'S RUN, t197w
+
+Window t197w, run 2026-10-28 under the lock as `enchant-t197w`, at `7f42feaef` on development `4e8d2b7f1` (moved from
+`59c82a095` on `c120310b7` as `test/every-scoped-enchantment-row-keeps-its-tags-1`; the test file's zero-context patch
+id and the hash of this file's changed lines matched). Free memory immediately before the lock, at 16:47:07, was
+11,391 MB, against the floor of 10 GiB (10,240 MB). No new source file and no data, so no build-cache step and no asset
+rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The new test, alone | 1 of 1; the build compiled 20 files in 23 actions |
+| The whole Unreal suite | "4348 tests performed, 4348 succeeded, 0 failed"; 4348 declared, gap 0 |
+| Memory | `tests=4955 peak_used_virtual_mb=8076 final_used_virtual_mb=7752` |
+| Python of record | "7022 passed, 8 skipped"; JUnit 7030 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SE-G1, a stat row's required tags are not read (prefix `Cataclysm.ScopedEnchantmentRows.`, 1 test) | PROVED: the test failed 1 of 1 assertion as registered, the tags list; 1 of 1 passed restored |
+
+**WHAT THE BROKEN RUN DID NOT MEASURE.** The prediction said the failing assertion would name all 153 rows. The proof
+script prints only the start of each failing message and keeps each run's log in memory, so the record holds the message's
+opening, which names the alphabetically first scoped row, `Negative_Bleed_effects_applied_to_you_deal_30_50_increa#1`
+(`damage_over_time_taken` wanting one modifier carrying its tag), and not the rest. That one assertion failed, and the
+other eight passed, is measured; that it named all 153 rows is not.
+
+---
+
 ## 2026-10-28 — The floor rules count the time each beat covered, up to one second, so a slow frame no longer slows them (#1613)
 
 **Affects:** `CataclysmDungeonGameMode.h` and `.cpp` (a new field `BeatSeconds`, a new constant `LongestBeatSeconds`,
