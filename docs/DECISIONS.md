@@ -145,9 +145,27 @@ One, the issue's own break, with `prove_cpp_guard` and the prefix `Cataclysm.Sco
 | Predicted, restored | 1 test performed, 1 succeeded |
 | Outside the prefix, also expected to fail | `Cataclysm.Enchantments.AWornLockReachesOnlyTheSlotAndTheStateItNames` (#1659's own measurement); and, by a read-only search of the tests (not run, so a reading and not a measurement), about 58 more: some 55 in this file that wear a scoped stat row and assert a skill without the tag is untouched or read a gadget or trap row by its tag (for example `TheUltimateLockHoldsAtExactlyHalfHealthAndReleasesBelowIt`, `AWornChargeKnockdownReachesOnlyChargeSkills`, `EachChargesRowAddsUsesToTheSkillsItNames`, `TheTrapDamageRowRaisesWhatASpikeTrapDealsAndNotWhatABallistaDeals`), and the two `Cataclysm.SetBonus.Spellblade6.` tests, whose fixture row requires `Type.Spell`. None is under the proof's prefix |
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t197w
 
-Not run. The enchantment session records its window here.
+Window t197w, run 2026-10-28 under the lock as `enchant-t197w`, at `7f42feaef` on development `4e8d2b7f1` (moved from
+`59c82a095` on `c120310b7` as `test/every-scoped-enchantment-row-keeps-its-tags-1`; the test file's zero-context patch
+id and the hash of this file's changed lines matched). Free memory immediately before the lock, at 16:47:07, was
+11,391 MB, against the floor of 10 GiB (10,240 MB). No new source file and no data, so no build-cache step and no asset
+rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The new test, alone | 1 of 1; the build compiled 20 files in 23 actions |
+| The whole Unreal suite | "4348 tests performed, 4348 succeeded, 0 failed"; 4348 declared, gap 0 |
+| Memory | `tests=4955 peak_used_virtual_mb=8076 final_used_virtual_mb=7752` |
+| Python of record | "7022 passed, 8 skipped"; JUnit 7030 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SE-G1, a stat row's required tags are not read (prefix `Cataclysm.ScopedEnchantmentRows.`, 1 test) | PROVED: the test failed 1 of 1 assertion as registered, the tags list; 1 of 1 passed restored |
+
+**WHAT THE BROKEN RUN DID NOT MEASURE.** The prediction said the failing assertion would name all 153 rows. The proof
+script prints only the start of each failing message and keeps each run's log in memory, so the record holds the message's
+opening, which names the alphabetically first scoped row, `Negative_Bleed_effects_applied_to_you_deal_30_50_increa#1`
+(`damage_over_time_taken` wanting one modifier carrying its tag), and not the rest. That one assertion failed, and the
+other eight passed, is measured; that it named all 153 rows is not.
 
 ---
 
