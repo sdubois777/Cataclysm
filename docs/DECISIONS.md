@@ -45,7 +45,7 @@ neighbouring cell stops short of 300 cm; #2556 measured 260.05.
 |---|---|
 | The test alone | 1 / 1 |
 | The group alone, `Cataclysm.DungeonModifierEffects.` | every test passes |
-| Whole Unreal suite | `development`'s measured total after #1617 + 0 |
+| Whole Unreal suite | 4340 / 0: `development` at `b595a7ba1` (#2567, #1617) measured 4340, and no test is added; the branch moved onto it as `fix/phasewalker-test-clear-path-1` |
 | Python | of record, with JUnit, and ruff |
 | What the old cell meets | quoted as printed on the "PHASE PATH BEFORE #2556" line: predicted, the stairs |
 
