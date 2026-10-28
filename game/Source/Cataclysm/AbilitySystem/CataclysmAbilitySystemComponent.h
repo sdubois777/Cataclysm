@@ -288,14 +288,16 @@ public:
 	 * Leech this character has been promised and not yet been paid. Issue #895.
 	 *
 	 * A LIST RATHER THAN A RUNNING TOTAL, because the design gives every hit its
-	 * own 3-second payout and says they run alongside one another: "A character
-	 * hitting continuously therefore reaches a steady state of roughly three
-	 * hits' worth of leech in flight." One total could not express three
-	 * payments with three different deadlines.
+	 * own payout, 3 seconds by default and longer under `leech_payout_rate`
+	 * (`UCataclysmLeech::PayoutSecondsFor`, #1618), and says they run alongside
+	 * one another: "A character hitting continuously therefore reaches a steady
+	 * state of roughly three hits' worth of leech in flight." One total could
+	 * not express three payments with three different deadlines.
 	 *
 	 * IT EMPTIES ITSELF. UCataclysmLeech::PayOutStep drops a payment as soon as
 	 * its balance or its time is gone, so a character that stops fighting stops
-	 * carrying anything within three seconds.
+	 * carrying anything within the time its last payment was made with: three
+	 * seconds by default, six under "Your leech pays out 50% more slowly".
 	 */
 	const TArray<FCataclysmLeechPayment>& GetLeechPayments() const
 	{

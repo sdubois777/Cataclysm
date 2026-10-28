@@ -8605,9 +8605,10 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmAbilitySystemComponent::NormalClassResourceGeneration, put "
         "on the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
-    # AND HOW FAST A PAYMENT OF LEECH ARRIVES, at 100. Ruled 2026-10-07: "50%
-    # less tick rate for your leech effects" is a `more` row of -50 on it, so
-    # without a base the rate would be nought.
+    # AND HOW FAST A PAYMENT OF LEECH ARRIVES, at 100. Ruled 2026-10-07: "Your
+    # leech pays out 50% more slowly" (was worded "50% less tick rate for your
+    # leech effects" until #1618) is a `more` row of -50 on it, so without a
+    # base the rate would be nought.
     "leech_payout_rate":
         "UCataclysmLeech::NormalPayoutRate, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",

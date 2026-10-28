@@ -133,9 +133,11 @@ public:
 	 * line or lands far past it. Health falling steadily crosses it.
 	 *
 	 * IT IS NOT A STAT AND NO NODE CHANGES IT, the same footing as
-	 * `DelaySeconds` above and as `UCataclysmLeech::PayoutSeconds`, which is
-	 * this same shape with the sign reversed: an amount paid out linearly across
-	 * a fixed span on the regeneration step.
+	 * `DelaySeconds` above. `UCataclysmLeech::PayoutSeconds` is this same shape
+	 * with the sign reversed, an amount paid out linearly on the regeneration
+	 * step, but it is no longer on this footing: its 3 seconds are the default,
+	 * and a payment takes longer under the stat `leech_payout_rate`, read by
+	 * `UCataclysmLeech::PayoutSecondsFor` where the payment is made (#1618).
 	 *
 	 * EXPECTED TO BE TUNED BY EYE. Five seconds is the project owner's figure
 	 * from play and not one taken from a shipped game.

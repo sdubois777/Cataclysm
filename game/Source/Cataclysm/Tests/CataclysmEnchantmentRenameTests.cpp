@@ -4,8 +4,13 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For the leech row's alias test (#1618): the enchantment row and the loaded table.
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Items/CataclysmEnchantmentRenames.h"
 #include "Items/CataclysmItem.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 
@@ -120,6 +125,140 @@ bool FCataclysmEnchantmentRenameWalkTest::RunTest(const FString&)
 			  Item.Enchantments[1].Negative, FName(NewNegative));
 	TestEqual(TEXT("and a second walk finds nothing to move"),
 			  FCataclysmEnchantmentRenames::RenameInStruct(FCataclysmItem::StaticStruct(), &Item), 0);
+	return true;
+}
+
+// THE LEECH ROW'S REWORD, 2026-10-28 (#1618): "50% less tick rate for your leech
+// effects" became the owner's "Your leech pays out 50% more slowly", which
+// renamed its row. The two tests above check the alias on the "critical
+// strikes" pair only, and the Python checks read the table's text; this one
+// carries the leech row's old name through a save, and asks the table the game
+// compiled whether every old name means a current row.
+namespace CataclysmEnchantmentAliasTest
+{
+	const TCHAR* OldLeech = TEXT("Negative_50_less_tick_rate_for_your_leech_effects");
+	const TCHAR* NewLeech = TEXT("Negative_Your_leech_pays_out_50_more_slowly");
+
+	/** Loads a generated enchantment table, as the roll tests do, so the real rows are read. */
+	UDataTable* LoadEnchantmentCsv(const TCHAR* FileName)
+	{
+		FString Contents;
+		const FString Path = FPaths::ProjectDir() / TEXT("Data") / FileName;
+		if (!FFileHelper::LoadFileToString(Contents, *Path))
+		{
+			return nullptr;
+		}
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = FCataclysmEnchantmentRow::StaticStruct();
+		if (Table->CreateTableFromCSVString(Contents).Num() > 0)
+		{
+			return nullptr;
+		}
+		return Table;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryEnchantmentAliasResolvesTest,
+	"Cataclysm.EnchantmentAliases.AHelmSavedUnderTheLeechRowsOldNameLoadsAsItsNewRowAndEveryOldNameMeansACurrentRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character record whose worn helm carries the leech row under its name from
+ * before #1618 is written out and read back, and the helm comes back carrying
+ * the row's current name. A second helm already on the current name is the
+ * control, read first: nothing moves it.
+ *
+ * THEN EVERY PAIR IN `Aliases()`, the table the save loader applies: its target
+ * is a row of the generated table of its kind, its old name is not, and the
+ * target is not itself an old name, so one step reaches a row.
+ */
+bool FCataclysmEveryEnchantmentAliasResolvesTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentAliasTest;
+
+	const UDataTable* Positive = LoadEnchantmentCsv(TEXT("EnchantmentsPositive.csv"));
+	const UDataTable* Negative = LoadEnchantmentCsv(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the leech row's current name is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(NewLeech)))
+		|| !TestFalse(TEXT("set-up: its old name is not"), Negative->GetRowMap().Contains(FName(OldLeech))))
+	{
+		return false;
+	}
+
+	UCataclysmCharacterSave* Written = NewObject<UCataclysmCharacterSave>();
+	Written->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
+	FCataclysmWornItem Old;
+	Old.Slot = ECataclysmGearSlot::Head;
+	Old.Item = CataclysmEnchantmentRenameTest::Carrying(CataclysmEnchantmentRenameTest::NewPositive, OldLeech);
+	FCataclysmWornItem Current;
+	Current.Slot = ECataclysmGearSlot::Chest;
+	Current.Item = CataclysmEnchantmentRenameTest::Carrying(CataclysmEnchantmentRenameTest::NewPositive, NewLeech);
+	Written->WornGear = {Old, Current};
+
+	FString Json;
+	FString Error;
+	if (!TestTrue(FString::Printf(TEXT("set-up: the record writes out: %s"), *Error),
+				  FCataclysmSaveStorage::ToJson(Written, Json, Error))
+		|| !TestTrue(TEXT("set-up: the written text holds the leech row's old name"), Json.Contains(OldLeech)))
+	{
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(
+		FCataclysmSaveStorage::FromJson(Json, UCataclysmCharacterSave::StaticClass(),
+										nullptr, Result, Message));
+	if (!TestNotNull(FString::Printf(TEXT("set-up: the record reads back: %s"), *Message), Read)
+		|| !TestEqual(TEXT("set-up: two worn items"), Read->WornGear.Num(), 2)
+		|| !TestEqual(TEXT("set-up: one enchantment on the old helm"), Read->WornGear[0].Item.Enchantments.Num(), 1)
+		|| !TestEqual(TEXT("set-up: one enchantment on the control's helm"),
+					  Read->WornGear[1].Item.Enchantments.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a helm already on the leech row's current name is left as it was"),
+			  Read->WornGear[1].Item.Enchantments[0].Negative, FName(NewLeech));
+	TestEqual(TEXT("the leech row's old name loads as its current row"),
+			  Read->WornGear[0].Item.Enchantments[0].Negative, FName(NewLeech));
+	TestEqual(TEXT("and the benefit beside it, a current name, is left as it was"),
+			  Read->WornGear[0].Item.Enchantments[0].Positive, FName(CataclysmEnchantmentRenameTest::NewPositive));
+
+	const TMap<FName, FName>& Aliases = FCataclysmEnchantmentRenames::Aliases();
+	if (!TestTrue(TEXT("set-up: the alias table holds pairs"), Aliases.Num() > 0))
+	{
+		return false;
+	}
+	TArray<FString> NotARow;
+	TArray<FString> StillARow;
+	TArray<FString> AChain;
+	for (const TPair<FName, FName>& Pair : Aliases)
+	{
+		const UDataTable* Table = Pair.Value.ToString().StartsWith(TEXT("Positive_")) ? Positive : Negative;
+		if (!Table->GetRowMap().Contains(Pair.Value))
+		{
+			NotARow.Add(Pair.Key.ToString());
+		}
+		if (Positive->GetRowMap().Contains(Pair.Key) || Negative->GetRowMap().Contains(Pair.Key))
+		{
+			StillARow.Add(Pair.Key.ToString());
+		}
+		if (Aliases.Contains(Pair.Value))
+		{
+			AChain.Add(Pair.Key.ToString());
+		}
+	}
+	TestTrue(FString::Printf(TEXT("every old name's target is a row of its kind's table; not: %s"),
+							 *FString::Join(NotARow, TEXT(", "))),
+			 NotARow.Num() == 0);
+	TestTrue(FString::Printf(TEXT("no old name is still a current row; these are: %s"),
+							 *FString::Join(StillARow, TEXT(", "))),
+			 StillARow.Num() == 0);
+	TestTrue(FString::Printf(TEXT("no target is itself an old name, so one step reaches a row; chains: %s"),
+							 *FString::Join(AChain, TEXT(", "))),
+			 AChain.Num() == 0);
 	return true;
 }
 

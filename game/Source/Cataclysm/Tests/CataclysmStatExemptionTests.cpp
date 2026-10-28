@@ -7202,8 +7202,8 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `leech_payout_rate` is how fast a payment of leech arrives, read by `UCataclysmLeech::PayoutSecondsFor` where
-	 * a payment is made. Ruled 2026-10-07: "50% less tick rate for your leech effects", read as the pay-out taking
-	 * twice as long.
+	 * a payment is made. Ruled 2026-10-07 for the row then worded "50% less tick rate for your leech effects", read as
+	 * the pay-out taking twice as long. Worded "Your leech pays out 50% more slowly" since #1618, the owner's wording.
 	 *
 	 * TWO CHARACTERS A HUNDRED METRES APART, each at half health with 10% life leech, each told of one hit that
 	 * took 1200. The second carries the stat at its base of 100 with a `more` of -50. Each is paid a quarter second
@@ -12868,7 +12868,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechPayoutRateTest,
 	"Cataclysm.OneSiteStats.ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** "50% less tick rate for your leech effects". See `ProbeLeechPayoutRate` for where each stands. */
+/** "Your leech pays out 50% more slowly", which was worded "50% less tick rate for your leech effects" until #1618.
+ * See `ProbeLeechPayoutRate` for where each stands. */
 bool FCataclysmLeechPayoutRateTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
