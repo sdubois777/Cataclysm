@@ -216,9 +216,30 @@ fail, and the set-bonus test files that read an action's `RequiredTags`
 would count once the stack is unscoped, so "so the fourth on the first enemy adds three times it" and the assertions
 after it would be expected to fail. None of these is under the proofs' prefix.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t201w
 
-Not run. The enchantment session records its window here.
+Window t201w, run 2026-10-28 under the lock as `enchant-t201w`, at `7b227d9c2` on development `c88a87302`. Free memory
+immediately before the lock, at 17:34:12, was 11,247 MB, against the floor of 10 GiB (10,240 MB). No new source file and
+no data, so no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The new test, alone | 1 of 1; the build compiled 1 file in 4 actions |
+| The whole Unreal suite | "4349 tests performed, 4349 succeeded, 0 failed"; 4349 declared, gap 0 |
+| Memory | `tests=4956 peak_used_virtual_mb=8088 final_used_virtual_mb=7790` |
+| Python of record | "7022 passed, 8 skipped"; JUnit 7030 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| AG-G1, an action row's required tags are not stored (prefix `Cataclysm.ScopedEnchantmentActions.`, 1 test) | PROVED: 1 of 1 assertion failed as registered, the action-tags list; 1 of 1 passed restored |
+| AG-G2, a consecutive-hit stack's required tags are not stored (same prefix) | PROVED: 1 of 1 assertion failed as registered, the stack-tags list; 1 of 1 passed restored |
+
+**THE ROW COUNTS, MEASURED FROM THE KEPT LOGS.** Each proof run's whole engine log was written to disk this time (ruled
+2026-10-28), so the failing messages were read in full rather than up to their first " [", which is where the earlier
+runner's extraction cut them. AG-G1's broken run had exactly one failing assertion, the action-tags list, naming **33**
+rows, all distinct and well formed, every one "carries []"; first `Negative_After_using_a_charge_skill_you_are_briefly_stunn#1`
+(`apply_status_to_self_seconds` on `skill_end`, wanting `Keyword.Charge`), last
+`Positive_Your_ultimate_ability_applies_its_effect_twice#1` (`repeat_skill` on `skill_use`, wanting `Slot.Ultimate`).
+AG-G2's broken run had exactly one failing assertion, the stack-tags list, naming **2** rows, both carrying [], the two
+rows of "Each consecutive melee hit on the same enemy..." (its `attack_damage` and `spell_damage` stacks). Both restored
+runs had no failing assertion. As registered: 33 and 2.
 
 ---
 
