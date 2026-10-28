@@ -113,9 +113,21 @@ None. This is data hygiene.
 
 - Nothing to see in play: no enchantment or skill behaves differently.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t191w
 
-Not run. The enchantment session records its window here.
+Window t191w, run 2026-10-28 under the lock as `enchant-t191w`, at `d2052028d` on development `060470dfb` (moved from
+`48aede01b` on `118e1b6ae` as `fix/no-scope-labels-on-rows-1`; the workbook blob, the zero-context patch ids of every
+other file and the hash of this file's changed lines matched for both commits). Free memory immediately before the
+lock, at 15:19:18, was 11,467 MB, against the floor of 10 GiB (10,240 MB). No game code changed, so no new Unreal test
+and no C++ proof. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "7 actions, 4 files compiled" (the two test files' comments, and development's #2570) |
+| The DataTable assets | exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentsPositive.uasset`, `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` changed; committed as `17ee7ee83` |
+| The whole Unreal suite | "4344 tests performed, 4344 succeeded, 0 failed"; 4344 declared, gap 0 |
+| Memory | `tests=4951 peak_used_virtual_mb=8026 final_used_virtual_mb=7725` |
+| Python of record | "7022 passed, 8 skipped"; JUnit 7030 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
 
 ---
 
