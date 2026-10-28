@@ -12,7 +12,9 @@ the test literal in `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests
 own, `Cataclysm.EnchantmentAliases.`, at the end of `game/Source/Cataclysm/Tests/CataclysmEnchantmentRenameTests.cpp`,
 and comments only in `CataclysmLeech.h`, `CataclysmHealthDebt.h`, `CataclysmAbilitySystemComponent.h`,
 `CataclysmCharacterBase.cpp`, `CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py` and
-`tools/tests/test_generate_datatables.py`; and this file. No new source file, so the window needs no build-cache step.
+`tools/tests/test_generate_datatables.py`; one widening of
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, with its test, ruled by the coordinating session; and
+this file. No new source file, so the window needs no build-cache step.
 The DataTable assets `DT_EnchantmentsNegative` and `DT_EnchantmentEffects` are rebuilt in the window. **Closes
 [#1618](https://github.com/sdubois777/Cataclysm/issues/1618).**
 
@@ -29,11 +31,12 @@ The DataTable assets `DT_EnchantmentsNegative` and `DT_EnchantmentEffects` are r
   commits names #1618. The coordinating session ruled that it lands now (below). The harm that condition names, a row
   "reworded to describe a slower payout, sitting in the data while the payout is still spread over the same three
   seconds", cannot happen: the payout has been slower since 2026-10-08.
-- **A PYTHON CHECK REFUSES THE NEW SENTENCE, AND THIS COMMIT DOES NOT CHANGE IT.**
+- **A PYTHON CHECK REFUSED THE NEW SENTENCE, AND WHAT IT ACCEPTS IS WIDENED, BY RULING.** The enchantment session's
+  workbook commit `284fe0c3e` was made after running only the rename tests.
   `tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_negative_value_is_on_words_that_take_something_away`
-  fails at `284fe0c3e` and at this commit: "Your leech pays out 50% more slowly" holds no word of its `TAKING` list
-  ("less" was the old sentence's), so a -50 row on it reads as a sign error. Making it pass changes what a check
-  accepts, which the second session was not authorised to do; it is handed to the enchantment session.
+  failed there, and was found failing by the second session's whole-suite run: "Your leech pays out 50% more slowly"
+  holds no word of its `TAKING` list ("less" was the old sentence's), so a -50 row on it read as a sign error. The
+  coordinating session ruled the widening under "CHANGES TO WHAT A CHECK ACCEPTS" below.
 - **THE ROW RENAMES, SO IT CARRIES AN ALIAS**, by the owner's rule of 2026-09-30 on
   [#1799](https://github.com/sdubois777/Cataclysm/issues/1799), which the header of `enchantment_row_names.txt` states:
   "A RENAMED ROW IS WRITTEN `old -> new`, and the same pair must be in `FCataclysmEnchantmentRenames::Aliases()`".
@@ -193,9 +196,10 @@ tree for "less tick rate": `CataclysmLeech.h` 102 to 105 (`PayoutRateStat`) and 
   for no gain.
 - **The two comments the brief did not name were corrected in the same way**, since they quoted the same old sentence
   as the row's current wording. Not taken: leaving them, which would leave two places stating a sentence no row has.
-- **The failing sentence check is not changed here** (said first). Not taken: adding "slowly" to `TAKING`, or a
-  per-stat exemption for `leech_payout_rate` in the shape of `EXPIRES_FASTER_WHEN_NEGATIVE`. Either is a change to what
-  a check accepts and is the enchantment session's to rule.
+- **The made-up words that must be refused are "Your leech pays out over 6 seconds"**: they mean the same slower
+  pay-out but hold neither "more slowly" nor any `TAKING` word, so they show the widening reads the words and not the
+  stat alone. Not taken: a sentence saying the opposite ("faster"), which `TAKING` already refuses for another
+  reason and so would not isolate the new clause.
 
 ### TESTS
 
@@ -231,8 +235,19 @@ The changed literal: `Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWear
 by its new name; its set-up "the leech row's name is a row of EnchantmentsNegative.csv" now reads the new name, and it
 asserts nothing else new.
 
-In Python, nothing new: `test_a_reword_must_not_rename_a_row.py` (the pin against the tables, and the pin's renames
-against `Aliases()`) and `test_every_enchantment_alias_points_at_a_current_row.py` cover the pair.
+In Python, for the pair, nothing new: `test_a_reword_must_not_rename_a_row.py` (the pin against the tables, and the
+pin's renames against `Aliases()`) and `test_every_enchantment_alias_points_at_a_current_row.py` cover it.
+
+For the widening, one new test in `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only`, on made-up rows in the shape of
+`test_longer_excuses_a_negative_value_on_one_stat_only`. Three assertions, in order:
+
+1. "Your leech pays out 50% more slowly" on `leech_payout_rate` takes something away (accepted);
+2. the same words on `life_leech` do not (refused: the widening reaches one stat);
+3. "Your leech pays out over 6 seconds" on `leech_payout_rate` does not (refused: the words must say "more
+   slowly" or a `TAKING` word).
+
+The real-table check, `test_a_negative_value_is_on_words_that_take_something_away`, now passes on the real row.
 
 ### NOT TESTED
 
@@ -246,7 +261,7 @@ one.
 | Proof | File | Old text | New text | Predicted to fail |
 |---|---|---|---|---|
 | LR-P1, Python, RUN (below) | `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` | the two lines `{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),` and ` TEXT("Negative_Your_leech_pays_out_50_more_slowly")},` | nothing | `tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table`, and no other test in that file |
-| LR-G1, C++, registered, NOT RUN | `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp` | `return PayoutSeconds * NormalPayoutRate / FMath::Max(SlowestPayoutRate, Rate);` | `return PayoutSeconds;` | prefix `Cataclysm.OneSiteStats.` (4 tests): 1 test, 3 assertions, below |
+| LR-G1, C++, registered, NOT RUN | `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp` | `return PayoutSeconds * NormalPayoutRate / FMath::Max(SlowestPayoutRate, Rate);` | `return PayoutSeconds + 0.0f * Rate;` | prefix `Cataclysm.OneSiteStats.` (4 tests): 1 test, 3 assertions, below |
 
 **LR-G1's prediction.** `leech_payout_rate` never had a guard proof. With the break every payment takes
 `PayoutSeconds`, 3 seconds, whatever the stat. In `ProbeLeechPayoutRate` both characters are owed 10% of a hit of 1200,
@@ -271,10 +286,11 @@ mention no leech in their bodies and read no pay-out time; each passes. Outside 
 `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` calls the same probe and would fail the same three.
 
 Each anchor was counted exactly once by `read_text` in its file. LR-G1 leaves the braces (33 and 33) balanced and
-removes one pair of parentheses from each side (85 and 85 to 84 and 84); `Rate` is then initialised by a call and not
-read. MSVC's C4189 is not expected for an initialiser that calls a function, but this was not compiled; if the
-window's build refuses the break, the break with the same meaning is `(void)Rate; return PayoutSeconds;`. The prefix was counted by the script above: 4
-tests for `Cataclysm.OneSiteStats.`, the same 4 without the dot.
+removes one pair of parentheses from each side (85 and 85 to 84 and 84). **The break is `return PayoutSeconds + 0.0f *
+Rate;`, ruled by the coordinating session on 2026-10-28**, so that `Rate` is still read and no unused-variable warning
+can stop the build; it was first proposed as `return PayoutSeconds;`. Adding nought times the rate leaves every payment
+3 seconds long, so the prediction above is unchanged. The prefix was counted by the script above: 4 tests for
+`Cataclysm.OneSiteStats.`, the same 4 without the dot.
 
 **LR-P1 was run on 2026-10-28**, with `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree
 outside the repository (`REPO_ROOT` printed as the copy), with `python -m pytest
@@ -285,6 +301,43 @@ tools/tests/test_a_reword_must_not_rename_a_row.py`. The pair check does read th
 anchor count 1
 named_failures ('tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table',)
 summary PROVED: 1 failed, 4 passed in 0.80s | restored: 5 passed in 0.74s
+proved True
+```
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+**The coordinating session's ruling, 2026-10-28, verbatim:**
+
+> Coordinator, #1618: (b). Add SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"} with r"\bmore\s+slowly\b", in the shape
+> of EXPIRES_FASTER_WHEN_NEGATIVE. Reason: it accepts only what a smaller payout rate means, on that one stat.
+> "slowly" in TAKING would let any negative row on any stat pass on that word.
+> Add the made-up-row test: accepted on leech_payout_rate, refused on another stat, refused without the words. Add the
+> prove_guard proof in a copy. Record it under "CHANGES TO WHAT A CHECK ACCEPTS" as my ruling.
+> Also accepted: registering LR-G1's break as `return PayoutSeconds + 0.0f * Rate;`, to keep Rate read; the extra
+> comment corrections; the new alias test.
+
+**What it widens.** `takes_something_away` in `tools/tests/test_enchantment_effects_match_the_row_text.py` now also
+accepts a negative value on `leech_payout_rate`, and on no other stat, when the words say "more slowly"
+(`SLOWER_WHEN_NEGATIVE` and `MORE_SLOWLY`, beside `EXPIRES_FASTER_WHEN_NEGATIVE`, with a fourth clause in the shape of
+the `EXPIRES_FASTER` one). It is the fourth widening of that kind in the file. Everything it refused before, it still
+refuses, other than that one stat beside those words.
+
+**The option not taken: "slowly" in `TAKING`.** `TAKING` is read for every stat, so a negative row on any stat would
+pass on that word, the coordinating session's reason, including a stat on which a negative value does not mean
+slower. The per-stat set accepts only what a smaller pay-out rate means.
+
+**The proof, run on 2026-10-28** with `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree
+outside the repository (`REPO_ROOT` printed as the copy). Break: `SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"}` to
+`SLOWER_WHEN_NEGATIVE = set()`, the anchor counted once; command `python -m pytest
+tools/tests/test_enchantment_effects_match_the_row_text.py`. As expected, the real-table check and the new test's
+accepted case failed:
+
+```
+anchor count 1
+named_failures
+   tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_negative_value_is_on_words_that_take_something_away
+   tools/tests/test_enchantment_effects_match_the_row_text.py::test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only
+summary PROVED: 2 failed, 40 passed in 0.88s | restored: 42 passed in 0.78s
 proved True
 ```
 

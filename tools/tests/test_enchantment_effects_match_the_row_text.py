@@ -161,6 +161,15 @@ EXPIRES_FASTER_WHEN_NEGATIVE = {"persistent_area_duration"}
 EXPIRES_FASTER = re.compile(r"\bexpires?\b.*\bfaster\b", re.IGNORECASE)
 ENEMIES_GAIN = re.compile(r"^enemies\b.*\bgain\b", re.IGNORECASE)
 
+#: A stat on which a negative value makes something ARRIVE MORE SLOWLY, so its
+#: sentence says "more slowly" rather than a word that takes away. "Your leech
+#: pays out 50% more slowly" is a `more` of -50 on `leech_payout_rate`, the
+#: owner's wording of #1618. Ruled by the coordinating session on 2026-10-28:
+#: accepted on this stat only, because "slowly" in TAKING would let a negative
+#: row on any stat pass on that word.
+SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"}
+MORE_SLOWLY = re.compile(r"\bmore\s+slowly\b", re.IGNORECASE)
+
 #: A sentence saying a stat is gone, which is what the `removed` kind is for.
 #: Issue #1791. The eleven sentences it was written for say it four ways: "You
 #: have no armor" and "You no longer regenerate mana", "Cannot block", "Can't
@@ -1215,6 +1224,7 @@ def takes_something_away(stat: str, words: str, action: str = "") -> bool:
         stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words))) or (
         stat in GAINED_BY_ENEMIES_WHEN_NEGATIVE and bool(ENEMIES_GAIN.search(words))) or (
         stat in EXPIRES_FASTER_WHEN_NEGATIVE and bool(EXPIRES_FASTER.search(words))) or (
+        stat in SLOWER_WHEN_NEGATIVE and bool(MORE_SLOWLY.search(words))) or (
         action == "health" and bool(DAMAGE.search(words)))
 
 
@@ -1958,6 +1968,19 @@ def test_expiring_faster_excuses_a_negative_value_on_one_stat_only():
         "projectile_speed", "Projectiles travel 30%-50% faster")
     assert not takes_something_away(
         "persistent_area_duration", "Persistent AOE effects are 40%-60% larger")
+
+
+def test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only():
+    """The fourth widening this file allows, ruled 2026-10-28 for #1618 and
+    checked on made-up rows as the three above are. A smaller pay-out rate is
+    what "pays out more slowly" means; the same words on another stat, and the
+    stat beside words that say neither, stay refused."""
+    assert takes_something_away(
+        "leech_payout_rate", "Your leech pays out 50% more slowly")
+    assert not takes_something_away(
+        "life_leech", "Your leech pays out 50% more slowly")
+    assert not takes_something_away(
+        "leech_payout_rate", "Your leech pays out over 6 seconds")
 
 
 def test_a_sentence_that_drains_takes_something_away():
