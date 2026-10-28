@@ -2823,9 +2823,9 @@ bool FCataclysmModifierEmbraceBeatTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the floor carries Death's Embrace"),
 			 Mode->FloorBrief.Modifiers.Contains(DeathsEmbrace));
 
-	// THE BEAT IS COUNTED IN BEATS AND NOT IN WORLD TIME, so a stack arrives
-	// after forty of them rather than after one Tick carrying ten seconds. That
-	// is the same convention Forced March's per-beat share uses.
+	// FORTY BEATS OF A QUARTER OF A SECOND. Since #1613 each beat counts the time
+	// its frames covered, at most `LongestBeatSeconds`, so one Tick carrying ten
+	// seconds would count one second rather than ten.
 	const auto Beats = [Mode](int32 Count)
 	{
 		for (int32 Beat = 0; Beat < Count; ++Beat)
@@ -62905,6 +62905,215 @@ bool FCataclysmLeavingEndsNihilRewardTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("Nihil's Embrace reward: %.1f War resistance before leaving, %.1f after"),
 							RewardBeforeLeaving, Carried ? Carried->Value : 0.0f));
 	TestNull(TEXT("after leaving the dungeon the reward is not carried into the next one"), Carried);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// The floor rules count the time each beat covered. Issue #1613, ruled 2026-10-28: a rate, a countdown or a clock is
+// the same at two frames a second as at four, and one beat counts at most `LongestBeatSeconds`.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmBeatSecondsTest
+{
+	/** A floor of `Rows` at `FloorNumber`, built, with the player on it. Null, with the failure recorded, if not. */
+	ACataclysmDungeonGameMode* AFloorWith(FAutomationTestBase& Test, UWorld* World, const FName& Row, int32 FloorNumber)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {Row};
+		Mode->FloorNumber = FloorNumber;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+			|| !Test.TestTrue(TEXT("and it carries the row"), Mode->FloorBrief.Modifiers.Contains(Row)))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** Mortal Decay's floor at its ceiling, the depth `AFloorCarryingMortalDecaySapsThePlayersHealth` uses. */
+	int32 MortalDecayCeilingFloor()
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		return FMath::RoundToInt(Effects::MortalDecayMostPercentPerSecond / Effects::MortalDecayPercentPerSecondPerFloor);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeatRateAtTwoFramesTest,
+	"Cataclysm.DungeonModifierEffects.ABeatCountsItsOwnTimeSoMortalDecaySapsItsRateAtTwoFramesASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A RATE. One second of Mortal Decay at its ceiling costs the rate's share of maximum health whether the second is four
+ * frames of a quarter or two frames of a half. CONTROL: the four quarters, as every other test drives the beat. Until
+ * #1613 the two halves cost half as much.
+ */
+bool FCataclysmBeatRateAtTwoFramesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using namespace CataclysmBeatSecondsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	const int32 Ceiling = MortalDecayCeilingFloor();
+	ACataclysmDungeonGameMode* Mode = AFloorWith(*this, World, MortalDecay, Ceiling);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Maximum = Player.Read(Vital::GetMaxHealthAttribute());
+	const float OneSecond = Maximum * Effects::MortalDecayPercentPerSecond(Ceiling, false) / 100.0f;
+	if (!TestTrue(TEXT("set-up: one second costs something"), OneSecond > 0.0f))
+	{
+		return false;
+	}
+
+	// ONE SECOND IN FRAMES OF `Frame`, measured with the world clock standing still, as the beat test does.
+	const auto LossOverOneSecondIn = [&](float Frame, int32 Frames)
+	{
+		const float Before = Player.Read(Vital::GetHealthAttribute());
+		for (int32 Index = 0; Index < Frames; ++Index)
+		{
+			Mode->Tick(Frame);
+		}
+		return Before - Player.Read(Vital::GetHealthAttribute());
+	};
+	const float AtFour = LossOverOneSecondIn(0.25f, 4);
+	const float AtTwo = LossOverOneSecondIn(0.5f, 2);
+	AddInfo(FString::Printf(TEXT("BEAT SECONDS: Mortal Decay over one second cost %.3f at four frames a second and %.3f at "
+								 "two; one second's rate is %.3f"), AtFour, AtTwo, OneSecond));
+	TestEqual(TEXT("CONTROL: at four frames a second, one second costs one second's rate"), AtFour, OneSecond, 0.01f);
+	TestEqual(TEXT("at two frames a second, the same"), AtTwo, OneSecond, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeatLongestTest,
+	"Cataclysm.DungeonModifierEffects.ABeatCountsAtMostOneSecondSoALongFrameCostsOneSecondOfMortalDecay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE LIMIT. One frame of three seconds, a load or a breakpoint, costs one second of Mortal Decay and not three, ruled
+ * 2026-10-28. CONTROL: a frame of exactly one second costs one second too, so the limit is not below it.
+ */
+bool FCataclysmBeatLongestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using namespace CataclysmBeatSecondsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	const int32 Ceiling = MortalDecayCeilingFloor();
+	ACataclysmDungeonGameMode* Mode = AFloorWith(*this, World, MortalDecay, Ceiling);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float Maximum = Player.Read(Vital::GetMaxHealthAttribute());
+	const float OneSecond = Maximum * Effects::MortalDecayPercentPerSecond(Ceiling, false) / 100.0f;
+	TestEqual(TEXT("the limit is one second"), ACataclysmDungeonGameMode::LongestBeatSeconds, 1.0f, 0.0001f);
+
+	const auto LossOverOneFrameOf = [&](float Frame)
+	{
+		const float Before = Player.Read(Vital::GetHealthAttribute());
+		Mode->Tick(Frame);
+		return Before - Player.Read(Vital::GetHealthAttribute());
+	};
+	const float OfOne = LossOverOneFrameOf(1.0f);
+	const float OfThree = LossOverOneFrameOf(3.0f);
+	AddInfo(FString::Printf(TEXT("BEAT SECONDS: a frame of one second cost %.3f and a frame of three cost %.3f; one "
+								 "second's rate is %.3f"), OfOne, OfThree, OneSecond));
+	TestEqual(TEXT("CONTROL: a frame of one second costs one second's rate"), OfOne, OneSecond, 0.01f);
+	TestEqual(TEXT("a frame of three seconds costs one second's rate, not three"), OfThree, OneSecond, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBeatClockAtTwoFramesTest,
+	"Cataclysm.DungeonModifierEffects.ABeatCountsItsOwnTimeSoDeathsEmbraceStacksAtTenSecondsAtTwoFramesASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A CLOCK. Death's Embrace adds a stack after ten seconds on the floor, counted by the beat. At two frames a second the
+ * stack arrives on the twentieth frame, ten real seconds, and not on the nineteenth. CONTROL: at four frames a second
+ * it arrives on the fortieth, also ten seconds. Until #1613 the two-frame floor took twenty seconds.
+ */
+bool FCataclysmBeatClockAtTwoFramesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using namespace CataclysmBeatSecondsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// TEN SECONDS IN FRAMES OF `Frame` on a new floor: the cut a frame short of it, and at it.
+	const auto CutAtTenSecondsIn = [&](float Frame, float& ShortOf, float& At) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPossessedPlayer Player(World);
+		if (!TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+		{
+			return false;
+		}
+		ACataclysmDungeonGameMode* Mode = AFloorWith(*this, World, DeathsEmbrace, 1);
+		if (!Mode)
+		{
+			return false;
+		}
+		const int32 Frames = FMath::RoundToInt(10.0f / Frame);
+		for (int32 Index = 0; Index < Frames - 1; ++Index)
+		{
+			Mode->Tick(Frame);
+		}
+		ShortOf = Player.Read(Vital::GetHealingReceivedReductionAttribute());
+		Mode->Tick(Frame);
+		At = Player.Read(Vital::GetHealingReceivedReductionAttribute());
+		return true;
+	};
+
+	float FourShort = -1.0f;
+	float FourAt = -1.0f;
+	float TwoShort = -1.0f;
+	float TwoAt = -1.0f;
+	if (!CutAtTenSecondsIn(0.25f, FourShort, FourAt) || !CutAtTenSecondsIn(0.5f, TwoShort, TwoAt))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("BEAT SECONDS: Death's Embrace cut %.1f then %.1f at four frames a second, %.1f then "
+								 "%.1f at two"), FourShort, FourAt, TwoShort, TwoAt));
+	TestEqual(TEXT("CONTROL: at four frames a second, nothing a frame short of ten seconds"), FourShort, 0.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: and one stack at ten"), FourAt, Effects::DeathsEmbracePercentPerStack, 0.01f);
+	TestEqual(TEXT("at two frames a second, nothing a frame short of ten seconds"), TwoShort, 0.0f, 0.01f);
+	TestEqual(TEXT("and one stack at ten, the same real time"), TwoAt, Effects::DeathsEmbracePercentPerStack, 0.01f);
 	return true;
 }
 

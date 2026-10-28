@@ -1267,6 +1267,12 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// HOW LONG THIS BEAT ACTUALLY COVERED, for the rules below. Issue #1613: they
+	// measure time by it rather than taking every beat to be a quarter of a second.
+	// AT MOST `LongestBeatSeconds`, a judgement ruled 2026-10-28, so a load or a
+	// breakpoint does not deal thirty seconds of a floor rule in one beat.
+	BeatSeconds = FMath::Min(SinceWaveCheckSeconds, LongestBeatSeconds);
+
 	// SET BACK TO ZERO RATHER THAN HAVING THE INTERVAL TAKEN OFF IT. A frame
 	// long enough to cover several intervals should bring one wave in, not four.
 	SinceWaveCheckSeconds = 0.0f;
@@ -1277,13 +1283,13 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 	// slices 2 and 5. On this beat rather than a timer of their own, and after
 	// the wave check because a wave arriving is what the player is looking at.
 	//
-	// A BEAT IS TAKEN TO BE A QUARTER OF A SECOND BY THE RULES BELOW, AND THE
-	// LINE ABOVE IS WHY THAT IS NOT QUITE TRUE. Zeroing rather than subtracting
-	// is right for the wave and means a frame longer than the interval yields
-	// one beat however long it was, so below four frames a second those rules
-	// run slow. It is in the player's favour, it does not bite at a playable
-	// frame rate, and the fix belongs in the rules rather than here because the
-	// wave must keep the behaviour the comment above defends. Issue #1613.
+	// EACH RULE BELOW MEASURES TIME BY `BeatSeconds`, the time this beat covered,
+	// and not by the interval. Issue #1613: zeroing rather than subtracting is
+	// right for the wave, and means a frame longer than the interval yields one
+	// beat however long it was; and at any frame rate it drops the part of the
+	// last frame past the interval, about six per cent at thirty frames a second.
+	// Taking every beat as a quarter of a second made every timed rule run slow
+	// by exactly that.
 	StepFloorRulesThatChange();
 
 	// AND, ON EVERY BEAT, A PLAYER'S THRALLS ARE PUT BACK FROM EVERY FLOOR RULE.
@@ -2885,7 +2891,7 @@ void ACataclysmDungeonGameMode::StepTheReaper()
 
 	// THE FLOOR'S OWN SECONDS, counted on the beat as Death's Embrace counts them, so a
 	// floor change puts the clock back by putting the count back.
-	TheReaperSecondsOnFloor += SecondsBetweenWaveChecks;
+	TheReaperSecondsOnFloor += BeatSeconds;
 	if (!Effects::TheReaperIsDue(TheReaperSecondsOnFloor))
 	{
 		return;
@@ -2993,7 +2999,7 @@ void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
 	{
 		return;
 	}
-	CorruptedStalkerSecondsOnFloor += SecondsBetweenWaveChecks;
+	CorruptedStalkerSecondsOnFloor += BeatSeconds;
 	if (!Effects::CorruptedStalkerIsDue(CorruptedStalkerSecondsOnFloor, bCorruptedStalkerHasHunted))
 	{
 		return;
@@ -3397,7 +3403,7 @@ void ACataclysmDungeonGameMode::StepPlagueConvergence(
 	// hazard source as Necrotic Ground's fog burns: damage over time, which pestilence
 	// resistance meets. Unlike Wasting Sickness, which weakens by a share per stack, this is
 	// damage.
-	PlagueConvergenceSecondsSinceBurn += SecondsBetweenWaveChecks;
+	PlagueConvergenceSecondsSinceBurn += BeatSeconds;
 	if (PlagueConvergenceStacks > 0
 		&& PlagueConvergenceSecondsSinceBurn >= Effects::PlagueConvergenceSecondsBetweenBurns)
 	{
@@ -3416,7 +3422,7 @@ void ACataclysmDungeonGameMode::StepPlagueConvergence(
 
 	// THE CLOCK, the Reaper's kind: the floor's seconds on the beat. Killing the creatures
 	// does not wind it back; only a new floor does.
-	PlagueConvergenceSecondsOnFloor += SecondsBetweenWaveChecks;
+	PlagueConvergenceSecondsOnFloor += BeatSeconds;
 	if (!Effects::PlagueConvergenceHasBegun(PlagueConvergenceSecondsOnFloor))
 	{
 		return;
@@ -3424,7 +3430,7 @@ void ACataclysmDungeonGameMode::StepPlagueConvergence(
 
 	// A WAVE AS IT BEGINS AND EVERY CADENCE AFTER. The first beat at or past the start finds
 	// the count at its cadence already, so the first wave comes on that beat.
-	PlagueConvergenceSecondsSinceWave += SecondsBetweenWaveChecks;
+	PlagueConvergenceSecondsSinceWave += BeatSeconds;
 	const bool bFirst = PlagueConvergenceCreatures.IsEmpty();
 	if (!bFirst
 		&& PlagueConvergenceSecondsSinceWave < Effects::PlagueConvergenceSecondsBetweenWaves)
@@ -3580,7 +3586,7 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 	{
 		return;
 	}
-	EchoesSecondsOnFloor += SecondsBetweenWaveChecks;
+	EchoesSecondsOnFloor += BeatSeconds;
 	const FVector Centre = Player->GetActorLocation();
 
 	if (EchoesStage == 0)
@@ -4029,7 +4035,7 @@ void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Pl
 	// A FLYOVER IS MARKED: COUNT ITS WARNING, then every feather lands together.
 	if (!WingsOfTheHostMarksNow().IsEmpty())
 	{
-		WingsOfTheHostWarningSoFar += SecondsBetweenWaveChecks;
+		WingsOfTheHostWarningSoFar += BeatSeconds;
 		if (!Effects::WingsOfTheHostHasLanded(WingsOfTheHostWarningSoFar))
 		{
 			return;
@@ -4076,7 +4082,7 @@ void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Pl
 		return;
 	}
 
-	WingsOfTheHostSecondsSinceLast += SecondsBetweenWaveChecks;
+	WingsOfTheHostSecondsSinceLast += BeatSeconds;
 	if (!Effects::WingsOfTheHostIsDue(WingsOfTheHostSecondsSinceLast))
 	{
 		return;
@@ -4495,7 +4501,7 @@ void ACataclysmDungeonGameMode::StepNecroticBloom()
 	TOptional<FCataclysmFloorPopulation> Population;
 	for (FNecroticBloom& One : NecroticBlooms)
 	{
-		One.SecondsSinceLastWave += SecondsBetweenWaveChecks;
+		One.SecondsSinceLastWave += BeatSeconds;
 		if (!Effects::NecroticBloomWaveIsDue(One.SecondsSinceLastWave, One.Waves))
 		{
 			continue;
@@ -4841,7 +4847,7 @@ void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
 	{
 		return;
 	}
-	FloorSecondsSincePlaced += SecondsBetweenWaveChecks;
+	FloorSecondsSincePlaced += BeatSeconds;
 	if (FloorClearedSeconds >= 0.0f || !FloorIsCleared())
 	{
 		return;
@@ -4883,7 +4889,7 @@ void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* 
 			RefreshFloorModifierPanel();
 			return;
 		}
-		TrialSeconds += SecondsBetweenWaveChecks;
+		TrialSeconds += BeatSeconds;
 		if (Effects::TrialOfEnduranceHasRunOut(TrialSeconds))
 		{
 			bTrialRanOut = true;
@@ -5479,7 +5485,7 @@ void ACataclysmDungeonGameMode::StepPortalUnleashing()
 		});
 
 		// THE CLOCK RUNS WHILE THE CAP IS FULL, so a creature killed after ten seconds is replaced on the next beat.
-		One.SecondsSinceLastSent += SecondsBetweenWaveChecks;
+		One.SecondsSinceLastSent += BeatSeconds;
 		if (!Effects::PortalUnleashingSendsNow(One.SecondsSinceLastSent, One.Sent.Num()))
 		{
 			continue;
@@ -5754,7 +5760,7 @@ void ACataclysmDungeonGameMode::StepPlaguebearer(ACataclysmPlayerCharacter* Play
 		}
 
 		// A STACK EVERY FEW SECONDS, UP TO THE MOST.
-		PlaguebearerSecondsSinceStack += SecondsBetweenWaveChecks;
+		PlaguebearerSecondsSinceStack += BeatSeconds;
 		if (Effects::PlaguebearerStackIsDue(PlaguebearerSecondsSinceStack))
 		{
 			PlaguebearerSecondsSinceStack = 0.0f;
@@ -5980,12 +5986,12 @@ void ACataclysmDungeonGameMode::StepMoraleBreak(ACataclysmPlayerCharacter* Playe
 		}
 		else if (!Group.bFlightOver)
 		{
-			Group.SecondsSinceFall += SecondsBetweenWaveChecks;
+			Group.SecondsSinceFall += BeatSeconds;
 		}
 		else
 		{
 			// AWAY, AND BACK WHEN DUE: each at its own rung, and its reinforcements at Common, at the group's middle.
-			Group.SecondsAway += SecondsBetweenWaveChecks;
+			Group.SecondsAway += BeatSeconds;
 			if (Effects::MoraleBreakReturnIsDue(Group.SecondsAway))
 			{
 				int32 Back = 0;
@@ -6182,7 +6188,7 @@ void ACataclysmDungeonGameMode::StepRawSewage(
 		}
 		else if (bInARiver)
 		{
-			RawSewageSecondsInARiver += SecondsBetweenWaveChecks;
+			RawSewageSecondsInARiver += BeatSeconds;
 			if (RawSewageSecondsInARiver >= Effects::RawSewageSecondsPerStack)
 			{
 				RawSewageSecondsInARiver -= Effects::RawSewageSecondsPerStack;
@@ -6205,7 +6211,7 @@ void ACataclysmDungeonGameMode::StepRawSewage(
 	// health dealt as damage over time typed as the row, which pestilence resistance meets. Not the Disease ailment.
 	if (RawSewageStacks > 0)
 	{
-		RawSewageSecondsSinceBurn += SecondsBetweenWaveChecks;
+		RawSewageSecondsSinceBurn += BeatSeconds;
 		if (RawSewageSecondsSinceBurn >= 1.0f)
 		{
 			RawSewageSecondsSinceBurn = 0.0f;
@@ -7876,7 +7882,7 @@ void ACataclysmDungeonGameMode::StepGatedShortcuts()
 	const FName Labrynth(Effects::LabrynthKey);
 	if (FloorBrief.Modifiers.Contains(Labrynth))
 	{
-		LabrynthSecondsSince += SecondsBetweenWaveChecks;
+		LabrynthSecondsSince += BeatSeconds;
 		if (LabrynthSecondsSince >= Effects::LabrynthSecondsBetweenSwaps - KINDA_SMALL_NUMBER)
 		{
 			LabrynthSecondsSince = 0.0f;
@@ -8176,7 +8182,7 @@ void ACataclysmDungeonGameMode::StepFloorObstacles(ACataclysmPlayerCharacter* Pl
 	// THE WARNINGS FIRST, so one whose second is over rises before anything new is chosen beside it.
 	for (int32 Index = FloorObstacleWarnings.Num() - 1; Index >= 0; --Index)
 	{
-		FloorObstacleWarnings[Index].SecondsLeft -= SecondsBetweenWaveChecks;
+		FloorObstacleWarnings[Index].SecondsLeft -= BeatSeconds;
 		if (FloorObstacleWarnings[Index].SecondsLeft > KINDA_SMALL_NUMBER)
 		{
 			continue;
@@ -8201,7 +8207,7 @@ void ACataclysmDungeonGameMode::StepFloorObstacles(ACataclysmPlayerCharacter* Pl
 	TArray<FIntPoint> Cells;
 	if (bHeavensQuake)
 	{
-		HeavensQuakeSecondsSince += SecondsBetweenWaveChecks;
+		HeavensQuakeSecondsSince += BeatSeconds;
 		if (HeavensQuakeSecondsSince >= Effects::HeavensQuakeSecondsBetween - KINDA_SMALL_NUMBER
 			&& HeavensQuakePillars + Pending(ECataclysmObstacleKind::Pillar) < Effects::HeavensQuakeMostPillars
 			&& ChooseObstacleCells(Player, 1, Cells)
@@ -8212,7 +8218,7 @@ void ACataclysmDungeonGameMode::StepFloorObstacles(ACataclysmPlayerCharacter* Pl
 	}
 	if (bCryptquake)
 	{
-		CryptquakeSecondsSince += SecondsBetweenWaveChecks;
+		CryptquakeSecondsSince += BeatSeconds;
 		if (CryptquakeSecondsSince >= Effects::CryptquakeSecondsBetween - KINDA_SMALL_NUMBER
 			&& CryptquakeSections + Pending(ECataclysmObstacleKind::Pit) < Effects::CryptquakeMostSections
 			&& ChooseObstacleCells(Player, Effects::CryptquakeSectionSide, Cells)
@@ -8379,7 +8385,7 @@ void ACataclysmDungeonGameMode::StepWarzoneControlPoints(
 			{
 				continue;
 			}
-			WarzoneSecondsHeld[Index] += SecondsBetweenWaveChecks;
+			WarzoneSecondsHeld[Index] += BeatSeconds;
 			if (WarzoneSecondsHeld[Index] >= Effects::WarzoneCaptureSeconds - KINDA_SMALL_NUMBER)
 			{
 				WarzoneCaptured[Index] = true;
@@ -8395,7 +8401,7 @@ void ACataclysmDungeonGameMode::StepWarzoneControlPoints(
 			{
 				// A WAVE WHEN ONE IS DUE; THE CLOCK STARTS AGAIN ONLY WHEN ONE CAME, so a beat whose point had no
 				// floor beside it tries again on the next.
-				WarzoneWaveClock += SecondsBetweenWaveChecks;
+				WarzoneWaveClock += BeatSeconds;
 				if (WarzoneWaveClock >= Effects::WarzoneWaveSeconds - KINDA_SMALL_NUMBER)
 				{
 					const int32 Came = SendWarzoneWave(CurrentFloor->WorldOfCell(WarzonePointCells[Index]));
@@ -8486,7 +8492,7 @@ void ACataclysmDungeonGameMode::StepSwarmOfLocusts(
 
 	if (ACataclysmGroundZone* Swarm = SwarmOfLocusts.Get())
 	{
-		SwarmOfLocustsSecondsIntoIt += SecondsBetweenWaveChecks;
+		SwarmOfLocustsSecondsIntoIt += BeatSeconds;
 
 		// ITS WARNING OVER, IT TRAVELS. The zone moves itself from its own tick in play.
 		if (!bSwarmOfLocustsTravelling && SwarmOfLocustsSecondsIntoIt >= Effects::SwarmOfLocustsWarningSeconds)
@@ -8512,7 +8518,7 @@ void ACataclysmDungeonGameMode::StepSwarmOfLocusts(
 		// deals it, as Infested Veins' burn is dealt, so a shelter can stop it.
 		if (bSwarmOfLocustsTravelling)
 		{
-			SwarmOfLocustsSecondsSinceBurn += SecondsBetweenWaveChecks;
+			SwarmOfLocustsSecondsSinceBurn += BeatSeconds;
 			if (SwarmOfLocustsSecondsSinceBurn >= 1.0f)
 			{
 				SwarmOfLocustsSecondsSinceBurn = 0.0f;
@@ -8531,7 +8537,7 @@ void ACataclysmDungeonGameMode::StepSwarmOfLocusts(
 		return;
 	}
 
-	SwarmOfLocustsSecondsSinceLast += SecondsBetweenWaveChecks;
+	SwarmOfLocustsSecondsSinceLast += BeatSeconds;
 	const int32 Second = FMath::CeilToInt(Effects::SwarmOfLocustsSecondsBetween - SwarmOfLocustsSecondsSinceLast);
 	if (Second != SwarmOfLocustsPanelSecond)
 	{
@@ -8760,7 +8766,7 @@ void ACataclysmDungeonGameMode::StepAbyssalRifts(
 		CloseTheRift(/*bInTime=*/false);
 		return;
 	}
-	AbyssalRiftSecondsOpen += SecondsBetweenWaveChecks;
+	AbyssalRiftSecondsOpen += BeatSeconds;
 
 	const int32 Second = FMath::CeilToInt(Effects::AbyssalRiftsSecondsToClose - AbyssalRiftSecondsOpen) * 100 + Standing;
 	if (Second != AbyssalRiftPanelSecond)
@@ -8853,7 +8859,7 @@ void ACataclysmDungeonGameMode::StepInfestedHoard(
 	// over time typed as the row, which pestilence resistance meets.
 	if (InfestedHoardStacks > 0)
 	{
-		InfestedHoardSecondsSinceDrain += SecondsBetweenWaveChecks;
+		InfestedHoardSecondsSinceDrain += BeatSeconds;
 		if (InfestedHoardSecondsSinceDrain >= 1.0f)
 		{
 			InfestedHoardSecondsSinceDrain = 0.0f;
@@ -9046,7 +9052,7 @@ void ACataclysmDungeonGameMode::StepInfectionBloom(ACataclysmPlayerCharacter* Pl
 	{
 		// A PATCH ADDED ON ITS CADENCE, touching a random one already there, on the floor: Necrotic Ground's
 		// spread, with up to sixteen tries at an angle that lands on a floor cell. The clock is kept when none does.
-		InfectionBloomSecondsSincePatch += SecondsBetweenWaveChecks;
+		InfectionBloomSecondsSincePatch += BeatSeconds;
 		if (Effects::InfectionBloomPatchIsDue(InfectionBloomSecondsSincePatch, InfectionBloomPatchPoints.Num())
 			&& !InfectionBloomPatchPoints.IsEmpty())
 		{
@@ -9080,7 +9086,7 @@ void ACataclysmDungeonGameMode::StepInfectionBloom(ACataclysmPlayerCharacter* Pl
 		}
 
 		// A WAVE ON ITS CADENCE while it stands.
-		InfectionBloomSecondsSinceWave += SecondsBetweenWaveChecks;
+		InfectionBloomSecondsSinceWave += BeatSeconds;
 		if (Effects::InfectionBloomWaveIsDue(InfectionBloomSecondsSinceWave))
 		{
 			InfectionBloomSecondsSinceWave = 0.0f;
@@ -9421,7 +9427,7 @@ void ACataclysmDungeonGameMode::StepFunerealProcession(
 
 	if (ACataclysmGroundZone* Line = FunerealProcession.Get())
 	{
-		FunerealProcessionSecondsIntoIt += SecondsBetweenWaveChecks;
+		FunerealProcessionSecondsIntoIt += BeatSeconds;
 
 		// CROSSED: GONE, AND THE NEXT ONE'S CLOCK STARTS.
 		if (FunerealProcessionSecondsIntoIt >= Effects::FunerealProcessionLastsSeconds())
@@ -9444,7 +9450,7 @@ void ACataclysmDungeonGameMode::StepFunerealProcession(
 
 		// CONTACT, ONCE A SECOND, FOR THE PLAYER IT TOUCHES AT THAT BEAT: dealt by the rule's own step, as Swarm of
 		// Locusts' burn is, and typed by the row. Creatures are not touched.
-		FunerealProcessionSecondsSinceBurn += SecondsBetweenWaveChecks;
+		FunerealProcessionSecondsSinceBurn += BeatSeconds;
 		if (FunerealProcessionSecondsSinceBurn >= 1.0f)
 		{
 			FunerealProcessionSecondsSinceBurn = 0.0f;
@@ -9462,7 +9468,7 @@ void ACataclysmDungeonGameMode::StepFunerealProcession(
 		return;
 	}
 
-	FunerealProcessionSecondsSinceLast += SecondsBetweenWaveChecks;
+	FunerealProcessionSecondsSinceLast += BeatSeconds;
 	const int32 Second =
 		FMath::CeilToInt(Effects::FunerealProcessionSecondsBetween - FunerealProcessionSecondsSinceLast);
 	if (Second != FunerealProcessionPanelSecond)
@@ -9516,15 +9522,15 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 	// A LOCK OR A MADNESS RUNNING COUNTS DOWN, on a floor with the row or not; the clock waits for it.
 	if (InsanityBurstsLockLeft > 0.0f || InsanityBurstsMaddenedLeft > 0.0f)
 	{
-		InsanityBurstsLockLeft = FMath::Max(0.0f, InsanityBurstsLockLeft - SecondsBetweenWaveChecks);
-		InsanityBurstsMaddenedLeft = FMath::Max(0.0f, InsanityBurstsMaddenedLeft - SecondsBetweenWaveChecks);
+		InsanityBurstsLockLeft = FMath::Max(0.0f, InsanityBurstsLockLeft - BeatSeconds);
+		InsanityBurstsMaddenedLeft = FMath::Max(0.0f, InsanityBurstsMaddenedLeft - BeatSeconds);
 	}
 	else if (bRowHere && bInsanityBurstsWarning)
 	{
 		// THE WARNING RUNS, and at its end the burst: every skill locked, a stun, or madness. A designed stun, so it
 		// skips the damage threshold; it does not skip the immunity window. Madness as every other source applies it,
 		// through `ApplyNamedEffect`, so it takes the same window and a player inside it is not maddened.
-		InsanityBurstsWarningSoFar += SecondsBetweenWaveChecks;
+		InsanityBurstsWarningSoFar += BeatSeconds;
 		if (InsanityBurstsWarningSoFar >= Effects::InsanityBurstsWarningSeconds)
 		{
 			bInsanityBurstsWarning = false;
@@ -9559,7 +9565,7 @@ void ACataclysmDungeonGameMode::StepInsanityBursts(
 	else if (bRowHere)
 	{
 		// THE CLOCK, AND THE WARNING WHEN IT COMES DUE. Which burst it will be is drawn as the warning begins.
-		InsanityBurstsSecondsSinceLast += SecondsBetweenWaveChecks;
+		InsanityBurstsSecondsSinceLast += BeatSeconds;
 		if (Effects::InsanityBurstsIsDue(InsanityBurstsSecondsSinceLast))
 		{
 			bInsanityBurstsWarning = true;
@@ -9760,7 +9766,7 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 		IllusionSlowApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
-	IllusionSlowLeft = FMath::Max(0.0f, IllusionSlowLeft - SecondsBetweenWaveChecks);
+	IllusionSlowLeft = FMath::Max(0.0f, IllusionSlowLeft - BeatSeconds);
 
 	if (!CurrentFloor || !CurrentFloor->IsBuilt()
 		|| !FloorBrief.Modifiers.Contains(FName(Effects::MindShatteringIllusionsKey)))
@@ -9772,7 +9778,7 @@ void ACataclysmDungeonGameMode::StepMindShatteringIllusions(
 	// far from the player at a random angle. They pay nothing, are raised by the rule, are not the floor's creatures,
 	// and have one point of health. THE CLOCK RUNS WHILE THE CAP IS FULL, as Portal Unleashing's does, so a pair
 	// comes on the next beat after one falls.
-	IllusionSecondsSinceLast += SecondsBetweenWaveChecks;
+	IllusionSecondsSinceLast += BeatSeconds;
 	if (Effects::IllusionPhantasmsAreDue(IllusionSecondsSinceLast, PhantasmsStanding().Num()))
 	{
 		const FVector Feet = Player->GetActorLocation();
@@ -9911,7 +9917,7 @@ void ACataclysmDungeonGameMode::StepRealityRifts(
 		}
 
 		const FVector Feet = Player->GetActorLocation();
-		RealityRiftRestLeft = FMath::Max(0.0f, RealityRiftRestLeft - SecondsBetweenWaveChecks);
+		RealityRiftRestLeft = FMath::Max(0.0f, RealityRiftRestLeft - BeatSeconds);
 
 		// A STEP INTO A PAIRED RIFT, THE RIFTS OPEN: carried to the other of its pair, on its cell, as the player is
 		// put at the entrance: unswept, so no wall between stops it. Then the rifts rest, so the player is not carried
@@ -9964,7 +9970,7 @@ void ACataclysmDungeonGameMode::StepRealityRifts(
 		RealityGiftApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
-	RealityGiftLeft = FMath::Max(0.0f, RealityGiftLeft - SecondsBetweenWaveChecks);
+	RealityGiftLeft = FMath::Max(0.0f, RealityGiftLeft - BeatSeconds);
 
 	const int32 Key = FMath::CeilToInt(RealityRiftRestLeft) * 1000 + FMath::CeilToInt(RealityGiftLeft) * 10
 		+ (bRealityGiftTaken ? 1 : 0) + (RealityChamberStands() ? 2 : 0) + (bRealityChamberRewardGiven ? 4 : 0);
@@ -10505,7 +10511,7 @@ void ACataclysmDungeonGameMode::StepCarrionFeast()
 			continue;
 		}
 
-		CarrionCarcassSeconds[Index] += SecondsBetweenWaveChecks;
+		CarrionCarcassSeconds[Index] += BeatSeconds;
 		if (CarrionCarcassSeconds[Index] < Effects::CarrionFeastEatenAfterSeconds - KINDA_SMALL_NUMBER)
 		{
 			continue;
@@ -11078,7 +11084,7 @@ void ACataclysmDungeonGameMode::StepInfestedVeins(
 		}
 
 		// A DESTROYED VEIN GROWS BACK ON ITS CELL, at full health; its zone is drawn on the next beat.
-		One.SecondsSinceDestroyed += SecondsBetweenWaveChecks;
+		One.SecondsSinceDestroyed += BeatSeconds;
 		if (Effects::InfestedVeinRegrowIsDue(One.SecondsSinceDestroyed))
 		{
 			if (ACataclysmEnemyCharacter* Regrown = SpawnAVeinOn(One.Cell))
@@ -11091,7 +11097,7 @@ void ACataclysmDungeonGameMode::StepInfestedVeins(
 
 	// THE BURN, ONCE A SECOND, FOR A PLAYER IN A LIVING VEIN'S ZONE AT THAT BEAT, once however many
 	// zones cover them, as Necrotic Ground burns. Typed by the row.
-	InfestedVeinsSecondsSinceBurn += SecondsBetweenWaveChecks;
+	InfestedVeinsSecondsSinceBurn += BeatSeconds;
 	if (InfestedVeinsSecondsSinceBurn >= 1.0f)
 	{
 		InfestedVeinsSecondsSinceBurn = 0.0f;
@@ -11266,7 +11272,7 @@ void ACataclysmDungeonGameMode::StepShadowyEnemies(ACataclysmPlayerCharacter* Pl
 	// THE FIRE SECONDS RUN DOWN BY THE BEAT, and a creature whose seconds are spent or which is gone is forgotten.
 	for (auto It = ShadowFireSecondsLeft.CreateIterator(); It; ++It)
 	{
-		It->Value -= SecondsBetweenWaveChecks;
+		It->Value -= BeatSeconds;
 		if (!It->Key.IsValid() || It->Value <= 0.0f)
 		{
 			It.RemoveCurrent();
@@ -11736,9 +11742,9 @@ void ACataclysmDungeonGameMode::StepBattlefieldRelics(
 		RelicBulwarkApplied = Bulwark;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
-	RelicFuryLeft = FMath::Max(0.0f, RelicFuryLeft - SecondsBetweenWaveChecks);
-	RelicHasteLeft = FMath::Max(0.0f, RelicHasteLeft - SecondsBetweenWaveChecks);
-	RelicBulwarkLeft = FMath::Max(0.0f, RelicBulwarkLeft - SecondsBetweenWaveChecks);
+	RelicFuryLeft = FMath::Max(0.0f, RelicFuryLeft - BeatSeconds);
+	RelicHasteLeft = FMath::Max(0.0f, RelicHasteLeft - BeatSeconds);
+	RelicBulwarkLeft = FMath::Max(0.0f, RelicBulwarkLeft - BeatSeconds);
 
 	const int32 Key = BattlefieldRelicsNow().Num() * 1000000 + FMath::CeilToInt(RelicFuryLeft) * 10000
 		+ FMath::CeilToInt(RelicHasteLeft) * 100 + FMath::CeilToInt(RelicBulwarkLeft);
@@ -12217,8 +12223,8 @@ void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player,
 		// after every stretch of it. HELD IS ASKED FIRST, so no wave comes as the hold completes: the waves stop there.
 		if (bInside && !bWarBannerHeld)
 		{
-			WarBannerHeldSeconds += SecondsBetweenWaveChecks;
-			WarBannerSecondsSinceWave += SecondsBetweenWaveChecks;
+			WarBannerHeldSeconds += BeatSeconds;
+			WarBannerSecondsSinceWave += BeatSeconds;
 			if (WarBannerHeldSeconds >= Effects::WarBannerHoldSeconds - KINDA_SMALL_NUMBER)
 			{
 				bWarBannerHeld = true;
@@ -12712,7 +12718,7 @@ void ACataclysmDungeonGameMode::StepSanctionedPassage(ACataclysmPlayerCharacter*
 			&& FVector::Dist2D(Player->GetActorLocation(), Gate->GetActorLocation())
 				<= UCataclysmAbilitySystemComponent::NearbyActionRadiusCm)
 		{
-			DivineGateSeconds += SecondsBetweenWaveChecks;
+			DivineGateSeconds += BeatSeconds;
 		}
 		if (DivineGateSeconds >= Effects::SanctionedPassageChannelSeconds - KINDA_SMALL_NUMBER)
 		{
@@ -12972,7 +12978,7 @@ void ACataclysmDungeonGameMode::StepBloodPrice(ACataclysmPlayerCharacter* Player
 	// damage over time typed as the row, from the floor's hazard source.
 	if (BloodPriceStacks > 0)
 	{
-		BloodPriceSecondsSinceBleed += SecondsBetweenWaveChecks;
+		BloodPriceSecondsSinceBleed += BeatSeconds;
 		if (BloodPriceSecondsSinceBleed >= 1.0f)
 		{
 			BloodPriceSecondsSinceBleed = 0.0f;
@@ -13191,7 +13197,7 @@ void ACataclysmDungeonGameMode::StepGrimTotems(
 		GrimEmbraceApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
-	GrimEmbraceLeft = FMath::Max(0.0f, GrimEmbraceLeft - SecondsBetweenWaveChecks);
+	GrimEmbraceLeft = FMath::Max(0.0f, GrimEmbraceLeft - BeatSeconds);
 
 	const int32 Key = GrimTotemsNow().Num() * 1000 + FMath::CeilToInt(GrimEmbraceLeft);
 	if (Key != GrimTotemsPanelKey)
@@ -13287,7 +13293,7 @@ void ACataclysmDungeonGameMode::StepDivineWrath(
 		return;
 	}
 
-	DivineWrathSecondsSinceLast += SecondsBetweenWaveChecks;
+	DivineWrathSecondsSinceLast += BeatSeconds;
 
 	if (ACataclysmGroundZone* Beam = DivineWrathBeam.Get())
 	{
@@ -14874,7 +14880,7 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	for (int32 Index = InfernalRainFalls.Num() - 1; Index >= 0; --Index)
 	{
 		FInfernalRainFall& Fall = InfernalRainFalls[Index];
-		Fall.SecondsLeft -= SecondsBetweenWaveChecks;
+		Fall.SecondsLeft -= BeatSeconds;
 		if (Fall.SecondsLeft > KINDA_SMALL_NUMBER)
 		{
 			continue;
@@ -14893,7 +14899,7 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 
 	// THE ONE PLACE THIS CLOCK MOVES. See the field's comment: a second writer is
 	// the fault that was repaired in the creature auras earlier today.
-	InfernalRainSecondsSinceLastPatch += SecondsBetweenWaveChecks;
+	InfernalRainSecondsSinceLastPatch += BeatSeconds;
 	// A FIREBALL STILL FALLING COUNTS AGAINST THE CAP AS THE PATCH IT WILL BE.
 	if (!UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
 			InfernalRainSecondsSinceLastPatch, InfernalRainPatches.Num() + InfernalRainFalls.Num()))
@@ -15190,7 +15196,7 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 	{
 		FVector Toward = Pulling->GetActorLocation() - Feet;
 		Toward.Z = 0.0f;
-		const float Drawn = FMath::Min(PullingCm, Effects::SingularityWellsPullCmPerSecond * SecondsBetweenWaveChecks);
+		const float Drawn = FMath::Min(PullingCm, Effects::SingularityWellsPullCmPerSecond * BeatSeconds);
 		if (UCharacterMovementComponent* Movement = Player->GetCharacterMovement())
 		{
 			FHitResult Hit;
@@ -15200,7 +15206,7 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 
 	// AND NOW WHETHER TO PLACE ANOTHER. The cap is asked inside the predicate,
 	// before its clock, so a floor at its limit does not swallow the count.
-	SingularityWellsSecondsSinceLastWell += SecondsBetweenWaveChecks;
+	SingularityWellsSecondsSinceLastWell += BeatSeconds;
 	if (!Effects::SingularityWellIsDue(SingularityWellsSecondsSinceLastWell,
 									   SingularityWells.Num()))
 	{
@@ -16285,13 +16291,12 @@ void ACataclysmDungeonGameMode::StepForcedMarch(
 	}
 
 	// A SHARE OF MAXIMUM HEALTH, FOR THIS BEAT'S LENGTH. The row's figure is per
-	// second and this runs four times a second, so each beat takes a quarter of
-	// it.
+	// second, so each beat takes the share for the time it covered (#1613).
 	const float Maximum = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 	const float Share =
 		UCataclysmDungeonModifierEffects::ForcedMarchSharePerSecond(Stacks);
-	const float Amount = Maximum * Share / 100.0f * SecondsBetweenWaveChecks;
+	const float Amount = Maximum * Share / 100.0f * BeatSeconds;
 	if (Amount <= 0.0f)
 	{
 		return;
@@ -16320,7 +16325,7 @@ void ACataclysmDungeonGameMode::StepEdictOfSilence(
 	// THE CLOCK ADVANCES WHETHER OR NOT A SILENCE IS RUNNING, so "every 90
 	// seconds" is a cycle of ninety with fifteen of it silent rather than fifteen
 	// separated by ninety. The header's constants carry that reading.
-	EdictOfSilenceSecondsSinceLast += SecondsBetweenWaveChecks;
+	EdictOfSilenceSecondsSinceLast += BeatSeconds;
 
 	// A SILENCE ALREADY RUNNING IS NOT RESTARTED. The cadence cannot come due
 	// inside one while the silence is shorter than the gap, which a static
@@ -16405,7 +16410,7 @@ void ACataclysmDungeonGameMode::StepEdictOfVigil(
 	// walks back onto it is.
 	if (ACataclysmGroundZone* Mark = EdictOfVigilMark.Get())
 	{
-		EdictOfVigilWarningSoFar += SecondsBetweenWaveChecks;
+		EdictOfVigilWarningSoFar += BeatSeconds;
 		if (!Effects::EdictOfVigilHasLanded(EdictOfVigilWarningSoFar))
 		{
 			return;
@@ -16503,7 +16508,7 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 	}
 	const float Now = World->GetTimeSeconds();
 
-	DirgeResonanceSecondsSinceLast += SecondsBetweenWaveChecks;
+	DirgeResonanceSecondsSinceLast += BeatSeconds;
 	if (Effects::DirgeResonanceIsDue(DirgeResonanceSecondsSinceLast))
 	{
 		DirgeResonanceSecondsSinceLast = 0.0f;
@@ -16615,7 +16620,7 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 	// the row does not say; this one is recorded in docs/DECISIONS.md.
 	if (ACataclysmGroundZone* Circle = ArtilleryStrikeCircle.Get())
 	{
-		ArtilleryStrikeWarningSoFar += SecondsBetweenWaveChecks;
+		ArtilleryStrikeWarningSoFar += BeatSeconds;
 		if (!Effects::ArtilleryStrikeHasLanded(ArtilleryStrikeWarningSoFar))
 		{
 			return;
@@ -16688,7 +16693,7 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 		return;
 	}
 
-	ArtilleryStrikeSecondsSinceLast += SecondsBetweenWaveChecks;
+	ArtilleryStrikeSecondsSinceLast += BeatSeconds;
 	if (!Effects::ArtilleryStrikeIsDue(ArtilleryStrikeSecondsSinceLast,
 									   /*bOneInTheAir=*/false))
 	{
@@ -16791,7 +16796,7 @@ void ACataclysmDungeonGameMode::StepHallowedGroundfall(
 		}
 	}
 
-	HallowedGroundfallSecondsSinceLast += SecondsBetweenWaveChecks;
+	HallowedGroundfallSecondsSinceLast += BeatSeconds;
 	if (!Effects::HallowedGroundfallIsDue(HallowedGroundfallSecondsSinceLast))
 	{
 		return;
@@ -16936,7 +16941,7 @@ void ACataclysmDungeonGameMode::StepGraspingTentacles(
 	// tentacle appear and grab on the same beat, which is not "careful of getting
 	// too close": the player had no chance to be careful of something that was
 	// not there.
-	GraspingTentaclesSecondsSinceLast += SecondsBetweenWaveChecks;
+	GraspingTentaclesSecondsSinceLast += BeatSeconds;
 	if (!Effects::GraspingTentacleIsDue(GraspingTentaclesSecondsSinceLast,
 										GraspingTentacles.Num()))
 	{
@@ -17059,12 +17064,12 @@ void ACataclysmDungeonGameMode::StepMortalDecay(
 		return;
 	}
 
-	// A SHARE OF MAXIMUM HEALTH, FOR THIS BEAT'S LENGTH. The rate is per second
-	// and this runs four times a second, so each beat takes a quarter of it --
-	// the same arithmetic `StepForcedMarch` does above, for the same reason.
+	// A SHARE OF MAXIMUM HEALTH, FOR THIS BEAT'S LENGTH. The rate is per second,
+	// so each beat takes the share for the time it covered (#1613) -- the same
+	// arithmetic `StepForcedMarch` does above, for the same reason.
 	const float Maximum = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-	const float Amount = Maximum * Rate / 100.0f * SecondsBetweenWaveChecks;
+	const float Amount = Maximum * Rate / 100.0f * BeatSeconds;
 	if (Amount <= 0.0f)
 	{
 		return;
@@ -17087,14 +17092,14 @@ void ACataclysmDungeonGameMode::StepSufferingAura(
 	// way Mortal Decay can. Ruled under the owner's delegation, 2026-09-23.
 	const float HealthLoss = Effects::SufferingAuraLossFor(
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
-		Effects::SufferingAuraHealthPercentPerSecond, SecondsBetweenWaveChecks);
+		Effects::SufferingAuraHealthPercentPerSecond, BeatSeconds);
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, HealthLoss);
 
 	// MANA, WRITTEN THE WAY A CAST SPENDS IT. The clamp in `PreAttributeChange` stops it
 	// at zero, so nothing here checks the floor.
 	const float ManaLoss = Effects::SufferingAuraLossFor(
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
-		Effects::SufferingAuraManaPercentPerSecond, SecondsBetweenWaveChecks);
+		Effects::SufferingAuraManaPercentPerSecond, BeatSeconds);
 	// AND NOT FROM A PLAYER WHOSE WORN ROW HOLDS THE FLAG `suffering_aura_mana_drain_immunity`. The one
 	// read the entry of 2026-10-10 "A row can make its wearer immune to the Suffering Aura's mana drain"
 	// was ruled, as W3. The health loss above does not ask it.
@@ -17148,7 +17153,7 @@ void ACataclysmDungeonGameMode::StepDeathsEmbrace(
 	// back to nothing, which is the row's "stacks reset when entering a new
 	// floor" with nothing stored per stack -- the same shape Forced March uses,
 	// where moving clears the stacks by clearing what they are counted from.
-	DeathsEmbraceSecondsOnFloor += SecondsBetweenWaveChecks;
+	DeathsEmbraceSecondsOnFloor += BeatSeconds;
 
 	const int32 Stacks =
 		UCataclysmDungeonModifierEffects::DeathsEmbraceStacksAfter(
@@ -17752,7 +17757,7 @@ void ACataclysmDungeonGameMode::StepJudgmentZones(
 	// it is laid past its own radius from them, as Infernal Rain's is and for the reason
 	// Infernal Rain gives -- ground that damages the instant it appears is not ground to get
 	// off.
-	JudgmentZonesSecondsSinceLastZone += SecondsBetweenWaveChecks;
+	JudgmentZonesSecondsSinceLastZone += BeatSeconds;
 	if (Effects::JudgmentZoneIsDue(JudgmentZonesSecondsSinceLastZone, JudgmentZones.Num()))
 	{
 		const FVector Centre = Player->GetActorLocation();
@@ -17828,9 +17833,9 @@ void ACataclysmDungeonGameMode::StepJudgmentZones(
 		return;
 	}
 
-	// FOUR BEATS MAKE A SECOND, and the remainder is carried rather than dropped, so a
+	// THE BEATS' OWN TIME MAKES A SECOND (#1613), and the remainder is carried rather than dropped, so a
 	// player who steps in and out repeatedly is not charged less than one who stands.
-	JudgmentZonesSecondsInside += SecondsBetweenWaveChecks;
+	JudgmentZonesSecondsInside += BeatSeconds;
 
 	// THE SAME OWNER THE GROUND WAS LAID IN THE NAME OF, so the damage a zone's ground
 	// does is dealt by the actor that owns it.
@@ -18490,7 +18495,7 @@ void ACataclysmDungeonGameMode::StepAntiMagicZones(
 
 	// AND NOW WHETHER TO LAY ANOTHER. The cap is asked inside the predicate, before its
 	// clock, so a floor at its limit does not swallow the count.
-	AntiMagicZonesSecondsSinceLastZone += SecondsBetweenWaveChecks;
+	AntiMagicZonesSecondsSinceLastZone += BeatSeconds;
 	if (Effects::AntiMagicZoneIsDue(AntiMagicZonesSecondsSinceLastZone,
 									AntiMagicZones.Num()))
 	{
@@ -21406,7 +21411,7 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 		BloodAltarRing = Ring;
 	}
 
-	BloodAltarSecondsSinceLastPulse += SecondsBetweenWaveChecks;
+	BloodAltarSecondsSinceLastPulse += BeatSeconds;
 	if (!Effects::BloodAltarPulseIsDue(BloodAltarSecondsSinceLastPulse))
 	{
 		return;
@@ -21485,7 +21490,7 @@ void ACataclysmDungeonGameMode::StepNecroticGround(
 	// figure again from a player standing in two. Typed by the row, as every floor
 	// rule's damage is since issue #1924.
 	const FName Type = DungeonGameModeTypeOfRow(Effects::NecroticGroundKey);
-	NecroticGroundSecondsSinceLastBurn += SecondsBetweenWaveChecks;
+	NecroticGroundSecondsSinceLastBurn += BeatSeconds;
 	if (NecroticGroundSecondsSinceLastBurn >= Effects::NecroticGroundSecondsBetweenBurns)
 	{
 		NecroticGroundSecondsSinceLastBurn = 0.0f;
@@ -21527,11 +21532,11 @@ void ACataclysmDungeonGameMode::StepNecroticGround(
 			*Theirs, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
 			Effects::NecroticGroundRegenPerBeat(
 				Theirs->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
-				SecondsBetweenWaveChecks));
+				BeatSeconds));
 	}
 
 	// AND THE FOG SPREADS ON ITS CADENCE, up to its cap.
-	NecroticGroundSecondsSinceLastPatch += SecondsBetweenWaveChecks;
+	NecroticGroundSecondsSinceLastPatch += BeatSeconds;
 	if (!Effects::NecroticGroundPatchIsDue(NecroticGroundSecondsSinceLastPatch,
 										   NecroticGroundPatches.Num()))
 	{
@@ -21616,7 +21621,7 @@ void ACataclysmDungeonGameMode::StepRavenousHoard(ACataclysmPlayerCharacter* Pla
 		// so a creature placed before a beat holds its first stack on its fortieth:
 		// Death's Embrace's convention, and at most a beat after it was placed.
 		float& SecondsAlive = RavenousHoardSecondsAlive.FindOrAdd(Creature);
-		SecondsAlive += SecondsBetweenWaveChecks;
+		SecondsAlive += BeatSeconds;
 
 		// THE SETTER RETURNS AT ONCE WHEN THE MULTIPLIER HAS NOT CHANGED, so this writes
 		// nothing between stacks.
@@ -21916,7 +21921,7 @@ void ACataclysmDungeonGameMode::StepGraveTide()
 		return;
 	}
 
-	GraveTideSecondsSinceLastWave += SecondsBetweenWaveChecks;
+	GraveTideSecondsSinceLastWave += BeatSeconds;
 	if (!Effects::GraveTideWaveIsDue(GraveTideSecondsSinceLastWave, GraveTideWaves))
 	{
 		return;
