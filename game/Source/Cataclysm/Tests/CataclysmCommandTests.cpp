@@ -5366,4 +5366,89 @@ bool FCataclysmThrallBurstsTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledThrallTest,
+	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedThrallWithAnImpWhereItStood",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kC` Rekindled for a thrall. Issue #2570, ruled 2026-10-28: "When a minion explodes a new
+ * minion is summoned where it stood, no more than once every 5 seconds", and a thrall explodes under Every One Bursts
+ * since #2540. Replaced as Press-Ganged replaces one: by the commander's summon skill's kind.
+ *
+ * WITHOUT PRESS-GANGED, so the replacement can only be Rekindled's. Three thralls: the first replaced where it stood;
+ * the second, inside the five seconds, not; the third, after them, replaced again. CONTROL: a commander without
+ * Rekindled, whose thrall explodes and is not replaced.
+ */
+bool FCataclysmRekindledThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat, ECataclysmStatBucket::Flat, 5.0f}});
+
+	// ONE THRALL'S DEATH FOR A COMMANDER, at a place, answering whether it exploded.
+	const auto ThrallDiesAt = [&](FScopedCaster& Commander, const FVector& Where) -> bool
+	{
+		FScopedCreature Thrall(World, Where);
+		if (!TestTrue(TEXT("set-up: an enemy is taken as a thrall"),
+					  UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor)))
+		{
+			return false;
+		}
+		const bool bWillExplode = ACataclysmMinion::ThrallExplosionDamage(Thrall.Actor, Commander.Actor) > 0.0f;
+		Thrall.SetHealthTo(0.0f);
+		return bWillExplode;
+	};
+
+	// THE FIRST: replaced by an imp where it stood, and Rekindled's clock spent.
+	const FVector Where(9 * M, 0, 0);
+	TestTrue(TEXT("set-up: the first thrall explodes"), ThrallDiesAt(Summoner, Where));
+	TestEqual(TEXT("the exploded thrall is replaced by one imp"), Skill->LivingMinionCount(), 1);
+	ACataclysmMinion* Replacement = Newest(Skill);
+	TestTrue(TEXT("standing where the thrall stood"),
+			 Replacement && FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestTrue(TEXT("of Summon Imp's kind"), Replacement && Replacement->TypeName == TEXT("Imp"));
+	TestFalse(TEXT("which spent Rekindled's clock"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// INSIDE THE FIVE SECONDS: not replaced.
+	TestTrue(TEXT("set-up: the second thrall explodes"), ThrallDiesAt(Summoner, FVector(9 * M, 4 * M, 0)));
+	TestEqual(TEXT("a second exploded thrall inside five seconds is not replaced"), Skill->LivingMinionCount(), 1);
+
+	// AFTER THEM: replaced again.
+	CataclysmTestWorld::RunClock(World, 5.1f);
+	const int32 Before = Skill->LivingMinionCount();
+	TestTrue(TEXT("set-up: the third thrall explodes"), ThrallDiesAt(Summoner, FVector(9 * M, 8 * M, 0)));
+	TestEqual(TEXT("after five seconds an exploded thrall is replaced again"), Skill->LivingMinionCount(),
+			  Before + 1);
+
+	// CONTROL: WITHOUT REKINDLED, the thrall explodes and nothing replaces it.
+	FScopedCaster Plain(World, FVector(0, 30 * M, 0));
+	UCataclysmSummonSkill* PlainSkill = GrantSummon(Plain);
+	if (!TestNotNull(TEXT("a plain summoner's skill"), PlainSkill))
+	{
+		return false;
+	}
+	GiveStats(Plain, {{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f}});
+	TestTrue(TEXT("CONTROL: set-up: its thrall explodes"), ThrallDiesAt(Plain, FVector(9 * M, 30 * M, 0)));
+	TestEqual(TEXT("CONTROL: without Rekindled it is not replaced"), PlainSkill->LivingMinionCount(), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2898,7 +2898,12 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// are read now; the commander was found above for the same reason.
 	const FVector Where = Character->GetActorLocation();
 	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
-	const bool bExplodes = AsMinion && AsMinion->ExplodesOnDeath();
+	// AND A THRALL THAT EXPLODES UNDER EVERY ONE BURSTS (#2540) HAS EXPLODED, for Rekindled. Issue #2570, ruled
+	// 2026-10-28: "When a minion explodes" reaches a thrall, as Press-Ganged's "one of your minions" already does.
+	// `ThrallExplosionDamage` is above nought exactly when `ThrallBurst` below explodes it.
+	const bool bExplodes = AsMinion
+		? AsMinion->ExplodesOnDeath()
+		: (Commander && ACataclysmMinion::ThrallExplosionDamage(Character, Commander) > 0.0f);
 	// AND THE SUMMON SKILL THAT MADE IT, for the re-summon below, read now for
 	// the same reason. Null for a deployable, a risen imp and a thrall.
 	UCataclysmSummonSkill* MadeBy = AsMinion ? AsMinion->SummonedBy.Get() : nullptr;
