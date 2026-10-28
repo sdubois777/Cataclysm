@@ -70,7 +70,7 @@ wave tests in `CataclysmDungeonGameModeTests.cpp`; the whole suite settles them.
 | Figure | Registered |
 |---|---|
 | The three tests alone | 3 / 3 |
-| Whole Unreal suite | `development`'s measured total + 3, 0 failed |
+| Whole Unreal suite | 4347 / 0: `development` at `c120310b7` (#2576) measured 4344, and three tests are added; the branch moved onto it as `fix/beat-rules-count-real-time-1` |
 | Python | of record, with JUnit, and ruff |
 | The "BEAT SECONDS" lines | quoted as printed |
 | P1, `BeatSeconds` set to `SecondsBetweenWaveChecks` in `Tick` | the rate test fails: two frames of 0.5 cost half |
