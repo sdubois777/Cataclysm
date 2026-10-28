@@ -2,6 +2,374 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — "50% less tick rate for your leech effects" now reads "Your leech pays out 50% more slowly", the owner's wording, with the alias that keeps a saved item on its row; the pay-out built on 2026-10-08 already matches the owner's ruling (#1618)
+
+**Affects:** the row `Negative_50_less_tick_rate_for_your_leech_effects`, now
+`Negative_Your_leech_pays_out_50_more_slowly`. The workbook and the two CSVs were changed by the enchantment session in
+`284fe0c3e`; this commit adds `FCataclysmEnchantmentRenames::Aliases()`'s pair and comment
+(`game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp`), the line in `tools/tests/enchantment_row_names.txt`,
+the test literal in `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`, one new test in a group of its
+own, `Cataclysm.EnchantmentAliases.`, at the end of `game/Source/Cataclysm/Tests/CataclysmEnchantmentRenameTests.cpp`,
+and comments only in `CataclysmLeech.h`, `CataclysmHealthDebt.h`, `CataclysmAbilitySystemComponent.h`,
+`CataclysmCharacterBase.cpp`, `CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py` and
+`tools/tests/test_generate_datatables.py`; one widening of
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, with its test, ruled by the coordinating session; and
+this file. No new source file, so the window needs no build-cache step.
+The DataTable assets `DT_EnchantmentsNegative` and `DT_EnchantmentEffects` are rebuilt in the window. **Closes
+[#1618](https://github.com/sdubois777/Cataclysm/issues/1618).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **NO BEHAVIOUR CHANGES.** The row's effect, `leech_payout_rate` more -50, is the one built on 2026-10-08 by
+  `abcd6ce7f` (the engine) and `583b66794` (the row). Only the sentence, the row's name, and comments change.
+- **WHAT A PLAYER NOTICES:** the item's text now reads "Your leech pays out 50% more slowly" where it read "50% less tick
+  rate for your leech effects", and an item saved before carrying the row loads under the new name and shows the new
+  text. The payment of leech under it still takes 6 seconds where it takes 3, for the same total.
+- **THE REWORD LANDS AFTER THE BUILD, NOT IN THE SAME CHANGE.** The owner's second condition was "It must land in the
+  same change as the build, not before it." The build merged on 2026-10-08 without the reword, and neither of its two
+  commits names #1618. The coordinating session ruled that it lands now (below). The harm that condition names, a row
+  "reworded to describe a slower payout, sitting in the data while the payout is still spread over the same three
+  seconds", cannot happen: the payout has been slower since 2026-10-08.
+- **A PYTHON CHECK REFUSED THE NEW SENTENCE, AND WHAT IT ACCEPTS IS WIDENED, BY RULING.** The enchantment session's
+  workbook commit `284fe0c3e` was made after running only the rename tests.
+  `tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_negative_value_is_on_words_that_take_something_away`
+  failed there, and was found failing by the second session's whole-suite run: "Your leech pays out 50% more slowly"
+  holds no word of its `TAKING` list ("less" was the old sentence's), so a -50 row on it read as a sign error. The
+  coordinating session ruled the widening under "CHANGES TO WHAT A CHECK ACCEPTS" below.
+- **THE ROW RENAMES, SO IT CARRIES AN ALIAS**, by the owner's rule of 2026-09-30 on
+  [#1799](https://github.com/sdubois777/Cataclysm/issues/1799), which the header of `enchantment_row_names.txt` states:
+  "A RENAMED ROW IS WRITTEN `old -> new`, and the same pair must be in `FCataclysmEnchantmentRenames::Aliases()`".
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's ruling on #1618, its comment of 2026-09-12
+([#1618's comment](https://github.com/sdubois777/Cataclysm/issues/1618#issuecomment-5647139715), author sdubois777),
+quoted from `gh`:
+
+> **Reading A is chosen** — the payout takes twice as long, six seconds for the
+> same total, rather than fewer payout events.
+>
+> **The reason is worth stating as a general rule, not just as this row's answer:
+> Reading B is unobservable, so building it would ship a row that reads like a
+> drawback and is not one. A negative enchantment that costs nothing is worse than
+> an unbuilt one, because it occupies a slot and the player believes they are
+> paying for something.**
+
+The proposed wording, in the same comment:
+
+> Your leech pays out 50% more slowly
+
+and its two conditions, in the same comment:
+
+> 1. **It belongs to whoever owns the enchantment data**, not to the session that
+>    found this. That data is in `docs/All_Things_Cataclysm.xlsx` and
+>    `game/Data/EnchantmentsNegative.csv`.
+> 2. **It must land in the same change as the build, not before it.** A row
+>    reworded to describe a slower payout, sitting in the data while the payout is
+>    still spread over the same three seconds, is a row that lies in the other
+>    direction. Correcting the words early makes the mismatch worse rather than
+>    better.
+
+The coordinating session, 2026-10-27/28, as the brief gave it:
+
+> Coordinator, #1618: your recommendation is accepted. The owner tied the wording to the build, so it lands now:
+> 1. Reword the row to the owner's sentence, verbatim: "Your leech pays out 50% more slowly".
+> 2. Add the rename's `old -> new` line to tools/tests/enchantment_row_names.txt and the same pair to
+>    FCataclysmEnchantmentRenames::Aliases(), per the owner's 2026-09-30 rule on #1799.
+> 3. Correct the HealthDebt.h comment and the two others that still say a fixed three seconds.
+> 4. Write the decisions entry: quote the 2026-09-12 ruling verbatim with its link, say the 2026-10-08 build matches it,
+>    record the genre research with its labels (the Last Epoch support article not re-fetched), and record your
+>    judgement that the cap-while-leeching row needs no change.
+> [the workbook grant, widened to three cells:] On fix/the-leech-row-says-it-pays-out-more-slowly from b595a7ba1, in
+> docs/All_Things_Cataclysm.xlsx, exactly three cells, in one script run, to the values in your dry run: "Enchantments"
+> F177 to "Your leech pays out 50% more slowly"; "Enchantment Effects" A557 to
+> "Negative_Your_leech_pays_out_50_more_slowly"; "Enchantment Effects" B557 to "Your leech pays out 50% more slowly". No
+> other cell changes.
+> Also accepted for the brief: the C++ test literal at CataclysmEnchantmentEffectTests.cpp 20712 takes the new name; the
+> three comments and test_generate_datatables.py 5054 quote the old wording as "was worded"; the window rebuilds both
+> DataTable assets in step 1 with the CHANGED check.
+> TESTS AND PROOFS as you listed: the rename tests; the alias-resolves test, if none exists; the new guard proof for
+> leech_payout_rate, with the prefix counted.
+
+### THE 2026-10-08 BUILD MATCHES THE RULING
+
+Reading A is "the payout takes twice as long, six seconds for the same total". `UCataclysmLeech::PayoutSecondsFor`
+(`CataclysmLeech.cpp` 26 to 44) returns `PayoutSeconds * NormalPayoutRate / FMath::Max(SlowestPayoutRate, Rate)`, with
+`Rate` the stat `leech_payout_rate` asked with no tags on a base of 100. A payment's time is read once, where it is made:
+`NoteHit` (`SecondsToPay`, used for each pool's payment) and `NoteRetaliation`. The row is `leech_payout_rate, more,
+-50`: a rate of 50, so 3 x 100 / 50 = 6 seconds. The total is unchanged, because the amount owed is `AmountFrom` and the
+time does not enter it. The merged test
+`Cataclysm.OneSiteStats.ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime`
+(`ProbeLeechPayoutRate`, `CataclysmStatExemptionTests.cpp`) asserts that the payment is the same size as the
+control's, that half of it has arrived by 3 seconds and it is still running, and that by 6 seconds the same total has
+arrived with nothing owed. Reading B, fewer payout events, is not what was built: the step stays a quarter second.
+
+### THE DATA, IN `284fe0c3e` (the enchantment session, under the coordinating session's grant)
+
+| Where | Before | After |
+| :-- | :-- | :-- |
+| Enchantments!F177 | 50% less tick rate for your leech effects | Your leech pays out 50% more slowly |
+| Enchantment Effects!A557 | `Negative_50_less_tick_rate_for_your_leech_effects` | `Negative_Your_leech_pays_out_50_more_slowly` |
+| Enchantment Effects!B557 | 50% less tick rate for your leech effects | Your leech pays out 50% more slowly |
+| `game/Data/EnchantmentsNegative.csv` 177 | `Negative_50_less_tick_rate_for_your_leech_effects,50% less tick rate for your leech effects,Generic,3.0,Stat.Recovery.Leech,True,` | `Negative_Your_leech_pays_out_50_more_slowly,Your leech pays out 50% more slowly,Generic,3.0,Stat.Recovery.Leech,True,` |
+| `game/Data/EnchantmentEffects.csv` 557 | `Negative_50_less_tick_rate_for_your_leech_effects#1,Negative_50_less_tick_rate_for_your_leech_effects,leech_payout_rate,more,-50.0,-50.0,...` | `Negative_Your_leech_pays_out_50_more_slowly#1,Negative_Your_leech_pays_out_50_more_slowly,leech_payout_rate,more,-50.0,-50.0,...` (the remaining cells unchanged) |
+
+One line changed in each CSV (`git show 284fe0c3e -- game/Data`), and the generator's `--check` passed there.
+
+### THE ALIAS, AND WHY
+
+A row's name is the first 48 characters of its sentence, and `FCataclysmRolledEnchantment` stores it on a saved item.
+The new sentence shares nothing with the old in those characters, so the row is renamed, and without an alias every
+saved item carrying it would find no row. The owner's rule of 2026-09-30 on #1799 is to build the alias, and the pin
+file and `Aliases()` must hold the same pairs. This commit:
+
+- `CataclysmEnchantmentRenames.cpp` 40 to 45: a dated comment in the shape of the 2026-10-24 one, citing #1618 and the
+  owner's condition; 122 and 123: `{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),
+  TEXT("Negative_Your_leech_pays_out_50_more_slowly")}`, last in the table.
+- `tools/tests/enchantment_row_names.txt`: line 24, `Negative_50_less_tick_rate_for_your_leech_effects`, is removed,
+  and line 201, after `Negative_Your_health_is_reduced_by_10`, is
+  `Negative_50_less_tick_rate_for_your_leech_effects -> Negative_Your_leech_pays_out_50_more_slowly`, because the file is
+  sorted by the current name. Checked by script: 575 names, none out of order.
+
+### THE RESEARCH, RE-FETCHED BY THE ENCHANTMENT SESSION 2026-10-28
+
+The second session fetched nothing; this is the enchantment session's table as its brief gave it.
+
+| Game | Page read | What it says |
+|---|---|---|
+| Last Epoch | `https://forum.lastepoch.com/t/how-life-leech-works/41549` (a community member, Llama8, not marked staff) | "you leech a % of the damage you do as health over 3 seconds"; "Leech rate shortens the duration that the leech instances take so you heal faster"; "Leech effect increases the amount you leech." |
+| Path of Exile | `https://poedb.tw/us/Leech` | "Leeched Life is recovered over time. Multiple Leeches can occur simultaneously, up to a maximum rate"; a slowing drawback in the same shape, "50% less maximum Total Life Recovery per Second from Leech" (Eternal Youth); "(10—20)% reduced total Recovery per second from Life Leech"; the opposite lever, "Life Leech from Hits with this Weapon is instant" |
+
+**NOT RE-FETCHED:** Last Epoch's official support article (support.lastepoch.com answers the fetching tool with 403),
+which a search summarised as leech "spread across 3 seconds". Not relied on.
+
+- **The research settles the shape**: a leech-rate modifier changes how long the same total takes to arrive, not how
+  often the game computes it. That is the owner's reading, Reading A.
+- **The floor of 10 (30 seconds at most) is the coordinating session's judgement of 2026-10-07**, recorded as
+  `SlowestPayoutRate` in `CataclysmLeech.h`. The research does not give it.
+- **The cap-while-leeching row needs no change: the enchantment session's judgement.** "While leeching, reduce your max
+  resistances by 1%-3% per second" (`Negative_While_leeching_reduce_your_max_resistances_by_1`) counts the seconds of
+  unbroken leeching, and "leeching" is any payment still owed. So with both rows worn, leeching lasts 6 seconds after the
+  last leeching hit instead of 3, and the cap is held down with half as many hits. The worst case (10 steps, -10 to -30)
+  and the time to reach it (10 seconds of unbroken leeching) are unchanged. Two drawbacks on one wearer compound, which
+  is not an exploit.
+
+### THE COMMENTS CORRECTED
+
+Each said the pay-out is a fixed three seconds, false since `abcd6ce7f`. Each now says 3 seconds is the default and that
+a payment takes longer under `leech_payout_rate`, citing #1618 and `PayoutSecondsFor`. Comments only.
+
+- `CataclysmHealthDebt.h` 135 to 140: the debt's own `DrainSeconds` and `DelaySeconds` are still not stats, so the
+  comment keeps "IT IS NOT A STAT AND NO NODE CHANGES IT" for them and now says `UCataclysmLeech::PayoutSeconds` is no
+  longer on that footing.
+- `CataclysmCharacterBase.cpp` 125 to 132 (`RegenerationStep`): "across the next three seconds" now says three by
+  default and longer under the stat.
+- `CataclysmAbilitySystemComponent.h` 290 to 303 (`GetLeechPayments`): "its own 3-second payout" and "stops carrying
+  anything within three seconds" now say the time its last payment was made with, three seconds by default and six under
+  the row.
+- `CataclysmLeech.h` 25 to 30 (`FCataclysmLeechPayment`): the design's sentence is quoted as it stands, and a sentence
+  after it says the 3 seconds are the default.
+
+**All three the coordinating session offered stated a fixed three seconds as fact, so all three were corrected.** The
+fourth file, `CataclysmHealthDebt.h`, was named by the ruling.
+
+And the old sentence, now quoted as the row's former wording ("was worded ... until #1618"):
+`CataclysmEnchantmentEffectTests.cpp` 20703 and 20704; `CataclysmStatExemptionTests.cpp` 7205 and 7206 and 12871 and
+12872; `tools/tests/test_generate_datatables.py` 5054 to 5059 (the docstring rewrapped); and two the brief did not name, found by searching the
+tree for "less tick rate": `CataclysmLeech.h` 102 to 105 (`PayoutRateStat`) and `tools/generate_datatables.py` 8608 to
+8611 (`ENGINE_SUPPLIED_BASES`). The test literal at `CataclysmEnchantmentEffectTests.cpp` 20713 is the new name.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The new Unreal test was needed, because no test asked the compiled table about every alias.** The two tests in
+  `CataclysmEnchantmentRenameTests.cpp` check the mechanism on the "critical strikes" pair alone.
+  `test_every_enchantment_alias_points_at_a_current_row.py` checks that every target is a current row, that no target
+  is an old name and that no old name is a current row, but by reading the C++ text; and nothing loaded a save carrying
+  the leech row's old name. Not taken: relying on the Python check, which cannot see a table the compiler reads
+  differently from the regular expression.
+- **The test sits at the end of `CataclysmEnchantmentRenameTests.cpp`, reusing that file's `Carrying` helper**, with a
+  table loader of its own in a namespace of its own, the shape of `CataclysmEnchantmentRollTests.cpp`'s. Not taken: a
+  new file, which would need a build-cache step.
+- **The table loader is not a template.** It loads only enchantment rows, so it names `FCataclysmEnchantmentRow`
+  directly. Not taken: copying the template, which would be a second template of the same name in another namespace
+  for no gain.
+- **The two comments the brief did not name were corrected in the same way**, since they quoted the same old sentence
+  as the row's current wording. Not taken: leaving them, which would leave two places stating a sentence no row has.
+- **The made-up words that must be refused are "Your leech pays out over 6 seconds"**: they mean the same slower
+  pay-out but hold neither "more slowly" nor any `TAKING` word, so they show the widening reads the words and not the
+  stat alone. Not taken: a sentence saying the opposite ("faster"), which `TAKING` already refuses for another
+  reason and so would not isolate the new clause.
+
+### TESTS
+
+One new Unreal test,
+`Cataclysm.EnchantmentAliases.AHelmSavedUnderTheLeechRowsOldNameLoadsAsItsNewRowAndEveryOldNameMeansACurrentRow`, in
+`CataclysmEnchantmentRenameTests.cpp`. No world, no actors and no clock. Its assertions, in order; each set-up stops
+the test when it fails:
+
+1. set-up: `EnchantmentsPositive.csv` can be read;
+2. set-up: `EnchantmentsNegative.csv` can be read;
+3. set-up: the leech row's current name is a row of `EnchantmentsNegative.csv`;
+4. set-up: its old name is not;
+5. set-up: a character record whose head carries `Positive_Critical_strikes_restore_2_4_of_your_maximum_H` and the old
+   leech name, and whose chest carries the same benefit and the new leech name, writes out (`ToJson`);
+6. set-up: the written text holds the old name, so the round trip starts from it;
+7. set-up: the record reads back (`FromJson`, the one door every record comes in by);
+8. set-up: two worn items;
+9. set-up: one enchantment on the old helm;
+10. set-up: one enchantment on the control's helm;
+11. **control, read first:** the helm already on the new name comes back on the new name;
+12. the old leech name loads as its current row, `Negative_Your_leech_pays_out_50_more_slowly`;
+13. the benefit beside it, a current name, is left as it was;
+14. set-up: `Aliases()` holds pairs;
+15. every pair's target is a row of the table of its kind (`Positive_` or `Negative_`), the failing names printed;
+16. no old name is still a row of either table;
+17. no target is itself an old name, so one step reaches a row.
+
+Seventeen assertions when every set-up holds. The prefix `Cataclysm.EnchantmentAliases.` selects this test and no other:
+counted by a script over every quoted `Cataclysm.` name in `game/Source/` (4,507 names), which found 1 for it and, as its
+control, 4 for `Cataclysm.OneSiteStats.` and 7 for `Cataclysm.SaveStorage.`.
+
+The changed literal: `Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWearerTheStatTheGameAsksFor` wears the row
+by its new name; its set-up "the leech row's name is a row of EnchantmentsNegative.csv" now reads the new name, and it
+asserts nothing else new.
+
+In Python, for the pair, nothing new: `test_a_reword_must_not_rename_a_row.py` (the pin against the tables, and the
+pin's renames against `Aliases()`) and `test_every_enchantment_alias_points_at_a_current_row.py` cover it.
+
+For the widening, one new test in `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only`, on made-up rows in the shape of
+`test_longer_excuses_a_negative_value_on_one_stat_only`. Three assertions, in order:
+
+1. "Your leech pays out 50% more slowly" on `leech_payout_rate` takes something away (accepted);
+2. the same words on `life_leech` do not (refused: the widening reaches one stat);
+3. "Your leech pays out over 6 seconds" on `leech_payout_rate` does not (refused: the words must say "more
+   slowly" or a `TAKING` word).
+
+The real-table check, `test_a_negative_value_is_on_words_that_take_something_away`, now passes on the real row.
+
+### NOT TESTED
+
+A real saved file on disk from before the rename (the test writes its record in memory, as the existing rename test
+does). The item's hover text showing the new sentence, which is read from the row the name finds. A save loaded in a
+packaged build, which reads the rebuilt DataTable assets rather than the CSVs. The cap-while-leeching row worn with this
+one.
+
+### GUARD PROOFS PROPOSED
+
+| Proof | File | Old text | New text | Predicted to fail |
+|---|---|---|---|---|
+| LR-P1, Python, RUN (below) | `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` | the two lines `{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),` and ` TEXT("Negative_Your_leech_pays_out_50_more_slowly")},` | nothing | `tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table`, and no other test in that file |
+| LR-G1, C++, registered, NOT RUN | `game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp` | `return PayoutSeconds * NormalPayoutRate / FMath::Max(SlowestPayoutRate, Rate);` | `return PayoutSeconds + 0.0f * Rate;` | prefix `Cataclysm.OneSiteStats.` (4 tests): 1 test, 3 assertions, below |
+
+**LR-G1's prediction.** `leech_payout_rate` never had a guard proof. With the break every payment takes
+`PayoutSeconds`, 3 seconds, whatever the stat. In `ProbeLeechPayoutRate` both characters are owed 10% of a hit of 1200,
+a payment of 120, paid a quarter second at a time (10 a step over 3 seconds; health starts at 5,000 of 10,000, so no
+pool fills):
+
+| Assertion | With the break it reads | Fails |
+|---|---|---|
+| set-up: each character is owed one payment of leech | 1 and 1 | no |
+| the payment made under the stat is the same size as the control's | 120 and 120 | no |
+| set-up: the control is paid something in the first step | 10 | no |
+| a payment made under a more of -50 pays half as much in the first step | 10 against 5 | **yes** |
+| control: after 3 seconds nothing is owed | 0 | no |
+| under the stat half the control's total has arrived by 3 seconds | 120 against 60 | **yes** |
+| and the payment is still running | 0 payments against 1 | **yes** |
+| and by 6 seconds the same total as the control was paid in 3 | 120 against 120 | no |
+| with nothing owed after it | 0 | no |
+| control: three more seconds pay the control nothing further | 0 | no |
+
+The other three tests of the prefix (the energy shield, the heavy strike's half circle and the stagger that roots)
+mention no leech in their bodies and read no pay-out time; each passes. Outside the prefix, and so not run by the proof,
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` calls the same probe and would fail the same three.
+
+Each anchor was counted exactly once by `read_text` in its file. LR-G1 leaves the braces (33 and 33) balanced and
+removes one pair of parentheses from each side (85 and 85 to 84 and 84). **The break is `return PayoutSeconds + 0.0f *
+Rate;`, ruled by the coordinating session on 2026-10-28**, so that `Rate` is still read and no unused-variable warning
+can stop the build; it was first proposed as `return PayoutSeconds;`. Adding nought times the rate leaves every payment
+3 seconds long, so the prediction above is unchanged. The prefix was counted by the script above: 4 tests for
+`Cataclysm.OneSiteStats.`, the same 4 without the dot.
+
+**LR-P1 was run on 2026-10-28**, with `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree
+outside the repository (`REPO_ROOT` printed as the copy), with `python -m pytest
+tools/tests/test_a_reword_must_not_rename_a_row.py`. The pair check does read the C++ file as text
+(`generate_datatables.enchantment_aliases`), so removing the pair is the right break:
+
+```
+anchor count 1
+named_failures ('tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table',)
+summary PROVED: 1 failed, 4 passed in 0.80s | restored: 5 passed in 0.74s
+proved True
+```
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+**The coordinating session's ruling, 2026-10-28, verbatim:**
+
+> Coordinator, #1618: (b). Add SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"} with r"\bmore\s+slowly\b", in the shape
+> of EXPIRES_FASTER_WHEN_NEGATIVE. Reason: it accepts only what a smaller payout rate means, on that one stat.
+> "slowly" in TAKING would let any negative row on any stat pass on that word.
+> Add the made-up-row test: accepted on leech_payout_rate, refused on another stat, refused without the words. Add the
+> prove_guard proof in a copy. Record it under "CHANGES TO WHAT A CHECK ACCEPTS" as my ruling.
+> Also accepted: registering LR-G1's break as `return PayoutSeconds + 0.0f * Rate;`, to keep Rate read; the extra
+> comment corrections; the new alias test.
+
+**What it widens.** `takes_something_away` in `tools/tests/test_enchantment_effects_match_the_row_text.py` now also
+accepts a negative value on `leech_payout_rate`, and on no other stat, when the words say "more slowly"
+(`SLOWER_WHEN_NEGATIVE` and `MORE_SLOWLY`, beside `EXPIRES_FASTER_WHEN_NEGATIVE`, with a fourth clause in the shape of
+the `EXPIRES_FASTER` one). It is the fourth widening of that kind in the file. Everything it refused before, it still
+refuses, other than that one stat beside those words.
+
+**The option not taken: "slowly" in `TAKING`.** `TAKING` is read for every stat, so a negative row on any stat would
+pass on that word, the coordinating session's reason, including a stat on which a negative value does not mean
+slower. The per-stat set accepts only what a smaller pay-out rate means.
+
+**The proof, run on 2026-10-28** with `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree
+outside the repository (`REPO_ROOT` printed as the copy). Break: `SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"}` to
+`SLOWER_WHEN_NEGATIVE = set()`, the anchor counted once; command `python -m pytest
+tools/tests/test_enchantment_effects_match_the_row_text.py`. As expected, the real-table check and the new test's
+accepted case failed:
+
+```
+anchor count 1
+named_failures
+   tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_negative_value_is_on_words_that_take_something_away
+   tools/tests/test_enchantment_effects_match_the_row_text.py::test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only
+summary PROVED: 2 failed, 40 passed in 0.88s | restored: 42 passed in 0.78s
+proved True
+```
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- An item with this drawback reads "Your leech pays out 50% more slowly".
+- An item saved before this change carrying the drawback loads with it, and shows the new text.
+
+### THE WINDOW'S RUN, t175w
+
+Window t175w, run 2026-10-28 under the lock as `enchant-t175w`, at `939f4b00b` on development `cf5ed893e` (moved from
+`a32fc120d` on `b595a7ba1` as `fix/the-leech-row-says-it-pays-out-more-slowly-1`; the workbook blob, the zero-context
+patch ids of every other file and the hash of this file's changed lines matched for all three commits). Free memory
+immediately before the lock, at 11:22:42, was 11,392 MB, against the floor of 10 GiB (10,240 MB). Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "40 actions, 37 files compiled" (three headers' comments changed) |
+| The DataTable assets | exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsNegative.uasset` and `datatable_asset_sources.json` changed; committed as `7f039f679` |
+| The three tests, each alone | the new alias test, `Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWearerTheStatTheGameAsksFor` and `Cataclysm.OneSiteStats.ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime`: 1 of 1 each |
+| The whole Unreal suite | "4341 tests performed, 4341 succeeded, 0 failed"; 4341 declared, gap 0 |
+| Memory | `tests=4948 peak_used_virtual_mb=8096 final_used_virtual_mb=7779` |
+| Python of record | "7012 passed, 8 skipped"; JUnit 7020 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
+| LR-G1, the pay-out ignores `leech_payout_rate` (prefix `Cataclysm.OneSiteStats.`, 4 tests) | PROVED: the one predicted test failed, 3 of 3 assertions as registered; 4 of 4 passed restored |
+
+What LR-G1's broken half read: the first step under a `more` of -50 paid 10.0 where 5.0 was required; by 3 seconds
+120.0 had arrived where 60.0 was required; and no payment was still running where 1 was required. So
+`leech_payout_rate` is what makes the row's pay-out take 6 seconds, and this is the guard proof the stat lacked since
+2026-10-08.
+
+---
+
 ## 2026-10-28 — The Phasewalker floor test holds for every direction its phase can draw (#2556)
 
 **Affects:** `APhasewalkerStandingOnTheFloorPhasesItsWholeDistance` and its helpers in

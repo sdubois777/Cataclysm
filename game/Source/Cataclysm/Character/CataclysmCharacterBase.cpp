@@ -123,9 +123,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 									  SecondsSinceLastDamage());
 
 	// LEECH ARRIVES ON THE SAME TIMER, AND IS NOT REGENERATION. Issue #895. The
-	// design pays a hit's leech out across the next three seconds rather than at
-	// once, and this is the only per-character step that already runs often
-	// enough to do it smoothly. It is a separate call rather than another job
+	// design pays a hit's leech out over time rather than at once, across the
+	// next three seconds by default and longer under `leech_payout_rate`, which
+	// `UCataclysmLeech::PayoutSecondsFor` reads where a payment is made (#1618).
+	// This is the only per-character step that already runs often enough to do
+	// it smoothly. It is a separate call rather than another job
 	// inside ApplyStep because the two obey different rules: an energy shield
 	// waits three seconds after damage before it regenerates, and leech must not
 	// wait, or it would stop exactly when it is meant to work.

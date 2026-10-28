@@ -37,6 +37,12 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 	// DoTs on them deal 20%-40% more damage", the owner's words being "Pretty sure this
 	// was originally meant to be while the enemy is moving your dots on them deal
 	// 20-40% MORE damage." The same roll now means 20-40 more on each tick the target moves.
+	//
+	// AND ONE ON 2026-10-28, the owner's reword of 2026-09-12 (#1618): "50% less tick
+	// rate for your leech effects" became "Your leech pays out 50% more slowly", the
+	// owner's proposed wording, which they said "must land in the same change as the
+	// build, not before it". Leech has no ticks; the row's -50 has meant a pay-out of
+	// 6 seconds where it was 3 since the build of 2026-10-08, and the words now say so.
 	static const TMap<FName, FName> Table = {
 		{TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_10_se"),
 		 TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec")},
@@ -113,6 +119,8 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Negative_Bleeding_on_you_lasts_50_100_longer")},
 		{TEXT("Positive_While_moving_your_DoTs_deal_20_40_increased_d"),
 		 TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea")},
+		{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),
+		 TEXT("Negative_Your_leech_pays_out_50_more_slowly")},
 	};
 	return Table;
 }

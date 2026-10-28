@@ -20700,7 +20700,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFourOneSiteRowsTest,
  * wearer with the item taken off, so nothing the wearer's class gives is read.
  *
  * "Your energy shield takes 30%-50% increased damage": `energy_shield_damage_taken` is 50 higher.
- * "50% less tick rate for your leech effects": `leech_payout_rate` applied to 100 gives half of what it gave.
+ * "Your leech pays out 50% more slowly" (was worded "50% less tick rate for your leech effects" until #1618):
+ * `leech_payout_rate` applied to 100 gives half of what it gave.
  * "Your heavy attack hits all enemies in a 180 degree arc in front of you": `strike_arc_at_least_degrees`
  * is 180 higher asked with a heavy attack's slot tag and NO higher asked with a basic attack's.
  * "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds": `stagger_root_seconds` is 1.5 higher.
@@ -20709,7 +20710,7 @@ bool FCataclysmFourOneSiteRowsTest::RunTest(const FString&)
 {
 	using namespace CataclysmSmallHalvesTest;
 	const TCHAR* const ShieldRow = TEXT("Negative_Your_energy_shield_takes_30_50_increased_damag");
-	const TCHAR* const LeechRow = TEXT("Negative_50_less_tick_rate_for_your_leech_effects");
+	const TCHAR* const LeechRow = TEXT("Negative_Your_leech_pays_out_50_more_slowly");
 	const TCHAR* const ArcRow = TEXT("Positive_Your_heavy_attack_hits_all_enemies_in_a_180_degr");
 	const TCHAR* const RootRow = TEXT("Positive_Enemies_you_stagger_are_also_briefly_rooted_for");
 	// THE NAMES WORN ARE LOOKED UP IN THE TABLES FIRST, so a name that is not a row fails here and says so.

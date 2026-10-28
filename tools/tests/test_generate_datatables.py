@@ -5051,10 +5051,12 @@ class TestEnchantmentEffects:
         assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
     def test_a_more_row_on_the_leech_payout_rate_stands_on_the_engines_base(self):
-        """Ruled 2026-10-07: "50% less tick rate for your leech effects" is a
-        `more` row of -50 on `leech_payout_rate`. No class line, attribute or
-        flat row supplies that stat; its base of 100 is the engine's, listed in
-        `ENGINE_SUPPLIED_BASES`, and that entry is what lets the row through.
+        """Ruled 2026-10-07: the row that was worded "50% less tick rate for
+        your leech effects" until #1618, and reads "Your leech pays out 50%
+        more slowly" now, is a `more` row of -50 on `leech_payout_rate`. No
+        class line, attribute or flat row supplies that stat; its base of 100
+        is the engine's, listed in `ENGINE_SUPPLIED_BASES`, and that entry is
+        what lets the row through.
         The same row on a stat that list does not hold is refused, which is
         the control."""
         slower = {"Name": "X#1", "Enchantment": "X", "Stat": "leech_payout_rate",

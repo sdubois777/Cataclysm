@@ -25,7 +25,9 @@ enum class ECataclysmLeechPool : uint8
  * ONE OF THESE PER HIT, NOT ONE PER CHARACTER, because the design says so:
  * "Leech from several hits runs at the same time. Each hit starts its own
  * 3-second payout. A character hitting continuously therefore reaches a steady
- * state of roughly three hits' worth of leech in flight."
+ * state of roughly three hits' worth of leech in flight." The 3 seconds are
+ * the default: a payment takes longer under `leech_payout_rate`, which
+ * `UCataclysmLeech::PayoutSecondsFor` reads where it is made (#1618).
  */
 USTRUCT()
 struct CATACLYSM_API FCataclysmLeechPayment
@@ -97,10 +99,10 @@ public:
 	static constexpr float PayoutSeconds = 3.0f;
 
 	/**
-	 * `leech_payout_rate`: how fast a payment of leech arrives, as a percent of normal. Ruled 2026-10-07 for "50%
-	 * less tick rate for your leech effects". Leech has no ticks, so the sentence is read as the pay-out taking
-	 * longer: the same total, over `PayoutSeconds` times 100 and divided by this rate. A `more` of -50 is a rate of
-	 * 50 and a pay-out of 6 seconds.
+	 * `leech_payout_rate`: how fast a payment of leech arrives, as a percent of normal. Ruled 2026-10-07 for the row
+	 * then worded "50% less tick rate for your leech effects", which reads "Your leech pays out 50% more slowly" since
+	 * #1618. Leech has no ticks, so the sentence was read as the pay-out taking longer: the same total, over
+	 * `PayoutSeconds` times 100 and divided by this rate. A `more` of -50 is a rate of 50 and a pay-out of 6 seconds.
 	 *
 	 * NO GAMEPLAY ATTRIBUTE. Asked with no tags by `PayoutSecondsFor` when a payment is made, and based at
 	 * `NormalPayoutRate` by `UCataclysmPlayerClassStats::EngineSuppliedBases`. A payment already running keeps the
