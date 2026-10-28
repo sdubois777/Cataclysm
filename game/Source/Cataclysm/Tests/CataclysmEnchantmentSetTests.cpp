@@ -558,13 +558,14 @@ CATACLYSM_TEST(FCataclysmSetRealBrutesHeartTest,
 				  Row->ConditionValue, 5.0f);
 
 		// AND IT REQUIRES NO TAG, WHICH IS THE OWNER'S RULING WRITTEN AS A TEST
-		// RATHER THAN AS A COMMENT. The enchantment row carries
-		// `Scope.MeleeOnly`, nothing in the game honours it, and the ruling was
-		// that any attack type earns the bonus inside the distance. If somebody
+		// RATHER THAN AS A COMMENT. The enchantment row carried
+		// `Scope.MeleeOnly` until #1620 removed the scope labels, nothing in the
+		// game honoured it, and the ruling was that any attack type earns the
+		// bonus inside the distance. If somebody
 		// fills this in later, this line is what says the ruling changed --
 		// instead of the change being noticed in play, where a melee reach of at
 		// most 3.3 metres against a 5 metre threshold would make the condition
-		// nearly always true. Issue #1620 carries the scope tags in general.
+		// nearly always true. Issue #1620 removed the scope tags in general.
 		TestTrue(TEXT("and requires no tag of the skill in hand"),
 				 Row->RequiredTags.IsEmpty());
 	}

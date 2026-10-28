@@ -10678,8 +10678,8 @@ def refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
 #: 2026-10-16 with the second stack, which built its press: a left click on
 #: an enemy places or moves the basic attack's gadget (S15), in
 #: `ACataclysmPlayerController::PressOnAnEnemy`. Its sentence carries
-#: `Type.Deployable, Slot.Basic, Scope.BasicOnly`; the row requires
-#: `Slot.Basic` alone, for the reason above.
+#: `Type.Deployable, Slot.Basic` (and `Scope.BasicOnly` until #1620 removed
+#: the scope labels); the row requires `Slot.Basic` alone, for the reason above.
 SKILL_SLOT_IS_A_GADGET_STAT = "skill_slot_is_a_gadget"
 SKILL_SLOT_IS_A_GADGET_SLOT_TAGS = frozenset({
     "Slot.Heavy", "Slot.Special", "Slot.Support", "Slot.Ultimate",

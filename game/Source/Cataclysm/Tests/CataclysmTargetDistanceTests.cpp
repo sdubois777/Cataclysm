@@ -377,8 +377,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetDistanceSpellTest,
  * A SPELL earns the bonus, which is the project owner's ruling of 2026-09-12
  * written as a test.
  *
- * Both enchantment rows carry a `Scope.MeleeOnly` tag. Nothing in the game reads
- * it, and the owner ruled that the DISTANCE is the constraint: any attack type
+ * Both enchantment rows carried a `Scope.MeleeOnly` tag until #1620 removed the
+ * scope labels. Nothing in the game read it, and the owner ruled that the DISTANCE is the constraint: any attack type
  * earns the bonus when the target is within 5 metres, so a ranged or spell build
  * has to close the distance rather than being shut out. That is why each set was
  * given a spell damage row beside its attack damage one.
