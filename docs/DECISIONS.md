@@ -346,9 +346,27 @@ proved True
 - An item with this drawback reads "Your leech pays out 50% more slowly".
 - An item saved before this change carrying the drawback loads with it, and shows the new text.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t175w
 
-Not run. The enchantment session records its window here.
+Window t175w, run 2026-10-28 under the lock as `enchant-t175w`, at `939f4b00b` on development `cf5ed893e` (moved from
+`a32fc120d` on `b595a7ba1` as `fix/the-leech-row-says-it-pays-out-more-slowly-1`; the workbook blob, the zero-context
+patch ids of every other file and the hash of this file's changed lines matched for all three commits). Free memory
+immediately before the lock, at 11:22:42, was 11,392 MB, against the floor of 10 GiB (10,240 MB). Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "40 actions, 37 files compiled" (three headers' comments changed) |
+| The DataTable assets | exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsNegative.uasset` and `datatable_asset_sources.json` changed; committed as `7f039f679` |
+| The three tests, each alone | the new alias test, `Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWearerTheStatTheGameAsksFor` and `Cataclysm.OneSiteStats.ALeechPaymentMadeUnderTheRowPaysHalfAsFastAndTheSameTotalInTwiceTheTime`: 1 of 1 each |
+| The whole Unreal suite | "4341 tests performed, 4341 succeeded, 0 failed"; 4341 declared, gap 0 |
+| Memory | `tests=4948 peak_used_virtual_mb=8096 final_used_virtual_mb=7779` |
+| Python of record | "7012 passed, 8 skipped"; JUnit 7020 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
+| LR-G1, the pay-out ignores `leech_payout_rate` (prefix `Cataclysm.OneSiteStats.`, 4 tests) | PROVED: the one predicted test failed, 3 of 3 assertions as registered; 4 of 4 passed restored |
+
+What LR-G1's broken half read: the first step under a `more` of -50 paid 10.0 where 5.0 was required; by 3 seconds
+120.0 had arrived where 60.0 was required; and no payment was still running where 1 was required. So
+`leech_payout_rate` is what makes the row's pay-out take 6 seconds, and this is the guard proof the stat lacked since
+2026-10-08.
 
 ---
 
