@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — No row carries a scope label: 48 Scope.* tags removed, and a test refuses one (#1620)
+
+**Affects:** 48 cells of `docs/All_Things_Cataclysm.xlsx` (the "Enchantments" sheet's two tag columns, D and I, and
+the "Weapon Skills" sheet's Tags column, F38, F44 and F50) and the 48 lines they generate in
+`game/Data/EnchantmentsPositive.csv` (34), `game/Data/EnchantmentsNegative.csv` (11) and `game/Data/WeaponSkills.csv`
+(3); a new test, `tools/tests/test_no_row_carries_a_scope_label.py`; one pinned literal in
+`tools/tests/test_generate_datatables.py`; three comments that would have become false; this file. No game code. The
+three DataTable assets are rebuilt in the window. **Closes [#1620](https://github.com/sdubois777/Cataclysm/issues/1620).**
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** Every one of the 48 tags was descriptive. An enchantment's `Tags` column is read only
+  for `Item.Slot.*` (`UCataclysmDropRoll::EnchantmentSuitsSlot`), no `RequiredTags` cell names a scope tag, and the one
+  scope tag the game reads, `Scope.Global`, is read as a requirement meaning "everything", which no row uses.
+- **EVERY RESTRICTION A SENTENCE STATES IS ALREADY ON ITS EFFECT ROWS.** Read for all 45 scope-tagged enchantments at
+  `118e1b6ae`: BossOnly by `target_is_boss`, `opponent_is_boss`, `target_is_not_boss` or
+  `seconds_after_striking_a_boss`; WhileMoving and WhileStationary by `while_moving`, `while_stationary` or
+  `stationary_for_seconds` (with `Slot.*` or `Type.*` where the sentence names a skill); FirstHit by
+  `target_not_yet_struck_by_you`, `target_not_yet_crit_by_you` or the action event `first_hit_dealt`; BasicOnly by
+  `Slot.Basic` or `seconds_after_basic_attack`; Global rows unscoped. The two MeleeOnly set bonuses (Brute's Heart and
+  Demon King's Regalia, two pieces) reach any blow within 5 metres, which the owner ruled on 2026-09-12: the distance
+  is the constraint.
+- **NINE TAGS CELLS ARE NOW EMPTY** (D13, D38, D106, D172, D205, D210, I2, I106, I169), because a scope tag was their
+  only tag. The drop roll reads an empty `Tags` as "may appear anywhere", which is what a scope-only row already meant.
+  Accepted by the coordinating session.
+- **ONE TEST PIN MOVED, WHICH I FIRST DESCRIBED WRONGLY.** I told the coordinating session that all three uses of a
+  scope tag in `test_generate_datatables.py` were made-up rows. The one at `TestASlotIsConvertedIntoATrap.LAYER_TWO`
+  (about line 9750) is not: `test_the_support_and_basic_names_are_the_shipped_sentences` compares it with the SHIPPED
+  row "Your basic attack is converted into a placeable trap...", so it failed in the trial. It now reads
+  `"Type.Trap, Slot.Basic"`. The coordinating session's correction and ruling are below. The two made-up rows (about
+  6684 and 9063) are unchanged.
+
+### THE RULINGS
+
+The ruling of 2026-09-14, relayed on #1620 by the master session under the owner's delegation of that date: "the
+remaining scope-tag occurrences are descriptive labels, not intent; remove them from the data, following the owner's
+precedent on the two Scope.MeleeOnly rows."
+
+The coordinating session, 2026-10-28, verbatim:
+
+> Coordinator, #1620 rulings. Carry out the 2026-09-14 ruling, in the smaller form:
+> 1. THE SKILLS: yes, the 3 Demonic Greatsword Scope.WhileStationary tags count as "the data". They are read by nothing
+>    (only Scope.Global is read, and no row uses it), so removing them changes no matching. Remove all 48: the 45
+>    enchantment cells and the 3 skill cells.
+> 2. KEEP THE EIGHT SCOPE.* REGISTRATIONS in the Tags sheet and CataclysmTags.ini. Do not delete them. Instead, add a
+>    tools/tests test that refuses any Scope.* tag other than Scope.Global in every tag column of every game/Data CSV,
+>    naming the row. Reason: the test gives the same guard. Deleting registered gameplay tags could break a binary asset
+>    that names one, which no grep can rule out, and it would also force the fixture edits in test_generate_datatables.py.
+> 3. Therefore NO FIXTURE EDIT. The three made-up rows in test_generate_datatables.py stay as they are, since they test
+>    the generator against the real tag list.
+> 4. COMMENTS: update the three Scope.MeleeOnly comments only where they would become false, to say the tag was carried
+>    until #1620.
+
+> Coordinator, #1620:
+> THE PIN: accepted. TestASlotIsConvertedIntoATrap.LAYER_TWO's literal at test_generate_datatables.py 9750 becomes
+> "Type.Trap, Slot.Basic". It pins the shipped row, so it must follow the ruled data change. Record it in the entry, with
+> my correction that it is not a made-up row. The two made-up rows (6684, 9063) stay.
+> THE NINE EMPTY TAGS CELLS: accepted. The drop roll reads an empty Tags as "may appear anywhere", which is what a
+> scope-only row meant already. State it in the entry.
+
+### THE 48 CELLS (commit `013a3a431`)
+
+One run of a script that removes each `Scope.*` tag from the three tag columns, keeping the order, and asserts 48 tags
+removed and every sheet's shape unchanged. The only other cells holding a scope tag are the eight registrations on the
+"Tags" sheet (A71 to A73, A110 to A114), which stay. Field by field against `118e1b6ae`, every one of the 48 changed rows
+differs only in `Tags`, which lost exactly one `Scope.*` tag; row counts are unchanged, the other 26 tables and
+`CataclysmTags.ini` are identical, and both generators' `--check` passed. A trial in a git-archive copy gave the same 48
+cells.
+
+| Scope tag | Cells |
+|---|---|
+| BossOnly | D5, D36, D37, D38, D172, D173, I96, I97, I106 |
+| WhileMoving | D101, D102, D233, D265, D267, I29, I137, I138, I158 |
+| WhileStationary | D103, D104, D105, D230, D268, D269, I139, I140, Weapon Skills F38, F44, F50 |
+| Global | D13, D16, D86, D205, D210, D372, I169 |
+| FirstHit | D82, D106, D107, D193, D197, D270 |
+| BasicOnly | D228, D229, D314, I2 |
+| MeleeOnly | D352, D358 |
+
+### THE TEST
+
+`tools/tests/test_no_row_carries_a_scope_label.py`, three tests:
+
+- `test_the_scan_reads_every_column_that_held_scope_labels`: the scope, first; the three Tags columns must be found.
+- `test_no_row_carries_a_scope_label`: every column whose name contains "tag", in every CSV under `game/Data`, refuses
+  a `Scope.*` tag other than `Scope.Global`, naming the table, column, row and tag. On the data before this change it
+  failed, naming the rows.
+- `test_a_scope_label_is_found_and_scope_global_is_not`: the helper on made-up cells.
+
+### THE PROOF
+
+`tools/prove_guard.py` `break_and_run`, in a git-archive copy outside the repository: the row
+`Negative_You_deal_20_35_less_damage_to_non_Boss_enemies` of `EnchantmentsNegative.csv` given back its
+`Scope.BossOnly` (anchor counted once). Printed: "PROVED: 1 failed, 2 passed in 0.16s | restored: 3 passed in 0.06s";
+named failure `tools/tests/test_no_row_carries_a_scope_label.py::test_no_row_carries_a_scope_label`.
+
+### THE COMMENTS
+
+Corrected where they would have become false: `CataclysmEnchantmentSetTests.cpp` (the set row "carried"
+`Scope.MeleeOnly` until #1620; #1620 "removed" the scope tags), `CataclysmTargetDistanceTests.cpp` (both rows "carried"
+it until #1620), and `tools/generate_datatables.py` (the basic-attack gadget's sentence carries `Type.Deployable,
+Slot.Basic`, and carried `Scope.BasicOnly` until #1620). Comments only.
+
+### NO GENRE SOURCE
+
+None. This is data hygiene.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- Nothing to see in play: no enchantment or skill behaves differently.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-28 — Rekindled replaces a thrall that exploded, with an imp where it stood (#2570)
 
 **Affects:** one statement in the death path of `CataclysmVitalAttributeSet.cpp`, and one new test in

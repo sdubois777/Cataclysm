@@ -9747,7 +9747,7 @@ class TestASlotIsConvertedIntoATrap(GadgetRowsOnAMadeUpSheet):
          "triggered, it fires your basic attack at the nearest enemy. Scales "
          "off trap damage. Shares your basic attack cooldown across all "
          "placed copies.",
-         "Type.Trap, Slot.Basic, Scope.BasicOnly", "Slot.Basic"))
+         "Type.Trap, Slot.Basic", "Slot.Basic"))
 
     def test_the_support_and_basic_rows_are_carried_through_under_their_sentences(
             self, tmp_path):
