@@ -2,6 +2,78 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The Phasewalker floor test holds for every direction its phase can draw (#2556)
+
+**Affects:** `APhasewalkerStandingOnTheFloorPhasesItsWholeDistance` and its helpers in
+`CataclysmDungeonModifierEffectsTests.cpp`; test code only, no new test. Fixes
+[#2556](https://github.com/sdubois777/Cataclysm/issues/2556).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w74 below passed every registered figure.**
+- **THE BLOCKER IS MEASURED: THE STAIRS.** The cell chosen before this change, (3, 4), is the diagonal neighbour of the
+  exit, (2, 3); its sweeps met the stairs and nothing else, in 2 of 36 directions.
+
+### Why the group alone and the suite differed
+
+`UCataclysmEnemyModifiers::PhaseStep` draws the phase's direction from a random stream seeded by the creature's
+`GetUniqueID`, the world's time and a salt. The test's world is new and its clock is not run, so only the unique id
+varies, and it is the creature's slot in the engine's object array: it depends on what the process made and collected
+before the test. So the group `Cataclysm.DungeonModifierEffects.` alone and the whole suite give the creature different
+directions. The floor does not vary: floor 2 of seed 1, the same cell every run, and no earlier test leaves an actor in
+it, since each test makes and destroys its own world.
+
+The phase is a swept move (`SafeMoveUpdatedComponent`), which stops at the first solid thing and steps onto nothing.
+The cell choice required floor on all eight sides and kept away from the entrance, not from the exit, where
+`GoToFloor` places the stairs: `BlockAll`, a cell wide, its lowest step 20 cm. A phase drawn toward stairs on a
+neighbouring cell stops short of 300 cm; #2556 measured 260.05.
+
+### What changed
+
+- `AFloorCellWith` takes an optional cell to keep more than one cell from; the Phasewalker test passes `Plan.Exit`.
+- Before the phase, the test sweeps the creature's own capsule, lifted 1 cm off the ground it stands on, 300 cm in 36
+  directions, and asserts that none meets anything, naming each one that does. **CONTROL:** the same sweep from a cell
+  with rock on its +X side, toward +X, must meet the wall, so the check can fail. Ruled: no C++ guard proof for a set-up
+  change; the control proves the check.
+- It prints what the cell chosen before this change meets in the same 36 directions, without asserting it, so the run
+  names the cause.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The test alone | 1 / 1 |
+| The group alone, `Cataclysm.DungeonModifierEffects.` | every test passes |
+| Whole Unreal suite | 4340 / 0: `development` at `b595a7ba1` (#2567, #1617) measured 4340, and no test is added; the branch moved onto it as `fix/phasewalker-test-clear-path-1` |
+| Python | of record, with JUnit, and ruff |
+| What the old cell meets | quoted as printed on the "PHASE PATH BEFORE #2556" line: predicted, the stairs |
+
+### Run
+
+**Window w74 (lock `dungeon-w74`, `fix/phasewalker-test-clear-path-1` at `13a68a3f2`, on `b595a7ba1`, 2026-10-28)
+passed.** The lock was taken at 10:34 on a free-memory reading immediately before it of 12,463 MB, with the other five
+conditions met: both of `development`'s runs at `b595a7ba1` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The runner stopped the window after the test alone unless the old cell's
+sweeps met only the stairs, as ruled; they did. The lock was released before anything was written here. The move onto
+`b595a7ba1` met only the top of this file (patch ids before and after `8aec66107299`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The group alone, `Cataclysm.DungeonModifierEffects.` | every test passes | `761 tests performed, 761 succeeded, 0 failed` |
+| Whole Unreal suite | 4340 / 0 | `4340 tests performed, 4340 succeeded, 0 failed`; declared 4340, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7797`, peak 8,104 |
+| Python (JUnit) | of record | 7019 tests, 0 failures, 0 errors, 8 skipped ("7011 passed, 8 skipped"); ruff `All checks passed!` |
+| What the old cell meets | predicted, the stairs | "PHASE PATH BEFORE #2556: cell (3, 4), now (4, 4), exit (2, 3); 2 of 36 directions met something: 220 degrees: CataclysmDungeonStairs_0 (Steps) at 267.7 cm; 230 degrees: CataclysmDungeonStairs_0 (Steps) at 267.7 cm" |
+
+In all three runs the new cell's sweeps printed "PHASE PATH: 0 of 36 directions met something within 300 cm", the
+control "toward the wall it met CataclysmDungeonFloor_0 (Walls) at 170.0 cm", and the phase "MOVES ON A FLOOR: the
+Phasewalker moved 300.0 cm". The sweeps' 267.7 cm and #2556's 260.05 differ in what is measured: the check is lifted
+1 cm and steps every 10 degrees, and the phase is drawn at whatever angle the creature's id gives.
+
+---
+
 ## 2026-10-27 — `Cataclysm.ShowResistances` prints the character's own resistance cap, and the game's 90% ceiling is pinned to the model (#1617)
 
 **Affects:** the console command `Cataclysm.ShowResistances` in

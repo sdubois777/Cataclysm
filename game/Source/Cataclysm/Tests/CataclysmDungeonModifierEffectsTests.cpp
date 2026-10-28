@@ -62132,16 +62132,20 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Mode;
 	}
 
-	/** The first floor cell, more than three cells from `Away` both ways, whose cells at `Offsets` are all floor. */
+	/**
+	 * The first floor cell, more than three cells from `Away` both ways, whose cells at `Offsets` are all floor. And,
+	 * when `NotNextTo` is given, more than one cell from it both ways, so that cell is not one of its eight neighbours.
+	 */
 	FIntPoint AFloorCellWith(const FCataclysmFloorPlan& Plan, const FIntPoint& Away, const TArray<FIntPoint>& Floor,
-							 const TArray<FIntPoint>& Rock = {})
+							 const TArray<FIntPoint>& Rock = {}, const FIntPoint& NotNextTo = FIntPoint(-1000, -1000))
 	{
 		for (int32 Y = 0; Y < Plan.Height; ++Y)
 		{
 			for (int32 X = 0; X < Plan.Width; ++X)
 			{
 				const FIntPoint Cell(X, Y);
-				bool bFits = Plan.IsFloor(Cell) && (FMath::Abs(X - Away.X) > 3 || FMath::Abs(Y - Away.Y) > 3);
+				bool bFits = Plan.IsFloor(Cell) && (FMath::Abs(X - Away.X) > 3 || FMath::Abs(Y - Away.Y) > 3)
+					&& (FMath::Abs(X - NotNextTo.X) > 1 || FMath::Abs(Y - NotNextTo.Y) > 1);
 				for (const FIntPoint& Offset : Floor)
 				{
 					bFits = bFits && Plan.IsFloor(Cell + Offset);
@@ -62183,6 +62187,31 @@ namespace CataclysmDungeonModifierEffectsTest
 		Imp->SetActorLocation(
 			FVector(At.X, At.Y, FloorHeightUnder(Mode, At) + Imp->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
 		return Imp;
+	}
+
+	/**
+	 * What a sweep of `Creature`'s own capsule, `DistanceCm` from `From` along `Direction` on the ground plane, meets
+	 * first: the actor, the component and how far along, or an empty string when it meets nothing. Issue #2556.
+	 *
+	 * LIFTED 1 CM, so the ground the capsule stands on at gap 0 is not what it meets. Anything lower than that is not
+	 * seen by this.
+	 */
+	FString WhatASweepMeets(const ACharacter* Creature, const FVector& From, const FVector& Direction, float DistanceCm)
+	{
+		const UCapsuleComponent* Capsule = Creature->GetCapsuleComponent();
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(PhasePathTest), /*bTraceComplex=*/false, Creature);
+		FCollisionResponseParams Response;
+		Capsule->InitSweepCollisionParams(Query, Response);
+		const FVector Start = From + FVector(0.0f, 0.0f, 1.0f);
+		FHitResult Hit;
+		if (!Creature->GetWorld()->SweepSingleByChannel(Hit, Start, Start + Direction.GetSafeNormal2D() * DistanceCm,
+														 FQuat::Identity, Capsule->GetCollisionObjectType(),
+														 Capsule->GetCollisionShape(), Query, Response))
+		{
+			return FString();
+		}
+		return FString::Printf(TEXT("%s (%s) at %.1f cm"), *GetNameSafe(Hit.GetActor()), *GetNameSafe(Hit.GetComponent()),
+							   Hit.Distance);
 	}
 }
 
@@ -62424,12 +62453,15 @@ bool FCataclysmPhasewalkerOnAFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	// FLOOR ON ALL EIGHT SIDES, so a step of three metres from the middle lands on floor whichever way it is drawn.
+	// FLOOR ON ALL EIGHT SIDES, so a step of three metres from the middle lands on floor whichever way it is drawn. AND
+	// NOT NEXT TO THE EXIT, whose stairs are a solid block a cell wide with a 20 cm lowest step that a swept move does
+	// not climb. Issue #2556: the direction is drawn from the creature's `GetUniqueID`, its slot in the engine's object
+	// array, so it differs with whatever the process made before this test; the test must hold for every direction.
 	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
 	const FIntPoint Cell = AFloorCellWith(Plan, Plan.Entrance,
 		{FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1), FIntPoint(1, 1), FIntPoint(1, -1),
-		 FIntPoint(-1, 1), FIntPoint(-1, -1)});
-	if (!TestTrue(TEXT("set-up: a floor cell with floor on all eight sides"), Cell.X >= 0))
+		 FIntPoint(-1, 1), FIntPoint(-1, -1)}, {}, Plan.Exit);
+	if (!TestTrue(TEXT("set-up: a floor cell with floor on all eight sides, not next to the exit"), Cell.X >= 0))
 	{
 		return false;
 	}
@@ -62439,6 +62471,61 @@ bool FCataclysmPhasewalkerOnAFloorTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("set-up: it stands touching the floor"), GapUnder(Mode, Creature), 0.0f, 0.1f);
+
+	// NOTHING WITHIN THREE METRES, IN ANY OF 36 DIRECTIONS, swept with the creature's own capsule. Issue #2556.
+	const float Reach = UCataclysmEnemyModifiers::PhasewalkerDistanceCm;
+	TArray<FString> Met;
+	for (int32 Degrees = 0; Degrees < 360; Degrees += 10)
+	{
+		const float Radians = FMath::DegreesToRadians(static_cast<float>(Degrees));
+		const FString What = WhatASweepMeets(Creature, Creature->GetActorLocation(),
+											 FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f), Reach);
+		if (!What.IsEmpty())
+		{
+			Met.Add(FString::Printf(TEXT("%d degrees: %s"), Degrees, *What));
+		}
+	}
+	AddInfo(FString::Printf(TEXT("PHASE PATH: %d of 36 directions met something within %.0f cm%s%s"), Met.Num(), Reach,
+							Met.IsEmpty() ? TEXT("") : TEXT(": "), *FString::Join(Met, TEXT("; "))));
+	if (!TestEqual(TEXT("set-up: no direction meets anything within three metres"), Met.Num(), 0))
+	{
+		return false;
+	}
+
+	// WHAT THE CELL CHOSEN BEFORE #2556 MEETS, printed and not asserted, so the run names what stopped the phase there.
+	const FIntPoint Before = AFloorCellWith(Plan, Plan.Entrance,
+		{FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1), FIntPoint(1, 1), FIntPoint(1, -1),
+		 FIntPoint(-1, 1), FIntPoint(-1, -1)});
+	TArray<FString> MetBefore;
+	const FVector BeforeCell = Mode->CurrentFloor->WorldOfCell(Before);
+	for (int32 Degrees = 0; Before != Cell && Degrees < 360; Degrees += 10)
+	{
+		const float Radians = FMath::DegreesToRadians(static_cast<float>(Degrees));
+		const FString What = WhatASweepMeets(Creature,
+			FVector(BeforeCell.X, BeforeCell.Y, Creature->GetActorLocation().Z),
+			FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f), Reach);
+		if (!What.IsEmpty())
+		{
+			MetBefore.Add(FString::Printf(TEXT("%d degrees: %s"), Degrees, *What));
+		}
+	}
+	AddInfo(FString::Printf(TEXT("PHASE PATH BEFORE #2556: cell (%d, %d), now (%d, %d), exit (%d, %d); %d of 36 directions met something%s%s"),
+							Before.X, Before.Y, Cell.X, Cell.Y, Plan.Exit.X, Plan.Exit.Y, MetBefore.Num(),
+							MetBefore.IsEmpty() ? TEXT("") : TEXT(": "), *FString::Join(MetBefore, TEXT("; "))));
+
+	// CONTROL: THE SAME SWEEP TOWARD A WALL MEETS IT, so the check above can fail.
+	const FIntPoint ByAWall = AFloorCellWith(Plan, Plan.Entrance, {}, {FIntPoint(1, 0)});
+	if (!TestTrue(TEXT("set-up: a floor cell with rock on its +X side"), ByAWall.X >= 0))
+	{
+		return false;
+	}
+	const FVector WallCell = Mode->CurrentFloor->WorldOfCell(ByAWall);
+	const FString AtTheWall = WhatASweepMeets(Creature,
+		FVector(WallCell.X, WallCell.Y, FloorHeightUnder(Mode, WallCell)
+			+ Creature->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), FVector(1.0f, 0.0f, 0.0f), Reach);
+	AddInfo(FString::Printf(TEXT("PHASE PATH CONTROL: toward the wall it met %s"),
+							AtTheWall.IsEmpty() ? TEXT("nothing") : *AtTheWall));
+	TestFalse(TEXT("CONTROL: a sweep toward a wall meets it"), AtTheWall.IsEmpty());
 
 	// CONTROL: WITHOUT THE MODIFIER IT DOES NOT PHASE, over the same sixteen steps.
 	const FVector Start = Creature->GetActorLocation();
