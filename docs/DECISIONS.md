@@ -2,6 +2,241 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — One name for the Feasting buff: its stack prints as "Feasting", as its description and its tag already say (#1725)
+
+**Affects:** the name `UCataclysmStacks::NameOf` prints for `ECataclysmStackKind::Feast`, and that kind's `UMETA`
+display name (`game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp` and `CataclysmStacks.h`); the `Buff_Feasting`
+row's description, changed by the enchantment session in `5f207186b`; four comments quoting that description
+(`CataclysmStacks.cpp`, `CataclysmAbilitySystemComponent.cpp`, `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmEnemyCommanderTests.cpp`); the expected names in the merged test
+`Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`; one new test in a group of its own,
+`Cataclysm.FeastingName.`, at the end of `game/Source/Cataclysm/Tests/CataclysmStacksTests.cpp`; and this file. No new
+source file, so the window needs no build-cache step. The DataTable asset `DT_StatusEffects` is rebuilt in the window.
+**Closes [#1725](https://github.com/sdubois777/Cataclysm/issues/1725).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **NO BEHAVIOUR CHANGES.** The buff's effect, its stacks, their cap of 5 and window of 5 seconds, and its tag
+  `Status.Buff.Feasting` are as built for #1720. Only two strings a player can read and comments change.
+- **WHAT A PLAYER NOTICES:** the console command `Cataclysm.ShowStacks` prints the fifth kind's line as `Feasting` where
+  it printed `Feast`, and the `Buff_Feasting` row's description reads `This enemy gains a stack of "Feasting" every time
+  it is hit`. The two log lines that print a kind's name (`UCataclysmAbilitySystemComponent::GrantStack`'s warning for
+  a cap of nothing and `SpendStack`'s line) print `Feasting` too.
+- **A MERGED TEST'S EXPECTED TEXT CHANGES, AS THE RULING REQUIRES.**
+  `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers` asserts every kind's printed name in one joined
+  line, ending "Feast". The ruling makes `NameOf` print "Feasting", so that line cannot hold under it; it now ends
+  "Feasting". Nothing else in that test moves. The brief listed `NameOf`'s readers and did not name this test; it was
+  found by searching for every caller of `NameOf`.
+- **THE DATATABLE ASSET-HASH TEST FAILS UNTIL THE WINDOW REBUILDS `DT_StatusEffects`**, because `5f207186b` changed
+  `game/Data/StatusEffects.csv` and the asset was not rebuilt. Expected, and the window's step.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner delegated the naming choice on 2026-09-13 with "Pick one". The session relaying it recorded the decision in
+[#1725's comment of 2026-09-13](https://github.com/sdubois777/Cataclysm/issues/1725#issuecomment-5654007447); that
+comment says it was written by a session relaying the owner, not by the owner. Its "Decision" section, quoted from `gh`:
+
+> ## Decision: one name, `Feasting`, everywhere a player can read it
+>
+> The project owner delegated this naming choice on 2026-09-13 with "Pick one". **Option 2 of the three in the body above.**
+>
+> ### What changes
+>
+> | Thing | From | To |
+> | :-- | :-- | :-- |
+> | the `Description` text of the `Buff_Feasting` row | `a stack of "Feast"` | `a stack of "Feasting"` |
+> | the name `UCataclysmStacks::NameOf` prints for that stack kind | `Feast` | `Feasting` |
+>
+> **Nothing else moves.** The `EffectName` column stays `Feasting`, so the gameplay tag stays `Status.Buff.Feasting`, so `game/Config/Tags/CataclysmTags.ini` and every C++ site asking for that tag are untouched. That is why this option and not option 3.
+>
+> The C++ enumeration member `ECataclysmStackKind::Feast` may stay as it is — it is an internal identifier no player reads, and renaming it buys nothing. **Only the printed name and the description text are player-facing.** If whoever does the work finds the enumeration name actively confusing beside a printed `Feasting`, renaming it is allowed but is not required by this decision.
+>
+> ### Why option 2 rather than keeping both names
+>
+> The argument for keeping both is real: a creature is *Feasting* and holds stacks of *Feast*, and Path of Exile separates a skill from its charge the same way. **But that precedent pairs a name with a longer name built from it — "Frenzy" and "Frenzy Charge" — not two different truncations of one word.** A player reading `Feasting` in a buff bar and `Feast` in a stack counter has to learn that they are one system, and learns nothing useful by doing so.
+>
+> Option 2 is also the cheapest of the three: the tag does not move, so the change is one sentence of text and one printed string.
+>
+> ### Where the work goes
+>
+> The row is **row 18 of the `Buffs` sheet** of `docs/All_Things_Cataclysm.xlsx`, the design workbook. `game/Data/StatusEffects.csv` is generated from it by `python tools/generate_datatables.py` and must never be edited by hand. Regenerating the DataTable asset needs the Unreal editor, so whoever takes this claims the editor lock first.
+>
+> Record the decision in `docs/DECISIONS.md` as part of the change.
+
+The coordinating session, 2026-10-28, as the brief gave it:
+
+> Coordinator, #1725: carry out the 2026-09-13 decision as written: one name, "Feasting", everywhere a player can read
+> it.
+> - The description's "Feast" changes to "Feasting" (one workbook cell, Buffs row 18 Description, after your dry run
+>   confirms the coordinates).
+> - NameOf returns "Feasting".
+> - The UMETA DisplayName is also "Feasting", which the decision allows.
+> - The enum member ECataclysmStackKind::Feast stays.
+> - The four quoting comments take the new word.
+> - The Berserker node "Feast" and "Carrion Feast" are NOT touched.
+> Approved:
+> - the window with the DT_StatusEffects rebuild;
+> - one NameOf test, with its prefix counted;
+> - the C++ proof (the string broken back to "Feast");
+> - the entry quoting #1725's 2026-09-13 comment.
+
+### THE DATA, IN `5f207186b` (the enchantment session, under the coordinating session's grant)
+
+The dry run found the cell at "Buffs" A17: the sheet has no header row, so the issue's "row 18" is CSV line 18 and
+workbook row 17. The second session did not open the workbook; its row below is as the brief gave it, and the
+"Before" is the old CSV sentence with the cell's `Feasting: ` prefix.
+
+| Where | Before | After |
+| :-- | :-- | :-- |
+| Buffs!A17 | `Feasting: This enemy gains a stack of "Feast" every time it is hit, ...` | `Feasting: This enemy gains a stack of "Feasting" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A stack lasts 5 seconds.` |
+| `game/Data/StatusEffects.csv` 18 | `Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A stack lasts 5 seconds.",0.0,0.0,4.0,0.0,0.0,0.0,0.0,,` | `Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feasting"" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A stack lasts 5 seconds.",0.0,0.0,4.0,0.0,0.0,0.0,0.0,,` |
+
+One line changed in the CSV (`git show 5f207186b -- game/Data`), and the generator's `--check` passed there.
+
+### WHERE EACH RULING IS IN THE CODE
+
+- **`NameOf` returns "Feasting"**: `CataclysmStacks.cpp` 140, `case ECataclysmStackKind::Feast: return
+  TEXT("Feasting");`.
+- **The `UMETA` display name is "Feasting"**: `CataclysmStacks.h` 121, `Feast UMETA(DisplayName = "Feasting"),`.
+- **The enumeration member stays `Feast`**: unchanged, and `tools/tests/test_feasting_numbers_match_the_design.py`
+  reads `case ECataclysmStackKind::Feast:` to find the cap and the window.
+- **The four quoting comments take the new word**, each now quoting the row's sentence as it stands, `This enemy gains a
+  stack of "Feasting" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A
+  stack lasts 5 seconds.` (or the part of it the comment quotes): `CataclysmStacks.cpp` 279;
+  `CataclysmAbilitySystemComponent.cpp` 7775; `CataclysmEnchantmentEffectTests.cpp` 28946;
+  `CataclysmEnemyCommanderTests.cpp` 1007 to 1009 (rewrapped at the comment's 80 columns).
+- **The tag does not move**: `Status.Buff.Feasting` in `game/Config/Tags/CataclysmTags.ini` 133, untouched.
+- **The Berserker node "Feast" and Carrion Feast are not touched**: `game/Data/PassiveNodes.csv` and
+  `docs/Berserker_Class_Tree_Final.json` keep the node's name, and no line naming Carrion Feast changed.
+
+**What a player reads now, and where.** `Cataclysm.ShowStacks` (`CataclysmPlayerCharacter.cpp` 3549) prints one line a
+kind, `%-18s %2d / %2d   lasts %.0fs`, so the fifth line reads `Feasting` followed by the count, the cap 5 and "lasts
+5s". `Feasting` is eight characters and fits the 18-wide column as `Feast` did. The description reads as in the table
+above. Nothing turns a printed name back into a kind, so no lookup can miss on the new word: `NameOf`'s readers are the
+console command, the two log lines in `CataclysmAbilitySystemComponent.cpp` (2601 and 2678), and the assertion labels
+of `CataclysmDeathTests.cpp` (986, 997, 1004) and `CataclysmPassiveTreeTests.cpp` (22714), which print it and compare
+nothing with it, and the two tests in `CataclysmStacksTests.cpp` that assert it.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **Prose that names the stack KIND as "Feast stacks" stays.** `CataclysmEnemyCharacter.cpp` 865 ("Feast stacks lapse
+  on their own"), `CataclysmEnemyCharacter.h` 1119 ("counts Feast stacks"), `CataclysmStacks.cpp` 284 ("A Feast count")
+  and the assertion label in `CataclysmEnemyCommanderTests.cpp` 1084 ("banks no Feast stacks") name the enumeration
+  member, which stays `Feast` by the ruling, and none quotes the description. Not taken: rewording them to "Feasting",
+  which would change a merged test's label for nothing a player reads.
+- **The two older entries of this file that quote the old description stay as written** (the 2026-09 entries at about
+  lines 4227 and 107968 before this entry was added, and the one that raised #1725). They record what the row said
+  then. Not taken: correcting a dated record after the fact.
+- **The merged test's comment that said `NameOf` has one caller and no other test asserts the names** is corrected in
+  the same hunk as its expected line: it now says the new group asserts Feasting's name again. Not taken: leaving a
+  comment this change makes false.
+- **The new test's group is `Cataclysm.FeastingName.`**, the brief's example. Not taken: `Cataclysm.Stacks.`, where a
+  proof of the break would also fail the joined-names test and so could not show which of the two noticed.
+- **The display name is asserted**, because reading it is cheap: `StaticEnum<ECataclysmStackKind>()` and
+  `GetDisplayNameTextByValue`, as `CataclysmDungeonGameModeTests.cpp` reads its sub-types' display names. The test is
+  `EditorContext`, so the metadata is there.
+
+### NO GENRE SOURCE
+
+None is recorded. This is a naming choice delegated by the owner and decided in #1725's comment, whose own reasoning
+names Path of Exile's "Frenzy" and "Frenzy Charge"; no page was fetched for it then or now, and nothing about another
+game is stated here beyond that quotation.
+
+### WHAT WAS BUILT
+
+- `CataclysmStacks.cpp`: `NameOf`'s Feast case returns `TEXT("Feasting")`; the comment at 279 quotes "Feasting".
+- `CataclysmStacks.h`: the Feast kind's display name is "Feasting".
+- `CataclysmAbilitySystemComponent.cpp`, `CataclysmEnchantmentEffectTests.cpp`, `CataclysmEnemyCommanderTests.cpp`:
+  comments only.
+- `CataclysmStacksTests.cpp`: the include of `AbilitySystem/CataclysmSkillShape.h` (for `StatusTagFor`); the merged
+  test's expected names end "Feasting", and its comment; the new test, last in the file.
+
+### TESTS
+
+One new Unreal test, `Cataclysm.FeastingName.TheBuffAndItsStackAreBothCalledFeasting`, at the end of
+`CataclysmStacksTests.cpp`. No world, no actors and no clock. Its assertions, in order; each set-up stops the test when
+it fails:
+
+1. **control, read first:** `NameOf(Bloodlust)` is "Bloodlust";
+2. `NameOf(Feast)` is "Feasting";
+3. set-up: `UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"))` is a valid tag;
+4. and its name is `Status.Buff.Feasting`;
+5. set-up: `StaticEnum<ECataclysmStackKind>()` is not null;
+6. **control:** Bloodlust's display name is "Bloodlust";
+7. the Feast kind's display name is "Feasting".
+
+Seven assertions when every set-up holds. Every `TestEqual` compares two `FString`s; no `TestEqual` takes a float, so
+none needs a tolerance. The test raises no event, so no event depth applies. The prefix `Cataclysm.FeastingName.`
+selects this test and no other: counted by a script over every quoted `Cataclysm.` name in `game/Source/` (4,508
+names after the addition), which found 1 for it, 1 without the dot, and, as its control, 14 for `Cataclysm.Stacks.`.
+Before the addition it found 0 for the new prefix.
+
+The changed literal: `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`'s "every kind's name, in
+enum order" now expects "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand, Feasting". It asserts nothing else new.
+
+In Python, nothing new: `tools/tests/test_feasting_numbers_match_the_design.py` reads `case ECataclysmStackKind::Feast:`
+in `CapFor` and `WindowSecondsFor`, which did not change.
+
+### NOT TESTED
+
+The `Cataclysm.ShowStacks` console command's printed line, which no test runs (the new test asserts the string it
+prints). The description's text in any interface: no interface shows a status effect's description today. The two log
+lines.
+
+### GUARD PROOFS PROPOSED
+
+| Proof | File | Old text | New text | Predicted to fail |
+|---|---|---|---|---|
+| FN-G1, C++, registered, NOT RUN | `game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp` | `case ECataclysmStackKind::Feast:			return TEXT("Feasting");` (the whole case line, three tabs before `return`) | `case ECataclysmStackKind::Feast:			return TEXT("Feast");` | prefix `Cataclysm.FeastingName.` (1 test): that test, 1 assertion |
+
+**The anchor is the whole case line**, because `TEXT("Feasting")` occurs twice in the file (the second is
+`StatusTagFor(TEXT("Feasting"))` at 290). The whole line counts exactly once by `read_text`. The break changes one
+string literal, so the braces and parentheses are as before and the file compiles alone.
+
+**FN-G1's prediction**, the new test's assertions with the break in:
+
+| Assertion | With the break it reads | Fails |
+|---|---|---|
+| control: Bloodlust still prints as Bloodlust | "Bloodlust" | no |
+| the Feasting buff's stack prints as Feasting | "Feast" | **yes** |
+| set-up: the name Feasting finds a declared tag | valid | no |
+| and it is Status.Buff.Feasting, unmoved | `Status.Buff.Feasting` | no |
+| set-up: the stack kind is reflected | not null | no |
+| control: Bloodlust's display name is still Bloodlust | "Bloodlust" | no |
+| the Feasting stack's display name is Feasting | "Feasting" (the `UMETA`, which the break leaves) | no |
+
+Outside the prefix, and so not run by the proof, `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`
+would fail its names line, which would read "..., Feast".
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- `Cataclysm.ShowStacks` prints the Feasting buff's stack as `Feasting`.
+
+### THE CHANGED EXPECTATION, ACCEPTED
+
+The coordinating session, 2026-10-28, verbatim: "The changed expectation in
+Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers, ending "Feasting" not "Feast", is accepted. It is
+the ruling's direct consequence, and reporting it first was the right thing to do. Record it in the entry." And:
+"Keeping "Feast stacks" in prose for the kind is accepted as your judgement."
+
+### THE WINDOW'S RUN, t180w
+
+Window t180w, run 2026-10-28 under the lock as `enchant-t180w`, at `5b01d518d` on development `9293573bf`. Free memory
+immediately before the lock, at 12:22:21, was 11,698 MB, against the floor of 10 GiB (10,240 MB). Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "40 actions, 37 files compiled" |
+| The DataTable assets | exactly `DT_StatusEffects.uasset` and `datatable_asset_sources.json` changed; committed as `fb9287122` |
+| The two tests, each alone | `Cataclysm.FeastingName.TheBuffAndItsStackAreBothCalledFeasting` and `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`: 1 of 1 each |
+| The whole Unreal suite | "4342 tests performed, 4342 succeeded, 0 failed"; 4342 declared, gap 0 |
+| Memory | `tests=4949 peak_used_virtual_mb=8042 final_used_virtual_mb=7731` |
+| Python of record | "7012 passed, 8 skipped"; JUnit 7020 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
+| FN-G1, the stack prints "Feast" again (prefix `Cataclysm.FeastingName.`, 1 test) | PROVED: the test failed, 1 of 1 assertion as registered, "'the Feasting buff's stack prints as Feasting' to be "Feasting", but it was "Feast""; 1 of 1 passed restored |
+
+---
+
 ## 2026-10-28 — "50% less tick rate for your leech effects" now reads "Your leech pays out 50% more slowly", the owner's wording, with the alias that keeps a saved item on its row; the pay-out built on 2026-10-08 already matches the owner's ruling (#1618)
 
 **Affects:** the row `Negative_50_less_tick_rate_for_your_leech_effects`, now

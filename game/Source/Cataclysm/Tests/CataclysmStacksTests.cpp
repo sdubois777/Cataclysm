@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -774,12 +775,14 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 	// THE NAMES ARE ASSERTED BY NOTHING ELSE IN THE PROJECT. `NameOf` has one
 	// caller, the `Cataclysm.ShowStacks` console command, and a console command
 	// has no test -- so a case dropped from that switch would return
-	// "(unknown)" in play and fail nowhere.
+	// "(unknown)" in play and fail nowhere. The one exception since issue
+	// #1725: `Cataclysm.FeastingName.` asserts the last kind's name again. It
+	// prints "Feasting", the buff's own name, while the member stays `Feast`.
 	TestEqual(TEXT("every kind's name, in enum order"),
 			  FString::Join(Names, TEXT(", ")),
 			  FString(TEXT(
 				  "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand, "
-				  "Feast")));
+				  "Feasting")));
 
 	// AND THE ARM THAT NO TEST REACHED, WHICH IS THE ONE A TABLE CHANGES. Both
 	// switches answer nothing for a kind they do not know and both say why in
@@ -1093,6 +1096,67 @@ bool FCataclysmOwnStacksScaleEachCopyTest::RunTest(const FString&)
 
 	TestEqual(TEXT("one copy at two stacks: 20% increased"), ArmourAtTwoStacks(1), 120.0f, 0.01f);
 	TestEqual(TEXT("two copies at two stacks: 40%, double one copy"), ArmourAtTwoStacks(2), 140.0f, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// One name for the Feasting buff. Issue #1725.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFeastingNameTest,
+	"Cataclysm.FeastingName.TheBuffAndItsStackAreBothCalledFeasting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFeastingNameTest::RunTest(const FString&)
+{
+	using Stacks = UCataclysmStacks;
+
+	// ONE NAME, "Feasting", EVERYWHERE A PLAYER CAN READ IT: the decision of
+	// 2026-09-13 on issue #1725. The buff's name reaches a player through its
+	// tag, `Status.Buff.Feasting`, and the stack's through `NameOf`, which the
+	// `Cataclysm.ShowStacks` console command prints. Until #1725 the second
+	// read "Feast". The enumeration member is still `ECataclysmStackKind::Feast`,
+	// which the decision allows: no player reads it.
+	//
+	// IN A GROUP OF ITS OWN, so a proof that breaks `NameOf` back to "Feast"
+	// runs this test alone. `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`
+	// asserts every kind's name too, in one joined line.
+
+	// CONTROL, READ FIRST: a kind the decision does not touch prints as it did.
+	TestEqual(TEXT("control: Bloodlust still prints as Bloodlust"),
+			  FString(Stacks::NameOf(ECataclysmStackKind::Bloodlust)),
+			  FString(TEXT("Bloodlust")));
+
+	TestEqual(TEXT("the Feasting buff's stack prints as Feasting"),
+			  FString(Stacks::NameOf(ECataclysmStackKind::Feast)),
+			  FString(TEXT("Feasting")));
+
+	// THE NAME IT SHARES: the buff's own tag, built from the same word by the
+	// one function that turns an effect name into a tag.
+	const FGameplayTag Buff = UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
+	if (!TestTrue(TEXT("set-up: the name Feasting finds a declared tag"), Buff.IsValid()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is Status.Buff.Feasting, unmoved"),
+			  Buff.ToString(), FString(TEXT("Status.Buff.Feasting")));
+
+	// AND WHAT THE EDITOR SHOWS FOR THE KIND, which the decision also allows to
+	// move. Read through reflection, as the dungeon sub-type tests read theirs.
+	const UEnum* Reflected = StaticEnum<ECataclysmStackKind>();
+	if (!TestNotNull(TEXT("set-up: the stack kind is reflected"), Reflected))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: Bloodlust's display name is still Bloodlust"),
+			  Reflected->GetDisplayNameTextByValue(
+				  static_cast<int64>(ECataclysmStackKind::Bloodlust)).ToString(),
+			  FString(TEXT("Bloodlust")));
+	TestEqual(TEXT("the Feasting stack's display name is Feasting"),
+			  Reflected->GetDisplayNameTextByValue(
+				  static_cast<int64>(ECataclysmStackKind::Feast)).ToString(),
+			  FString(TEXT("Feasting")));
 
 	return true;
 }
