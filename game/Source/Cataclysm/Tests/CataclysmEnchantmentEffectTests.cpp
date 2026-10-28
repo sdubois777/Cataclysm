@@ -28943,7 +28943,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffFeastingTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "This enemy gains a stack of "Feast" every time it is hit, up to 5 stacks, and for every stack its attack speed is
+ * "This enemy gains a stack of "Feasting" every time it is hit, up to 5 stacks, and for every stack its attack speed is
  * increased by 4%. A stack lasts 5 seconds." The enemy's form, as ruled. Drawn, the buff wears one row of its own:
  * `attack_speed` increased 4, `own_stacks` step 1 on `hit_taken`, at most 5, lasting 5 seconds. Read as
  * `IncreasesForStat` reads it with no skill in hand.

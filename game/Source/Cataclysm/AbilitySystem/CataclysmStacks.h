@@ -118,7 +118,7 @@ enum class ECataclysmStackKind : uint8
 	 * the buff part way through a fight starts at nothing rather than
 	 * inheriting a count from blows it took before.
 	 */
-	Feast				UMETA(DisplayName = "Feast"),
+	Feast				UMETA(DisplayName = "Feasting"),
 
 	/** How many kinds there are. Not a kind. */
 	Count				UMETA(Hidden)

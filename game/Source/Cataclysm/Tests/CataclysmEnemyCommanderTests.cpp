@@ -1004,9 +1004,9 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 /**
  * A feasting creature attacks faster the more it is hit, and walks no faster.
  *
- * THE ROW, in game/Data/StatusEffects.csv: "This enemy gains a stack of "Feast"
- * every time it is hit, up to 5 stacks, and for every stack its attack speed is
- * increased by 4%. A stack lasts 5 seconds."
+ * THE ROW, in game/Data/StatusEffects.csv: "This enemy gains a stack of
+ * "Feasting" every time it is hit, up to 5 stacks, and for every stack its
+ * attack speed is increased by 4%. A stack lasts 5 seconds."
  *
  * WHY THE WALK SPEED IS HALF OF WHAT THIS CHECKS. Commander and Cripple, above,
  * each name BOTH movement and attack speed and so share one multiplier. This row

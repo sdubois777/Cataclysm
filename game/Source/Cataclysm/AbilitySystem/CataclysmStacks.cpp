@@ -137,7 +137,7 @@ const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::Bloodlust:		return TEXT("Bloodlust");
 	case ECataclysmStackKind::Carnage:			return TEXT("Carnage");
 	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
-	case ECataclysmStackKind::Feast:			return TEXT("Feast");
+	case ECataclysmStackKind::Feast:			return TEXT("Feasting");
 	default:									return TEXT("(unknown)");
 	}
 }
@@ -276,7 +276,7 @@ bool UCataclysmStacks::NoteDamageTaken(
 
 	// AND A FEAST STACK FOR A CREATURE CARRYING THE FEASTING BUFF. The
 	// `Buff_Feasting` row of `game/Data/StatusEffects.csv`: "This enemy
-	// gains a stack of "Feast" every time it is hit".
+	// gains a stack of "Feasting" every time it is hit".
 	//
 	// GATED ON THE TAG RATHER THAN GRANTED TO EVERY CHARACTER, WHICH IS THE
 	// OPPOSITE OF BLOODLUST ABOVE. Bloodlust is granted to whoever was hit

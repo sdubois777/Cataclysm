@@ -7772,7 +7772,7 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 			Buffs.Add(Buff);
 		}
 
-		// "This enemy gains a stack of "Feast" every time it is hit, up to 5 stacks, and for every stack its attack speed
+		// "This enemy gains a stack of "Feasting" every time it is hit, up to 5 stacks, and for every stack its attack speed
 		// is increased by 4%. A stack lasts 5 seconds." THE DESCRIPTION IS THE ENEMY'S FORM, as ruled. As drawn, the
 		// holder gains a stack for each landed blow taken, 4 increased attack speed a stack, up to 5, and the stacks are
 		// held 5 seconds from the last one gained, as an own stack's window is.
