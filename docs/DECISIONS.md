@@ -213,9 +213,27 @@ would fail its names line, which would read "..., Feast".
 
 - `Cataclysm.ShowStacks` prints the Feasting buff's stack as `Feasting`.
 
-### THE WINDOW'S RUN
+### THE CHANGED EXPECTATION, ACCEPTED
 
-Not run. The enchantment session records its window here.
+The coordinating session, 2026-10-28, verbatim: "The changed expectation in
+Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers, ending "Feasting" not "Feast", is accepted. It is
+the ruling's direct consequence, and reporting it first was the right thing to do. Record it in the entry." And:
+"Keeping "Feast stacks" in prose for the kind is accepted as your judgement."
+
+### THE WINDOW'S RUN, t180w
+
+Window t180w, run 2026-10-28 under the lock as `enchant-t180w`, at `5b01d518d` on development `9293573bf`. Free memory
+immediately before the lock, at 12:22:21, was 11,698 MB, against the floor of 10 GiB (10,240 MB). Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "40 actions, 37 files compiled" |
+| The DataTable assets | exactly `DT_StatusEffects.uasset` and `datatable_asset_sources.json` changed; committed as `fb9287122` |
+| The two tests, each alone | `Cataclysm.FeastingName.TheBuffAndItsStackAreBothCalledFeasting` and `Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers`: 1 of 1 each |
+| The whole Unreal suite | "4342 tests performed, 4342 succeeded, 0 failed"; 4342 declared, gap 0 |
+| Memory | `tests=4949 peak_used_virtual_mb=8042 final_used_virtual_mb=7731` |
+| Python of record | "7012 passed, 8 skipped"; JUnit 7020 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
+| FN-G1, the stack prints "Feast" again (prefix `Cataclysm.FeastingName.`, 1 test) | PROVED: the test failed, 1 of 1 assertion as registered, "'the Feasting buff's stack prints as Feasting' to be "Feasting", but it was "Feast""; 1 of 1 passed restored |
 
 ---
 
