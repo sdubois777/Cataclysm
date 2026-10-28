@@ -18,7 +18,8 @@ Fixes [#2540](https://github.com/sdubois777/Cataclysm/issues/2540).
   Ritualist tree's "minion" means imps and thralls. The coordinating session ruled on 2026-10-28 that the keystone's
   "Every minion explodes when it dies" therefore reaches a thrall, and that Volatile's "+3% increased damage of the
   explosion a minion leaves per point" reaches its explosion.
-- **REKINDLED IS NOT CHANGED, and is a question put to the coordinating session:** see the last section.
+- **REKINDLED IS NOT CHANGED ON THIS BRANCH.** The coordinating session ruled that it should follow and filed it as
+  its own issue: see the last section.
 
 ### The ruling, 2026-10-28, under the owner's delegation
 
@@ -61,13 +62,13 @@ prints a line beginning "THRALL BURST".
 | Figure | Registered |
 |---|---|
 | The test alone | 1 / 1 |
-| Whole Unreal suite | 4342 / 0: `development` at `9293573bf` (#2569) measured 4341, and one test is added |
+| Whole Unreal suite | 4343 / 0: `development` at `e0351fdcd` (#2571) measured 4342, and one test is added; the branch moved onto it as `feat/a-thrall-bursts-1` |
 | Python | of record, with JUnit, and ruff |
 | The "THRALL BURST" lines | quoted as printed |
 | P1, `ThrallExplosionRadiusCm` set to 0 | the test fails: the near monster loses nothing |
 | P2, the flag check in `ThrallExplosionDamage` deleted | the test fails: the CONTROL's figure is not nought |
 
-### Rekindled: what it would do, brought back rather than built
+### Rekindled: what it would do, ruled and left for its own issue
 
 Rekindled reads "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds."
 The death path passes whether the death was an explosion to `UCataclysmSummonSkill::ReplaceLost`, and that is still
@@ -76,6 +77,10 @@ possession (`FirstHeldSummonSkill`), since no skill made the thrall, and `Summon
 skill's kind: an imp, for Summon Imp. The imp counts against that skill's shared cap and reserves its Fervour, and
 nothing is summoned when the cap is full, the reserve does not fit, or no such skill is held. Press-Ganged already
 replaces a dying thrall the same way, from the owner's first wording "a thrall that dies is replaced by an imp".
+
+The coordinating session ruled on 2026-10-28 that this settles it without the owner: an exploded thrall feeding
+Rekindled the same way is consistent with built behaviour and with "a minion". It is filed as its own issue, to follow
+this one.
 
 ### Run
 
