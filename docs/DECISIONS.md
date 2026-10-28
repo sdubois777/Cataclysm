@@ -10,10 +10,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
-- **THE BLOCKER IS A CANDIDATE READ FROM THE CODE, NOT MEASURED:** the stairs at the exit. The run prints what the old
-  cell's sweeps meet; if it names anything else, it comes back to the coordinating session before the cell choice is
-  changed further, as ruled.
+- **BUILT AND RUN: window w74 below passed every registered figure.**
+- **THE BLOCKER IS MEASURED: THE STAIRS.** The cell chosen before this change, (3, 4), is the diagonal neighbour of the
+  exit, (2, 3); its sweeps met the stairs and nothing else, in 2 of 36 directions.
 
 ### Why the group alone and the suite differed
 
@@ -51,7 +50,27 @@ neighbouring cell stops short of 300 cm; #2556 measured 260.05.
 
 ### Run
 
-Not run yet.
+**Window w74 (lock `dungeon-w74`, `fix/phasewalker-test-clear-path-1` at `13a68a3f2`, on `b595a7ba1`, 2026-10-28)
+passed.** The lock was taken at 10:34 on a free-memory reading immediately before it of 12,463 MB, with the other five
+conditions met: both of `development`'s runs at `b595a7ba1` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The runner stopped the window after the test alone unless the old cell's
+sweeps met only the stairs, as ruled; they did. The lock was released before anything was written here. The move onto
+`b595a7ba1` met only the top of this file (patch ids before and after `8aec66107299`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The group alone, `Cataclysm.DungeonModifierEffects.` | every test passes | `761 tests performed, 761 succeeded, 0 failed` |
+| Whole Unreal suite | 4340 / 0 | `4340 tests performed, 4340 succeeded, 0 failed`; declared 4340, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7797`, peak 8,104 |
+| Python (JUnit) | of record | 7019 tests, 0 failures, 0 errors, 8 skipped ("7011 passed, 8 skipped"); ruff `All checks passed!` |
+| What the old cell meets | predicted, the stairs | "PHASE PATH BEFORE #2556: cell (3, 4), now (4, 4), exit (2, 3); 2 of 36 directions met something: 220 degrees: CataclysmDungeonStairs_0 (Steps) at 267.7 cm; 230 degrees: CataclysmDungeonStairs_0 (Steps) at 267.7 cm" |
+
+In all three runs the new cell's sweeps printed "PHASE PATH: 0 of 36 directions met something within 300 cm", the
+control "toward the wall it met CataclysmDungeonFloor_0 (Walls) at 170.0 cm", and the phase "MOVES ON A FLOOR: the
+Phasewalker moved 300.0 cm". The sweeps' 267.7 cm and #2556's 260.05 differ in what is measured: the check is lifted
+1 cm and steps every 10 degrees, and the phase is drawn at whatever angle the creature's id gives.
 
 ---
 
