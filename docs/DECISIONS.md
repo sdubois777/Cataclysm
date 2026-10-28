@@ -49,7 +49,7 @@ not Rekindled, whose thrall explodes and is not replaced. Each thrall's explosio
 | Figure | Registered |
 |---|---|
 | The test alone | 1 / 1 |
-| Whole Unreal suite | 4344 / 0: `development` at `db73850a7` (#2572) measured 4343, and one test is added |
+| Whole Unreal suite | 4344 / 0: `development` at `24f5a1d1c` (#2573) measured 4343, and one test is added; the branch moved onto it as `feat/rekindled-thrall-1` |
 | Python | of record, with JUnit, and ruff |
 | P1, the death path's statement put back as it was | the test fails: the first thrall is not replaced |
 
