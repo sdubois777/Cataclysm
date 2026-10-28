@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — A thrall explodes under Every One Bursts: 3 m, three of its own blows, raised by Volatile (#2540)
+
+**Affects:** `CataclysmMinion.h` and `.cpp` (`ThrallExplosionDamage`, `ThrallBurst` and two constants),
+`CataclysmVitalAttributeSet.cpp` (one call in the death path), and one new test in `CataclysmCommandTests.cpp`.
+Fixes [#2540](https://github.com/sdubois777/Cataclysm/issues/2540).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w75 below passed every registered figure, and both proofs were PROVED.**
+- **THIS REPLACES A JUDGEMENT RECORDED BELOW.** The entry "2026-10-02 — A subjugated enemy takes its commander's
+  minion damage and minion health, as the owner ruled it should" says, under "A JUDGEMENT": "A thrall does not explode
+  under Every One Bursts or Volatile." That was a reading made under the owner's delegation without the owner's
+  decision recorded in "2026-09-16 — The ten Ritualist nodes that named an imp or a thrall say minion", by which the
+  Ritualist tree's "minion" means imps and thralls. The coordinating session ruled on 2026-10-28 that the keystone's
+  "Every minion explodes when it dies" therefore reaches a thrall, and that Volatile's "+3% increased damage of the
+  explosion a minion leaves per point" reaches its explosion.
+- **REKINDLED IS NOT CHANGED ON THIS BRANCH.** The coordinating session ruled that it should follow and filed it as
+  its own issue: see the last section.
+
+### The ruling, 2026-10-28, under the owner's delegation
+
+| Part | Ruled | Why |
+|---|---|---|
+| Radius | 3 m, not enlarged by area of effect; A Second Self's multiplier still applies to a thrall it chooses | Subjugate states no radius. Summon Imp's "explodes for damage in a 3 meter radius" is the only minion explosion radius a Ritualist skill states, and an imp's is not enlarged by area of effect (#2116) |
+| Damage | 300% of the thrall's own blow | the owner's figure, quoted below |
+| Its own blow | its attack damage at death times its commander's increased minion damage without a target | **a judgement**, approved by the coordinating session: the part of minion damage conditioned on the enemy struck cannot apply, since an explosion has no single target |
+| Volatile | its commander's `minion_explosion_damage` raises it, as it raises an imp's | the 2026-09-16 decision |
+
+The owner's figure, from "2026-09-17 — A minion's explosion is its own figure, and the share of its summoner's weapon
+is deleted":
+
+> **The owner's figure of 2026-09-17: 300 for every one of the five kinds, machines included.** An explosion is worth
+> three of that minion's own blows. It is a starting number and the column exists so a kind can differ later; every
+> kind states one so that the Ritualist keystone "Every minion explodes when it dies" stays true of all of them.
+
+A thrall has no row in `MinionTypes.csv`, so its 300 is `ACataclysmMinion::ThrallExplosionPercentOfOwnDamage`.
+
+### What the code does
+
+`UCataclysmVitalAttributeSet`'s death path calls `ACataclysmMinion::ThrallBurst` directly after Shared Ruin's
+`DeathBlast` and before `HandleDeath`, for the reason given there: the creature is removed inside `HandleDeath`. It
+does nothing for an `ACataclysmMinion`, which explodes through its own `HandleDeath`, nor for a creature that is not
+the commander's thrall, nor without the commander's `minion_explodes_on_death`. Otherwise every enemy within 3 m takes
+the figure, as area damage the thrall deals, with its own unscoped buffs, and not retaliated against (`DeathBlast`'s
+reason).
+
+### How it is checked
+
+`Cataclysm.MinionDeath.UnderEveryOneBurstsADyingThrallExplodesWithinThreeMetresForThreeOfItsBlows`: a thrall of 50
+attack damage dies with monsters 2 m and 4 m from it, its commander's area of effect doubled. **CONTROL:** without the
+flag the figure is nought and the near monster loses nothing. Flagged, the figure is 150, the near monster loses more
+than nothing and no more than 150 (its defences may take part, as Shared Ruin's thrall test says), and the far one
+loses nothing. With 30% increased `minion_explosion_damage`, Volatile at ten points, the figure is 195. Each death
+prints a line beginning "THRALL BURST".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The test alone | 1 / 1 |
+| Whole Unreal suite | 4343 / 0: `development` at `e0351fdcd` (#2571) measured 4342, and one test is added; the branch moved onto it as `feat/a-thrall-bursts-1` |
+| Python | of record, with JUnit, and ruff |
+| The "THRALL BURST" lines | quoted as printed |
+| P1, `ThrallExplosionRadiusCm` set to 0 | the test fails: the near monster loses nothing |
+| P2, the flag check in `ThrallExplosionDamage` deleted | the test fails: the CONTROL's figure is not nought |
+
+### Rekindled: what it would do, ruled and left for its own issue
+
+Rekindled reads "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds."
+The death path passes whether the death was an explosion to `UCataclysmSummonSkill::ReplaceLost`, and that is still
+false for a thrall. Were it true, `ReplaceLost` would take the commander's first held summon skill that is not a
+possession (`FirstHeldSummonSkill`), since no skill made the thrall, and `SummonReplacementAt` would summon that
+skill's kind: an imp, for Summon Imp. The imp counts against that skill's shared cap and reserves its Fervour, and
+nothing is summoned when the cap is full, the reserve does not fit, or no such skill is held. Press-Ganged already
+replaces a dying thrall the same way, from the owner's first wording "a thrall that dies is replaced by an imp".
+
+The coordinating session ruled on 2026-10-28 that this settles it without the owner: an exploded thrall feeding
+Rekindled the same way is consistent with built behaviour and with "a minion". It is filed as its own issue, to follow
+this one.
+
+### Run
+
+**Window w75 (lock `dungeon-w75`, `feat/a-thrall-bursts-1` at `573c2ac66`, on `e0351fdcd`, 2026-10-28) passed.**
+The lock was taken at 13:00 on a free-memory reading immediately before it of 11,383 MB, with the other five
+conditions met: both of `development`'s runs at `e0351fdcd` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`e0351fdcd` met only the top of this file (patch ids before and after `2acdade98923`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4343 / 0 | `4343 tests performed, 4343 succeeded, 0 failed`; declared 4343, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,090 |
+| Python (JUnit) | of record | 7020 tests, 0 failures, 0 errors, 8 skipped ("7012 passed, 8 skipped"); ruff `All checks passed!` |
+| The "THRALL BURST" lines | quoted as printed | "not flagged, Volatile 0%: worth 0.00; 2 m lost 0.00, 4 m lost 0.00"; "flagged, Volatile 0%: worth 150.00; 2 m lost 150.00, 4 m lost 0.00"; "flagged, Volatile 30%: worth 195.00; 2 m lost 195.00, 4 m lost 0.00" |
+| P1, `ThrallExplosionRadiusCm` set to 0 | the test fails: the near monster loses nothing | "1 tests performed, 0 succeeded, 1 failed: UnderEveryOneBurstsADyingThrallExplodesWithinThreeMetresForThreeOfItsBlows", printing "flagged, Volatile 0%: worth 150.00; 2 m lost 0.00"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the flag check deleted | the test fails: the CONTROL's figure is not nought | the same failure line, printing "not flagged, Volatile 0%: worth 150.00; 2 m lost 150.00"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+The monster 2 m away lost exactly the figure, so its defences took nothing from it; the bound in the test allowed
+for them.
+
+---
+
 ## 2026-10-28 — One name for the Feasting buff: its stack prints as "Feasting", as its description and its tag already say (#1725)
 
 **Affects:** the name `UCataclysmStacks::NameOf` prints for `ECataclysmStackKind::Feast`, and that kind's `UMETA`

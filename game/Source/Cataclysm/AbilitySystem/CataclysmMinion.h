@@ -884,6 +884,41 @@ public:
 	static int32 DeathBlast(AActor* Lost, const AActor* Commander);
 
 	/**
+	 * Every One Bursts for a thrall. Issue #2540, ruled 2026-10-28 by the coordinating session under the owner's
+	 * delegation: the owner's decision of 2026-09-16 makes the Ritualist tree's "minion" mean imps and thralls, so
+	 * "Every minion explodes when it dies" reaches a thrall. Subjugate states no radius, so it takes the 3 m Summon
+	 * Imp states, the only minion explosion radius a Ritualist skill states.
+	 */
+	static constexpr float ThrallExplosionRadiusCm = 300.0f;
+
+	/**
+	 * The owner's figure of 2026-09-17: "An explosion is worth three of that minion's own blows", 300 for every kind
+	 * `MinionTypes.csv` states. A thrall has no row there, so it is stated here.
+	 */
+	static constexpr float ThrallExplosionPercentOfOwnDamage = 300.0f;
+
+	/**
+	 * What a thrall's explosion is worth before the enemies' defences: 300% of its own blow, raised by its
+	 * commander's `minion_explosion_damage` (Volatile). Nought when `Lost` is no thrall of `Commander`'s, or when
+	 * the commander does not hold `minion_explodes_on_death`.
+	 *
+	 * ITS OWN BLOW IS A JUDGEMENT, approved 2026-10-28: its attack damage at death times its commander's increased
+	 * minion damage without a target. The part of minion damage conditioned on the enemy struck cannot apply, since an
+	 * explosion has no single target.
+	 */
+	static float ThrallExplosionDamage(const AActor* Lost, const AActor* Commander);
+
+	/**
+	 * `Lost`, a thrall of `Commander` that has just died, explodes: every enemy within `ThrallExplosionRadiusCm` takes
+	 * `ThrallExplosionDamage`. Answers how many it struck. Does nothing for an `ACataclysmMinion`, which explodes
+	 * through its own `HandleDeath`, and nothing without the commander's `minion_explodes_on_death`.
+	 *
+	 * AREA OF EFFECT DOES NOT ENLARGE IT, as it does not an imp's (#2116); A Second Self's multiplier does, for the
+	 * follower it chooses. CALLED BEFORE THE DEATH IS HANDLED, beside `DeathBlast` and for its reason.
+	 */
+	static int32 ThrallBurst(AActor* Lost, const AActor* Commander);
+
+	/**
 	 * Tyrant's Chains' six-piece bonus: "When a pet or minion dies, it explodes, dealing 50% of its maximum health
 	 * as Death damage to all nearby enemies. Additionally, a new, powerful Tyrant's Minion is summoned to fight for
 	 * you for a short duration". Owner's ruling #3 of 2026-10-17 and the coordinating session's rulings of
