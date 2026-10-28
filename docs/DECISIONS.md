@@ -10,7 +10,7 @@ one line in `Tick`, and 79 uses of `SecondsBetweenWaveChecks` replaced by `BeatS
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w77 below passed every registered figure, and both proofs were PROVED.**
 - **IT WAS WIDER THAN THE ISSUE SAID.** #1613 named two rules and said the fault did not bite at a playable frame
   rate. At `060470dfb` about fifty rules took every beat to be a quarter of a second, and setting the accumulator to
   zero drops the part of the last frame past the interval at every frame rate: at thirty frames a second a beat
@@ -78,7 +78,22 @@ wave tests in `CataclysmDungeonGameModeTests.cpp`; the whole suite settles them.
 
 ### Run
 
-Not run yet.
+**Window w77 (lock `dungeon-w77`, `fix/beat-rules-count-real-time-1` at `3f6b0afff`, on `c120310b7`, 2026-10-28)
+passed.** The lock was taken at 16:03 on a free-memory reading immediately before it of 11,399 MB, with the other five
+conditions met: both of `development`'s runs at `c120310b7` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`c120310b7` met only the top of this file (patch ids before and after `284df7f8c371`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The three tests alone | 3 / 3 | `3 tests performed, 3 succeeded, 0 failed` |
+| Whole Unreal suite | 4347 / 0 | `4347 tests performed, 4347 succeeded, 0 failed`; declared 4347, gap 0. The six multi-beat wave tests passed in it |
+| Memory | quoted | `final_used_virtual_mb=7777`, peak 8,086 |
+| Python (JUnit) | 7030 or more | 7030 tests, 0 failures, 0 errors, 8 skipped ("7022 passed, 8 skipped"); ruff `All checks passed!` |
+| The "BEAT SECONDS" lines | quoted as printed | "Mortal Decay over one second cost 5.100 at four frames a second and 5.100 at two; one second's rate is 5.100"; "a frame of one second cost 5.100 and a frame of three cost 5.100; one second's rate is 5.100"; "Death's Embrace cut 0.0 then 10.0 at four frames a second, 0.0 then 10.0 at two" |
+| P1, `BeatSeconds` set to `SecondsBetweenWaveChecks` | the rate test fails: two frames of 0.5 cost half | "1 tests performed, 0 succeeded, 1 failed: ABeatCountsItsOwnTimeSoMortalDecaySapsItsRateAtTwoFramesASecond", printing "5.100 at four frames a second and 2.550 at two"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the limit removed | the limit test fails: a frame of 3 s costs three seconds | "1 tests performed, 0 succeeded, 1 failed: ABeatCountsAtMostOneSecondSoALongFrameCostsOneSecondOfMortalDecay", printing "a frame of three cost 15.300"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
