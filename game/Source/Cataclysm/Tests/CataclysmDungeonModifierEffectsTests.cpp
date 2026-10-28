@@ -62671,4 +62671,154 @@ bool FCataclysmLeavingEndsMortalDecaySlowTest::RunTest(const FString& Parameters
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Leaving the dungeon forgets what The Nihil's Embrace was holding. Issue #1812, part 2: its walking baseline and its
+// reward's end, each measured by entering another floor carrying the row with no walking and no time passed.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeavingForgetsNihilWalkingTest,
+	"Cataclysm.DungeonModifierEffects.LeavingTheDungeonForgetsTheNihilsEmbracesWalking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three and a half stretches walked cost three points of War resistance; the player leaves and enters another floor
+ * carrying the row without walking, and a beat takes nothing. CONTROL: before leaving, the beat took three points.
+ */
+bool FCataclysmLeavingForgetsNihilWalkingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WALKED, as `ThePlayersOwnDeathGivesBackEveryPointTheNihilsEmbraceTook` walks.
+	Player.Walk(0.0f);
+	Player.Walk(Effects::NihilsEmbraceMetresPerResistancePercent * 3.5f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FString War = UCataclysmItemModifiers::ResistanceStatFor(TEXT("War")).ToString();
+	const FCataclysmStatModifier* Lost = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("CONTROL: walking cost some War resistance"), Lost)
+		|| !TestEqual(TEXT("CONTROL: three points of it"), Lost->Value, -3.0f, 0.001f))
+	{
+		return false;
+	}
+	// COPIED NOW: `Lost` points into the player's modifier list, which leaving empties.
+	const float LostBeforeLeaving = Lost->Value;
+
+	// OUT, AND INTO ANOTHER FLOOR CARRYING IT, WITH NO WALKING. Kept, the baseline would still count the stretches above.
+	LeaveTheDungeon(Mode);
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("set-up: the next floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Carried = DungeonRuleOn(Player.AbilitySystem, *War);
+	AddInfo(FString::Printf(TEXT("Nihil's Embrace walking: %.1f War resistance before leaving, %.1f after"),
+							LostBeforeLeaving, Carried ? Carried->Value : 0.0f));
+	TestNull(TEXT("after leaving the dungeon nothing walked before it costs resistance"), Carried);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeavingEndsNihilRewardTest,
+	"Cataclysm.DungeonModifierEffects.LeavingTheDungeonEndsTheNihilsEmbracesReward",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A boss's death grants the reward; the player leaves and enters another floor carrying the row, with no time passed,
+ * and a beat grants nothing. CONTROL: before leaving, the beat granted the reward's points.
+ */
+bool FCataclysmLeavingEndsNihilRewardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Player.Walk(0.0f);
+
+	// A BOSS'S DEATH, as `ThePlayersOwnDeathEndsTheNihilsEmbracesReward` makes one.
+	FActorSpawnParameters BossSpawn;
+	BossSpawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f), FRotator::ZeroRotator, BossSpawn);
+	if (!TestNotNull(TEXT("set-up: a boss spawned"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	if (!TestTrue(TEXT("set-up: it is a boss"), Boss->IsBoss())
+		|| !TestTrue(TEXT("set-up: the boss died"), UCataclysmSkillEffects::IsDead(Boss)))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FString War = UCataclysmItemModifiers::ResistanceStatFor(TEXT("War")).ToString();
+	const FCataclysmStatModifier* Reward = DungeonRuleOn(Player.AbilitySystem, *War);
+	if (!TestNotNull(TEXT("CONTROL: the boss's death granted the reward"), Reward)
+		|| !TestEqual(TEXT("CONTROL: worth the reward's points"), Reward->Value,
+					  Effects::NihilsEmbraceRewardResistancePercent, 0.001f))
+	{
+		return false;
+	}
+	// COPIED NOW: `Reward` points into the player's modifier list, which leaving empties.
+	const float RewardBeforeLeaving = Reward->Value;
+
+	// OUT, AND INTO ANOTHER FLOOR CARRYING IT, WITH NO TIME PASSED. Kept, the reward's end would still be ahead.
+	LeaveTheDungeon(Mode);
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("set-up: the next floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Carried = DungeonRuleOn(Player.AbilitySystem, *War);
+	AddInfo(FString::Printf(TEXT("Nihil's Embrace reward: %.1f War resistance before leaving, %.1f after"),
+							RewardBeforeLeaving, Carried ? Carried->Value : 0.0f));
+	TestNull(TEXT("after leaving the dungeon the reward is not carried into the next one"), Carried);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

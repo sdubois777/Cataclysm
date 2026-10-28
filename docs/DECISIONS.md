@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — Leaving the dungeon: The Nihil's Embrace's two lines measured, the last of the five (#1812, part 2)
+
+**Affects:** two new Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp`; no game code. Part 2 of
+[#1812](https://github.com/sdubois777/Cataclysm/issues/1812), which it closes if the window passes: part 1 (#2561)
+measured Wasting Sickness, Mortal Decay and Silence.
+
+### SAID FIRST
+
+- **THE "BEFORE LEAVING" READINGS PRINTED BY BOTH TESTS IN WINDOW W72 WERE WRONG: 0.0 IN EVERY RUN; CORRECTED
+  AFTER IT; window w73 below printed -3.0 and 10.0 before leaving, as registered.** Each test keeps the pointer
+  `DungeonRuleOn` returns, which points into the player's list of stat modifiers; leaving empties that list, and the
+  line that prints runs after leaving, so it reads memory the list no longer holds. The assertions are not affected: each
+  CONTROL read the value before leaving, and each check after leaving takes a new pointer. The "after" readings are
+  correct. Reading a pointer after the list it points into is emptied is undefined behaviour, so another run could
+  have crashed rather than printed.
+- **BUILT AND RUN: window w72 below passed every registered figure except the readings, and both proofs were PROVED.**
+
+### What was read
+
+The leaving branch of `ApplyFloorRulesToPlayer` sets The Nihil's Embrace's walking baseline to the distance walked so
+far and ends its reward. Since #1795 the player's own death resets both as well, and nothing else does on leaving. Both
+are read only in `StepNihilsEmbrace`, which runs only on a floor carrying the row, so a missing reset shows when the
+player enters another floor carrying it: walking done before leaving would still cost resistance, and a reward granted
+before leaving would still be held, its end still ahead of a clock no test beat moves.
+
+| Line | How it is measured |
+|---|---|
+| `MetresWalkedAtLastCleanse = Cataclysm->MetresWalkedTotal()` | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking`: three and a half stretches walked cost three points of War resistance (CONTROL); leave; enter another floor carrying the row without walking; a beat takes nothing |
+| `NihilsEmbraceRewardUntilSeconds = -1` | `LeavingTheDungeonEndsTheNihilsEmbracesReward`: a boss's death grants the reward's points on War resistance (CONTROL); leave; enter another floor carrying the row with no time passed; a beat grants nothing |
+
+Both copy #1795's tests' set-up (`Player.Walk`, a boss of `FirstBossRarityStep` killed by the player,
+`DungeonRuleOn(…, War resistance)`) and leave with part 1's `LeaveTheDungeon`. Each prints both readings on a line
+beginning "Nihil's Embrace".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4332 / 0: `development` at `543a908bb` (#2564) measured 4330, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-nihil-2` |
+| Memory | about 7,900 MB; reported if above 9,500 |
+| P4, the leaving reset of the walking baseline deleted | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` fails |
+| P5, the leaving reset of the reward's end deleted | `LeavingTheDungeonEndsTheNihilsEmbracesReward` fails |
+| The readings | quoted as printed on the "Nihil's Embrace" lines |
+
+Each proof names its test in full as the prefix (#2556). The reward's reset occurs twice in the file, at the player's
+death and on leaving; P5's break text takes the leaving line with the blank line and comment after it, which occurs
+once. The walking line on leaving occurs once.
+
+### Run
+
+**Window w72 (lock `dungeon-w72`, `test/leaving-the-dungeon-nihil-2` at `af498fc98`, on `543a908bb`, 2026-10-27)
+passed its suite and both proofs.** Free memory read below the 10,240 MB floor from 16:05 (between 9,475 and 10,199 MB,
+once a minute); the lock was taken at 16:18 on a reading immediately before it of 10,275 MB, with the other five
+conditions met: both of `development`'s runs at `543a908bb` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4332 / 0 | `4332 tests performed, 4332 succeeded, 0 failed`; declared 4332, gap 0 |
+| Memory | about 7,900; reported if above 9,500 | `final_used_virtual_mb=8025`, peak 8,346 |
+| The readings | quoted as printed | "Nihil's Embrace reward: 0.0 War resistance before leaving, 0.0 after"; "Nihil's Embrace walking: 0.0 War resistance before leaving, 0.0 after". **The "before" figures are wrong; see SAID FIRST** |
+| Python (JUnit) | | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+| P4, the leaving reset of the walking baseline deleted | `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonForgetsTheNihilsEmbracesWalking", printing "0.0 … before leaving, -3.0 after"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P5, the leaving reset of the reward's end deleted | `LeavingTheDungeonEndsTheNihilsEmbracesReward` fails | "1 tests performed, 0 succeeded, 1 failed: LeavingTheDungeonEndsTheNihilsEmbracesReward", printing "0.0 … before leaving, 10.0 after"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+The "after" figures with each break in, -3.0 and 10.0, are what a kept baseline and a kept reward would give. All five of
+#1812's lines are now measured.
+
+### The printed readings corrected
+
+Each test now copies its CONTROL's value into a local (`LostBeforeLeaving`, `RewardBeforeLeaving`) straight after the
+CONTROL's assertion, before `LeaveTheDungeon`, and prints the copy. No assertion changed. P4 and P5 stand from w72,
+ruled by the coordinating session: they break game code, and the correction changes only the printed line.
+
+Window w73, registered before it runs:
+
+| Figure | Registered |
+|---|---|
+| `LeavingTheDungeonForgetsTheNihilsEmbracesWalking` alone | 1 / 1; prints "-3.0 War resistance before leaving, 0.0 after" |
+| `LeavingTheDungeonEndsTheNihilsEmbracesReward` alone | 1 / 1; prints "10.0 War resistance before leaving, 0.0 after" |
+| Whole Unreal suite | 4337 / 0: `development` at `450afa681` (#2565) measured 4335, and two tests are added; the branch moved onto it as `test/leaving-the-dungeon-nihil-3` |
+| Python | of record, with JUnit |
+
+If either test alone does not print its value, the window stops there and nothing after it runs.
+
+**Window w73 (lock `dungeon-w73`, `test/leaving-the-dungeon-nihil-3` at `535978ec3`, on `450afa681`, 2026-10-27)
+passed every registered figure.** The lock was taken at 17:40 on a free-memory reading immediately before it of
+10,790 MB, with the other five conditions met: both of `development`'s runs at `450afa681` succeeded, none in progress
+or queued, the lock free, no build or editor process, no open pull request. The lock was released before anything was
+written here. The move onto `450afa681` met only the top of this file (patch ids before and after `cdc6f45c62be`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 6 actions, 3 files compiled` |
+| Walking test alone | 1 / 1; "-3.0 … before leaving, 0.0 after" | "1 tests performed, 1 succeeded, 0 failed"; "Nihil's Embrace walking: -3.0 War resistance before leaving, 0.0 after" |
+| Reward test alone | 1 / 1; "10.0 … before leaving, 0.0 after" | "1 tests performed, 1 succeeded, 0 failed"; "Nihil's Embrace reward: 10.0 War resistance before leaving, 0.0 after" |
+| Whole Unreal suite | 4337 / 0 | `4337 tests performed, 4337 succeeded, 0 failed`; declared 4337, gap 0; it printed the same two lines |
+| Memory | quoted; reported if above 9,500 | `final_used_virtual_mb=7774`, peak 8,092 |
+| Python (JUnit) | of record | 7018 tests, 0 failures, 0 errors, 8 skipped ("7010 passed, 8 skipped"); ruff `All checks passed!` |
+
+---
+
 ## 2026-10-27 — Chorus makes no repeat by a stunned, knocked-down or feared minion or thrall (#2563)
 
 **Affects:** `UCataclysmChorus::Repeat` in `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp` (one block in its
