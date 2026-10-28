@@ -15,7 +15,7 @@ Buff_Divine_Aegis,Buff,Divine Aegis,"Gain a divine shield when below 50% HP, red
 Buff_Commander,Buff,Commander,All nearby allies gain 20% increased movement speed and attack speed.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Buff_Chaotic_Barrier,Buff,Chaotic Barrier,Temporarily grants a random buff when attacked.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Buff_The_Ascended,Buff,The Ascended,"When you kill an enemy, your minions deal 10% more damage and have 10% increased attack speed for 5 seconds. (planned) As an enemy's buff: a powerful buff granted to all nearby enemies when this enemy is killed.",0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
-Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feast"" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A stack lasts 5 seconds.",0.0,0.0,4.0,0.0,0.0,0.0,0.0,,
+Buff_Feasting,Buff,Feasting,"This enemy gains a stack of ""Feasting"" every time it is hit, up to 5 stacks, and for every stack its attack speed is increased by 4%. A stack lasts 5 seconds.",0.0,0.0,4.0,0.0,0.0,0.0,0.0,,
 Debuff_Temporal_Debt,Debuff,Temporal Debt,(planned) A stacking debuff that freezes all your cooldowns for 5 seconds when it reaches 10 stacks.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
 Debuff_Withered_Touch,Debuff,Withered Touch,"Reduces the player's damage by 20%, and their maximum mana and maximum energy shield by 20%, for 5 seconds.",5.0,0.0,20.0,0.0,0.0,0.0,0.0,"max_mana, max_energy_shield",proportion
 Debuff_Haunting,Debuff,Haunting,(planned) A debuff applied by a spectral copy of an enemy that reduces all of a player's resistances.,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
