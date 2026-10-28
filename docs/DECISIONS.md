@@ -2,6 +2,264 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-27 — `Cataclysm.ShowResistances` prints the character's own resistance cap, and the game's 90% ceiling is pinned to the model (#1617)
+
+**Affects:** the console command `Cataclysm.ShowResistances` in
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (one local and its comment, the first line's two figures
+and each type's "a hit meets" figure); three new tests in a group of their own, `Cataclysm.ShowResistancesCap.`, at the
+end of `game/Source/Cataclysm/Tests/CataclysmConditionedResistanceTests.cpp`; one new test in
+`tools/tests/test_maximum_resistance.py`; this file. No new source file, so the window needs no build-cache step. No
+header, workbook, CSV or asset change. **Closes [#1617](https://github.com/sdubois777/Cataclysm/issues/1617).**
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN** when written. The second session that wrote the code had no Unreal build.
+- **THE MECHANISM WAS ALREADY BUILT, under [#1833](https://github.com/sdubois777/Cataclysm/issues/1833)**: the entry
+  "2026-09-26 — Kill counter A: ... a resistance cap rows can move, ..." below, commits `131332485` (kill counter A) and
+  `79422a13e` (kill counter B, whose lifetime kills lower the cap). `resistance_cap` is asked on the defender with 70 as
+  the base and held between 0 and 90 by `UCataclysmDamageCalculation::ResistanceCapOf`; a blow and the character sheet
+  meet that cap. This change makes two more things agree with it. It adds no mechanism.
+- **WHAT A PLAYER NOTICES:** only in the console command. A player wearing "You have +10 maximum resists" and holding 85
+  of a type now reads "The cap is 80, so 80 is what it takes to sit at it." and that type's "a hit meets 80.0", where the
+  command printed 70 and 70 before. A player whose cap a row lowers reads the lowered cap. With no row the command prints
+  what it printed before. No blow, sheet, row or number in play changes.
+- **THREE PLACES IN THE COMMAND USED THE CONSTANT 70, AND THE THIRD WAS FOUND WHILE PLANNING.** The first line printed
+  `UCataclysmDamageCalculation::ResistanceCap` as the cap and `ResistanceCap + Penalty` as what it takes to sit at it,
+  which #1617 named. Each type's "a hit meets" figure was `EffectiveResistance(Held - Penalty, 0)`, which bounds by the
+  same constant: the same cause in the same command, so one local now serves all three.
+- **ONE COMMAND'S CODE CHANGED, AND NOTHING ELSE IN GAME CODE:** nine lines added (four of them comment, one blank) and
+  five removed, in `Cataclysm.ShowResistances`.
+- **THE POWER SCORE'S OWN 70 IS NOT CHANGED** (`FCataclysmPowerScoreModel::ResistanceCap`,
+  `game/Source/Cataclysm/Player/CataclysmPowerScore.h`): item 3 below, the enchantment session's judgement, accepted.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-27)
+
+> #1617: your single recommendation is accepted. The mechanism was built under #1833, and this change makes two things
+> agree with it:
+> 1. The console line reads ResistanceCapOf once and prints it in both places.
+> 2. ResistanceCapCeiling is pinned in tools/tests/test_maximum_resistance.py against damage.MAX_RESISTANCE_CEILING, so
+>    the header comment becomes true. Prove it with prove_guard (90 to 95), in a copy of the tree, since other work reads
+>    these files.
+> Item 3, leaving the power score's 70 as the design base, is accepted as your judgement, for the reasons you give.
+> Record it, with the research, in the entry, keeping your labels: the research settles the shape; per-element against
+> all-types was decided by the 2026-08-04 entry; the two unfetched claims (PoE map modifiers, D4's 85%) stay marked as
+> not re-fetched.
+> The Unreal test: approved only if the command's text can be returned by a small static function. If moving it widens
+> beyond that, stop and tell me. Then the console line ships with the Python pin alone, and its Unreal test becomes its
+> own issue.
+> Re-read the leech ruling's source in the brief, as you said.
+
+And the second, on three findings sent with the brief:
+
+> #1617: all three findings are accepted.
+> 1. Reusing the existing ShowResistances test rig is better than moving the command's body. Approved.
+> 2. The third use, "and a hit meets", stays in this change: one local Cap read by all three uses. It is the same cause
+>    in the same command. Add a test case with 85 held and +10 worn that reads 80 for "a hit meets", so that line is
+>    measured too.
+> 3. Quote the owner's leech sentence from #1617's 2026-09-12 comment verbatim in the entry, with its link, and state
+>    that the built behaviour matches it.
+
+No owner sentence decides the console line or the pin; the coordinating session ruled them. The owner's sentence on the
+leech row is below.
+
+### WHERE EACH RULING IS IN THE CODE
+
+| Ruling | Where |
+|---|---|
+| The console line reads `ResistanceCapOf` once | `const float Cap = UCataclysmDamageCalculation::ResistanceCapOf(ASC);` after `Penalty`, in the command's lambda in `CataclysmPlayerCharacter.cpp` |
+| It prints it in both places | the first `Ar.Logf`'s arguments are `Tier, Penalty, Cap, Cap + Penalty` |
+| The third use, "a hit meets" | `UCataclysmDamageCalculation::EffectiveResistanceUnderCap(Held - Penalty, /*Penetration=*/0.0f, Cap)`, the form a blow uses (`CataclysmDamageCalculation.cpp`, `Resolve`, with `ResistanceCapOf(Defender)`) and the sheet uses (`CataclysmCharacterSheetLayout.cpp`, with `ResistanceCapOf(ASC)`) |
+| `ResistanceCapCeiling` is pinned | `TestTheTwoNumbers::test_the_game_s_ceiling_matches_the_model` in `tools/tests/test_maximum_resistance.py` |
+| The Unreal test reuses the rig | the three `Cataclysm.ShowResistancesCap.` tests copy the rig of `Cataclysm.ConditionedResistance.ShowResistancesPrintsTheConditionedFigureAndEveryOtherAsBefore`; the command's body was not moved |
+
+**The header comment is left as it is.** `CataclysmDamageCalculation.h` says of `ResistanceCapCeiling`: "The design caps
+the maximum at 90%; `tools/tests/test_maximum_resistance.py` pins that sentence." Until this change that file compared
+only the design document's "Ceiling on the cap" with `damage.MAX_RESISTANCE_CEILING`, and nothing under `tools/` or
+`sim/` named the C++ constant. It now also compares the constant with `MAX_RESISTANCE_CEILING`, so the constant is
+pinned to the design's sentence through the model, which is what the comment says. Not taken: rewording the comment,
+which would have touched a header that most of the module includes for no change of meaning.
+
+### THE OWNER'S LEECH RULING, QUOTED VERBATIM, AND THE BUILT BEHAVIOUR MATCHES IT
+
+The owner's ruling on "While leeching, reduce your max resistances by 1%-3% per second"
+(`Negative_While_leeching_reduce_your_max_resistances_by_1`) is recorded only in
+[#1617's comment of 2026-09-12](https://github.com/sdubois777/Cataclysm/issues/1617#issuecomment-5647264004) (author
+sdubois777), on [#1617](https://github.com/sdubois777/Cataclysm/issues/1617):
+
+> **THE RULING: the reduction ends the moment leeching stops.** The resistance cap returns to normal immediately. It does
+> not decay back gradually, and it does not persist for the rest of the floor.
+
+The same comment says it "needs recording in `docs/DECISIONS.md` as part of whoever does this work". It had not been: the
+row's entries ("2026-10-07 — Two conditions, ... and one scale, `seconds_leeching`, ..." and "2026-10-08 — Three
+sentences on damage over time, time in combat and leeching are built as four rows", below) record the built behaviour,
+"It returns to nought when no leech payment is owed", as the coordinating session's labelled judgement of 2026-10-07,
+and a search of this file for "leeching stops" finds nothing.
+
+**The built behaviour matches the owner's sentence, by reading and by a merged test.** The row (line 555 of
+`game/Data/EnchantmentEffects.csv`) is `resistance_cap` flat -1 to -3, scale `seconds_leeching`, step 1, at most 10
+steps. `UCataclysmAbilitySystemComponent::SecondsLeeching` answers 0 whenever the leech clock is unstarted, and
+`NoteLeechPaymentsChanged` clears the clock when no payment is owed into a pool the character has, so the reduction is
+gone at that moment; `ResistanceCapOf` asks the row each time it
+is read, so nothing is held over and nothing decays. The test
+`Cataclysm.DotCombatLeech.TheResistanceCapFallsForEachWholeSecondOfUnbrokenLeechingUpToTheRowsCapAndReturnsWhenNothingIsOwed`
+(`CataclysmSkillTemplateTests.cpp`) asserts "with nothing owed, the cap is the control's again at once" and that a new
+payment starts from nought ("half a second into a new payment: nothing yet"). The comment's "the floor value is
+delegated" was answered by #1833: the cap is held at 0 or above, and the resistance floor is -100
+(`UCataclysmDamageCalculation::ResistanceFloor`), so the clamp cannot invert.
+
+### THE RESEARCH, RE-FETCHED 2026-10-27
+
+Each figure below was read on the page named, on 2026-10-27.
+
+| Game | Page read | What it says |
+|---|---|---|
+| Path of Exile | `https://maxroll.gg/poe/getting-started/defenses-for-beginners` | "Resistances start at 0%, and have a cap of 75% by default."; "Modifiers to Maximum Resistances can increase this cap to 90%"; "When you defeat Kitava you gain -30% to All Resistances." |
+| Path of Exile | `https://poedb.tw/us/Resistance` (the first 100,000 characters of the page) | per-element modifiers ("+2% to maximum Fire Resistance"), all-types ones ("+1% to all maximum Resistances"), one that lowers an element ("-2% to maximum Cold Resistance"), and the note "(Maximum Resistances cannot be raised above 90%)" |
+| Last Epoch | `https://maxroll.gg/last-epoch/resources/defenses-explained` | "All Resistances cap at 75%, and there is no way to increase the cap."; enemy penetration rises 1% a level to 75% at level 75; "Penetration subtracts from resistance." |
+| Diablo IV | `https://www.purediablo.com/diablo4/Resistances` (last edited 9 December 2025) | patch 1.2.0: "resistance stats now cap at 70%"; "Resistance boosting elixirs now also increase the player's maximum resistance value" (+2% to +6%, one element); "World Tiers III & IV now apply a -25% and -50% penalty to Resistance to All Elements" |
+
+**One figure moved on re-fetching:** the brief placed the elixir sentence under Diablo IV's patch 1.4.0. The page as read
+on 2026-10-27 has it under patch 1.2.0 (October 2023); the patch 1.4.0 section covers amulets and rings.
+
+**NOT RE-FETCHED**, from search-result summaries only (`poewiki.net` and `poe2wiki.net` block the fetching tool): Path of
+Exile's map modifiers that lower the player's maximum ("-X% maximum Player Resistances", "of Exposure"); Path of
+Exile's -200% floor; Diablo IV's 85% ceiling. The Diablo IV page read above does not mention 85% at all. These are not
+relied on. (The poedb page read does show map modifiers of the shape "Players have -20% to all maximum Resistances";
+that is noted, not relied on.)
+
+**What the research settles, and what it does not:**
+
+- **The research settles the shape**: a per-character maximum, a base near 70 to 75, a hard ceiling above it, and a
+  difficulty that lowers the resistance rather than the maximum (Path of Exile's Kitava, Diablo IV's world tiers). All of
+  it is already built: the per-character cap and the 90 ceiling by #1833, and the difficulty penalty by
+  [#1229](https://github.com/sdubois777/Cataclysm/issues/1229).
+- **Per element against all types is not settled by the research** (Path of Exile has both; Last Epoch has neither) and
+  **was decided by the 2026-08-04 entry**, "Maximum resistance stays an enchantment, and the cap it raises is hard capped
+  at 90%", below: one cap for all eight, raised by enchantments only.
+- **Item 3, the power score's 70, is the enchantment session's judgement**, accepted by the coordinating session.
+  `FCataclysmPowerScoreModel::ResistanceCap` stays 70 as the design base, because the power model is ported from the
+  authoritative `calculateScores.tsx` in the separate repository and must not be hand-edited (`CLAUDE.md`), because
+  nothing builds a scored character from a live player, and because
+  `tools/tests/test_the_resistance_cap_is_one_number.py` pins it to the same 70. Not taken: making the power score read
+  a character's own cap, which would move a ported model away from its source.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The local is named `Cap`, as the brief gave it, and placed after `Penalty`**, so the one-line C++ break below can set
+  it to the constant. Not taken: calling `ResistanceCapOf` at each use.
+- **The tests sit at the end of `CataclysmConditionedResistanceTests.cpp`, in a namespace of their own that uses the
+  file's helpers** (`ConditionedResistanceSlot`, `ConditionedResistanceRead`, `ConditionedResistanceModifier`,
+  `FConditionedResistanceOutput`, `ConditionedResistanceAllowance`), and copy test 5's rig. Not taken: a new file, which
+  would need a build-cache step, or a rig of their own.
+- **The player's stat lines are replaced wholesale** by one `resistance_cap` line or none (`SetStatInputs`), so no class
+  line of a test player can move the cap. Not taken: adding to whatever lines the player holds.
+- **The generic resistance is read as the command reads it and the typed one written so the two come to 85.** A player's
+  state creates no generic resistance set today, so this writes 85 to Void. Not taken: writing the generic attribute,
+  which a player does not have.
+- **The printed cap is compared with the line built from `ResistanceCapOf`, and `ResistanceCapOf` separately with the
+  figure wanted**, so a failure says which of the two disagrees. Not taken: one comparison with a literal line.
+- **Void is the type**, as `Cataclysm.KillCounter.TheResistanceCapMovesWithItsRowsBetweenNoughtAndNinety` uses it.
+
+### WHAT WAS BUILT
+
+- `Cataclysm.ShowResistances`: `const float Cap = UCataclysmDamageCalculation::ResistanceCapOf(ASC);` with a comment
+  citing #1617, #1833 and the blow's and the sheet's use of the same cap; the first line prints `Cap` and
+  `Cap + Penalty`; each type's "a hit meets" is `EffectiveResistanceUnderCap(Held - Penalty, 0, Cap)`.
+- `tools/tests/test_maximum_resistance.py`: `TestTheTwoNumbers::test_the_game_s_ceiling_matches_the_model` reads
+  `constexpr float ResistanceCapCeiling = <n>f` out of `CataclysmDamageCalculation.h` by regular expression, fails unless
+  it is found exactly once, and asserts it equals `damage.MAX_RESISTANCE_CEILING`.
+
+### TESTS
+
+Three, in `Cataclysm.ShowResistancesCap.`, after test 5 of `CataclysmConditionedResistanceTests.cpp`. One helper,
+`ShowResistancesCapRun`, makes each scene in a world of its own: the command is found by
+`IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.ShowResistances"))`; a player state, a controller and a player
+character are spawned and the player possessed; its stat lines are replaced by one `resistance_cap` flat line, Source
+Enchantment, of the test's points, or by none; Void is written so the player holds 85 in all; the command is run into an
+output device that keeps the lines; and the line holding "The cap is" and Void's line are kept. One player, so no
+distances apply. No clock moves.
+
+Each test makes five set-up assertions, in order, and stops at the first that fails: the command is registered; a world;
+a possessed player with an ability system; **the test world's difficulty tier takes no resistance off**
+(`ResistancePenaltyFor(ASC)` is 0, read, not assumed); the player holds 85 Void in all. Then three, by
+`ShowResistancesCapAssert`, each message printing the line the command printed:
+
+1. `ResistanceCapOf(ASC)`, which a blow and the sheet ask, is the cap wanted;
+2. the command's first line contains "The cap is <ResistanceCapOf>, so <ResistanceCapOf + penalty> is what it takes to
+   sit at it.", so the command and the blow agree;
+3. Void's line contains "  Void         held   85.0, after the penalty   85.0, and a hit meets <wanted>", the line in
+   full.
+
+| Test | Row | Cap wanted | A hit meets | Assertions |
+|---|---|---|---|---|
+| `Cataclysm.ShowResistancesCap.WithNoCapRowItPrintsTheCapOfSeventyAndAHitOnEightyFiveMeetsSeventy` | none: the control | 70 | 70.0, min(85 - penalty, 70) | 8 |
+| `Cataclysm.ShowResistancesCap.WithPlusTenMaximumResistsItPrintsTheCapOfEightyAndAHitOnEightyFiveMeetsEighty` | flat +10, "+10 maximum resists" as `GrantResistanceCap` gives it | 80 | **80.0** | 8 |
+| `Cataclysm.ShowResistancesCap.WithMinusEightyItPrintsTheCapHeldAtNoughtAndAHitOnEightyFiveMeetsNought` | flat -80 | 0, held at nought, not -10 | **0.0**: `EffectiveResistanceUnderCap(85, 0, 0)` clamps 85 between the floor of -100 and the cap of 0 | 8 |
+
+Counts are every assertion reached when each set-up holds. **Bold** figures are what the C++ break below fails. The
+prefix `Cataclysm.ShowResistancesCap.`, with its dot, selects these 3 and no other test: counted by a script over every
+quoted `Cataclysm.` name in `game/Source/`, which found 3 for this prefix and, as its control, 5 for
+`Cataclysm.ConditionedResistance.`. The five existing `Cataclysm.ConditionedResistance.` tests are not edited; test 5
+asserts only each type's "held" figure, which this change does not touch, and its player has no cap row.
+
+In Python, `test_the_game_s_ceiling_matches_the_model`: the declaration is found exactly once, and its figure equals
+`damage.MAX_RESISTANCE_CEILING`.
+
+### NOT TESTED
+
+A tier with a penalty above nought (the test world has no game mode, so its tier takes nothing off; the command's
+`Cap + Penalty` is read, not run, there). A cap row raised past the ceiling in the command (`ResistanceCapOf`'s 90 is
+`Cataclysm.KillCounter.TheResistanceCapMovesWithItsRowsBetweenNoughtAndNinety`'s). A held figure below the cap. The
+other seven types' lines, which the same loop prints by the same expression. The real worn row rather than a stat line.
+
+### GUARD PROOFS PROPOSED
+
+| Proof | File | Old text | New text | Predicted to fail |
+|---|---|---|---|---|
+| SRC-P1, Python, RUN (below) | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` | `static constexpr float ResistanceCapCeiling = 90.0f;` | `static constexpr float ResistanceCapCeiling = 95.0f;` | `tools/tests/test_maximum_resistance.py::TestTheTwoNumbers::test_the_game_s_ceiling_matches_the_model`, and no other test in that file |
+| SRC-G1, C++, registered, NOT RUN | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `const float Cap = UCataclysmDamageCalculation::ResistanceCapOf(ASC);` | `const float Cap = UCataclysmDamageCalculation::ResistanceCap;` | prefix `Cataclysm.ShowResistancesCap.` (3 tests): 2 tests, 4 assertions. In the +10 test, "the command prints the cap ResistanceCapOf gives" (it prints 70, not 80) and "Void's line says a hit meets 80.0" (it prints 70.0); in the -80 test, the same two (70 against 0, and 70.0 against 0.0). The control passes, and every set-up assertion and both tests' `ResistanceCapOf` assertion pass |
+
+Each anchor was counted exactly once by `read_text` in its file. SRC-G1 leaves the braces (423 and 423) and parentheses
+(1918 and 1918) balanced and assigns a `static constexpr float` the class declares public, so the file still compiles
+alone. SRC-P1 changes one digit of a header that pytest reads as text and compiles nothing.
+
+**SRC-P1 was run on 2026-10-27**, with `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree
+outside the repository, with `python -m pytest tools/tests/test_maximum_resistance.py`:
+
+```
+named_failures ('tools/tests/test_maximum_resistance.py::TestTheTwoNumbers::test_the_game_s_ceiling_matches_the_model',)
+summary PROVED: 1 failed, 16 passed in 0.59s | restored: 17 passed in 0.43s
+proved True
+```
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- Wear an item with "You have +10 maximum resists" and enough of one resistance to pass 80, then type
+  `Cataclysm.ShowResistances`: the first line says "The cap is 80", and that type's line ends "a hit meets 80.0".
+
+### THE WINDOW'S RUN, t168w
+
+Window t168w, run 2026-10-28 under the lock as `enchant-t168w`, at `d367e934f` on development `f1a0f4be2` (moved from
+`29337c9f3` on `450afa681` as `fix/the-resistance-console-prints-the-own-cap-1`; zero-context patch ids of the three
+non-log files and the hash of this file's changed lines matched). Free memory immediately before the lock, at 09:52:07,
+was 12,396 MB, against the floor of 10 GiB (10,240 MB). No new source file and no status row changed, so the window had
+no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The three new tests, each alone | 1 of 1 each; the first build compiled 3 files in 6 actions |
+| The whole Unreal suite | "4340 tests performed, 4340 succeeded, 0 failed"; 4340 declared, gap 0 |
+| Memory | `tests=4947 peak_used_virtual_mb=8073 final_used_virtual_mb=7751` |
+| Python of record | "7011 passed, 8 skipped"; JUnit 7019 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SRC-G1, the command prints the constant again (prefix `Cataclysm.ShowResistancesCap.`, 3 tests) | PROVED: the +10 and -80 tests failed, 4 of 4 assertions as registered; the control passed; 3 of 3 passed restored |
+| SRC-P1, the Python pin (run by the second session, in a copy of the tree) | PROVED: 1 failed, 16 passed with the break; 17 passed restored |
+
+What SRC-G1's broken half printed, which is what the command printed before this change with the row worn: for +10, "The
+cap is 70, so 70 is what it takes to sit at it." and Void "and a hit meets   70.0", where `ResistanceCapOf` gives 80; for
+-80, the same 70 and 70.0, where it gives 0.
+
+---
+
 ## 2026-10-27 — Leaving the dungeon: The Nihil's Embrace's two lines measured, the last of the five (#1812, part 2)
 
 **Affects:** two new Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp`; no game code. Part 2 of

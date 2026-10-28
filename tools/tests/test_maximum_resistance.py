@@ -131,6 +131,30 @@ class TestTheTwoNumbers:
         state the ceiling exists to keep out of reach."""
         assert damage.RESISTANCE_CAP < damage.MAX_RESISTANCE_CEILING < 100.0
 
+    def test_the_game_s_ceiling_matches_the_model(self, damage):
+        """`UCataclysmDamageCalculation::ResistanceCapCeiling` is the 90 the game
+        holds every resistance cap under (`ResistanceCapOf`, issue #1833).
+
+        Its comment said this file pinned it, and until issue #1617 nothing here
+        or anywhere under `tools/` or `sim/` named it. Read out of the header by
+        a regular expression, as `test_the_resistance_cap_is_one_number.py`
+        reads `ResistanceCap`, and required exactly once, so a reworded or a
+        second declaration fails here by name rather than passing unread.
+        """
+        header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+                  / "CataclysmDamageCalculation.h")
+        if not header.is_file():
+            pytest.skip(f"{header} is not present")
+        found = re.findall(
+            r"constexpr float ResistanceCapCeiling\s*=\s*([0-9.]+)f",
+            header.read_text(encoding="utf-8"))
+        assert len(found) == 1, (
+            f"{header.name} declares ResistanceCapCeiling {len(found)} times, "
+            "not once: the declaration was reworded, removed or duplicated")
+        assert float(found[0]) == pytest.approx(damage.MAX_RESISTANCE_CEILING), (
+            f"the game's ResistanceCapCeiling is {found[0]}, the model's "
+            f"MAX_RESISTANCE_CEILING is {damage.MAX_RESISTANCE_CEILING}")
+
 
 class TestOnlyEnchantmentsRaiseIt:
     """The rule the design document now states, checked against all three copies
