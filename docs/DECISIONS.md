@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — No enchantment lists a tag twice, and a test refuses a repeated tag in any generated table (#1823)
+
+**Affects:** five cells of the "Enchantments" sheet of `docs/All_Things_Cataclysm.xlsx` (I5, I167, I182, I193, D378) and
+the lines they generate in `game/Data/EnchantmentsNegative.csv` (5, 167, 182, 193) and
+`game/Data/EnchantmentsPositive.csv` (377); a new test, `tools/tests/test_no_tag_column_repeats_a_tag.py`; this file. No
+C++. The two enchantment DataTable assets are rebuilt in the window, because their Tags text changes. **Closes
+[#1823](https://github.com/sdubois777/Cataclysm/issues/1823).**
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** An enchantment's `Tags` is a plain `FString` (`FCataclysmEnchantmentRow`,
+  `game/Source/Cataclysm/Data/CataclysmDataRows.h`), not a tag container. The one reader in game code,
+  `UCataclysmDropRoll::EnchantmentSuitsSlot` (`CataclysmDropRoll.cpp`), splits it and looks only for tags beginning
+  `Item.Slot.`; these five repeat `Slot.Ultimate` or `Slot.Movement`, and a repeat gives the same answer either way. No
+  tooltip or item code reads it, and scoping reads the effect rows' `RequiredTags`, which repeat nothing. The issue said
+  the second copy "is dropped on import"; that is not the mechanism, though its conclusion holds.
+- **THE REPEATS WERE IN THE WORKBOOK**, typed that way, not added by the generator.
+
+### THE RULING, VERBATIM (the coordinating session, 2026-10-28)
+
+> Coordinator, #1823:
+> (c) The check is a test, as you recommend. It runs over every tag column in every generated game/Data CSV, found by
+> column name, and names each row and its repeated tag. The generator stays unchanged: a test catches this before merge,
+> and it covers new tables without being edited. Prove it with prove_guard in a copy by re-adding one duplicate.
+> GRANT on fix/no-tag-twice-in-an-enchantment from e0351fdcd, in docs/All_Things_Cataclysm.xlsx, exactly five cells on
+> the "Enchantments" sheet: I5, I167, I182, I193 and D378. Remove only the second copy of the repeated tag and keep the
+> order, to the values in your trial. No other cell changes. The grant runs from the edit until the branch merges.
+
+### THE FIVE CELLS (commit `f0ebf746f`)
+
+| Cell | Row | Before | After |
+|---|---|---|---|
+| I5 | `Negative_Ultimate_cooldowns_increased_by_100_500` | `Slot.Ultimate, Slot.Ultimate` | `Slot.Ultimate` |
+| I167 | `Negative_Movement_abilities_have_50_increased_cooldown` | `Slot.Movement, Slot.Movement` | `Slot.Movement` |
+| I182 | `Negative_After_you_use_a_movement_ability_you_lose_50_mo` | `Slot.Movement, Slot.Movement, Stat.Utility.Movespeed` | `Slot.Movement, Stat.Utility.Movespeed` |
+| I193 | `Negative_Your_own_ultimate_ability_is_disabled` | `Slot.Ultimate, Slot.Ultimate` | `Slot.Ultimate` |
+| D378 | `Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second` | `Stat.Utility.Movespeed, Slot.Movement, Slot.Movement, Keyword.Consume` | `Stat.Utility.Movespeed, Slot.Movement, Keyword.Consume` |
+
+One script run asserted each old value and every sheet's shape before writing. The generator then changed exactly
+these five lines (Negative 5, 167, 182, 193; Positive 377), each only in its Tags field, with every table's line count
+unchanged, and `--check` passed. A trial in a git-archive copy at `9293573bf` and again at `e0351fdcd` gave the same
+five lines. Measured across every tag column in `game/Data` at `e0351fdcd`, no other row repeated a tag
+(EnchantmentEffects RequiredTags 707 rows, PassiveEffects RequiredTags 325, WeaponSkills Tags 403, MinionTypes Tags 9,
+MinionScaling RequiresTag 2, ElementVisuals ElementTag 8: none).
+
+### THE TEST
+
+`tools/tests/test_no_tag_column_repeats_a_tag.py`, three tests:
+
+- `test_the_scan_reads_every_tag_column_it_must`: the scope, read first. Six columns the scan must find (the two
+  enchantment Tags, EnchantmentEffects and PassiveEffects RequiredTags, WeaponSkills and MinionTypes Tags), so a renamed
+  column cannot leave the check reading nothing.
+- `test_no_row_lists_a_tag_twice`: every column whose name contains "tag", in every CSV under `game/Data`; a failure
+  names the table, column, row and repeated tag.
+- `test_a_repeat_is_found_and_a_single_tag_is_not`: the helper on made-up cells, including spacing.
+
+Run on the tree before the edit (`e0351fdcd`), the second test failed naming exactly the five rows above.
+
+### THE PROOF
+
+`tools/prove_guard.py` `break_and_run`, in a git-archive copy outside the repository: the line
+`Negative_Ultimate_cooldowns_increased_by_100_500,...,2.0,Slot.Ultimate,True,` of `EnchantmentsNegative.csv` (counted
+once) given back its repeat, `"Slot.Ultimate, Slot.Ultimate"`. Printed: "PROVED: 1 failed, 2 passed in 0.15s |
+restored: 3 passed in 0.06s"; named_failures
+`tools/tests/test_no_tag_column_repeats_a_tag.py::test_no_row_lists_a_tag_twice`.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **The scan reads the generated CSVs, not the workbook**, because the CSVs are what the game reads and every tag
+  column reaches one. Not taken: reading the sheets, whose column layout differs per sheet.
+- **A column is a tag column when its name contains "tag"**, which today finds eight columns in eight tables. Not
+  taken: a fixed list, which a new table would escape.
+
+### NO GENRE SOURCE
+
+None. This is authoring hygiene, not a mechanic.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- Nothing to see: no enchantment behaves differently.
+
+### THE WINDOW'S RUN, t183w
+
+Window t183w, run 2026-10-28 under the lock as `enchant-t183w`, at `abcd2e564` on development `db73850a7` (moved from
+`285fae4ce` on `e0351fdcd` as `fix/no-tag-twice-in-an-enchantment-1`; the workbook blob, the zero-context patch ids of
+the CSVs and the test file, and the hash of this file's changed lines matched for all three commits). Free memory
+immediately before the lock, at 13:39:39, was 11,233 MB, against the floor of 10 GiB (10,240 MB). No C++ changed, so
+no new Unreal test and no C++ proof. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "35 actions, 32 files compiled" (development's own C++ from #2540, not yet built in this worktree) |
+| The DataTable assets | exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentsPositive.uasset` and `datatable_asset_sources.json` changed; committed as `36908a535` |
+| The whole Unreal suite | "4343 tests performed, 4343 succeeded, 0 failed"; 4343 declared, gap 0 |
+| Memory | `tests=4950 peak_used_virtual_mb=8107 final_used_virtual_mb=7772` |
+| Python of record | "7015 passed, 8 skipped"; JUnit 7023 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
+
+---
+
 ## 2026-10-28 — A thrall explodes under Every One Bursts: 3 m, three of its own blows, raised by Volatile (#2540)
 
 **Affects:** `CataclysmMinion.h` and `.cpp` (`ThrallExplosionDamage`, `ThrallBurst` and two constants),
