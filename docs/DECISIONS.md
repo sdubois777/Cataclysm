@@ -237,9 +237,26 @@ proved True
 - Wear an item with "You have +10 maximum resists" and enough of one resistance to pass 80, then type
   `Cataclysm.ShowResistances`: the first line says "The cap is 80", and that type's line ends "a hit meets 80.0".
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t168w
 
-Not run. The enchantment session records its window here.
+Window t168w, run 2026-10-28 under the lock as `enchant-t168w`, at `d367e934f` on development `f1a0f4be2` (moved from
+`29337c9f3` on `450afa681` as `fix/the-resistance-console-prints-the-own-cap-1`; zero-context patch ids of the three
+non-log files and the hash of this file's changed lines matched). Free memory immediately before the lock, at 09:52:07,
+was 12,396 MB, against the floor of 10 GiB (10,240 MB). No new source file and no status row changed, so the window had
+no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The three new tests, each alone | 1 of 1 each; the first build compiled 3 files in 6 actions |
+| The whole Unreal suite | "4340 tests performed, 4340 succeeded, 0 failed"; 4340 declared, gap 0 |
+| Memory | `tests=4947 peak_used_virtual_mb=8073 final_used_virtual_mb=7751` |
+| Python of record | "7011 passed, 8 skipped"; JUnit 7019 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| SRC-G1, the command prints the constant again (prefix `Cataclysm.ShowResistancesCap.`, 3 tests) | PROVED: the +10 and -80 tests failed, 4 of 4 assertions as registered; the control passed; 3 of 3 passed restored |
+| SRC-P1, the Python pin (run by the second session, in a copy of the tree) | PROVED: 1 failed, 16 passed with the break; 17 passed restored |
+
+What SRC-G1's broken half printed, which is what the command printed before this change with the row worn: for +10, "The
+cap is 70, so 70 is what it takes to sit at it." and Void "and a hit meets   70.0", where `ResistanceCapOf` gives 80; for
+-80, the same 70 and 70.0, where it gives 0.
 
 ---
 
