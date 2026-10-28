@@ -72,7 +72,7 @@ restored: 3 passed in 0.06s"; named_failures
 
 - **The scan reads the generated CSVs, not the workbook**, because the CSVs are what the game reads and every tag
   column reaches one. Not taken: reading the sheets, whose column layout differs per sheet.
-- **A column is a tag column when its name contains "tag"**, which today finds eight columns in seven tables. Not
+- **A column is a tag column when its name contains "tag"**, which today finds eight columns in eight tables. Not
   taken: a fixed list, which a new table would escape.
 
 ### NO GENRE SOURCE
