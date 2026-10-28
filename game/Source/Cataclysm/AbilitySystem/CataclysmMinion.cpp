@@ -2021,6 +2021,55 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 	return Caught.Num();
 }
 
+float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* Commander)
+{
+	// A THRALL ONLY: a summoned minion's explosion is `Explode`'s, and a creature nobody commands is no thrall.
+	if (!IsValid(Lost) || !Commander || Lost->IsA<ACataclysmMinion>()
+		|| UCataclysmCommand::CommanderOf(Lost) != Commander
+		|| SummonerStat(Commander, TEXT("minion_explodes_on_death")) <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	const float AttackDamage = Its
+		? Its->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		: 0.0f;
+	// NO TYPE TAGS, for the reason `UCataclysmCommand::ThrallDamageMultiplierAgainst` gives: a thrall carries none.
+	const float OwnBlow = AttackDamage
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), FGameplayTagContainer());
+	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
+}
+
+int32 ACataclysmMinion::ThrallBurst(AActor* Lost, const AActor* Commander)
+{
+	const float Damage = ThrallExplosionDamage(Lost, Commander);
+	if (Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Lost->GetWorld(), Lost, Lost->GetActorLocation(),
+		ThrallExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(Lost));
+
+	// AREA DAMAGE THE DYING THRALL DEALS, NOT RETALIATED AGAINST, for the reason `DeathBlast` gives: a reflected blow
+	// would write the health of a creature whose death is being handled and run the death a second time.
+	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	for (AActor* Target : Caught)
+	{
+		// AND ITS OWN BUFFS, as Shared Ruin's blast reads a thrall's: unscoped only, a thrall having no type tags.
+		const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, FGameplayTagContainer(), /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
+	}
+	return Caught.Num();
+}
+
 // ==========================================================================
 // Tyrant's Chains, six-piece. Owner's ruling #3 of 2026-10-17 and the
 // coordinating session's rulings of 2026-10-18; the header carries them.

@@ -2914,6 +2914,9 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	if (Commander)
 	{
 		ACataclysmMinion::DeathBlast(Character, Commander);
+		// AND A THRALL'S OWN EXPLOSION UNDER EVERY ONE BURSTS, for the same reason and in the same place. Issue #2540:
+		// a minion explodes inside `HandleDeath`, which a thrall's death never reaches. Nothing for a minion.
+		ACataclysmMinion::ThrallBurst(Character, Commander);
 	}
 
 	Character->HandleDeath();

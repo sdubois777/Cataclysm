@@ -5274,4 +5274,96 @@ bool FCataclysmChorusHeldStunnedThrallTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A thrall explodes under Every One Bursts. Issue #2540, ruled 2026-10-28: 3 m, not enlarged by area of effect, worth
+// three of its own blows, raised by Volatile.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurstsTest,
+	"Cataclysm.MinionDeath.UnderEveryOneBurstsADyingThrallExplodesWithinThreeMetresForThreeOfItsBlows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A thrall of 50 attack damage dies with one monster 2 m from it and one 4 m from it. Under the flag the near one
+ * loses something and no more than the 150 the explosion is worth -- its own defences may take part, as Shared Ruin's
+ * thrall test says -- and the far one loses nothing, with the commander's area of effect doubled. CONTROL: without the
+ * flag neither loses anything, and the figure is nought. And the figure: 150, 195 with 30% increased explosion damage
+ * (Volatile at ten points).
+ */
+bool FCataclysmThrallBurstsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ONE THRALL'S DEATH, with or without the flag, each in its own row of the world, and what the two monsters lost.
+	const auto DieWith = [&](bool bBursts, float VolatilePercent, float& NearLost, float& FarLost, float& Figure) -> bool
+	{
+		const float Y = (bBursts ? 20.0f : 60.0f) + VolatilePercent;
+		FScopedCaster Commander(World, FVector(0, Y * M, 0));
+		TArray<FStatLine> Lines = {{TEXT("area_of_effect"), ECataclysmStatBucket::Increased, 100.0f}};
+		if (bBursts)
+		{
+			Lines.Add({TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f});
+		}
+		if (VolatilePercent > 0.0f)
+		{
+			Lines.Add({TEXT("minion_explosion_damage"), ECataclysmStatBucket::Increased, VolatilePercent});
+		}
+		GiveStats(Commander, Lines);
+		FScopedCreature Thrall(World, FVector(10 * M, Y * M, 0));
+		if (!TestTrue(TEXT("set-up: an enemy is taken as a thrall"),
+					  UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor)))
+		{
+			return false;
+		}
+		FScopedCreature Near(World, FVector(12 * M, Y * M, 0));
+		FScopedCreature Far(World, FVector(14 * M, Y * M, 0));
+		Figure = ACataclysmMinion::ThrallExplosionDamage(Thrall.Actor, Commander.Actor);
+		const float NearBefore = Near.Health();
+		const float FarBefore = Far.Health();
+		Thrall.SetHealthTo(0.0f);
+		NearLost = NearBefore - Near.Health();
+		FarLost = FarBefore - Far.Health();
+		AddInfo(FString::Printf(TEXT("THRALL BURST: %s, Volatile %.0f%%: worth %.2f; 2 m lost %.2f, 4 m lost %.2f"),
+								bBursts ? TEXT("flagged") : TEXT("not flagged"), VolatilePercent, Figure, NearLost,
+								FarLost));
+		return true;
+	};
+
+	float NearLost = 0.0f;
+	float FarLost = 0.0f;
+	float Figure = 0.0f;
+	if (!DieWith(/*bBursts=*/false, 0.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: without the flag the figure is nought"), Figure, 0.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: and a monster 2 m away loses nothing"), NearLost, 0.0f, 0.01f);
+
+	if (!DieWith(/*bBursts=*/true, 0.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("flagged, the explosion is worth three blows of 50"), Figure, 150.0f, 0.01f);
+	TestTrue(FString::Printf(TEXT("a monster 2 m away loses something: %.2f"), NearLost), NearLost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and no more than 150: %.2f"), NearLost), NearLost <= 150.01f);
+	TestEqual(TEXT("one 4 m away loses nothing, with area of effect doubled"), FarLost, 0.0f, 0.01f);
+
+	// VOLATILE, ruled 2026-10-28: "+3% increased damage of the explosion a minion leaves per point", ten points.
+	if (!DieWith(/*bBursts=*/true, 30.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Volatile's 30% raises it to 195"), Figure, 195.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
