@@ -10,7 +10,7 @@ Fixes [#2540](https://github.com/sdubois777/Cataclysm/issues/2540).
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w75 below passed every registered figure, and both proofs were PROVED.**
 - **THIS REPLACES A JUDGEMENT RECORDED BELOW.** The entry "2026-10-02 — A subjugated enemy takes its commander's
   minion damage and minion health, as the owner ruled it should" says, under "A JUDGEMENT": "A thrall does not explode
   under Every One Bursts or Volatile." That was a reading made under the owner's delegation without the owner's
@@ -84,7 +84,25 @@ this one.
 
 ### Run
 
-Not run yet.
+**Window w75 (lock `dungeon-w75`, `feat/a-thrall-bursts-1` at `573c2ac66`, on `e0351fdcd`, 2026-10-28) passed.**
+The lock was taken at 13:00 on a free-memory reading immediately before it of 11,383 MB, with the other five
+conditions met: both of `development`'s runs at `e0351fdcd` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`e0351fdcd` met only the top of this file (patch ids before and after `2acdade98923`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4343 / 0 | `4343 tests performed, 4343 succeeded, 0 failed`; declared 4343, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,090 |
+| Python (JUnit) | of record | 7020 tests, 0 failures, 0 errors, 8 skipped ("7012 passed, 8 skipped"); ruff `All checks passed!` |
+| The "THRALL BURST" lines | quoted as printed | "not flagged, Volatile 0%: worth 0.00; 2 m lost 0.00, 4 m lost 0.00"; "flagged, Volatile 0%: worth 150.00; 2 m lost 150.00, 4 m lost 0.00"; "flagged, Volatile 30%: worth 195.00; 2 m lost 195.00, 4 m lost 0.00" |
+| P1, `ThrallExplosionRadiusCm` set to 0 | the test fails: the near monster loses nothing | "1 tests performed, 0 succeeded, 1 failed: UnderEveryOneBurstsADyingThrallExplodesWithinThreeMetresForThreeOfItsBlows", printing "flagged, Volatile 0%: worth 150.00; 2 m lost 0.00"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the flag check deleted | the test fails: the CONTROL's figure is not nought | the same failure line, printing "not flagged, Volatile 0%: worth 150.00; 2 m lost 150.00"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+The monster 2 m away lost exactly the figure, so its defences took nothing from it; the bound in the test allowed
+for them.
 
 ---
 
