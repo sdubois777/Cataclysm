@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — Keyword.DoT.Generic says what carries it, and a test refuses a required tag nothing carries (#1785)
+
+**Affects:** one cell of the "Tags" sheet of `docs/All_Things_Cataclysm.xlsx` (B63, the description of
+`Keyword.DoT.Generic`) and the line it generates in `game/Config/Tags/CataclysmTags.ini` (59); a new test,
+`tools/tests/test_every_required_tag_is_carried.py`; this file. No C++, no `game/Data` file, no DataTable asset.
+**Closes [#1785](https://github.com/sdubois777/Cataclysm/issues/1785).**
+
+### SAID FIRST
+
+- **NO UNREAL WINDOW, AS RULED.** A DevComment is editor text and changes no tag's name, so nothing the game matches on
+  moves. The evidence is Python of record, ruff, the two guard proofs below and the pull request's "Game compiles" check,
+  which loads the .ini.
+- **NOTHING CHANGES IN PLAY.** No row requires `Keyword.DoT.Generic`; 22 enchantment rows name it in their own Tags
+  column, which is descriptive (the drop roll reads only `Item.Slot.*` there).
+- **THE ISSUE'S PREMISE HAS MOVED SINCE IT WAS FILED.** It said nothing carries the tag. Since F9 one thing does: the
+  skill trap's own damage over time, `ACataclysmMinion::LaySkillTrapsDamageOverTime` (`CataclysmMinion.cpp`), "A GENERIC
+  DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag". So the tag is real and narrow, and its old description, "Any
+  DoT effect", was still false: the bare `Keyword.DoT` is the tag every damage over time meets, through the hierarchy.
+
+### THE RULINGS
+
+The ruling of 2026-09-14, relayed on #1785 by the master session under the owner's delegation of that date: "keep
+Keyword.DoT.Generic and rewrite its DevComment". Its correction of 2026-09-15: the .ini is generated from the Tags sheet by
+`tools/generate_gameplay_tags.py`, so the rewrite is a workbook cell.
+
+The coordinating session, 2026-10-28, verbatim:
+
+> Coordinator, #1785: your recommendation is accepted.
+> 1. Carry out the 2026-09-14 ruling: one Tags-sheet cell, the DevComment of Keyword.DoT.Generic, rewritten to say it is
+>    the skill trap's own damage over time (F9), not an ailment, and that Keyword.DoT is the tag for any damage over time.
+>    Then regenerate CataclysmTags.ini. [...]
+> 2. Add the new test: every RequiredTags tag is carried by a WeaponSkills row, a MinionTypes row, or an explicit
+>    engine-granted list. Every entry on that list must name the code that grants it, read before it is written. If one
+>    of the four (Keyword.DoT.Poison, Keyword.Leech, Keyword.Regeneration, Slot.Basic) turns out to have no grant, stop
+>    and report it; that is a real fault.
+> - Prove the test with prove_guard in a copy.
+> 3. NO UNREAL WINDOW. A DevComment is editor text and changes no tag name, so the evidence is Python of record, ruff,
+>    and the pull request's Game compiles check, which loads the .ini. State this in the entry.
+
+### THE CELL (commit `55eeee892`)
+
+"Tags" B63 (A63 is `Keyword.DoT.Generic`): from "Any DoT effect" to "The skill trap's own damage over time from F9, not an
+ailment. Not every DoT; require Keyword.DoT for any damage over time." One script run asserted A63, B63's old value and
+every sheet's shape before writing. Both generators were run; exactly one line changed in the repository:
+
+```
+- GameplayTagList=(Tag="Keyword.DoT.Generic",DevComment="Any DoT effect")
++ GameplayTagList=(Tag="Keyword.DoT.Generic",DevComment="The skill trap's own damage over time from F9, not an ailment. Not every DoT; require Keyword.DoT for any damage over time.")
+```
+
+No CSV moved, and both generators' `--check` passed. The text has no double quotes and no parentheses, so it cannot
+break the .ini line's quoted field. A trial in a git-archive copy at `24f5a1d1c` gave the same single line.
+
+### WHAT CARRIES A REQUIRED TAG, MEASURED AT `db73850a7`
+
+All 24 tags required by `EnchantmentEffects.csv` and `PassiveEffects.csv` were carried by something. Twenty by a skill
+or minion row (Keyword.Charge, Keyword.DoT, Keyword.DoT.Bleed, Keyword.DoT.Burn, Keyword.Summon, the six slot tags other
+than Basic, Type.AOE.PointBlank, Type.Channel, Type.Deployable, Type.Melee, Type.Projectile, Type.Ranged, Type.Spell,
+Type.Strike, Type.Trap). Four only by game code, each grant read as ruled:
+
+| Tag | What grants it |
+|---|---|
+| `Keyword.DoT.Poison` | the Poison ailment's tag in the ailment table, `CataclysmAilments.cpp` (about 96), requested by name for the effect (about 611) |
+| `Keyword.Leech` | `UCataclysmFervour::LeechTag` (`CataclysmFervour.cpp`), added to leech healing in `CataclysmLeech.cpp` (about 265) |
+| `Keyword.Regeneration` | `UCataclysmFervour::RegenerationTag`, added to regeneration in `CataclysmRegeneration.cpp` (about 405) |
+| `Slot.Basic` | the slot table in `CataclysmGameplayAbility.cpp` (about 68), put on a granted skill through `CataclysmAbilitySlots::Tag` (`CataclysmAbilitySet.cpp` about 116) |
+
+None was without a grant, so no fault was found. `Keyword.DoT.Generic` (the skill trap) is the fifth entry of the
+test's list, though no row requires it.
+
+### THE TEST
+
+`tools/tests/test_every_required_tag_is_carried.py`, four tests:
+
+- `test_the_check_reads_required_tags`: the scope, first; both tables hold requirements, so the check cannot read nothing.
+- `test_every_engine_grant_is_still_in_its_code`: each `ENGINE_GRANTED` entry's file still names its tag, so an entry
+  cannot outlive its grant unnoticed.
+- `test_every_required_tag_is_carried_by_something`: every required tag is met, by itself or a tag below it, by a
+  WeaponSkills row (`Tags`, or `Slot.` + its Slot column), a MinionTypes row, or `ENGINE_GRANTED`. A failure names each
+  tag and the rows requiring it.
+- `test_a_requirement_is_met_by_itself_or_a_tag_below_it`: the hierarchy on made-up tags, including that a sibling
+  (`Keyword.DoT.Generic` beside `Keyword.DoT.Bleed`) is not a parent, which is the case #1785 was about.
+
+### THE PROOFS
+
+Both with `tools/prove_guard.py` `break_and_run`, in a git-archive copy outside the repository:
+
+- **A required tag nothing carries.** `PassiveEffects.csv`, `Masochist_basic_bt_c0#1`'s required tag
+  `Keyword.Regeneration` changed to `Keyword.Nothing` (anchor counted once). Printed: "PROVED: 1 failed, 3 passed in
+  0.12s | restored: 4 passed in 0.05s"; named failure `test_every_required_tag_is_carried_by_something`.
+- **A stale engine entry.** `CataclysmMinion.cpp`, `TEXT("Keyword.DoT.Generic")` changed to `TEXT("Keyword.DoT.Gone")`
+  (counted once; read as text, nothing built). Printed: "PROVED: 1 failed, 3 passed in 0.09s | restored: 4 passed in
+  0.05s"; named failure `test_every_engine_grant_is_still_in_its_code`.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **An engine grant is an explicit, read list**, not every tag name found in game code. Not taken: a scan of the
+  code's tag names, because code names a tag to ask for it as often as to grant it.
+- **A stale entry is caught by its file no longer naming the tag.** Not taken: trusting the list once written.
+
+### NO GENRE SOURCE
+
+None. This is a data check and an editor description.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- Nothing to see in play. In the editor's tag list, `Keyword.DoT.Generic` now reads the new description.
+
+---
+
 ## 2026-10-28 — No enchantment lists a tag twice, and a test refuses a repeated tag in any generated table (#1823)
 
 **Affects:** five cells of the "Enchantments" sheet of `docs/All_Things_Cataclysm.xlsx` (I5, I167, I182, I193, D378) and
