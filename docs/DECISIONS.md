@@ -83,9 +83,21 @@ None. This is authoring hygiene, not a mechanic.
 
 - Nothing to see: no enchantment behaves differently.
 
-### THE WINDOW'S RUN
+### THE WINDOW'S RUN, t183w
 
-Not run. The enchantment session records its window here.
+Window t183w, run 2026-10-28 under the lock as `enchant-t183w`, at `abcd2e564` on development `db73850a7` (moved from
+`285fae4ce` on `e0351fdcd` as `fix/no-tag-twice-in-an-enchantment-1`; the workbook blob, the zero-context patch ids of
+the CSVs and the test file, and the hash of this file's changed lines matched for all three commits). Free memory
+immediately before the lock, at 13:39:39, was 11,233 MB, against the floor of 10 GiB (10,240 MB). No C++ changed, so
+no new Unreal test and no C++ proof. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The build | "35 actions, 32 files compiled" (development's own C++ from #2540, not yet built in this worktree) |
+| The DataTable assets | exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentsPositive.uasset` and `datatable_asset_sources.json` changed; committed as `36908a535` |
+| The whole Unreal suite | "4343 tests performed, 4343 succeeded, 0 failed"; 4343 declared, gap 0 |
+| Memory | `tests=4950 peak_used_virtual_mb=8107 final_used_virtual_mb=7772` |
+| Python of record | "7015 passed, 8 skipped"; JUnit 7023 tests, 0 failures, 0 errors, 8 skipped (the asset-hash test passes after the asset commit); ruff "All checks passed!" |
 
 ---
 
