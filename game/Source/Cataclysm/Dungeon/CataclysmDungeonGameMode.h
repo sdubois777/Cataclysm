@@ -940,6 +940,13 @@ public:
 	static constexpr float SecondsBetweenWaveChecks = 0.25f;
 
 	/**
+	 * The most time one beat may count for the floor rules, in seconds. Issue #1613, a judgement ruled 2026-10-28:
+	 * engines clamp a frame's time for the same reason, so a load or a breakpoint does not deal thirty seconds of a
+	 * floor rule in one beat. One second keeps every rule exact down to one frame a second.
+	 */
+	static constexpr float LongestBeatSeconds = 1.0f;
+
+	/**
 	 * How many of an arriving wave's creatures are put on the floor in one frame.
 	 *
 	 * WHAT WAS WRONG, ISSUE #1544. A wave put every one of its creatures on the
@@ -1165,6 +1172,13 @@ private:
 	 * `BringTheNextWaveIn` or ticks this actor rather than reading it.
 	 */
 	float SinceWaveCheckSeconds = 0.0f;
+
+	/**
+	 * The time the last beat covered, at most `LongestBeatSeconds`: what `SinceWaveCheckSeconds` held when it reached
+	 * the interval. Every floor rule measures elapsed time by this rather than by `SecondsBetweenWaveChecks`. Issue
+	 * #1613. A quarter of a second until the first beat sets it.
+	 */
+	float BeatSeconds = SecondsBetweenWaveChecks;
 
 	/**
 	 * One beat of every dungeon modifier that changes while the player plays.
@@ -4401,13 +4415,11 @@ private:
 	 * would count a paused game, and that difference is exactly the thing a
 	 * player would call unfair.
 	 *
-	 * WHICH MAKES A BEAT WORTH A QUARTER OF A SECOND ONLY ABOVE FOUR FRAMES A
-	 * SECOND, and that is stated rather than hidden: the beat is zeroed rather
-	 * than decremented, deliberately, so a long frame yields one beat however
-	 * long it was. Below that rate the stacks arrive slower than every ten
-	 * seconds. It is in the player's favour, Forced March's per-beat share has
-	 * the same property, and issue #1613 carries the fix -- which belongs in the
-	 * rules, because the wave arrival needs the zeroing it has.
+	 * EACH BEAT ADDS THE TIME IT COVERED, `BeatSeconds`, since issue #1613. Until
+	 * then every beat added a quarter of a second, and a long frame, which yields
+	 * one beat however long it was, made the stacks arrive slower than every ten
+	 * seconds. They now arrive every ten seconds down to one frame a second
+	 * (`LongestBeatSeconds`).
 	 *
 	 * THE COUNT IS KEPT AS WELL AS THE CLOCK because it is what a beat compares
 	 * against to decide whether anything moved, the same argument the two

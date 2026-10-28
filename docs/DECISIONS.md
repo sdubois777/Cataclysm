@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The floor rules count the time each beat covered, up to one second, so a slow frame no longer slows them (#1613)
+
+**Affects:** `CataclysmDungeonGameMode.h` and `.cpp` (a new field `BeatSeconds`, a new constant `LongestBeatSeconds`,
+one line in `Tick`, and 79 uses of `SecondsBetweenWaveChecks` replaced by `BeatSeconds`), and three new tests in
+`CataclysmDungeonModifierEffectsTests.cpp`. Fixes [#1613](https://github.com/sdubois777/Cataclysm/issues/1613).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w77 below passed every registered figure, and both proofs were PROVED.**
+- **IT WAS WIDER THAN THE ISSUE SAID.** #1613 named two rules and said the fault did not bite at a playable frame
+  rate. At `060470dfb` about fifty rules took every beat to be a quarter of a second, and setting the accumulator to
+  zero drops the part of the last frame past the interval at every frame rate: at thirty frames a second a beat
+  covers eight frames, 0.267 seconds, so every timed rule ran about six per cent slow. That is arithmetic from the
+  code, not a measurement.
+
+### What it was
+
+`Tick` adds each frame's time to `SinceWaveCheckSeconds` and, when that reaches `SecondsBetweenWaveChecks` (0.25 s),
+runs one beat and sets it back to zero, so that a long frame brings in one wave and not four. The rules the beat runs
+then took the beat to be 0.25 s. Mortal Decay, for one, took `Maximum x Rate / 100 x 0.25` a beat: at two frames a
+second one beat a frame, half its stated rate; at four, exact; at thirty, 94%.
+
+### What changed
+
+`Tick` records the accumulator's value in `BeatSeconds` before setting it to zero, at most `LongestBeatSeconds`, and
+the rules measure time by it. The wave arrival is unchanged.
+
+**THE LIMIT, 1.0 SECOND, IS A JUDGEMENT**, ruled by the coordinating session on 2026-10-28: engines clamp a frame's
+time for the same reason, so that a load or a breakpoint does not deal thirty seconds of a floor rule in one beat. With
+it every rule is exact down to one frame a second, and runs slow below that as before.
+
+**THE 79 REPLACEMENTS**, every use of `SecondsBetweenWaveChecks` in the file but the comparison in `Tick` and a comment
+naming the constant, listed and read before the script ran. Each means the time that passed this beat; none is a count
+of beats, a cadence written as a number of beats, or a delay that must stay 0.25. The script asserts it changed 79.
+
+| Kind | Uses | Rules |
+|---|---|---|
+| A rate times the time | 6 | Forced March, Mortal Decay, Suffering Aura (health and mana, through `SufferingAuraLossFor`), Necrotic Ground's creature regeneration (through `NecroticGroundRegenPerBeat`), Singularity Wells' pull |
+| A countdown taken down by the time | 12 | Floor obstacle warnings, Insanity Bursts' lock and madness (2), Mind-Shattering Illusions' slow, Reality Rifts' rest and gift (2), Shadowy Enemies' fire, Battlefield Relics' three buffs (3), Grim Totems' embrace, Infernal Rain's falls |
+| A clock or cadence the time is added to | 61 | The Reaper, the Corrupted Stalker, Plague Convergence (3), Echoes of the Past, Wings of the Host (2), Necrotic Bloom, the floor's clear time, Trial of Endurance, Portal Unleashing, Plaguebearer, Morale Break (2), Raw Sewage (2), Gated Shortcuts, floor quakes (2), Warzone Control Points (2), Swarm of Locusts (3), Abyssal Rifts, Infested Hoard, Infection Bloom (2), Funereal Procession (3), Insanity Bursts (2), Mind-Shattering Illusions, Carrion Feast, Infested Veins (2), War Banner (2), Sanctioned Passage, Blood Price, Divine Wrath, Infernal Rain, Singularity Wells, Edict of Silence, Edict of Vigil, Dirge Resonance, Artillery Strike (2), Hallowed Groundfall, Grasping Tentacles, Death's Embrace, Judgment Zones (2), Anti-Magic Zones, Blood Altar, Necrotic Ground (2), Ravenous Hoard, Grave Tide |
+
+Every one of those rules is called once, from `StepFloorRulesThatChange` or, for the clear time, from `Tick` after
+it, so `BeatSeconds` is always the beat that is running. `PopulateFloor` also sets the accumulator to zero on a new
+floor; that only restarts the count there. Five comments that said a beat is a quarter of a second, and the comment in
+`DeathsEmbraceCutsHealingAndTheStairsClearIt`, now say what the code does; no assertion changed.
+
+**A PAUSED GAME STILL COUNTS NOTHING.** The comments on Death's Embrace, Edict of Silence and Edict of Vigil count by
+the beat so that a paused game is not counted, and that holds: `Tick` does not run while the game is paused, and
+`BeatSeconds` is built from the frames `Tick` is given.
+
+### How it is checked
+
+All three run the step at a low frame rate against a control at four frames a second, the rate every other test uses.
+
+| Test | Kind | What it asserts |
+|---|---|---|
+| `ABeatCountsItsOwnTimeSoMortalDecaySapsItsRateAtTwoFramesASecond` | rate | one second of Mortal Decay at its ceiling costs one second's rate in four frames of 0.25 (CONTROL) and in two of 0.5 |
+| `ABeatCountsAtMostOneSecondSoALongFrameCostsOneSecondOfMortalDecay` | the limit | a frame of 1 s costs one second's rate (CONTROL), and a frame of 3 s costs the same, not three |
+| `ABeatCountsItsOwnTimeSoDeathsEmbraceStacksAtTenSecondsAtTwoFramesASecond` | clock | Death's Embrace's first stack arrives on the fortieth frame of 0.25 (CONTROL) and on the twentieth of 0.5, both ten seconds, and not a frame earlier |
+
+Each prints a line beginning "BEAT SECONDS". The six existing tests that tick two or four beats' time at once are
+wave tests in `CataclysmDungeonGameModeTests.cpp`; the whole suite settles them.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three tests alone | 3 / 3 |
+| Whole Unreal suite | 4347 / 0: `development` at `c120310b7` (#2576) measured 4344, and three tests are added; the branch moved onto it as `fix/beat-rules-count-real-time-1` |
+| Python | of record, with JUnit, and ruff |
+| The "BEAT SECONDS" lines | quoted as printed |
+| P1, `BeatSeconds` set to `SecondsBetweenWaveChecks` in `Tick` | the rate test fails: two frames of 0.5 cost half |
+| P2, the limit removed | the limit test fails: a frame of 3 s costs three seconds |
+
+### Run
+
+**Window w77 (lock `dungeon-w77`, `fix/beat-rules-count-real-time-1` at `3f6b0afff`, on `c120310b7`, 2026-10-28)
+passed.** The lock was taken at 16:03 on a free-memory reading immediately before it of 11,399 MB, with the other five
+conditions met: both of `development`'s runs at `c120310b7` succeeded, none in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`c120310b7` met only the top of this file (patch ids before and after `284df7f8c371`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The three tests alone | 3 / 3 | `3 tests performed, 3 succeeded, 0 failed` |
+| Whole Unreal suite | 4347 / 0 | `4347 tests performed, 4347 succeeded, 0 failed`; declared 4347, gap 0. The six multi-beat wave tests passed in it |
+| Memory | quoted | `final_used_virtual_mb=7777`, peak 8,086 |
+| Python (JUnit) | 7030 or more | 7030 tests, 0 failures, 0 errors, 8 skipped ("7022 passed, 8 skipped"); ruff `All checks passed!` |
+| The "BEAT SECONDS" lines | quoted as printed | "Mortal Decay over one second cost 5.100 at four frames a second and 5.100 at two; one second's rate is 5.100"; "a frame of one second cost 5.100 and a frame of three cost 5.100; one second's rate is 5.100"; "Death's Embrace cut 0.0 then 10.0 at four frames a second, 0.0 then 10.0 at two" |
+| P1, `BeatSeconds` set to `SecondsBetweenWaveChecks` | the rate test fails: two frames of 0.5 cost half | "1 tests performed, 0 succeeded, 1 failed: ABeatCountsItsOwnTimeSoMortalDecaySapsItsRateAtTwoFramesASecond", printing "5.100 at four frames a second and 2.550 at two"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the limit removed | the limit test fails: a frame of 3 s costs three seconds | "1 tests performed, 0 succeeded, 1 failed: ABeatCountsAtMostOneSecondSoALongFrameCostsOneSecondOfMortalDecay", printing "a frame of three cost 15.300"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-28 — No row carries a scope label: 48 Scope.* tags removed, and a test refuses one (#1620)
 
 **Affects:** 48 cells of `docs/All_Things_Cataclysm.xlsx` (the "Enchantments" sheet's two tag columns, D and I, and
