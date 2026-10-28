@@ -9,7 +9,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w76 below passed every registered figure, and its proof was PROVED.**
 
 ### The ruling
 
@@ -55,7 +55,21 @@ not Rekindled, whose thrall explodes and is not replaced. Each thrall's explosio
 
 ### Run
 
-Not run yet.
+**Window w76 (lock `dungeon-w76`, `feat/rekindled-thrall-2` at `cb230e24a`, on `118e1b6ae`, 2026-10-28) passed.** The
+lock was taken at 14:38 on a free-memory reading immediately before it of 11,497 MB, after `development`'s two runs at
+`118e1b6ae` had both completed with success, and with the other conditions met: none in progress or queued, the lock
+free, no build or editor process, no open pull request. The lock was released before anything was written here. Two
+moves, onto `24f5a1d1c` and then `118e1b6ae`, met only the top of this file (patch ids before and after
+`fc8a5ac086d9` both times).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4344 / 0 | `4344 tests performed, 4344 succeeded, 0 failed`; declared 4344, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7799`, peak 8,101 |
+| Python (JUnit) | 7027 or more | 7027 tests, 0 failures, 0 errors, 8 skipped ("7019 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the death path's statement put back as it was | the test fails: the first thrall is not replaced | "1 tests performed, 0 succeeded, 1 failed: RekindledReplacesAnExplodedThrallWithAnImpWhereItStood", on "Expected 'the exploded thrall is replaced by one imp' to be 1, but it was 0"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
