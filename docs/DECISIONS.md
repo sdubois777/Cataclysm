@@ -2,6 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — Rekindled replaces a thrall that exploded, with an imp where it stood (#2570)
+
+**Affects:** one statement in the death path of `CataclysmVitalAttributeSet.cpp`, and one new test in
+`CataclysmCommandTests.cpp`. Fixes [#2570](https://github.com/sdubois777/Cataclysm/issues/2570).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+
+### The ruling
+
+Rekindled (`Ritualist_keystone_b_kC`) reads "When a minion explodes a new minion is summoned where it stood, no more
+than once every 5 seconds." Since #2540 a thrall explodes under Every One Bursts, and the owner's decision of
+2026-09-16 makes the Ritualist tree's "minion" mean imps and thralls. The coordinating session ruled on 2026-10-28,
+without the owner, that an exploded thrall feeds Rekindled: it is consistent with built behaviour, since Press-Ganged
+already replaces a dying thrall through `UCataclysmSummonSkill::ReplaceLost`.
+
+### What changed
+
+The death path tells `ReplaceLost` whether the death was an explosion. That was true only for an `ACataclysmMinion`.
+For a thrall it is now `ACataclysmMinion::ThrallExplosionDamage(Character, Commander) > 0`, which is above nought
+exactly when `ThrallBurst` explodes it, read before `HandleDeath` while the creature still stands. As for a minion,
+the thrall has exploded whether or not an enemy was in reach.
+
+`ReplaceLost` then does for it what it does for any loss with no summon skill of its own: it takes the commander's
+first held summon skill that is not a possession (`FirstHeldSummonSkill`) and summons that skill's kind where the
+thrall stood, an imp for Summon Imp, counted against that skill's shared cap and reserving its Fervour; nothing when
+the cap is full, the reserve does not fit, or no such skill is held.
+
+**What it does not change, read in `ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced`,** which kills thralls with
+both keystones and Every One Bursts held. Press-Ganged is still tried first, so a thrall with room under the cap is
+replaced by Press-Ganged and Rekindled is not reached. At the cap Press-Ganged fails and Rekindled is now tried, and it
+fails at the same cap check before its wait starts, so neither clock is spent and that test's assertions hold.
+
+### How it is checked
+
+`Cataclysm.MinionDeath.RekindledReplacesAnExplodedThrallWithAnImpWhereItStood`, the commander holding Summon Imp, Every
+One Bursts and Rekindled, and not Press-Ganged, so a replacement can only be Rekindled's. Three thralls die: the first
+is replaced by one imp of Summon Imp's kind where it stood, spending Rekindled's clock; the second, inside the five
+seconds, is not; the third, after 5.1 seconds, is. **CONTROL:** a commander with Summon Imp and Every One Bursts and
+not Rekindled, whose thrall explodes and is not replaced. Each thrall's explosion is asserted as set-up.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The test alone | 1 / 1 |
+| Whole Unreal suite | 4344 / 0: `development` at `db73850a7` (#2572) measured 4343, and one test is added |
+| Python | of record, with JUnit, and ruff |
+| P1, the death path's statement put back as it was | the test fails: the first thrall is not replaced |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-28 — Keyword.DoT.Generic says what carries it, and a test refuses a required tag nothing carries (#1785)
 
 **Affects:** one cell of the "Tags" sheet of `docs/All_Things_Cataclysm.xlsx` (B63, the description of
