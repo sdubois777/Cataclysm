@@ -1600,9 +1600,12 @@ class Simulation:
     def _open_last_stand(self) -> None:
         """The Cataclysm assaults the Pillar, absorbing everything still standing.
 
-        NEAR-FATAL BY DESIGN, AND LOSING IT IS NOT A BUG. Letting the empire
-        collapse is meant to be close to a loss; the project owner settled that
-        on 2026-09-05 and `docs/DECISIONS.md` records it.
+        NEAR-FATAL BY DESIGN UNTIL 2026-10-29. Letting the empire collapse was
+        meant to be close to a loss; the project owner settled that on
+        2026-09-05. **The owner superseded it on 2026-10-29**, verbatim "Accept
+        today's balance": a collapse is rare and this fight is cleared about 1
+        in 7 of the times it is reached. See the block headed RE-MEASURED ON
+        2026-10-29 below, and `docs/DECISIONS.md`.
 
         **THE FIGURE THE RULING WAS MADE ON IS NO LONGER THE FIGURE.** Measured
         on 2026-09-06 over 10,000 campaigns in two disjoint seed blocks, with
@@ -1630,9 +1633,10 @@ class Simulation:
         exactly. That is issue #1343. The change in the WIN RATE is not
         attributed at all.
 
-        **THE RULING IS UNAFFECTED.** The owner ruled that a collapse should be
-        near-fatal. Both figures moved in the direction that satisfies it, so
-        nothing here reopens the decision -- only the numbers under it.
+        **THE RULING STOOD THEN.** The owner had ruled that a collapse should
+        be near-fatal, and both figures moved in the direction that satisfied
+        it, so nothing here reopened the decision -- only the numbers under it.
+        (The owner superseded that ruling on 2026-10-29.)
 
         **AND THEN #1345 MOVED THEM AGAIN, MUCH FURTHER.** Teaching the model
         what a Siege does to a city took the Last Stand from 26% of campaigns to
@@ -1762,9 +1766,9 @@ class Simulation:
         THE FALL FROM 45.9% IS ONLY PARTLY ATTRIBUTED. The same six blocks with
         those three rules held at their September values give 15.5% reached,
         so the three account for 13.6 of the 44.0 points. The other 30.4 are
-        not attributed to any change. Whether the owner's ruling of 2026-09-05
-        that a collapse should be near-fatal still holds at a clear rate of
-        about one in seven has not been put to the owner.
+        not attributed to any change. **THE OWNER ACCEPTED THIS BALANCE ON
+        2026-10-29**, verbatim "Accept today's balance", superseding the ruling
+        of 2026-09-05 that a collapse should be near-fatal.
 
         WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
         run has already gone, and a player only ever reaches this by having lost
@@ -1772,9 +1776,11 @@ class Simulation:
         the map is swallowed, four more per city already lost, and a power
         multiplier that also scales with the cities lost.
 
-        THE FOUR CONSTANTS ARE NOT TO BE TUNED TOWARDS A FAIRER FIGHT. That is
-        the outcome the design wants, and anyone reading cold the 2% clear
-        rate it had when this was written will read it as broken. It is not.
+        THE FOUR CONSTANTS WERE NOT TO BE TUNED TOWARDS A FAIRER FIGHT, because
+        a near-fatal fight was the outcome the design wanted when this was
+        written, at a 2% clear rate. Since 2026-10-29 the owner has accepted
+        today's balance, about 1 in 7, which these constants produce
+        unchanged; the owner did not rule on tuning them either way.
         """
         cfg = self.cfg
         if self.last_stand is not None:
@@ -1989,7 +1995,7 @@ class Simulation:
         # BELOW `_open_last_stand` AND NOT ABOVE IT, deliberately. The Last
         # Stand absorbs everything standing and pays five floors for each one,
         # so a surge fired into an empty board a moment before it opens would
-        # deepen a fight the design already calls near-fatal. Below this line
+        # deepen a fight that is already deep. Below this line
         # the Last Stand is itself on the board, so the board is not empty and
         # no wave is added to it.
         #

@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-29 — The Last Stand figures on record are re-measured: reached in 1.9% of campaigns, not 45.9% (#2615)
+## 2026-10-29 — The Last Stand figures on record are re-measured, reached in 1.9% of campaigns not 45.9%, and the owner accepts that balance, superseding the near-fatal ruling (#2615)
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (the measured Last Stand paragraph, the two paragraphs on how firmly it is
 resolved, the sentence on the owner's near-fatal ruling, and a row in the history table); `sim/README.md` (the same
@@ -17,10 +17,12 @@ nothing the simulation does changes.
   campaigns. Re-measured on 2026-10-29 at the same settings with the simulation's rules of that date: **1.9%**.
 - **THE FALL IS ONLY PARTLY ATTRIBUTED.** The same campaigns with three rules held at their September values give 15.5%,
   so those three account for 13.6 of the 44.0 points. **The other 30.4 points are not attributed** to any change.
-- **THE DOCUMENT NO LONGER SAYS THE OWNER'S NEAR-FATAL RULING IS UNAFFECTED.** That ruling, of 2026-09-05, was made at a
-  clear rate of 1 in 54. The fight is now cleared about 1 time in 7 of those reached, on 17 clears with a 95% interval
-  reaching 1 in 4.5. Whether the ruling still holds is the owner's question, and the coordinating session is putting it
-  to them.
+- **THE OWNER'S RULING OF 2026-09-05 THAT A COLLAPSE SHOULD BE NEAR-FATAL IS SUPERSEDED.** The coordinating session put
+  the question to the project owner on 2026-10-29 with these figures, offering the option worded "A collapse is now rare;
+  let the Last Stand be winnable about 1 in 7. Record that the near-fatal ruling is superseded." The owner answered,
+  verbatim: **"Accept today's balance"**. The balance accepted: the Last Stand reached in 1.9% of campaigns, cleared 1 in
+  6.8 of those reached (17 clears; 95% range 1 in 4.5 to 1 in 10.7), a campaign won 48.7% of the time, and 1.87 cities
+  lost. The 2026-09-05 ruling had been made at a clear rate of 1 in 54.
 - **THE CLEAR RATE IS SOFT.** It rests on 17 clears in 116 Last Stands; its block standard deviation is 60% of the figure.
 - **`sim/analyse_siege_dose.py`'S `BASE` STILL HOLDS THE THREE RULES AT THEIR SEPTEMBER VALUES**, as ruled: this change
   does not touch it. Its own comment says so ("THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED"). **That is
@@ -58,23 +60,31 @@ interval (Wilson) 1 in 4.5 to 1 in 10.7.
 
 The coordinating session, 2026-10-29: #2615 approved with both runs; the paragraph takes the shipped figures and states
 the three rules' values and the run's date and commit; the held run goes here as a partial attribution with the rest
-unattributed; `analyse_siege_dose.py`'s `BASE` is not changed here, and this entry says whether that misleads.
+unattributed; `analyse_siege_dose.py`'s `BASE` is not changed here, and this entry says whether that misleads. Then,
+after the owner's answer above: record that the near-fatal ruling is superseded, quoting the answer, with the figures it
+rests on, and nowhere describe that ruling as untouched by the new figures.
 
 ### WHAT WAS CHANGED
 
 - `docs/Cataclysm_GDD_v2.md`: the measured paragraph gives the new figures, the commit and date, the three rules, the
   figures it replaces and the partial attribution. The resolution paragraph and the clear-rate paragraph give the new
-  spreads. The sentence that said the near-fatal ruling "is unaffected" now says it has not been put to the owner. The
-  history table's 2026-09-07 row is no longer marked as today, and a 2026-10-29 row is added.
+  spreads. The sentence on the near-fatal ruling now records that the owner superseded it, with the answer and the
+  figures, and the opening statement that reaching the Last Stand "is effectively the end of the run ... and that is
+  intended" now says that design is superseded. The history table's 2026-09-07 row is no longer marked as today, and a
+  2026-10-29 row is added.
 - `sim/README.md`: the same, in its table, its preface (whose two caveats, that the figures predate the board-empty
-  surge and `death_resolves_dungeon`, no longer apply, since both are in the shipped rules measured) and its history
-  table.
+  surge and `death_resolves_dungeon`, no longer apply, since both are in the shipped rules measured), its history table,
+  and its description of the Last Stand, which said the owner ruled a near-unwinnable fight the intended shape.
 - `sim/cataclysm_sim/engine.py`: a record block headed "RE-MEASURED ON 2026-10-29 FOR ISSUE #2615", a superseded note on
-  the 2026-09-07 block, which still read as current, and the closing sentence about "the 2%" dated to when it was
-  written.
+  the 2026-09-07 block, which still read as current; the docstring's opening "NEAR-FATAL BY DESIGN" and a 2026-09-06
+  block's statement that the ruling stood are dated and marked superseded; the closing instruction not to tune the four
+  constants towards a fairer fight is dated, and says the owner did not rule on tuning them either way; and a comment in
+  `_empire_day` that called the fight near-fatal no longer does.
 - `tools/tests/test_the_last_stand_figures_are_consistent.py`: its anchors bracket the new block; "five", "seven" and
   "ten" are number words; "met in about two campaigns in a hundred" is a recognised claim for 1% to 3%; and four
-  statements of the 2026-09-07 run, including "near-fatal is unaffected", are added to those that may not be live.
+  statements of the 2026-09-07 run are added to those that may not be live, one of them the old sentence on the
+  near-fatal ruling. That one is the only place the word the owner's answer retired still appears, as a string the test
+  forbids.
 
 ### REGISTERED BEFORE THE PROOF
 

@@ -354,7 +354,7 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
-**Reaching the Last Stand is effectively the end of the run.** It is a fight the player can win in principle and almost never wins in practice, and that is intended rather than a balance problem to be solved. Letting the empire collapse is meant to be close to a loss.
+**Reaching the Last Stand was designed to be effectively the end of the run**, a fight the player can win in principle and almost never wins in practice. **That design is superseded**: on 2026-10-29 the project owner accepted a balance in which a collapse is rare and the Last Stand is cleared about 1 time in 7 of those reached, verbatim "Accept today's balance". See the measured paragraph and the ruling below.
 
   
 
@@ -374,7 +374,7 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 **The denominator matters and is stated on purpose.** The rate above is per Last Stand *reached*. Counted per Last Stand *entered* it is higher, because some Last Stands are never entered — the campaign runs out of days first. The two denominators give different answers, so a figure quoted without one cannot be compared with anything. The owner's ruling of 2026-09-05 rests on the reached denominator, so that is the one this section states. **The entered denominator has not been re-measured on the current model**; when both were last taken together it was 1 in 70 against 1 in 84 reached.
 
-**Whether the owner's ruling that a collapse should be near-fatal still holds has not been put to the owner.** The ruling of 2026-09-05 was made when the fight was cleared about 1 in 54 of the times it was reached. It is now met in about two campaigns in a hundred and cleared in about one in seven of those reached, on 17 clears. That is a question for the owner, not one this document settles.
+**The owner's ruling of 2026-09-05 that a collapse should be near-fatal is superseded.** Asked on 2026-10-29 whether to keep it, with the option worded "A collapse is now rare; let the Last Stand be winnable about 1 in 7. Record that the near-fatal ruling is superseded", the project owner answered, verbatim: "Accept today's balance". The balance accepted is the one measured above: the Last Stand reached in 1.9% of campaigns, cleared 1 in 6.8 of those reached (17 clears; 95% range 1 in 4.5 to 1 in 10.7), a campaign won 48.7% of the time and 1.87 cities lost. The 2026-09-05 ruling was made when the fight was cleared about 1 in 54 of the times it was reached. The fight is now met in about two campaigns in a hundred.
 
 **What this section carried before, and why each figure moved.** Every row is difficulty tier 1 at the settings named above; only what the row's own note names differs. They are kept rather than deleted because each was the evidence a decision was made on at the time, and because a reader meeting one of them elsewhere needs to be able to place it.
 

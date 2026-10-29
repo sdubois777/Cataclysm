@@ -499,9 +499,11 @@ There are two ways to get into one:
   parent Sanctuary have all fallen, so the Cataclysm can reach the Pillar
   and comes to the player, absorbing every dungeon still standing as extra
   floors. **This is not itself a loss**, and the older wording here said it
-  was. It is a fight, and it is very nearly always lost. Issue #5 measured
-  the original; whether a near-unwinnable fight is the intended shape is
-  issue #1286, and the owner ruled that it is.
+  was. It is a fight. Issue #5 measured the original; issue #1286 asked
+  whether a near-unwinnable fight is the intended shape, and the owner ruled
+  on 2026-09-05 that it is. **That ruling is superseded**: on 2026-10-29 the
+  owner answered "Accept today's balance", which is the table below -- a
+  Last Stand reached in 1.9% of campaigns and cleared about 1 in 7 of those.
 
   **MEASURED 2026-10-29 OVER 6,000 CAMPAIGNS**, on `17366a34d`, in six
   disjoint blocks of 1,000 seeds, at tier 1, `No tree`, `triage`, STATIC
@@ -542,9 +544,9 @@ There are two ways to get into one:
   **THE FALL FROM 45.9% REACHED IS ONLY PARTLY ATTRIBUTED.** The same six
   blocks with those last three rules at their September values give 15.5%
   reached, so the three account for 13.6 of the 44.0 points; the other 30.4
-  are not attributed to any change. Whether the owner's ruling that a
-  collapse should be near-fatal still holds at a clear rate of about one in
-  seven has not been put to the owner.
+  are not attributed to any change. The owner accepted this balance on
+  2026-10-29, verbatim "Accept today's balance", superseding the ruling of
+  2026-09-05 that a collapse should be near-fatal.
 
   **THE GAP BETWEEN TWO BLOCKS IS NOT THE NOISE FLOOR.** Two blocks give one
   realised difference, not an estimate of a spread. Measured on the six of
