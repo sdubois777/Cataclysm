@@ -58,7 +58,7 @@ beginning "PLAYER LEVEL IN PLAY".
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | 4359 / 0: `development`'s 4358, measured by window w86 on the tests `5a0d523f7` holds (#1522 after it is Python only), + 1 |
+| Whole Unreal suite | 4359 / 0: `development`'s 4358, measured by window w86 on the tests `5a0d523f7` holds (#1522 and #2022 after it are Python only), + 1 |
 | Python | of record, with JUnit, and ruff |
 | The "PLAYER LEVEL IN PLAY" line | quoted as printed |
 | P1, the refresh removed | the test fails on "an unsettled character takes the new level's health at once", and on nothing else |
