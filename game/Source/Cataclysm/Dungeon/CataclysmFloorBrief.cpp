@@ -112,7 +112,28 @@ bool FCataclysmDungeonFloorRules::BossAtTheExit(
 	// A DUNGEON WITH ONE FLOOR OR FEWER HAS NO BOTTOM TO PUT A BOSS ON. That is
 	// what `ACataclysmDungeonGameMode::IsOnTheLastFloor` says about the same
 	// case: no floor count means no bottom, and descending goes on for ever.
-	return Dungeon.TotalFloors > 1 && FloorNumber >= Dungeon.TotalFloors;
+	if (Dungeon.TotalFloors <= 1)
+	{
+		return false;
+	}
+	if (FloorNumber >= Dungeon.TotalFloors)
+	{
+		return true;
+	}
+
+	// AND A FALLEN CITY'S OTHER BOSSES, SPREAD EVENLY. Issue #1466, the owner's
+	// answer of 2026-10-29: boss i of B at the exit of floor ceil(i x floors / B).
+	// The last of them is the final floor, answered above; a count of one asks
+	// nothing more. Held to one per floor.
+	const int32 Count = FMath::Clamp(Dungeon.Bosses, 1, Dungeon.TotalFloors);
+	for (int32 Boss = 1; Boss < Count; ++Boss)
+	{
+		if (FMath::DivideAndRoundUp(Boss * Dungeon.TotalFloors, Count) == FloorNumber)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 int32 FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(int32 DungeonSeed)

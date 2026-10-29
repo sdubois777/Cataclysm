@@ -218,6 +218,12 @@ public:
 	 */
 	TArray<FCataclysmDungeonModifier> DungeonEveryBuiltModifier;
 
+	/**
+	 * How many bosses the dungeon being walked holds: `FCataclysmDungeon::Bosses`, copied by `EnterEmpireDungeon` and
+	 * put back to one by `LeaveEmpireDungeon`. Issue #1466. One for every dungeon but a Fallen City.
+	 */
+	int32 DungeonBosses = 1;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;

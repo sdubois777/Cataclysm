@@ -2626,4 +2626,123 @@ bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Fallen City: "multiple boss fights", spread evenly. Issue #1466.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefFallenCityBossesTest,
+	"Cataclysm.FloorBrief.AFallenCitySpreadsItsBossesEvenlyDownItsFloors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefFallenCityBossesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// ISSUE #1466, THE OWNER'S ANSWER OF 2026-10-29: "Spread evenly". Boss i of B
+	// stands at the exit of floor ceil(i x floors / B), at most one on a floor.
+	const auto BossFloors = [](const FCataclysmDungeonIdentity& Dungeon)
+	{
+		FString Floors;
+		for (int32 Floor = 1; Floor <= Dungeon.TotalFloors; ++Floor)
+		{
+			if (FCataclysmDungeonFloorRules::BriefFor(Dungeon, Floor).bBossAtTheExit)
+			{
+				Floors += Floors.IsEmpty() ? FString::FromInt(Floor) : FString::Printf(TEXT(",%d"), Floor);
+			}
+		}
+		return Floors;
+	};
+	const auto WithBosses = [](ECataclysmDungeonSubType SubType, int32 Bosses)
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(SubType);
+		Out.Bosses = Bosses;
+		return Out;
+	};
+
+	const FString Five = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 5));
+	const FString Three = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 3));
+	const FString Twenty = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 20));
+	const FString Thirty = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 30));
+	const FString One = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 1));
+	const FString EliteOne = BossFloors(WithBosses(ECataclysmDungeonSubType::Elite, 1));
+	const FString EliteFive = BossFloors(WithBosses(ECataclysmDungeonSubType::Elite, 5));
+	FString EveryFloor;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		EveryFloor += EveryFloor.IsEmpty() ? FString::FromInt(Floor) : FString::Printf(TEXT(",%d"), Floor);
+	}
+	AddInfo(FString::Printf(TEXT("FALLEN CITY BOSSES: of 20 floors, 5 bosses on %s; 3 on %s; 1 on %s; Elite with 1 on %s"),
+							*Five, *Three, *One, *EliteOne));
+
+	TestEqual(TEXT("five bosses of twenty floors stand on floors 4, 8, 12, 16 and 20"), Five, FString(TEXT("4,8,12,16,20")));
+	TestEqual(TEXT("three stand on floors 7, 14 and 20"), Three, FString(TEXT("7,14,20")));
+	TestEqual(TEXT("twenty stand one on every floor"), Twenty, EveryFloor);
+	TestEqual(TEXT("and thirty are held to one on every floor"), Thirty, EveryFloor);
+
+	// THE CONTROL: A DUNGEON WITH ONE BOSS, WHICH IS EVERY DUNGEON BUT A FALLEN CITY, IS UNCHANGED. A Basic dungeon
+	// has its boss on its last floor alone, and an Elite one on every floor, whatever the count.
+	TestEqual(TEXT("CONTROL: a dungeon with one boss has it on its last floor alone"), One, FString(TEXT("20")));
+	TestEqual(TEXT("CONTROL: an Elite dungeon has one on every floor"), EliteOne, EveryFloor);
+	TestEqual(TEXT("CONTROL: and an Elite Fallen City still one on every floor, no more"), EliteFive, EveryFloor);
+
+	// AND NONE ON THE DARK FLOOR, whatever floor's number it carries.
+	FCataclysmDungeonIdentity Dark = WithBosses(ECataclysmDungeonSubType::None, 5);
+	Dark.bTheDarkFloor = true;
+	TestFalse(TEXT("the dark floor carrying floor 4's number has no boss"),
+			  FCataclysmDungeonFloorRules::BriefFor(Dark, 4).bBossAtTheExit);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefEnteringCarriesTheBossesTest,
+	"Cataclysm.FloorBrief.EnteringADungeonCarriesHowManyBossesItHolds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefEnteringCarriesTheBossesTest::RunTest(const FString& Parameters)
+{
+	// ISSUE #1466. The count lived on the empire's dungeon and nothing carried it onto the game mode, so the rule
+	// above could never see it. Entering a dungeon holding four bosses carries four; leaving puts it back to one.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	// FOUR BOSSES, AS A FALLEN CITY THAT FELL HOLDING FOUR DUNGEONS WOULD HAVE, on a dungeon deep enough for them.
+	Run->Dungeons[0].Bosses = 4;
+	Run->Dungeons[0].Floors = FMath::Max(Run->Dungeons[0].Floors, 8);
+	Mode->SetEmpireRunForTests(Run);
+
+	const int32 Before = Mode->DungeonIdentity().Bosses;
+	if (!TestTrue(TEXT("set-up: the dungeon is entered"), Mode->EnterEmpireDungeon(Run->Dungeons[0].DungeonId)))
+	{
+		return false;
+	}
+	const int32 Inside = Mode->DungeonIdentity().Bosses;
+	Mode->LeaveEmpireDungeon();
+	const int32 After = Mode->DungeonIdentity().Bosses;
+
+	AddInfo(FString::Printf(TEXT("ENTERED BOSSES: %d before entering, %d inside, %d after leaving"), Before, Inside, After));
+	TestEqual(TEXT("CONTROL: before entering the game mode holds one boss"), Before, 1);
+	TestEqual(TEXT("entering a dungeon holding four bosses carries four"), Inside, 4);
+	TestEqual(TEXT("and leaving puts it back to one"), After, 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
