@@ -3447,6 +3447,14 @@ CATACLYSM_MODIFIER_TEST(FCataclysmShielderRefillsTest,
 	{
 		return false;
 	}
+	// AN IMP THAT CANNOT EVADE OR BLOCK THE HIT, as the `Creature` helper makes its creatures. Issue #2588: the Imp's
+	// archetype row gives it 25% evasion, so one window in four the hit was evaded and took no shield. An attribute base
+	// written here is no stats setter, so the rule above about `ApplyDesignedStats` still holds.
+	if (UAbilitySystemComponent* ImpOwn = Imp->GetAbilitySystemComponent())
+	{
+		ImpOwn->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		ImpOwn->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
 	ExpectItRefills(*this, World, Player, Imp, TEXT("Shielder"));
 
 	// CONTROL: A CREATURE WITH NO SHIELD REGENERATES NOTHING, health or shield,

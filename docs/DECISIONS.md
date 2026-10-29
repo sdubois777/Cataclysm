@@ -11,6 +11,10 @@ Decisions made outside the Google Drive documents, newest first.
 
 - **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
 - **THE ON-SCREEN STATUS LIST WAS NOT CHECKED.** Whether the spent brand also showed there was not read.
+- **IT CARRIES #2588**, a set-up line in `AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage`
+  (#1562): its Imp has 25% evasion from its archetype row, so the test's hit was evaded one run in four, as
+  window w80 met. The Imp's evasion and block chance are now set to nought before the hit; no assertion changed.
+  Ruled by the coordinating session on 2026-10-29.
 
 ### What it was, read again at `1e78c2bce`
 
