@@ -230,10 +230,11 @@ namespace CataclysmTestWorld
 	 * otherwise leave every tier reading 1 and the test failing for a reason it
 	 * does not name.
 	 *
-	 * TWO OTHER FILES STILL WRITE THIS VARIABLE AT CODE PRIORITY and pass only
-	 * because their group names sort before `Cataclysm.Drop`:
-	 * `CataclysmDifficultyTierTests.cpp` and `CataclysmDamageCalculationTests.cpp`.
-	 * Moving them here is issue #1470.
+	 * EVERY TEST NOW WRITES EVERY CONSOLE VARIABLE AT CONSOLE PRIORITY. Issue
+	 * #1470: `CataclysmDifficultyTierTests.cpp` and `CataclysmDamageCalculationTests.cpp`
+	 * wrote this one at code priority and passed only because their group names
+	 * sort before `Cataclysm.Drop`. `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py`
+	 * fails on any console variable a test writes below it.
 	 */
 	struct FScopedDifficultyTier
 	{

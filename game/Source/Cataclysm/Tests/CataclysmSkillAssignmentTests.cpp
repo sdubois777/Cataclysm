@@ -1497,8 +1497,8 @@ bool FCataclysmSkillAssignmentResetReachesOffTheKeysTest::RunTest(const FString&
 	{
 		return false;
 	}
-	Roll->Set(0.0f, ECVF_SetByCode);
-	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+	Roll->Set(0.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
 	FCataclysmPoolAction ResetAll;
 	ResetAll.CooldownReset = ECataclysmCooldownReset::All;
 	ResetAll.Percent = 100.0f;

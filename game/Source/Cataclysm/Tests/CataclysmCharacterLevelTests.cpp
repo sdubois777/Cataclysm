@@ -61,7 +61,7 @@ namespace CataclysmCharacterLevelTest
 			if (Variable)
 			{
 				Previous = Variable->GetInt();
-				Variable->Set(Level, ECVF_SetByCode);
+				Variable->Set(Level, ECVF_SetByConsole);
 			}
 		}
 
@@ -69,7 +69,7 @@ namespace CataclysmCharacterLevelTest
 		{
 			if (Variable)
 			{
-				Variable->Set(Previous, ECVF_SetByCode);
+				Variable->Set(Previous, ECVF_SetByConsole);
 			}
 		}
 
@@ -160,10 +160,10 @@ bool FCataclysmLevelGainedOverridesTheConsoleVariable::RunTest(const FString&)
 	// variable afterwards: a character that is still unsettled follows it.
 	TestEqual(TEXT("granting nothing gains nothing"),
 		State->GrantExperience(0), 0);
-	Starting.Variable->Set(15, ECVF_SetByCode);
+	Starting.Variable->Set(15, ECVF_SetByConsole);
 	TestEqual(TEXT("and left the level free to follow the console variable"),
 		State->GetCharacterLevel(), 15);
-	Starting.Variable->Set(10, ECVF_SetByCode);
+	Starting.Variable->Set(10, ECVF_SetByConsole);
 
 	const int32 Gained = State->GrantExperience(
 		UCataclysmExperience::CostOfLevel(11));
@@ -173,7 +173,7 @@ bool FCataclysmLevelGainedOverridesTheConsoleVariable::RunTest(const FString&)
 	// AND THE CONSOLE VARIABLE MOVING NO LONGER MOVES THE CHARACTER. A level
 	// that was earned has to stop being at the mercy of a setting, or every
 	// level gained would be undone by the next person typing into the console.
-	Starting.Variable->Set(4, ECVF_SetByCode);
+	Starting.Variable->Set(4, ECVF_SetByConsole);
 	TestEqual(TEXT("the earned level survives the console variable changing"),
 		State->GetCharacterLevel(), 11);
 	TestEqual(TEXT("and the attribute points follow the earned level"),
@@ -435,7 +435,7 @@ bool FCataclysmLevelReachesTheCharactersStats::RunTest(const FString&)
 
 	// AND THE CONSOLE VARIABLE IS NO LONGER WHAT DECIDES IT. Moving it must not
 	// move a character that has earned its level.
-	Starting.Variable->Set(3, ECVF_SetByCode);
+	Starting.Variable->Set(3, ECVF_SetByConsole);
 	if (Character->GetEquipment())
 	{
 		Character->GetEquipment()->RefreshAttributes(ASC);

@@ -7940,7 +7940,7 @@ namespace CataclysmCooldownResetTest
 		{
 			if (Variable)
 			{
-				Variable->Set(Roll, ECVF_SetByCode);
+				Variable->Set(Roll, ECVF_SetByConsole);
 			}
 		}
 		IConsoleVariable* Variable = nullptr;
@@ -9220,8 +9220,8 @@ bool FCataclysmChargesResetDeathReductionTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	Roll->Set(0.0f, ECVF_SetByCode);
-	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+	Roll->Set(0.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
 	FCataclysmPoolAction Reset;
 	Reset.CooldownReset = ECataclysmCooldownReset::Heavy;
 	Reset.Percent = 100.0f;
@@ -27810,8 +27810,8 @@ bool FCataclysmWarlordSixRowTest::RunTest(const FString&)
 		return false;
 	}
 	const float Was = Roll->GetFloat();
-	Roll->Set(0.0f, ECVF_SetByCode);
-	ON_SCOPE_EXIT { Roll->Set(Was, ECVF_SetByCode); };
+	Roll->Set(0.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Roll->Set(Was, ECVF_SetByConsole); };
 
 	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);

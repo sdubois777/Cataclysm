@@ -1671,7 +1671,7 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 		return false;
 	}
 	const float Original = ChaseSpeed->GetFloat();
-	ON_SCOPE_EXIT { ChaseSpeed->Set(Original); };
+	ON_SCOPE_EXIT { ChaseSpeed->Set(Original, ECVF_SetByConsole); };
 
 	FScopedBrute Brute(World, FVector::ZeroVector);
 	ACataclysmEnemyController* Brain = Brute.Brain();
@@ -1693,7 +1693,7 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 		DesignedChase > Designed);
 
 	// Nothing in sight and no override: the patrol speed.
-	ChaseSpeed->Set(0.0f);
+	ChaseSpeed->Set(0.0f, ECVF_SetByConsole);
 	Brain->Think();
 	Brute.Actor->ApplyChaseSpeed();
 	TestEqual(TEXT("wandering, it moves at its designed patrol speed"),
@@ -1720,7 +1720,7 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 
 	// Chasing with an override: it moves at that speed instead.
 	constexpr float Faster = 320.0f;
-	ChaseSpeed->Set(Faster);
+	ChaseSpeed->Set(Faster, ECVF_SetByConsole);
 	Brain->Think();
 	Brute.Actor->ApplyChaseSpeed();
 	TestEqual(TEXT("chasing with an override set, it moves at the override"),
@@ -1747,7 +1747,7 @@ bool FCataclysmBruteChaseSpeedTakesEffectTest::RunTest(const FString&)
 	TestEqual(TEXT("chasing again at the override"),
 		Movement->MaxWalkSpeed, Faster);
 
-	ChaseSpeed->Set(0.0f);
+	ChaseSpeed->Set(0.0f, ECVF_SetByConsole);
 	Brute.Actor->ApplyChaseSpeed();
 	TestEqual(TEXT("and clearing it returns to the designed chase speed at once, "
 				   "not to the patrol speed"),
@@ -3437,15 +3437,15 @@ bool FCataclysmBruteCooldownsCanBeSetLive::RunTest(const FString&)
 	}
 	const float WasStomp = StompCooldown->GetFloat();
 	const float WasThrow = ThrowCooldown->GetFloat();
-	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp); ThrowCooldown->Set(WasThrow); };
+	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp, ECVF_SetByConsole); ThrowCooldown->Set(WasThrow, ECVF_SetByConsole); };
 
 	FScopedBrute Brute(World, FVector::ZeroVector);
 
 	// UNSET, IT IS THE DESIGNED FIGURE. Zero means "use the design", so an
 	// override of zero must not be read as a cooldown of zero -- which would
 	// make every ability always ready.
-	StompCooldown->Set(0.0f);
-	ThrowCooldown->Set(0.0f);
+	StompCooldown->Set(0.0f, ECVF_SetByConsole);
+	ThrowCooldown->Set(0.0f, ECVF_SetByConsole);
 	TestEqual(TEXT("with nothing set, the stomp uses its designed cooldown"),
 		Brute.Actor->StompCooldownSecondsInUse(),
 		ACataclysmBruteCharacter::StompCooldownSeconds);
@@ -3454,8 +3454,8 @@ bool FCataclysmBruteCooldownsCanBeSetLive::RunTest(const FString&)
 		ACataclysmBruteCharacter::RockThrowCooldownSeconds);
 
 	// SET, IT IS THE OVERRIDE.
-	StompCooldown->Set(11.0f);
-	ThrowCooldown->Set(13.0f);
+	StompCooldown->Set(11.0f, ECVF_SetByConsole);
+	ThrowCooldown->Set(13.0f, ECVF_SetByConsole);
 	TestEqual(TEXT("set, the stomp uses the console figure"),
 		Brute.Actor->StompCooldownSecondsInUse(), 11.0f);
 	TestEqual(TEXT("and the rock throw uses its own"),
@@ -3509,16 +3509,16 @@ bool FCataclysmLongerCooldownsMeanMoreSwings::RunTest(const FString&)
 	}
 	const float WasStomp = StompCooldown->GetFloat();
 	const float WasThrow = ThrowCooldown->GetFloat();
-	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp); ThrowCooldown->Set(WasThrow); };
+	ON_SCOPE_EXIT { StompCooldown->Set(WasStomp, ECVF_SetByConsole); ThrowCooldown->Set(WasThrow, ECVF_SetByConsole); };
 
 	// Counts what the creature did over a fixed stretch of time, at a given
 	// cooldown. Returns swings ordered and abilities used, in that order.
 	auto RunFor = [this](float Cooldown, int32& OutSwings, int32& OutAbilities)
 	{
 		IConsoleManager::Get().FindConsoleVariable(
-			TEXT("Cataclysm.Brute.StompCooldown"))->Set(Cooldown);
+			TEXT("Cataclysm.Brute.StompCooldown"))->Set(Cooldown, ECVF_SetByConsole);
 		IConsoleManager::Get().FindConsoleVariable(
-			TEXT("Cataclysm.Brute.RockThrowCooldown"))->Set(Cooldown);
+			TEXT("Cataclysm.Brute.RockThrowCooldown"))->Set(Cooldown, ECVF_SetByConsole);
 
 		UWorld* World = MakeWorldThatHasBegunPlay();
 		if (!World)
@@ -4062,8 +4062,8 @@ bool FCataclysmBruteCrippledWalksSlowerTest::RunTest(const FString&)
 		return false;
 	}
 	const float Original = ChaseSpeed->GetFloat();
-	ON_SCOPE_EXIT { ChaseSpeed->Set(Original); };
-	ChaseSpeed->Set(0.0f);
+	ON_SCOPE_EXIT { ChaseSpeed->Set(Original, ECVF_SetByConsole); };
+	ChaseSpeed->Set(0.0f, ECVF_SetByConsole);
 
 	FScopedBrute Brute(World, FVector::ZeroVector);
 	ACataclysmEnemyController* Brain = Brute.Brain();
