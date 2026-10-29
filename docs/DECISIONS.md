@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — An Infernal Brand's explosion takes its status tag with its stacks, so a spent brand is no longer a debuff (#1537)
+
+**Affects:** `UCataclysmEnemyModifiers::BrandOnHit` in `CataclysmEnemyModifiers.cpp` (one call), and one new test in
+`CataclysmEnemyModifierTests.cpp`. Fixes [#1537](https://github.com/sdubois777/Cataclysm/issues/1537).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **THE ON-SCREEN STATUS LIST WAS NOT CHECKED.** Whether the spent brand also showed there was not read.
+
+### What it was, read again at `1e78c2bce`
+
+`BrandOnHit` adds `Status.Debuff.InfernalBrand` on every brand for the brand's eight-second window, and on the fifth
+`UCataclysmStacks::NoteInfernalBrand` spends the stacks and the explosion is dealt. Nothing removed the tag, so a player
+carried a brand with no stacks for up to eight seconds after the fifth brand, and `Status.Debuff` is a root
+`UCataclysmDebuffs::TagsOn` and `CountOn` match. What reads it: the player's `DebuffsCarried`, which the stat pipeline's
+"per debuff carried" values scale with; a condition on an attacker's debuffs when the branded player strikes; Contagion's
+spreading of debuffs carried; and the debug console's count.
+
+### What changed
+
+When `NoteInfernalBrand` reports the explosion, `BrandOnHit` calls the existing
+`UCataclysmSkillEffects::RemoveEffectsGranting(Target, Brand)`, before the explosion's damage, so the stacks and the tag
+end together and the explosion's own blow does not see a spent brand.
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionTakesItsTagAndItIsNoLongerADebuff`, through the damage path as
+`InfernalBrandExplodesOnceForEveryFiveHitsThatLand` drives it. **CONTROL:** after four brands the target carries the tag
+and counts it among its debuffs. The fifth explodes; the tag is gone and the debuffs carried are one fewer. It prints a
+line beginning "BRAND TAG".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "BRAND TAG" line | quoted as printed |
+| P1, the removal deleted | the test fails: the tag is still carried after the explosion |
+| P2, the removal moved to every brand, before the stack is counted | the CONTROL fails: no tag is carried after four brands |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-28 — The row generator refuses a flat passive-node row on a stat the game reads nowhere (#2582)
 
 **Affects:** `tools/generate_datatables.py` (one refusal in `validate_passive_effects`, using the

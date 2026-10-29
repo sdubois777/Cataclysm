@@ -711,6 +711,12 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 		return 0.0f;
 	}
 
+	// AND THE BRAND'S TAG GOES WITH ITS STACKS. Issue #1537: the stacks were
+	// spent above and the tag stayed for the rest of its eight seconds, so a
+	// spent brand still counted as a debuff carried. Before the blow, so the
+	// explosion's own damage does not see it either.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Target, Brand);
+
 	// FIVE TIMES THIS CREATURE'S OWN ATTACK DAMAGE, which the project owner
 	// chose: one hit's worth banked per stack. Read off the creature rather than
 	// written here, so a Herald's brand is a Herald's brand.
