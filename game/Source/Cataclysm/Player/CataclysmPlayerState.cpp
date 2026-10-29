@@ -625,8 +625,12 @@ void ACataclysmPlayerState::StartingLevelChanged()
 		{
 			continue;
 		}
+		// NOT IN A WORLD THAT HAS BEEN DESTROYED. `UWorld::DestroyWorld` cleans
+		// the world up, which clears `bIsWorldInitialized`, but leaves its actors
+		// valid until garbage collection: window w87 saw a destroyed test world's
+		// player state answer a change made after it.
 		const UWorld* World = State->GetWorld();
-		if (!World || World->bIsTearingDown)
+		if (!World || World->bIsTearingDown || !World->bIsWorldInitialized)
 		{
 			continue;
 		}

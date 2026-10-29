@@ -578,6 +578,10 @@ bool FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot::RunTest(const FString&)
 				Lines.Add({ FString(Text), Verbosity });
 			}
 		}
+		// AT ANY VERBOSITY WHEN `Verbosity` IS `All`: a warning the test has declared
+		// with `AddExpectedError` reaches every other output device lowered to
+		// Verbose, which window w87 measured. The declaration itself requires that
+		// line to arrive as a warning or an error.
 		int32 Count(const TCHAR* Needle, ELogVerbosity::Type Verbosity)
 		{
 			if (GLog)
@@ -587,7 +591,8 @@ bool FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot::RunTest(const FString&)
 			int32 Found = 0;
 			for (const TPair<FString, ELogVerbosity::Type>& Line : Lines)
 			{
-				Found += Line.Value == Verbosity && Line.Key.Contains(Needle, ESearchCase::CaseSensitive) ? 1 : 0;
+				Found += (Verbosity == ELogVerbosity::All || Line.Value == Verbosity)
+					&& Line.Key.Contains(Needle, ESearchCase::CaseSensitive) ? 1 : 0;
 			}
 			return Found;
 		}
@@ -652,7 +657,7 @@ bool FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot::RunTest(const FString&)
 	AddExpectedError(TEXT("settled its level at 40"), EAutomationExpectedErrorFlags::Contains, 1);
 	Starting.Variable->Set(5, ECVF_SetByConsole);
 	const float AfterFive = ASC->GetNumericAttribute(MaxHealth);
-	const int32 Warned = Capture.Count(TEXT("settled its level at 40"), ELogVerbosity::Warning);
+	const int32 Warned = Capture.Count(TEXT("settled its level at 40"), ELogVerbosity::All);
 
 	AddInfo(FString::Printf(TEXT("PLAYER LEVEL IN PLAY: maximum health %.1f at 10, %.1f after 40 (%d applied lines), "
 								 "%.1f after 5 once settled (%d warnings); the class line gives %.1f at 40 and %.1f at 5"),

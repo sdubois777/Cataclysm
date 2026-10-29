@@ -10,7 +10,8 @@ new test in `CataclysmCharacterLevelTests.cpp`. Fixes [#1540](https://github.com
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NOT YET PASSED IN UNREAL.** Window w87 below stopped at the new test alone; two faults it found in this branch's
+  own code were corrected, and nothing has been run since.
 - **THE ISSUE WAS HALF TRUE AT `faf969780`.** It says a change during play does nothing. On a character whose level is
   not settled, `ACataclysmPlayerState::GetCharacterLevel` reads the variable every time it is asked, so the character
   sheet, the passive points, a minion the player summons and a save took the new level at once. Only the stat line
@@ -41,7 +42,8 @@ changing it", now says both.
 The callback is bound with `SetOnChangedCallback` on the variable, the way `Cataclysm.DungeonSubType` in
 `CataclysmDungeonGameMode.cpp` binds its own, and does nothing before the object system is up, since a value set from a
 configuration file arrives at start-up. It answers every player state with a possessed character, found with an object
-iterator, skipping a world being torn down.
+iterator, skipping a world being torn down or no longer initialized: `UWorld::DestroyWorld` clears
+`bIsWorldInitialized` and leaves the world's actors valid until garbage collection.
 
 ### How it is checked
 
@@ -64,7 +66,31 @@ beginning "PLAYER LEVEL IN PLAY".
 
 ### Run
 
-Not run yet.
+**Window w87 (lock `dungeon-w87`, `fix/typing-the-player-level-during-play-applies-or-says-why-not-1` at `b7686e2e6`,
+on `603f2efee`, 2026-10-29) STOPPED at the new test alone. Nothing after it ran.** The lock was taken on a free-memory
+reading immediately before it of 10,949 MB, after `development`'s CI run at `603f2efee` and its
+last Unreal run, at `5a0d523f7`, succeeded, with no run in progress or queued, the lock free, no build or editor
+process, no open pull request. It was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 0 succeeded, 1 failed`: "Expected 'CONTROL: and one warning names the level it is settled at' to be 1, but it was 0" |
+| The "PLAYER LEVEL IN PLAY" line | quoted as printed | "maximum health 310.0 at 10, 910.0 after 40 (1 applied lines), 910.0 after 5 once settled (0 warnings); the class line gives 910.0 at 40 and 210.0 at 5" |
+
+Every other assertion held: the unsettled character took the level 40 health at once with one "applied" line, and the
+settled one kept it. **Two faults, both in this branch's own code, read from the engine log:**
+
+1. **The warning was logged, at Verbose.** A warning the test has declared with `AddExpectedError` reaches every other
+   output device lowered to Verbose, and the test's capture counted Warning lines only. The capture now counts the
+   line at any verbosity; `AddExpectedError` still requires it to arrive as a warning or an error.
+2. **A destroyed world's player state answered a later change.** The test's restore of the variable to 20, after its
+   world was destroyed, logged a second warning naming that world's character. `UWorld::DestroyWorld` cleans the
+   world up but does not mark its actors as garbage. The callback now skips a world whose `bIsWorldInitialized` is
+   false. Without it, an unsettled character's stat line could have been refreshed inside a destroyed world.
+
+The next window is registered as above: the new test 1 / 1, the whole suite at 4359, 0 failed, and P1 and P2 as
+registered.
 
 ---
 
