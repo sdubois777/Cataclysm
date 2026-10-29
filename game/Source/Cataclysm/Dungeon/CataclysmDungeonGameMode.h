@@ -5931,6 +5931,15 @@ private:
 	int32 WavePlacementsTried = 0;
 
 	/**
+	 * The engine frame (`GFrameCounter`) in which `PopulateFloor` last put a wave's first creatures down, or the largest
+	 * number when none is waiting to be honoured. Issue #1554: play starts with `StartPlay` putting the first wave's
+	 * first `WaveCreaturesPerFrame` down, and the first `Tick` falls in the same engine frame and put down as many
+	 * again. `Tick` passes over its arriving call once in that frame and forgets the number, so a frame puts down one
+	 * frame's share. A later wave begins inside `Tick`, after that frame's arriving call, so it is not affected.
+	 */
+	uint64 WaveBeganOnFrame = MAX_uint64;
+
+	/**
 	 * The stream a creature the floor itself is placing draws its rarity rung from, while it is being placed; null
 	 * otherwise, which is every creature made during play. Issue #2490. Set around `SpawnPlacedCreature` by
 	 * `RarityStreamForPlacement` at the two places the floor's population is put down, and read by

@@ -1256,7 +1256,18 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 	// arriving wave's creatures down in each frame is the whole point, so this
 	// cannot wait a quarter of a second between turns. On a floor with nothing
 	// arriving it costs one test of an empty array.
-	ContinueTheWaveArriving();
+	//
+	// EXCEPT IN THE FRAME A WAVE BEGAN OUTSIDE `Tick`, ONCE. Issue #1554: the
+	// frame play starts in had already put the first wave's first few down in
+	// `PopulateFloor`, and this put down as many again, eight in a frame.
+	if (GFrameCounter == WaveBeganOnFrame)
+	{
+		WaveBeganOnFrame = MAX_uint64;
+	}
+	else
+	{
+		ContinueTheWaveArriving();
+	}
 
 	// NOT EVERY FRAME. See `SecondsBetweenWaveChecks`: counting the wave walks
 	// up to 350 creatures and the answer cannot change faster than a player can
@@ -2159,6 +2170,8 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		WavePlacementsTried = 0;
 		ArrivingSightRadiusMultiplier = FloorBrief.SightRadiusMultiplier;
 		Spawned = ContinueTheWaveArriving();
+		// AND THIS FRAME HAS HAD ITS SHARE. Issue #1554; see `WaveBeganOnFrame`.
+		WaveBeganOnFrame = GFrameCounter;
 	}
 	else
 	{
