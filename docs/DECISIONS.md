@@ -108,9 +108,35 @@ placeable"); neither is a lock. It now says no `skill_locked` row carries it, an
 lock the basic attack was retired on 2026-10-08 (#1651). A comment only, carried on this branch with the coordinating
 session's leave because it needs a compile.
 
-### NOT YET COMPILED OR RUN
+### THE RUN, 2026-10-29, AT 18a807ac8 ON 38e1c6c99
 
-Recorded below when the window has run.
+Registered before the run at 4356 + 1 = 4357, with P1-P3. NOTHING OUTSIDE THE TWO TESTS FAILED in the whole suite,
+which is the failure this change could have caused.
+
+| Step | Printed |
+| :-- | :-- |
+| `AnOverspentCostLeavesTheBaseValueAtZero` alone | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 40 actions, 37 files compiled" |
+| `AGainAtAFullPoolDoesNotRaiseAHiddenBase` alone | "1 tests performed, 1 succeeded, 0 failed" |
+| The whole Unreal suite | "4357 tests performed, 4357 succeeded, 0 failed"; "Declared: 4357 tests in the tree at 18a807ac8; 4357 performed, gap 0" |
+| Python of record | "7029 passed, 8 skipped"; JUnit tests 7037, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,539 MB. The suite's memory summary: peak used virtual 8,037 MB.
+
+### THE THREE GUARD PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix `Cataclysm.HealthWrite.` (8 tests), each anchor counted once in
+`read_text`, each run's whole log kept. Every proof printed "PROVED", named the one predicted test, left the file's hash
+as it was, and failed exactly the two assertions registered:
+
+| Proof | Printed | The broken run's two failed assertions |
+| :-- | :-- | :-- |
+| P1, the health floor dropped | "8 tests performed, 7 succeeded, 1 failed: AnOverspentCostLeavesTheBaseValueAtZero \| restored: 8 tests performed, 8 succeeded, 0 failed" | "and the base value is nought too, not three hundred below it" (it was -300); "so healing a hundred after the overspend gives a hundred" (it was 0) |
+| P2, the health ceiling dropped | "8 tests performed, 7 succeeded, 1 failed: AGainAtAFullPoolDoesNotRaiseAHiddenBase \| restored: 8 tests performed, 8 succeeded, 0 failed" | "health: two hundred at a full thousand leaves the base at the thousand" (it was 1,200); "health: so spending a hundred afterwards leaves nine hundred" (it was 1,000) |
+| P3, mana not clamped in the base | the same summary as P2 | "mana: five hundred at a full pool leaves the base at the maximum" (it was 10,500); "mana: so spending three hundred afterwards leaves the maximum less three hundred" (it was 10,000) |
+
+The broken runs measure both directions of the fault the issue describes: P1 restores the -300 hole and the heal it
+swallowed, and P2 and P3 the hidden excess a spend came out of.
 
 ### NO GENRE SOURCE
 
