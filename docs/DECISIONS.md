@@ -121,6 +121,11 @@ is left as it is. Predicted named_failures, the same two:
 each failing at the policy's choice, because both twins then get the same bonus and a tie keeps the first. The boss-open
 test passes (it expects the first), and so do the control and the fallback test, which call only the helper.
 
+Run 2026-10-29 in a git-archive copy of `878e10ed6`, the commit that registered it. Printed: "PROVED: 2 failed, 4
+passed in 0.13s | restored: 6 passed in 0.05s". named_failures, exactly the two registered, now failing at the choice:
+"triage did not prefer the Quest dungeon whose Cataclysm is not yet finished. Issue #1388." and the same for
+`lane_aware`.
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own tuning rig reads its own unlock rule.
