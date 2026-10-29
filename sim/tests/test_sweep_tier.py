@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import copy
 import io
 import math
 import pathlib
@@ -617,18 +618,48 @@ class TestTheTolerancePerPair:
         assert not set(under_cap) <= set(under_pair)
 
 
-@pytest.fixture(scope="module")
-def printed():
-    """One two-tier run of the preset section at two campaigns per cell.
-
-    Module-scoped because the section is the slowest thing this file touches
-    and every test below reads the same output.
-    """
-    base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+def _run_presets(base: TuningConfig, **kwargs) -> tuple[dict, str]:
+    """One run of the preset section: what it returns and what it printed."""
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-    return out.getvalue()
+        wins = experiments.exp_presets(base, **kwargs)
+    return wins, out.getvalue()
+
+
+@pytest.fixture(scope="module")
+def _two_tier_run():
+    """One two-tier run of the preset section at two campaigns per cell.
+
+    RUN ONCE PER MODULE AND SHARED, issue #2602. Ten tests used to run exactly
+    this call themselves, about 5.5 seconds each. Every campaign is seeded from 0
+    upwards, so a repeat of the same call prints the same text and returns the
+    same rates; that was checked on 2026-10-29 before the tests were moved onto
+    it. A test that needs different arguments still runs its own section.
+    """
+    return _run_presets(replace(TuningConfig(), tier=experiments.SWEEP_TIER),
+                        tiers=(1, 8), trials=2)
+
+
+@pytest.fixture
+def printed(_two_tier_run):
+    """What the shared two-tier run printed. A string, so no test can alter it."""
+    return _two_tier_run[1]
+
+
+@pytest.fixture
+def preset_wins(_two_tier_run):
+    """What the shared two-tier run returned, copied for each test, so a test
+    that alters the dict cannot change what the next one sees."""
+    return copy.deepcopy(_two_tier_run[0])
+
+
+@pytest.fixture(scope="module")
+def printed_when_no_campaign_finishes():
+    """The same two-tier run with a day cap of 40, so no campaign can finish
+    and every cell is unresolved. Shared by the two tests that read it, issue
+    #2602."""
+    base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
+    return _run_presets(base, tiers=(1, 8), trials=2)[1]
 
 
 class TestTheReportShowsWhatThePerPairToleranceChanged:
@@ -736,10 +767,7 @@ class TestTheOrderingUsesWinMinusLoss:
         margins = [win - loss for win, loss in self.TIER_8.values()]
         assert max(margins) - min(margins) > max(wins) - min(wins)
 
-    def test_the_table_prints_the_margin_column(self, capsys):
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
+    def test_the_table_prints_the_margin_column(self, printed):
         assert "w-l" in printed, (
             "the preset table no longer prints the win-minus-loss column, so "
             "the column the ordering is built on is not visible. Issue #294.")
@@ -815,27 +843,22 @@ class TestTheOrderingUsesWinMinusLoss:
             "compare_surge_sizes orders the presets under the worst-case cap "
             "alone. Issue #328.")
 
-    def test_the_win_rate_ordering_is_kept_as_a_second_opinion(self, capsys):
+    def test_the_win_rate_ordering_is_kept_as_a_second_opinion(self, printed):
         """Not deleted. It is the metric the issue was opened about, and
         keeping it printed is what makes the collapse visible in the report
         rather than only in the issue."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert _WIN_ORDER_HEADING in printed
         assert len(_win_ordering_lines(printed)) == 2
 
-    def test_the_report_says_the_tolerance_is_not_the_win_rates(self, capsys):
+    def test_the_report_says_the_tolerance_is_not_the_win_rates(self, printed):
         """The one thing a reader of the output could get wrong, given the two
         orderings now sit next to each other with different tolerances."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = unwrapped(capsys.readouterr().out)
+        printed = unwrapped(printed)
         assert "ITS TOLERANCE IS NOT THE WIN RATE'S" in printed
         assert "+1 won, -1 lost, 0 no result" in printed
         assert "exactly twice the win rate's" in printed
 
-    def test_the_report_shows_how_conservative_the_cap_is(self, capsys):
+    def test_the_report_shows_how_conservative_the_cap_is(self, printed):
         """The cap assumes a cell that wins half its campaigns and loses the
         rest. At tier 8 nothing does, so it is far wider than the one that pair
         needs, and the report says so per tier.
@@ -845,9 +868,6 @@ class TestTheOrderingUsesWinMinusLoss:
         tolerance the grouping used. It is now the cap, and the tolerance is
         computed per pair, so the heading names what the per-pair figure buys.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert _ORDER_ENDS_AT in printed
         block = printed[printed.index(_ORDER_ENDS_AT):]
         for tier in (1, 8):
@@ -864,16 +884,16 @@ class TestThePresetSectionCoversBothEnds:
         assert min(experiments.PRESET_TIERS) == 1
         assert max(experiments.PRESET_TIERS) == 8
 
-    def test_it_returns_a_win_rate_for_every_preset_at_every_tier(self):
+    def test_it_returns_a_win_rate_for_every_preset_at_every_tier(
+            self, preset_wins):
         """Small sample: this checks the shape, not the numbers."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        wins = experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        wins = preset_wins
         assert set(wins) == {1, 8}
         for tier in (1, 8):
             assert set(wins[tier]) == {tree.name for tree in experiments.PRESETS}
             assert all(0.0 <= rate <= 100.0 for rate in wins[tier].values())
 
-    def test_the_table_reports_quest_objectives_cleared(self, capsys):
+    def test_the_table_reports_quest_objectives_cleared(self, printed):
         """Issue #294. Win rate collapses towards zero above tier 3 and stops
         ranking the presets. Objectives cleared is the same axis measured before
         it saturates -- a win requires all of them -- and `summarise` already
@@ -884,9 +904,6 @@ class TestThePresetSectionCoversBothEnds:
         not failing at the final fight, they are failing to clear the quest
         objectives at all.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert "quests" in printed and "QUEST DUNGEONS CLEARED" in printed, (
             "the preset table no longer reports quest dungeons cleared. "
             "Issue #294 added it because win rate stops separating the presets "
@@ -896,15 +913,12 @@ class TestThePresetSectionCoversBothEnds:
             "a whole-campaign total and is out of nothing. Issue #1436.")
 
     def test_the_table_reports_cataclysms_finished_out_of_what_the_win_needs(
-            self, capsys):
+            self, printed):
         """Issue #1436. The quantity the win reads is how many active
         Cataclysms met their own quest count, against the half the win needs
         at that tier: 1 of 1 at tier 1, 4 of 8 at tier 8. The column's label
         is read from the config for the tier, so it cannot say 8 where the
         win needs 4."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert "cats/1" in printed and "cats/4" in printed, (
             "the preset table does not report Cataclysms finished out of the "
             "half the win needs at each tier. Issue #1436.")
@@ -930,7 +944,7 @@ class TestThePresetSectionCoversBothEnds:
             "the Cataclysms-finished heading does not follow "
             "cataclysms_required for the tier.")
 
-    def test_it_records_that_objectives_did_not_solve_the_problem(self, capsys):
+    def test_it_records_that_objectives_did_not_solve_the_problem(self, printed):
         """CLAUDE.md: say what did not work, plainly and first. Objectives
         cleared was measured on 2026-08-05 across all eight tiers and does NOT
         separate the presets -- it saturates at the low tiers, where five of six
@@ -949,9 +963,7 @@ class TestThePresetSectionCoversBothEnds:
         report says which metric replaced it rather than leaving the reader to
         assume this column is the answer.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = unwrapped(capsys.readouterr().out)
+        printed = unwrapped(printed)
         assert "IT DOES NOT" in printed, (
             "the preset section prints objectives cleared without saying it "
             "was measured as a replacement for win rate and failed. A reader "
@@ -964,13 +976,10 @@ class TestThePresetSectionCoversBothEnds:
             "the preset section still says issue #294 is open. It was closed "
             "when win rate minus loss rate was adopted as the ranking metric.")
 
-    def test_the_objectives_spread_is_reported_per_tier(self, capsys):
+    def test_the_objectives_spread_is_reported_per_tier(self, printed):
         """The spread is what decides whether a metric separates anything. One
         number per tier, so a later reader can see at a glance whether the
         2026-08-05 finding still holds after a tuning change."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert "spread over" in printed, (
             "the preset section no longer reports the spread of objectives "
             "cleared per tier, which is the measurement issue #294 turns on.")
@@ -1190,7 +1199,8 @@ class TestTheSweepFlagsCampaignsWithNoResult:
             "engine.Simulation.run no longer bounds its day loop by "
             "cfg.max_days. Issue #293.")
 
-    def test_the_preset_order_leaves_the_unresolved_cells_out(self, capsys):
+    def test_the_preset_order_leaves_the_unresolved_cells_out(
+            self, printed_when_no_campaign_finishes):
         """Issue #294. The warning names the cells; this checks the ranking
         then acts on it.
 
@@ -1199,9 +1209,7 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         in an ordering line, and the section should say it has no ranking
         rather than printing six presets tied at zero.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
+        printed = printed_when_no_campaign_finishes
         assert "LEFT OUT OF THE ORDER" in printed, (
             "the preset section ranks presets whose campaigns ran out of days "
             "without saying it left any out. Issue #294.")
@@ -1214,13 +1222,11 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         assert "the ordering is THE SAME" not in printed.replace(
             "The ordering is THE SAME", "the ordering is THE SAME")
 
-    def test_no_preset_name_reaches_an_ordering_line_when_none_resolved(self,
-                                                                       capsys):
+    def test_no_preset_name_reaches_an_ordering_line_when_none_resolved(
+            self, printed_when_no_campaign_finishes):
         """The previous test checks the words. This checks the data: with every
         cell unresolved, no preset may appear on a `tier N:` line."""
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER, max_days=40)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        ordering_lines = _ordering_lines(capsys.readouterr().out)
+        ordering_lines = _ordering_lines(printed_when_no_campaign_finishes)
         assert ordering_lines, "the section printed no ordering lines at all."
         for line in ordering_lines:
             for tree in experiments.PRESETS:
@@ -1333,16 +1339,13 @@ class TestTheSweepFlagsCampaignsWithNoResult:
                 f"{tree.name!r} is missing from the tier 1 ordering even "
                 "though its campaigns resolved.")
 
-    def test_the_tier_actually_changes_the_run(self, capsys):
+    def test_the_tier_actually_changes_the_run(self, printed):
         """Otherwise the second table would be a copy of the first.
 
         The power ceiling printed above each table comes from the tier, so the
         two headings differ. Checked because passing `tiers` and then forgetting
         to apply it is the obvious way to write this wrong.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 8), trials=2)
-        printed = capsys.readouterr().out
         assert f"TIER 1 -- player power ceiling {scoring.tier_bounds(1)[1]:,.0f}" in printed
         assert f"TIER 8 -- player power ceiling {scoring.tier_bounds(8)[1]:,.0f}" in printed
         assert scoring.tier_bounds(1)[1] != scoring.tier_bounds(8)[1]
