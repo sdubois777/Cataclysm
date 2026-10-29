@@ -10,7 +10,8 @@ Fixes [#1566](https://github.com/sdubois777/Cataclysm/issues/1566).
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w89 below passed every registered figure, and the one proof was PROVED.** It counted one
+  ensure where two widgets were added without the call, for a reason not found; see Run.
 - **THE EDITOR MODULE'S TESTS ARE RUN BY THE WHOLE SUITE.** Checked before building: all seven tests in
   `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` completed with Success once each in window
   w88's whole-suite log (#1540).
@@ -59,7 +60,25 @@ the ensure's line in a log capture instead.
 
 ### Run
 
-Not run yet.
+**Window w89 (lock `dungeon-w89`, `fix/the-widget-generator-registers-each-widget-it-adds-1` at `a6aff62c2`, on
+`3c296cc9c`, 2026-10-29) passed.** `development`'s CI run at `3c296cc9c` succeeded and its last Unreal run, at
+`3166561d2`, succeeded; nothing after it changes C++. The lock was taken on a free-memory reading immediately before it
+of 10,657 MB, with no run in progress or queued, the lock free, no build or editor process, no open pull request. It
+was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "WIDGET GUIDS" line | quoted as printed | "0 ensures; 2 entries; Root A84CD84947FC16A70C07BEBA0804E68C, Label 3A1ABEB14EBF83AF4184929461CF0DDD; a second Label was refused" |
+| Whole Unreal suite | 4360 / 0 | `4360 tests performed, 4360 succeeded, 0 failed`; declared 4360, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7695`, peak 8,014 |
+| Python (JUnit) | of record | 7047 tests, 0 failures, 0 errors, 8 skipped ("7039 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the call removed | fails on "adding two widgets raises no missing-identifier ensure", at least one counted; the map and CONTROL assertions hold; an engine test error for the ensure not predicted | "1 tests performed, 0 succeeded, 1 failed", printing "1 ensures; 2 entries; ... a second Label was refused": it failed on that assertion as registered, the map and CONTROL assertions held, and **the engine also reported the ensure as a test error of its own** ("EnsureFailed: Ensure condition failed: WidgetBP->WidgetVariableNameToGuidMap.Contains(Widget->GetFName())", with its stack); restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**ONE ENSURE, FOR "Label" ONLY, WHERE TWO WIDGETS WERE ADDED WITHOUT THE CALL.** The broken run's only "did not get a
+GUID" line names `Label`. Why the root widget raised none was not found; the registration said "at least one" and did
+not depend on it. In the passing runs both names had identifiers, so `OnVariableAdded` gave both.
 
 ---
 
