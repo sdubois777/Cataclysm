@@ -359,32 +359,23 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmLethalHealthCostKillsTest,
 	return true;
 }
 
-CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesAHoleTest,
-	"Cataclysm.HealthWrite.AnOverspentCostLeavesTheBaseValueBelowZeroUntilTheRevival")
+CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesNoHoleTest,
+	"Cataclysm.HealthWrite.AnOverspentCostLeavesTheBaseValueAtZero")
 {
 	using namespace CataclysmHealthWriteTest;
 
-	// THIS TEST RECORDS A FAULT RATHER THAN A RULE. Issue #1096. Every gameplay
-	// attribute has a BASE value and a CURRENT value. This set clamps health in
-	// `PreAttributeChange`, which the engine applies to the CURRENT value, and
-	// it does not override `PreAttributeBaseChange`, which is where the BASE
-	// value would be clamped. A charge larger than the health left therefore
-	// puts the base below zero while the current value reads a correct nought.
+	// AN OVERSPENT COST LEAVES THE BASE AT NOUGHT, SO HEALING COUNTS FROM NOUGHT.
+	// Issue #1096. Every gameplay attribute has a BASE value and a CURRENT value,
+	// and `ApplyModToAttribute` adds to the base. Until
+	// `UCataclysmVitalAttributeSet::PreAttributeBaseChange` held the base, a
+	// charge of 500 against 200 left the base at -300 while the current value
+	// read a correct nought, and the next 300 points of healing filled that hole
+	// before the character gained anything. This test recorded the -300 as the
+	// measured fault until then.
 	//
-	// AND `ApplyModToAttribute` WORKS FROM THE BASE, so healing afterwards
-	// fills that hole before it gives the character anything.
-	//
-	// WHY IT IS RECORDED HERE INSTEAD OF FIXED HERE. Fixing it means clamping
-	// the base value of every vital attribute, which is a different fault from
-	// the one this file is about and touches what every direct write to health,
-	// mana and energy shield may leave behind. Issue #1096 has the measurement
-	// and what a fix looks like.
-	//
-	// AND WHY IT DOES NOT SHOW IN PLAY. The last two assertions are the point:
-	// every route that overspends ends in a death, and `Revive` writes health
-	// with `SetNumericAttributeBase`, which SETS the base rather than adding to
-	// it. That is what wipes the hole. Before issue #971 the character did not
-	// die, so the hole stayed and healing was swallowed for as long as it lived.
+	// AND WHY IT DID NOT SHOW IN PLAY, which still holds and is still pinned
+	// below: every route that overspends ends in a death, and `Revive` sets the
+	// base absolutely.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -399,9 +390,19 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesAHoleTest,
 		return false;
 	}
 
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+
+	// CONTROL: AN ORDINARY HEAL IS UNCHANGED. A hundred on two hundred of a
+	// thousand gives three hundred.
+	Player.Set(Health, 200.0f);
+	Player.AbilitySystem->ApplyModToAttribute(Health, EGameplayModOp::Additive,
+											  100.0f);
+	TestEqual(TEXT("control: a heal of a hundred on two hundred gives three hundred"),
+			  Player.Health(), 300.0f, 0.01f);
+
 	// TWO HUNDRED LEFT, AND A CHARGE OF FIVE HUNDRED. The charge is half of the
 	// MAXIMUM, which is what makes it bigger than what is left.
-	Player.Set(Vital::GetHealthAttribute(), 200.0f);
+	Player.Set(Health, 200.0f);
 	Player.SetAddedHealthCostPercent(50.0f);
 
 	UCataclysmProjectileSkill* Skill = GrantAProjectile(Player);
@@ -412,11 +413,7 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesAHoleTest,
 
 	TestTrue(TEXT("the skill activates"), Activate(Player, Skill));
 
-	const FGameplayAttribute Health = Vital::GetHealthAttribute();
 	const float Base = Player.AbilitySystem->GetNumericAttributeBase(Health);
-
-	// REPORTED AS WELL AS ASSERTED, so a run shows the number rather than only
-	// whether it was the expected one.
 	AddInfo(FString::Printf(
 		TEXT("after overspending 500 against 200, the health attribute's base "
 			 "value is %.2f and its current value is %.2f."),
@@ -424,26 +421,86 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesAHoleTest,
 
 	TestEqual(TEXT("the current value is a correct nought"), Player.Health(),
 			  0.0f, 0.01f);
-	TestEqual(TEXT("and the base value is three hundred below it, issue #1096"),
-			  Base, -300.0f, 0.01f);
+	TestEqual(TEXT("and the base value is nought too, not three hundred below it"),
+			  Base, 0.0f, 0.01f);
+	TestTrue(TEXT("and overspending killed the character"), Player.IsDead());
 
-	// AND HEALING A HUNDRED GIVES NOTHING, which is what the hole costs.
+	// AND HEALING A HUNDRED GIVES A HUNDRED, which is what the hole used to take.
 	Player.AbilitySystem->ApplyModToAttribute(Health, EGameplayModOp::Additive,
 											  100.0f);
-	TestEqual(TEXT("so healing a hundred gives nothing, issue #1096"),
-			  Player.Health(), 0.0f, 0.01f);
+	TestEqual(TEXT("so healing a hundred after the overspend gives a hundred"),
+			  Player.Health(), 100.0f, 0.01f);
 
-	// THE DEATH AND THE REVIVAL ARE WHAT MAKE IT HARMLESS, and that is worth
-	// pinning: it is the reason issue #1096 is recorded rather than urgent.
-	TestTrue(TEXT("but overspending killed the character"), Player.IsDead());
-
+	// THE REVIVAL STILL SETS THE BASE ABSOLUTELY.
 	Player.Character->Revive();
 
 	TestEqual(TEXT("and standing back up refills health"), Player.Health(),
 			  FullHealth, 0.01f);
-	TestEqual(TEXT("and sets the base value with it, so the hole is gone"),
+	TestEqual(TEXT("and the base value with it"),
 			  Player.AbilitySystem->GetNumericAttributeBase(Health), FullHealth,
 			  0.01f);
+
+	return true;
+}
+
+CATACLYSM_HEALTH_WRITE_TEST(FCataclysmGainAtAFullPoolTest,
+	"Cataclysm.HealthWrite.AGainAtAFullPoolDoesNotRaiseAHiddenBase")
+{
+	using namespace CataclysmHealthWriteTest;
+
+	// A GAIN AT A FULL POOL LEAVES THE BASE AT THE MAXIMUM. Issue #1096, the
+	// other direction. `ApplyModToAttribute` adds to the base, and until
+	// `UCataclysmVitalAttributeSet::PreAttributeBaseChange` held it, a gain at
+	// a full pool raised the base above the maximum while the current value read
+	// the maximum, so the next spend came out of that hidden excess first and
+	// cost nothing that could be seen. Health and mana, each with a control below
+	// full that gains as it always did.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player with an ability system"),
+				  Player.IsUsable()))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* System = Player.AbilitySystem;
+
+	// HEALTH. The fixture leaves it full, at a thousand.
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	Player.Set(Health, 800.0f);
+	System->ApplyModToAttribute(Health, EGameplayModOp::Additive, 100.0f);
+	TestEqual(TEXT("health control: a hundred on eight hundred gives nine hundred"),
+			  System->GetNumericAttributeBase(Health), 900.0f, 0.01f);
+
+	Player.Set(Health, FullHealth);
+	System->ApplyModToAttribute(Health, EGameplayModOp::Additive, 200.0f);
+	TestEqual(TEXT("health: two hundred at a full thousand leaves the base at the thousand"),
+			  System->GetNumericAttributeBase(Health), FullHealth, 0.01f);
+	System->ApplyModToAttribute(Health, EGameplayModOp::Additive, -100.0f);
+	TestEqual(TEXT("health: so spending a hundred afterwards leaves nine hundred"),
+			  Player.Health(), FullHealth - 100.0f, 0.01f);
+
+	// MANA. The fixture leaves it full, at ten thousand.
+	const FGameplayAttribute Mana = Vital::GetManaAttribute();
+	const float FullMana = Player.Get(Vital::GetMaxManaAttribute());
+	Player.Set(Mana, FullMana - 1'000.0f);
+	System->ApplyModToAttribute(Mana, EGameplayModOp::Additive, 100.0f);
+	TestEqual(TEXT("mana control: a hundred below full gains its hundred"),
+			  System->GetNumericAttributeBase(Mana), FullMana - 900.0f, 0.01f);
+
+	Player.Set(Mana, FullMana);
+	System->ApplyModToAttribute(Mana, EGameplayModOp::Additive, 500.0f);
+	TestEqual(TEXT("mana: five hundred at a full pool leaves the base at the maximum"),
+			  System->GetNumericAttributeBase(Mana), FullMana, 0.01f);
+	System->ApplyModToAttribute(Mana, EGameplayModOp::Additive, -300.0f);
+	TestEqual(TEXT("mana: so spending three hundred afterwards leaves the maximum less three hundred"),
+			  Player.Get(Mana), FullMana - 300.0f, 0.01f);
 
 	return true;
 }
