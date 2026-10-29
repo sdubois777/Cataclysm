@@ -90,8 +90,9 @@ namespace CataclysmMinionOwnStatsTest
 	 *
 	 * NOT A GUESS AND NOT A CONSTANT. A summoner built here is an ordinary actor
 	 * with no player state, so the minion falls back to the level the class stats
-	 * are being previewed at -- which is the path EVERY non-player summoner takes
-	 * in the game, not a test-only corner.
+	 * are being previewed at. Since issue #1702 that is the path only a summoner
+	 * that is neither a player, an enemy nor a minion takes, which today is test
+	 * scaffolding like this.
 	 */
 	int32 LevelTheseTestsSee()
 	{

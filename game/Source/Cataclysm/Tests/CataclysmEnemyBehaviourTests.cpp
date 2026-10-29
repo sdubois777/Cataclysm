@@ -32,7 +32,8 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
-#include "Character/CataclysmPlayerClassStats.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -89,14 +90,16 @@ namespace CataclysmBehaviourTest
 	 * ruled that a bug and the fallback is deleted, so they summon a real Imp
 	 * and measure the figure its type row states.
 	 *
-	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS: a summoner built
-	 * here has no player state, so the minion takes the level the class stats
-	 * are previewed at.
+	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS. A summoner built
+	 * here is an enemy character standing in for a player, so the minion takes
+	 * its tier's reference level, as any enemy summoner does since issue #1702.
+	 * The level is incidental to every case that reads this.
 	 */
-	float ImpBlow()
+	float ImpBlow(const AActor* Summoner)
 	{
 		return ImpBaseDamage + ImpDamagePerLevel
-			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+			* static_cast<float>(UCataclysmPowerScore::ReferenceCharacter(
+				ACataclysmGameMode::DifficultyTierIn(Summoner)).Level);
 	}
 
 	/** The player capsule radius in CataclysmPlayerCharacter.cpp. */
@@ -570,7 +573,7 @@ bool FCataclysmImpChasesWhatItAttacksTest::RunTest(const FString&)
 
 	// ITS OWN BLOW, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #1515.
 	TestEqual(TEXT("For its own figure, from the Imp row"),
-		Before - Monster.Health(), ImpBlow(), 0.01f);
+		Before - Monster.Health(), ImpBlow(Summoner.Actor), 0.01f);
 
 	// It never turns on the character that made it, whatever else is nearby.
 	Monster.Actor->SetActorLocation(FVector(50 * M, 0, 0));
@@ -3680,7 +3683,7 @@ bool FCataclysmMinionNeverCriticallyStrikesTest::RunTest(const FString&)
 	// three times this figure.
 	TestEqual(TEXT("an imp deals its own figure and never the summoner's "
 				   "critical strike"),
-		Before - Monster.Health(), ImpBlow(), 0.01f);
+		Before - Monster.Health(), ImpBlow(Summoner.Actor), 0.01f);
 
 	// AND THE SUMMONER ITSELF STILL CRITICALLY STRIKES, which is what makes the
 	// reading above a rule about minions rather than a roll that failed to fire.

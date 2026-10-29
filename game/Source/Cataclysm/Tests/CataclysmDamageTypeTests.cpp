@@ -19,7 +19,8 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 // For the level a minion's own damage is raised by. See ImpBlow below.
-#include "Character/CataclysmPlayerClassStats.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -85,14 +86,17 @@ namespace CataclysmDamageTypeTest
 	 * the minion's own numbers -- so the share is deleted and they summon a real
 	 * Imp instead.
 	 *
-	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS: a summoner built in
-	 * these tests has no player state, so the minion takes the level the class
-	 * stats are previewed at.
+	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS. A summoner built in
+	 * these tests is an enemy character carrying a weapon, so the minion takes
+	 * its tier's reference level, as any enemy summoner does since issue #1702.
+	 * The level is incidental here: these cases check that a minion takes none of
+	 * its summoner's weapon type or penetration.
 	 */
-	float ImpBlow()
+	float ImpBlow(const AActor* Summoner)
 	{
 		return ImpBaseDamage + ImpDamagePerLevel
-			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+			* static_cast<float>(UCataclysmPowerScore::ReferenceCharacter(
+				ACataclysmGameMode::DifficultyTierIn(Summoner)).Level);
 	}
 
 	/**
@@ -1413,7 +1417,7 @@ CATACLYSM_TEST(FCataclysmMinionTakesNoWeaponSubTypeTest,
 		Imp->AttackTarget(Defender.Actor);
 		TestEqual(TEXT("a minion's blow gets no slashing bonus"),
 			Defender.TakeDamageReading(),
-			CataclysmDamageTypeTest::ImpBlow(), 0.1f);
+			CataclysmDamageTypeTest::ImpBlow(Summoner.Actor), 0.1f);
 
 		// AND THE SUMMONER'S OWN BLOW STILL GETS IT, which is what makes the
 		// reading above a rule about minions rather than the weapon sub-type
@@ -1571,7 +1575,7 @@ CATACLYSM_TEST(FCataclysmMinionTakesNoPenetrationTest,
 		// figure as it was of 300.
 		TestEqual(TEXT("a minion's blow meets armour and resistance in full"),
 			Defender.TakeDamageReading(),
-			CataclysmDamageTypeTest::ImpBlow() * 0.35f, 0.1f);
+			CataclysmDamageTypeTest::ImpBlow(Summoner.Actor) * 0.35f, 0.1f);
 
 		// AND THE SUMMONER'S OWN BLOW STILL PENETRATES, which is what makes the
 		// reading above a rule about minions rather than penetration being broken.
