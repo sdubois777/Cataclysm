@@ -416,6 +416,17 @@ public:
 	static constexpr int32 FirstBossRarityStep = 4;
 
 	/**
+	 * A creature's energy shield regeneration, as a share of its maximum shield a second: a fifth. Issue #1562.
+	 *
+	 * THE DESIGN'S OWN FIGURE, not a judgement. `docs/Cataclysm_GDD_v2.md`, the Energy Shield section: "It refills at a
+	 * fifth of its own maximum per second, so a full shield takes 5 seconds however large it is. Every source of maximum
+	 * energy shield grants that rate alongside it", sourced there to Path of Exile's 20% a second. And the Succubus's
+	 * section: its shield "behaves exactly like the player's" and "refills three seconds after the last damage it took".
+	 * The three-second wait is `UCataclysmRegeneration::ShieldRefillDelaySeconds`, unchanged.
+	 */
+	static constexpr float EnergyShieldRegenShareOfMaximum = 0.2f;
+
+	/**
 	 * Whether the anti-stun-lock rule "a boss cannot be stunned at all"
 	 * applies to this enemy.
 	 *
