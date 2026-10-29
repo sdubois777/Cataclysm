@@ -75,6 +75,12 @@ Run 2026-10-29 in a git-archive copy of `d5b8c2e7d`, the commit that registered 
 passed in 55.74s | restored: 180 passed in 50.80s". named_failures, exactly the one registered, with
 "analyse_siege_dose.base_config holds ['dungeon_persists_after_resolve'] away from what TuningConfig ships".
 
+### EVIDENCE
+
+Python of record at `9eb6bcc8f`, on `development` `a41b79991`: "7100 passed, 8 skipped"; JUnit tests 7108, failures 0,
+errors 0, skipped 8 (the base's 7107 and the new test). ruff: "All checks passed!" A regenerate run left `game/Data`
+unchanged (`git diff --exit-code` exited 0).
+
 ### NO GENRE SOURCE
 
 None. This brings a measurement script into line with the model it measures.
