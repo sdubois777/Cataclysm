@@ -102,6 +102,17 @@ The second failed for the right reason but said nothing useful, so after the pro
 heading gained an assertion with a message before the `index` call. That changes the test file after the run above, so
 the same break was run once more against the changed file (below).
 
+**Third run, against the changed file, in a git-archive copy of `7d295e2dd`**, command narrowed to `python -m pytest
+sim/tests/test_sweep_tier.py` (that file needs no git repository): "PROVED: 2 failed, 84 passed in 5.67s | restored:
+86 passed in 5.68s". The same two named_failures. The second now says: "'No tree' had exactly 50.0% of campaigns with
+no result, the threshold, and the section left nothing out of the order. The rule is >=."
+
+### EVIDENCE
+
+Python of record at `900d0a059`: "7044 passed, 8 skipped"; JUnit tests 7052, failures 0, errors 0, skipped 8 (#2602's
+7050 and the two new tests). ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff
+--exit-code` exited 0). `sim/tests/test_sweep_tier.py` alone: "86 passed in 5.79s".
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own tests read its own report.
