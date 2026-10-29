@@ -13,8 +13,11 @@ its class comment); `FCataclysmSaveGather::ProgressFrom` in `CataclysmSaveGather
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Window w91 below stopped at the round-trip test alone, on a fault in that test's own
-  set-up; it was corrected, and nothing has run since.
+- **BUILT AND RUN: window w92 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly as registered.** Window w91 before it stopped at the round-trip test alone, on a fault in that test's own
+  set-up.
+- **THE ENUM-KEYED MAP SURVIVES THE JSON**, which was read and not run when written: w92's round trip printed
+  "ECataclysmType::Pestilence holds 2 objectives" after reading the record back.
 - **NOTHING LOADS A RUN, SO NOTHING READS THESE BACK.** [#753](https://github.com/sdubois777/Cataclysm/issues/753),
   "The game saves itself and cannot load what it saved", is open, and `CataclysmSaveApply.h` has no function for a
   run. This change makes the file hold what a loader will need; "load" in its tests means reading the record back from
@@ -107,6 +110,25 @@ below version 1; the writer stamps `UCataclysmRunSave::SchemaVersionNow` (`Catac
 not. The test now stamps it the same way before writing. No assertion changed.
 
 The next window is registered as above.
+
+**Window w92 (lock `dungeon-w92`, `fix/a-saved-run-keeps-what-the-player-achieved-1` at `ccf87e4ee`, on `42139a247`,
+2026-10-29) passed.** `development`'s CI run at `42139a247` and its last Unreal run, at `235370ad5`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,684 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| The round-trip test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The writer test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN PROGRESS" line | quoted as printed | "14 of 14 survive the JSON (none differ); a fresh run gathers 14 of 14 of its own; the fresh record matches the played run in 0 of 14; ECataclysmType::Pestilence holds 2 objectives" |
+| The "WRITTEN PROGRESS" line | quoted as printed | "14 of 14 in the file match the run (none differ); quest objectives 3" |
+| Whole Unreal suite | 4364 / 0 | `4364 tests performed, 4364 succeeded, 0 failed`; declared 4364, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,101 |
+| Python (JUnit) | of record | 7052 tests, 0 failures, 0 errors, 8 skipped ("7044 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, `QuestObjectives` not copied | the round trip fails on "every progress field survives" only, 13 of 14 | failed on that only: "13 of 14 survive the JSON (QuestObjectives differ)"; both CONTROLs held; restored passed. **PROVED** |
+| P2, `NextDungeonId` not copied | the same assertion only, 13 of 14 | failed on that only: "13 of 14 survive the JSON (NextDungeonId differ)"; both CONTROLs held; restored passed. **PROVED** |
+| P3, the writer does not call `ProgressFrom` | the writer test fails on "holds every progress field" | failed on that only: "0 of 14 in the file match the run"; restored passed. **PROVED** |
 
 ---
 
