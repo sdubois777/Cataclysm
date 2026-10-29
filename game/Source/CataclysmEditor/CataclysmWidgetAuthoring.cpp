@@ -130,6 +130,17 @@ UWidget* UCataclysmWidgetAuthoring::AddWidget(UWidgetBlueprint* Blueprint,
 	// fails saying the widget is missing.
 	Widget->bIsVariable = true;
 
+	// AND REGISTERED WITH THE BLUEPRINT, which every engine path that adds a
+	// widget does: the designer, the hierarchy view and the editor utilities all
+	// call `OnVariableAdded`, which gives the name an entry in
+	// `WidgetVariableNameToGuidMap`. Without it the compiler raises one ensure
+	// per widget, "Widget [...] was added but did not get a GUID", and adds the
+	// entry itself. Issue #1566: a panel of four widgets printed four of them,
+	// with their call stacks, among 174 errors from a run that succeeded.
+	// `FindWidget` above has already refused a name the tree holds, so the
+	// engine's own ensure that the name is new cannot fire here.
+	Blueprint->OnVariableAdded(WidgetName);
+
 	if (ParentName.IsEmpty())
 	{
 		Tree->RootWidget = Widget;

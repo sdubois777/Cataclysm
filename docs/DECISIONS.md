@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The widget generator registers each widget it adds with its Widget Blueprint (#1566)
+
+**Affects:** `UCataclysmWidgetAuthoring::AddWidget` in `game/Source/CataclysmEditor/CataclysmWidgetAuthoring.cpp` (one
+call and its comment), and a new test file `game/Source/CataclysmEditor/Tests/CataclysmWidgetAuthoringTests.cpp`.
+Fixes [#1566](https://github.com/sdubois777/Cataclysm/issues/1566).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w89 below passed every registered figure, and the one proof was PROVED.** It counted one
+  ensure where two widgets were added without the call, for a reason not found; see Run.
+- **THE EDITOR MODULE'S TESTS ARE RUN BY THE WHOLE SUITE.** Checked before building: all seven tests in
+  `game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp` completed with Success once each in window
+  w88's whole-suite log (#1540).
+- **NO ASSET IS REGENERATED.** The six panels already generated were given their identifiers by the compiler when
+  they were compiled, which is what the engine does after the ensure, so the saved assets are correct.
+
+### What it was
+
+`AddWidget` put a widget in the tree and marked it as a variable, and never called `UWidgetBlueprint::OnVariableAdded`.
+That call gives the name an entry in `WidgetVariableNameToGuidMap`, and every engine path that adds a widget makes it.
+The Widget Blueprint compiler (`WidgetBlueprintCompiler.cpp` line 781 in UE 5.8) raises a handled ensure, "Widget [...]
+was added but did not get a GUID", for each widget without one, and then adds it. Generating `WBP_FloorModifiers`
+printed four, with their call stacks, among 174 errors from a run that succeeded.
+
+### The change
+
+One call in `AddWidget`, after the widget is marked as a variable and before it is attached:
+`Blueprint->OnVariableAdded(WidgetName)`. `OnVariableAdded` itself ensures the name is not already in the map; `AddWidget`
+has already refused a name the tree holds, so that ensure cannot fire from here.
+
+### How it is checked
+
+`Cataclysm.WidgetAuthoring.EachAddedWidgetIsRegisteredWithItsBlueprint`: a Widget Blueprint made in memory, in the
+transient package, so nothing is saved. A canvas "Root" and a text block "Label" under it are added. **No line saying a
+widget "did not get a GUID" is logged while they are added**, and each name has a valid identifier in
+`WidgetVariableNameToGuidMap`. **CONTROL:** a second widget called "Label" is refused, and the map still holds two
+entries. The refusal's error is declared with `AddExpectedError`. It prints a line beginning "WIDGET GUIDS".
+
+**THE ENSURE IS THE CHECK, AND THE MAP IS ONLY THE END STATE.** Found before building: `AddWidget` ends with
+`FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified`, which compiles the skeleton at once
+(`RegenerateSkeletonOnly`), and a skeleton-only compile runs `ResetAndPopulateBlueprintGeneratedVariables`
+(`BlueprintCompilationManager.cpp` lines 567 and 1044), which calls
+`FWidgetBlueprintCompilerContext::ValidateAndFixUpVariableGuids`: it raises the ensure for a widget with no entry and
+adds the entry. So without the call the map still fills, and a test of the map alone could not fail; the test counts
+the ensure's line in a log capture instead.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4360 / 0: `development`'s 4359, measured by window w88 on the tests `3166561d2` holds (`d785fe0dd` and `3c296cc9c` after it change no C++), + 1 |
+| Python | of record, with JUnit, and ruff |
+| The "WIDGET GUIDS" line | quoted as printed |
+| P1, the call removed | the test fails on "adding two widgets raises no missing-identifier ensure", with at least one such line counted; both "is registered" assertions and both CONTROL assertions still hold, because the compile adds the entries. Whether the engine also reports the ensure as a test error of its own is not predicted |
+
+### Run
+
+**Window w89 (lock `dungeon-w89`, `fix/the-widget-generator-registers-each-widget-it-adds-1` at `a6aff62c2`, on
+`3c296cc9c`, 2026-10-29) passed.** `development`'s CI run at `3c296cc9c` succeeded and its last Unreal run, at
+`3166561d2`, succeeded; nothing after it changes C++. The lock was taken on a free-memory reading immediately before it
+of 10,657 MB, with no run in progress or queued, the lock free, no build or editor process, no open pull request. It
+was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "WIDGET GUIDS" line | quoted as printed | "0 ensures; 2 entries; Root A84CD84947FC16A70C07BEBA0804E68C, Label 3A1ABEB14EBF83AF4184929461CF0DDD; a second Label was refused" |
+| Whole Unreal suite | 4360 / 0 | `4360 tests performed, 4360 succeeded, 0 failed`; declared 4360, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7695`, peak 8,014 |
+| Python (JUnit) | of record | 7047 tests, 0 failures, 0 errors, 8 skipped ("7039 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the call removed | fails on "adding two widgets raises no missing-identifier ensure", at least one counted; the map and CONTROL assertions hold; an engine test error for the ensure not predicted | "1 tests performed, 0 succeeded, 1 failed", printing "1 ensures; 2 entries; ... a second Label was refused": it failed on that assertion as registered, the map and CONTROL assertions held, and **the engine also reported the ensure as a test error of its own** ("EnsureFailed: Ensure condition failed: WidgetBP->WidgetVariableNameToGuidMap.Contains(Widget->GetFName())", with its stack); restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**ONE ENSURE, FOR "Label" ONLY, WHERE TWO WIDGETS WERE ADDED WITHOUT THE CALL.** The broken run's only "did not get a
+GUID" line names `Label`. Why the root widget raised none was not found; the registration said "at least one" and did
+not depend on it. In the passing runs both names had identifiers, so `OnVariableAdded` gave both.
+
+---
+
 ## 2026-10-29 — The console-variable rule scans the tests once per process, not once per test (#1451)
 
 **Affects:** `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py` (`every_set` cached with
