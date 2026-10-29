@@ -126,6 +126,18 @@ passed in 0.13s | restored: 6 passed in 0.05s". named_failures, exactly the two 
 "triage did not prefer the Quest dungeon whose Cataclysm is not yet finished. Issue #1388." and the same for
 `lane_aware`.
 
+The two proofs ran at commit ids from before the branch was moved onto `42139a247`; the move left every file's change
+the same (per-file zero-context patch ids compared).
+
+### EVIDENCE
+
+Python of record at `ec8785e4b`, on `development` `42139a247`: "7050 passed, 8 skipped"; JUnit tests 7058, failures 0,
+errors 0, skipped 8 (the base's 7052 and the six new tests). ruff: "All checks passed!" A regenerate run left
+`game/Data` unchanged (`git diff --exit-code` exited 0). A first run before the move failed one test,
+`test_no_file_cites_the_design_document_by_line_number`, on this entry's own wording: "lines 519 and 619" (of
+`policies.py`) followed by the design document's name read as a line citation of the design document. They are now
+written `policies.py:519` and `policies.py:619`.
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own tuning rig reads its own unlock rule.
