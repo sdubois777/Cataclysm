@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A `.cpp` reaches the header that defines every project type it names with `Type::` (#2022)
+
+**Affects:** `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py` (new: the rule and three
+tests of it on made-up text); this file. Python only: no game code, no data, no Unreal window. **Closes
+[#2022](https://github.com/sdubois777/Cataclysm/issues/2022).**
+
+### SAID FIRST
+
+- **THE FAULT IS FOUND WITHOUT A BUILD.** Both incidents in the issue are a `.cpp` naming a project type with a
+  qualified `Type::` without including the header that defines it; a qualified name needs the full definition, and a
+  forward declaration does not give it. Unity builds hid both until an unrelated edit regrouped them, and each cost a
+  build window.
+- **IT FINDS BOTH INCIDENTS ON THE COMMITS BEFORE THEIR FIXES, AND NOTHING TODAY.** Measured with this rule on
+  git-archive copies:
+
+| Commit | `.cpp` files | Defined types | Flagged |
+| :-- | --: | --: | :-- |
+| `5a0d523f7`, today | 422 | 361 | none |
+| `9866d02d`, the commit the issue measured | 303 | 298 | `CataclysmEnemyBehaviourTests.cpp`, `UCataclysmPlayerClassStats` (THE FIRST INCIDENT); `CataclysmPlayerMovementTests.cpp`, `UCataclysmPlayerClassStats` |
+| `b3123e59^`, before the second fix | 303 | 298 | `CataclysmPassiveTreeTests.cpp`, `UCataclysmSummonSkill` (THE SECOND INCIDENT); `CataclysmPlayerMovementTests.cpp`, `UCataclysmPlayerClassStats` |
+
+  The movement-test file is a third real case of the same fault, mended between then and now. For the second incident
+  the rule's message says to add `#include "AbilitySystem/CataclysmSkillTemplates.h"`, the include `b3123e59` added.
+- **WHAT IT DOES NOT CATCH**, stated in the rule's docstring: a member reached through a pointer to a type that is only
+  forward-declared (no `::`), engine types and anything not named `*Cataclysm*`, and an include whose path tail
+  matches two files. One build with unity switched off catches those, in a window.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#2022: approved as proposed", with two additions: measure the rule's time in the
+full suite and keep it under about 5 seconds, with the header map built once per session; and make the failure
+message name the header to include as well as the file and the type, because "its message is the only instruction"
+another session's branch gets.
+
+### WHAT WAS BUILT
+
+- `test_every_cpp_file_reaches_the_header_of_every_project_type_it_qualifies` reads every `.h` and `.cpp` under
+  `game/Source` once (`index()`, cached for the process), with comments removed. A type's defining header is a `.h`
+  holding `class`/`struct` `Name ... {` or `enum class Name ... {`. For each `.cpp`, every `[UAFEI]Cataclysm*::` it
+  uses, string literals removed first, must have a defining header among the headers its own `#include "..."` lines
+  reach, followed transitively inside `game/Source`; a type the `.cpp` defines itself is exempt. It fails if it reads
+  fewer than 300 `.cpp` files or 300 defined types.
+- **The message**, one line a problem: "`<file>`: uses `<Type>`:: but no include of this file reaches `<Header>.h`,
+  which defines it. Add #include "`<spelling>`" to `<file name>`. Issue #2022." The spelling is the one the rest of the
+  tree uses most for that header, or its path inside its module.
+- Three tests on made-up text: CONTROL, a file including the defining header passes, directly and through a second
+  header; a file reaching only a forward-declaring header is refused once, with the include to add spelled as another
+  file spells it; a name inside a comment or a `TEXT("...")` string is not a use.
+
+### RUN TIME
+
+The rule alone: 0.96 seconds (`pytest --durations`). In the full suite at the registering commit: 1.03 seconds,
+by `--durations=0` and by the JUnit file's `time` for the test, against the ruling's budget of about 5.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py`. The break: `#include
+"Character/CataclysmPlayerClassStats.h"` removed from `game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp` (anchor
+counted once; that include is the file's only route to the header, checked in memory before registering). Predicted
+named_failures, exactly one:
+
+- `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py::test_every_cpp_file_reaches_the_header_of_every_project_type_it_qualifies`
+
+with the message naming `CataclysmAilmentTests.cpp`, `UCataclysmPlayerClassStats` and `Add #include
+"Character/CataclysmPlayerClassStats.h"`, and the three tests on made-up text passing.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `7bacd609e`, the commit that registered it, TWICE: the first run's script read
+the broken run's output from a field the result does not have, so it printed the verdict and not the message; the
+second run read `stdout` and printed both. Both printed "PROVED: 1 failed, 3 passed | restored: 4 passed" (3.12 s and
+1.04 s broken). named_failures, exactly the one registered:
+
+- `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py::test_every_cpp_file_reaches_the_header_of_every_project_type_it_qualifies`
+
+The broken run's message, as registered: "Cataclysm/Tests/CataclysmAilmentTests.cpp: uses UCataclysmPlayerClassStats::
+but no include of this file reaches CataclysmPlayerClassStats.h, which defines it. Add #include
+"Character/CataclysmPlayerClassStats.h" to CataclysmAilmentTests.cpp. Issue #2022." The three tests on made-up text
+passed with the break in.
+
+### EVIDENCE
+
+Python of record at `7bacd609e`: "7036 passed, 8 skipped"; JUnit tests 7044, failures 0, errors 0, skipped 8 (the base's
+7040 and the four new tests). ruff: "All checks passed!"
+
+### NO GENRE SOURCE
+
+None. This is a check on the project's own source.
+
+---
+
 ## 2026-10-29 — A log capture in the automation tests must flush the log before it reads its lines (#1522)
 
 **Affects:** `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py` (new: the rule and two tests of it on
