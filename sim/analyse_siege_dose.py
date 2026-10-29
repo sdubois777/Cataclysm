@@ -37,10 +37,11 @@ the claim is checked against the model rather than argued.
 **THOSE FOUR NUMBERS SAID 10k, 14, 20 AND 28 UNTIL 2026-09-06 AND THE FILE
 PRINTED 25 AND 37 UNDERNEATH THEM.** They described a growth of 10 points a day,
 which the owner cut to 2.5 on issue #1349; the constant moved and the prose did
-not. Issue #1375.
-`sim/tests/test_the_siege_prose_in_the_dose_script_is_true.py` now reads every
-one of them back out of this file and recomputes it, so the pair cannot part
-company again.
+not. Issue #1375. The `analyse_siege_dose.py` section of
+`sim/tests/test_analysis_scripts.py` recomputes every one of them from this
+file, so the pair cannot part company again. (This named a test file,
+`test_the_siege_prose_in_the_dose_script_is_true.py`, that does not exist and
+never did; corrected on issue #2620.)
 
 That is why this file sweeps the growth term ON ITS OWN as well. Growth is the
 half of a Siege that decides how fast it kills; the 1% share is the half that
@@ -56,10 +57,17 @@ Stand reach, wins per Last Stand reached, and cities lost are printed beside it.
 WHAT IS HELD CONSTANT, AND IT IS STATED IN THE OUTPUT TOO. Difficulty tier 1, the
 `No tree` preset, the `triage` policy, static surges every 120 days for 5
 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for
-+4% of tier width. `surge_dungeon_count` is **5 and not the default of 4**:
-`experiments.exp_calibrate` chooses 5 and the balance report runs at 5, while the
-raw `TuningConfig` default of 4 is a value calibration rejects. A figure from this
-file and a figure taken at 4 are not comparable.
++4% of tier width. **That is not `TuningConfig`'s default surge**, which is
+8 dungeons every 90 days since 2026-10-13 and was 4 before; this file holds 5
+every 120 because that is what the design document's balance figures are taken
+at. A figure from this file and one taken at the default are not comparable.
+`settings_lines` prints the default beside the value used, read from the config.
+
+EVERY OTHER RULE IS THE ONE `TuningConfig` SHIPS, since issue #2620. Until then
+`base_config` held three rules at their September values, so the script as it
+shipped reproduced none of the figures the design document states. Run at 1,000
+campaigns a block, its "today" rows are the design document's measurement of
+2026-10-29.
 
 TWO TRAPS, BOTH ALREADY PAID FOR ONCE ON THIS PROJECT.
 
@@ -74,14 +82,19 @@ Sieges left standing at the end.
 
 WHY THE POLICY IS INSTRUMENTED RATHER THAN THE DAY LOOP. Issue #1351 measured the
 binding constraint on answering a Siege and it is the player's DECISION RATE, not
-the city's health: the player is free to choose on about 8% of days. `triage` is
+the city's health: the player is free to choose on about 8% of days, as #1351
+measured it, and on 4.2% at this file's settings on 2026-10-29 (seeds 0 to 999,
+the shipped rules). `triage` is
 called exactly once per free day with every standing dungeon, so wrapping it
 counts, per Siege, how many chances the player ever had to answer that Siege --
 `answerable` further requires the dungeon to be inside `death_risk_tolerance`, so
 a Siege the player could see but not survive is not counted as a chance. The
 wrapper draws no random numbers (`Simulation.death_chance` is pure), so an
 instrumented batch and a plain one are the same campaigns;
-`sim/tests/test_siege_dose_curves.py` asserts that rather than assuming it.
+`test_the_instrumentation_does_not_change_the_campaign` in
+`sim/tests/test_analysis_scripts.py` asserts that rather than assuming it. (This
+named `sim/tests/test_siege_dose_curves.py`, which does not exist and never did;
+corrected on issue #2620.)
 """
 
 from __future__ import annotations
@@ -103,14 +116,17 @@ from cataclysm_sim.engine import Simulation
 #: this one sweeps eighteen doses over two blocks where that one sweeps five rows
 #: once. **THE FILE RUNS IT TWICE** -- once for the parametrised "it runs at all"
 #: test and once for the fixture the checks share -- so the number here is paid
-#: twice. Measured 2026-09-06 on this machine:
+#: twice. One run, measured 2026-10-29 on this machine with the shipped rules
+#: (issue #2620), and 2026-09-06 with the September ones:
 #:
-#:     TRIALS      3       4       5      12
-#:     one run  3.95s   5.25s   6.29s   11.2s
+#:     TRIALS            3       4       5      12
+#:     2026-10-29    2.03s   2.51s   3.43s   8.81s
+#:     2026-09-06    3.95s   5.25s   6.29s   11.2s
 #:
-#: `sim/tests/test_analysis_scripts.py` takes 10.1 seconds without this section,
-#: 23.3 with it at 3, and 27.7 at 5. **So the section costs 13.2 seconds and only
-#: 7.9 of those are the two script runs**; the rest is the checks that run
+#: THE REST OF THIS PARAGRAPH IS THE 2026-09-06 MEASUREMENT AND WAS NOT RE-TAKEN.
+#: `sim/tests/test_analysis_scripts.py` took 10.1 seconds without this section,
+#: 23.3 with it at 3, and 27.7 at 5. **So the section cost 13.2 seconds and only
+#: 7.9 of those were the two script runs**; the rest is the checks that run
 #: campaigns of their own, and dropping TRIALS further buys little. That is still
 #: the largest single cost in this file -- `analyse_lethality_modes.py` costs
 #: about 8.8 -- and it is deliberate: five of the checks below are the only thing
@@ -121,7 +137,9 @@ from cataclysm_sim.engine import Simulation
 #:
 #: **AT THE DEFAULT THE PRINTED SHARES ARE NOISE AND THE OUTPUT SAYS SO.**
 #: The curves put to the owner on issue #1349 were taken at 1,000, which is
-#: 2,000 campaigns a dose and 34,000 campaigns in all. That is tens of minutes,
+#: 2,000 campaigns a dose and, over the nineteen measured cells below, 38,000 in
+#: all. (This said 34,000 until issue #2620; the ladders and candidates give
+#: nineteen cells.) That is tens of minutes,
 #: and much longer on a machine you are also working on -- the run that produced
 #: those curves shared the machine with two full `pytest` runs and six
 #: `prove_guard` runs and took the better part of an hour. Run it in the
@@ -169,25 +187,19 @@ def base_config() -> TuningConfig:
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
-        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
-        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
-        # leaves after it hits its city. Every figure this file's docstring
-        # and the issues quote was measured with the dungeon staying, and none
-        # has been re-measured, so the setting is held where it was. Remove
-        # this line to measure the shipped rule; the figures then move.
-        dungeon_persists_after_resolve=True,
-        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
-        # Quest dungeon's timer hit its city. This file's figures were
-        # measured with that timer costing the city nothing, and none
-        # was re-measured. Remove this line to measure the shipped rule.
-        quest_timer_hits_city=False,
-        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
-        # of a dungeon's floors, the tree's included.
-        hit_scales_with_natural_floors=False,
+        # EVERY OTHER RULE IS THE ONE `TuningConfig` SHIPS, since issue #2620.
+        # Until then this held three rules at their September values -- an
+        # ordinary dungeon staying after it hits its city, a Quest dungeon's
+        # timer costing its city nothing, and a hit sized without the tree's
+        # floors -- so the script as it shipped reproduced none of the figures
+        # the design document states. The September figures are recorded in
+        # `docs/DECISIONS.md` and in the design document's history table.
     ).with_tree(TREE_NONE)
 
 
 BASE = base_config()
+#: What `TuningConfig` ships, for the settings block to say what BASE differs from.
+DEFAULT = TuningConfig()
 SIEGE_WEIGHT_TODAY = BASE.SUBTYPE_SPAWN_WEIGHTS["Siege"]
 GROWTH_TODAY = BASE.siege_damage_growth_per_day
 
@@ -282,11 +294,13 @@ class _InstrumentedSimulation(Simulation):
         #: carries `won` and `last_stand` and nothing joins them, so "won per
         #: Last Stand reached" reads two ways: every win in a campaign that
         #: reached one, or only the Last Stands actually cleared. **THE TWO
-        #: DISAGREE BY A FACTOR APPROACHING TWO HERE.** At the settings this
-        #: file runs, seeds 0-999, the first gives 1 in 16.0 and the second 1 in
-        #: 26.6, because half the campaigns that open the earned boss go on to
-        #: reach a Last Stand as well. Issue #1286's ruling was made on the
-        #: second reading, so that is the one reported.
+        #: DISAGREE BY A FACTOR OF ABOUT TWO HERE.** At the settings this file
+        #: runs, seeds 0-999, measured 2026-10-29 with the shipped rules (issue
+        #: #2620): the first gives 1 in 1.9 and the second 1 in 4.2, on 17 Last
+        #: Stands, because 11 of those 17 campaigns had opened the earned boss
+        #: first and a win there counts in the first reading. (On 2026-09-06,
+        #: under the September rules: 1 in 16.0 and 1 in 26.6.) Issue #1286's
+        #: ruling was made on the second reading, so that is the one reported.
         self.won_by: str | None = None
         self.sieges_created = 0
         #: did -> free days on which this Siege was standing and offered to the
@@ -428,7 +442,8 @@ def settings_lines() -> list[str]:
         f"  surge mode                      {cfg.surge_mode.value}",
         f"  days between surges             {cfg.surge_interval_days:.0f}",
         f"  dungeons per surge              {cfg.surge_dungeon_count}"
-        "   (NOT the TuningConfig default of 4)",
+        f"   (NOT the TuningConfig default of {DEFAULT.surge_dungeon_count} "
+        f"every {DEFAULT.surge_interval_days:.0f} days)",
         f"  resolve timer days per floor    {cfg.resolve_floor_ratio:.1f}",
         "  dungeon power per 100 days      "
         f"{cfg.dungeon_power_escalation_per_100_days:.2f}",
@@ -480,10 +495,12 @@ def main() -> None:
     print("  clrLS%      Last Stands actually CLEARED, per Last Stand reached "
           "-- which is NOT")
     print("              the same as campaigns that reached one and won, "
-          "because half the")
-    print("              earned-boss runs reach one too. The second reading is "
-          "nearly twice")
-    print("              the first. Issue #1286's ruling rests on this one.")
+          "because most campaigns")
+    print("              that reach one opened the earned boss first. At seeds "
+          "0-999 on 2026-10-29")
+    print("              the first reading is 1 in 1.9 and this one 1 in 4.2. "
+          "Issue #1286's ruling")
+    print("              rests on this one.")
     print("  cities      cities lost, mean per campaign")
     print("  sieges      Sieges CREATED per campaign, never a survivor count")
     print("  noChance%   share of those Sieges that never gave the player one "

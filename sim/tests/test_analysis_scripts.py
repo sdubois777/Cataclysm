@@ -1939,7 +1939,7 @@ def siege_dose_run():
     A FEW SECONDS AT THE SCRIPT'S DEFAULT `TRIALS`, which is a smoke size, and
     **the campaign shares it prints at that size are noise**. The curves put to
     the owner were taken at `CATACLYSM_SIEGE_DOSE_TRIALS=1000`, which is 2,000
-    campaigns a dose over two disjoint seed blocks and 34,000 campaigns in all --
+    campaigns a dose over two disjoint seed blocks and 38,000 campaigns in all --
     tens of minutes, and the better part of an hour on a busy machine.
 
     SO NOTHING BELOW ASSERTS A SHARE. Every check here is either on arithmetic
@@ -2209,9 +2209,11 @@ def test_the_two_readings_of_won_per_last_stand_are_not_the_same(
     `RunResult` carries `won` and `last_stand` and nothing joins them, so "won
     per Last Stand reached" reads either as every win in a campaign that reached
     one, or as the Last Stands actually cleared. **The readings differ by
-    nearly a factor of two**, because about half the campaigns that open the
-    earned boss go on to reach a Last Stand as well and their win is counted by
-    the first reading.
+    about a factor of two**, because most campaigns that reach a Last Stand
+    opened the earned boss first, and a win there is counted by the first
+    reading: 11 of 17 at seeds 0 to 999 under the shipped rules on 2026-10-29,
+    giving 1 in 1.9 against 1 in 4.2. This batch of 150 holds 3 Last Stands,
+    all 3 of which opened the earned boss.
 
     That gap is what made a session's reproduction of the issue #1349 baseline
     look like a disagreement with the model when it was a disagreement about the
@@ -2248,19 +2250,53 @@ def test_the_two_readings_of_won_per_last_stand_are_not_the_same(
     assert sim.won_by in (None, "earned", "last stand")
 
 
+def test_the_base_runs_every_rule_the_model_ships(siege_dose_run):
+    """ISSUE #2620. `base_config` held three rules at their September values --
+    an ordinary dungeon staying after it hits its city, a Quest dungeon's timer
+    costing its city nothing, and a hit sized without the tree's floors -- so
+    the script as it shipped reproduced none of the figures the design document
+    states. Every field of the config it runs is now `TuningConfig`'s, except
+    the settings the design document's balance figures are taken at, which the
+    script names and prints. A field held back again fails here by name."""
+    import dataclasses
+
+    from cataclysm_sim.config import TuningConfig
+
+    _, ns = siege_dose_run
+    base, shipped = ns["base_config"](), TuningConfig()
+    named = {"tier", "surge_mode", "resolve_floor_ratio", "surge_interval_days",
+             "surge_dungeon_count", "dungeon_power_escalation_per_100_days",
+             "craft_days", "craft_power_gain_frac", "tree"}
+    held = [f.name for f in dataclasses.fields(TuningConfig)
+            if f.name not in named
+            and getattr(base, f.name) != getattr(shipped, f.name)]
+    assert held == [], (
+        f"analyse_siege_dose.base_config holds {held} away from what "
+        "TuningConfig ships, so the script measures a game the design "
+        "document does not describe. Issue #2620.")
+
+
 def test_it_states_the_settings_beside_the_figures(siege_dose_run):
     """A figure that travels without its conditions is how this project made
     two retractions to the owner.
 
-    In particular `surge_dungeon_count` is 5 and not the `TuningConfig` default
-    of 4, which `experiments.exp_calibrate` records as rejected and never
-    calibrates; the balance report runs at 5. A reader who assumes 4 is reading
-    a different world.
+    In particular `surge_dungeon_count` is 5 every 120 days and not the
+    `TuningConfig` default, which is 8 every 90 days since 2026-10-13 and was 4
+    before. The design document's balance figures are taken at 5. A reader who
+    assumes the default is reading a different world. The default is read from
+    the config, so this cannot go stale the way "the default of 4" did.
     """
+    from cataclysm_sim.config import TuningConfig
+
     printed, ns = siege_dose_run
     cfg = ns["base_config"]()
+    default = TuningConfig()
     assert cfg.surge_dungeon_count == 5
-    assert "NOT the TuningConfig default of 4" in printed
+    assert (f"NOT the TuningConfig default of {default.surge_dungeon_count} "
+            f"every {default.surge_interval_days:.0f} days") in printed
+    assert default.surge_dungeon_count != cfg.surge_dungeon_count, (
+        "the script's surge size is now the default, so the settings line "
+        "saying it is NOT the default is false")
     for expected in ("difficulty tier                 1",
                      "empire tree preset              No tree",
                      "policy                          triage",

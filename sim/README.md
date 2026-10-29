@@ -514,10 +514,13 @@ There are two ways to get into one:
   board-empty surge, `death_resolves_dungeon`, an ordinary dungeon leaving
   after it hits its city, a Quest dungeon's timer hitting its city, and a hit
   sized by all of a dungeon's floors. Measured with
-  `analyse_siege_dose.py`'s `measure` imported; that script's own `BASE`
-  still holds the last three of those rules at their September values, so
-  running the script as it ships does not reproduce this table. Issue
-  [#2615](https://github.com/sdubois777/Cataclysm/issues/2615).
+  `analyse_siege_dose.py`'s `measure` imported. Since issue
+  [#2620](https://github.com/sdubois777/Cataclysm/issues/2620) that script's
+  own `BASE` runs the shipped rules, so the script as it ships reproduces this
+  table: run at `CATACLYSM_SIEGE_DOSE_TRIALS=1000`, its two blocks are blocks
+  0 and 1 of the six measured here, to every digit. Until #2620 it held the
+  last three of those rules at their September values and reproduced none of
+  it. Issue [#2615](https://github.com/sdubois777/Cataclysm/issues/2615).
 
   **EVERY ROW BELOW IS A PLAYER WITH NO EMPIRE TREE.** The owner has ruled
   that the game is balanced around a player fully invested in the Explorer
