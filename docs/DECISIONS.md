@@ -13,10 +13,19 @@ new test in `CataclysmCharacterLevelTests.cpp`. Fixes [#1540](https://github.com
 - **BUILT AND RUN: window w88 below passed every registered figure, and both proofs were PROVED. Two of the four
   registered predictions of how the proofs would fail were wrong**, and are recorded as wrong under Run. Window w87
   before it stopped at the new test alone, on two faults in this branch's own code.
-- **`AddExpectedError` DOES NOT FAIL A TEST WHEN ITS LINE NEVER COMES, in this engine.** P2's broken run logged no
-  warning, and the only error it printed was the capture's count. So the capture's count is the whole check on the
-  warning, and the sentence in w87's record below that said otherwise is corrected there. The test's own comment says
-  the same wrong thing and has not been changed, because changing it moves the head w88 ran.
+- **P2'S BROKEN RUN PRINTED NO ERROR FOR THE MISSING EXPECTED WARNING, AND THAT IS NOT BECAUSE `AddExpectedError`
+  IS NO CHECK.** A first version of this entry said it does not fail a test when its line never comes; that was wrong,
+  and is withdrawn. The kept broken-run log, `w88_P2_run1.log`, holds neither "to occur" nor "settled its level at 40"
+  anywhere. The engine reports a missing expected message from `FAutomationTestBase::HasMetExpectedMessages`
+  (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`, about lines 1808 to 1860), which adds the error
+  "Expected ('Warning') level log message or higher matching '...' to occur 1 times with Contains match type, but it
+  was found 0 time(s)". Its only caller at the end of a test, `FAutomationTestFramework::InternalStopTest` (line 1376),
+  reads `bTestSuccessful && !CurrentTest->HasAnyErrors() && CurrentTest->HasMetExpectedMessages()`, and `&&` stops at
+  the first false: **a test that already has an error never has its expected messages checked.** P2's test already had
+  one, the capture's count of 0, so the check never ran. The `continue` at line 1818 does not apply here: that call
+  passes `ELogVerbosity::All`, which `LogCategoryMatchesSeverityInclusive` always matches. So in a test with no other
+  error, a missing expected warning does fail it, and the test's comment, which says the declaration requires the line
+  to arrive as a warning or an error, is right.
 - **THE ISSUE WAS HALF TRUE AT `faf969780`.** It says a change during play does nothing. On a character whose level is
   not settled, `ACataclysmPlayerState::GetCharacterLevel` reads the variable every time it is asked, so the character
   sheet, the passive points, a minion the player summons and a save took the new level at once. Only the stat line
@@ -88,8 +97,8 @@ settled one kept it. **Two faults, both in this branch's own code, read from the
 
 1. **The warning was logged, at Verbose.** A warning the test has declared with `AddExpectedError` reaches every other
    output device lowered to Verbose, and the test's capture counted Warning lines only. The capture now counts the
-   line at any verbosity. (This said `AddExpectedError` still requires the line to arrive as a warning or an error; window
-   w88's P2 showed it does not fail a test when the line never comes. The count is the check.)
+   line at any verbosity; `AddExpectedError` still requires it to arrive as a warning or an error, in a test with no other
+   error (see the second point said first above).
 2. **A destroyed world's player state answered a later change.** The test's restore of the variable to 20, after its
    world was destroyed, logged a second warning naming that world's character. `UWorld::DestroyWorld` cleans the
    world up but does not mark its actors as garbage. The callback now skips a world whose `bIsWorldInitialized` is
@@ -113,7 +122,7 @@ free, no build or editor process, no open pull request. It was released before a
 | Memory | quoted | `final_used_virtual_mb=7784`, peak 8,093 |
 | Python (JUnit) | of record | 7047 tests, 0 failures, 0 errors, 8 skipped ("7039 passed, 8 skipped"); ruff `All checks passed!` |
 | P1, the refresh removed | fails on "an unsettled character takes the new level's health at once", and on nothing else | "1 tests performed, 0 succeeded, 1 failed", printing "310.0 after 40 ... 310.0 after 5 once settled": it failed on that assertion as registered, **and also on "CONTROL: a settled character keeps its health", which the registration said would not fail** -- the control expects the level 40 figure, which a character never refreshed to 40 does not have; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
-| P2, the settled check removed | both CONTROL assertions fail, and the expected warning is not found | "1 tests performed, 0 succeeded, 1 failed", printing "910.0 after 5 once settled (0 warnings)": it failed on "CONTROL: and one warning names the level it is settled at" only. **The registration was wrong twice:** the health stayed at the level 40 figure, because the refresh resolves the stat line at `GetCharacterLevel`, which is the settled 40 and not the variable's 5; and no error said the expected warning was missing; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the settled check removed | both CONTROL assertions fail, and the expected warning is not found | "1 tests performed, 0 succeeded, 1 failed", printing "910.0 after 5 once settled (0 warnings)": it failed on "CONTROL: and one warning names the level it is settled at" only. **The registration was wrong twice:** the health stayed at the level 40 figure, because the refresh resolves the stat line at `GetCharacterLevel`, which is the settled 40 and not the variable's 5; and no error said the expected warning was missing, because the test already had an error and the engine checks expected messages only in a test with none (said first above); restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 **Every line the callback logged in the whole suite**, read from w88's kept engine log: the new test's "applied at level
 40" and its settled line (at Verbose, as declared); the warning from
