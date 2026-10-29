@@ -5,7 +5,8 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-10-29 — The Siege walk guard checks that the median day holds about what its neighbours hold, not where the 50% line falls (#1389)
 
 **Affects:** `sim/tests/test_the_siege_prose_in_policies_is_true.py` only (`MEDIAN_DAY_SPIKE_LIMIT` and `median_day_spike`,
-added; `test_the_distribution_really_is_flat_where_the_median_sits`, rewritten onto them; one control test, added);
+added; `test_the_distribution_really_is_flat_where_the_median_sits`, rewritten onto them; one control test, added; the
+module docstring's walk shares corrected);
 this file. Python tests and documents only; nothing the simulation does changes.
 
 ### SAID FIRST
@@ -22,6 +23,12 @@ this file. Python tests and documents only; nothing the simulation does changes.
 - **THE LIMIT OF 2 IS A JUDGEMENT, NOT A DERIVATION.** Twice is where one day holds as many walks as its two
   neighbours together. Today's ratio is 1.22.
 - **THE QUOTED 10,000-CAMPAIGN SHARES ARE STILL CHECKED AS TEXT**, by the same `says` call as before.
+- **THE FILE'S OWN DOCSTRING CARRIED A STALE FIGURE, CORRECTED HERE AS RULED.** It said "45% of Outpost dungeons walk in
+  12 days or fewer and 50% in 13 or fewer", from when the stated median was 13. It now gives the shares the file's own
+  320-campaign fixture measures on the policies of issue [#1388](https://github.com/sdubois777/Cataclysm/issues/1388),
+  which this change lands on: 40.37% at 12 days or fewer, 47.35% at 13 and 55.76% at 14, median 14. On the policies
+  before #1388 the same fixture gives 40.55%, 47.52% and 55.92%. The figures in the bullets above and in WHAT WAS BUILT
+  are the before-#1388 ones they were measured as.
 
 ### THE RULING
 
