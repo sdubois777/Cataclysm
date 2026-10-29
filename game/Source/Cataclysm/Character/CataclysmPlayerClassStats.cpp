@@ -55,8 +55,10 @@
 // For the stat name saying nothing may lower a character's movement speed,
 // which lives on the class that reads it. Issue #1515.
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Items/CataclysmItem.h"
 #include "Engine/DataTable.h"
+#include "Engine/Engine.h"
 #include "HAL/IConsoleManager.h"
 
 const TCHAR* UCataclysmPlayerClassStats::ClassStatsAssetPath =
@@ -113,19 +115,53 @@ namespace
 		ECVF_Default);
 
 	/**
-	 * Which level the player's stat line is resolved at.
+	 * The starting level of the player's character.
 	 *
-	 * IT IS A STAND-IN FOR A LEVELLING SYSTEM THAT DOES NOT EXIST. Nothing in
-	 * this project grants experience or raises a level, so without this the
-	 * PerLevel column of the class table would never be read by the game at all.
+	 * IT WAS THE ONLY LEVEL BEFORE LEVELLING EXISTED, and it is now the level a
+	 * character has until it gains one or loads a save:
+	 * `ACataclysmPlayerState::GetCharacterLevel` reads it until then.
+	 *
+	 * A CHANGE DURING PLAY APPLIES OR SAYS WHY NOT. Issue #1540, ruled
+	 * 2026-10-29, a judgement: see `ACataclysmPlayerState::StartingLevelChanged`.
 	 */
 	TAutoConsoleVariable<int32> CVarPlayerLevel(
 		TEXT("Cataclysm.PlayerLevel"),
 		UCataclysmPlayerClassStats::DefaultLevel,
-		TEXT("The level the player's class stat line is resolved at, 1 to 100. "
-			 "A stand-in until levelling exists. Read when the pawn is "
-			 "possessed, so press Play again after changing it."),
+		TEXT("The starting level of the player's character, 1 to 100. A "
+			 "character that has not yet gained a level or loaded a save takes a "
+			 "change at once: its stat line is resolved again at the new level "
+			 "and the log says so. A character whose level is settled keeps it, "
+			 "and the log warns that nothing changed."),
 		ECVF_Default);
+
+	/** What a change to `Cataclysm.PlayerLevel` does to the characters in play. Issue #1540. */
+	void CataclysmPlayerLevelChanged(IConsoleVariable* /*Variable*/)
+	{
+		// NOTHING BEFORE THE OBJECT SYSTEM IS UP: a value set from a
+		// configuration file at start-up arrives before there is anything to
+		// look for.
+		if (!UObjectInitialized() || !GEngine)
+		{
+			return;
+		}
+		ACataclysmPlayerState::StartingLevelChanged();
+	}
+
+	/**
+	 * Binds the callback once, when this file's statics are made.
+	 *
+	 * DEFINED AFTER `CVarPlayerLevel` ON PURPOSE, for the reason
+	 * `StartingClassName` is defined before `CVarPlayerClass`: statics in one
+	 * file are made in the order they are written.
+	 */
+	const struct FCataclysmPlayerLevelChangeHook
+	{
+		FCataclysmPlayerLevelChangeHook()
+		{
+			CVarPlayerLevel.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateStatic(&CataclysmPlayerLevelChanged));
+		}
+	} CataclysmPlayerLevelChangeHook;
 
 	/**
 	 * Kept alive deliberately, the same way the damage type colour table is.

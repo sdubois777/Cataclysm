@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Player/CataclysmPlayerState.h"
+#include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -25,6 +26,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/DataTable.h"
 #include "Net/UnrealNetwork.h"
+#include "UObject/UObjectIterator.h"
 
 ACataclysmPlayerState::ACataclysmPlayerState()
 {
@@ -610,6 +612,47 @@ void ACataclysmPlayerState::RefreshCharacterStats() const
 	UCataclysmWearing::ReturnSecondTwoHandedWeapon(
 		Character->GetInventory(), Character->GetEquipment(), Character->GetWorld(),
 		UCataclysmDropSpawner::DropSpotInFrontOf(*Character));
+}
+
+void ACataclysmPlayerState::StartingLevelChanged()
+{
+	const int32 Asked = UCataclysmPlayerClassStats::ChosenLevel();
+	for (TObjectIterator<ACataclysmPlayerState> It; It; ++It)
+	{
+		const ACataclysmPlayerState* State = *It;
+		if (!IsValid(State) || State->IsTemplate()
+			|| !Cast<ACataclysmPlayerCharacter>(State->GetPawn()))
+		{
+			continue;
+		}
+		// NOT IN A WORLD THAT HAS BEEN DESTROYED. `UWorld::DestroyWorld` cleans
+		// the world up, which clears `bIsWorldInitialized`, but leaves its actors
+		// valid until garbage collection: window w87 saw a destroyed test world's
+		// player state answer a change made after it.
+		const UWorld* World = State->GetWorld();
+		if (!World || World->bIsTearingDown || !World->bIsWorldInitialized)
+		{
+			continue;
+		}
+
+		if (State->HasSettledLevel())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Cataclysm.PlayerLevel is now %d, but the character in play has "
+					 "settled its level at %d, so nothing changed. The variable sets "
+					 "only the starting level of a character that has not gained or "
+					 "loaded one."),
+				Asked, State->GetCharacterLevel());
+			continue;
+		}
+
+		State->RefreshCharacterStats();
+		UE_LOG(LogCataclysm, Log,
+			TEXT("Cataclysm.PlayerLevel applied at level %d: the character in play "
+				 "has not settled a level, so its stat line was resolved again at "
+				 "this one."),
+			Asked);
+	}
 }
 
 void ACataclysmPlayerState::CarryTheChosenTypeOnTheCreationWeapon()

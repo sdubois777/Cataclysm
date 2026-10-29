@@ -616,6 +616,29 @@ public:
 	void RefreshCharacterStats() const;
 
 	/**
+	 * What a change to `Cataclysm.PlayerLevel` does to every character in play.
+	 * Issue #1540, ruled 2026-10-29, A JUDGEMENT.
+	 *
+	 * A CHARACTER WHOSE LEVEL IS NOT SETTLED TAKES THE CHANGE AT ONCE. Its
+	 * character sheet, its passive points, a minion it summons and a save all
+	 * read the variable through `GetCharacterLevel` the moment it changes; only
+	 * the stat line waited for the next refresh, so a character showed one level
+	 * and had the health of another. It is refreshed here, and one line in the
+	 * log says at which level.
+	 *
+	 * A CHARACTER WHOSE LEVEL IS SETTLED, by a level gained or a save loaded, is
+	 * not changed: a level gained overrides the variable. One warning names the
+	 * level it is settled at, so typing the variable never does nothing silently.
+	 *
+	 * Called by the variable's change callback in `CataclysmPlayerClassStats.cpp`.
+	 * Only a player state with a possessed character is answered.
+	 */
+	static void StartingLevelChanged();
+
+	/** Whether a level has been gained or loaded, so `Cataclysm.PlayerLevel` no longer decides it. Issue #1540. */
+	bool HasSettledLevel() const { return CharacterLevel > LevelNotYetDecided; }
+
+	/**
 	 * Whether an equipped weapon carries a damage type that reaches the tree
 	 * this node is in. Issue #1075.
 	 *

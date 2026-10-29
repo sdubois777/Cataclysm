@@ -2,6 +2,137 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Typing Cataclysm.PlayerLevel during play applies it to a character whose level is not settled, and warns for one whose level is (#1540)
+
+**Affects:** `CVarPlayerLevel` in `CataclysmPlayerClassStats.cpp` (its comment, its help text and a change callback),
+`ACataclysmPlayerState` in `CataclysmPlayerState.h` and `.cpp` (`StartingLevelChanged` and `HasSettledLevel`), and one
+new test in `CataclysmCharacterLevelTests.cpp`. Fixes [#1540](https://github.com/sdubois777/Cataclysm/issues/1540).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w88 below passed every registered figure, and both proofs were PROVED. Two of the four
+  registered predictions of how the proofs would fail were wrong**, and are recorded as wrong under Run. Window w87
+  before it stopped at the new test alone, on two faults in this branch's own code.
+- **P2'S BROKEN RUN PRINTED NO ERROR FOR THE MISSING EXPECTED WARNING, AND THAT IS NOT BECAUSE `AddExpectedError`
+  IS NO CHECK.** A first version of this entry said it does not fail a test when its line never comes; that was wrong,
+  and is withdrawn. The kept broken-run log, `w88_P2_run1.log`, holds neither "to occur" nor "settled its level at 40"
+  anywhere. The engine reports a missing expected message from `FAutomationTestBase::HasMetExpectedMessages`
+  (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`, about lines 1808 to 1860), which adds the error
+  "Expected ('Warning') level log message or higher matching '...' to occur 1 times with Contains match type, but it
+  was found 0 time(s)". Its only caller at the end of a test, `FAutomationTestFramework::InternalStopTest` (line 1376),
+  reads `bTestSuccessful && !CurrentTest->HasAnyErrors() && CurrentTest->HasMetExpectedMessages()`, and `&&` stops at
+  the first false: **a test that already has an error never has its expected messages checked.** P2's test already had
+  one, the capture's count of 0, so the check never ran. The `continue` at line 1818 does not apply here: that call
+  passes `ELogVerbosity::All`, which `LogCategoryMatchesSeverityInclusive` always matches. So in a test with no other
+  error, a missing expected warning does fail it, and the test's comment, which says the declaration requires the line
+  to arrive as a warning or an error, is right.
+- **THE ISSUE WAS HALF TRUE AT `faf969780`.** It says a change during play does nothing. On a character whose level is
+  not settled, `ACataclysmPlayerState::GetCharacterLevel` reads the variable every time it is asked, so the character
+  sheet, the passive points, a minion the player summons and a save took the new level at once. Only the stat line
+  waited, until the next refresh (a change of gear, a point spent). So the sheet could say 100 while maximum health
+  stayed at the old level's figure, which is what the owner saw: 510. On a character whose level is settled, by a
+  level gained or a save loaded, the change reached nothing, as the issue says.
+- **ONE EXISTING TEST NOW LOGS THE NEW WARNING.**
+  `Cataclysm.CharacterLevel.GainingALevelActuallyMakesTheCharacterStronger` sets the variable to 3 on a character
+  that has earned level 40, to show the earned level is kept. It still asserts that, and it now also produces the
+  warning. A warning does not fail a test here: `bElevateLogWarningsToErrors` is not set in any configuration.
+
+### The ruling, 2026-10-29 — a judgement
+
+The issue proposed a message only, saying the change takes effect the next time Play is pressed. That message would be
+false while the character sheet already shows the new level. **The judgement:** apply or say why not.
+
+| Character in play | On a change to `Cataclysm.PlayerLevel` |
+|---|---|
+| Level not settled | `RefreshCharacterStats`, and one log line: "Cataclysm.PlayerLevel applied at level N: ..." |
+| Level settled | Unchanged, and one warning naming the settled level: "... has settled its level at N, so nothing changed. ..." |
+
+It rests on a ruling the decisions log already holds. Under "`Cataclysm.PlayerLevel` lowered by hand after spending is
+left as the rule acting" (ruling point 5), on a character whose level the variable still decides, a change acts at once
+on the points earned. The stat line now acts at once as well. **A level gained still overrides the variable**: nothing
+changes for a settled character. The help text, which said "Read when the pawn is possessed, so press Play again after
+changing it", now says both.
+
+The callback is bound with `SetOnChangedCallback` on the variable, the way `Cataclysm.DungeonSubType` in
+`CataclysmDungeonGameMode.cpp` binds its own, and does nothing before the object system is up, since a value set from a
+configuration file arrives at start-up. It answers every player state with a possessed character, found with an object
+iterator, skipping a world being torn down or no longer initialized: `UWorld::DestroyWorld` clears
+`bIsWorldInitialized` and leaves the world's actors valid until garbage collection.
+
+### How it is checked
+
+`Cataclysm.CharacterLevel.ChangingTheStartingLevelInPlayAppliesOrSaysWhyNot`: a level 10 character in play, its level
+not settled; the variable set to 40 at console priority. Maximum health becomes the class line's level 40 figure, and
+one log line says "applied at level 40". **CONTROL:** one point of experience settles the level at 40; the variable set
+to 5 leaves maximum health at the level 40 figure, and one warning says "settled its level at 40". It prints a line
+beginning "PLAYER LEVEL IN PLAY".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4359 / 0: `development`'s 4358, measured by window w86 on the tests `5a0d523f7` holds (#1522 and #2022 after it are Python only), + 1 |
+| Python | of record, with JUnit, and ruff |
+| The "PLAYER LEVEL IN PLAY" line | quoted as printed |
+| P1, the refresh removed | the test fails on "an unsettled character takes the new level's health at once", and on nothing else |
+| P2, the settled check removed | the test fails on both CONTROL assertions (the health becomes the level 5 figure, and no warning is logged), and on the expected warning not being found |
+
+### Run
+
+**Window w87 (lock `dungeon-w87`, `fix/typing-the-player-level-during-play-applies-or-says-why-not-1` at `b7686e2e6`,
+on `603f2efee`, 2026-10-29) STOPPED at the new test alone. Nothing after it ran.** The lock was taken on a free-memory
+reading immediately before it of 10,949 MB, after `development`'s CI run at `603f2efee` and its
+last Unreal run, at `5a0d523f7`, succeeded, with no run in progress or queued, the lock free, no build or editor
+process, no open pull request. It was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 0 succeeded, 1 failed`: "Expected 'CONTROL: and one warning names the level it is settled at' to be 1, but it was 0" |
+| The "PLAYER LEVEL IN PLAY" line | quoted as printed | "maximum health 310.0 at 10, 910.0 after 40 (1 applied lines), 910.0 after 5 once settled (0 warnings); the class line gives 910.0 at 40 and 210.0 at 5" |
+
+Every other assertion held: the unsettled character took the level 40 health at once with one "applied" line, and the
+settled one kept it. **Two faults, both in this branch's own code, read from the engine log:**
+
+1. **The warning was logged, at Verbose.** A warning the test has declared with `AddExpectedError` reaches every other
+   output device lowered to Verbose, and the test's capture counted Warning lines only. The capture now counts the
+   line at any verbosity; `AddExpectedError` still requires it to arrive as a warning or an error, in a test with no other
+   error (see the second point said first above).
+2. **A destroyed world's player state answered a later change.** The test's restore of the variable to 20, after its
+   world was destroyed, logged a second warning naming that world's character. `UWorld::DestroyWorld` cleans the
+   world up but does not mark its actors as garbage. The callback now skips a world whose `bIsWorldInitialized` is
+   false. Without it, an unsettled character's stat line could have been refreshed inside a destroyed world.
+
+The next window is registered as above: the new test 1 / 1, the whole suite at 4359, 0 failed, and P1 and P2 as
+registered.
+
+**Window w88 (lock `dungeon-w88`, `fix/typing-the-player-level-during-play-applies-or-says-why-not-2` at `eab96e0e9`,
+on `cf6c73e69`, 2026-10-29) passed every registered figure.** `cf6c73e69` (#2022) and `603f2efee` (#1522) changed only
+Python, so the last Unreal run on `development`, at `5a0d523f7`, succeeded, and its CI run at `cf6c73e69` succeeded. The
+lock was taken on a free-memory reading immediately before it of 11,486 MB, with no run in progress or queued, the lock
+free, no build or editor process, no open pull request. It was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 35 actions, 32 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "PLAYER LEVEL IN PLAY" line | quoted as printed | "maximum health 310.0 at 10, 910.0 after 40 (1 applied lines), 910.0 after 5 once settled (1 warnings); the class line gives 910.0 at 40 and 210.0 at 5" |
+| Whole Unreal suite | 4359 / 0 | `4359 tests performed, 4359 succeeded, 0 failed`; declared 4359, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7784`, peak 8,093 |
+| Python (JUnit) | of record | 7047 tests, 0 failures, 0 errors, 8 skipped ("7039 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the refresh removed | fails on "an unsettled character takes the new level's health at once", and on nothing else | "1 tests performed, 0 succeeded, 1 failed", printing "310.0 after 40 ... 310.0 after 5 once settled": it failed on that assertion as registered, **and also on "CONTROL: a settled character keeps its health", which the registration said would not fail** -- the control expects the level 40 figure, which a character never refreshed to 40 does not have; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the settled check removed | both CONTROL assertions fail, and the expected warning is not found | "1 tests performed, 0 succeeded, 1 failed", printing "910.0 after 5 once settled (0 warnings)": it failed on "CONTROL: and one warning names the level it is settled at" only. **The registration was wrong twice:** the health stayed at the level 40 figure, because the refresh resolves the stat line at `GetCharacterLevel`, which is the settled 40 and not the variable's 5; and no error said the expected warning was missing, because the test already had an error and the engine checks expected messages only in a test with none (said first above); restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+**Every line the callback logged in the whole suite**, read from w88's kept engine log: the new test's "applied at level
+40" and its settled line (at Verbose, as declared); the warning from
+`Cataclysm.CharacterLevel.GainingALevelActuallyMakesTheCharacterStronger`, said first above; and **one not predicted**:
+"applied at level 20" from `Cataclysm.EnemyModifiers.AnEnemySummonersMinionTakesTheTiersReferenceLevel` (#1702), whose
+restore of the preview level runs while its world still exists, so its player character's stat line is resolved once
+more before the test ends. It changes no assertion, and the test passed.
+
+---
+
 ## 2026-10-29 — A `.cpp` reaches the header that defines every project type it names with `Type::` (#2022)
 
 **Affects:** `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py` (new: the rule and three
