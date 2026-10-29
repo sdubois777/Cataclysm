@@ -14,6 +14,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Engine/World.h"
@@ -921,6 +922,68 @@ bool FCataclysmSandboxImpsArriveAsAPackTest::RunTest(const FString& Parameters)
 		Furthest + ACataclysmImpCharacter::ImpCapsuleRadius
 			< SandboxFloorReachCm);
 
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSandboxRarityRollSeedTest,
+	"Cataclysm.Sandbox.ASetRarityRollSeedRollsTheSameRaritiesEveryTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #888. The sandbox seeded each creature's rarity roll from its object index, so what it rolled depended on which
+ * tests ran first. With `RarityRollSeed` set, two game modes with the same seed roll the same twenty rarities, each
+ * from one creature of its own; and within one, the twenty are not all the same. CONTROL: a different seed rolls a
+ * different twenty.
+ */
+bool FCataclysmSandboxRarityRollSeedTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// TWENTY ROLLS FROM ONE GAME MODE WITH THIS SEED, all for one creature of its own.
+	const auto TwentyRolls = [&](int32 Seed, TArray<int32>& Steps) -> bool
+	{
+		ACataclysmGameMode* Mode = World->SpawnActor<ACataclysmGameMode>();
+		AActor* Creature = World->SpawnActor<AActor>();
+		if (!TestNotNull(TEXT("set-up: a game mode"), Mode) || !TestNotNull(TEXT("set-up: a creature"), Creature))
+		{
+			return false;
+		}
+		Mode->RarityRollSeed = Seed;
+		for (int32 Roll = 0; Roll < 20; ++Roll)
+		{
+			Steps.Add(Mode->RarityStepFor(UCataclysmEnemyRarity::RollTheRarity, Creature));
+		}
+		return true;
+	};
+	const auto Joined = [](const TArray<int32>& Steps)
+	{
+		FString Text;
+		for (const int32 Step : Steps)
+		{
+			Text.AppendInt(Step);
+		}
+		return Text;
+	};
+
+	TArray<int32> First;
+	TArray<int32> Second;
+	TArray<int32> Other;
+	if (!TwentyRolls(1234, First) || !TwentyRolls(1234, Second) || !TwentyRolls(5678, Other))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("RARITY SEED: 1234 rolled %s, 1234 again %s, 5678 %s"),
+							*Joined(First), *Joined(Second), *Joined(Other)));
+	TestEqual(TEXT("the same seed rolls the same twenty rarities"), Joined(Second), Joined(First));
+	TestTrue(TEXT("and the twenty are not all the same"),
+			 First.ContainsByPredicate([&First](int32 Step) { return Step != First[0]; }));
+	TestTrue(TEXT("CONTROL: a different seed rolls a different twenty"), Joined(Other) != Joined(First));
 	return true;
 }
 

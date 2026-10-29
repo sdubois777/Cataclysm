@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The sandbox's rarity roll takes a seed a test can set, so what it rolls no longer depends on which tests ran first (#888)
+
+**Affects:** `ACataclysmGameMode` in `CataclysmGameMode.h` and `.cpp` (a property `RarityRollSeed`, a counter
+`RarityRollsMade`, one branch in `RarityStepFor` and its comment), and one new test in `CataclysmSandboxTests.cpp`.
+Fixes [#888](https://github.com/sdubois777/Cataclysm/issues/888).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+
+### What it was
+
+`RarityStepFor` seeds a creature's rarity roll, for a creature no floor places, from the creature's `GetUniqueID()` and
+the world clock. In an automation test the world is new and its clock reads nearly nought, so the clock adds nothing and
+the object's slot in the engine's array decides, which depends on every object the tests before it made: a test added
+earlier in the alphabet changed what a later one spawned.
+
+### The ruling, 2026-10-29: a seed a test can set (#888's first option)
+
+`RarityRollSeed`, 0 by default, which draws exactly as before, so play is unchanged. Set, the roll's stream is seeded
+from it combined with `RarityRollsMade`, a count of the rolls it has seeded, so the same seed rolls the same rarities in
+the same order and one creature after another still draws differently. The floor's own stream (#2490) is untouched. The
+comment now says the clock contributes nothing in a test. The second option, no roll in the sandbox, was not taken: it
+would change what the sandbox does in play, and nothing asks for that.
+
+### How it is checked
+
+`Cataclysm.Sandbox.ASetRarityRollSeedRollsTheSameRaritiesEveryTime`: two game modes with seed 1234 each roll twenty
+rarities, each mode for one creature of its own reused for all twenty, and the two sequences are equal; within one the
+twenty are not all the same. **CONTROL:** seed 5678 rolls a different twenty. It prints a line beginning "RARITY SEED".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "RARITY SEED" line | quoted as printed |
+| P1, the set seed ignored | the test fails on "and the twenty are not all the same": each mode's twenty draws are seeded by one creature at one clock reading, so all equal. The same-seed equality and the CONTROL are not predicted: each mode's sequence is then one rarity twenty times, and two such can match |
+| P2, the count not advanced | the test fails on "and the twenty are not all the same" |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-29 — A less multiplier its scale carries past the -99% floor is clamped without a warning; one written past it still warns (#1984)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` (the More case of the accumulation: the
