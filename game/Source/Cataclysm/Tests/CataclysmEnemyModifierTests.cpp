@@ -3447,6 +3447,14 @@ CATACLYSM_MODIFIER_TEST(FCataclysmShielderRefillsTest,
 	{
 		return false;
 	}
+	// AN IMP THAT CANNOT EVADE OR BLOCK THE HIT, as the `Creature` helper makes its creatures. Issue #2588: the Imp's
+	// archetype row gives it 25% evasion, so one window in four the hit was evaded and took no shield. An attribute base
+	// written here is no stats setter, so the rule above about `ApplyDesignedStats` still holds.
+	if (UAbilitySystemComponent* ImpOwn = Imp->GetAbilitySystemComponent())
+	{
+		ImpOwn->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		ImpOwn->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
 	ExpectItRefills(*this, World, Player, Imp, TEXT("Shielder"));
 
 	// CONTROL: A CREATURE WITH NO SHIELD REGENERATES NOTHING, health or shield,
@@ -3499,6 +3507,69 @@ CATACLYSM_MODIFIER_TEST(FCataclysmKindsShieldRefillsTest,
 		return false;
 	}
 	ExpectItRefills(*this, World, Player, Kind, TEXT("the kind's own shield"));
+	return true;
+}
+
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandTagEndsTest,
+	"Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionTakesItsTagAndItIsNoLongerADebuff")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #1537. The explosion spent the brand's stacks and left its tag,
+	// `Status.Debuff.InfernalBrand`, for the rest of its eight seconds, so a spent
+	// brand was still a debuff carried. Through the damage pipeline, as
+	// `InfernalBrandExplodesOnceForEveryFiveHitsThatLand` drives it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	const FGameplayTag Brand = UCataclysmSkillShapes::StatusTagFor(TEXT("Infernal Brand"));
+	if (!TestTrue(TEXT("set-up: the brand's status tag exists"), Brand.IsValid()))
+	{
+		return false;
+	}
+	FBareTarget Target(World, 2'000.0f);
+	const auto Hit = [&]()
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Target.Actor, /*Damage=*/1.0f, FCataclysmHitDelivery());
+	};
+
+	// CONTROL: FOUR BRANDS, NO EXPLOSION, AND THE TAG IS CARRIED AND COUNTED.
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Hit();
+	}
+	const bool bAfterFour = Target.AbilitySystem->HasMatchingGameplayTag(Brand);
+	const int32 CountAfterFour = UCataclysmDebuffs::CountOn(Target.AbilitySystem);
+	TestTrue(TEXT("CONTROL: four brands are carried as the brand's tag"), bAfterFour);
+	TestTrue(FString::Printf(TEXT("CONTROL: and counted among the debuffs carried (%d)"), CountAfterFour),
+			 CountAfterFour >= 1);
+
+	// THE FIFTH EXPLODES, AND TAKES THE TAG.
+	const float HealthBefore = Target.Vitals->GetHealth();
+	Hit();
+	const bool bAfterFive = Target.AbilitySystem->HasMatchingGameplayTag(Brand);
+	const int32 CountAfterFive = UCataclysmDebuffs::CountOn(Target.AbilitySystem);
+	AddInfo(FString::Printf(TEXT("BRAND TAG: after four brands %s, %d debuff(s); after the explosion %s, %d"),
+							bAfterFour ? TEXT("carried") : TEXT("gone"), CountAfterFour,
+							bAfterFive ? TEXT("carried") : TEXT("gone"), CountAfterFive));
+	TestTrue(TEXT("set-up: the fifth brand exploded"), HealthBefore - Target.Vitals->GetHealth() > 100.0f);
+	TestFalse(TEXT("after the explosion the brand's tag is gone"), bAfterFive);
+	TestEqual(TEXT("and the debuffs carried are one fewer"), CountAfterFive, CountAfterFour - 1);
 	return true;
 }
 

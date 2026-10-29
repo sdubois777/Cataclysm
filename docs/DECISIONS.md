@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — An Infernal Brand's explosion takes its status tag with its stacks, so a spent brand is no longer a debuff (#1537)
+
+**Affects:** `UCataclysmEnemyModifiers::BrandOnHit` in `CataclysmEnemyModifiers.cpp` (one call), and one new test in
+`CataclysmEnemyModifierTests.cpp`. Fixes [#1537](https://github.com/sdubois777/Cataclysm/issues/1537).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w81 below passed every registered figure, and both proofs were PROVED.** Window w80, at
+  the first commit, failed one test, #1562's Shielder test, for the reason #2588 records; nothing was re-run there.
+- **THE ON-SCREEN STATUS LIST WAS NOT CHECKED.** Whether the spent brand also showed there was not read.
+- **IT CARRIES #2588**, a set-up line in `AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage`
+  (#1562): its Imp has 25% evasion from its archetype row, so the test's hit was evaded one run in four, as
+  window w80 met. The Imp's evasion and block chance are now set to nought before the hit; no assertion changed.
+  Ruled by the coordinating session on 2026-10-29.
+
+### What it was, read again at `1e78c2bce`
+
+`BrandOnHit` adds `Status.Debuff.InfernalBrand` on every brand for the brand's eight-second window, and on the fifth
+`UCataclysmStacks::NoteInfernalBrand` spends the stacks and the explosion is dealt. Nothing removed the tag, so a player
+carried a brand with no stacks for up to eight seconds after the fifth brand, and `Status.Debuff` is a root
+`UCataclysmDebuffs::TagsOn` and `CountOn` match. What reads it: the player's `DebuffsCarried`, which the stat pipeline's
+"per debuff carried" values scale with; a condition on an attacker's debuffs when the branded player strikes; Contagion's
+spreading of debuffs carried; and the debug console's count.
+
+### What changed
+
+When `NoteInfernalBrand` reports the explosion, `BrandOnHit` calls the existing
+`UCataclysmSkillEffects::RemoveEffectsGranting(Target, Brand)`, before the explosion's damage, so the stacks and the tag
+end together and the explosion's own blow does not see a spent brand.
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionTakesItsTagAndItIsNoLongerADebuff`, through the damage path as
+`InfernalBrandExplodesOnceForEveryFiveHitsThatLand` drives it. **CONTROL:** after four brands the target carries the tag
+and counts it among its debuffs. The fifth explodes; the tag is gone and the debuffs carried are one fewer. It prints a
+line beginning "BRAND TAG".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4353 / 0: `development` at `7ca6edb06` (#2587) is 4352, and one test is added; the branch moved onto it as `fix/an-infernal-brands-explosion-takes-its-tag-1` |
+| Python | of record, with JUnit, and ruff |
+| The "BRAND TAG" line | quoted as printed |
+| P1, the removal deleted | the test fails: the tag is still carried after the explosion |
+| P2, the removal moved to every brand, before the stack is counted | the CONTROL fails: no tag is carried after four brands |
+
+### Run
+
+**Window w80 (lock `dungeon-w80`, `fix/an-infernal-brands-explosion-takes-its-tag-1` at `d92d95d14`, on `7ca6edb06`)
+stopped at the whole suite:** "4353 tests performed, 4352 succeeded, 1 failed:
+AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage", which printed "Shielder: maximum 80.5, 80.5
+after the hit" and "Expected 'Shielder: set-up: the hit took shield' to be true": its Imp, with 25% evasion from its
+archetype row, evaded the hit. This entry's own test passed alone ("after four brands carried, 1 debuff(s); after the
+explosion gone, 0") and Python passed (JUnit 7035, 0 failures). No proof was run and nothing was re-run; the
+coordinating session filed #2588 and ruled its set-up line onto this branch.
+
+**Window w81 (lock `dungeon-w81`, the same branch at `a4314376b`, on `7ca6edb06`, 2026-10-29) passed.** The lock was
+taken at 00:11 on a free-memory reading immediately before it of 11,361 MB, with `development`'s CI run at `7ca6edb06`
+succeeded (a Python-only merge, which started no Unreal run; the last on `development`, `d6768e501`, succeeded), none in
+progress or queued, the lock free, no build or editor process, no open pull request. The lock was released before
+anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.20.cpp` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4353 / 0 | `4353 tests performed, 4353 succeeded, 0 failed`; declared 4353, gap 0. #2588's test printed "Shielder: maximum 80.5, 40.2 after the hit, 40.2 at 2.5 s, 56.3 at 4 s" |
+| Memory | quoted | `final_used_virtual_mb=7754`, peak 8,068 |
+| Python (JUnit) | of record | 7035 tests, 0 failures, 0 errors, 8 skipped ("7027 passed, 8 skipped"); ruff `All checks passed!` |
+| The "BRAND TAG" line | quoted as printed | "after four brands carried, 1 debuff(s); after the explosion gone, 0" |
+| P1, the removal deleted | the test fails | "1 tests performed, 0 succeeded, 1 failed: AnInfernalBrandsExplosionTakesItsTagAndItIsNoLongerADebuff", printing "after the explosion carried, 1"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the removal moved to every brand | the CONTROL fails | the same failure line, on "Expected 'CONTROL: four brands are carried as the brand's tag' to be true", printing "after four brands gone, 0 debuff(s)"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-28 — The row generator refuses a flat passive-node row on a stat the game reads nowhere (#2582)
 
 **Affects:** `tools/generate_datatables.py` (one refusal in `validate_passive_effects`, using the
