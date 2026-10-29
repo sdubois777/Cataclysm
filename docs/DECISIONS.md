@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The two scoring policies value a Quest dungeon by how far its own Cataclysm is from finished, not by the superseded flat 8 (#1388)
+
+**Affects:** `sim/cataclysm_sim/policies.py` (a new `quest_dungeons_to_finish`, read by `triage` and `lane_aware`, and the
+two "THIS IS STALE AND IT IS ISSUE #1388" comments removed); `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py`
+(new, seven tests); this file. **It changes how the simulation plays**: both policies steer differently between Quest
+dungeons. Python and documents only.
+
+### SAID FIRST
+
+- **NO FULL SWEEP WAS RUN.** `sim/experiments.py` was not run for this change.
+- **EVERY SECTION OF `sim/experiments.py` MAY MOVE.** Every section plays `triage`, and `exp_calibrate` uses it to choose
+  the surge settings every later section inherits, so a change to `triage` can move the calibration and everything
+  after it. `policy_spread` also plays `lane_aware`.
+- **THE SIEGE DOCSTRING'S 10,000-CAMPAIGN FIGURES PREDATE THIS CHANGE.** `siege_urgency` in `policies.py` quotes medians
+  of 14 / 22 / 34 / 123 days and the shares 48.17% and 56.35%, measured over 10,000 campaigns played by `triage` before
+  this change. They are left as they are, as ruled, and not re-measured. The guard that reads them,
+  `sim/tests/test_the_siege_prose_in_policies_is_true.py`, re-measures 320 campaigns and still passes. Its Outpost share
+  moved from 55.92% to 55.76%.
+- **THE ISSUE'S LINE NUMBERS WERE OUT OF DATE.** Issue #1388 places the two reads at `policies.py:337` (`triage`) and
+  `:425` (`lane_aware`). On `development` at `6cbc60b13` they were lines 519 and 619.
+
+### THE RULE
+
+`docs/Cataclysm_GDD_v2.md`: "**To unlock the Cataclysm dungeon, meet the quest objectives of half of the Cataclysms you
+are facing, rounded up.**" The project owner ruled it on 2026-09-06, quoted verbatim there and in
+`TuningConfig.cataclysms_required`. The engine's gate, `Simulation._maybe_open_cataclysm`, reads
+`Simulation.cataclysms_complete()`. Each Cataclysm's own count is `TuningConfig.quest_objectives_for`.
+
+Both policies read `remaining = max(1, cfg.quest_objectives_required - sim.objectives)`: a flat 8, now only the fallback
+for a Cataclysm the roster does not name, minus every quest dungeon cleared from every Cataclysm. So they could not tell
+a Quest dungeon whose Cataclysm was finished from one whose Cataclysm was part way through.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1388: approved, on branch fix/quest-dungeon-value-follows-the-half-of-cataclysms-rule",
+with the helper used at both sites and measuring in dungeons, labelled a judgement; the tests and the control as
+proposed; the guard proof on the `d.source in complete` clause; this entry saying no full sweep was run, that every
+section may move, and that the Siege figures predate the change, without re-measuring them; the stale comments removed;
+and the issue's line numbers corrected.
+
+### WHAT WAS BUILT
+
+`quest_dungeons_to_finish(sim, d)` returns None when clearing `d` brings the boss no nearer: when `d.source` is already
+in `cataclysms_complete()`, or when enough Cataclysms are finished that the boss is open. Otherwise it returns
+`max(1, quest_objectives_for(d.source) - objectives_by_type[d.source])`. Both policies use it in place of the old
+subtraction, and the bonus is `1.0 + (1.0 / remaining if remaining else 0.0)`, so None gives no bonus.
+
+**JUDGEMENT, NOT DERIVED: THE DISTANCE IS COUNTED IN DUNGEONS.** The issue suggested counting it in Cataclysms. Dungeons
+keep the `1 + 1 / remaining` bonus on the scale both policies were tuned at. A distance of one to four Cataclysms would
+have rescaled it, which is a tuning change and not this correction.
+
+A dungeon built by hand in a test names no Cataclysm and is measured against `quest_objectives_for("")`, the documented
+fallback. In a campaign every Quest dungeon names one: `trigger_surge` sets `source` on every dungeon it lands.
+
+### WHAT IT DOES TO A CAMPAIGN, MEASURED SMALL
+
+60 campaigns per cell, seeds 0 to 59, `active_cataclysms` from the tier. On `development`, then on this branch:
+
+| Tier | Policy | Win % | Cataclysms finished | Quest dungeons cleared |
+| --: | :-- | :-- | :-- | :-- |
+| 1 | `triage` | 48.3 → 50.0 | 1.00 → 1.00 | 7.43 → 7.43 |
+| 1 | `lane_aware` | 35.0 → 36.7 | 0.92 → 0.93 | 7.20 → 7.22 |
+| 4 | `triage` | 0.0 → 0.0 | 0.72 → 0.83 | 12.70 → 11.92 |
+| 4 | `lane_aware` | 3.3 → 1.7 | 0.77 → 0.77 | 10.32 → 9.77 |
+| 8 | `triage` | 0.0 → 0.0 | 0.27 → 0.37 | 9.25 → 8.60 |
+| 8 | `lane_aware` | 0.0 → 0.0 | 0.07 → 0.12 | 5.45 → 5.08 |
+
+Above tier 1, `triage` finishes more Cataclysms while clearing fewer quest dungeons, which is the direction the rule
+asks for. Every win-rate change is inside `win_rate_noise(60)`, about 9 points, so this table says nothing about balance.
+
+### THE TESTS
+
+Until this change no test checked how either policy values a Quest dungeon: the whole fast suite passed with the old
+reading and with the new one (measured on a prototype, "7043 passed, 7 skipped").
+
+- `test_a_quest_dungeon_from_an_unfinished_cataclysm_is_worth_more` (both policies): four active Cataclysms, one
+  finished and one three quest dungeons in. The finished one's dungeon gets None, and the policy picks the other twin,
+  which is listed second so a tie would keep the first.
+- `test_once_the_boss_is_open_no_quest_dungeon_brings_it_nearer` (both policies): two of four finished. Both remaining
+  Cataclysms' dungeons get None, and the policy keeps the first of two identical twins.
+- `test_control_where_the_old_reading_and_the_rule_agree_they_give_one_distance`: CONTROL. One active Cataclysm whose
+  own count is set to 8, every objective from it. At each of 0 to 7 cleared, the new distance equals the old one.
+- `test_a_dungeon_naming_no_cataclysm_is_measured_against_the_fallback`.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py` (that file needs no git repository). The
+break, in `quest_dungeons_to_finish`: `cfg.cataclysms_required() or d.source in complete:` becomes
+`cfg.cataclysms_required():` (once in the file). Predicted named_failures, exactly two:
+
+- `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py::test_a_quest_dungeon_from_an_unfinished_cataclysm_is_worth_more[triage]`
+- `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py::test_a_quest_dungeon_from_an_unfinished_cataclysm_is_worth_more[lane_aware]`
+
+The boss-open test, the control and the fallback test pass with the break in. The control's last line still gets None,
+because one active Cataclysm finished also opens the boss.
+
+### NO GENRE SOURCE
+
+None. This is how the project's own tuning rig reads its own unlock rule.
+
+---
+
 ## 2026-10-29 — A saved run keeps what the player achieved: objectives, dungeons cleared, the next dungeon number and the empire screen's last lines (#1374)
 
 **Affects:** `UCataclysmRunSave` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (fourteen `SaveGame` fields and
