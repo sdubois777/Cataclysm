@@ -41,9 +41,21 @@ add this entry, no guard proof, its own window at the total current + 0.
   and the trap row, the first-hit row and the Ravager node apply where a hit is priced and not on the sheet. Read, not
   run.
 
-### NOT YET COMPILED OR RUN
+### THE RUN, 2026-10-29, AT db17dcc00 ON 701cb6f52
 
-Recorded below when the window has run.
+Registered before the run at 4354 + 0. No guard proof, as ruled.
+
+| Step | Printed |
+| :-- | :-- |
+| The test alone, `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute` | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 9 actions, 6 files compiled" |
+| The whole Unreal suite | "4354 tests performed, 4354 succeeded, 0 failed"; "Declared: 4354 tests in the tree at db17dcc00; 4354 performed, gap 0" |
+| Python of record | "7027 passed, 8 skipped"; JUnit tests 7035, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,438 MB. The suite's memory summary: peak used virtual 8,104 MB.
+
+The sheet sentence above is still read, not run: no test in this window shows what the character sheet displays for a
+character wearing any of the four rows.
 
 ### NO GENRE SOURCE
 
