@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A less multiplier its scale carries past the -99% floor is clamped without a warning; one written past it still warns (#1984)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` (the More case of the accumulation: the
+warning now tests the written value); `game/Source/Cataclysm/Tests/CataclysmStatPipelineTests.cpp` (one test,
+`Cataclysm.StatPipeline.AScaleThatCarriesALessMultiplierPastTheFloorDoesNotWarn`); this file. No data change. **Closes
+[#1984](https://github.com/sdubois777/Cataclysm/issues/1984).**
+
+### SAID FIRST
+
+- **THE CLAMP IS UNCHANGED.** A more multiplier below -99% is still clamped to -99% and still counted in
+  `ClampedLessCount`, whatever carried it there. Only the log line moved.
+- **ONE SHIPPED ROW REACHES THE FLOOR IN PLAY.** "All damage dealt is reduced by 15%-25% for each second you stand
+  still": two rows (`attack_damage`, `spell_damage`), more -15 to -25 per second of `seconds_stationary`, no step cap.
+  It passes -99% after 4 seconds standing still at -25 and after 7 at -15, and then logged the warning on every hit.
+  Every other negative more row in `EnchantmentEffects.csv` and `PassiveEffects.csv` stays above the floor: by its step
+  cap (at most -80), or for the class-point drawback by the 230 point budget (about -32.5 at 230). Counted at development
+  `701cb6f52`.
+- **WHY THE WARNING STAYS FOR A WRITTEN VALUE.** Nothing refuses a data row written at or below -99:
+  `tools/generate_datatables.py` checks a stat row's value against its sentence and not against the floor, and
+  `UCataclysmStatPipeline::ValidateModifier`, which does refuse one, is asked only by
+  `UCataclysmAbilitySystemComponent::AddStatModifier`. So a row written at -150 would be clamped in silence without it.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1984: approved as proposed." Option 1 of the issue's three: the warning tests
+the written `Modifier.Value` and the count stays for both cases; one new test with an unscaled -150 control and a
+scaled -125 subject under `AddExpectedError` Contains 1; one guard proof, the condition put back on the scaled value.
+
+### WHAT WAS CHANGED
+
+In the More case, after `++Out.ClampedLessCount`, the `UE_LOG` is now inside `if (Modifier.Value <
+LessMultiplierFloor)`. For an unscaled row `Modifier.Value` is the value used, so every case that warned before and was
+not carried by a scale still warns; for a scaled row it is the value for one step.
+
+The existing test `Cataclysm.StatPipeline.ALessMultiplierCannotZeroOrInvertAStat` still expects the warning twice, for
+its unscaled -100 and -250, and is unchanged.
+
+### THE TEST
+
+`AScaleThatCarriesALessMultiplierPastTheFloorDoesNotWarn`, under `AddExpectedError(TEXT("clamped a Less multiplier"),
+Contains, 1)`:
+
+- CONTROL: an unscaled more of -150 is clamped and counted (`ClampedLessCount` 1), stays above zero, and warns.
+- SUBJECT: an enchantment more of -25 scaled by `PerSecondStationary`, step 1, read with `SecondsSinceMoved` 5, so -125
+  after the scale: clamped and counted (`ClampedLessCount` 1), leaving the floor's 1 of 100, and not warned.
+
+If the subject warned, the message would occur twice against the one expected and the test fails. That is the
+direction the guard proof below measures.
+
+### THE RUN, 2026-10-29, AT 6c63a4c0f ON 15a030b4c
+
+Registered before the run at 4354 + 1 = 4355, with proof D.
+
+| Step | Printed |
+| :-- | :-- |
+| The new test alone | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 33 actions, 28 files compiled" |
+| The whole Unreal suite | "4355 tests performed, 4355 succeeded, 0 failed"; "Declared: 4355 tests in the tree at 6c63a4c0f; 4355 performed, gap 0" |
+| Python of record | "7029 passed, 8 skipped"; JUnit tests 7037, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,425 MB. The suite's memory summary: peak used virtual 8,089 MB.
+
+### THE GUARD PROOF
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix the whole new test name, the run's whole log kept on disk. The break:
+`if (Modifier.Value < LessMultiplierFloor)` became `if (MoreValue < LessMultiplierFloor)`, the anchor counted once in
+`read_text`. Printed: "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed:
+AScaleThatCarriesALessMultiplierPastTheFloorDoesNotWarn | restored: 1 tests performed, 1 succeeded, 0 failed";
+named_failures as predicted; the file's hash the same after. The broken run's one failed assertion, which is the
+engine's wording for an expectation not met: "('Warning') level log message or higher matching 'clamped a Less
+multiplier' to occur 1 times with Contains match type, but it was found 2 time(s)."
+
+### NO GENRE SOURCE
+
+None. This is about a log line, not a formula.
+
+---
+
 ## 2026-10-29 — Every console variable a test writes is written at console priority, so no test passes by the order tests run in (#1470)
 
 **Affects:** 54 writes in nine Unreal test files, now at `ECVF_SetByConsole`; one comment in `CataclysmTestWorld.h`;

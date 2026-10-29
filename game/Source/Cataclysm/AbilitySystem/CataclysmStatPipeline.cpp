@@ -2204,11 +2204,29 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 					// direction and preserves the invariant that no Less
 					// multiplier zeroes or inverts a stat.
 					++Out.ClampedLessCount;
-					UE_LOG(LogCataclysm, Warning,
-						   TEXT("Stat pipeline clamped a Less multiplier from "
-								"%.1f%% to %.1f%%: %s"),
-						   MoreValue, LessMultiplierFloor,
-						   *ValidateModifier(Modifier));
+
+					// WARNED ONLY WHEN THE WRITTEN VALUE ASKS THE IMPOSSIBLE.
+					// Issue #1984. `MoreValue` is the value after the scale, so a
+					// row written at -25 for each second stood still passes the
+					// floor after four seconds of ordinary play: "All damage dealt
+					// is reduced by 15%-25% for each second you stand still" is
+					// written that way so the floor keeps it from becoming an off
+					// switch. That clamp is the row working, and warning on it
+					// logged a line on every hit. `Modifier.Value` is what the
+					// author wrote, and nothing refuses a data row written at or
+					// below -99: `tools/generate_datatables.py` checks a stat row's
+					// value against its sentence and not against this floor, and
+					// `ValidateModifier`, which does refuse one, is asked only by
+					// `UCataclysmAbilitySystemComponent::AddStatModifier`. So that
+					// is the case still warned. Both cases are counted.
+					if (Modifier.Value < LessMultiplierFloor)
+					{
+						UE_LOG(LogCataclysm, Warning,
+							   TEXT("Stat pipeline clamped a Less multiplier from "
+									"%.1f%% to %.1f%%: %s"),
+							   MoreValue, LessMultiplierFloor,
+							   *ValidateModifier(Modifier));
+					}
 					MoreValue = LessMultiplierFloor;
 				}
 				// Each source multiplies on its own. They are NOT summed first,

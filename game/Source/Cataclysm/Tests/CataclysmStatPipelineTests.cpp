@@ -2029,6 +2029,57 @@ bool FCataclysmPipelineLessFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineScaledLessFloorTest,
+	"Cataclysm.StatPipeline.AScaleThatCarriesALessMultiplierPastTheFloorDoesNotWarn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A less multiplier the SCALE carries past -99% is clamped and counted without
+ * a warning; one WRITTEN past it still warns. Issue #1984.
+ *
+ * "All damage dealt is reduced by 15%-25% for each second you stand still" is
+ * a more row of -25 per second, uncapped, so it passes the floor after four
+ * seconds standing still. That is the row working, and it warned on every hit.
+ *
+ * EXPECTED EXACTLY ONCE, which is the failing direction: if the scaled subject
+ * warned as well, the message would occur twice and the expectation fails.
+ */
+bool FCataclysmPipelineScaledLessFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	AddExpectedError(TEXT("clamped a Less multiplier"),
+		EAutomationExpectedErrorFlags::Contains, 1);
+
+	// THE CONTROL: written past the floor, so it is clamped, counted and warned.
+	const TArray<FCataclysmStatModifier> Written = { MoreFromGem(-150.0f) };
+	const FCataclysmStatBreakdown WrittenResult =
+		FPipeline::Evaluate(100.0f, Written, NoTags);
+	TestEqual(TEXT("control: a written -150% more is clamped and counted"),
+		WrittenResult.ClampedLessCount, 1);
+	TestTrue(TEXT("control: and the stat stays above zero"),
+		WrittenResult.Final > 0.0f);
+
+	// THE SUBJECT: -25 for each second stood still, read at five seconds, so
+	// -125 after the scale. Clamped and counted the same, and not warned.
+	FCataclysmStatModifier PerSecondStill = Make(ECataclysmStatBucket::More,
+		ECataclysmModifierSource::Enchantment, -25.0f);
+	PerSecondStill.Scale = ECataclysmStatScale::PerSecondStationary;
+	PerSecondStill.ScaleStep = 1.0f;
+	FCataclysmStatConditions StoodStill;
+	StoodStill.SecondsSinceMoved = 5.0f;
+	const TArray<FCataclysmStatModifier> Scaled = { PerSecondStill };
+	const FCataclysmStatBreakdown ScaledResult =
+		FPipeline::Evaluate(100.0f, Scaled, NoTags, StoodStill);
+	TestEqual(TEXT("a -25% more scaled to -125% by five seconds stood still is "
+				   "clamped and counted"),
+		ScaledResult.ClampedLessCount, 1);
+	TestEqual(TEXT("and it leaves the floor's one per cent"),
+		ScaledResult.Final, 1.0f, 0.001f);
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // A removal. Issue #1791.
 // ---------------------------------------------------------------------------
