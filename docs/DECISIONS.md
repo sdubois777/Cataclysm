@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A log capture in the automation tests must flush the log before it reads its lines (#1522)
+
+**Affects:** `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py` (new: the rule and two tests of it on
+made-up text); this file. Python only: no game code, no test in `game/`, no data, no Unreal window. **Closes
+[#1522](https://github.com/sdubois777/Cataclysm/issues/1522)**, with the coordinating session's close-out: four copies
+kept on purpose, each used in its own file, and the flush rule now enforced.
+
+### SAID FIRST
+
+- **THE ISSUE COUNTED TWO COPIES; THERE ARE FOUR**, each a struct that registers with `GLog->AddOutputDevice(this)`:
+  `FScopedLogCapture` in `CataclysmWeaponSlotsTests.cpp`, `FScopedWarningCapture` in `CataclysmDamageOverTimeTests.cpp`,
+  `FImmuneLogCapture` in `CataclysmDebuffImmuneTests.cpp` and `FScopedNoModelWarnings` in
+  `CataclysmBodyBeforeSocketsTests.cpp`. All four call `GLog->Flush()` before reading, measured at `922b9cf21`.
+- **THEY ARE NOT MERGED, BY RULING.** Merging would change `FScopedLogCapture`'s search from case-insensitive to
+  case-sensitive, a behaviour change for no player benefit, and cost a window. The risk the issue names is a FUTURE
+  copy that leaves the flush out, and that is what is guarded.
+- **NO ENGINE TEST CAN NOTICE A MISSING FLUSH TODAY.** Lines written on the game thread are not buffered, so the
+  automation tests pass without it. This Python rule is the check.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1522: no consolidation ... Guard that directly with a Python rule in
+tools/tests/: any struct in game/Source/Cataclysm/Tests/ that registers with GLog (GLog->AddOutputDevice) must call
+GLog->Flush() before it reads. Check the count is at least 4 so it cannot pass on nothing, and prove it with
+prove_guard by removing one Flush."
+
+### WHAT WAS BUILT
+
+`test_every_log_capture_in_the_tests_flushes_before_it_reads` removes comments from each `.cpp` under
+`game/Source/Cataclysm/Tests/` (string literals kept, so a `//` inside one is not a comment), finds each struct
+deriving `FOutputDevice` whose body calls `GLog->AddOutputDevice`, reads the container its `Serialize` adds to, and
+requires every other member function that reads that container -- not the constructor or destructor -- to call
+`GLog->Flush()` before its first read. It fails if it finds fewer than 4 captures. A console command's output device,
+which never registers with `GLog`, is not a capture and is left alone, as the issue says of `FCapturedOutput`.
+
+Two tests of the rule on made-up text: the CONTROL capture that flushes passes, and the same capture with the flush
+after the read, removed, or only in a comment is refused once, naming the reading function; a struct that does not
+register is not a capture.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_a_log_capture_in_the_tests_flushes_first.py`. The break: the one `GLog->Flush();` in
+`CataclysmDebuffImmuneTests.cpp` removed (anchor counted once). Predicted named_failures, exactly one:
+
+- `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py::test_every_log_capture_in_the_tests_flushes_before_it_reads`
+
+and the two tests on made-up text pass with the break in.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `73d6aef4d`, the commit that registered it. Printed: "PROVED: 1 failed, 2
+passed in 2.28s | restored: 3 passed in 1.32s". named_failures, exactly the one registered:
+
+- `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py::test_every_log_capture_in_the_tests_flushes_before_it_reads`
+
+The two tests on made-up text passed with the break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `73d6aef4d`: "7032 passed, 8 skipped"; JUnit tests 7040, failures 0, errors 0, skipped 8 (the base's
+7037 and the three new tests). ruff: "All checks passed!"
+
+### NO GENRE SOURCE
+
+None. This is a check on the project's own tests.
+
+---
+
 ## 2026-10-29 — An enemy summoner's minion is raised at its tier's reference level, not a preview console variable (#1702)
 
 **Affects:** `LevelOfSummoner` in `CataclysmMinion.cpp` (two branches and its comment), one new test in
