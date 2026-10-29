@@ -52,7 +52,7 @@ the ensure's line in a log capture instead.
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Whole Unreal suite | 4360 / 0: `development`'s 4359, measured by window w88 on the tests `3166561d2` holds (`d785fe0dd` after it changes `CLAUDE.md` only), + 1 |
 | Python | of record, with JUnit, and ruff |
 | The "WIDGET GUIDS" line | quoted as printed |
 | P1, the call removed | the test fails on "adding two widgets raises no missing-identifier ensure", with at least one such line counted; both "is registered" assertions and both CONTROL assertions still hold, because the compile adds the entries. Whether the engine also reports the ensure as a test error of its own is not predicted |
