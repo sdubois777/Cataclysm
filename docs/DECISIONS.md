@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Two sentences that said nothing grants armour penetration now name the four rows that do (#1252)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp` (the armour penetration entry of
+`SuppliedFromElsewhere` in `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute`, its reason and its comment);
+`game/Source/Cataclysm/Interface/CataclysmCharacterSheetWidget.h` (one item of its "WHAT IT DOES NOT DO YET" list, a
+comment); this file. No game behaviour and no data change. **Closes
+[#1252](https://github.com/sdubois777/Cataclysm/issues/1252).**
+
+### SAID FIRST
+
+- **THE ISSUE'S GAP CLOSED IN DATA BEFORE THIS CHANGE.** Counted at development `d84004057`: `armor_penetration` is
+  granted by three rows of `EnchantmentEffects.csv` ("Your skills ignore 10%-25% of enemy armor", flat 10 to 25; "Your
+  traps ignore 20%-40% of enemy armor", flat 20 to 40, `Type.Trap`; "Your first hit against each enemy ignores all
+  armor", flat 100, `target_not_yet_struck_by_you`) and one row of `PassiveEffects.csv` (`Ravager_keystone_b_kA`, flat
+  100, `Type.Melee`, `enemies_hit_at_least` 3). `Affixes.csv` and `ClassStats.csv` name it 0 times, and no other file in
+  `game/Data` names it. "Your critical strikes ignore 20%-40% of enemy armor" is built on its own stat,
+  `critical_armor_penetration`.
+- **WHAT WAS LEFT WAS TWO FALSE SENTENCES.** The test's exemption reason read "gear, once enchantments exist. Nothing
+  grants it today", and the character sheet's header said the row "reads zero for every character". The issue's
+  comment of 2026-09-05 asked for the reason to change the day anything granted the stat.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1252: approved." Rewrite the reason and its comment to name the true sources,
+add this entry, no guard proof, its own window at the total current + 0.
+
+### WHAT WAS CHANGED
+
+- **The reason** is now "three enchantment rows and one passive node (Ravager_keystone_b_kA); no class line or affix".
+  It is printed inside the test's message "'armor_penetration' is supplied by ..., so no class line should name it",
+  and nothing asserts on its text, so no guard proof was run: there is no behaviour for a break to remove. NOT
+  "gear alone", because a passive node is not gear.
+- **The sheet's note** now says the row shows one of the four. The sheet reads the attribute
+  (`CataclysmCharacterSheetLayout.cpp`, `Read`), and `UCataclysmPlayerClassStats::ApplyTo` works the attribute out with
+  no skill tags and no condition holding; the pipeline refuses a row whose `RequiredTags` the empty skill tags do not
+  hold (`CataclysmStatPipeline.cpp`, the `RequiredTags` loop). So "Your skills ignore 10%-25% of enemy armor" shows,
+  and the trap row, the first-hit row and the Ravager node apply where a hit is priced and not on the sheet. Read, not
+  run.
+
+### NOT YET COMPILED OR RUN
+
+Recorded below when the window has run.
+
+### NO GENRE SOURCE
+
+None. These are statements about this project's data.
+
+---
+
 ## 2026-10-29 — Infernal Sacrifice heals through the shared heal, so the rules on healing reach it (#1611)
 
 **Affects:** the Infernal Sacrifice step in `CataclysmEnemyModifiers.cpp` (one heal), and one new test in
