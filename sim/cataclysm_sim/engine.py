@@ -307,6 +307,11 @@ class Simulation:
         #: The Cataclysm `trigger_surge` is making a dungeon for, read by
         #: `_make_dungeon`; empty outside that call.
         self.making_for = ""
+        #: The natural depth `_fall` gives the Fallen City it is making, read by
+        #: `_make_dungeon`; None outside that call. Issue #1341. An attribute
+        #: rather than a parameter, as `making_for` is, so a subclass that
+        #: overrides `_make_dungeon` with its old parameters still works.
+        self.making_floors: int | None = None
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
         #: Of those, how many were pulled forward by the board being empty
         #: rather than arriving on the clock. Issue #1406. Counted so that a
@@ -391,6 +396,13 @@ class Simulation:
         spec = cfg.spec(dtype, city.tier)
         lo, hi = spec.floors
         floors = max(1, int(round(self.rng.randint(lo, hi) * floors_mult)))
+        # A FALLEN CITY IS AS DEEP AS WHAT IT ABSORBED, since issue #1341; `_fall`
+        # says how deep in `making_floors`. THE ROLL ABOVE IS STILL DRAWN AND
+        # THEN DISCARDED, a labelled judgement: it keeps every later draw of the
+        # campaign where it was, so a measurement of this change sees the depth
+        # move and nothing else.
+        if self.making_floors is not None:
+            floors = self.making_floors
 
         # THE NATURAL DEPTH, kept apart from what the tree does next. The
         # Cataclysm pattern's `floors_mult` is inside it: the pattern is part
@@ -1323,6 +1335,7 @@ class Simulation:
 
         # Every dungeon sitting on the city is absorbed into the Fallen City.
         standing = [d for d in self.dungeons.values() if d.city_id == city.cid]
+        absorbed = 0
         for d in standing:
             # A QUEST DUNGEON IS NOT ABSORBED, since 2026-10-16. The owner,
             # verbatim: "Quest dungeons don't go away when a city falls. They
@@ -1342,11 +1355,30 @@ class Simulation:
             if self.current is not None and d.did == self.current.did:
                 continue
             self.dungeons.pop(d.did, None)
+            absorbed += 1
 
         # An erased city leaves no Fallen City dungeon -- there is nothing left
         # to retake, and the lane stays open for the rest of the run.
+        #
+        # AS DEEP AS THE ORDINARY DUNGEONS IT ABSORBED, since issue #1341. The
+        # design, section VIII: "Floor count equals the number of dungeons that
+        # were in the city when it fell (minimum 20/40/60 for
+        # Outpost/Bulwark/Sanctuary)". The minimum is the spec row's shallow end,
+        # which is those three; THE PILLAR'S 80 IS THE SPEC'S, since the design
+        # gives the Pillar none, a reading the game takes too. The spec's deep
+        # end is the general dungeon range and is not used for a Fallen City.
+        # Quest dungeons moved away and the one being walked stays, so neither
+        # counts, which is what `UCataclysmEmpireRun` counts. At least one, as
+        # the game's `MakeFallenCityDungeon` has it. No dungeon in this model
+        # has bosses, so the game's one boss per absorbed dungeon has no
+        # counterpart here.
         if not city.erased:
-            self._make_dungeon(DungeonType.FALLEN_CITY, city)
+            least = cfg.spec(DungeonType.FALLEN_CITY, city.tier).floors[0]
+            self.making_floors = max(1, absorbed, least)
+            try:
+                self._make_dungeon(DungeonType.FALLEN_CITY, city)
+            finally:
+                self.making_floors = None
 
         # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
         # #1432, ruled 2026-09-14. The scheduled wave spaces itself by

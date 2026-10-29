@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The simulation sizes a Fallen City by the ordinary dungeons it absorbed, as the design and the game do (#1341)
+
+**Affects:** `sim/cataclysm_sim/engine.py` (`Simulation._fall` counts what it absorbs and passes the depth to
+`_make_dungeon` through a new `making_floors` attribute); `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py`
+(new, seven tests); `tools/tests/test_surge_port.py` (the test that recorded the model rolling the depth replaced by
+one comparing the two rules); this file. **It changes how the simulation plays.**
+
+### SAID FIRST
+
+- **UNDER TODAY'S MODEL THE RULE MAKES EVERY FALLEN CITY SHALLOWER, NOT DEEPER.** Measured on 2026-10-29 at
+  `6d7bacf79`, before this change, over 800 campaigns (seeds 0 to 799) at the settings issue #1286 names (tier 1, `No
+  tree`, `triage`, static surges every 120 days for 5, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12
+  days for +4%): **no fall absorbed more than 6 ordinary dungeons.**
+
+  | City | Falls | Ordinary dungeons absorbed (median / mean / max) | Rolled depth before (mean) | Depth under the rule |
+  | :-- | --: | :-- | --: | --: |
+  | Outpost | 3,757 | 1 / 1.06 / 6 | 27.5 | 20 |
+  | Bulwark | 283 | 1 / 0.70 / 3 | 49.9 | 40 |
+  | Sanctuary | 21 | 1 / 1.00 / 6 | 72.0 | 60 |
+  | Pillar | 35 | 1 / 1.00 / 1 | 103.9 | 80 |
+
+  So every Fallen City now sits at its minimum, **7 to 24 floors shallower than the rolled depth** by size. That is the
+  opposite of a heavily besieged city being harder to win back, which is how issue #1341 framed the rule's purpose:
+  under today's model no city carries enough dungeons for that part of it to apply. **It is the design's rule producing
+  it**, and the coordinating session is putting that consequence to the owner.
+- **NO FULL SWEEP WAS RUN.** Every section of `sim/experiments.py` may move: cities fall in most campaigns, about five
+  falls a campaign at the settings above, a Fallen City's depth is the cost of retaking it, and `exp_calibrate` plays
+  `triage`, so the calibration every later section inherits can move.
+- **THE MODEL HAS NO BOSSES**, so the game's one boss per absorbed dungeon (`Dungeon.Bosses = Absorbed`) has no
+  counterpart here.
+
+### THE RULE
+
+`docs/Cataclysm_GDD_v2.md` section VIII: "Floor count equals the number of dungeons that were in the city when it fell
+(minimum 20/40/60 for Outpost/Bulwark/Sanctuary)."
+
+The game already follows it. `UCataclysmSurgeScheduler::MakeFallenCityDungeon` takes `FMath::Max(1, DungeonsAbsorbed)`
+and then `FMath::Max(Absorbed, Spec.LeastFloors)`, and `UCataclysmEmpireRun` counts as absorbed every dungeon on the
+city but a Quest dungeon, which moves away. The model drew `rng.randint` from the spec row's whole range, 20 to 35 for an
+Outpost, and discarded the count.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: follow the design as written, which the game already does. The floor count is the
+larger of the dungeons absorbed and the minimum; **the deep end of the Fallen City spec rows is the general dungeon
+range and is not used for a Fallen City**, which is a reading of the design and not a new decision; **for the Pillar,
+which the design gives no minimum, the spec's 80, as the game uses**, labelled as such. Approved on branch
+fix/the-sim-sizes-a-fallen-city-by-what-it-absorbed: the count of absorbed ordinary dungeons in `_fall`, the depth passed
+to `_make_dungeon`, the roll still drawn, labelled a judgement, the tree's floor delta still on top, the tests with a
+Basic-dungeon control, and the guard proof.
+
+### WHAT WAS BUILT
+
+- `_fall` counts the ordinary dungeons it removes: not a Quest dungeon, which moves, and not the dungeon being walked,
+  which stays. It sets `making_floors = max(1, absorbed, least)`, where `least` is the Fallen City spec row's shallow
+  end, around its call to `_make_dungeon`, and clears it afterwards.
+- `_make_dungeon` uses `making_floors` as the natural depth when it is set. **AN ATTRIBUTE AND NOT A PARAMETER**, as
+  `making_for` already is, because a test subclass in `test_the_siege_prose_in_policies_is_true.py` overrides
+  `_make_dungeon` with its old parameters and a new keyword would break it.
+- **JUDGEMENT, NOT DERIVED: THE ROLL IS STILL DRAWN AND THEN DISCARDED.** It keeps every later draw of a campaign where it
+  was, so a measurement of this change sees the depth move and nothing else.
+- The tree's floor delta still applies on top, as it does for every dungeon.
+
+### THE TESTS
+
+- `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py`:
+  - a city carrying 50 ordinary dungeons leaves a 50-floor Fallen City;
+  - a city carrying 3 leaves the design's 20 / 40 / 60 (three cases);
+  - a Quest dungeon and the walked dungeon are not counted (40 ordinary beside them gives 40);
+  - CONTROL: forty Basic dungeons on the same board all fall inside their spec range and are not all one depth;
+  - the generator's state after a fall equals its state after making a Fallen City by the old roll on an identical
+    board, so later draws do not move.
+  50 and 40 are above the Outpost's rolled range of 20 to 35, so a roll cannot pass either by landing on the number.
+- `tools/tests/test_surge_port.py`: `test_the_model_still_rolls_that_depth_and_that_is_issue_1341` **asserted the
+  divergence on purpose** and said it should be replaced by a comparison once #1341 was fixed. **It would have kept
+  passing**: it looked for the text `len(absorbed)` in `_fall`, and the count is kept with `absorbed += 1`. It is
+  replaced by `test_the_model_sizes_it_by_the_games_rule`, which drives `_fall` with 0, 1, 3 and 150 ordinary dungeons
+  on each of the four city sizes and compares the Fallen City's depth with the game's two `FMath::Max` lines, read from
+  `CataclysmSurge.cpp`.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py tools/tests/test_surge_port.py` (neither needs a
+git repository). The break puts the old roll back: `self.making_floors = max(1, absorbed, least)` becomes
+`self.making_floors = None` (once in `engine.py`).
+
+Predicted named_failures: **these six certainly**, because each expects a depth above every spec range's deep end:
+
+- `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py::test_a_city_carrying_more_than_the_minimum_is_that_deep`
+- `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py::test_a_quest_dungeon_and_the_walked_dungeon_are_not_counted`
+- `tools/tests/test_surge_port.py::TestWhatAFallenCityIs::test_the_model_sizes_it_by_the_games_rule` at `[150-Outpost]`,
+  `[150-Bulwark]`, `[150-Sanctuary]` and `[150-Pillar]`.
+
+**And up to fifteen more, not predicted individually**: the three `test_a_quiet_city_is_the_designs_minimum` cases and
+the twelve `[0-...]`, `[1-...]` and `[3-...]` cases expect the minimum, and each fails unless that board's roll lands on
+the minimum, a chance of 1 in 16 to 1 in 41 by size. The control and the generator-state test pass with the break in.
+
+### NO GENRE SOURCE
+
+None. This brings the simulation into line with a rule the design document and the game already state.
+
+---
+
 ## 2026-10-29 — The simulation doubles an ailment chance rolled on a two-handed weapon, as the game does (#1575)
 
 **Affects:** `sim/cataclysm_sim/affixes.py` (`AilmentAffix.chance_at` takes `two_handed`; the stun affix's comment names

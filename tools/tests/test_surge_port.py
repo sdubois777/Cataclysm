@@ -1233,40 +1233,53 @@ class TestWhatAFallenCityIs:
             "MakeFallenCityDungeon draws on a random stream. A Fallen City's "
             "depth is determined by what the city was carrying, not rolled")
 
-    def test_the_model_still_rolls_that_depth_and_that_is_issue_1341(self, model):
-        """THIS TEST ASSERTS A DIVERGENCE ON PURPOSE, so that the two halves
-        disagreeing does not read as the drift this file exists to catch.
+    @pytest.mark.parametrize("tier", ["Outpost", "Bulwark", "Sanctuary", "Pillar"])
+    @pytest.mark.parametrize("carrying", [0, 1, 3, 150])
+    def test_the_model_sizes_it_by_the_games_rule(self, tier, carrying):
+        """ISSUE #1341, FIXED. This class held a test that asserted the model
+        rolled the depth while the game derived it, so the two disagreeing
+        would not read as drift, and said it should be replaced by one
+        comparing the two rules once the model was fixed. This is that.
 
-        `Simulation._make_dungeon` draws uniformly from the spec range for every
-        kind, so a city besieged by six dungeons leaves the same distribution of
-        Fallen City as one besieged by one. The design says otherwise and the
-        design is authoritative here, so the MODEL is what is wrong. Issue #1341.
-
-        The owner ruled the same way on the same class of conflict on 2026-09-06,
-        about a Quest dungeon's adjacency: verbatim "Adjacent, and fix the
-        simulation".
-
-        **When #1341 is fixed this test should fail**, and be replaced by one
-        comparing the two rules rather than recording that they differ.
+        The model's `_fall` is driven with `carrying` ordinary dungeons on a
+        city of each size, and the Fallen City it leaves must be as deep as the
+        game's `MakeFallenCityDungeon` makes it: `FMath::Max(1, DungeonsAbsorbed)`,
+        then `FMath::Max(Absorbed, Spec.LeastFloors)`. Both halves read the same
+        shallow ends, which `TestTheSpecTable` compares. 150 is above every
+        spec's deep end, so a model that still rolled could not pass by landing
+        on the number, and 0 checks the game's floor of one.
         """
-        import inspect
+        from dataclasses import replace
 
+        from cataclysm_sim.config import TREE_NONE, CityTier, DungeonType, TuningConfig
         from cataclysm_sim.engine import Simulation
 
-        made = inspect.getsource(Simulation._make_dungeon)
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        made = source.split("MakeFallenCityDungeon(", 1)[1].split("\n}", 1)[0]
+        assert "FMath::Max(1, DungeonsAbsorbed)" in made
+        assert "FMath::Max(Absorbed, Spec.LeastFloors)" in made
 
-        assert "self.rng.randint(lo, hi)" in made, (
-            "Simulation._make_dungeon no longer rolls its floor count. If #1341 "
-            "has been fixed, replace this test with one that compares the "
-            "game's rule against the model's rather than recording that they "
-            "differ")
+        cfg = replace(TuningConfig(), tier=1, surge_on_city_fall=False,
+                      surge_on_empty_board=False).with_tree(TREE_NONE)
+        sim = Simulation(cfg, seed=3)
+        sim.next_surge_day = float("inf")
+        sim.dungeons.clear()
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier(tier) and not c.fallen)
+        for _ in range(carrying):
+            sim._make_dungeon(DungeonType.BASIC, city)
+        sim._fall(city)
+        fallen = [d for d in sim.dungeons.values()
+                  if d.dtype is DungeonType.FALLEN_CITY and d.city_id == city.cid]
+        assert len(fallen) == 1
 
-        fall = inspect.getsource(Simulation._fall)
-
-        assert "absorbed" in fall and "len(absorbed)" not in fall, (
-            "Simulation._fall now appears to use how many dungeons it absorbed. "
-            "If #1341 has been fixed, this test needs replacing; see above")
-
+        least = cfg.spec(DungeonType.FALLEN_CITY, CityTier(tier)).floors[0]
+        games = max(max(1, carrying), least)
+        assert fallen[0].floors == games, (
+            f"a {tier} that fell carrying {carrying} ordinary dungeons left a "
+            f"{fallen[0].floors}-floor Fallen City in the model; the game's rule "
+            f"gives {games}. Issue #1341.")
 
 class TestWhatAQuestDungeonIs:
     """A surge rolls one instead of a Basic, it refreshes instead of biting,
