@@ -2,6 +2,79 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The row generator refuses a flat enchantment row on a stat the game reads nowhere (#2387)
+
+**Affects:** `tools/generate_datatables.py` (a new reader, `stats_with_an_attribute`, and one refusal in
+`validate_enchantment_effects`); `tools/tests/test_generate_datatables.py` (two tests, and one docstring corrected); this
+file. No game code and no data: a regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). No Unreal
+window, ruled by the coordinating session for a change that moves neither the CSVs nor the assets. **Closes
+[#2387](https://github.com/sdubois777/Cataclysm/issues/2387).**
+
+### SAID FIRST
+
+- **WHY THE FLAT BUCKET WAS EXEMPT, READ AS THE ISSUE ASKED.** It was deliberate, and it is not this check. The existing
+  check in `validate_enchantment_effects` asks whether an increase has a BASE under it, and its docstring says so: "A
+  `flat` ROW IN THIS SHEET SUPPLIES ITS OWN STAT ... the complaint is an increase with no base, and a flat row is a
+  base." So a flat row's stat was added to the set of stats with a base, and nothing ever asked whether the game reads
+  that stat. The new refusal asks the second question and leaves the first alone.
+- **NO MERGED ROW FAILS IT.** Counted at development `c88a87302`: 213 flat stat rows in `EnchantmentEffects.csv`, and
+  none names a stat outside `StatToAttribute` and `StatsWithNoAttribute`. A first count found 21, because it read only the
+  map's literal names; the map names most of its stats by constant (`UCataclysmRegeneration::ManaRegenStat`), and with
+  those resolved all 130 entries are read and the count is 0.
+
+### THE RULING (the coordinating session, 2026-10-28)
+
+> 1. #2387: a flat enchantment row on a stat name nothing reads is accepted without a word.
+>    - First do the issue's two "not known" reads. Why is the flat bucket exempt (git log -S on the check, and
+>      DECISIONS.md)? How many merged flat rows name a stat on neither list today?
+>    - If any merged row would fail the new check, list them in your report and stop before refusing anything.
+>    - Otherwise: the refusal names the row and the stat. The test uses a made-up sheet with a control (a flat row on a
+>      known stat passes). Prove the guard with tools/prove_guard.py in a git archive copy.
+> [...]
+> - If the CSV and the assets are unchanged, I rule that neither needs an Unreal window. The evidence is Python of record
+>   with JUnit, ruff, the guard proof's named_failures, and a regenerate run showing the CSV unchanged (git diff
+>   --exit-code).
+
+### WHAT WAS BUILT
+
+- **`stats_with_an_attribute()`**, beside `stats_with_no_attribute()`: reads `UCataclysmPlayerClassStats::StatToAttribute`
+  out of `CataclysmPlayerClassStats.cpp`, each entry a literal (`TEXT("agility")`) or a constant resolved where a game
+  source file (tests left out) defines it as `const TCHAR* X::Y = TEXT("...")`. It RAISES rather than returning a partial
+  set when the map is missing, when the parsed entries do not equal the attribute getters in it (130 and 130 today), or
+  when a constant has no definition. Cached once per process.
+- **The refusal**, in `validate_enchantment_effects`: a row with no Action, Value Kind `flat`, and a Stat in neither
+  `stats_with_an_attribute()` nor `stats_with_no_attribute()` is reported as "`<row>`: `'<stat>'` is a flat row on a stat
+  the game reads nowhere: it is in neither UCataclysmPlayerClassStats::StatToAttribute nor StatsWithNoAttribute, so the
+  row would be written and do nothing". Those two lists are what `UCataclysmPlayerClassStats::ApplyTo` records; any other
+  name it drops in silence.
+
+### TESTS AND THE PROOF
+
+- `test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused`: CONTROLS first, a flat row on
+  `retaliation_radius_metres` (a stat with an attribute) and on `leech_payout_rate` (one with none) each pass; a flat row on
+  the misspelt `retaliation_radius_metre` is refused with one complaint naming the row and the stat; an action row is not
+  asked.
+- `test_the_stats_with_an_attribute_are_read_from_the_engine`: both kinds of entry are read (`agility`, `mana_regen`,
+  `skill_locked`, `retaliation`); `leech_payout_rate` is on the other list only; the misspelling is on neither.
+- `test_a_flat_row_supplies_its_own_stat`'s docstring said the retaliation radius has "no attribute"; it has one now. The
+  sentence was corrected; the test is unchanged.
+- **The proof**, `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree: the refusal's condition
+  given `and False` before `row["Stat"] not in stats_with_an_attribute()` (anchor counted once). Command
+  `python -m pytest tools/tests/test_generate_datatables.py`. Printed: "PROVED: 1 failed, 1031 passed in 22.56s |
+  restored: 1032 passed in 19.22s"; named_failures
+  `tools/tests/test_generate_datatables.py::TestEnchantmentEffects::test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused`.
+
+### NOT DONE
+
+The Passive Effects sheet has the same gap for its flat rows (`validate_passive_effects` builds its stat set the same
+way). It was not in this ruling and is not changed here.
+
+### NO GENRE SOURCE
+
+None. This is a data check.
+
+---
+
 ## 2026-10-28 — Every scoped enchantment action row's required tags reach its action, and a test over the real table says so (#2577)
 
 **Affects:** one new Unreal test, `Cataclysm.ScopedEnchantmentActions.EveryScopedActionRowKeepsItsRequiredTags`, appended to
