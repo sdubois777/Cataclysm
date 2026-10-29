@@ -113,6 +113,16 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * to is not `DungeonSeed`. A struct built by hand leaves it at nought.
 	 */
 	int32 EdictSeed = 0;
+
+	/**
+	 * How many bosses the dungeon holds: `FCataclysmDungeon::Bosses`, copied across by
+	 * `ACataclysmDungeonGameMode::EnterEmpireDungeon`. Issue #1466.
+	 *
+	 * ONE FOR EVERY DUNGEON BUT A FALLEN CITY, which holds one per dungeon that was standing on it when it fell (the
+	 * owner, 2026-09-06, #1324). READ ONLY BY `BossAtTheExit`, which spreads them evenly down the floors. A struct
+	 * built by hand, and a dungeon not entered from the empire, leaves it at one: a boss on the final floor alone.
+	 */
+	int32 Bosses = 1;
 };
 
 /**
@@ -353,6 +363,14 @@ public:
 	 * boss on its final floor; an Elite dungeon has one on every floor,
 	 * including the final one. So an Elite dungeon of eight floors holds eight
 	 * bosses and an ordinary one holds one.
+	 *
+	 * AND A FALLEN CITY HOLDS AS MANY AS IT COUNTS, SPREAD EVENLY. Issue #1466,
+	 * the owner's answer of 2026-10-29, "Spread evenly": boss i of B stands at
+	 * the exit of floor ceil(i x floors / B), so the last is on the final floor;
+	 * at most one on a floor, and every one is the Gatekeeper fight. A count of
+	 * one, which every other dungeon has, gives the final floor alone. A count
+	 * above the floors is held to one per floor; a Fallen City's floors are never
+	 * fewer than its bosses (`CataclysmSurge.cpp`), so that is a guard only.
 	 *
 	 * A DUNGEON WITH NO BOTTOM HAS NO LAST FLOOR AND SO HAS NO BOSS, which is
 	 * reachable and is not a fault: pressing Play in `L_Dungeon` descends for

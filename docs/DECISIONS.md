@@ -2,6 +2,71 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A Fallen City places every boss it counts, spread evenly down its floors (#1466)
+
+**Affects:** `FCataclysmDungeonFloorRules::BossAtTheExit` and `FCataclysmDungeonIdentity` in
+`game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp`; `ACataclysmDungeonGameMode` in
+`CataclysmDungeonGameMode.h` and `.cpp` (a member `DungeonBosses`, copied in `EnterEmpireDungeon`, put back in
+`LeaveEmpireDungeon`, handed over in `DungeonIdentity`); two new tests in `CataclysmFloorBriefTests.cpp`. Fixes
+[#1466](https://github.com/sdubois777/Cataclysm/issues/1466).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NO DUNGEON BUT A FALLEN CITY CHANGES.** Every other dungeon has `Bosses` at one, which the rule answers exactly as
+  before: the final floor, or every floor of an Elite dungeon, and never the dark floor.
+
+### What it was
+
+`FCataclysmDungeon::Bosses` counted a Fallen City's bosses, one per dungeon standing on it when it fell (the owner,
+2026-09-06, #1324), and nothing outside the empire read it. `BossAtTheExit` answered from two rules, the final floor
+and every floor of an Elite dungeon, so a Fallen City that fell holding five dungeons got one Gatekeeper.
+
+### The ruling: the owner's answer of 2026-10-29
+
+The question went to the owner with this session's proposal as the recommendation, and the owner answered **"Spread
+evenly"**, recorded on #1466. The design said a Dungeon City has "multiple boss fights" and that "the final floor still
+carries one of them" (`docs/Cataclysm_GDD_v2.md`, Dungeon Basics), and nothing about the rest.
+
+| Question | Answer |
+|---|---|
+| Where the bosses stand | boss i of B at the exit of floor ceil(i x floors / B), so the last is on the final floor |
+| How many on one floor | at most one; a count above the floors is held to one on every floor |
+| Which fight | the Gatekeeper, the only boss creature there is |
+
+A Fallen City's floors are never fewer than its bosses: `CataclysmSurge.cpp` sets its floors to at least the number of
+dungeons it absorbed, which is its boss count. The hold to one per floor is a guard only.
+
+### How it is checked
+
+`Cataclysm.FloorBrief.AFallenCitySpreadsItsBossesEvenlyDownItsFloors`, on a 20-floor dungeon: 5 bosses stand on floors
+4, 8, 12, 16 and 20; 3 on 7, 14 and 20; 20 on every floor; 30 are held to every floor. **CONTROL:** with one boss, a
+Basic dungeon has it on floor 20 alone, an Elite dungeon has one on every floor, and an Elite dungeon with five still
+has one on every floor and no more; and the dark floor carrying floor 4's number has none. It prints a line beginning
+"FALLEN CITY BOSSES".
+
+`Cataclysm.FloorBrief.EnteringADungeonCarriesHowManyBossesItHolds`: an empire dungeon given four bosses and eight floors
+is entered; the game mode's identity holds four inside and one after leaving. **CONTROL:** it holds one before
+entering. It prints a line beginning "ENTERED BOSSES".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 2 / 2 |
+| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "FALLEN CITY BOSSES" and "ENTERED BOSSES" lines | quoted as printed |
+| P1, the count ignored (`Count` always one) | the spreading test fails on the five, three, twenty and thirty assertions, and on no CONTROL; the entering test passes |
+| P2, entering does not copy the count | the entering test fails on "carries four" only; the spreading test passes |
+| P3, leaving does not put it back | the entering test fails on "leaving puts it back to one" only; the spreading test passes |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-29 — The balance sweep counts the campaigns it runs and prints the count; it runs 31,820 or 33,920, not about 25,000 (#693)
 
 **Affects:** `sim/experiments.py` (a module counter `campaigns_run` that `batch` adds its campaigns to, the report's

@@ -1506,6 +1506,8 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	// AND THE DUNGEON'S OWN SEED, NOT THE DARK FLOOR'S, for an Ascendant's Edicts, which are drawn once for the whole
 	// dungeon. Since 2026-10-22.
 	Dungeon.EdictSeed = ChooseSeed();
+	// AND HOW MANY BOSSES IT HOLDS, which a Fallen City spreads down its floors. Issue #1466.
+	Dungeon.Bosses = DungeonBosses;
 	return Dungeon;
 }
 
@@ -14577,6 +14579,11 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// whatever the settings said, which in a real run was always `None`.
 	DungeonSubType = Dungeon->SubType;
 
+	// AND HOW MANY BOSSES IT HOLDS. Issue #1466: one for every dungeon but a Fallen City, which holds one per dungeon
+	// that was standing on it when it fell, and `FCataclysmDungeonFloorRules::BossAtTheExit` spreads them down the
+	// floors. Until then the count was written to the save and read by nothing.
+	DungeonBosses = FMath::Max(1, Dungeon->Bosses);
+
 	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
 	// game mode and adds it to every creature on the floor, which is how a
 	// dungeon modifier makes a dungeon harder --
@@ -14703,6 +14710,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifiers.Reset();
 	DungeonModifierPool.Reset();
 	DungeonEveryBuiltModifier.Reset();
+	DungeonBosses = 1;
 	FloorBrief = FCataclysmFloorBrief();
 
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.
