@@ -1328,6 +1328,9 @@ class TestTheSweepFlagsCampaignsWithNoResult:
             lambda tier, name: 60.0 if (tier, name) == (2, dropped) else 0.0,
             tiers=(1, 2))
         assert f"{dropped}: 60% of campaigns ran out of days" in printed
+        assert "LEFT OUT OF THE ORDER" in printed, (
+            f"{dropped!r} had no result for 60% of its campaigns at tier 2 "
+            "and the section left nothing out of the order.")
         left_out = printed[printed.index("LEFT OUT OF THE ORDER"):]
         assert left_out.splitlines()[1].strip() == f"{dropped}, at tier 2"
         for tier in (1, 2):
@@ -1355,6 +1358,10 @@ class TestTheSweepFlagsCampaignsWithNoResult:
 
         printed = _preset_section_with_cells_set_by_hand(
             monkeypatch, stale_at, tiers=(1, 2))
+        assert "LEFT OUT OF THE ORDER" in printed, (
+            f"{at!r} had exactly {threshold}% of campaigns with no result, "
+            "the threshold, and the section left nothing out of the order. "
+            "The rule is >=.")
         left_out = printed[printed.index("LEFT OUT OF THE ORDER"):]
         assert left_out.splitlines()[1].strip() == f"{at}, at tier 1"
         ranked = [line for line in _ordering_lines(printed)

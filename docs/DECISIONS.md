@@ -80,6 +80,28 @@ section. The Architect cell at exactly 50% in the real two-tier run (above) is r
 predicted to notice: the tests that read that run assert on headings, line counts and the comparison against the
 no-tree row, which covers every preset either way.
 
+### THE PROOF, AS REGISTERED -- RUN TWICE, AND THE FIRST RUN COULD NOT PROVE ANYTHING
+
+**First run, in a git-archive copy of `900d0a059`: NOT A PROOF, for a reason outside this change.** Printed: "NOT A
+PROOF: tests fail with the files PUT BACK ... 13 failed, 7026 passed, 13 skipped | restored: 11 failed, 7028 passed,
+13 skipped". An archive copy is not a git repository, and 11 tests in `tools/tests` need one: four in
+`test_map_built_data_is_not_committed.py`, six in `test_stray_lfs_hook_directory_is_ignored.py` and
+`test_the_lock_path_is_shared_by_every_worktree`. They failed in both halves. The two registered tests were the whole
+difference between the halves, but `proved` requires a restored half with no failure.
+
+**Second run, same break and same command, in a temporary detached git worktree at `900d0a059`** (a real checkout, still
+separate from every other session's files): "PROVED: 2 failed, 7043 passed, 7 skipped in 237.93s | restored: 7045
+passed, 7 skipped in 239.70s". named_failures, exactly the two registered:
+
+- `sim/tests/test_sweep_tier.py::TestTheSweepFlagsCampaignsWithNoResult::test_a_cell_exactly_at_the_threshold_is_flagged`
+  -- "assert [] == ['x']"
+- `sim/tests/test_sweep_tier.py::TestTheSweepFlagsCampaignsWithNoResult::test_a_cell_exactly_at_the_threshold_has_no_result`
+  -- "ValueError: substring not found", raised by `printed.index("LEFT OUT OF THE ORDER")`
+
+The second failed for the right reason but said nothing useful, so after the proof both new tests that index that
+heading gained an assertion with a message before the `index` call. That changes the test file after the run above, so
+the same break was run once more against the changed file (below).
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own tests read its own report.
