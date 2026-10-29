@@ -48,7 +48,7 @@ lines beginning "FIRST FRAME".
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Whole Unreal suite | 4352 / 0: `development` at `1e78c2bce` (#2337) is 4351, and one test is added |
 | Python | of record, with JUnit, and ruff |
 | The "FIRST FRAME" lines | quoted as printed |
 | P1, `Tick`'s pass-over never taken | the new test fails: 8 in the frame play starts in |
