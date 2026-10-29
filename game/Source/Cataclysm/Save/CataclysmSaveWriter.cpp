@@ -241,6 +241,9 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 		// Issue #1374.
 		FCataclysmSaveGather::ProgressFrom(*Run, *LastRun);
 
+		// AND WHAT THE RUN IS: its tier and the Cataclysms it faces. Issue #1471.
+		FCataclysmSaveGather::IdentityFrom(*Run, *LastRun);
+
 		// AND THE DUNGEONS STANDING ON THOSE CITIES, WITH THEIR TIMERS. This one
 		// can refuse: it writes neither list unless the two agree, so a file can
 		// never hold a dungeon with no timer or a timer with no dungeon.

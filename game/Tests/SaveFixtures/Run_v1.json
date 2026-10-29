@@ -200,5 +200,12 @@
 	"bLastHitWasAQuestTimer": true,
 	"LastMoveDay": 35,
 	"LastMoveFromCityId": 6,
-	"LastMoveToCityId": 12
+	"LastMoveToCityId": 12,
+	"DifficultyTier": 4,
+	"ActiveCataclysms": [
+		"Demonic",
+		"Death",
+		"War",
+		"Pestilence"
+	]
 }

@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A saved run keeps the difficulty tier it is played at and the Cataclysms it faces (#1471)
+
+**Affects:** `UCataclysmRunSave` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (two `SaveGame` fields and its
+class comment); `FCataclysmSaveGather::IdentityFrom` in `CataclysmSaveGather.h` and `.cpp`; one call in
+`UCataclysmSaveWriter::WriteTheRunRecord` (`CataclysmSaveWriter.cpp`); the comment on `DifficultyTier` in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`; the run fixture `game/Tests/SaveFixtures/Run_v1.json`; two
+new tests in `CataclysmSaveWriterTests.cpp`. Fixes [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w93 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly as registered.**
+- **A LIST OF A UENUM SURVIVES THE JSON BY NAME AND IN ORDER**, which was read and not run when written: w93 read back
+  "Pestilence, Famine, War, Demonic" as written, through the round trip and through the writer's file.
+- **NOTHING LOADS A RUN, SO NOTHING READS THESE BACK.** [#753](https://github.com/sdubois777/Cataclysm/issues/753) is
+  open, as #1374's entry says. "Load" in the tests is reading the record back from JSON.
+
+### The ruling: the list itself, not the seed — a judgement
+
+`ActiveCataclysms` cannot be worked out again on load. `UCataclysmRoster::ActiveFor` draws it from the seed the run
+BEGAN with, and the record keeps only `RandomStreamSeed`, which is where the stream has got to. Two ways to restore it
+were open: save the list, or save the original seed. **Ruled 2026-10-29, a judgement for the issue's own reasons: the
+list.** It cannot drift, and a second seed beside `RandomStreamSeed` would be a pair whose two meanings are easily
+swapped.
+
+### The change
+
+| Field on `UCataclysmRunSave` | From `UCataclysmEmpireRun` | Default (a file written before) |
+|---|---|---|
+| `DifficultyTier` | the tier the run is played at | 1 |
+| `ActiveCataclysms` | the Cataclysms it faces, in the run's order | empty |
+
+`IdentityFrom` copies both, and does nothing for a run `Begin` has not been called on; the writer calls it after
+`ProgressFrom`. No schema version bump, for `UCataclysmRunSave::PartialDay`'s reason. The fixture holds tier 4 and four
+names.
+
+**HOW A LIST OF A UENUM IS WRITTEN, read and not run.** `FCataclysmSaveStorage::ToJson` uses
+`FJsonObjectConverter::UStructToJsonAttributes` (engine `JsonObjectConverter.cpp`): an array is written element by
+element through its inner property (line 160), and an enum element is written by its name (line 109); reading looks
+each name up (line 677 and the enum branch). Unlike a map's key (#1374), an element's name is not case-changed, so the
+fixture holds `"Demonic"`. The round-trip test is what shows it.
+
+### How it is checked
+
+`Cataclysm.SaveWriter.ARunsTierAndCataclysmsSurviveTheRecordAndItsJson`: a run begun at tier 4 is gathered, written to
+JSON and read back; the tier is 4 and the list is the run's, element for element and in order. **CONTROL:** a run
+begun at tier 1 gathers tier 1 and a list of a different length (tier t faces t Cataclysms,
+`UCataclysmRoster::ActiveCountFor`), so the test can tell the two tiers apart. It prints a line beginning
+"RUN IDENTITY".
+
+`Cataclysm.SaveWriter.AWrittenRunRecordCarriesItsTierAndCataclysms`: a run begun at tier 4 through
+`UCataclysmGameInstance::BeginEmpireRun`, written by the save writer to disk and read from the slot, the harness of
+`AWrittenRunRecordCarriesTheCitiesThroughTheFile`; the file holds the run's tier and list. It prints a line beginning
+"WRITTEN IDENTITY".
+
+### Not checked
+
+1. **Restoring a run**: no loader exists (#753).
+2. **The run's other random streams**, `CataclysmStream` and `ModifierStream`: not saved, and not this issue's.
+3. **Whether anything else on the run is derived from the seed it began with** and would differ on a restore that kept
+   only the list. The list is what the issue names.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4366 / 0: `development`'s 4364, measured by window w92 on the tests `bd51319c9` holds (`5df1b86c6` and `6d7bacf79` after it change no C++), + 2 |
+| Python | of record, with JUnit, and ruff |
+| The "RUN IDENTITY" and "WRITTEN IDENTITY" lines | quoted as printed |
+| P1, `IdentityFrom` does not copy the tier | the round trip fails on "the tier survives" only; both CONTROLs hold |
+| P2, `IdentityFrom` does not copy the list | the round trip fails on "and the Cataclysms, in the run's order" only; both CONTROLs hold, the tier 1 record's empty list being still a different length |
+| P3, the writer does not call `IdentityFrom` | the writer test fails on both of its assertions, the tier and the list |
+
+### Run
+
+**Window w93 (lock `dungeon-w93`, `fix/a-saved-run-keeps-its-tier-and-cataclysms-1` at `9027bc81d`, on `6d7bacf79`,
+2026-10-29) passed.** `development`'s CI run at `6d7bacf79` and its last Unreal run, at `bd51319c9`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,514 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| The round-trip test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The writer test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN IDENTITY" line | quoted as printed | "tier 4 facing ECataclysmType::Pestilence,ECataclysmType::Famine,ECataclysmType::War,ECataclysmType::Demonic; read back tier 4 facing [the same four, in that order]; tier 1 gathers tier 1 facing ECataclysmType::Pestilence" |
+| The "WRITTEN IDENTITY" line | quoted as printed | "the run is tier 4 facing [Pestilence, Famine, War, Demonic]; the file holds tier 4 facing [the same four, in that order]" |
+| Whole Unreal suite | 4366 / 0 | `4366 tests performed, 4366 succeeded, 0 failed`; declared 4366, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7755`, peak 8,074 |
+| Python (JUnit) | of record | 7059 tests, 0 failures, 0 errors, 8 skipped ("7051 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the tier not copied | the round trip fails on "the tier survives" only; both CONTROLs hold | failed on that only, "read back tier 1"; both CONTROLs held; restored passed. **PROVED** |
+| P2, the list not copied | the round trip fails on the list only; both CONTROLs hold | failed on that only, the list read back empty; both CONTROLs held, the tier 1 record's empty list being a different length from four; restored passed. **PROVED** |
+| P3, the writer does not call `IdentityFrom` | the writer test fails on both, the tier and the list | failed on both: "the file holds tier 1 facing" nothing; restored passed. **PROVED** |
+
+---
+
 ## 2026-10-29 — The Siege walk guard checks that the median day holds about what its neighbours hold, not where the 50% line falls (#1389)
 
 **Affects:** `sim/tests/test_the_siege_prose_in_policies_is_true.py` only (`MEDIAN_DAY_SPIKE_LIMIT` and `median_day_spike`,
