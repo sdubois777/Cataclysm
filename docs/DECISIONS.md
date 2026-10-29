@@ -40,9 +40,20 @@ exactly one:
 
 and `test_the_scan_finds_the_console_variable_writes` passing, since the scan still finds the write.
 
-### NOT YET PROVED
+### THE PROOF, AS REGISTERED
 
-Recorded below when the proof has run.
+Run 2026-10-29 in a git-archive copy of `cf240a0ab`, the commit that registered it. Printed: "PROVED: 1 failed, 1
+passed in 9.49s | restored: 2 passed in 8.37s". named_failures, exactly the one registered:
+
+- `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py::test_every_console_variable_a_test_writes_is_written_at_console_priority`
+
+Its message named the write: `CataclysmDifficultyTierTests.cpp:201: ->Set(8, ECVF_SetByCode)`. The scan test passed with
+the break in, as predicted. So the cached scan still sees a write the break changes.
+
+### EVIDENCE
+
+Python of record at `cf240a0ab`: "7039 passed, 8 skipped"; JUnit tests 7047, failures 0, errors 0, skipped 8, unchanged.
+ruff: "All checks passed!"
 
 ### NO GENRE SOURCE
 
