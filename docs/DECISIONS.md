@@ -69,9 +69,24 @@ named_failures, exactly one:
 with the message naming `CataclysmAilmentTests.cpp`, `UCataclysmPlayerClassStats` and `Add #include
 "Character/CataclysmPlayerClassStats.h"`, and the three tests on made-up text passing.
 
-### NOT YET PROVED
+### THE PROOF, AS REGISTERED
 
-Recorded below when the proof has run.
+Run 2026-10-29 in a git-archive copy of `7bacd609e`, the commit that registered it, TWICE: the first run's script read
+the broken run's output from a field the result does not have, so it printed the verdict and not the message; the
+second run read `stdout` and printed both. Both printed "PROVED: 1 failed, 3 passed | restored: 4 passed" (3.12 s and
+1.04 s broken). named_failures, exactly the one registered:
+
+- `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py::test_every_cpp_file_reaches_the_header_of_every_project_type_it_qualifies`
+
+The broken run's message, as registered: "Cataclysm/Tests/CataclysmAilmentTests.cpp: uses UCataclysmPlayerClassStats::
+but no include of this file reaches CataclysmPlayerClassStats.h, which defines it. Add #include
+"Character/CataclysmPlayerClassStats.h" to CataclysmAilmentTests.cpp. Issue #2022." The three tests on made-up text
+passed with the break in.
+
+### EVIDENCE
+
+Python of record at `7bacd609e`: "7036 passed, 8 skipped"; JUnit tests 7044, failures 0, errors 0, skipped 8 (the base's
+7040 and the four new tests). ruff: "All checks passed!"
 
 ### NO GENRE SOURCE
 
