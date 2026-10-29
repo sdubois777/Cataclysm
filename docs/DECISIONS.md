@@ -52,7 +52,8 @@ They are two tests so that a failure names which source of shield stopped refill
 | Figure | Registered |
 |---|---|
 | The two tests alone | 2 / 2 |
-| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Whole Unreal suite | 4351 / 0: `development` at `4faf66bfb` (#2583) is 4349, and two tests are added; the branch moved onto it as `fix/a-creatures-shield-refills-1` |
+| Python before the window | JUnit 7032 tests, 0 failures, 0 errors, 7 skipped ("7025 passed, 7 skipped") at `661a1a034`; ruff `All checks passed!` |
 | Python | of record, with JUnit, and ruff |
 | The "SHIELD REFILL" lines | quoted as printed |
 | P1, the rate written as nought | the Shielder test fails: nothing comes back after the wait |
