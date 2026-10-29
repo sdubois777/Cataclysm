@@ -9,6 +9,7 @@ priority. `Cataclysm.Difficulty.*` passed only because it sorts before `Cataclys
 A console variable here is the receiver of a `->Set(` call that is either a name the same file declares as an
 `IConsoleVariable*`, or a call to `FindConsoleVariable(...)` or `AsVariable()` written in place.
 """
+import functools
 import pathlib
 import re
 
@@ -71,10 +72,14 @@ def console_variable_sets(path):
     return found
 
 
+@functools.lru_cache(maxsize=1)
 def every_set():
-    return [(path.name, line, call)
-            for path in sorted(TESTS.glob("*.*")) if path.suffix in (".cpp", ".h")
-            for line, call in console_variable_sets(path)]
+    """Every console variable Set in the tests, scanned ONCE per process. Issue #1451: each of the two tests below
+    scanned every test file itself, about 8 seconds each, so the same scan ran twice. A tuple, so a caller cannot
+    change what the next one reads."""
+    return tuple((path.name, line, call)
+                 for path in sorted(TESTS.glob("*.*")) if path.suffix in (".cpp", ".h")
+                 for line, call in console_variable_sets(path))
 
 
 def test_the_scan_finds_the_console_variable_writes():

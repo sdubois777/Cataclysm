@@ -2,6 +2,65 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The console-variable rule scans the tests once per process, not once per test (#1451)
+
+**Affects:** `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py` (`every_set` cached with
+`functools.lru_cache` and returning a tuple); this file. Python only. Part of
+[#1451](https://github.com/sdubois777/Cataclysm/issues/1451).
+
+### SAID FIRST
+
+- **THE RULE CHECKS THE SAME THING AS BEFORE.** Its two tests each called `every_set()`, which scans every test file;
+  the scan now runs once per process and both read its result. A tuple, so neither can change what the other reads.
+- **MEASURED PER TEST, NOT BY TOTALS**, the file run alone, twice each way at `cf6c73e69`:
+
+| | `test_the_scan_finds_the_console_variable_writes` | `test_every_console_variable_..._at_console_priority` | the file |
+| :-- | --: | --: | --: |
+| before | 8.30 s, 8.29 s | 8.52 s, 8.39 s | 16.86 s, 16.72 s |
+| after | 8.19 s, 8.25 s | under 0.005 s (pytest hides it) | 8.24 s, 8.30 s |
+
+  The first test to run pays for the scan; the second reads it. In the whole suite: 10.22 s and 9.98 s at `603f2efee`
+  before; 9.124 s and 0.000 s after (the JUnit times, at the commit that registers this).
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "test/the-console-variable-rule-scans-once: cache the console-variable rule's scan
+once per process, as #2022's rule does. Show per-test durations before and after, and that the rule still fails on its
+proof break (prove_guard, as when it was built)."
+
+### REGISTERED BEFORE THE PROOF
+
+The break #1470 used: one write in `game/Source/Cataclysm/Tests/CataclysmDifficultyTierTests.cpp` put back to code
+priority, here `Variable->Set(8, ECVF_SetByConsole);` (once in the file) becoming `Variable->Set(8, ECVF_SetByCode);`.
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py`. Predicted named_failures,
+exactly one:
+
+- `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py::test_every_console_variable_a_test_writes_is_written_at_console_priority`
+
+and `test_the_scan_finds_the_console_variable_writes` passing, since the scan still finds the write.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `cf240a0ab`, the commit that registered it. Printed: "PROVED: 1 failed, 1
+passed in 9.49s | restored: 2 passed in 8.37s". named_failures, exactly the one registered:
+
+- `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py::test_every_console_variable_a_test_writes_is_written_at_console_priority`
+
+Its message named the write: `CataclysmDifficultyTierTests.cpp:201: ->Set(8, ECVF_SetByCode)`. The scan test passed with
+the break in, as predicted. So the cached scan still sees a write the break changes.
+
+### EVIDENCE
+
+Python of record at `cf240a0ab`: "7039 passed, 8 skipped"; JUnit tests 7047, failures 0, errors 0, skipped 8, unchanged.
+ruff: "All checks passed!"
+
+### NO GENRE SOURCE
+
+None. This is about the project's own test suite.
+
+---
+
 ## 2026-10-29 — Typing Cataclysm.PlayerLevel during play applies it to a character whose level is not settled, and warns for one whose level is (#1540)
 
 **Affects:** `CVarPlayerLevel` in `CataclysmPlayerClassStats.cpp` (its comment, its help text and a change callback),
