@@ -84,6 +84,11 @@ else 1.0)` becomes `return chance` (once in the file). Predicted named_failures,
 
 The eleven controls and the count test pass with the break in.
 
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `716baf08e`, the commit that registered it. Printed: "PROVED: 13 failed, 190
+passed in 45.79s | restored: 203 passed in 47.34s". named_failures, exactly the thirteen registered.
+
 ### NO GENRE SOURCE
 
 None. This brings the simulation into line with a rule the design document and the game already state.
