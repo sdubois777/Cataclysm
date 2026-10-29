@@ -81,7 +81,7 @@ line beginning "WRITTEN PROGRESS".
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each |
-| Whole Unreal suite | 4364 / 0: `development`'s 4362, measured by window w90 on the tests `235370ad5` holds (`6cbc60b13` after it changes no C++), + 2 |
+| Whole Unreal suite | 4364 / 0: `development`'s 4362, measured by window w90 on the tests `235370ad5` holds (`6cbc60b13` and `42139a247` after it change no C++), + 2 |
 | Python | of record, with JUnit, and ruff |
 | The "RUN PROGRESS" and "WRITTEN PROGRESS" lines | quoted as printed |
 | P1, `ProgressFrom` does not copy `QuestObjectives` | the round-trip test fails on "every progress field survives" (13 of 14, `QuestObjectives` differing), and on no CONTROL |
