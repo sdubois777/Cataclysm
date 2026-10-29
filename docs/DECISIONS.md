@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The two sweep tests that sampled a no-result rate against 50% set their cell results by hand (#1385)
+
+**Affects:** `sim/tests/test_sweep_tier.py` only (class `TestTheSweepFlagsCampaignsWithNoResult`: a helper that runs
+the preset section with every cell's result set by hand, two tests rewritten onto it, two tests added); this file.
+Python tests and documents only; `sim/experiments.py` is not changed. Built on
+[#2602](https://github.com/sdubois777/Cataclysm/issues/2602), which edits the same file.
+
+### SAID FIRST
+
+- **WHAT IS NO LONGER CLAIMED.** `test_nothing_is_left_out_when_every_cell_resolves` ran 32 real campaigns per cell at
+  tiers 1 and 2, and `test_no_warning_appears_when_the_cells_resolve` ran 25 at tier 1. Between them they also asserted
+  that **the real presets, at the real 2,500 day cap, resolve at tiers 1 and 2**. Nothing asserts that now. It is a fact
+  about the game's balance and not about the report code (issue
+  [#1336](https://github.com/sdubois777/Cataclysm/issues/1336)), and the report prints its own "NO RESULT for most
+  campaigns" warning when it stops being true.
+- **ISSUE #1385 NAMES A TEST THAT DOES NOT EXIST.** Its first suggestion points at
+  `test_the_exclusion_set_is_accumulated_across_tiers` "in the same class". No test has that name. The one that checks
+  the exclusion set is built across tiers, by reading the source, is
+  `test_a_preset_unresolved_at_one_tier_is_left_out_at_every_tier`.
+- **THE SHARED TWO-TIER RUN HAS A CELL EXACTLY ON THE THRESHOLD.** At 2 campaigns per cell, tiers 1 and 8, the
+  Architect preset has 1 of 2 campaigns with no result at tier 8 in both surge blocks, so it is excluded only because
+  the rule is `>=`. Found while predicting the proof below. No test that reads that run asserts on that exclusion.
+
+### WHY
+
+Both tests passed only while no preset's SAMPLED no-result rate reached `UNRESOLVED_WARNING_PERCENT` (50). The nearest
+true rates are about 34% (tiers 1 and 2) and 26% (tier 1 alone). Every campaign is seeded, so the tests were
+reproducible, but any change that added or removed a random draw re-drew every cell. The 32 was the third raise on
+2026-09-06 (4, 8, 16, 32), each after a change unrelated to what the test is named for, and each failure read as a
+defect in `exp_presets` when none was. The two tests took 16.70 s and 5.76 s of the fast suite (per-test JUnit times,
+2026-10-29, at #2602's branch).
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1385: approved, hand-set cell results, and fold in
+test_no_warning_appears_when_the_cells_resolve", with `batch` and `summarise` replaced by monkeypatch; an all-0% case,
+a 60% case at tier 2 left out at every tier, and the exactly-50.0 boundary; `campaigns_run` unchanged; one prove_guard
+proof on the `>=` boundary; the issue's wrong test name corrected here; and what is no longer claimed said plainly.
+
+The two options the coordinator first named were not taken. A tolerance from `win_rate_noise` or `margin_noise` has no
+estimate in the test to apply to: the 50% cut is the production rule and the test only reads whether the report
+applied it. A seeded result pinned exactly fails on every change to the random stream, which is what caused all three
+raises.
+
+### WHAT WAS BUILT
+
+`_preset_section_with_cells_set_by_hand(monkeypatch, stale_at, tiers)` replaces `experiments.batch` with a function
+that runs no campaign and returns its config, and `experiments.summarise` with one that reads the tier and the preset
+off that config and returns `stale_at(tier, preset)` percent with no result, 40% won and the rest lost. Every other
+field comes from `experiments.summarise([])`, so a field added there reaches the fake. Everything after that -- the
+warning, the exclusion set built across tiers, the orderings and the printing -- is the real code. The helper asserts
+`campaigns_run` did not move, so a fake that stopped being used fails rather than passes.
+
+| Test | Cells | Asserts |
+| :-- | :-- | :-- |
+| `test_no_warning_appears_when_the_cells_resolve` (rewritten) | all 0%, tier 1 | no "NO RESULT for most campaigns" |
+| `test_nothing_is_left_out_when_every_cell_resolves` (rewritten) | all 0%, tiers 1 and 2 | no "LEFT OUT OF THE ORDER", no "NO PRESET RANKED", all six presets on the tier 1 and tier 2 orderings |
+| `test_a_preset_with_no_result_at_one_tier_is_left_out_at_every_tier` (new) | one preset 60% at tier 2 | warned at 60%, listed as "at tier 2", absent from both orderings, the other five on both |
+| `test_a_cell_exactly_at_the_threshold_has_no_result` (new) | one preset at exactly 50.0, one at 49.9, tier 1 | the first listed and unranked, the second ranked |
+
+The file runs in 5.78 s against 37.38 s with #2602 alone: "86 passed".
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest` (the whole fast suite, because four test files run the real preset section). The break, in
+`warn_about_unresolved_campaigns` in `sim/experiments.py`: `>= UNRESOLVED_WARNING_PERCENT]` becomes
+`> UNRESOLVED_WARNING_PERCENT]` (once in the file; the other `>=` on that constant, in `compare_against_no_tree`, is
+left alone). Predicted named_failures, exactly two:
+
+- `sim/tests/test_sweep_tier.py::TestTheSweepFlagsCampaignsWithNoResult::test_a_cell_exactly_at_the_threshold_is_flagged`
+- `sim/tests/test_sweep_tier.py::TestTheSweepFlagsCampaignsWithNoResult::test_a_cell_exactly_at_the_threshold_has_no_result`
+
+The first calls the warning directly and existed before; the second is new and reaches the boundary through the whole
+section. The Architect cell at exactly 50% in the real two-tier run (above) is ranked under the break, and no test is
+predicted to notice: the tests that read that run assert on headings, line counts and the comparison against the
+no-tree row, which covers every preset either way.
+
+### NO GENRE SOURCE
+
+None. This is how the project's own tests read its own report.
+
+---
+
 ## 2026-10-29 — A Fallen City places every boss it counts, spread evenly down its floors (#1466)
 
 **Affects:** `FCataclysmDungeonFloorRules::BossAtTheExit` and `FCataclysmDungeonIdentity` in

@@ -662,6 +662,47 @@ def printed_when_no_campaign_finishes():
     return _run_presets(base, tiers=(1, 8), trials=2)[1]
 
 
+#: What `summarise` returns for no campaigns: every field it reports, at zero.
+#: Read from the real function so a field added there reaches the fake below.
+_EMPTY_SUMMARY = experiments.summarise([])
+
+
+def _preset_section_with_cells_set_by_hand(monkeypatch, stale_at, tiers):
+    """Run the preset section with every cell's result set by hand. Issue #1385.
+
+    `batch` is replaced by one that runs no campaign and hands its config on,
+    and `summarise` by one that reads the tier and the preset off that config
+    and returns a fixed summary: `stale_at(tier, preset name)` percent of
+    campaigns with no result, 40% won and the rest lost. Everything after that
+    -- the warning, the exclusion set built across the tiers, the ordering and
+    the printing -- is the real code.
+
+    Fails if a single real campaign ran, so a fake that stopped being used
+    cannot pass as one that was.
+    """
+    def no_campaigns(cfg, policy, trials=experiments.TRIALS, seed0=0):
+        return [cfg]
+
+    def fixed_summary(results):
+        (cfg,) = results
+        stale = stale_at(cfg.tier, cfg.tree.name)
+        return dict(_EMPTY_SUMMARY, win=40.0, lost=60.0 - stale, stale=stale)
+
+    monkeypatch.setattr(experiments, "batch", no_campaigns)
+    monkeypatch.setattr(experiments, "summarise", fixed_summary)
+    before = experiments.campaigns_run
+    printed = _run_presets(replace(TuningConfig(), tier=experiments.SWEEP_TIER),
+                           tiers=tiers, trials=150)[1]
+    assert experiments.campaigns_run == before, (
+        f"{experiments.campaigns_run - before} real campaigns ran in a test "
+        "whose cells are set by hand, so the replaced batch was not used.")
+    return printed
+
+
+def _preset_names() -> list[str]:
+    return [tree.name for tree in experiments.PRESETS]
+
+
 class TestTheReportShowsWhatThePerPairToleranceChanged:
     """Issue #328. The report prints both orderings, so a reader can see what
     the change did without running the previous version."""
@@ -1147,38 +1188,23 @@ class TestTheSweepFlagsCampaignsWithNoResult:
             "exists but nothing calls it. Issue #293.")
         assert "day cap 40" in printed
 
-    def test_no_warning_appears_when_the_cells_resolve(self, capsys):
-        """The other half. At the real day cap and tier 1 the presets resolve,
-        so the warning must stay silent -- otherwise it would appear on every
-        table and stop meaning anything.
+    def test_no_warning_appears_when_the_cells_resolve(self, monkeypatch):
+        """The other half. When every cell resolves, the warning must stay
+        silent -- otherwise it would appear on every table and stop meaning
+        anything.
 
-        WHY `trials` IS 25 AND NOT 4. It was 4, and issue #1338 made it fail:
-        one preset had 2 campaigns of 4 with no result, which is exactly the
-        50% threshold. FOUR CAMPAIGNS CANNOT DISTINGUISH THE TWO CASES THIS
-        TEST EXISTS TO SEPARATE. Measured at 300 campaigns per cell, tier 1,
-        `triage`, surge size 4, the true unresolved rate across the six presets
-        runs 2.0% to 26.0% -- the highest of them less than half the threshold.
-        At 4 campaigns a cell at 26% trips the threshold better than one time
-        in four, so the old sample passed by luck both before this change and
-        after the sub-type work that raised the rates in the first place.
-
-        The rate did rise with #1338, and the rise is real rather than noise:
-        the same measurement under the old fixed Demonic draw runs 0.0% to
-        24.7%. Drawing the Cataclysm per character brings in Celestial, which
-        sends few and deep dungeons, so more campaigns reach the day cap having
-        neither won nor lost. It is nowhere near the threshold either way.
-
-        25 campaigns costs about 9 seconds against about 1.5. That buys a test
-        that measures something: at a true rate of 26% a cell needs 13 of 25 to
-        trip, which is 2.7 standard errors out.
+        THE CELLS ARE SET BY HAND, issue #1385. This ran 25 real campaigns per
+        cell at tier 1 (it was 4 until issue #1338 made it fail), and passed
+        only while no preset's SAMPLED no-result rate reached the 50% threshold,
+        with the highest true rate about 26%. Any change that added or removed a
+        random draw re-drew every cell. Now every cell is 0% by construction and
+        the test reads what the real warning and printing code make of that.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1,), trials=25)
-        printed = capsys.readouterr().out
+        printed = _preset_section_with_cells_set_by_hand(
+            monkeypatch, lambda tier, name: 0.0, tiers=(1,))
         assert "NO RESULT for most campaigns" not in printed, (
-            "the unresolved-campaign warning fires on an ordinary tier 1 "
-            "table, where the campaigns do resolve. A warning that always "
-            "fires is not a warning.")
+            "the unresolved-campaign warning fires on a table where every "
+            "campaign resolved. A warning that always fires is not a warning.")
 
     def test_the_campaign_loop_has_no_exit_other_than_the_day_cap(self):
         """The whole warning rests on this. If the day loop ever gains another
@@ -1255,89 +1281,88 @@ class TestTheSweepFlagsCampaignsWithNoResult:
             "the orderings can cover different presets and stop being "
             "comparable. Issue #294.")
 
-    def test_nothing_is_left_out_when_every_cell_resolves(self, capsys):
-        """The other half. At the real day cap the low tiers resolve, so no
-        preset may be dropped -- otherwise the section would quietly rank fewer
-        presets than the table shows on every run.
+    def test_nothing_is_left_out_when_every_cell_resolves(self, monkeypatch):
+        """The other half of the exclusion. When every cell resolves, no preset
+        may be dropped -- otherwise the section would quietly rank fewer presets
+        than the table shows on every run.
 
-        **SIXTEEN CAMPAIGNS PER CELL, AND THE COUNT IS THE FRAGILE PART.** The
-        campaigns are seeded from 0 upwards so this is reproducible rather than
-        flaky, but the threshold is 50% and more than one cell sits close to
-        it, so a small sample can land on the wrong side of a line the true
-        rate is nowhere near.
+        THE CELLS ARE SET BY HAND, issue #1385. This ran real campaigns at tiers
+        1 and 2 and asserted no cell's sampled no-result rate reached 50%. The
+        nearest true rate is about 34%, so each unrelated change that shifted
+        the random stream re-drew every cell, and the sample size was raised
+        three times on 2026-09-06 (4, 8, 16, 32), the last costing about 17
+        seconds of the fast suite. Each failure read as a defect in
+        `exp_presets` and none ever was one.
 
-        Four was too few: at tier 2, Explorer via floors (-25 floors) left two
-        of four unresolved, which is exactly 50%.
-
-        **Eight was enough until two separate changes on 2026-09-06 each pushed
-        a different cell past it**, which is why the count was raised once and
-        this docstring names two causes:
-
-          * issue #1315 gave the Cataclysm boss a floor for every ordinary
-            dungeon cleared, which lengthens campaigns. Over 60 campaigns the
-            "Proposed budget (x0.85 time, x0.55 dmg)" cell at tier 2 went from
-            **30% to 37%** of campaigns running out of days;
-          * issue #1327 moved the Architect preset, whose tier 2 cell genuinely
-            sits at about **35%** -- measured over 60 campaigns, and true on
-            `development` as well as here.
-
-        Neither rate is over the threshold. At eight campaigns the estimate
-        landed on 4 of 8 and the check is `>=`, so the test failed on its
-        sample size rather than on what it names.
-
-        **AND SIXTEEN LASTED ONE DAY.** Issue #1324's move chance -- the owner's
-        "a chance each time", built at 0.5 -- adds a draw to every quest timer,
-        so every later draw in a campaign shifts. The
-        "Proposed budget (x0.85 time, x0.55 dmg)" cell at **tier 1** went from 6
-        of 16 to exactly 8 of 16, and the check is `>=`.
-
-        **THE UNDERLYING RATE DID NOT MOVE, AND IT WAS MEASURED BEFORE THE COUNT
-        WAS RAISED**, which is what the paragraph below used to demand and now
-        records:
-
-        | campaigns | on `development` | with the move chance |
-        | --: | --: | --: |
-        | 8 | 50.0% | 62.5% |
-        | 16 | 37.5% | **50.0%** |
-        | 32 | 34.4% | 34.4% |
-        | 60 | 31.7% | 31.7% |
-        | 120 | 34.2% | 35.0% |
-
-        Identical at 32 and 60 and within a point at 120. **Thirty-two is where
-        the estimate meets the 120-campaign figure**, which is the reason for
-        that number rather than the next one up: at 24 the same cell reads 41.7%
-        and is still sampling rather than measuring. It costs about 38 seconds
-        against 13 for sixteen, measured on 2026-09-06.
-
-        **IF IT FAILS AGAIN, MEASURE THE UNDERLYING RATE OVER 60 CAMPAIGNS
-        BEFORE RAISING THIS NUMBER**: a genuine move past 50% is a finding about
-        the game, and raising the count would hide it. **And consider not
-        raising it at all.** This is the third raise, each after a change that
-        had nothing to do with what the test names, and the reason is structural
-        rather than bad luck -- a printed artefact gated on a noisy rate crossing
-        a fixed threshold, with the nearest cell's true rate at about 34%. Issue
-        [#1385](https://github.com/sdubois777/Cataclysm/issues/1385) carries
-        that, with three cheaper shapes for the check.
-
-        THE UNDERLYING RATES ARE NOT A TEST PROBLEM. A maxed Architect empire
-        reaches the day cap without winning or losing in 13% of campaigns at
-        difficulty tier 1, 35% at tier 2 and 97% at tier 4. That is issue #1336
-        and is not caused by this file.
+        WHAT THIS NO LONGER CLAIMS: that the real presets, at the real day cap,
+        resolve at tiers 1 and 2. That is a fact about the game's balance and
+        not about the report. It is issue #1336, and the report prints its own
+        NO RESULT warning when it stops being true.
         """
-        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 2), trials=32)
-        printed = capsys.readouterr().out
+        printed = _preset_section_with_cells_set_by_hand(
+            monkeypatch, lambda tier, name: 0.0, tiers=(1, 2))
         assert "LEFT OUT OF THE ORDER" not in printed, (
-            "the preset section drops presets from the ranking on an ordinary "
-            "table where every campaign resolved.")
+            "the preset section drops presets from the ranking on a table "
+            "where every campaign resolved.")
         assert "NO PRESET RANKED" not in printed
+        for tier in (1, 2):
+            ranked = [line for line in _ordering_lines(printed)
+                      if line.strip().startswith(f"tier {tier}:")]
+            assert len(ranked) == 1
+            for name in _preset_names():
+                assert name in ranked[0], (
+                    f"{name!r} is missing from the tier {tier} ordering even "
+                    "though every one of its campaigns resolved.")
+
+    def test_a_preset_with_no_result_at_one_tier_is_left_out_at_every_tier(
+            self, monkeypatch):
+        """The exclusion by its behaviour. One preset has no result for 60% of
+        its campaigns at tier 2 and none at tier 1, and it must be named and
+        then kept out of BOTH orderings, so the two cover the same presets.
+        `test_a_preset_unresolved_at_one_tier_is_left_out_at_every_tier` checks
+        the same rule by reading the source."""
+        names = _preset_names()
+        dropped = names[3]
+        printed = _preset_section_with_cells_set_by_hand(
+            monkeypatch,
+            lambda tier, name: 60.0 if (tier, name) == (2, dropped) else 0.0,
+            tiers=(1, 2))
+        assert f"{dropped}: 60% of campaigns ran out of days" in printed
+        left_out = printed[printed.index("LEFT OUT OF THE ORDER"):]
+        assert left_out.splitlines()[1].strip() == f"{dropped}, at tier 2"
+        for tier in (1, 2):
+            ranked = [line for line in _ordering_lines(printed)
+                      if line.strip().startswith(f"tier {tier}:")]
+            assert len(ranked) == 1
+            assert dropped not in ranked[0], (
+                f"{dropped!r} had no result at tier 2 and is still ranked at "
+                f"tier {tier}. Issue #294.")
+            for name in names:
+                if name != dropped:
+                    assert name in ranked[0]
+
+    def test_a_cell_exactly_at_the_threshold_has_no_result(self, monkeypatch):
+        """The boundary through the whole section, not only the warning
+        function: exactly `UNRESOLVED_WARNING_PERCENT` is left out, and a tenth
+        of a point below it is ranked."""
+        names = _preset_names()
+        at, below = names[0], names[1]
+        threshold = experiments.UNRESOLVED_WARNING_PERCENT
+
+        def stale_at(tier, name):
+            return {at: threshold, below: threshold - 0.1}.get(name, 0.0) \
+                if tier == 1 else 0.0
+
+        printed = _preset_section_with_cells_set_by_hand(
+            monkeypatch, stale_at, tiers=(1, 2))
+        left_out = printed[printed.index("LEFT OUT OF THE ORDER"):]
+        assert left_out.splitlines()[1].strip() == f"{at}, at tier 1"
         ranked = [line for line in _ordering_lines(printed)
                   if line.strip().startswith("tier 1:")]
-        assert len(ranked) == 1
-        for tree in experiments.PRESETS:
-            assert tree.name in ranked[0], (
-                f"{tree.name!r} is missing from the tier 1 ordering even "
-                "though its campaigns resolved.")
+        assert at not in ranked[0]
+        assert below in ranked[0], (
+            f"{below!r} had {threshold - 0.1}% of campaigns with no result, "
+            "below the threshold, and was left out of the ordering.")
 
     def test_the_tier_actually_changes_the_run(self, printed):
         """Otherwise the second table would be a copy of the first.
