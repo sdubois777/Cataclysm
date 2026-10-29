@@ -54,7 +54,7 @@ entering. It prints a line beginning "ENTERED BOSSES".
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 2 / 2 |
-| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Whole Unreal suite | 4362 / 0: `development`'s 4360, measured by window w89 on the tests `3a885757c` holds (`058420d04` after it changes no C++), + 2 |
 | Python | of record, with JUnit, and ruff |
 | The "FALLEN CITY BOSSES" and "ENTERED BOSSES" lines | quoted as printed |
 | P1, the count ignored (`Count` always one) | the spreading test fails on the five, three, twenty and thirty assertions, and on no CONTROL; the entering test passes |
