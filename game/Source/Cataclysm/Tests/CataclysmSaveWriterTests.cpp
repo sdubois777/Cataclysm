@@ -2495,4 +2495,149 @@ bool FCataclysmSaveWriterWritesTheProgressTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// What the run is: its tier and the Cataclysms it faces. Issue #1471.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveWriterIdentityTest
+{
+	/** The list as names, so a line in the log and a comparison of order read the same. */
+	FString Names(const TArray<ECataclysmType>& Cataclysms)
+	{
+		FString Out;
+		for (const ECataclysmType Type : Cataclysms)
+		{
+			Out += Out.IsEmpty() ? UEnum::GetValueAsString(Type) : TEXT(",") + UEnum::GetValueAsString(Type);
+		}
+		return Out;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterIdentityRoundTripTest,
+	"Cataclysm.SaveWriter.ARunsTierAndCataclysmsSurviveTheRecordAndItsJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterIdentityRoundTripTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterIdentityTest;
+
+	// ISSUE #1471. A run begun at tier 4, gathered, written to JSON and read back, keeps tier 4 and the same
+	// Cataclysms in the same order: the list of a UENUM is written by name and read back by name. CONTROL: a run
+	// begun at tier 1 gathers tier 1 and a list of a different length, so the test can tell the two tiers apart.
+	UCataclysmEmpireRun* AtFour = NewObject<UCataclysmEmpireRun>();
+	UCataclysmEmpireRun* AtOne = NewObject<UCataclysmEmpireRun>();
+	AtFour->Begin(1, ECataclysmSurgeMode::Static, 0, 4);
+	AtOne->Begin(1, ECataclysmSurgeMode::Static, 0, 1);
+
+	UCataclysmRunSave* FromFour = NewObject<UCataclysmRunSave>();
+	UCataclysmRunSave* FromOne = NewObject<UCataclysmRunSave>();
+	if (!TestTrue(TEXT("set-up: the tier 4 run is gathered"), FCataclysmSaveGather::IdentityFrom(*AtFour, *FromFour))
+		|| !TestTrue(TEXT("set-up: the tier 1 run is gathered"), FCataclysmSaveGather::IdentityFrom(*AtOne, *FromOne)))
+	{
+		return false;
+	}
+
+	// STAMPED AS THE WRITER STAMPS IT, which window w91 found a record made here needs (#1374).
+	FromFour->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the tier 4 record is written to JSON"), FCataclysmSaveStorage::ToJson(FromFour, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Back = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Json, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: and read back"), Back))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("RUN IDENTITY: tier %d facing %s; read back tier %d facing %s; tier 1 gathers tier %d facing %s"),
+							AtFour->DifficultyTier, *Names(AtFour->ActiveCataclysms), Back->DifficultyTier,
+							*Names(Back->ActiveCataclysms), FromOne->DifficultyTier, *Names(FromOne->ActiveCataclysms)));
+	TestEqual(TEXT("the tier survives the record and its JSON"), Back->DifficultyTier, 4);
+	TestEqual(TEXT("and the Cataclysms, in the run's order"), Names(Back->ActiveCataclysms), Names(AtFour->ActiveCataclysms));
+	TestEqual(TEXT("CONTROL: a tier 1 run gathers tier 1"), FromOne->DifficultyTier, 1);
+	TestTrue(TEXT("CONTROL: and a list of a different length from tier 4's"),
+			 FromOne->ActiveCataclysms.Num() != AtFour->ActiveCataclysms.Num());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheIdentityTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesItsTierAndCataclysms",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheIdentityTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterIdentityTest;
+
+	// ISSUE #1471, THROUGH THE WRITER AND THE DISK, the harness of
+	// `AWrittenRunRecordCarriesTheCitiesThroughTheFile`: the file the writer itself writes holds the run's tier and
+	// its Cataclysms.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0, 4);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"), WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("WRITTEN IDENTITY: the run is tier %d facing %s; the file holds tier %d facing %s"),
+							Run->DifficultyTier, *Names(Run->ActiveCataclysms), Read->DifficultyTier,
+							*Names(Read->ActiveCataclysms)));
+	TestEqual(TEXT("the file the writer wrote holds the run's tier"), Read->DifficultyTier, Run->DifficultyTier);
+	TestEqual(TEXT("and its Cataclysms, in order"), Names(Read->ActiveCataclysms), Names(Run->ActiveCataclysms));
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

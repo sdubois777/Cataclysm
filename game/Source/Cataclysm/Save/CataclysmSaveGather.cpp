@@ -306,6 +306,22 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	return true;
 }
 
+bool FCataclysmSaveGather::IdentityFrom(const UCataclysmEmpireRun& Run,
+										UCataclysmRunSave& Record)
+{
+	// A RUN THAT HAS NOT BEGUN IS AT NO TIER AND FACES NOTHING YET. `Begin` sets
+	// both, and makes the clock this tests for, as `ProgressFrom` does.
+	if (Run.Clock == nullptr)
+	{
+		return false;
+	}
+
+	Record.DifficultyTier = Run.DifficultyTier;
+	Record.ActiveCataclysms = Run.ActiveCataclysms;
+
+	return true;
+}
+
 bool FCataclysmSaveGather::DungeonsFrom(const UCataclysmEmpireRun& Run,
 									   UCataclysmRunSave& Record,
 									   FString& OutWhy)

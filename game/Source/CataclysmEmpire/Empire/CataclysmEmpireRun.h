@@ -540,13 +540,10 @@ public:
 	 * character has no tier of its own to carry between runs. Issue
 	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
 	 *
-	 * **IT IS NOT SAVED.** `UCataclysmRunSave` carries neither this nor
-	 * `ActiveCataclysms`, so a run restored from a file would face one
-	 * Cataclysm whatever it was facing. Nothing loads a run at all today
-	 * ([#753](https://github.com/sdubois777/Cataclysm/issues/753)), so this
-	 * costs nothing yet and would cost the whole campaign the moment loading
-	 * lands. Issue
-	 * [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
+	 * **SAVED, WITH `ActiveCataclysms`**, by `FCataclysmSaveGather::IdentityFrom`,
+	 * since issue [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
+	 * Nothing loads a run back yet
+	 * ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DifficultyTier = 1;

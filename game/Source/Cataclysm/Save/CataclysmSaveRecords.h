@@ -631,11 +631,10 @@ public:
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
  *     fourteen fields under "Progress" below. Nothing loads them back yet; no
  *     run is loaded at all ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
- *   - **What tier the run is played at, and which Cataclysms it faces.**
- *     `UCataclysmEmpireRun::DifficultyTier` and `ActiveCataclysms` are not
- *     written here. A restored run would face one Cataclysm whatever it was
- *     facing before, and would give every later dungeon one modifier instead of
- *     one per tier. Issue #41 put the two counts in; nothing saves them.
+ *   - **What tier the run is played at, and which Cataclysms it faces, ARE
+ *     HERE NOW**, since issue
+ *     [#1471](https://github.com/sdubois777/Cataclysm/issues/1471): the two
+ *     fields under "Identity" below. Nothing loads them back yet (#753).
  *
  * `FCataclysmSavedFloor` IS here, in full, because section 6 specifies its
  * contents exactly and it is the requirement the whole feature exists for.
@@ -941,6 +940,28 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 LastMoveToCityId = INDEX_NONE;
+
+	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
+	//
+	// COPIED BY `FCataclysmSaveGather::IdentityFrom`, and NOT A SCHEMA VERSION
+	// BUMP, for `PartialDay`'s reason above: tier 1 and an empty list are what a
+	// file written before these existed meant. NOTHING LOADS THEM BACK YET (#753).
+
+	/** The difficulty tier the run is played at, 1 to 8. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DifficultyTier = 1;
+
+	/**
+	 * The Cataclysms the run faces, in the order the run holds them.
+	 *
+	 * THE LIST ITSELF AND NOT THE SEED IT WAS DRAWN FROM, ruled 2026-10-29 as a
+	 * judgement, for issue #1471's reasons: `UCataclysmRoster::ActiveFor` draws
+	 * it from the seed the run BEGAN with, which this record does not keep --
+	 * `RandomStreamSeed` is where the stream has got to -- and a second seed beside
+	 * that one is a pair easily swapped. The list cannot drift.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<ECataclysmType> ActiveCataclysms;
 };
 
 /**

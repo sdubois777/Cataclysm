@@ -176,6 +176,16 @@ public:
 	static bool ProgressFrom(const UCataclysmEmpireRun& Run,
 							 UCataclysmRunSave& Record);
 
+	/**
+	 * What the run IS: its difficulty tier and the Cataclysms it faces, the two
+	 * "Identity" fields of `UCataclysmRunSave`. Issue #1471.
+	 *
+	 * @return whether anything was read. False for a run `Begin` has not been
+	 *         called on, and then the record keeps whatever it already held.
+	 */
+	static bool IdentityFrom(const UCataclysmEmpireRun& Run,
+							 UCataclysmRunSave& Record);
+
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);
