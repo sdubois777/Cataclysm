@@ -9,7 +9,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w81 below passed every registered figure, and both proofs were PROVED.** Window w80, at
+  the first commit, failed one test, #1562's Shielder test, for the reason #2588 records; nothing was re-run there.
 - **THE ON-SCREEN STATUS LIST WAS NOT CHECKED.** Whether the spent brand also showed there was not read.
 - **IT CARRIES #2588**, a set-up line in `AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage`
   (#1562): its Imp has 25% evasion from its archetype row, so the test's hit was evaded one run in four, as
@@ -51,7 +52,30 @@ line beginning "BRAND TAG".
 
 ### Run
 
-Not run yet.
+**Window w80 (lock `dungeon-w80`, `fix/an-infernal-brands-explosion-takes-its-tag-1` at `d92d95d14`, on `7ca6edb06`)
+stopped at the whole suite:** "4353 tests performed, 4352 succeeded, 1 failed:
+AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage", which printed "Shielder: maximum 80.5, 80.5
+after the hit" and "Expected 'Shielder: set-up: the hit took shield' to be true": its Imp, with 25% evasion from its
+archetype row, evaded the hit. This entry's own test passed alone ("after four brands carried, 1 debuff(s); after the
+explosion gone, 0") and Python passed (JUnit 7035, 0 failures). No proof was run and nothing was re-run; the
+coordinating session filed #2588 and ruled its set-up line onto this branch.
+
+**Window w81 (lock `dungeon-w81`, the same branch at `a4314376b`, on `7ca6edb06`, 2026-10-29) passed.** The lock was
+taken at 00:11 on a free-memory reading immediately before it of 11,361 MB, with `development`'s CI run at `7ca6edb06`
+succeeded (a Python-only merge, which started no Unreal run; the last on `development`, `d6768e501`, succeeded), none in
+progress or queued, the lock free, no build or editor process, no open pull request. The lock was released before
+anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.20.cpp` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4353 / 0 | `4353 tests performed, 4353 succeeded, 0 failed`; declared 4353, gap 0. #2588's test printed "Shielder: maximum 80.5, 40.2 after the hit, 40.2 at 2.5 s, 56.3 at 4 s" |
+| Memory | quoted | `final_used_virtual_mb=7754`, peak 8,068 |
+| Python (JUnit) | of record | 7035 tests, 0 failures, 0 errors, 8 skipped ("7027 passed, 8 skipped"); ruff `All checks passed!` |
+| The "BRAND TAG" line | quoted as printed | "after four brands carried, 1 debuff(s); after the explosion gone, 0" |
+| P1, the removal deleted | the test fails | "1 tests performed, 0 succeeded, 1 failed: AnInfernalBrandsExplosionTakesItsTagAndItIsNoLongerADebuff", printing "after the explosion carried, 1"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the removal moved to every brand | the CONTROL fails | the same failure line, on "Expected 'CONTROL: four brands are carried as the brand's tag' to be true", printing "after four brands gone, 0 debuff(s)"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
