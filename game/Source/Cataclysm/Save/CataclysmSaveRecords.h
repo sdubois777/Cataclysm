@@ -629,12 +629,14 @@ public:
  *
  *   - **What the player has achieved this run IS HERE NOW**, since issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
- *     fourteen fields under "Progress" below. Nothing loads them back yet; no
- *     run is loaded at all ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
+ *     fourteen fields under "Progress" below.
+ *     `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
  *   - **What tier the run is played at, and which Cataclysms it faces, ARE
  *     HERE NOW**, since issue
  *     [#1471](https://github.com/sdubois777/Cataclysm/issues/1471): the two
- *     fields under "Identity" below. Nothing loads them back yet (#753).
+ *     fields under "Identity" below. `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet (#753).
+ *   - **The last surge's day, two stream positions and the Corrupted Stalker's
+ *     seed ARE HERE NOW**, since #753's first step: the four "Restore" fields.
  *
  * `FCataclysmSavedFloor` IS here, in full, because section 6 specifies its
  * contents exactly and it is the requirement the whole feature exists for.
@@ -832,7 +834,10 @@ public:
 	float NextSurgeDay = 0.0f;
 
 	/**
-	 * Where the run's one source of chance had got to.
+	 * Where the run's main source of chance, `UCataclysmEmpireRun::Stream`, had got to.
+	 *
+	 * NOT ITS ONLY ONE. The run draws from two more streams and one more seed, all made from the seed it began with,
+	 * which nothing keeps: the four "Restore" fields at the end of this class hold them, since issue #753.
 	 *
 	 * **THIS FIELD EXISTS BECAUSE `FRandomStream` IS HALF SAVABLE, WHICH IS
 	 * WORSE THAN NOT SAVABLE AT ALL.** The engine's reflected declaration in
@@ -882,8 +887,8 @@ public:
 	// EACH IS `UCataclysmEmpireRun`'s FIELD OF THE SAME NAME, copied by
 	// `FCataclysmSaveGather::ProgressFrom`; read the meaning there. NOT A SCHEMA
 	// VERSION BUMP, for `PartialDay`'s reason above: a file written before these
-	// existed keeps each default, which is what such a file meant. NOTHING
-	// LOADS THEM BACK YET, because nothing loads a run (#753).
+	// existed keeps each default, which is what such a file meant.
+	// `FCataclysmSaveApply::RunInto` puts them back; nothing in the game calls it yet (#753).
 
 	/** Quest objectives earned: the win condition's counter. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -945,7 +950,8 @@ public:
 	//
 	// COPIED BY `FCataclysmSaveGather::IdentityFrom`, and NOT A SCHEMA VERSION
 	// BUMP, for `PartialDay`'s reason above: tier 1 and an empty list are what a
-	// file written before these existed meant. NOTHING LOADS THEM BACK YET (#753).
+	// file written before these existed meant. `FCataclysmSaveApply::RunInto` puts them back; nothing in the game
+	// calls it yet (#753).
 
 	/** The difficulty tier the run is played at, 1 to 8. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -962,6 +968,29 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<ECataclysmType> ActiveCataclysms;
+
+	// ---- RESTORE: what `FCataclysmSaveApply::RunInto` needs that no field above holds. Issue #753, first step. ----
+	//
+	// GATHERED BY `FCataclysmSaveGather::SurgeScheduleFrom`, beside `RandomStreamSeed`. NOT A SCHEMA VERSION BUMP,
+	// for `PartialDay`'s reason: a file written before these existed reads each as 0. A run restored from such a file
+	// measures its next surge from day 0 and draws its two streams from 0, so it is not the run that was saved, and
+	// nothing can make it so: what these hold was never written.
+
+	/** `UCataclysmSurgeScheduler::LastSurgeDay`: the day the empty-board and city-fall surges measure from. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastSurgeDay = 0;
+
+	/** Where `UCataclysmEmpireRun::CataclysmStream` had got to, from `GetCurrentSeed`, for `RandomStreamSeed`'s reason. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmStreamSeed = 0;
+
+	/** Where `UCataclysmEmpireRun::ModifierStream` had got to, the same way. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 ModifierStreamSeed = 0;
+
+	/** `UCataclysmEmpireRun::CorruptedStalkerSeed`, drawn from the seed the run began with like the two streams. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CorruptedStalkerSeed = 0;
 };
 
 /**

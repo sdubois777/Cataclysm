@@ -12,6 +12,11 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
+#include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -374,4 +379,97 @@ FCataclysmFloorRestored FCataclysmSaveApply::FloorInto(
 	}
 
 	return Restored;
+}
+
+bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmpireRun& Run, FString& OutWhy)
+{
+	// REFUSED BEFORE ANYTHING IS TOUCHED. A record that cannot be put back whole
+	// is not put back in part: the run a caller handed over stays as it was.
+	if (Record.Cities.Num() != UCataclysmEmpireMap::CityCount)
+	{
+		OutWhy = FString::Printf(TEXT("the record holds %d cities and the map has %d"),
+								 Record.Cities.Num(), UCataclysmEmpireMap::CityCount);
+		return false;
+	}
+	for (int32 Index = 0; Index < Record.Cities.Num(); ++Index)
+	{
+		if (Record.Cities[Index].CityId != Index)
+		{
+			OutWhy = FString::Printf(TEXT("the record's city at %d says it is city %d"),
+									 Index, Record.Cities[Index].CityId);
+			return false;
+		}
+	}
+	if (!UCataclysmEmpireRun::DungeonsAgreeWithTimers(Record.Dungeons, Record.DungeonTimers, OutWhy))
+	{
+		return false;
+	}
+
+	// THE POOL, AS `UCataclysmGameInstance::BeginEmpireRun` FILLS IT, before
+	// `Begin`, which does not clear it. The empire module cannot load the table.
+	Run.ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+
+	// THE RUN'S OWN OBJECTS, built by `Begin` with the record's mode, rung and
+	// tier. Everything it draws from the seed of 0 is written over below.
+	Run.Begin(0, Record.SurgeMode, Record.SurgeLethalityRung, Record.DifficultyTier);
+
+	// THE CITIES: each saved field onto the rebuilt map, by id.
+	Run.Map->UpgradeSlots = Record.CityUpgradeSlots;
+	for (const FCataclysmCity& Saved : Record.Cities)
+	{
+		FCataclysmCity* City = Run.Map->FindMutable(Saved.CityId);
+		City->MaxDefence = Saved.MaxDefence;
+		City->MaxPopulation = Saved.MaxPopulation;
+		City->Defence = Saved.Defence;
+		City->Population = Saved.Population;
+		City->bFallen = Saved.bFallen;
+		City->bDoomed = Saved.bDoomed;
+		City->bErased = Saved.bErased;
+		City->VoidStacks = Saved.VoidStacks;
+		City->LeftEdict = Saved.LeftEdict;
+		City->LeftEdictUntilDay = Saved.LeftEdictUntilDay;
+		City->Upgrades = Saved.Upgrades;
+	}
+
+	// THE CLOCK, THE DUNGEONS AND THE DAYS OWED.
+	Run.Clock->Day = Record.Day;
+	Run.Clock->PartialDay = Record.PartialDay;
+	Run.Clock->CurrentDungeonId = Record.CurrentDungeonId;
+	Run.Clock->Timers = Record.DungeonTimers;
+	Run.Dungeons = Record.Dungeons;
+	Run.OwedDays = Record.DaysOwed;
+
+	// THE SCHEDULER. Its mode and rung came through `Begin`.
+	Run.Surges->SurgeIndex = Record.SurgeIndex;
+	Run.Surges->SurgesFired = Record.SurgesFired;
+	Run.Surges->NextSurgeDay = Record.NextSurgeDay;
+	Run.Surges->LastSurgeDay = Record.LastSurgeDay;
+
+	// THE STREAMS, FROM WHERE EACH HAD GOT TO, and the Corrupted Stalker's seed.
+	Run.Stream.Initialize(Record.RandomStreamSeed);
+	Run.CataclysmStream.Initialize(Record.CataclysmStreamSeed);
+	Run.ModifierStream.Initialize(Record.ModifierStreamSeed);
+	Run.CorruptedStalkerSeed = Record.CorruptedStalkerSeed;
+
+	// WHAT THE PLAYER HAS ACHIEVED (#1374) AND WHAT THE RUN IS (#1471). The
+	// objectives by Cataclysm REPLACE the keys `Begin` drew from the seed of 0;
+	// they are not added into them. The tier came through `Begin`.
+	Run.QuestObjectives = Record.QuestObjectives;
+	Run.QuestObjectivesByCataclysm = Record.QuestObjectivesByCataclysm;
+	Run.BasicDungeonsCleared = Record.BasicDungeonsCleared;
+	Run.DungeonsCleared = Record.DungeonsCleared;
+	Run.DungeonsDetonated = Record.DungeonsDetonated;
+	Run.QuestHits = Record.QuestHits;
+	Run.SurgesFromEmptyBoard = Record.SurgesFromEmptyBoard;
+	Run.NextDungeonId = Record.NextDungeonId;
+	Run.LastHitDay = Record.LastHitDay;
+	Run.LastHitCityId = Record.LastHitCityId;
+	Run.bLastHitWasAQuestTimer = Record.bLastHitWasAQuestTimer;
+	Run.LastMoveDay = Record.LastMoveDay;
+	Run.LastMoveFromCityId = Record.LastMoveFromCityId;
+	Run.LastMoveToCityId = Record.LastMoveToCityId;
+	Run.ActiveCataclysms = Record.ActiveCataclysms;
+
+	OutWhy.Reset();
+	return true;
 }

@@ -1370,9 +1370,10 @@ public:
 	 * WRITTEN BY `RecordSurge` AND BY NOTHING ELSE, so it moves on exactly the
 	 * days `NextSurgeDay` and `SurgesFired` move.
 	 *
-	 * IT IS NOT WRITTEN TO THE SAVE. `UCataclysmRunSave` holds five surge
-	 * fields and this is not one of them, so a restored run would measure the
-	 * interval from day 0.
+	 * WRITTEN TO THE SAVE since issue #753's first step, as
+	 * `UCataclysmRunSave::LastSurgeDay`, and put back by
+	 * `FCataclysmSaveApply::RunInto`. A file written before then holds 0 here,
+	 * and a run restored from it measures the interval from day 0.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 LastSurgeDay = 0;

@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A run record can be put back into a run, which then advances exactly as the run it was saved from (#753, first step)
+
+**Affects:** `FCataclysmSaveApply::RunInto` in `game/Source/Cataclysm/Save/CataclysmSaveApply.h` and `.cpp` (new);
+four `SaveGame` fields on `UCataclysmRunSave` in `CataclysmSaveRecords.h`, and its comments; four lines in
+`FCataclysmSaveGather::SurgeScheduleFrom` (`CataclysmSaveGather.cpp`); the comment on
+`UCataclysmSurgeScheduler::LastSurgeDay` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`) and three in
+`CataclysmEmpireRun.h` that said nothing loads a run back; the run fixture `game/Tests/SaveFixtures/Run_v1.json`; a new
+test file `game/Source/Cataclysm/Tests/CataclysmSaveRunRestoreTests.cpp`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w95 below passed every registered figure, and all three proofs were PROVED, each first
+  differing on day 0 as registered.** Window w94 before it stopped at the build, on a name clash in the new test file.
+- **THIS IS A FIRST STEP AND THE GAME STILL LOADS NOTHING.** `RunInto` exists and nothing in the game calls it.
+  `ACataclysmGameMode::StartPlay` still begins a new run with two new identifiers. **Not covered, each needing the
+  project owner's decisions:** choosing which run and character to load at start-up (a new-game flow, a continue
+  flow, and the character select screen, #49); the character record, including treating a character restored at no
+  health as dead and putting back passive points paid for by gear without recomputing them; and the floor record.
+- **A FILE WRITTEN BEFORE THIS CHANGE CANNOT BE RESTORED EXACTLY.** It holds 0 for the four new fields, so a run
+  restored from it measures its next empty-board surge from day 0 and draws its two streams from 0. What those fields
+  hold was never written, so nothing can recover it.
+- **`Begin` TOUCHES NOTHING OUTSIDE THE RUN**, read on `development` before using it in `RunInto`: it creates the run's
+  map, clock and scheduler with `NewObject` and the run as their owner, calls `UCataclysmEmpireMap::Build`,
+  `UCataclysmCityUpgradeRules::SlotsFor`, and `UCataclysmRoster::ActiveFor`, `ActiveCountFor`, `OrderFor`, `All` and
+  `MixedSeed`, and sets the run's fields. A search of those bodies and of `Begin`'s for `UE_LOG`, `Broadcast`, `GEngine`
+  and `Subsystem` finds none.
+
+### What it was
+
+The game writes a run record and nothing reads one. #1374 and #1471 put the player's progress, the tier and the
+Cataclysms into the record; nothing put a record back into a run. Read on `development` for this step, the record
+also lacked four values a restored run needs, each made from the seed the run began with, which nothing keeps:
+
+| Value | What reads it |
+|---|---|
+| `UCataclysmSurgeScheduler::LastSurgeDay` | the empty-board and city-fall surges, which measure from it; its own comment said "IT IS NOT WRITTEN TO THE SAVE" |
+| where `UCataclysmEmpireRun::CataclysmStream` had got to | the Cataclysm each city of a wave is given |
+| where `UCataclysmEmpireRun::ModifierStream` had got to | each modifier a new dungeon draws |
+| `UCataclysmEmpireRun::CorruptedStalkerSeed` | the Corrupted Stalker |
+
+### The ruling, 2026-10-29 (the coordinating session, from the code)
+
+Save the four, the fourth (`CorruptedStalkerSeed`) added to the three first named because it is drawn the same way.
+Restore the whole run and compare the whole run, the streams and the scheduler included, because the claim is that a
+restored run IS the run it was saved from. `NextDungeonId` and `QuestObjectivesByCataclysm` are among the fourteen
+progress fields (#1374) and are restored and compared; the second REPLACES the keys `Begin` draws from the seed of 0.
+
+### The change
+
+`RunInto(Record, Run, OutWhy)`:
+
+1. **Refuses, changing nothing**, if the record does not hold the 25 cities at their own ids, or if its dungeons and
+   timers disagree (`UCataclysmEmpireRun::DungeonsAgreeWithTimers`, the writer's own check).
+2. Fills the modifier pool with `UCataclysmDungeonModifierTable::LoadPool()`, as
+   `UCataclysmGameInstance::BeginEmpireRun` does.
+3. Calls `Begin(0, SurgeMode, SurgeLethalityRung, DifficultyTier)`, which builds the map, the clock and the scheduler.
+4. Writes each city's saved fields onto the rebuilt map by id; `Build` supplies what is not saved (names, rings, lanes,
+   the central city), as the record's own comment prescribes.
+5. The clock, the dungeons and the days owed; the scheduler's index, count, next and last surge day; the three streams
+   with `Initialize` from their saved positions, and the Corrupted Stalker's seed; the fourteen progress fields and the
+   Cataclysm list.
+
+The four new fields are gathered in `SurgeScheduleFrom` beside `RandomStreamSeed`. **No schema version bump**, for the
+reason `UCataclysmRunSave::PartialDay`'s comment quotes from `docs/Save_System_Design.md` section 5. The fixture holds a
+non-default value for each.
+
+### How it is checked
+
+`Cataclysm.SaveApply.ARestoredRunAdvancesExactlyAsTheRunItWasSavedFrom`: a run begun with seed 4242, mode Both, rung 2,
+tier 4 and its modifier pool, played 60 days (set-up: a surge has fired and left its day, a dungeon carries
+modifiers, the Cataclysm stream has moved), is saved through every gather function, written to JSON, read back, and
+put into a new run. The two advance 200 days side by side, compared on day 0 before either moves and after each day:
+**the internal values** (the clock, the timers, the days owed, the scheduler, the three streams' positions, the
+Corrupted Stalker's seed, the next dungeon number, the tallies, the last hit and move, the tier, the list, the whole
+objectives map with its keys, and every city's saved fields) and **the visible part** (`Map->Render()` and every
+dungeon's id, city, floors, sub-type, Cataclysm and modifiers). Neither differs on any day. **CONTROL:** a second run
+begun and played the same way agrees with the live run on both on every day, so the run reads nothing outside its seed
+and a restored run that differed would be the restore's fault. It prints a line beginning "RUN RESTORE", with the
+first differing day of each kind.
+
+`Cataclysm.SaveApply.ARunRecordThatCannotBeRestoredChangesNothing`: a record with one timer taken away is refused with
+a reason, and the run handed over is unchanged. **CONTROL:** the same record whole is accepted. It prints a line
+beginning "RUN REFUSAL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4368 / 0: `development`'s 4366, measured by window w93 on the tests `02561d870` holds (since then only a header comment in `CataclysmSurge.h` touched C++, and `development`'s Unreal run at `17366a34d` succeeded), + 2 |
+| Python | of record, with JUnit, and ruff |
+| The "RUN RESTORE" and "RUN REFUSAL" lines | quoted as printed |
+| P1, `RunInto` does not restore `NextSurgeDay` | the first test fails on "agrees ... on every internal value", first differing on **day 0**; the CONTROL holds; whether and when the visible part differs is not predicted |
+| P2, `SurgeScheduleFrom` does not gather `LastSurgeDay` | the same assertion, first differing on **day 0**; the CONTROL holds; the visible part not predicted |
+| P3, `SurgeScheduleFrom` does not gather `ModifierStreamSeed` | the same assertion, first differing on **day 0**; the CONTROL holds; the visible part not predicted |
+
+### Run
+
+**Window w94 (lock `dungeon-w94`, `feat/a-run-record-can-be-put-back-into-a-run-1` at `e1e18f156`, on `a41b79991`,
+2026-10-29) STOPPED at the build. Nothing after it ran.** `development`'s CI run at `a41b79991` and its last Unreal run,
+at `17366a34d`, succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull
+request was open, and free memory read 10,830 MB immediately before. The lock was released before anything was written
+here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Failed - 73 actions, 63 files compiled`: 13 errors, all in `CataclysmSaveRunRestoreTests.cpp`, beginning "error C2872: 'Internal': ambiguous symbol" and "error C2882: 'Internal': illegal use of namespace identifier in expression" |
+
+**THE FAULT WAS THE TEST FILE'S.** Its helper function `Internal` has the name of a namespace the engine declares, so
+every call was ambiguous, and the format-string error (C7595) followed from it. The two helpers are now
+`InternalValues` and `VisibleValues`. No other file failed to compile; nothing in `RunInto` or the save changed.
+
+The next window is registered as above.
+
+**Window w95 (lock `dungeon-w95`, `feat/a-run-record-can-be-put-back-into-a-run-1` at `8768f9bbe`, on `a41b79991`,
+2026-10-29) passed.** `development`'s CI run at `a41b79991` and its last Unreal run, at `17366a34d`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,597 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.26.cpp` (w94's failed build had compiled the rest of the change) |
+| The restore test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The refusal test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN RESTORE" line | quoted as printed | "after 60 days played, over 200 days compared the restored run first differs on day -1 in its internal values and on day -1 in what is visible; the twin run on day -1 (-1 is never); 4 surges fired, last on day 241; 15 dungeons" |
+| The "RUN REFUSAL" line | quoted as printed | "a record with 15 dungeons and 14 timers was refused ("15 dungeons stand and 14 timers count down"); the run handed over is unchanged; the same record whole was accepted" |
+| Whole Unreal suite | 4368 / 0 | `4368 tests performed, 4368 succeeded, 0 failed`; declared 4368, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,085 |
+| Python (JUnit) | of record | 7107 tests, 0 failures, 0 errors, 8 skipped ("7099 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, `RunInto` does not restore `NextSurgeDay` | fails on the internal values, first on day 0; the CONTROL holds | failed first on day 0 ("surge 1 1 91.0000 1" live against "surge 1 1 0.0000 1" restored); the CONTROL held; the visible part first differed on day 1, also failing "and on everything visible", which was not predicted either way; restored passed. **PROVED** |
+| P2, `LastSurgeDay` not gathered | the same, first on day 0 | failed first on day 0 (the last surge day 1 live against 0 restored); the CONTROL held; the visible part never differed in the 200 days; restored passed. **PROVED** |
+| P3, `ModifierStreamSeed` not gathered | the same, first on day 0 | failed first on day 0 (the modifier stream's position); the CONTROL held; the visible part first differed on day 31, also failing "and on everything visible", not predicted either way; restored passed. **PROVED** |
+
+**WHAT THE PROOFS SHOW BEYOND THEIR REGISTRATION.** Each missing value is a real difference in the run, and only two of
+the three became visible within 200 days: a lost `NextSurgeDay` on day 1, a lost modifier stream position on day 31,
+and a lost `LastSurgeDay` not at all in this run, which surged on day 1 and so had a last surge day of 1. That is why
+the comparison includes the internal values: a test of the visible part alone would have passed P2.
+
+---
+
 ## 2026-10-29 — The Last Stand figures on record are re-measured, reached in 1.9% of campaigns not 45.9%, and the owner accepts that balance, superseding the near-fatal ruling (#2615)
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (the measured Last Stand paragraph, the two paragraphs on how firmly it is

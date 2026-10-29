@@ -542,7 +542,7 @@ public:
 	 *
 	 * **SAVED, WITH `ActiveCataclysms`**, by `FCataclysmSaveGather::IdentityFrom`,
 	 * since issue [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
-	 * Nothing loads a run back yet
+	 * `FCataclysmSaveApply::RunInto` puts it back; nothing in the game calls it yet
 	 * ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -696,7 +696,7 @@ public:
 	 *
 	 * SAVED, with `QuestObjectives`, by `FCataclysmSaveGather::ProgressFrom`,
 	 * since issue [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
-	 * Nothing loads a run back yet (#753).
+	 * `FCataclysmSaveApply::RunInto` puts it back; nothing in the game calls it yet (#753).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
@@ -761,7 +761,8 @@ public:
 	 * `UCataclysmEmpireMapLayout::LastHitLine` turns the three fields into the
 	 * line, and turns `LastMoveDay` and the two beside it into a line about a
 	 * fall's move instead when that is as recent. ALL SIX ARE SAVED since issue
-	 * #1374, so a run loaded back would show its line; nothing loads one yet (#753).
+	 * #1374, and `FCataclysmSaveApply::RunInto` puts them back, so a restored run
+	 * shows its line; nothing in the game calls it yet (#753).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 LastHitDay = 0;
