@@ -10,7 +10,7 @@ once in `Tick`), one new test in `CataclysmDungeonGameModeTests.cpp`, and a set-
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w79 below passed every registered figure, and both proofs were PROVED.**
 - **READ, NOT RE-MEASURED.** That the engine runs the first `Tick` in the frame `StartPlay` ran in rests on the
   owner's session log of 2026-09-10, as #1554 states; the test reproduces it by not moving the frame counter.
 
@@ -61,7 +61,22 @@ can happen is the pass-over repeating within one frame, and P2 breaks exactly th
 
 ### Run
 
-Not run yet.
+**Window w79 (lock `dungeon-w79`, `fix/a-hordes-first-frame-puts-down-one-share` at `8f05ae562`, on `1e78c2bce`,
+2026-10-28) passed.** The lock was taken at 19:50 on a free-memory reading immediately before it of 11,457 MB, after
+`development`'s CI run at `1e78c2bce` finished with success at 19:49; that merge, Python only, started no Unreal run, the
+last on `development` (`fe3b03447`) having succeeded. None in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4352 / 0 | `4352 tests performed, 4352 succeeded, 0 failed`; declared 4352, gap 0, the frames test with its frames made real among them |
+| Memory | quoted | `final_used_virtual_mb=7763`, peak 8,081 |
+| Python (JUnit) | of record | 7034 tests, 0 failures, 0 errors, 8 skipped ("7026 passed, 8 skipped"); ruff `All checks passed!` |
+| The "FIRST FRAME" lines | quoted as printed | "the first wave put 4 down in the frame play started and 8 by the next"; "the second wave put 4 down in the frame it began and 8 by the next" |
+| P1, `Tick`'s pass-over never taken | the new test fails: 8 in the frame play starts in | "1 tests performed, 0 succeeded, 1 failed: AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare", printing "the first wave put 8 down in the frame play started and 12 by the next"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the number not forgotten after the pass | `AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena` fails | "1 tests performed, 0 succeeded, 1 failed: AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena", on "Expected 'the first wave finished arriving' to be true"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
