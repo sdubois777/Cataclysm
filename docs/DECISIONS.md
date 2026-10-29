@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Three analysis scripts run the shipped cadence and rules, and the throughput script measures the share cleared before a hit (#2396)
+
+**Affects:** `sim/analyse_surge_cadence.py`, `sim/analyse_board_empty_surge.py`, `sim/analyse_tier_throughput.py` (one
+commit each: pins removed, the "holds the old rules" sentences removed, figures re-measured or marked);
+`sim/tests/test_analysis_scripts.py` (their checks, moved together; one test removed, one rewritten, one added);
+`sim/cataclysm_sim/config.py` (the paragraph saying the three hold 120 and 4); this file. Python and documents only.
+
+### SAID FIRST
+
+- **THE ISSUE'S TARGET WAS STALE.** Issue #2396, written on 2026-10-13, asked for the scripts at "5 dungeons every 90
+  days". Since 2026-10-16 `TuningConfig` ships an opening wave of 12 and then 8 dungeons every 90 days. As confirmed by
+  the coordinating session, each script now reads its cadence from `TuningConfig` with no pin, so it follows any later
+  change; `analyse_surge_cadence.py`'s size axis carries 5 (the design document's report setting) and the shipped size.
+- **THE THROUGHPUT FRAMING IS RETIRED, AND ITS OLD HEADLINE DOES NOT HOLD IN THE SHIPPED WORLD.** At tier 4 with no tree
+  the earned Cataclysm dungeon opens in **30.2%** of campaigns under the shipped rules, where the script's recorded
+  finding is 0.0%. Nothing here says why; the old investigation is kept and marked as not re-measured.
+- **A FINDING FOR ISSUE #1406**: under the shipped cadence the board never emptied for the "Explorer whole" player at
+  tier 1 or tier 4 in seeds 0 to 4 -- zero board-empty surges -- while the no-tree and Architect players at tier 1 fired
+  1 to 12 each. `analyse_board_empty_surge.py`'s docstring calls the stronger player "the case the rule was asked for".
+  Measured on 2026-10-29 at the branch's second commit, five campaigns a world; not taken further.
+- **THE FIRST TWO COMMITS FAIL TWO TESTS ON PURPOSE.** `test_the_two_surge_scripts_measure_the_same_world` and
+  `test_the_throughput_script_measures_the_cadence_scripts_world` hold the three scripts' base settings equal, so they
+  fail until all three have moved, as the issue says they must move together. They pass at the branch head.
+- **FOUR SCRIPTS ARE STILL UNCHECKED**, as ruled out of scope: `sim/analyse_explorer_rate.py`,
+  `sim/analyse_explorer_shape.py`, `sim/analyse_quest_move_chance.py` and `sim/analyse_lethality_modes.py` set their
+  own surge numbers, and whether they still describe the shipped model has not been looked at. Their tests pass and
+  their docstring figures were measured under the earlier rules.
+
+### THE RULING
+
+The coordinating session, 2026-10-29, from the design and the shipped rules and not an owner question: for
+`analyse_tier_throughput.py`, **retire the "walk-days arriving per day against 1.0" pass/fail framing** -- it was
+written for a model where a dungeon stays until cleared, and under the shipped rules an ordinary dungeon hits once and
+leaves, so exceeding 1.0 no longer means the empire falls -- keep the arrival rate as a printed, descriptive figure per
+tier, and make the script's measure the share of arriving dungeons the player clears before they hit their city, per
+tier, with the shipped rules; remove the test's framing assertion and say why in the docstring (the 2026-10-13 rule,
+#2396). The other two as the issue lists: a surge-size axis that includes 5, a minimum-gap axis that fits the shipped
+interval, a control world where a board does empty, figures re-measured or marked. Take each script's pins out, remove
+its "holds the old rules" sentence, move the base-settings copies in the tests together, and correct `config.py`.
+
+### WHAT CHANGED, SCRIPT BY SCRIPT
+
+| Script | Pins removed | Axes | Figures |
+| :-- | :-- | :-- | :-- |
+| `analyse_surge_cadence.py` | `SHIPPED_COUNT = 4`, `SHIPPED_INTERVAL = 120.0`, the three held rules | sizes 5, the shipped size, 10, 14, 20 (4 left); intervals 30, 60, the shipped interval, 120; the smoke grid keeps the shipped cadence inside it | the hand-written "shipped knob of 4" lines computed; issue #1090's figures and the five core-hours marked as the old world |
+| `analyse_board_empty_surge.py` | the same | minimum gaps 10, 15, 25, 40, 60 and the shipped interval (120 left, because it now sits above the interval and moves the clock) | issue #1406's and #1392's figures, the 24.04 cities and 33 ms a campaign marked as the old world |
+| `analyse_tier_throughput.py` | the same | section 3 runs tiers 1, 2, 4 and 8; section 4's surge levers halve and double what ships, and its dungeon row is the old rule as a counterfactual | the new measure re-measured (below); the investigation of #1392 marked as not re-measured |
+
+The control world in `analyse_board_empty_surge.py` -- no tree, tier 1, seed 0, the case
+`test_the_control_row_really_turns_the_trigger_off` reads -- fires the board-empty surge 3 times, so it still empties.
+
+### THE NEW MEASURE, MEASURED
+
+On 2026-10-29 at `a41b79991` (the throughput script's code unchanged since), 400 campaigns a tier, seeds 0 to 399, no
+empire tree, shipped cadence and rules. Of every dungeon a surge landed, its first event:
+
+| Tier | Arriving per campaign | Cleared first | Hit first | Neither | Cities lost | Won | Earned opened |
+| --: | --: | --: | --: | --: | --: | --: | --: |
+| 1 | 86.0 | 14.6% | 70.0% | 15.3% | 4.30 | 44.2% | 97.2% |
+| 2 | 125.9 | 8.3% | 70.8% | 21.0% | 7.33 | 35.0% | 88.8% |
+| 4 | 301.5 | 5.0% | 61.6% | 33.4% | 20.52 | 5.8% | 30.2% |
+| 8 | 393.5 | 2.6% | 49.4% | 48.0% | 24.05 | 0.0% | 0.0% |
+
+"Hit" is read off the engine's own tallies: `resolved` for an ordinary dungeon, `quest_hits` for a Quest dungeon.
+"Neither" is a dungeon whose city fell under it or that was standing when the run ended. The arrival rate, still printed:
+1.90 walk-days a day at tier 1 and 5.21 at tier 4.
+
+### THE TESTS
+
+- `test_the_arrival_rate_is_the_engines_own_arithmetic`: the framing's assertions (tier 1 above 1.0, the "cannot be
+  kept clear" sentence) are removed; it recomputes the rate from the engine at wave index 1 and checks it rises with the
+  tier and that the script prints no verdict.
+- `test_the_arrival_rate_section_survives_every_tier_being_safe`: removed with the branch it tested.
+- `test_every_arrival_has_one_first_event` (new): over four tier 1 campaigns, every arrival's event is one of the three,
+  no more clears than the engine counted, no more hits than its `resolved` and `quest_hits`, both events occur, and the
+  three shares sum to 100.
+- The cadence and board-empty settings checks read the shipped size from the config instead of pinning 4.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_analysis_scripts.py`. The break, in `analyse_tier_throughput._Ledger._finish_current`:
+`self.first_event[d.did] = "cleared"` becomes `self.first_event[d.did] = "hit"` (once in the file). Predicted
+named_failures, exactly one:
+
+- `sim/tests/test_analysis_scripts.py::test_every_arrival_has_one_first_event`
+
+Run 2026-10-29 in a git-archive copy of `813c6ccfb`, the commit that registered it. Printed: "PROVED: 1 failed, 178
+passed in 52.98s | restored: 179 passed in 52.69s". named_failures, exactly the one registered: with every clear
+filed as a hit, the hits exceeded what the engine counted ("assert 56 <= (42 + 13)").
+
+### EVIDENCE
+
+Python of record at `84f93fb2b`, on `development` `a41b79991`: "7099 passed, 8 skipped"; JUnit tests 7107, failures 0,
+errors 0, skipped 8 -- the base's 7107, with one test removed and one added. ruff: "All checks passed!" A regenerate run
+left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
+### NO GENRE SOURCE
+
+None. This brings three measurement scripts into line with the model they measure.
+
+---
+
 ## 2026-10-29 — The Siege dose script runs the rules the model ships, and reproduces the design document's Last Stand figures (#2620)
 
 **Affects:** `sim/analyse_siege_dose.py` (`base_config` no longer holds three rules at their September values; every
