@@ -7,7 +7,8 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `sim/cataclysm_sim/engine.py` (`Simulation._fall` counts what it absorbs and passes the depth to
 `_make_dungeon` through a new `making_floors` attribute); `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py`
 (new, seven tests); `tools/tests/test_surge_port.py` (the test that recorded the model rolling the depth replaced by
-one comparing the two rules); this file. **It changes how the simulation plays.**
+one comparing the two rules); `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` (one comment, corrected); this
+file. **It changes how the simulation plays.**
 
 ### SAID FIRST
 
@@ -99,6 +100,21 @@ Predicted named_failures: **these six certainly**, because each expects a depth 
 **And up to fifteen more, not predicted individually**: the three `test_a_quiet_city_is_the_designs_minimum` cases and
 the twelve `[0-...]`, `[1-...]` and `[3-...]` cases expect the minimum, and each fails unless that board's roll lands on
 the minimum, a chance of 1 in 16 to 1 in 41 by size. The control and the generator-state test pass with the break in.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `d38b6b7e7`, the commit that registered it. Printed: "PROVED: 21 failed, 62
+passed in 0.62s | restored: 83 passed in 0.20s". named_failures: the six predicted certainly, and all fifteen of the
+others the registration allowed for -- no board's roll landed on its minimum. The control and the generator-state test
+passed with the break in.
+
+### THE GAME'S COMMENT, CORRECTED, AND HOW THAT IS EVIDENCED
+
+The comment on `MakeFallenCityDungeon` in `CataclysmSurge.h` said "THE MODEL ROLLS THE RANGE INSTEAD, AND IS WRONG ...
+That is issue #1341 ... `tools/tests/test_surge_port.py` holds the divergence deliberately". After this change every
+part of that is false, so it now says the model follows the same rule since #1341 and that the test compares the two.
+**It is a comment and changes no behaviour.** The coordinating session ruled it into this branch on 2026-10-29. GitHub's
+"Game compiles" job is the evidence that the header still parses and compiles; no automation window was run for it.
 
 ### NO GENRE SOURCE
 

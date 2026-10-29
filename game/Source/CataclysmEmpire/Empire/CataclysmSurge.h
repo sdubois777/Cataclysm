@@ -1289,12 +1289,12 @@ public:
 	 * SO THE SPEC'S DEEP END IS UNUSED FOR THIS KIND, and deliberately: a
 	 * besieged city can exceed it and a quiet one never reaches the shallow end.
 	 *
-	 * THE MODEL ROLLS THE RANGE INSTEAD, AND IS WRONG. `Simulation._make_dungeon`
-	 * draws uniformly from the spec for every kind, so how heavily a city was
-	 * besieged changes nothing about the dungeon it leaves. That is issue #1341,
-	 * and it is the model's defect rather than this one's -- do not "correct"
-	 * this to match it. `tools/tests/test_surge_port.py` holds the divergence
-	 * deliberately so that the two disagreeing does not read as drift.
+	 * THE MODEL FOLLOWS THE SAME RULE, since issue #1341. `Simulation._fall`
+	 * counts the ordinary dungeons it absorbs and gives the Fallen City the
+	 * larger of that and the spec's shallow end, as this does; until then it
+	 * rolled the spec's whole range. `tools/tests/test_surge_port.py` drives
+	 * the model's fall and compares its depth with the two `FMath::Max` lines
+	 * here.
 	 *
 	 * IT TAKES NOTHING FROM THE CITY EVER AGAIN. The city has already fallen and
 	 * there is nothing left to bite.
