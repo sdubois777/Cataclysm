@@ -81,6 +81,13 @@ Run 2026-10-29 in a git-archive copy of `4dee5a17c`, the commit that registered 
   with "1.22 times as many Outpost dungeons walk exactly 14 days as walk 13 or 15."
 - P2: "PROVED: 1 failed, 18 passed in 6.77s | restored: 19 passed in 6.55s". named_failures, exactly the one registered.
 
+### EVIDENCE
+
+The two proofs ran at commit ids from before the branch was moved onto `5df1b86c6`; the move left both files' changes
+the same (per-file zero-context patch ids compared). Python of record at `85461c86c`, on `development` `5df1b86c6`:
+"7051 passed, 8 skipped"; JUnit tests 7059, failures 0, errors 0, skipped 8 (the base's 7058 and the one control
+test). ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own test reads its own simulation.
