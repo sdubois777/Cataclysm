@@ -2,6 +2,247 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — Every scoped enchantment action row's required tags reach its action, and a test over the real table says so (#2577)
+
+**Affects:** one new Unreal test, `Cataclysm.ScopedEnchantmentActions.EveryScopedActionRowKeepsItsRequiredTags`, appended to
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`; this file. No game code, no workbook, no CSV, no
+asset. **Closes [#2577](https://github.com/sdubois777/Cataclysm/issues/2577)**, the companion of
+[#1659](https://github.com/sdubois777/Cataclysm/issues/1659), whose test
+`Cataclysm.ScopedEnchantmentRows.EveryScopedStatRowKeepsItsRequiredTags` covers the stat rows.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN WHEN THIS WAS WRITTEN.** The test and its two proofs are registered below for the
+  enchantment session's window.
+- **NOTHING CHANGES IN PLAY.** A test only.
+- **THE TEST GOES THROUGH THE CONVERTER AND NOT THROUGH A CHARACTER.** It reads the actions
+  `UCataclysmItemModifiers::AccumulateEnchantmentsInto` builds when it is handed an actions array, and raises no event.
+  **NOT COVERED: `PoolActionAllowed`, the reader that refuses a scoped action in play, is not driven by this test**
+  (ruling 5). Driving `ActOnEvent` for all 33 rows would need, for each, its own event, its own skill tags, a target
+  and whatever its action acts on: a trap, a gadget, a held skill, a pool. That is 33 small worlds, and the tags are
+  lost or kept in the converter before any of them is reached.
+- **BUILT ON DEVELOPMENT `c88a87302`, WHERE #1659'S TEST HAS MERGED** ([#2579](https://github.com/sdubois777/Cataclysm/pull/2579)).
+  This test is appended after it, at the end of the file. It copies that test's shape and defines its own copy of the
+  tag reader inside its own body, so the two share no helper. The work was begun on `4e8d2b7f1` and carried onto
+  `c88a87302` before any commit; `CataclysmItem.cpp`, `EnchantmentEffects.csv` and every line cited below are the same
+  at both.
+- **TWO SCOPED ACTION ROWS ARE SET ROWS**, the Spellblade's Will 2-piece and 10-piece bonuses, which no single item
+  grants. For those the test wears the whole set, as #1659's does.
+
+### THE RULINGS, VERBATIM (the coordinating session, 2026-10-28)
+
+> #2577: design approved as written, with these rulings.
+> 1. Take the second proof as well. AG-G2: `Stack.RequiredTags.AddTag(` -> `FGameplayTagContainer().AddTag(`. Reason:
+>    the test makes a claim about the consecutive-hit stacks, and without a proof nothing shows that part can fail. Two
+>    proofs are within the budget of three, and they share one window. Predict each separately: AG-G1 fails only the
+>    action tags list, and AG-G2 fails only the consecutive stack tags list. Each passes when restored.
+> 2. Keep each proof's broken-run log on disk this time, or at least the whole failing message, so the "names every row"
+>    part can be measured rather than stated. If that needs a change to your proof script, make it in your scratchpad
+>    copy, not in tools/. Register what you will read: AG-G1's list names 33 rows, and AG-G2's names 2.
+> 3. The control must be a real unscoped action row, named in the brief before building. Assert it is found exactly
+>    once with empty RequiredTags.
+> 4. The prefix `Cataclysm.ScopedEnchantmentActions.` with the trailing dot, registered at 4348 + 1 = 4349, on the
+>    development I give you after #2579 merges. Branch test/every-scoped-enchantment-action-keeps-its-tags.
+> 5. Not driving ActOnEvent for all 33: agreed, for the reason you gave. State it as not covered in the DECISIONS entry,
+>    naming PoolActionAllowed as the reader the test does not exercise.
+
+Where each is in the code: ruling 1 is the two separate "lost" assertions (12 and 13 below); ruling 2's counts are
+the rows each of those messages names, joined with "; "; ruling 3 is assertions 1 to 5, before any scoped row is read; ruling 4 is the test's
+name; ruling 5 is the bullet above and "Not tested" below.
+
+### THE READING, AT `4e8d2b7f1` AND AGAIN AT `c88a87302`
+
+Every line below was read at `4e8d2b7f1`. Between that and `c88a87302` the diff touches only
+`CataclysmEnchantmentEffectTests.cpp` and this file, so every line cited is the same at both.
+
+- `UCataclysmItemModifiers::AccumulateEnchantmentsInto` is defined at `CataclysmItem.cpp` 1096 and declared at
+  `CataclysmItem.h` 755 (public, `Actions` defaulting to null). Its `GrantRows` lambda takes each granted row once.
+- **A counted row** (`Scale` = `consecutive_hits`, no `Action`) adds a stack, 1155 to 1200, only when `Actions` is not
+  null: `Stack.Event` is the row's `ActionEvent` (1160), `Stack.StackKey` is
+  `UCataclysmItemModifiers::OwnStackKeyFor(*Effect)` (1161), the enchantment and the stat joined by a colon (1020),
+  `Stack.bConsecutiveHits = true` (1182), and the row's tags are parsed, trimmed and added with
+  `Stack.RequiredTags.AddTag(` (1193, once in the file). The stack is added whatever the row's condition; the row then
+  goes on to `EnchantmentModifierFor` as a stat row.
+- **An action row** (non-empty `Action`) leaves by the branch `if (!Effect->Action.IsEmpty())` (1209). It builds ONE
+  `FCataclysmPoolAction` with `Event = FName(*Effect->ActionEvent)` (1214) and `Pool = FName(*Effect->Action)` (1215)
+  for every action kind: the kinds that follow (next-use charges, every-Nth, resets, placed stacks, kept stacks,
+  statuses and the rest, 1216 to 1643) set further fields and never change `Pool` or `Event`, and none adds a second
+  action. Its tags are parsed at 1645 to 1656 and added with `Action.RequiredTags.AddTag(` (1653, once in the file). A
+  row whose `Condition` the build does not know is dropped with a warning (1662 to 1675); a second condition is not
+  read on an action row. The action is added at 1677. Nothing the enchantment session's reading said is otherwise.
+- **What reads them in play:** `UCataclysmAbilitySystemComponent::PoolActionAllowed` (`CataclysmAbilitySystemComponent.cpp`
+  7196, declared protected at `CataclysmAbilitySystemComponent.h` 5352) refuses an action whose required tags the
+  event's tags do not all hold, and refuses a scoped action on an event with no tags. `ActOnEvent` calls it at 6211 and
+  6321, and the count of hits in a row runs after it, 6397 to 6406, so a hit outside the stack's scope neither counts
+  nor starts the count again.
+
+### THE MEASUREMENT
+
+`game/Data/EnchantmentEffects.csv` at `4e8d2b7f1` and at `c88a87302`, read by a script: 707 rows. **33 action rows
+carry `RequiredTags`, one each on 33 enchantments**: Type.Trap 8, Type.Melee 6, Type.Strike 5, Type.Deployable 3, Type.Spell 3, Slot.Ultimate 2,
+Type.Ranged 2, Type.AOE.PointBlank 1, Slot.Heavy 1, Type.Projectile 1, Keyword.Charge 1, the enchantment session's
+figures. 27 are benefits and 6 drawbacks; 31 are ordinary enchantments and 2 set rows
+(`Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at#1`, `trigger_held_skill`, and
+`Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a#1`, `trigger_held_spell`, both on `attack_use`); 2 carry a
+condition (`target_health_below`, `stationary_for_seconds`). **2 counted rows carry `RequiredTags`**, both `Type.Melee`,
+both on "Each consecutive melee hit on the same enemy..." (`#1` on `attack_damage`, `#2` on `spell_damage`, event
+`hit_dealt`); the two counted rows of the drawback "Each consecutive hit against the same enemy..." carry none. Every
+cell names a single tag, and no enchantment has two action rows on one action and one event.
+
+### THE CONTROL (ruling 3)
+
+`Positive_Blocking_an_attack_restores_3_6_of_your_maximu`, its one effect row `#1`: Action `health`, Action Event
+`block`, no required tag, no condition, an ordinary benefit and not a set row. It is the only row on `health` and
+`block`. Worn alone beside `Negative_Can_t_use_a_basic_attack`, which has no effect row, the actions array holds exactly
+one action on `health` and `block`, and that action's `RequiredTags` is empty. Neither break touches it: an unscoped row
+gives an empty container with or without the parse, which is why it shows that an empty container is a fault only for a
+row that names a tag.
+
+### JUDGEMENTS OF MY OWN, WITH THE OPTION NOT TAKEN
+
+- **An action is matched to its row by count on its pool and its event**, the action-row form of #1659's match on a
+  stat. For each row, the granted action rows with the same `Action` and `ActionEvent`, a condition the build knows,
+  and parsed tags equal to the row's, against the actions with that `Pool` and `Event` whose `RequiredTags` equal those
+  tags exactly (`FGameplayTagContainer::operator==`). Both counts are 1 for every row today. Not taken: asserting
+  exactly one action on the pool and event, which would fail spuriously the day a set holds two rows on one action and
+  one event; and matching on `TriggerKey`, which not every action kind keys the same way.
+- **A counted row is matched on its stack key**: exactly one action with `bConsecutiveHits` and
+  `StackKey == OwnStackKeyFor(row)`, carrying exactly the row's tags. The generator never lets two rows share an
+  enchantment and a stat, so there is no count to match. Not taken: matching any `bConsecutiveHits` action, which would
+  let the `#1` and `#2` stacks stand in for each other.
+- **The condition check reads `Condition` alone, and only for action rows**, because that is what the converter
+  reads: it drops an action row with an unknown condition and never reads a second, and it builds a counted row's stack
+  whatever the condition. Not taken: #1659's check of both conditions and the scale, which would list rows the
+  converter does not drop.
+- **A set's row is checked by wearing the whole set**, as #1659's test does. Not taken: passing the row as `ExtraRows`,
+  which is the random buff's door and not the worn one.
+- **A row naming a tag the build does not register is its own failure**, as in #1659's test.
+- **The failing rows are joined with "; "** in every list, so the rows a failure names can be counted by splitting the
+  message. No row name or tag contains a semicolon.
+- **The group is `Cataclysm.ScopedEnchantmentActions.`**, as ruled. A sweep of every quoted `Cataclysm.` name in
+  `game/Source` at `c88a87302` (5,017) found none beginning with it, with or without the dot; the control prefix
+  `Cataclysm.Enchantments.` found 366, and `Cataclysm.ScopedEnchantmentRows.` found #1659's 1, which the new prefix
+  does not select. With this test, 5,018 names and 1 each, with and without the dot.
+
+### NO GENRE SOURCE
+
+None. This is a test of the data's path into the game, not a mechanic.
+
+### WHAT WAS BUILT
+
+`Cataclysm.ScopedEnchantmentActions.EveryScopedActionRowKeepsItsRequiredTags`, appended at the end of
+`CataclysmEnchantmentEffectTests.cpp` and reusing its `LoadAll`, `FTables`, `Carrying`, `DrawbackWithNoEffect` and the
+real tables. It reads the control; gathers every row of `EnchantmentEffects.csv` with a non-empty `RequiredTags` and
+either an `Action` (an action row) or the `consecutive_hits` scale (a counted row), each kind sorted by row name; and
+for each row finds its enchantment in the table its name says, parses its tags as the generator writes them, checks an
+action row's condition is known, wears one `Head_Helm` carrying the enchantment on its own side at the default roll (a
+set row: the whole set), calls `AccumulateEnchantmentsInto` with an actions array, and compares as above.
+
+### THE TEST, EVERY ASSERTION IN ORDER
+
+Thirteen assertions when the set-up holds, the same number whatever the row count; `LoadAll`'s own checks come first,
+as in every test of the file. Assertions 1 to 3 are joined by `||` and return early together, 4 returns early alone, and
+6 and 7 return early together, so a broken set-up stops the test with fewer assertions rather than reading on.
+
+1. `control: the block row is a row of EnchantmentEffects.csv`.
+2. `control: its enchantment is a row of EnchantmentsPositive.csv`.
+3. `control: it moves health on a block, names no required tag and no condition, and is no set row` — so the control
+   stays a real unscoped action row if the data moves.
+4. `control: worn alone, exactly one action moves health on a block` — found exactly once (ruling 3).
+5. `control: and it carries no required tag` — empty (ruling 3).
+6. `the table holds scoped action rows: N` — N above 0, and printed (33 at `c88a87302`; not asserted exactly).
+7. `the table holds scoped consecutive-hit rows: N` — above 0, printed (2).
+8. `every scoped action or counted row's enchantment is a row of its own table: <rows>` — none.
+9. `every scoped action or counted row names registered tags: <rows>` — none.
+10. `every scoped action row's condition is known to this build: <rows>` — none.
+11. `every scoped set row's set can be worn whole: <rows>` — none.
+12. `every scoped action row's action carries exactly the row's required tags: <rows>` — none; each failing row is
+    named with its action, its event, the count and tags it wants and the tags the actions on that pool and event carry
+    (ruling 1's "action tags list").
+13. `every scoped consecutive-hit row's stack carries exactly the row's required tags: <rows>` — none; each failing row is
+    named with its stack key, the tags it wants and the stacks found (ruling 1's "consecutive stack tags list").
+
+An `AddInfo` line reports how many action and counted rows were read and how many were worn as a whole set (2).
+
+### NOT TESTED
+
+- **`PoolActionAllowed`, the reader that refuses a scoped action in play, is not driven by this test** (ruling 5), for
+  the reason in SAID FIRST. What a scoped action then does is covered row by row by the tests named under the proofs
+  below, and by no test over the whole table.
+- The count of hits in a row after `PoolActionAllowed` (6397 to 6406): covered for the one row by
+  `Cataclysm.Enchantments.TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8`, not here.
+- A roll other than 1. The tags do not read the roll.
+- The held random buff's door (`ExtraRows`), which reaches the same `GrantRows`.
+- The counted rows' stat modifiers, which are stat rows and #1659's.
+
+### GUARD PROOFS PROPOSED
+
+Two, with `prove_cpp_guard` and the prefix `Cataclysm.ScopedEnchantmentActions.` (1 test). Each anchor was counted in
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` by `Path.read_text(encoding="utf-8").count(...)` at `4e8d2b7f1` and again with this test in place on
+`c88a87302`: 1 each, and the new text 0. **Keep each broken run's whole log on disk** (ruling 2), so the rows each message names can be
+counted by splitting it on "; ".
+
+| | AG-G1, an action row's tags are not read | AG-G2, a counted row's tags are not read |
+|---|---|---|
+| File | `game/Source/Cataclysm/Items/CataclysmItem.cpp` | the same |
+| Old text | `Action.RequiredTags.AddTag(` (count 1) | `Stack.RequiredTags.AddTag(` (count 1) |
+| New text | `FGameplayTagContainer().AddTag(` | `FGameplayTagContainer().AddTag(` |
+| Compiles | `FGameplayTagContainer::AddTag(const FGameplayTag&)` is not reference-qualified, so it may be called on a temporary; the argument and the closing brackets are unchanged; `Action` is read on every later line | the same; `Stack` is read on the next line |
+| Predicted, broken | 1 test performed, 1 failed, on assertion 12 alone, which names **33 rows**, each "wants 1 action(s) carrying [<tag>], carries []"; assertions 1 to 11 and 13 pass | 1 test performed, 1 failed, on assertion 13 alone, which names **2 rows**, each "wants one stack carrying [Type.Melee], finds 1 carrying []"; 1 to 12 pass |
+| Predicted, restored | 1 test performed, 1 succeeded | the same |
+
+**Outside the prefix, by reading and not measured.** AG-G1: every test that wears a scoped action row and asserts a
+skill of another kind is refused. A script over the tests naming each of the 33 enchantments printed each one's
+assertion labels; those with a refusal of another kind of skill or blow are, in `CataclysmEnchantmentEffectTests.cpp`,
+`Cataclysm.Enchantments.` + `TheMeleeSkillsHitYouInsteadRowRollsForAMeleeSkillAndRecordsTheWholeHit`,
+`TheProjectilesExplodePrematurelyRowRollsForEveryProjectileUseTheBasicAttackIncluded`,
+`TheSpellsBackfireRowRollsForASpellAndRecordsHalfTheHit`,
+`TheStrikeSkillsMissRowRollsForAStrikeSkillAndNotForASpellOrABasicAttack`,
+`TheOwnPointBlankDamageRowTakesItsShareOfEveryPointBlankHitAndCannotKill`,
+`TheMeleeSkillsHitAllRowRollsThreeMetresForAMeleeSkillAndNotForABasicAttack`,
+`TheRangedKillResetRowRefundsTheKillingSkillsOwnSlot`,
+`SpellbladesWillTenPiecesRollToTriggerAHeldSpellOnAMeleeAttack`,
+`SpellbladesWillTwoPiecesTriggerAHeldSkillOnAMeleeAttackAndHalveMeleeDamage`,
+`TheSpellsCastASecondTimeRowRepeatsASpellUnderItsTopRollAndNothingElse`,
+`TheStrikeRandomDebuffRowReachesAStrikeSkillsHitAndNotAPlainBlow`, `TheStrikeArmourRowTakes6PercentPerHitUpTo6`,
+`TheEvadedRangedAttackRowHandsItsWearerAStrikeOnADodgeScopedToRanged` (which reads the action's tags directly),
+`TheHeavyAttackTwiceRowRepeatsAHeavyAttackOnlyAfterTwoSecondsStandingStill`,
+`TheMeleeAttacksTwiceRowRepeatsAMeleeBasicAttackAndAMeleeSkillUnderItsTopRoll`,
+`TheSpellsEchoRowRepeatsEverySpellAndNothingElse` and `TheUltimateTwiceRowRepeatsEveryUltimateAndNothingElse`: 17,
+not a closed list. The trap-layer tests and `TheGadgetArmorRowStripsArmorFromWhatAMachineHitsFor3Seconds` may also
+fail, and the set-bonus test files that read an action's `RequiredTags`
+(`CataclysmSetBonusReaperTenTests.cpp` and its siblings) were not read line by line. AG-G2:
+`Cataclysm.Enchantments.TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8`, whose blow with no skill on the second enemy
+would count once the stack is unscoped, so "so the fourth on the first enemy adds three times it" and the assertions
+after it would be expected to fail. None of these is under the proofs' prefix.
+
+### THE WINDOW'S RUN, t201w
+
+Window t201w, run 2026-10-28 under the lock as `enchant-t201w`, at `7b227d9c2` on development `c88a87302`. Free memory
+immediately before the lock, at 17:34:12, was 11,247 MB, against the floor of 10 GiB (10,240 MB). No new source file and
+no data, so no build-cache step and no asset rebuild. Every step exited 0:
+
+| Step | Result |
+|---|---|
+| The new test, alone | 1 of 1; the build compiled 1 file in 4 actions |
+| The whole Unreal suite | "4349 tests performed, 4349 succeeded, 0 failed"; 4349 declared, gap 0 |
+| Memory | `tests=4956 peak_used_virtual_mb=8088 final_used_virtual_mb=7790` |
+| Python of record | "7022 passed, 8 skipped"; JUnit 7030 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| AG-G1, an action row's required tags are not stored (prefix `Cataclysm.ScopedEnchantmentActions.`, 1 test) | PROVED: 1 of 1 assertion failed as registered, the action-tags list; 1 of 1 passed restored |
+| AG-G2, a consecutive-hit stack's required tags are not stored (same prefix) | PROVED: 1 of 1 assertion failed as registered, the stack-tags list; 1 of 1 passed restored |
+
+**THE ROW COUNTS, MEASURED FROM THE KEPT LOGS.** Each proof run's whole engine log was written to disk this time (ruled
+2026-10-28), so the failing messages were read in full rather than up to their first " [", which is where the earlier
+runner's extraction cut them. AG-G1's broken run had exactly one failing assertion, the action-tags list, naming **33**
+rows, all distinct and well formed, every one "carries []"; first `Negative_After_using_a_charge_skill_you_are_briefly_stunn#1`
+(`apply_status_to_self_seconds` on `skill_end`, wanting `Keyword.Charge`), last
+`Positive_Your_ultimate_ability_applies_its_effect_twice#1` (`repeat_skill` on `skill_use`, wanting `Slot.Ultimate`).
+AG-G2's broken run had exactly one failing assertion, the stack-tags list, naming **2** rows, both carrying [], the two
+rows of "Each consecutive melee hit on the same enemy..." (its `attack_damage` and `spell_damage` stacks). Both restored
+runs had no failing assertion. As registered: 33 and 2.
+
+---
+
 ## 2026-10-28 — Every scoped enchantment stat row's required tags reach its modifier, and a test over the real table says so (#1659)
 
 **Affects:** one new Unreal test, `Cataclysm.ScopedEnchantmentRows.EveryScopedStatRowKeepsItsRequiredTags`, appended to
