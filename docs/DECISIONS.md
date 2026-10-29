@@ -10,7 +10,7 @@ Fixes [#1470](https://github.com/sdubois777/Cataclysm/issues/1470).
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w83 below passed every registered figure, and both scripted runs came out as registered.**
 - **IT WAS WIDER THAN THE ISSUE NAMED.** #1470 named `Cataclysm.DifficultyTier`. `Cataclysm.CooldownResetRoll` has the
   same fault: `Cataclysm.Enchantments.*` and `Cataclysm.SkillAssignment.*` wrote it at code priority and pass only
   because they sort before `Cataclysm.Triggers.*`, which writes it at console priority. And the scan found 54 writes
@@ -66,7 +66,25 @@ default roll of -1, which rolls at random, so a run would pass or fail by chance
 
 ### Run
 
-Not run yet.
+**Window w83 (lock `dungeon-w83`, `test/console-variables-are-written-at-console-priority-1` at `3c68183fc`, on
+`a01f2b7f6`, 2026-10-29) passed.** The lock was taken at 02:58 on a free-memory reading immediately before it of
+11,255 MB, after both of `development`'s runs at `a01f2b7f6` succeeded, with none in progress or queued, the lock free,
+no build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`a01f2b7f6` met only the top of this file; `CataclysmPlayerClassStatsTests.cpp`, which #2592 also changed, merged
+without a conflict (patch ids before and after `2573652043`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4354 / 0 | `4354 tests performed, 4354 succeeded, 0 failed`; declared 4354, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7999`, peak 8,327 |
+| Python (JUnit) | 7037 | 7037 tests, 0 failures, 0 errors, 8 skipped ("7029 passed, 8 skipped"); ruff `All checks passed!` |
+| S1, renamed, at console priority | the prefix passes | with the edit in: "55 tests performed, 55 succeeded, 0 failed" |
+| S2, renamed, the old code-priority writes | the three named tests fail | with the edit in: "55 tests performed, 52 succeeded, 3 failed: TheResistancePenaltyReachesAPlayerAndNotAnEnemy, AnArmouredDefenderTakesMoreDamageAtAHigherTier, TheConsoleVariableBeatsTheGameMode" |
+
+Both runs used `prove_cpp_guard` for its build, run, restore and rebuild, so its summary words appear in the log ("NOT A
+PROOF" for S1, "PROVED" for S2); neither is a guard proof, for the reason above. Their restored halves ran the prefix
+without the renamed tests: "49 tests performed, 49 succeeded, 0 failed" both times.
 
 ---
 
