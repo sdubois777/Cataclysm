@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The tests command moves the previous automation log aside before it builds (#1533)
+
+**Affects:** `tools/unreal_build.py` (`move_aside_when_released`, `MOVED_ASIDE_PREFIX`, `MOVED_ASIDE_KEPT`, the
+retry loop `delete_when_released` had now shared as `_when_released`, and one call in `main`);
+`tools/tests/test_unreal_build.py` (an autouse fixture and three tests); this file. Python only: no game code, no data,
+no Unreal window, under the coordinating session's ruling for a change that moves neither the CSVs nor the assets.
+**Closes [#1533](https://github.com/sdubois777/Cataclysm/issues/1533).**
+
+### SAID FIRST
+
+- **NO FALSE PASS WAS POSSIBLE BEFORE THIS, AND THAT WAS CHECKED FIRST.** Read at `38e1c6c99`: `main` returns 1 on a
+  failed build before `run_automation_tests` is reached and prints no "Tests:" line; `run_automation_tests` deletes
+  the log before starting the editor and counts a missing log as a crash; `prove_cpp_guard` runs its tester only after
+  a successful build, and a failed restore build raises in `require_compiled` before the restored half's tests. So
+  every result the wrapper reports comes from a log its own run wrote.
+- **WHAT WAS WRONG IS A READER OF THE FILE.** After a failed build, `game/Saved/Logs/Cataclysm.log` was still the
+  previous run's complete log with nothing in it saying so. Window scripts that copy that file after a failed step
+  would have quoted an earlier run's failures in their stop report.
+- **IT ALSO CHANGES WHAT HAPPENS TO THE OWNER'S PLAYTEST LOG IN THE MAIN CHECKOUT: KEPT UNDER A NEW NAME INSTEAD OF
+  DELETED.** `run_automation_tests` deletes the log before the editor starts, which is what stopped the engine making
+  its own `Cataclysm-backup-*` copy, so every test run from the main checkout destroyed whatever the log held, a
+  playtest included. The tests command now renames it first, so that delete finds nothing on this path.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1533: approved as proposed." The move-aside goes before `build()` for the tests
+command only; keep the newest 3 files with that prefix and touch no other name; three tests with controls; a
+prove_guard proof with named_failures registered first; check every mention of `Cataclysm.log` in `CLAUDE.md` and
+`tools/`.
+
+### WHAT WAS BUILT
+
+- **`move_aside_when_released(path)`** renames an existing log to `Cataclysm-before-tests-<YYYY.MM.DD-HH.MM.SS>.log`
+  beside it (a `-2`, `-3` suffix when that name is taken), waiting while another process holds it as the delete
+  does (issue #2459), then deletes the oldest files OF THAT PREFIX beyond the newest 3, by modification time, which a
+  rename keeps. Engine backups and logs the owner renamed are never touched. A missing log returns None.
+- **The retry loop is shared**, `_when_released`, rather than copied: a rename is refused on a held file as a delete
+  is. `delete_when_released` calls it with the same wording as before.
+- **`main`** calls it for the `tests` command only, `--no-build` included, before the build, and prints where the log
+  went. `build` and `restore-proof` are unchanged, and so are `run_automation_tests` and `prove_cpp_guard`.
+
+### THE TESTS
+
+- **An autouse fixture** points `unreal_build.TEST_LOG` at a temporary file for every test in the file. Without it the
+  existing `test_the_tests_command_reports_a_refused_registration_without_claiming_a_crash` drives `main(["tests"])`
+  against the real path: the first run with the move in place renamed this worktree's real `Cataclysm.log`, which was
+  then put back.
+- **`test_a_failed_build_leaves_no_earlier_runs_log_to_read`**: CONTROL first, the `build` command with a failed build
+  leaves the log in place and moves nothing; then the `tests` command with the same failed build leaves no
+  `Cataclysm.log`, and the earlier contents are in the one moved-aside file.
+- **`test_the_tests_command_moves_the_log_before_the_run_reads_it`**: with a build that succeeds, the stubbed test run
+  sees no `Cataclysm.log`, and the old contents are in the moved-aside file.
+- **`test_only_the_newest_three_moved_aside_logs_are_kept_and_no_other_name`**: four older moved-aside files, an engine
+  backup and a renamed playsession log; one move leaves the newest three moved-aside files, and the CONTROL two other
+  names untouched; a missing log returns None.
+
+### EVERY MENTION OF `Cataclysm.log` IN `CLAUDE.md` AND `tools/`, CHECKED
+
+None is made false. `CLAUDE.md` about line 410 ("The results are in `game/Saved/Logs/Cataclysm.log`") stays true.
+`tools/unreal_build.py`'s module docstring (about 45), `TEST_LOG`, the result-line comment (about 134), the guard
+message (about 540), `delete_when_released`'s docstring and `run_automation_tests`'s docstring ("The log is deleted
+first") stay true: that function still deletes it. `tools/tests/test_unreal_build_held_log.py`'s docstring says the
+same and stays true. `tools/run_editor_python.py` (about 33 and 87) and `tools/tests/test_run_editor_python.py` (about
+213) are about that script's own log. One comment, `parse_test_log`'s note that `Cataclysm.log` "is overwritten at the
+next start" (about 972), was already loose before this change -- an editor started directly backs the old log up --
+and is not made less true by it; it is left as it is.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit, command `python -m pytest
+tools/tests/test_unreal_build.py`. The break: in `main`, `moved = move_aside_when_released(TEST_LOG)` becomes
+`moved = None`. Predicted named_failures, exactly two:
+
+- `tools/tests/test_unreal_build.py::test_a_failed_build_leaves_no_earlier_runs_log_to_read`
+- `tools/tests/test_unreal_build.py::test_the_tests_command_moves_the_log_before_the_run_reads_it`
+
+and the keep-three test passes, since it calls `move_aside_when_released` itself.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `f28ae7ff0`, the commit that registered it. Printed: "PROVED: 2 failed, 91
+passed in 4.53s | restored: 93 passed in 1.16s". named_failures, exactly the two registered:
+
+- `tools/tests/test_unreal_build.py::test_a_failed_build_leaves_no_earlier_runs_log_to_read`
+- `tools/tests/test_unreal_build.py::test_the_tests_command_moves_the_log_before_the_run_reads_it`
+
+The keep-three test passed with the break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `f28ae7ff0`: "7032 passed, 8 skipped"; JUnit tests 7040, failures 0, errors 0, skipped 8 (the base's
+7037 and the three new tests). ruff: "All checks passed!" The worktree's real `game/Saved/Logs/Cataclysm.log` was still
+in place after the whole suite.
+
+### NO GENRE SOURCE
+
+None. This is about the project's build wrapper.
+
+---
+
 ## 2026-10-29 — A vital pool keeps its base value inside the same plain bounds as its current value (#1096)
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and `.cpp` (a
