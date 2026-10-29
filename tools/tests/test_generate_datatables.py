@@ -1585,6 +1585,25 @@ class TestAPassiveNodeCanGrantSeveralStats:
         problems = gen.validate_passive_effects(tables, set())
         assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
+    def test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused(self):
+        """Issue #2582, the passive half of #2387. A flat row supplies its own
+        stat to the base check, so a flat node row on a misspelt name used to
+        pass and be written dead. THE CONTROLS pass: a flat row on a stat with an
+        attribute (`armor`) and on one with none (`leech_payout_rate`)."""
+        flat = {"Name": "Real_node#1", "Node": "Real_node", "Stat": "armor",
+                "ValueKind": "flat", "RequiredTags": ""}
+        for known in ("armor", "leech_payout_rate"):
+            tables = {"PassiveEffects": [dict(flat, Stat=known)],
+                      "PassiveNodes": [{"Name": "Real_node"}]}
+            assert gen.validate_passive_effects(tables, set()) == [], known
+
+        tables = {"PassiveEffects": [dict(flat, Stat="armour")],
+                  "PassiveNodes": [{"Name": "Real_node"}]}
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert ("Real_node#1: 'armour' is a flat row on a stat the game reads "
+                "nowhere") in problems[0]
+
 
 class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
     """ISSUE #1597. Two readings count the enemies standing near a character: the
