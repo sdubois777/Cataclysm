@@ -51,9 +51,28 @@ Contains, 1)`:
 If the subject warned, the message would occur twice against the one expected and the test fails. That is the
 direction the guard proof below measures.
 
-### NOT YET COMPILED OR RUN
+### THE RUN, 2026-10-29, AT 6c63a4c0f ON 15a030b4c
 
-Recorded below when the window has run.
+Registered before the run at 4354 + 1 = 4355, with proof D.
+
+| Step | Printed |
+| :-- | :-- |
+| The new test alone | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 33 actions, 28 files compiled" |
+| The whole Unreal suite | "4355 tests performed, 4355 succeeded, 0 failed"; "Declared: 4355 tests in the tree at 6c63a4c0f; 4355 performed, gap 0" |
+| Python of record | "7029 passed, 8 skipped"; JUnit tests 7037, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,425 MB. The suite's memory summary: peak used virtual 8,089 MB.
+
+### THE GUARD PROOF
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix the whole new test name, the run's whole log kept on disk. The break:
+`if (Modifier.Value < LessMultiplierFloor)` became `if (MoreValue < LessMultiplierFloor)`, the anchor counted once in
+`read_text`. Printed: "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed:
+AScaleThatCarriesALessMultiplierPastTheFloorDoesNotWarn | restored: 1 tests performed, 1 succeeded, 0 failed";
+named_failures as predicted; the file's hash the same after. The broken run's one failed assertion, which is the
+engine's wording for an expectation not met: "('Warning') level log message or higher matching 'clamped a Less
+multiplier' to occur 1 times with Contains match type, but it was found 2 time(s)."
 
 ### NO GENRE SOURCE
 
