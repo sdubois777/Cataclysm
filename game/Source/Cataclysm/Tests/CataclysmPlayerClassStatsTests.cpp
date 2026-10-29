@@ -254,16 +254,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// its sources on gear.
 		//
 		// A SEPARATE ENTRY RATHER THAN ONE MORE "gear alone", because that is
-		// not yet true and saying so would be a claim this project has been
-		// bitten by before. Nothing in `game/Data/` grants the stat at all: no
-		// affix in `Affixes.csv`, no implicit, no passive effect. The three
-		// sources the design intends are enchantments in
-		// `EnchantmentsPositive.csv` -- "Your skills ignore 10%-25% of enemy
-		// armor" and two others -- and no enchantment is modelled, which is
-		// issue #45. So every character sits at zero and the sheet's row says
-		// so.
+		// not true either. Four rows grant it, and no affix and no implicit
+		// does: three enchantment rows in `game/Data/EnchantmentEffects.csv`
+		// ("Your skills ignore 10%-25% of enemy armor", "Your traps ignore
+		// 20%-40% of enemy armor" and "Your first hit against each enemy
+		// ignores all armor") and one passive node, `Ravager_keystone_b_kA`.
+		// Until 2026-10-29 this said nothing granted it, which stopped being
+		// true when those rows were written.
 		{TEXT("armor_penetration"),
-		 TEXT("gear, once enchantments exist. Nothing grants it today")},
+		 TEXT("three enchantment rows and one passive node (Ravager_keystone_b_kA); no class line or affix")},
 
 		// Issues #50 and #897. The eight primary attributes are the points a
 		// particular character spent, which no class line can state: every

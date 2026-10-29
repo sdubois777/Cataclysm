@@ -48,11 +48,13 @@ class UTextBlock;
  *     is a sum over equipped items rather than a stat with a baseline -- but
  *     nothing in the game computes that sum at all, so there is no figure to
  *     show. Issue #1251.
- *   - **Its armour penetration row reads zero for every character.** Nothing in
- *     `game/Data/` grants the stat yet. The three enchantments that would grant
- *     it state ranges, and since 2026-09-11 an item keeps where inside a range
- *     it rolled (#45), but no effect row is written for those three yet. The
- *     row is shown anyway because the design lists it among the 46. Issue #1252.
+ *   - **Its armour penetration row shows one of the four rows that grant the
+ *     stat.** The row reads the attribute, which is worked out with no skill
+ *     tags and no condition holding. So "Your skills ignore 10%-25% of enemy
+ *     armor" shows, and the other three -- "Your traps ignore 20%-40% of enemy
+ *     armor" (scoped to traps), "Your first hit against each enemy ignores all
+ *     armor" (conditioned) and `Ravager_keystone_b_kA` (scoped and
+ *     conditioned) -- apply where a hit is priced and not here. Issue #1252.
  *   - **It does not show where a stat came from.** A player can read that they
  *     have 40% critical strike chance and not which piece of gear supplied it.
  *     `UCataclysmStatPipeline` knows; nothing asks it. Issue #1233 does not ask
