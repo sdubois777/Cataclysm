@@ -38,7 +38,7 @@ twenty are not all the same. **CONTROL:** seed 5678 rolls a different twenty. It
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Whole Unreal suite | 4356 / 0: `development` at `baa8c3cb7` (#2594) is 4355, and one test is added; the branch moved onto it as `fix/the-sandbox-rarity-roll-takes-a-seed-1` |
 | Python | of record, with JUnit, and ruff |
 | The "RARITY SEED" line | quoted as printed |
 | P1, the set seed ignored | the test fails on "and the twenty are not all the same": each mode's twenty draws are seeded by one creature at one clock reading, so all equal. The same-seed equality and the CONTROL are not predicted: each mode's sequence is then one rarity twenty times, and two such can match |
