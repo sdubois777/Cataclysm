@@ -25,8 +25,8 @@ Decisions made outside the Google Drive documents, newest first.
   has it.
 - **`experiments.py`'s `policy_spread` reads `ALL`, so the full report gains a row for the new policy.** No sweep was
   run for this change, and no figure the report prints for the other seven policies is touched by it.
-- **`random_pick`'s docstring says "Never crafts". It does craft**, when nothing safe is standing and the player can
-  craft (`policies.py`, `random_pick`). Not changed here.
+- **`random_pick`'s docstring said "Never crafts". It does craft**, when nothing safe is standing and the player can
+  craft (`policies.py`, `random_pick`). The docstring now says so, as the coordinating session asked; no code changed.
 
 ### THE RULING
 

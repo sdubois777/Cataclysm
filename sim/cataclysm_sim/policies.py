@@ -452,7 +452,8 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
 # ---------------------------------------------------------------------------
 
 def random_pick(sim, dungeons):
-    """Baseline incompetence. Never crafts."""
+    """Baseline incompetence. Picks a safe dungeon at random; crafts only when
+    nothing safe is standing and it has the materials."""
     safe = _safe(sim, dungeons)
     if not safe:
         return CRAFT if sim.can_craft() else None
