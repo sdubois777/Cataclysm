@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The Siege walk guard checks that the median day holds about what its neighbours hold, not where the 50% line falls (#1389)
+
+**Affects:** `sim/tests/test_the_siege_prose_in_policies_is_true.py` only (`MEDIAN_DAY_SPIKE_LIMIT` and `median_day_spike`,
+added; `test_the_distribution_really_is_flat_where_the_median_sits`, rewritten onto them; one control test, added; the
+module docstring's walk shares corrected);
+this file. Python tests and documents only; nothing the simulation does changes.
+
+### SAID FIRST
+
+- **THE GUARD WAS NOT CHECKING WHAT IT IS NAMED FOR.** It asserted that the share of Outpost dungeons walking in the
+  stated median or fewer days was between 44% and 58%. When the stated median is the true median, that share is at least
+  50% by definition and at most 50% plus what the median day itself holds. So it read where the 50% line fell inside one
+  day, not whether the distribution is flat. A change to campaign length moves that line by part of a day: issue
+  [#1357](https://github.com/sdubois777/Cataclysm/issues/1357) moved the share from 50.5% to 56.2% with the shape
+  unchanged.
+- **STILL TRUE BEFORE THIS CHANGE**, measured on 2026-10-29 at `6cbc60b13` with the guard's own 320 campaigns
+  (22,634 Outpost dungeons): 47.52% walk in 13 days or fewer and 55.92% in 14 or fewer, 2.08 points under the 58%
+  ceiling.
+- **THE LIMIT OF 2 IS A JUDGEMENT, NOT A DERIVATION.** Twice is where one day holds as many walks as its two
+  neighbours together. Today's ratio is 1.22.
+- **THE QUOTED 10,000-CAMPAIGN SHARES ARE STILL CHECKED AS TEXT**, by the same `says` call as before.
+- **THE FILE'S OWN DOCSTRING CARRIED A STALE FIGURE, CORRECTED HERE AS RULED.** It said "45% of Outpost dungeons walk in
+  12 days or fewer and 50% in 13 or fewer", from when the stated median was 13. It now gives the shares the file's own
+  320-campaign fixture measures on the policies of issue [#1388](https://github.com/sdubois777/Cataclysm/issues/1388),
+  which this change lands on: 40.37% at 12 days or fewer, 47.35% at 13 and 55.76% at 14, median 14. On the policies
+  before #1388 the same fixture gives 40.55%, 47.52% and 55.92%. The figures in the bullets above and in WHAT WAS BUILT
+  are the before-#1388 ones they were measured as.
+- **AND A SECOND ONE, IN THE COMMENT ABOVE `PILLAR_TOLERANCE_DAYS`, CORRECTED HERE AS RULED.** It said "200 campaigns
+  produce only about 230 dungeons there against 16,000 on an Outpost", describing the file's own sample when it ran 200
+  campaigns. The file runs 320. Measured on 2026-10-29 with the fixture on the merged #1388 policies (`5df1b86c6`), the
+  320 campaigns give 345 Pillar and 22,633 Outpost dungeons; the first 200 alone give 216 and 14,110. The comment now
+  states the 320-campaign counts. Its next sentence, "Ten blocks of 200 spread it over 120 to 126.5", is left as it
+  is: it describes the separate measurement that chose the four-day Pillar tolerance, not this file's sample.
+- **THE DOCSTRING SHARES WERE RE-MEASURED AFTER THE MOVE** onto `5df1b86c6` and are unchanged: 40.37%, 47.35% and 55.76%,
+  median 14, with a median-day ratio of 1.224.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1389: approved, after #1388, on branch
+test/the-siege-median-guard-checks-flatness-not-a-boundary", with the ratio check (the median day's share under twice
+the mean of its neighbours) labelled a judgement; the spiked and uniform controls; the proof on the comparison; and the
+`says` check kept.
+
+### WHAT WAS BUILT
+
+`median_day_spike(walk_days, day)` is the share of walks lasting exactly `day` days over the mean share lasting
+`day - 1` and `day + 1`. The guard asserts it is under `MEDIAN_DAY_SPIKE_LIMIT` (2.0) at the stated Outpost median.
+Measured over the guard's 320 campaigns: day 14 holds 8.40% of Outpost walks, day 13 6.97% and day 15 6.76%, so
+8.40 / 6.865 = 1.22. A shift of part of a day barely moves a ratio of neighbouring days. A real spike at the median
+would move it, and the module docstring says the one-day tolerance should then tighten.
+
+`test_a_spike_on_the_median_day_is_what_the_check_rejects` is the CONTROL: a flat list of walks gives exactly 1, and one
+with 30% on day 14 and 5% on each neighbour gives 6, over the limit.
+
+The issue's first suggestion, reading the share at `stated - 1` (47.52% today), was not taken. It is still the position
+of a boundary, with 3.5 points to the 44% floor.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_the_siege_prose_in_policies_is_true.py` (that file needs no git repository).
+
+- **P1, the comparison on real data.** `MEDIAN_DAY_SPIKE_LIMIT = 2.0` becomes `MEDIAN_DAY_SPIKE_LIMIT = 1.2`, under
+  today's 1.22. Predicted named_failures, exactly one:
+  `sim/tests/test_the_siege_prose_in_policies_is_true.py::TestTheMedianWalkTheProseStates::test_the_distribution_really_is_flat_where_the_median_sits`.
+  The control passes (1 is under 1.2 and 6 is over it).
+- **P2, the helper.** `neighbours = (counts[day - 1] + counts[day + 1]) / 2.0` becomes
+  `neighbours = (counts[day - 1] + counts[day + 1])`, the sum and not the mean. Predicted named_failures, exactly one:
+  `sim/tests/test_the_siege_prose_in_policies_is_true.py::TestTheMedianWalkTheProseStates::test_a_spike_on_the_median_day_is_what_the_check_rejects`
+  (the flat list gives 0.5 and not 1). The guard on real data passes, at 0.61.
+
+### THE PROOFS, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `4dee5a17c`, the commit that registered them.
+
+- P1: "PROVED: 1 failed, 18 passed in 6.54s | restored: 19 passed in 6.37s". named_failures, exactly the one registered,
+  with "1.22 times as many Outpost dungeons walk exactly 14 days as walk 13 or 15."
+- P2: "PROVED: 1 failed, 18 passed in 6.77s | restored: 19 passed in 6.55s". named_failures, exactly the one registered.
+
+### EVIDENCE
+
+The two proofs ran at commit ids from before the branch was moved onto `5df1b86c6`; the move left both files' changes
+the same (per-file zero-context patch ids compared). Python of record at `85461c86c`, on `development` `5df1b86c6`:
+"7051 passed, 8 skipped"; JUnit tests 7059, failures 0, errors 0, skipped 8 (the base's 7058 and the one control
+test). ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
+### NO GENRE SOURCE
+
+None. This is how the project's own test reads its own simulation.
+
+---
+
 ## 2026-10-29 — The two scoring policies value a Quest dungeon by how far its own Cataclysm is from finished, not by the superseded flat 8 (#1388)
 
 **Affects:** `sim/cataclysm_sim/policies.py` (a new `quest_dungeons_to_finish`, read by `triage` and `lane_aware`, and the

@@ -21,10 +21,13 @@ They are different kinds of number. Days-to-empty is exact arithmetic on
 constants: at 1% of the maximum a day plus 2.5 points for each day already
 stood, an Outpost's thousand points of defence is gone on day 25 and there is
 nothing to average. The median walk is one order statistic over a mixture of
-uniform floor ranges, and the mixture is nearly flat where the median sits --
-45% of Outpost dungeons walk in 12 days or fewer and 50% in 13 or fewer -- so
-two adjacent days are a coin flip and a block of 200 campaigns lands on either
-side at random. A guard demanding an exact median would fail on an unrelated
+uniform floor ranges, and the mixture is nearly flat where the median sits.
+Over this file's own 320 campaigns, measured on 2026-10-29 with the policies of
+issue #1388, 40.37% of Outpost dungeons walk in 12 days or fewer, 47.35% in 13
+or fewer and 55.76% in 14 or fewer: the median is 14, the days either side of
+it each hold about seven percent of the walks, and a block of campaigns lands
+on either side of a boundary at random. (This said 45% at 12 days and 50% at 13
+until issue #1389, figures from when the stated median was 13.) A guard demanding an exact median would fail on an unrelated
 change to the random stream and teach the next reader to widen it until it
 stopped complaining. So this measures, allows one day, and separately checks
 that the distribution really is flat enough to deserve that.
@@ -144,8 +147,10 @@ CAMPAIGNS = 320
 #: docstring: the walk distribution is flat where the median falls.
 WALK_TOLERANCE_DAYS = 1
 
-#: The Pillar's own median is noisier -- 200 campaigns produce only about 230
-#: dungeons there against 16,000 on an Outpost -- and it is not the figure the
+#: The Pillar's own median is noisier -- this file's 320 campaigns produce 345
+#: dungeons there against 22,633 on an Outpost, measured on 2026-10-29 with the
+#: policies of issue #1388 (this said about 230 against 16,000, from when the
+#: file ran 200; issue #1389) -- and it is not the figure the
 #: Pillar claim rests on. `TestAPillarSiegeCanNeverBeAnswered` carries that,
 #: exactly and without campaigns. Ten blocks of 200 spread it over 120 to
 #: 126.5 against a 10,000-campaign answer of 123, so four is what was measured
@@ -247,6 +252,24 @@ def made():
 
 def walks(made, tier: CityTier) -> list[int]:
     return [days for t, _, _, days in made if t is tier]
+
+
+#: How many times what the day either side holds the median day may hold before
+#: the walk distribution stops counting as flat there. Issue #1389.
+#:
+#: A JUDGEMENT AND NOT A DERIVATION. Twice is where one day holds as many walks
+#: as its two neighbours together. Measured on 2026-10-29 over this file's own
+#: 320 campaigns, the Outpost median day 14 holds 8.40% of walks, day 13 6.97%
+#: and day 15 6.76%: a ratio of 1.22.
+MEDIAN_DAY_SPIKE_LIMIT = 2.0
+
+
+def median_day_spike(walk_days: list[int], day: int) -> float:
+    """The share of walks lasting exactly `day` days, over the mean share of
+    walks lasting `day - 1` and `day + 1` days."""
+    counts = Counter(walk_days)
+    neighbours = (counts[day - 1] + counts[day + 1]) / 2.0
+    return counts[day] / neighbours if neighbours else float("inf")
 
 
 # ---------------------------------------------------------------------------
@@ -366,18 +389,45 @@ class TestTheMedianWalkTheProseStates:
         """WHY THE TOLERANCE ABOVE IS A DAY RATHER THAN NOTHING, held in place
         so that it stays a measured property rather than a habit. If the walk
         lengths ever stopped being nearly uniform around the median, the median
-        would become a stable number and this file should tighten."""
+        would become a stable number and this file should tighten.
+
+        WHAT IS MEASURED: THE MEDIAN DAY AGAINST THE DAY EITHER SIDE, since
+        issue #1389. This asserted that the share walking in the stated median
+        or fewer days was between 44% and 58%. When the stated median is the
+        true one, that share is at least 50% by definition and at most 50% plus
+        what the median day itself holds, so the check read WHERE THE 50% LINE
+        FELL INSIDE ONE DAY, not how flat the distribution is. A change to
+        campaign length anywhere moves that line by part of a day and the share
+        by up to a whole day's worth: issue #1357 moved it from 50.5% to 56.2%
+        with the shape unchanged, leaving under two points to the ceiling. The
+        ratio below is what "flat where the median falls" means, and a shift of
+        part of a day barely moves it.
+        """
         v = walks(made, CityTier.OUTPOST)
         stated = stated_walks()[CityTier.OUTPOST]
-        share = 100.0 * sum(1 for x in v if x <= stated) / len(v)
-        assert 44.0 <= share <= 58.0, (
-            f"{share:.1f}% of Outpost dungeons walk in {stated} days or fewer. "
-            "The docstring's claim that the median is a coin flip between two "
-            "adjacent days rests on that being near half.")
+        ratio = median_day_spike(v, stated)
+        assert ratio < MEDIAN_DAY_SPIKE_LIMIT, (
+            f"{ratio:.2f} times as many Outpost dungeons walk exactly {stated} "
+            f"days as walk {stated - 1} or {stated + 1}. The docstring's claim "
+            "that the median is a coin flip between two adjacent days rests on "
+            "the median day holding about what its neighbours hold; a spike "
+            "there makes the median a stable number, and the one-day tolerance "
+            "should then tighten rather than this limit widen. Issue #1389.")
         says(DOC_URGENCY,
              "48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in "
              "14 or fewer",
              "Those are the shares from the 10,000-campaign measurement.")
+
+    def test_a_spike_on_the_median_day_is_what_the_check_rejects(self):
+        """THE CONTROL. The same helper over walk lists built by hand: a flat
+        one gives exactly 1, and one with 30% of walks on a single day and 5%
+        on each of its neighbours gives 6, over the limit."""
+        flat = [day for day in range(10, 20) for _ in range(10)]
+        assert median_day_spike(flat, 14) == pytest.approx(1.0)
+        spiked = [14] * 30 + [13] * 5 + [15] * 5 + list(range(20, 80))
+        assert median_day_spike(spiked, 14) == pytest.approx(6.0)
+        assert median_day_spike(spiked, 14) >= MEDIAN_DAY_SPIKE_LIMIT
+        assert median_day_spike(flat, 14) < MEDIAN_DAY_SPIKE_LIMIT
 
 
 # ---------------------------------------------------------------------------
