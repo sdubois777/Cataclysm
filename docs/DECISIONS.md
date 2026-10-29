@@ -71,6 +71,10 @@ once in the file). Predicted named_failures, exactly one:
 
 The other checks on this script assert no campaign share, so a changed rule is not predicted to fail any of them.
 
+Run 2026-10-29 in a git-archive copy of `d5b8c2e7d`, the commit that registered it. Printed: "PROVED: 1 failed, 179
+passed in 55.74s | restored: 180 passed in 50.80s". named_failures, exactly the one registered, with
+"analyse_siege_dose.base_config holds ['dungeon_persists_after_resolve'] away from what TuningConfig ships".
+
 ### NO GENRE SOURCE
 
 None. This brings a measurement script into line with the model it measures.
