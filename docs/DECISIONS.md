@@ -89,6 +89,10 @@ named_failures, exactly one:
 
 - `sim/tests/test_analysis_scripts.py::test_every_arrival_has_one_first_event`
 
+Run 2026-10-29 in a git-archive copy of `813c6ccfb`, the commit that registered it. Printed: "PROVED: 1 failed, 178
+passed in 52.98s | restored: 179 passed in 52.69s". named_failures, exactly the one registered: with every clear
+filed as a hit, the hits exceeded what the engine counted ("assert 56 <= (42 + 13)").
+
 ### NO GENRE SOURCE
 
 None. This brings three measurement scripts into line with the model they measure.
