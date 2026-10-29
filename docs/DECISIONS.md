@@ -12,7 +12,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w90 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly as registered.**
 - **NO DUNGEON BUT A FALLEN CITY CHANGES.** Every other dungeon has `Bosses` at one, which the rule answers exactly as
   before: the final floor, or every floor of an Elite dungeon, and never the dark floor.
 
@@ -63,7 +64,25 @@ entering. It prints a line beginning "ENTERED BOSSES".
 
 ### Run
 
-Not run yet.
+**Window w90 (lock `dungeon-w90`, `feat/a-fallen-city-places-every-boss-it-counts-1` at `b92ea550b`, on `058420d04`,
+2026-10-29) passed.** `development`'s CI run at `058420d04` succeeded and its last Unreal run, at `3a885757c`,
+succeeded; `058420d04` changes no C++. The lock was taken on a free-memory reading immediately before it of 11,044 MB,
+with no run in progress or queued, the lock free, no build or editor process, no open pull request. It was released
+before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| The spreading test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The entering test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "FALLEN CITY BOSSES" line | quoted as printed | "of 20 floors, 5 bosses on 4,8,12,16,20; 3 on 7,14,20; 1 on 20; Elite with 1 on 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20" |
+| The "ENTERED BOSSES" line | quoted as printed | "1 before entering, 4 inside, 1 after leaving" |
+| Whole Unreal suite | 4362 / 0 | `4362 tests performed, 4362 succeeded, 0 failed`; declared 4362, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7686`, peak 8,002 |
+| Python (JUnit) | of record | 7050 tests, 0 failures, 0 errors, 8 skipped ("7042 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the count ignored | the spreading test fails on five, three, twenty and thirty, and on no CONTROL | failed on exactly those four, each printing "20" alone ("5 bosses on 20; 3 on 20"); no CONTROL failed; restored passed. **PROVED** |
+| P2, entering does not copy | the entering test fails on "carries four" only | failed on that only, printing "1 before entering, 1 inside, 1 after leaving"; restored passed. **PROVED** |
+| P3, leaving does not put it back | the entering test fails on "leaving puts it back to one" only | failed on that only, printing "1 before entering, 4 inside, 4 after leaving"; restored passed. **PROVED** |
 
 ---
 
