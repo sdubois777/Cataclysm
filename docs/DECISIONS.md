@@ -11,9 +11,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Window w85 below stopped at the whole suite: four existing tests used an enemy
-  character as a stand-in summoner and expected the preview level. Their helpers were changed by ruling, below, and
-  have not been run since.
+- **BUILT AND RUN: window w86 below passed every registered figure, and both proofs were PROVED.** Window w85
+  before it stopped at the whole suite: four existing tests used an enemy character as a stand-in summoner and
+  expected the preview level. Their helpers were changed by ruling, below, before w86.
 - **NO SHIPPED PATH I TRACED REACHES THE ENEMY BRANCH TODAY.** Traced at `38e1c6c99`: a risen imp's curser must hold
   `curse_death_raises_imp` and a necrosis killer `necrosis_kill_raises_imp_seconds`, both read through `StatForSkill`, and an
   enemy's ability system is never given a stat line, so neither can be an enemy; the necrosis rise is also only called
@@ -111,6 +111,23 @@ reference level, 12:
 
 The next window is registered as above: the new test 1 / 1, the whole suite at `development`'s measured total + 1
 (4358 while that total is 4357), 0 failed, and P1 and P2 as registered.
+
+**Window w86 (lock `dungeon-w86`, `fix/an-enemy-summoners-minion-takes-the-tiers-level-2` at `88963cf57`, on
+`faf969780`, 2026-10-29) passed.** `faf969780` (#1533) changed only Python, so `development`'s Unreal total stayed 4357
+and the last Unreal run on `development`, at `922b9cf21`, succeeded; its CI run at `faf969780` succeeded. The lock was
+taken on a free-memory reading immediately before it of 11,760 MB, with no run in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 9 actions, 6 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "SUMMONER LEVEL" line | quoted as printed | "the enemy's Imp hits for 661.50 (level 62 gives 661.50), the player's for 535.50 (level 50 gives 535.50)" |
+| Whole Unreal suite | 4358 / 0 | `4358 tests performed, 4358 succeeded, 0 failed`; declared 4358, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7754`, peak 8,082 |
+| Python (JUnit) | of record | 7040 tests, 0 failures, 0 errors, 8 skipped ("7032 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the enemy branch removed | the test fails: the enemy's Imp is raised at 50 | "1 tests performed, 0 succeeded, 1 failed: AnEnemySummonersMinionTakesTheTiersReferenceLevel", printing "the enemy's Imp hits for 535.50 (level 62 gives 661.50)": raised at 50, as registered; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the tier ignored (always tier 1) | the test fails: the enemy's Imp is raised at tier 1's reference level | the same failure line, printing "the enemy's Imp hits for 136.50": raised at 12, tier 1's reference level, as registered; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
