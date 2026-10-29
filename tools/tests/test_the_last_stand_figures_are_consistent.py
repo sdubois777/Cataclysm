@@ -63,9 +63,12 @@ MET_CLAIMS = {
     "met in a little under half of campaigns": (45.0, 50.0),
     "met in about half of campaigns": (48.0, 52.0),
     "met in a little over half of campaigns": (50.0, 55.0),
+    # ISSUE #2615: 1.9% on the run of 2026-10-29.
+    "met in about two campaigns in a hundred": (1.0, 3.0),
 }
 
 NUMBER_WORDS = {
+    "five": 5, "seven": 7, "ten": 10,
     "fifteen": 15, "twenty": 20, "twenty-five": 25, "thirty": 30,
     "thirty-five": 35, "forty": 40, "forty-five": 45, "fifty": 50,
 }
@@ -88,10 +91,11 @@ def document() -> str:
 
 
 #: The current measurement block in engine.py, bracketed. Everything before the
-#: first anchor is an older run; everything from the second is the note
-#: recording the superseded figures.
-BLOCK_BEGINS = "All of it with NO empire tree"
-BLOCK_ENDS = "AN EARLIER SET TAKEN THE SAME DAY"
+#: first anchor is an older run; the second opens the attribution that follows
+#: the current figures. The run of 2026-10-29 since issue #2615; until then the
+#: anchors bracketed the run of 2026-09-07, which engine.py now marks superseded.
+BLOCK_BEGINS = "RE-MEASURED ON 2026-10-29 FOR ISSUE #2615"
+BLOCK_ENDS = "THE FALL FROM 45.9% IS ONLY PARTLY ATTRIBUTED"
 
 
 @pytest.fixture(scope="module")
@@ -268,7 +272,12 @@ def test_the_superseded_run_is_only_ever_named_as_superseded(document):
     )
     for stale in ('Read the clear rate as "about one in thirty-five"',
                   "the pooled 95% interval is 1 in 28 to 1 in 42",
-                  "met in most campaigns"):
+                  "met in most campaigns",
+                  # The run of 2026-09-07, superseded by issue #2615.
+                  'Read the clear rate as "about one in twenty-five"',
+                  "the pooled 95% interval is 1 in 21 to 1 in 30",
+                  "met in a little under half of campaigns",
+                  "near-fatal is unaffected"):
         # THE ANSWER IS COMPUTED BEFORE THE ASSERT ON PURPOSE. Issue #1635: a
         # failing `x not in <470,000 characters>` written inside the assert
         # expression takes about 90 seconds to report, because pytest renders

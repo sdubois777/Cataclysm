@@ -503,51 +503,52 @@ There are two ways to get into one:
   the original; whether a near-unwinnable fight is the intended shape is
   issue #1286, and the owner ruled that it is.
 
-  **MEASURED 2026-09-07 OVER 6,000 CAMPAIGNS** in six disjoint blocks of
-  1,000 seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days
-  x5 (`surge_dungeon_count` = 5, not the `TuningConfig` default of 4 of that
-  date; the default is 5 every 90 days since 2026-10-13),
-  resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days +4%,
-  with the Siege damage live and the policies able to see one. This is the
-  re-measurement issue #1358 asked for, on `a71ee1f`:
+  **MEASURED 2026-10-29 OVER 6,000 CAMPAIGNS**, on `17366a34d`, in six
+  disjoint blocks of 1,000 seeds, at tier 1, `No tree`, `triage`, STATIC
+  surges every 120 days x5 (the default is 5 every 90 days since
+  2026-10-13), resolve floor ratio 2.0, escalation 0.10 per 100 days, craft
+  12 days +4%, with the Siege damage live and the policies able to see one,
+  and with every other rule as `TuningConfig` shipped it that day -- the
+  board-empty surge, `death_resolves_dungeon`, an ordinary dungeon leaving
+  after it hits its city, a Quest dungeon's timer hitting its city, and a hit
+  sized by all of a dungeon's floors. Measured with
+  `analyse_siege_dose.py`'s `measure` imported; that script's own `BASE`
+  still holds the last three of those rules at their September values, so
+  running the script as it ships does not reproduce this table. Issue
+  [#2615](https://github.com/sdubois777/Cataclysm/issues/2615).
 
   **EVERY ROW BELOW IS A PLAYER WITH NO EMPIRE TREE.** The owner has ruled
   that the game is balanced around a player fully invested in the Explorer
   tree; **nothing on record measures that player at these settings**, so do
   not read these as describing them.
 
-  **AND EVERY ROW BELOW PREDATES `surge_on_empty_board`, WHICH DEFAULTS ON.**
-  A surge now fires whenever the board has no dungeons on it, on top of the
-  120-day clock, so these seven figures were measured against a different
-  rule rather than merely at different settings. `docs/DECISIONS.md` names
-  this table specifically in its 2026-09-07 entry and says the same. Issue
-  [#1406](https://github.com/sdubois777/Cataclysm/issues/1406). They are the
-  best figures on record and they have not been re-measured; quote them with
-  this sentence attached.
-
-  **AND EVERY ROW BELOW, AND EVERY ROW OF THE HISTORY TABLE AFTER IT, PREDATES
-  `death_resolves_dungeon`, WHICH ALSO DEFAULTS ON.** They were measured when a
-  death cost days and touched no city. Not re-measured.
-
   | | Value | Block sd | Count |
   |---|---:|---:|---|
-  | Last Stand reached | **45.9%** | 1.22 | 2,754 of 6,000 |
-  | Cleared, per Last Stand reached | **1 in 24.6** | 0.34 pts | 112 of 2,754 |
-  | Earned Cataclysm dungeon opens | **54.9%** | 1.27 | 3,294 of 6,000 |
-  | Earned dungeon won | **40.4%** | 2.19 | 1,332 of 3,294 |
-  | Campaign won at all | **24.1%** | 1.47 | 1,444 of 6,000 |
-  | Cities lost, of 25 | **13.61** | 0.16 | |
-  | Sieges created per campaign | **8.99** | 0.14 | counted at creation |
+  | Last Stand reached | **1.9%** | 0.20 | 116 of 6,000 |
+  | Cleared, per Last Stand reached | **1 in 6.8** | 8.75 pts | 17 of 116 |
+  | Earned Cataclysm dungeon opens | **99.0%** | 0.32 | 5,937 of 6,000 |
+  | Earned dungeon won | **49.0%** | 0.62 | 2,907 of 5,937 |
+  | Campaign won at all | **48.7%** | 0.60 | 2,924 of 6,000 |
+  | Cities lost, of 25 | **1.87** | 0.10 | |
+  | Sieges created per campaign | **6.62** | 0.24 | counted at creation |
 
-  **THE CLEAR RATE IS THE ONE TO DISTRUST**, though it is firmer than it
-  was. Its block standard deviation is 0.34 points against a figure of 4.07,
-  which is 8% of it: the six blocks run 1 in 22 to 1 in 28 on 17 to 21 wins
-  apiece, and the pooled 95% interval is 1 in 21 to 1 in 30. Read it as
-  "about one in twenty-five" and nothing narrower. Everything else in that
-  table is firm.
+  **THE CLEAR RATE IS THE ONE TO DISTRUST, FAR MORE THAN BEFORE.** Its block
+  standard deviation is 8.75 points against a figure of 14.7, which is 60%
+  of it: the six blocks run 1 in 3.7 to 1 in 20 on 1 to 6 clears apiece, and
+  the pooled 95% interval is 1 in 4.5 to 1 in 10.7. A Last Stand is reached
+  in 116 campaigns of 6,000, so it rests on 17 clears. Read it as "about one
+  in seven" and nothing narrower. Everything else in that table is firm.
+
+  **THE FALL FROM 45.9% REACHED IS ONLY PARTLY ATTRIBUTED.** The same six
+  blocks with those last three rules at their September values give 15.5%
+  reached, so the three account for 13.6 of the 44.0 points; the other 30.4
+  are not attributed to any change. Whether the owner's ruling that a
+  collapse should be near-fatal still holds at a clear rate of about one in
+  seven has not been put to the owner.
 
   **THE GAP BETWEEN TWO BLOCKS IS NOT THE NOISE FLOOR.** Two blocks give one
-  realised difference, not an estimate of a spread. Measured on these six:
+  realised difference, not an estimate of a spread. Measured on the six of
+  2026-09-07, which this table carried until issue #2615:
   the A-to-B gap runs from **0.25 times** the six-block standard deviation
   (Last Stand reached) to **2.60 times** it (cities lost). On the six blocks
   taken at `e8b33c2` earlier the same day the same range was 0.67 to 1.81,
@@ -572,7 +573,8 @@ There are two ways to get into one:
   | after #1338 and #1333, Siege still 15 and 10 | 96.3% | 1 in 26.4 | 8.1% | 41.6% |
   | after #1349, before #1369 | 55.7 / 56.7% | 1 in 34.8 / 31.5 | 51.2 / 48.9% | -- |
   | 2026-09-06, on `e8b33c2`, six blocks of 1,000 | 56.4% | 1 in 34.5 | 50.0% | 38.3% |
-  | **today, on `a71ee1f`, six blocks of 1,000** | **45.9%** | **1 in 24.6** | **54.9%** | **40.4%** |
+  | 2026-09-07, on `a71ee1f`, six blocks of 1,000 | 45.9% | 1 in 24.6 | 54.9% | 40.4% |
+  | **2026-10-29, today, on `17366a34d`, the rules of that date** | **1.9%** | **1 in 6.8** | **99.0%** | **49.0%** |
 
   **The first three rows were measured against Demonic and nothing else**,
   which is what the model did until #1338; the section above says why that

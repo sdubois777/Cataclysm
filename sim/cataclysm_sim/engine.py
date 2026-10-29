@@ -1677,6 +1677,8 @@ class Simulation:
             won 41.6% of the time.
 
         **AND THEN THE OWNER CUT THE SIEGE, WHICH MOVED THEM FURTHEST OF ALL.**
+        (SUPERSEDED ON 2026-10-29: the figures in this block are history. The
+        block headed RE-MEASURED ON 2026-10-29 below is the current record.)
         Issue #1349, 2026-09-06, verbatim "Halve the rate and cut the growth":
         the Siege spawn weight went 15 to 7.5 and `siege_damage_growth_per_day`
         10 to 2.5, with the two 1% shares of a city's maximum left alone.
@@ -1735,6 +1737,35 @@ class Simulation:
         Cataclysms from the campaign seed and ties their count to the tier. A
         seeded campaign does not replay a figure measured before it.
 
+        **RE-MEASURED ON 2026-10-29 FOR ISSUE #2615**, on `17366a34d`, with
+        `sim/analyse_siege_dose.py`'s `measure` imported, over six disjoint
+        blocks of 1,000 seeds at the settings above, and with the three rules
+        that instrument holds at their September values set as `TuningConfig`
+        ships them: an ordinary dungeon leaves after it hits its city, a Quest
+        dungeon's timer hits its city, and a hit is sized by all of a dungeon's
+        floors. With NO empire tree:
+
+          - **The earned Cataclysm dungeon opens in 99.0% of campaigns**,
+            5,937 of 6,000, and is won **49.0%** of the time, 2,907 of 5,937.
+          - Last Stand **reached in 1.9%**, 116 of 6,000, against 45.9%.
+          - Cleared, per Last Stand reached, **1 in 6.8** -- 17 of 116.
+          - Cities lost, of 25: **1.87**, against 13.61.
+          - A campaign is won at all **48.7%** of the time.
+
+        Block standard deviations across the six: 0.32 on the earned share,
+        0.62 on its win rate, 0.20 on the Last Stand share, 0.10 of a city on
+        cities lost, and 8.75 points on the clear rate. The six blocks run 1 in
+        3.7 to 1 in 20 there, pooled 95% interval 1 in 4.5 to 1 in 10.7. It
+        rests on 17 clears, so read it as about one in seven and nothing
+        narrower.
+
+        THE FALL FROM 45.9% IS ONLY PARTLY ATTRIBUTED. The same six blocks with
+        those three rules held at their September values give 15.5% reached,
+        so the three account for 13.6 of the 44.0 points. The other 30.4 are
+        not attributed to any change. Whether the owner's ruling of 2026-09-05
+        that a collapse should be near-fatal still holds at a clear rate of
+        about one in seven has not been put to the owner.
+
         WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
         run has already gone, and a player only ever reaches this by having lost
         cities: a flat bonus, five floors for each dungeon still standing when
@@ -1742,8 +1773,8 @@ class Simulation:
         multiplier that also scales with the cities lost.
 
         THE FOUR CONSTANTS ARE NOT TO BE TUNED TOWARDS A FAIRER FIGHT. That is
-        the outcome the design wants, and anyone reading the 2% cold will read
-        it as broken. It is not.
+        the outcome the design wants, and anyone reading cold the 2% clear
+        rate it had when this was written will read it as broken. It is not.
         """
         cfg = self.cfg
         if self.last_stand is not None:
