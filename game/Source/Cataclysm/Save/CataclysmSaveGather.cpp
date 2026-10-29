@@ -278,6 +278,34 @@ bool FCataclysmSaveGather::SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
 	return true;
 }
 
+bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
+										UCataclysmRunSave& Record)
+{
+	// A RUN THAT HAS NOT BEGUN HAS ACHIEVED NOTHING, and `Begin` is what makes
+	// its clock, so the clock is the test `RunClockFrom` uses too.
+	if (Run.Clock == nullptr)
+	{
+		return false;
+	}
+
+	Record.QuestObjectives = Run.QuestObjectives;
+	Record.QuestObjectivesByCataclysm = Run.QuestObjectivesByCataclysm;
+	Record.BasicDungeonsCleared = Run.BasicDungeonsCleared;
+	Record.DungeonsCleared = Run.DungeonsCleared;
+	Record.DungeonsDetonated = Run.DungeonsDetonated;
+	Record.QuestHits = Run.QuestHits;
+	Record.SurgesFromEmptyBoard = Run.SurgesFromEmptyBoard;
+	Record.NextDungeonId = Run.NextDungeonId;
+	Record.LastHitDay = Run.LastHitDay;
+	Record.LastHitCityId = Run.LastHitCityId;
+	Record.bLastHitWasAQuestTimer = Run.bLastHitWasAQuestTimer;
+	Record.LastMoveDay = Run.LastMoveDay;
+	Record.LastMoveFromCityId = Run.LastMoveFromCityId;
+	Record.LastMoveToCityId = Run.LastMoveToCityId;
+
+	return true;
+}
+
 bool FCataclysmSaveGather::DungeonsFrom(const UCataclysmEmpireRun& Run,
 									   UCataclysmRunSave& Record,
 									   FString& OutWhy)

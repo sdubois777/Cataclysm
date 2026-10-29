@@ -22,6 +22,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "Empire/CataclysmRoster.h"
 #include "Tests/CataclysmSaveExampleRecord.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -2298,6 +2299,199 @@ bool FCataclysmSaveWriterWaitForSlotWaitsForTheWrite::RunTest(const FString&)
 	{
 		DeleteSlot(LargeSlot);
 	}
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What the player has achieved this run. Issue #1374.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveWriterProgressTest
+{
+	/** Puts a value that is no field's default into each of the fourteen progress fields. Returns the Cataclysm used. */
+	ECataclysmType Achieve(UCataclysmEmpireRun& Run)
+	{
+		const ECataclysmType Faced = Run.ActiveCataclysms.Num() > 0 ? Run.ActiveCataclysms[0] : ECataclysmType::Demonic;
+		Run.QuestObjectives = 3;
+		Run.QuestObjectivesByCataclysm.FindOrAdd(Faced) = 2;
+		Run.BasicDungeonsCleared = 11;
+		Run.DungeonsCleared = 14;
+		Run.DungeonsDetonated = 5;
+		Run.QuestHits = 2;
+		Run.SurgesFromEmptyBoard = 4;
+		Run.NextDungeonId = 41;
+		Run.LastHitDay = 37;
+		Run.LastHitCityId = 9;
+		Run.bLastHitWasAQuestTimer = true;
+		Run.LastMoveDay = 35;
+		Run.LastMoveFromCityId = 6;
+		Run.LastMoveToCityId = 12;
+		return Faced;
+	}
+
+	/** How many of the fourteen fields of `Record` equal `Run`'s. All fourteen is a record that kept everything. */
+	int32 Matching(const UCataclysmEmpireRun& Run, const UCataclysmRunSave& Record, FString& OutDiffering)
+	{
+		int32 Same = 0;
+		const auto Check = [&](bool bSame, const TCHAR* Name)
+		{
+			Same += bSame ? 1 : 0;
+			if (!bSame)
+			{
+				OutDiffering += OutDiffering.IsEmpty() ? Name : *FString::Printf(TEXT(", %s"), Name);
+			}
+		};
+		Check(Record.QuestObjectives == Run.QuestObjectives, TEXT("QuestObjectives"));
+		Check(Record.QuestObjectivesByCataclysm.OrderIndependentCompareEqual(Run.QuestObjectivesByCataclysm),
+			  TEXT("QuestObjectivesByCataclysm"));
+		Check(Record.BasicDungeonsCleared == Run.BasicDungeonsCleared, TEXT("BasicDungeonsCleared"));
+		Check(Record.DungeonsCleared == Run.DungeonsCleared, TEXT("DungeonsCleared"));
+		Check(Record.DungeonsDetonated == Run.DungeonsDetonated, TEXT("DungeonsDetonated"));
+		Check(Record.QuestHits == Run.QuestHits, TEXT("QuestHits"));
+		Check(Record.SurgesFromEmptyBoard == Run.SurgesFromEmptyBoard, TEXT("SurgesFromEmptyBoard"));
+		Check(Record.NextDungeonId == Run.NextDungeonId, TEXT("NextDungeonId"));
+		Check(Record.LastHitDay == Run.LastHitDay, TEXT("LastHitDay"));
+		Check(Record.LastHitCityId == Run.LastHitCityId, TEXT("LastHitCityId"));
+		Check(Record.bLastHitWasAQuestTimer == Run.bLastHitWasAQuestTimer, TEXT("bLastHitWasAQuestTimer"));
+		Check(Record.LastMoveDay == Run.LastMoveDay, TEXT("LastMoveDay"));
+		Check(Record.LastMoveFromCityId == Run.LastMoveFromCityId, TEXT("LastMoveFromCityId"));
+		Check(Record.LastMoveToCityId == Run.LastMoveToCityId, TEXT("LastMoveToCityId"));
+		return Same;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterProgressRoundTripTest,
+	"Cataclysm.SaveWriter.ARunsProgressSurvivesTheRecordAndItsJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterProgressRoundTripTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterProgressTest;
+
+	// ISSUE #1374. Gathered from a run, written to JSON and read back, each of the fourteen progress fields equals
+	// the run's. CONTROL: gathered from a run that has achieved nothing, they equal its defaults, which differ from
+	// the values set here in every field, so the comparison can tell a gathered value from a default.
+	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
+	UCataclysmEmpireRun* Played = NewObject<UCataclysmEmpireRun>();
+	Fresh->Begin(1);
+	Played->Begin(1);
+	const ECataclysmType Faced = Achieve(*Played);
+
+	UCataclysmRunSave* FromFresh = NewObject<UCataclysmRunSave>();
+	UCataclysmRunSave* FromPlayed = NewObject<UCataclysmRunSave>();
+	if (!TestTrue(TEXT("set-up: a fresh run's progress is gathered"), FCataclysmSaveGather::ProgressFrom(*Fresh, *FromFresh))
+		|| !TestTrue(TEXT("set-up: a played run's progress is gathered"), FCataclysmSaveGather::ProgressFrom(*Played, *FromPlayed)))
+	{
+		return false;
+	}
+
+	// STAMPED AS THE WRITER STAMPS IT (`UCataclysmSaveWriter::WriteTheRunRecord`). A record made here is version 0,
+	// and reading refuses anything below the first real version, which window w91 found (#1374).
+	FromPlayed->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the played record is written to JSON"), FCataclysmSaveStorage::ToJson(FromPlayed, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Back = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Json, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: and read back"), Back))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	FString FreshDiffers;
+	FString BackDiffers;
+	FString DefaultsShared;
+	const int32 FreshSame = Matching(*Fresh, *FromFresh, FreshDiffers);
+	const int32 BackSame = Matching(*Played, *Back, BackDiffers);
+	const int32 FreshAgainstPlayed = Matching(*Played, *FromFresh, DefaultsShared);
+	AddInfo(FString::Printf(TEXT("RUN PROGRESS: %d of 14 survive the JSON (%s differ); a fresh run gathers %d of 14 of "
+								 "its own; the fresh record matches the played run in %d of 14; %s holds %d objectives"),
+							BackSame, BackDiffers.IsEmpty() ? TEXT("none") : *BackDiffers, FreshSame, FreshAgainstPlayed,
+							*UEnum::GetValueAsString(Faced), Back->QuestObjectivesByCataclysm.FindRef(Faced)));
+	TestEqual(TEXT("every progress field survives the record and its JSON"), BackSame, 14);
+	TestEqual(TEXT("CONTROL: a fresh run gathers its own fourteen defaults"), FreshSame, 14);
+	TestEqual(TEXT("CONTROL: and those differ from the played run's in every field"), FreshAgainstPlayed, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheProgressTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesWhatThePlayerAchieved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheProgressTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterProgressTest;
+
+	// ISSUE #1374, THROUGH THE WRITER AND THE DISK, the way
+	// `AWrittenRunRecordCarriesTheCitiesThroughTheFile` carries the cities: the record the writer itself writes
+	// holds the run's progress.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	Achieve(*Run);
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"), WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	FString Differing;
+	const int32 Same = Matching(*Run, *Read, Differing);
+	AddInfo(FString::Printf(TEXT("WRITTEN PROGRESS: %d of 14 in the file match the run (%s differ); quest objectives %d"),
+							Same, Differing.IsEmpty() ? TEXT("none") : *Differing, Read->QuestObjectives));
+	TestEqual(TEXT("the file the writer wrote holds every progress field"), Same, 14);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
 	return true;
 }
 

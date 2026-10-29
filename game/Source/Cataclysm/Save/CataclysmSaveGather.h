@@ -163,6 +163,19 @@ public:
 	static bool SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
 								  UCataclysmRunSave& Record);
 
+	/**
+	 * What the player has achieved this run: the fourteen "Progress" fields of
+	 * `UCataclysmRunSave`. Issue #1374.
+	 *
+	 * IT TAKES A RUN RATHER THAN A WORLD, for the reason `RunClockFrom` gives.
+	 *
+	 * @return whether anything was read. False for a run `Begin` has not been
+	 *         called on, which has achieved nothing, and then the record keeps
+	 *         whatever it already held.
+	 */
+	static bool ProgressFrom(const UCataclysmEmpireRun& Run,
+							 UCataclysmRunSave& Record);
+
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);

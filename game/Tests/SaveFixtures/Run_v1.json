@@ -184,5 +184,21 @@
 				"EnergyShield": 25
 			}
 		]
-	}
+	},
+	"QuestObjectives": 3,
+	"QuestObjectivesByCataclysm": {
+		"demonic": 2
+	},
+	"BasicDungeonsCleared": 11,
+	"DungeonsCleared": 14,
+	"DungeonsDetonated": 5,
+	"QuestHits": 2,
+	"SurgesFromEmptyBoard": 4,
+	"NextDungeonId": 41,
+	"LastHitDay": 37,
+	"LastHitCityId": 9,
+	"bLastHitWasAQuestTimer": true,
+	"LastMoveDay": 35,
+	"LastMoveFromCityId": 6,
+	"LastMoveToCityId": 12
 }

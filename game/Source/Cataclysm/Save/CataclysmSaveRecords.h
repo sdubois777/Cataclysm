@@ -9,6 +9,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -626,21 +627,15 @@ public:
  *
  * WHAT IS STILL ABSENT, and this is the corrected list:
  *
- *   - **What the player has achieved this run.** `DungeonsCleared`,
- *     `BasicDungeonsCleared`, `QuestObjectives`, `DungeonsDetonated` and
- *     `QuestHits` on `UCataclysmEmpireRun` are not written here, so a restored
- *     run would forget every quest objective earned and every dungeon beaten.
- *     Nor are `LastHitDay` and the two fields beside it, or `LastMoveDay`
- *     and its two, so a restored run's empire screen names no last hit or
- *     move until the next one. Issue
- *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+ *   - **What the player has achieved this run IS HERE NOW**, since issue
+ *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
+ *     fourteen fields under "Progress" below. Nothing loads them back yet; no
+ *     run is loaded at all ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
  *   - **What tier the run is played at, and which Cataclysms it faces.**
  *     `UCataclysmEmpireRun::DifficultyTier` and `ActiveCataclysms` are not
  *     written here. A restored run would face one Cataclysm whatever it was
  *     facing before, and would give every later dungeon one modifier instead of
  *     one per tier. Issue #41 put the two counts in; nothing saves them.
- *   - **`NextDungeonId`**, so a restored run would hand out identifiers that
- *     collide with the dungeons it just restored.
  *
  * `FCataclysmSavedFloor` IS here, in full, because section 6 specifies its
  * contents exactly and it is the requirement the whole feature exists for.
@@ -882,6 +877,70 @@ public:
 	 *  dungeon. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmSavedFloor Floor;
+
+	// ---- PROGRESS: what the player has achieved this run. Issue #1374. ----
+	//
+	// EACH IS `UCataclysmEmpireRun`'s FIELD OF THE SAME NAME, copied by
+	// `FCataclysmSaveGather::ProgressFrom`; read the meaning there. NOT A SCHEMA
+	// VERSION BUMP, for `PartialDay`'s reason above: a file written before these
+	// existed keeps each default, which is what such a file meant. NOTHING
+	// LOADS THEM BACK YET, because nothing loads a run (#753).
+
+	/** Quest objectives earned: the win condition's counter. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 QuestObjectives = 0;
+
+	/** The same, for each active Cataclysm, which is what the unlock rule reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
+
+	/** Ordinary dungeons cleared: the Cataclysm boss dungeon's earned depth. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 BasicDungeonsCleared = 0;
+
+	/** Every dungeon cleared. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DungeonsCleared = 0;
+
+	/** How many times a dungeon's timer ran out and the empire paid. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DungeonsDetonated = 0;
+
+	/** How many times a Quest dungeon's timer hit its host city. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 QuestHits = 0;
+
+	/** Of the surges fired, how many fired because the board was empty. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgesFromEmptyBoard = 0;
+
+	/**
+	 * The next dungeon number the run will hand out. It only counts up, and a
+	 * restore that began it again at nought would give new dungeons the numbers
+	 * of the ones it had just put back.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 NextDungeonId = 0;
+
+	/** The empire screen's last-hit line: its day, its city, and whether a Quest timer made it. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastHitDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastHitCityId = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bLastHitWasAQuestTimer = false;
+
+	/** The empire screen's last-move line: its day, and the cities a fall moved a Quest dungeon from and to. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveFromCityId = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveToCityId = INDEX_NONE;
 };
 
 /**

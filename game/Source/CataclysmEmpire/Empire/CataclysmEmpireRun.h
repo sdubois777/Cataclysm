@@ -697,11 +697,9 @@ public:
 	 * reads as 0 rather than as absent, and a caller iterating this sees the
 	 * whole campaign rather than only the parts of it that have happened.
 	 *
-	 * IT IS NOT SAVED, and neither is `QuestObjectives`. What the player has
-	 * achieved this run is on the list `UCataclysmRunSave`'s own comment names as
-	 * deliberately absent; issue
-	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374) owns writing
-	 * it. This joins that list rather than starting a new problem.
+	 * SAVED, with `QuestObjectives`, by `FCataclysmSaveGather::ProgressFrom`,
+	 * since issue [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 * Nothing loads a run back yet (#753).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
@@ -750,7 +748,7 @@ public:
 	 * where the hit lands in `ResolveDungeon`, so a Quest timer that ran out on
 	 * a city already fallen is not counted. Since 2026-10-13.
 	 *
-	 * IT IS NOT SAVED, like the tallies above it. Issue
+	 * SAVED, like the tallies above it, since issue
 	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -765,8 +763,8 @@ public:
 	 * hit felled its city does not: the screen already shows a city lost.
 	 * `UCataclysmEmpireMapLayout::LastHitLine` turns the three fields into the
 	 * line, and turns `LastMoveDay` and the two beside it into a line about a
-	 * fall's move instead when that is as recent. NONE OF THE SIX IS SAVED; a
-	 * loaded run shows no line until the next hit or move.
+	 * fall's move instead when that is as recent. ALL SIX ARE SAVED since issue
+	 * #1374, so a run loaded back would show its line; nothing loads one yet (#753).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 LastHitDay = 0;
@@ -810,7 +808,7 @@ public:
 	 * of surges in a run is no longer set by the clock alone, and this is how a
 	 * caller tells an early wave from a scheduled one. Issue #1414.
 	 *
-	 * IT IS NOT SAVED, like the four tallies above it. Issue
+	 * SAVED, like the four tallies above it, since issue
 	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")

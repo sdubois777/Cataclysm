@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A saved run keeps what the player achieved: objectives, dungeons cleared, the next dungeon number and the empire screen's last lines (#1374)
+
+**Affects:** `UCataclysmRunSave` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (fourteen `SaveGame` fields and
+its class comment); `FCataclysmSaveGather::ProgressFrom` in `CataclysmSaveGather.h` and `.cpp`; one call in
+`UCataclysmSaveWriter::WriteTheRunRecord` (`CataclysmSaveWriter.cpp`); five comments in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` that said these fields are not saved; the run fixture
+`game/Tests/SaveFixtures/Run_v1.json`; two new tests in `CataclysmSaveWriterTests.cpp`. Fixes
+[#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w92 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly as registered.** Window w91 before it stopped at the round-trip test alone, on a fault in that test's own
+  set-up.
+- **THE ENUM-KEYED MAP SURVIVES THE JSON**, which was read and not run when written: w92's round trip printed
+  "ECataclysmType::Pestilence holds 2 objectives" after reading the record back.
+- **NOTHING LOADS A RUN, SO NOTHING READS THESE BACK.** [#753](https://github.com/sdubois777/Cataclysm/issues/753),
+  "The game saves itself and cannot load what it saved", is open, and `CataclysmSaveApply.h` has no function for a
+  run. This change makes the file hold what a loader will need; "load" in its tests means reading the record back from
+  JSON, and a restored run is not tested because none exists.
+- **FOURTEEN FIELDS, NOT THE TWELVE APPROVED.** The run's own comments point two more at #1374:
+  `SurgesFromEmptyBoard` ("IT IS NOT SAVED, like the four tallies above it. Issue #1374") and
+  `QuestObjectivesByCataclysm` ("IT IS NOT SAVED, and neither is `QuestObjectives`", and it is what the unlock rule
+  reads). Both are included; a loader would need the second to know which Cataclysm's dungeon is unlocked.
+- **THE OTHER `QuestHits` IS NOT SAVED, on purpose.** `TArray<int32> QuestHits` is a field of `FCataclysmDayReport`
+  (`CataclysmEmpireRun.h`, "The cities a Quest dungeon's timer hit today"): one day's report, made again each day,
+  not progress. The run's `int32 QuestHits`, the tally, is saved.
+
+### What it was
+
+The run record carried the empire graph, the dungeons, their timers and the surge schedule, and not what the player
+had achieved, so a file held no quest objectives, no dungeons cleared, and no next dungeon number; a loader starting
+that number again at nought would hand out the numbers of dungeons it had just put back.
+
+### The change
+
+| Field on `UCataclysmRunSave` | From `UCataclysmEmpireRun` |
+|---|---|
+| `QuestObjectives`, `QuestObjectivesByCataclysm` | the win condition's counter, in total and per Cataclysm |
+| `BasicDungeonsCleared`, `DungeonsCleared`, `DungeonsDetonated`, `QuestHits`, `SurgesFromEmptyBoard` | the run's tallies |
+| `NextDungeonId` | the next dungeon number |
+| `LastHitDay`, `LastHitCityId`, `bLastHitWasAQuestTimer`, `LastMoveDay`, `LastMoveFromCityId`, `LastMoveToCityId` | the empire screen's last-hit and last-move lines |
+
+`ProgressFrom` copies them, and does nothing for a run `Begin` has not been called on, as `RunClockFrom` does; the
+writer calls it after `SurgeScheduleFrom`. **No schema version bump:** `docs/Save_System_Design.md` section 5, as
+`UCataclysmRunSave::PartialDay`'s comment quotes, keeps each default for a file written before, which is what such a
+file meant. The fixture holds a value no field has by default for each, as
+`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires.
+
+**THE ENUM-KEYED MAP'S JSON, read and not run.** `FCataclysmSaveStorage::ToJson` uses
+`FJsonObjectConverter::UStructToJsonAttributes` (engine `JsonObjectConverter.cpp`): an enum is written by its name,
+and a map's enum key is written by its name with its first letter lowered (`StandardizeCaseInPlace`), so the fixture's
+key is `"demonic"`. Reading converts the key through `FName`, which ignores case. The round-trip test is what shows it.
+
+### How it is checked
+
+`Cataclysm.SaveWriter.ARunsProgressSurvivesTheRecordAndItsJson`: a begun run given a non-default value in each of the
+fourteen fields is gathered, written to JSON and read back, and all fourteen equal the run's. **CONTROL:** a begun run
+that has achieved nothing gathers its own fourteen defaults, and those differ from the played run's in all fourteen,
+so the comparison can tell a gathered value from a default. It prints a line beginning "RUN PROGRESS".
+
+`Cataclysm.SaveWriter.AWrittenRunRecordCarriesWhatThePlayerAchieved`: the same played run, written by the save writer
+to disk on a trigger and read from the slot, the harness
+`Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheCitiesThroughTheFile` uses; the file holds all fourteen. It prints a
+line beginning "WRITTEN PROGRESS".
+
+### Not checked
+
+1. **Restoring a run**, for the reason said first: no loader exists (#753).
+2. **The run's other random streams**, `CataclysmStream` and `ModifierStream`: neither is saved, and neither this issue
+   nor #1471 names them. Whether a restored run needs them was not read.
+3. **Every field of `UCataclysmEmpireRun`.** The fields here are the ones the record's comment and the run's own
+   comments name; the run was not swept for others nobody has named.
+4. **Every save trigger.** Whether `WriteTheRunRecord` runs on all of them, or what a save inside a dungeon writes,
+   was not read.
+5. **#1471's two fields**, the tier and the active Cataclysms, are that issue's and are not here.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4364 / 0: `development`'s 4362, measured by window w90 on the tests `235370ad5` holds (`6cbc60b13` and `42139a247` after it change no C++), + 2 |
+| Python | of record, with JUnit, and ruff |
+| The "RUN PROGRESS" and "WRITTEN PROGRESS" lines | quoted as printed |
+| P1, `ProgressFrom` does not copy `QuestObjectives` | the round-trip test fails on "every progress field survives" (13 of 14, `QuestObjectives` differing), and on no CONTROL |
+| P2, `ProgressFrom` does not copy `NextDungeonId` | the round-trip test fails on the same assertion (13 of 14, `NextDungeonId` differing), and on no CONTROL |
+| P3, the writer does not call `ProgressFrom` | the writer test fails on "the file the writer wrote holds every progress field" |
+
+### Run
+
+**Window w91 (lock `dungeon-w91`, `fix/a-saved-run-keeps-what-the-player-achieved` at `a0e89b78b`, on `6cbc60b13`,
+2026-10-29) STOPPED at the round-trip test alone. Nothing after it ran.** `development`'s CI run at `6cbc60b13` and its
+last Unreal run, at `235370ad5`, succeeded; no run was in progress or queued, the lock was free, no build or editor
+process ran, and free memory read 10,955 MB immediately before. **One pre-check did not hold: pull request #2610 was
+open.** It is the enchantment session's Python-only #1385, which the coordinating session said it was holding until
+this window merged, and the lock was taken on that. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| `ARunsProgressSurvivesTheRecordAndItsJson` alone | 1 / 1 | `1 tests performed, 0 succeeded, 1 failed`: "Expected 'set-up: and read back' to be not null", then "a Run record was refused: the schema version is below the first real one -- the record says it is version 0; the first real version is 1" |
+
+**THE FAULT WAS THE TEST'S.** A record made with `NewObject` has `SchemaVersion` 0, and reading JSON refuses anything
+below version 1; the writer stamps `UCataclysmRunSave::SchemaVersionNow` (`CataclysmSaveWriter.cpp`) and the test did
+not. The test now stamps it the same way before writing. No assertion changed.
+
+The next window is registered as above.
+
+**Window w92 (lock `dungeon-w92`, `fix/a-saved-run-keeps-what-the-player-achieved-1` at `ccf87e4ee`, on `42139a247`,
+2026-10-29) passed.** `development`'s CI run at `42139a247` and its last Unreal run, at `235370ad5`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,684 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| The round-trip test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The writer test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN PROGRESS" line | quoted as printed | "14 of 14 survive the JSON (none differ); a fresh run gathers 14 of 14 of its own; the fresh record matches the played run in 0 of 14; ECataclysmType::Pestilence holds 2 objectives" |
+| The "WRITTEN PROGRESS" line | quoted as printed | "14 of 14 in the file match the run (none differ); quest objectives 3" |
+| Whole Unreal suite | 4364 / 0 | `4364 tests performed, 4364 succeeded, 0 failed`; declared 4364, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,101 |
+| Python (JUnit) | of record | 7052 tests, 0 failures, 0 errors, 8 skipped ("7044 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, `QuestObjectives` not copied | the round trip fails on "every progress field survives" only, 13 of 14 | failed on that only: "13 of 14 survive the JSON (QuestObjectives differ)"; both CONTROLs held; restored passed. **PROVED** |
+| P2, `NextDungeonId` not copied | the same assertion only, 13 of 14 | failed on that only: "13 of 14 survive the JSON (NextDungeonId differ)"; both CONTROLs held; restored passed. **PROVED** |
+| P3, the writer does not call `ProgressFrom` | the writer test fails on "holds every progress field" | failed on that only: "0 of 14 in the file match the run"; restored passed. **PROVED** |
+
+---
+
 ## 2026-10-29 — The two sweep tests that sampled a no-result rate against 50% set their cell results by hand (#1385)
 
 **Affects:** `sim/tests/test_sweep_tier.py` only (class `TestTheSweepFlagsCampaignsWithNoResult`: a helper that runs
