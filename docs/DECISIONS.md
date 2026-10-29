@@ -87,6 +87,10 @@ exactly one:
 
 It shows the test now reads the new block: a document and a record that disagree on this run fail.
 
+Run 2026-10-29 in a git-archive copy of `e3688264b`, the commit that registered it. Printed: "PROVED: 1 failed, 7 passed
+in 0.11s | restored: 8 passed in 0.07s". named_failures, exactly the one registered, with "the design document states
+the reached share as 1.9; sim/cataclysm_sim/engine.py records 2.9".
+
 ### NO GENRE SOURCE
 
 None. This is a re-measurement of the project's own simulation.
