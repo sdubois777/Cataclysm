@@ -21,7 +21,7 @@ dungeons. Python and documents only.
   `sim/tests/test_the_siege_prose_in_policies_is_true.py`, re-measures 320 campaigns and still passes. Its Outpost share
   moved from 55.92% to 55.76%.
 - **THE ISSUE'S LINE NUMBERS WERE OUT OF DATE.** Issue #1388 places the two reads at `policies.py:337` (`triage`) and
-  `:425` (`lane_aware`). On `development` at `6cbc60b13` they were lines 519 and 619.
+  `:425` (`lane_aware`). On `development` at `6cbc60b13` they were at `policies.py:519` and `policies.py:619`.
 
 ### THE RULE
 
