@@ -93,6 +93,12 @@ Run 2026-10-29 in a git-archive copy of `813c6ccfb`, the commit that registered 
 passed in 52.98s | restored: 179 passed in 52.69s". named_failures, exactly the one registered: with every clear
 filed as a hit, the hits exceeded what the engine counted ("assert 56 <= (42 + 13)").
 
+### EVIDENCE
+
+Python of record at `84f93fb2b`, on `development` `a41b79991`: "7099 passed, 8 skipped"; JUnit tests 7107, failures 0,
+errors 0, skipped 8 -- the base's 7107, with one test removed and one added. ruff: "All checks passed!" A regenerate run
+left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
 ### NO GENRE SOURCE
 
 None. This brings three measurement scripts into line with the model they measure.
