@@ -58,6 +58,14 @@ pytest sim/tests/test_the_siege_prose_in_policies_is_true.py` (that file needs n
   `sim/tests/test_the_siege_prose_in_policies_is_true.py::TestTheMedianWalkTheProseStates::test_a_spike_on_the_median_day_is_what_the_check_rejects`
   (the flat list gives 0.5 and not 1). The guard on real data passes, at 0.61.
 
+### THE PROOFS, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `4dee5a17c`, the commit that registered them.
+
+- P1: "PROVED: 1 failed, 18 passed in 6.54s | restored: 19 passed in 6.37s". named_failures, exactly the one registered,
+  with "1.22 times as many Outpost dungeons walk exactly 14 days as walk 13 or 15."
+- P2: "PROVED: 1 failed, 18 passed in 6.77s | restored: 19 passed in 6.55s". named_failures, exactly the one registered.
+
 ### NO GENRE SOURCE
 
 None. This is how the project's own test reads its own simulation.
