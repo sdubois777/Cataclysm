@@ -5027,13 +5027,54 @@ class TestEnchantmentEffects:
         assert "'ghost_stat' is not a stat" in problems[0]
 
     def test_a_flat_row_supplies_its_own_stat(self):
-        """The retaliation radius has no class line and no attribute; the flat
-        row in this sheet is what supplies it, as a flat passive row does."""
+        """The retaliation radius has no class line and no other base; the flat
+        row in this sheet is what supplies it, as a flat passive row does. (It
+        has a gameplay attribute since this was written; the base check asks
+        for a base, which only the flat row gives it. Issue #2387.)"""
         tables = {"EnchantmentEffects": [
             {"Name": "X#1", "Enchantment": "X",
              "Stat": "retaliation_radius_metres", "ValueKind": "flat",
              "RequiredTags": ""}]}
         assert gen.validate_enchantment_effects(tables, set()) == []
+
+    def test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused(self):
+        """Issue #2387. A flat row supplies its own stat to the base check above,
+        so a flat row on a misspelt name used to pass and be written dead: the
+        game reads a stat row only for a name in `StatToAttribute` or
+        `StatsWithNoAttribute`. THE CONTROLS pass: a flat row on a stat with an
+        attribute (`retaliation_radius_metres`) and on one with none
+        (`leech_payout_rate`)."""
+        for known in ("retaliation_radius_metres", "leech_payout_rate"):
+            tables = {"EnchantmentEffects": [
+                {"Name": "X#1", "Enchantment": "X", "Stat": known,
+                 "ValueKind": "flat", "RequiredTags": ""}]}
+            assert gen.validate_enchantment_effects(tables, set()) == [], known
+
+        misspelt = {"Name": "X#1", "Enchantment": "X",
+                    "Stat": "retaliation_radius_metre", "ValueKind": "flat",
+                    "RequiredTags": ""}
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [misspelt]}, set())
+        assert len(problems) == 1, problems
+        assert ("X#1: 'retaliation_radius_metre' is a flat row on a stat the game "
+                "reads nowhere") in problems[0]
+
+        # AN ACTION ROW IS NOT A STAT ROW, so it is not asked.
+        action = dict(misspelt, Stat="", Action="health")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [action]}, set()) == []
+
+    def test_the_stats_with_an_attribute_are_read_from_the_engine(self):
+        """`StatToAttribute` names a stat by literal (`agility`) or by constant
+        (`mana_regen`, `UCataclysmRegeneration::ManaRegenStat`); both kinds are
+        read. A stat on the other engine list (`leech_payout_rate`) is not in this
+        one, and a misspelt name is in neither."""
+        with_one = gen.stats_with_an_attribute()
+        assert {"agility", "mana_regen", "skill_locked", "retaliation"} <= with_one
+        assert "leech_payout_rate" not in with_one
+        assert "leech_payout_rate" in gen.stats_with_no_attribute()
+        assert "retaliation_radius_metre" not in (
+            with_one | gen.stats_with_no_attribute())
 
     def test_a_removal_is_not_asked_for_a_base(self):
         """A removal multiplies nothing, so a stat only an affix supplies -- which

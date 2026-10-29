@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import io
 import json
 import pathlib
@@ -8745,6 +8746,86 @@ def stats_with_no_attribute() -> set[str]:
     return names
 
 
+#: The body of `UCataclysmPlayerClassStats::StatToAttribute`, the map from a stat
+#: name to the gameplay attribute that holds it. Issue #2387.
+_STAT_TO_ATTRIBUTE = re.compile(
+    r"UCataclysmPlayerClassStats::StatToAttribute\(\)\s*\{(?P<body>.*?)\n\}", re.S)
+
+#: One entry of that map: the name is a literal, `TEXT("agility")`, or a named
+#: constant, `UCataclysmRegeneration::ManaRegenStat` (sometimes wrapped in
+#: `FString(...)`), and the value is an attribute getter.
+_STAT_TO_ATTRIBUTE_ENTRY = re.compile(
+    r'\{\s*(?:FString\(\s*)?(?:TEXT\("(?P<literal>\w+)"\)|(?P<constant>[A-Za-z_]\w*::\w+))'
+    r'\s*\)?\s*,\s*\w+::Get\w+Attribute\(\)\s*\}')
+
+#: A stat name defined as a constant in a source file, which is how most entries
+#: of the map name their stat.
+_STAT_NAME_CONSTANT = re.compile(r'const TCHAR\*\s+(\w+::\w+)\s*=\s*TEXT\("(\w+)"\)')
+
+
+@functools.lru_cache(maxsize=1)
+def stats_with_an_attribute() -> frozenset[str]:
+    """The stats with a gameplay attribute, READ FROM THE ENGINE. Issue #2387.
+
+    THE OTHER HALF OF WHAT THE GAME READS. A stat row reaches a character only
+    through `UCataclysmPlayerClassStats::ApplyTo`, which records a stat that is in
+    `StatToAttribute` or in `StatsWithNoAttribute` and drops every other name in
+    silence. `stats_with_no_attribute` reads the second list; this reads the first,
+    so that a flat row on a name in neither -- a misspelling, or a stat whose
+    mechanism has not merged -- is refused instead of written and dead.
+
+    THE MAP NAMES MOST OF ITS STATS BY CONSTANT, so each constant is looked up
+    where it is defined (`const TCHAR* UCataclysmRegeneration::ManaRegenStat =
+    TEXT("mana_regen")`) in the game's source files, tests left out.
+
+    RAISES RATHER THAN RETURNING A PARTIAL SET, when the map cannot be found, when
+    an entry does not parse, or when a constant has no definition: a partial set
+    would refuse rows that work, and the message would name the row rather than
+    the parse.
+    """
+    if not PLAYER_CLASS_STATS_CPP.is_file():
+        raise DataError(
+            f"{PLAYER_CLASS_STATS_CPP} is missing, so the stats with a gameplay "
+            f"attribute cannot be read.")
+    source = PLAYER_CLASS_STATS_CPP.read_text(encoding="utf-8", errors="replace")
+    found = _STAT_TO_ATTRIBUTE.search(source)
+    if not found:
+        raise DataError(
+            f"could not find UCataclysmPlayerClassStats::StatToAttribute() in "
+            f"{PLAYER_CLASS_STATS_CPP.name}. If it was renamed or reshaped, update "
+            f"_STAT_TO_ATTRIBUTE here rather than restating the names.")
+    body = found.group("body")
+    getters = len(re.findall(r"::Get\w+Attribute\(\)", body))
+    entries = list(_STAT_TO_ATTRIBUTE_ENTRY.finditer(body))
+    if not entries or len(entries) != getters:
+        raise DataError(
+            f"UCataclysmPlayerClassStats::StatToAttribute() holds {getters} "
+            f"attribute getters and {len(entries)} entries parsed. An entry in a "
+            f"shape _STAT_TO_ATTRIBUTE_ENTRY does not read would be left out, so "
+            f"update the pattern rather than letting the set come up short.")
+
+    constants: dict[str, str] = {}
+    for path in (REPO_ROOT / "game" / "Source" / "Cataclysm").rglob("*.cpp"):
+        if "Tests" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for name, value in _STAT_NAME_CONSTANT.findall(text):
+            constants.setdefault(name, value)
+
+    names: set[str] = set()
+    for entry in entries:
+        if entry.group("literal"):
+            names.add(entry.group("literal"))
+        elif entry.group("constant") in constants:
+            names.add(constants[entry.group("constant")])
+        else:
+            raise DataError(
+                f"UCataclysmPlayerClassStats::StatToAttribute() names its stat "
+                f"by {entry.group('constant')}, and no source file defines it as "
+                f"`const TCHAR* {entry.group('constant')} = TEXT(\"...\")`.")
+    return frozenset(names)
+
+
 #: The stats something asks for through the stat pipeline, which is the only
 #: place a SCALED row can reach play.
 #:
@@ -12881,6 +12962,24 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
                 f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is not a "
                 f"stat any class line, attribute, item base or engine base "
                 f"supplies, and no flat row in this sheet supplies it either")
+
+        # AND A FLAT ROW ON A STAT THE GAME READS NOWHERE. Issue #2387. The check
+        # above asks whether an increase has a base under it, and a flat row IS
+        # a base, so it supplies its own stat there and was never asked whether
+        # the game reads that stat at all. The game reads a stat row only for a
+        # name in `StatToAttribute` or `StatsWithNoAttribute`; any other name is
+        # dropped by `ApplyTo` without a word, so a misspelt flat row, or one
+        # whose mechanism has not merged, would be written and do nothing.
+        if (not row.get("Action")
+                and str(row["ValueKind"]).lower() == "flat"
+                and row["Stat"] not in stats_with_an_attribute()
+                and row["Stat"] not in stats_with_no_attribute()):
+            problems.append(
+                f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is a flat "
+                f"row on a stat the game reads nowhere: it is in neither "
+                f"UCataclysmPlayerClassStats::StatToAttribute nor "
+                f"StatsWithNoAttribute, so the row would be written and do "
+                f"nothing")
 
         for tag in (t.strip() for t in str(row["RequiredTags"]).split(",")):
             if tag and tag not in known:
