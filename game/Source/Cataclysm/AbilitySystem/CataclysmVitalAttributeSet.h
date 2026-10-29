@@ -33,6 +33,24 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 
 	/**
+	 * Holds the BASE value of every vital attribute inside the same plain bounds
+	 * `PreAttributeChange` holds the current value to. Issue #1096.
+	 *
+	 * WHY. `PreAttributeChange` clamps the CURRENT value only, and
+	 * `ApplyModToAttribute` adds to the BASE. So a cost of 500 against 200 health
+	 * left a base of -300 that the next 300 points of healing filled before the
+	 * character gained anything, and a gain at a full pool raised a base above the
+	 * maximum that the next spend came out of first. The engine's own header puts
+	 * base clamping here.
+	 *
+	 * THE PLAIN BOUNDS ONLY. The three rules a creature's health has on top --
+	 * cannot be hurt, shrouded, and an Unholy Sigil's one health -- stay on the
+	 * current value in `PreAttributeChange`, which is what every reader sees. A
+	 * judgement, issue #1096's entry in `docs/DECISIONS.md`.
+	 */
+	virtual void PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const override;
+
+	/**
 	 * Lowers Health to a lowered MaxHealth. Issue #2190; the reason is on the definition.
 	 */
 	virtual void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
@@ -153,6 +171,14 @@ public:
 	 * PROJECT'S, which a test may build and which has no stat lines to ask.
 	 */
 	float MaximumEnergyShieldAsked() const;
+
+	/**
+	 * The plain bounds of each vital attribute, shared by `PreAttributeChange`
+	 * for the current value and `PreAttributeBaseChange` for the base, so the
+	 * two lists cannot drift apart. Issue #1096. An attribute with no bound here
+	 * is left as it is.
+	 */
+	void ClampToPlainBounds(const FGameplayAttribute& Attribute, float& NewValue) const;
 
 	/** Points of health restored per second, before increases. */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealthRegen)

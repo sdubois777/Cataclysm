@@ -248,7 +248,7 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		}
 		else
 		{
-			NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+			ClampToPlainBounds(Attribute, NewValue);
 
 			// AND A CREATURE IN A FRIENDLY UNHOLY SIGIL CANNOT BE KILLED. Issue
 			// #1559, ruled 2026-09-30: "Allies in this sigil cannot be killed."
@@ -267,6 +267,36 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 				NewValue = FMath::Min(1.0f, GetHealth());
 			}
 		}
+	}
+	else
+	{
+		ClampToPlainBounds(Attribute, NewValue);
+	}
+}
+
+void UCataclysmVitalAttributeSet::PreAttributeBaseChange(
+	const FGameplayAttribute& Attribute, float& NewValue) const
+{
+	Super::PreAttributeBaseChange(Attribute, NewValue);
+
+	// THE BASE HELD TO THE SAME PLAIN BOUNDS AS THE CURRENT VALUE. Issue #1096;
+	// the reason is on the declaration. `SetAttributeBaseValue` calls this before
+	// it stores the base, and `ApplyModToAttribute` goes through it, so a cost,
+	// a heal and a direct write are all held here.
+	//
+	// EVERY WRITE OF A POOL AND ITS MAXIMUM TOGETHER WRITES THE MAXIMUM FIRST,
+	// read on 2026-10-29 before this was added, so a pool written here is not
+	// cut to a maximum that is about to rise. The places are listed in issue
+	// #1096's entry in `docs/DECISIONS.md`.
+	ClampToPlainBounds(Attribute, NewValue);
+}
+
+void UCataclysmVitalAttributeSet::ClampToPlainBounds(
+	const FGameplayAttribute& Attribute, float& NewValue) const
+{
+	if (Attribute == GetHealthAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
 	}
 	else if (Attribute == GetManaAttribute())
 	{
@@ -2094,8 +2124,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									   0.0f, GetMaxHealth()));
 
 				// AND THE BASE IS PUT BACK WHERE THE SIGIL HELD THE CURRENT VALUE.
-				// `PreAttributeChange` clamps only the current value; the base is
-				// stored as written, which here is zero, and the next gain would add
+				// `PreAttributeChange` holds the current value at one; the base is
+				// held only to its plain bounds by `PreAttributeBaseChange` (issue
+				// #1096), which here leaves it at zero, and the next gain would add
 				// to that. The same write-back the health branch below makes.
 				if (bHeldBySigil)
 				{

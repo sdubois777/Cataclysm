@@ -335,13 +335,16 @@ that it sets the base while the clamp guards the current value. In Unreal
 Engine 5.8 the current value is clamped before anything reads it:
 `SetAttributeBaseValue` goes through `SetNumericAttribute_Internal` to
 `PreAttributeChange`, with or without an aggregator. **But the stored base is
-kept as written**: `SetAttributeBaseValue` calls `PreAttributeBaseChange`,
-which no set in this project overrides, and stores the base before clamping
-the current value (GameplayEffect.cpp about 4001-4013). `ApplyModToAttribute`
-then adds to that base (4155-4161), so a gain at a full pool raises a hidden
-base unless something clamps it. Breaking such a clamp fails nothing that
-reads the current value once; a spend after a gain is what reads the base.
-Issues #1623 and #1036.
+kept as written unless the set clamps it**: `SetAttributeBaseValue` calls
+`PreAttributeBaseChange` and stores the base before clamping the current value
+(GameplayEffect.cpp about 4001-4013). `UCataclysmVitalAttributeSet` overrides
+it since issue #1096 and holds health, mana, energy shield, their maxima and
+its rates to the same plain bounds as the current value; no other set in this
+project overrides it, and in those the base is kept as written.
+`ApplyModToAttribute` then adds to that base (4155-4161), so in a set without
+the override a gain at a full pool raises a hidden base. Breaking such a clamp
+fails nothing that reads the current value once; a spend after a gain is what
+reads the base. Issues #1623, #1036 and #1096.
 
 **The same rule, for the opposite reason.** A crashed Unreal run reports no
 failures at all, so `failed` used to read as a guard that did not notice --

@@ -798,12 +798,15 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// having stopped working rather than as a cost" -- and the health-cost path
 	// returns early on it.
 	//
-	// NO ROW CARRIES `Slot.Basic`, WHICH IS WHY THE EXEMPTION ABOVE COSTS
-	// NOTHING RATHER THAN HIDING ANYTHING. This said "Slice 3a's only source is
-	// scoped to `Slot.Ultimate` and no row carries `Slot.Basic`, so nothing
-	// reaches this yet ... It is here for slice 3b", and the second half stopped
-	// being true. The `Slot.Basic` half is still true and is the part that
-	// matters here.
+	// NO `skill_locked` ROW CARRIES `Slot.Basic`, WHICH IS WHY THE EXEMPTION
+	// ABOVE COSTS NOTHING RATHER THAN HIDING ANYTHING. This said "Slice 3a's only
+	// source is scoped to `Slot.Ultimate` and no row carries `Slot.Basic`, so
+	// nothing reaches this yet ... It is here for slice 3b", and the second half
+	// stopped being true. Then it said no row at all carries `Slot.Basic`, which
+	// stopped being true when the two rows converting the basic attack into a
+	// deployable and into a placeable were scoped to it; neither is a lock. The
+	// only enchantment that would lock the basic attack, "Can't use a basic
+	// attack", was retired by the owner at weight 0 on 2026-10-08 (issue #1651).
 	//
 	// A FALLBACK OF ZERO MEANS AN UNKNOWN CHARACTER IS NOT LOCKED. A creature's
 	// ability system is never given a character stat line and a player's has

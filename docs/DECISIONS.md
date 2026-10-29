@@ -2,6 +2,148 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A vital pool keeps its base value inside the same plain bounds as its current value (#1096)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and `.cpp` (a
+`PreAttributeBaseChange` override and the shared const helper `ClampToPlainBounds`, which `PreAttributeChange` now
+calls too; one comment in the damage path corrected); `game/Source/Cataclysm/Tests/CataclysmHealthWrittenDirectlyTests.cpp`
+(the test that pinned the fault rewritten to the rule and renamed, one new test); `CLAUDE.md` (the sentences saying no
+set overrides `PreAttributeBaseChange`); this file. No data change. **Closes
+[#1096](https://github.com/sdubois777/Cataclysm/issues/1096).** A second, UNRELATED commit on this branch corrects a
+comment in `CataclysmSkillTemplate.cpp`; see the last section.
+
+### SAID FIRST
+
+- **THE FAULT, BOTH WAYS.** `PreAttributeChange` clamps the CURRENT value only, and `ApplyModToAttribute` adds to the
+  BASE (the engine's `GameplayEffect.cpp`: `ApplyModToAttribute` about 4155 calls `SetAttributeBaseValue` about 4161,
+  which calls `PreAttributeBaseChange` about 4001 and then stores the base). Downward: a cost of 500 against 200 health
+  left a base of -300, and the next 300 points of healing filled it before the character gained anything; the test
+  `AnOverspentCostLeavesTheBaseValueBelowZeroUntilTheRevival` pinned that. Upward: a gain at a full pool raised the
+  base above the maximum, and the next spend came out of that excess first.
+- **NOT SEEN IN PLAY DOWNWARD, READ AND NOT MEASURED.** Every route found that overspends health ends in a death, and
+  `Revive` sets the base absolutely. The two rows that survive a lethal hit act on an incoming hit before it lowers
+  health (`CataclysmVitalAttributeSet.cpp` about 1466-1490), so they do not overspend. Not every health write was read.
+  The upward direction needs no death.
+- **NO CURRENT-VALUE RULE MOVED.** What a reader sees changes only through the base.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1096: approved", with the plain bounds in `PreAttributeBaseChange` through one
+shared const helper, the creature-only rules left on the current value, the two tests and proofs P1-P3, and four
+conditions: read every place that writes a pool beside its maximum and stop if any writes the pool first; correct
+`CLAUDE.md`; the `Slot.Basic` comment may ride as a separate commit; register at the total current + 1 and predict
+each proof's assertion text.
+
+### THE INITIALISATION ORDER, READ BEFORE BUILDING
+
+A base clamp to a maximum would cut a pool written before its maximum rises. Every place in game code that writes a
+health, mana or energy shield base beside its maximum was read on 2026-10-29 at `15a030b4c`; **each writes the maximum
+first**:
+
+| Place | Writes |
+| :-- | :-- |
+| `ACataclysmEnemyCharacter::ApplyStartingAttributes` (`CataclysmEnemyCharacter.cpp` about 1689 and 1817) | MaxHealth then Health; MaxEnergyShield then EnergyShield. `ACataclysmEnemyCharacter::SetHealth`, which the game modes call for every placed creature, goes through it |
+| `UCataclysmPlayerClassStats::ApplyTo` (`CataclysmPlayerClassStats.cpp`) | every maximum in its two attribute passes, then each pool filled to its maximum (about 2272); the mana-into-health conversion writes MaxHealth, MaxMana, then Mana 0 |
+| `FCataclysmSaveApply::CreatureInto` (`CataclysmSaveApply.cpp` about 276) | `MaximumsInto` then `VitalsInto`, with a comment saying the order is load-bearing |
+| `FCataclysmSaveApply::PlacementInto` | the pools only, onto the character already possessed, whose class line has set the maxima. `FloorInto` has no caller outside the tests (`CataclysmSaveGather.cpp` about 167) |
+| `ACataclysmPlayerCharacter::Revive` (`CataclysmPlayerCharacter.cpp` about 2022-2036) | the pools only, to maxima already set |
+| the minion set-up (`CataclysmMinion.cpp` about 1355) | MaxHealth then Health |
+| `CataclysmSecondSelf.cpp` about 99 | MaxHealth then Health |
+| `CataclysmCorruptedStalkerCharacter.cpp` about 192 | MaxHealth then Health |
+| shared blood (`CataclysmRegeneration.cpp` about 671) | MaxEnergyShield then EnergyShield |
+| `CataclysmDungeonGameMode.cpp` about 10614, 10655, 10679, 13574 and 14048 | MaxHealth then Health in each |
+| the vital set's own `PostAttributeChange` (about 217) | lowers Health to a MaxHealth already lowered |
+
+The attribute set's constructor uses `Init*`, which writes both values directly and calls no hook. The test files were
+scanned for a pool written within eight lines before its maximum: of 37 matches, every helper (ten, in eight test files, each
+named `SetHealth`) writes the maximum first, and the direct writes either read the maximum or write 0 (one
+energy shield written as 0 before its maximum). The scan is narrower than the code; the whole suite is what measures it.
+
+### WHAT WAS BUILT
+
+- **`ClampToPlainBounds`**, const: health 0 to MaxHealth; mana 0 to MaxMana; energy shield 0 to
+  `MaximumEnergyShieldAsked()`; MaxHealth at least 1; the other maxima, the three regeneration rates and the three
+  leech values at least 0; the healing ceiling reduction and the healing received reduction 0 to 100. The bodies and
+  comments are the ones `PreAttributeChange` had, moved, so the two lists are one.
+- **`PreAttributeChange`** keeps the three creature rules on health -- cannot be hurt, shrouded, and the Unholy Sigil's
+  one health -- and calls the helper for everything else, including health's ordinary clamp.
+- **`PreAttributeBaseChange`** calls the helper.
+- **A JUDGEMENT, NOT DERIVED: the creature rules stay on the current value only.** They are rules about what a creature
+  may lose this instant, they read `GetHealth()`, which is the current value, and the code that needs the base to agree
+  already writes it back (the Sigil write-back about 2131 and the health branch about 2736). Putting them on the base
+  as well would duplicate them for no reading that changes.
+
+### THE TESTS
+
+- **`Cataclysm.HealthWrite.AnOverspentCostLeavesTheBaseValueAtZero`**, rewritten from the test that pinned the fault
+  (renamed; one test out, one in): CONTROL first, a heal of 100 on 200 of 1,000 gives 300; then 200 left and a cost of
+  500 leaves current 0 and BASE 0, the character dead, a heal of 100 gives 100, and `Revive` refills to 1,000 with the
+  base.
+- **`Cataclysm.HealthWrite.AGainAtAFullPoolDoesNotRaiseAHiddenBase`**, new: health, CONTROL 800 + 100 gives a base of
+  900; at a full 1,000, +200 leaves the base at 1,000 and -100 then leaves 900. Mana the same against the fixture's
+  maximum, CONTROL a hundred below full gains its hundred.
+
+### REGISTERED BEFORE THE RUN
+
+The total current + 1. Three proofs, each a break inside `PreAttributeBaseChange` only, so the current-value clamp
+the helper also serves is untouched; prefix `Cataclysm.HealthWrite.`; each run's whole log kept:
+
+| Proof | The break | Predicted to fail | Its two failed assertions |
+| :-- | :-- | :-- | :-- |
+| P1 | health held below its maximum only, the floor dropped | `AnOverspentCostLeavesTheBaseValueAtZero` | "and the base value is nought too, not three hundred below it"; "so healing a hundred after the overspend gives a hundred" |
+| P2 | health held above 0 only, the ceiling dropped | `AGainAtAFullPoolDoesNotRaiseAHiddenBase` | the two beginning "health:" (the base after the gain; the spend after it) |
+| P3 | mana not clamped in the base | `AGainAtAFullPoolDoesNotRaiseAHiddenBase` | the two beginning "mana:" |
+
+### CLAUDE.md
+
+Its paragraph beginning "A clamp in `PreAttributeChange` cannot be guard-proven from an automation test" said no set
+overrides `PreAttributeBaseChange` and the stored base is kept as written. It now says the vital set overrides it since
+#1096 and no other set does. Nothing else in the file changed.
+
+### THE UNRELATED COMMIT
+
+`CataclysmSkillTemplate.cpp`, the comment above the skill lock's basic-attack exemption, said "NO ROW CARRIES
+`Slot.Basic`". Two enchantment rows do now ("Your basic attack is converted into a deployable" and "... into a
+placeable"); neither is a lock. It now says no `skill_locked` row carries it, and that the one enchantment that would
+lock the basic attack was retired on 2026-10-08 (#1651). A comment only, carried on this branch with the coordinating
+session's leave because it needs a compile.
+
+### THE RUN, 2026-10-29, AT 18a807ac8 ON 38e1c6c99
+
+Registered before the run at 4356 + 1 = 4357, with P1-P3. NOTHING OUTSIDE THE TWO TESTS FAILED in the whole suite,
+which is the failure this change could have caused.
+
+| Step | Printed |
+| :-- | :-- |
+| `AnOverspentCostLeavesTheBaseValueAtZero` alone | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 40 actions, 37 files compiled" |
+| `AGainAtAFullPoolDoesNotRaiseAHiddenBase` alone | "1 tests performed, 1 succeeded, 0 failed" |
+| The whole Unreal suite | "4357 tests performed, 4357 succeeded, 0 failed"; "Declared: 4357 tests in the tree at 18a807ac8; 4357 performed, gap 0" |
+| Python of record | "7029 passed, 8 skipped"; JUnit tests 7037, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,539 MB. The suite's memory summary: peak used virtual 8,037 MB.
+
+### THE THREE GUARD PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix `Cataclysm.HealthWrite.` (8 tests), each anchor counted once in
+`read_text`, each run's whole log kept. Every proof printed "PROVED", named the one predicted test, left the file's hash
+as it was, and failed exactly the two assertions registered:
+
+| Proof | Printed | The broken run's two failed assertions |
+| :-- | :-- | :-- |
+| P1, the health floor dropped | "8 tests performed, 7 succeeded, 1 failed: AnOverspentCostLeavesTheBaseValueAtZero \| restored: 8 tests performed, 8 succeeded, 0 failed" | "and the base value is nought too, not three hundred below it" (it was -300); "so healing a hundred after the overspend gives a hundred" (it was 0) |
+| P2, the health ceiling dropped | "8 tests performed, 7 succeeded, 1 failed: AGainAtAFullPoolDoesNotRaiseAHiddenBase \| restored: 8 tests performed, 8 succeeded, 0 failed" | "health: two hundred at a full thousand leaves the base at the thousand" (it was 1,200); "health: so spending a hundred afterwards leaves nine hundred" (it was 1,000) |
+| P3, mana not clamped in the base | the same summary as P2 | "mana: five hundred at a full pool leaves the base at the maximum" (it was 10,500); "mana: so spending three hundred afterwards leaves the maximum less three hundred" (it was 10,000) |
+
+The broken runs measure both directions of the fault the issue describes: P1 restores the -300 hole and the heal it
+swallowed, and P2 and P3 the hidden excess a spend came out of.
+
+### NO GENRE SOURCE
+
+None. This is the engine's own rule for where a base value is clamped.
+
+---
+
 ## 2026-10-29 — The sandbox's rarity roll takes a seed a test can set, so what it rolls no longer depends on which tests ran first (#888)
 
 **Affects:** `ACataclysmGameMode` in `CataclysmGameMode.h` and `.cpp` (a property `RarityRollSeed`, a counter
