@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Infernal Sacrifice heals through the shared heal, so the rules on healing reach it (#1611)
+
+**Affects:** the Infernal Sacrifice step in `CataclysmEnemyModifiers.cpp` (one heal), and one new test in
+`CataclysmEnemyModifierTests.cpp`. Fixes [#1611](https://github.com/sdubois777/Cataclysm/issues/1611).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w82 below passed every registered figure, and both proofs were PROVED.**
+- **TWO THINGS WERE NOT TRACED:** which shipped sources write a creature's healing-received reduction (rather than the
+  player's), and where Necrosis's "denies the target all healing" is applied. Neither is claimed here.
+
+### What it was, read again at `7ca6edb06`
+
+Sacrifice killed the nearest ally and wrote the creature's health base to `min(maximum, now + a quarter of maximum)`,
+the one route that restores health without `UCataclysmRegeneration::TopUp`. #1607 and #1608, the other two, are closed.
+So it read none of what `TopUp` applies: a held swing forbidding healing, `healing_received`, the healing-received
+reduction attribute, an ailment's rider on healing received, and the healing ceiling with its reduction. The row says
+only "Sacrifice nearby allies to heal yourself and gain temporary damage buffs"; the design asks for no bypass.
+
+**THE SHIPPED ROW THIS MAKES REACH SACRIFICE:** `Positive_Disease_effects_reduce_enemy_healing_by_50_100`, "Disease
+effects reduce enemy healing by 50%-100%", written as an `ailment_healing_received` rider on Disease, which `TopUp`
+applies. A diseased creature's Field Medic heal was cut by it and its Sacrifice heal was not.
+
+### What changed
+
+The heal goes through `TopUp` with the same quarter of maximum, as the Field Medic's heal in the same file does.
+`TopUp` stops at the maximum, as the write did.
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt`: a creature of 1,000 health
+wounded to 200, carrying Infernal Sacrifice with an ally beside it, stepped through one interval. **CONTROL:** with no
+reduction it regains a quarter, 250. With its healing-received reduction at 50% it regains an eighth, 125. It prints a
+line beginning "SACRIFICE HEAL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4354 / 0: `development` at `d84004057` (#2590, #2236) is 4353, and one test is added; the branch moved onto it as `fix/infernal-sacrifice-heals-through-the-healing-rules-1` |
+| Python | of record, with JUnit, and ruff |
+| The "SACRIFICE HEAL" line | quoted as printed |
+| P1, the direct write restored | the test fails: with the reduction it regains the full quarter |
+| P2, the heal amount nought in the call | the CONTROL fails: it regains nothing |
+
+### Run
+
+**Window w82 (lock `dungeon-w82`, `fix/infernal-sacrifice-heals-through-the-healing-rules-1` at `51fc7e77c`, on
+`d84004057`, 2026-10-29) passed.** The lock was taken at 01:36 on a free-memory reading immediately before it of
+11,295 MB, after both of `development`'s runs at `d84004057` finished with success, with none in progress or queued,
+the lock free, no build or editor process, no open pull request. The lock was released before anything was written
+here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4354 / 0 | `4354 tests performed, 4354 succeeded, 0 failed`; declared 4354, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7758`, peak 8,081 |
+| Python (JUnit) | of record | 7035 tests, 0 failures, 0 errors, 8 skipped ("7027 passed, 8 skipped"); ruff `All checks passed!` |
+| The "SACRIFICE HEAL" line | quoted as printed | "250.0 regained with no reduction, 125.0 with 50%; a quarter is 250.0" |
+| P1, the direct write restored | the test fails: the full quarter with the reduction | "1 tests performed, 0 succeeded, 1 failed: InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt", printing "250.0 with 50%"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the heal amount nought | the CONTROL fails: nothing regained | the same failure line, printing "0.0 regained with no reduction"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-28 — Seven passive stats shipped under a condition get a probe each, so the ask is measured rather than read (#2236)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (seven probes, seven table entries, the
