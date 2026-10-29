@@ -1116,6 +1116,17 @@ public:
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 ImpRarityStep = -1;
 
+	/**
+	 * The seed every rarity roll not placed by a floor draws from, or 0 to draw as before: from the creature's own
+	 * identity and the clock. Issue #888, ruled 2026-10-29. Set, the same seed rolls the same rarities in the same
+	 * order, whatever ran before; each roll still differs from the one before it, through `RarityRollsMade`.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Cataclysm|Sandbox")
+	int32 RarityRollSeed = 0;
+
+	/** How many rolls `RarityRollSeed` has seeded, so one creature after another does not draw the same. Issue #888. */
+	mutable int32 RarityRollsMade = 0;
+
 	/** Which rung each Corrupted Sentinel spawns at, or -1 to draw one. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))

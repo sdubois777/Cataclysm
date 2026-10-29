@@ -197,8 +197,17 @@ int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
 	// floor's list, so the same seed builds the same floor, as
 	// `docs/Cataclysm_GDD_v2.md` promises ("the same seed always produces the
 	// same floor"). A COPY, so the caller's stream is not moved by this draw.
+	//
+	// OR A SEED A TEST SETS, `RarityRollSeed`, since issue #888. The default draw is
+	// seeded by the creature's identity and the clock, and in an automation test
+	// the world is new and its clock reads nearly nought, so the clock adds nothing
+	// and the identity -- the creature's slot in the engine's object array -- is
+	// what decides: it depends on every object the tests before it made. A set seed
+	// draws the same rarities in the same order however the run began.
 	FRandomStream Stream = FromTheFloor != nullptr
 		? *FromTheFloor
+		: RarityRollSeed != 0
+		? FRandomStream(static_cast<int32>(HashCombine(GetTypeHash(RarityRollSeed), GetTypeHash(RarityRollsMade++))))
 		: FRandomStream(Spawned->GetUniqueID()
 			  ^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
 
