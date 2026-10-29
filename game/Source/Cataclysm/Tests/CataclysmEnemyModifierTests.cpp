@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -3362,6 +3363,142 @@ CATACLYSM_MODIFIER_TEST(FCataclysmPhasewalkerIsNotWalkedTest,
 	TestEqual(TEXT("the phase added no ground walked"), System->MetresWalkedTotal(), Total, 0.001f);
 	TestFalse(TEXT("and did not mark it as moving"), System->IsMoving());
 	TestEqual(TEXT("and started its standing-still clock again"), System->SecondsSinceMoved(), 0.0f, 0.1f);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// A creature's energy shield refills. Issue #1562: every creature's shield regeneration was nought, so a shield once
+// broken stayed broken. The design: "It refills at a fifth of its own maximum per second", three seconds after the
+// last damage, from every source of maximum energy shield.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmShieldRefillTest
+{
+	using Vital = UCataclysmVitalAttributeSet;
+
+	float Read(const ACataclysmEnemyCharacter* Creature, const FGameplayAttribute& Attribute)
+	{
+		const UAbilitySystemComponent* Own = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Own ? Own->GetNumericAttribute(Attribute) : 0.0f;
+	}
+
+	/**
+	 * Hits `Creature` for half its maximum shield, then reads the shield at 2.5 seconds and at 4 seconds after. Asserts
+	 * the hit took shield, that nothing came back inside the wait, and that a fifth of the maximum a second came back
+	 * after it: between 0.15 and 0.30 of the maximum by four seconds, the beat being a quarter of a second.
+	 */
+	void ExpectItRefills(FAutomationTestBase& Test, UWorld* World, ACataclysmPlayerCharacter* Player,
+						 ACataclysmEnemyCharacter* Creature, const TCHAR* Which)
+	{
+		const float Maximum = Read(Creature, Vital::GetMaxEnergyShieldAttribute());
+		Test.TestEqual(FString::Printf(TEXT("%s: its shield regenerates a fifth of its maximum a second"), Which),
+					   Read(Creature, Vital::GetEnergyShieldRegenAttribute()),
+					   Maximum * ACataclysmEnemyCharacter::EnergyShieldRegenShareOfMaximum, 0.01f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Creature, Maximum * 0.5f, FCataclysmHitDelivery());
+		const float AfterHit = Read(Creature, Vital::GetEnergyShieldAttribute());
+		CataclysmTestWorld::RunClock(World, 2.5f);
+		const float InsideTheWait = Read(Creature, Vital::GetEnergyShieldAttribute());
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		const float AfterTheWait = Read(Creature, Vital::GetEnergyShieldAttribute());
+		Test.AddInfo(FString::Printf(TEXT("SHIELD REFILL: %s: maximum %.1f, %.1f after the hit, %.1f at 2.5 s, %.1f at 4 s"),
+									 Which, Maximum, AfterHit, InsideTheWait, AfterTheWait));
+
+		Test.TestTrue(FString::Printf(TEXT("%s: set-up: the hit took shield"), Which), AfterHit < Maximum - 0.01f);
+		Test.TestEqual(FString::Printf(TEXT("%s: nothing comes back inside the three seconds"), Which),
+					   InsideTheWait, AfterHit, 0.01f);
+		const float Back = AfterTheWait - AfterHit;
+		Test.TestTrue(FString::Printf(TEXT("%s: after them the shield refills (%.1f back)"), Which, Back),
+					  Back >= Maximum * 0.15f && Back <= Maximum * 0.30f);
+		Test.TestTrue(FString::Printf(TEXT("%s: and never past its maximum"), Which), AfterTheWait <= Maximum + 0.01f);
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmShielderRefillsTest,
+	"Cataclysm.EnemyModifiers.AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage")
+{
+	using namespace CataclysmEnemyModifierTest;
+	using namespace CataclysmBondAndSigilTest;
+	using namespace CataclysmShieldRefillTest;
+
+	// A REAL SPAWNED SHIELDER, its modifier drawn by the floor's own spawn, as
+	// `AFloorCreatureThatDrawsShielderSpawnsWithItsShield` makes one. No setter
+	// after `ApplyDesignedStats`, for the reason that test gives.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* GameMode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	if (!TestNotNull(TEXT("a dungeon game mode"), GameMode) || !TestNotNull(TEXT("a player"), Player))
+	{
+		return false;
+	}
+	const FName Shielder(UCataclysmEnemyModifiers::ShielderRow);
+	ACataclysmEnemyCharacter* Imp = FloorImpThatDraws(*this, World, GameMode, Shielder, FVector(-3000.0f, 0.0f, 0.0f));
+	if (!Imp || !TestTrue(TEXT("set-up: it drew Shielder and nothing else"), DrewOnly(Imp, Shielder))
+		|| !TestEqual(TEXT("set-up: the Imp's own kind carries no shield"), Imp->EnergyShieldFraction, 0.0f, 0.0001f)
+		|| !TestTrue(TEXT("set-up: so Shielder is its whole shield"),
+					 Read(Imp, Vital::GetMaxEnergyShieldAttribute()) > 0.0f))
+	{
+		return false;
+	}
+	ExpectItRefills(*this, World, Player, Imp, TEXT("Shielder"));
+
+	// CONTROL: A CREATURE WITH NO SHIELD REGENERATES NOTHING, health or shield,
+	// as the position at the regeneration writes still holds for it.
+	ACataclysmEnemyCharacter* Plain = Creature(World, FVector(3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a creature with no shield"), Plain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: it has no shield"), Read(Plain, Vital::GetMaxEnergyShieldAttribute()), 0.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: and so no shield regeneration"),
+			  Read(Plain, Vital::GetEnergyShieldRegenAttribute()), 0.0f, 0.0001f);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Plain, 1000.0f, FCataclysmHitDelivery());
+	const float Hurt = HealthOf(Plain);
+	CataclysmTestWorld::RunClock(World, 5.0f);
+	TestTrue(TEXT("CONTROL: set-up: the hit took health"), Hurt < 100000.0f);
+	TestEqual(TEXT("CONTROL: five seconds later it has regained nothing"), HealthOf(Plain), Hurt, 0.01f);
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmKindsShieldRefillsTest,
+	"Cataclysm.EnemyModifiers.ACreatureWhoseKindCarriesAShieldRefillsItThreeSecondsAfterDamage")
+{
+	using namespace CataclysmBondAndSigilTest;
+	using namespace CataclysmShieldRefillTest;
+
+	// THE SUCCUBUS'S CASE: a shield from the creature's kind, at the Succubus's
+	// own fraction, and no modifier at all. The design's Succubus section: it
+	// "refills three seconds after the last damage it took". A separate test from
+	// Shielder's, so a failure names which source of shield stopped refilling.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Kind = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a creature"), Kind))
+	{
+		return false;
+	}
+	Kind->SetEnergyShieldFraction(ACataclysmSuccubusCharacter::DesignedEnergyShieldFraction);
+	if (!TestEqual(TEXT("set-up: it carries no modifier"), Kind->ModifierRows.Num(), 0)
+		|| !TestEqual(TEXT("set-up: its kind gives it the Succubus's half its health as shield"),
+					  Read(Kind, Vital::GetMaxEnergyShieldAttribute()),
+					  1000.0f * ACataclysmSuccubusCharacter::DesignedEnergyShieldFraction, 0.01f))
+	{
+		return false;
+	}
+	ExpectItRefills(*this, World, Player, Kind, TEXT("the kind's own shield"));
 	return true;
 }
 

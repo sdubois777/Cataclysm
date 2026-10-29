@@ -1763,10 +1763,13 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// ZERO RATHER THAN A SKIPPED TICK, so the rule lives in the creature's own
 	// numbers where it can be read and changed, rather than inside the
 	// mechanism as a special case for one kind of character.
+	//
+	// THE ENERGY SHIELD IS THE EXCEPTION, AND THE DESIGN MAKES IT. Issue #1562:
+	// its regeneration is written with the shield below, a fifth of the maximum a
+	// second, because the design says every source of maximum energy shield
+	// grants that rate. A creature with no shield gets nought there.
 	ApplyIfHeld(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 0.0f);
 	ApplyIfHeld(UCataclysmVitalAttributeSet::GetManaRegenAttribute(), 0.0f);
-	ApplyIfHeld(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(),
-				0.0f);
 
 	// THE ENERGY SHIELD, WHICH NOTHING WROTE AT ALL UNTIL ISSUE #485. The
 	// fraction reached the generated archetype table and the row struct that
@@ -1814,6 +1817,14 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 		AbilitySystemComponent->SetNumericAttributeBase(MaxShield, Shield);
 		AbilitySystemComponent->SetNumericAttributeBase(
 			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Shield);
+
+		// AND IT REFILLS, AT A FIFTH OF ITSELF A SECOND, after the three seconds
+		// `UCataclysmRegeneration::ApplyStep` already waits. Issue #1562. From the
+		// whole shield, the kind's own share and Shielder's alike, so the Succubus's
+		// refills as Shielder's does; nought for a creature with none.
+		AbilitySystemComponent->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(),
+			Shield * EnergyShieldRegenShareOfMaximum);
 	}
 
 	// AND WHAT ELSE THE MODIFIERS THIS CREATURE CARRIES CHANGE. Maximum health

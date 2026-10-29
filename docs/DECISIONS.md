@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — A creature's energy shield refills at a fifth of its maximum a second, three seconds after damage (#1562)
+
+**Affects:** `CataclysmEnemyCharacter.h` and `.cpp` (a constant, `EnergyShieldRegenShareOfMaximum`, and the shield's
+regeneration written in `ApplyStartingAttributes`), and two new tests in `CataclysmEnemyModifierTests.cpp`. Fixes
+[#1562](https://github.com/sdubois777/Cataclysm/issues/1562).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w78 below passed every registered figure, and both proofs were PROVED.**
+- **THE SUCCUBUS IS COVERED BY THE SAME CHANGE.** Its shield comes from its kind's `EnergyShieldFraction`, not from
+  Shielder, and its regeneration was nought too, so it did not refill either; the design says it does.
+
+### What it was
+
+`ApplyStartingAttributes` wrote every creature's health, mana and energy shield regeneration to nought, and the
+shield's refill, three seconds after the last damage in `UCataclysmRegeneration::ApplyStep`, multiplies that rate. So a
+creature's shield, once broken, stayed broken until something set its stats again. The five links #1562 read at
+`783893f` were read again at `c88a87302` and all hold. #1552, which the issue says made it worse, was closed on
+2026-09-11: drawn modifiers reach a creature's stats at spawn.
+
+### The rate is the design's, not a judgement
+
+`docs/Cataclysm_GDD_v2.md`, the Energy Shield section: "It refills at a fifth of its own maximum per second, so a full
+shield takes 5 seconds however large it is. Every source of maximum energy shield grants that rate alongside it",
+sourced there to Path of Exile's 20% of maximum energy shield a second after its own delay. And the Succubus's section:
+its shield "behaves exactly like the player's" and "refills three seconds after the last damage it took". Ruled by the
+coordinating session on 2026-10-28 to apply to every creature with a shield, the kind's share and Shielder's alike.
+
+### What changed
+
+The shield's regeneration is written beside the shield, as the whole maximum shield times
+`EnergyShieldRegenShareOfMaximum`, 0.2. Health and mana regeneration stay nought, and a creature with no shield gets
+nought, so `Cataclysm.Regeneration.ACreatureDoesNotRegenerateAtAll`, whose creature carries no shield, still holds as
+written. The three-second wait is unchanged.
+
+### How it is checked
+
+| Test | What it asserts |
+|---|---|
+| `AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage` | an Elite Imp whose Shielder came from the floor's own spawn draw: its rate is a fifth of its maximum shield; a hit for half the shield takes shield; nothing comes back by 2.5 s; between 0.15 and 0.30 of the maximum is back by 4 s, never past it. **CONTROL:** a creature with no shield has no rate, and five seconds after a hit has regained nothing |
+| `ACreatureWhoseKindCarriesAShieldRefillsItThreeSecondsAfterDamage` | the Succubus's case: no modifier, a shield from its kind at the Succubus's own fraction, and the same four assertions |
+
+They are two tests so that a failure names which source of shield stopped refilling. Each prints lines beginning
+"SHIELD REFILL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two tests alone | 2 / 2 |
+| Whole Unreal suite | 4351 / 0: `development` at `4faf66bfb` (#2583) is 4349, and two tests are added; the branch moved onto it as `fix/a-creatures-shield-refills-1` |
+| Python before the window | JUnit 7032 tests, 0 failures, 0 errors, 7 skipped ("7025 passed, 7 skipped") at `661a1a034`; ruff `All checks passed!` |
+| Python | of record, with JUnit, and ruff |
+| The "SHIELD REFILL" lines | quoted as printed |
+| P1, the rate written as nought | the Shielder test fails: nothing comes back after the wait |
+| P2, the rate taken from Shielder's share only | the kind's test fails: its shield does not come back |
+
+### Run
+
+**Window w78 (lock `dungeon-w78`, `fix/a-creatures-shield-refills-1` at `df85590cf`, on `4faf66bfb`, 2026-10-28)
+passed.** The lock was taken at 18:51 on a free-memory reading immediately before it of 11,475 MB, with the other
+conditions met: `development`'s CI run at `4faf66bfb` succeeded, and that merge, Python only, started no Unreal run, the
+last on `development` (`21d6a6308`) having succeeded; none in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The Shielder test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The kind's test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4351 / 0 | `4351 tests performed, 4351 succeeded, 0 failed`; declared 4351, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7686`, peak 8,007 |
+| Python (JUnit) | 7032 | 7032 tests, 0 failures, 0 errors, 8 skipped ("7024 passed, 8 skipped"); ruff `All checks passed!` |
+| The "SHIELD REFILL" lines | quoted as printed | "Shielder: maximum 80.5, 40.2 after the hit, 40.2 at 2.5 s, 56.3 at 4 s"; "the kind's own shield: maximum 500.0, 250.0 after the hit, 250.0 at 2.5 s, 350.0 at 4 s". Each came back 0.20 of its maximum in the second after the wait |
+| P1, the rate written as nought | the Shielder test fails | "1 tests performed, 0 succeeded, 1 failed: AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage", printing "40.2 at 4 s"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the rate from Shielder's share only | the kind's test fails | "1 tests performed, 0 succeeded, 1 failed: ACreatureWhoseKindCarriesAShieldRefillsItThreeSecondsAfterDamage", printing "250.0 at 4 s"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-28 — The row generator refuses a flat enchantment row on a stat the game reads nowhere (#2387)
 
 **Affects:** `tools/generate_datatables.py` (a new reader, `stats_with_an_attribute`, and one refusal in
