@@ -333,11 +333,12 @@ class TuningConfig:
     # `TestTheCadence` in `tools/tests/test_surge_port.py` holds them equal.
     # Until that layer the game kept 120 and 4.
     #
-    # THREE ANALYSIS SCRIPTS READ THESE AS "WHAT SHIPS" AND WERE BUILT
-    # AROUND 120 AND 4: `analyse_surge_cadence.py`,
-    # `analyse_board_empty_surge.py` and `analyse_tier_throughput.py`. Each
-    # now holds 120 and 4 by name, because its axes and its recorded
-    # figures are those of that cadence.
+    # THREE ANALYSIS SCRIPTS READ THESE AS "WHAT SHIPS":
+    # `analyse_surge_cadence.py`, `analyse_board_empty_surge.py` and
+    # `analyse_tier_throughput.py`. They were built around 120 and 4 and held
+    # those by name from 2026-10-13; since issue #2396 each reads these two
+    # constants and the opening wave from here again, with no pin, and their
+    # figures recorded at 120 and 4 say so where they stand.
     #
     # 8 A WAVE AND AN OPENING WAVE OF 12, SINCE 2026-10-16. The owner, that
     # day, verbatim: "I want surges to summon a lot more dungeons. Or maybe

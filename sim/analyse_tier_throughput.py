@@ -1,19 +1,56 @@
-"""Why a player with no empire tree loses everything at difficulty tier 4.
+"""Why a player with no empire tree loses everything at difficulty tier 4 -- and,
+since issue #2396, how much of what arrives they clear before it hits.
+
+**THE MEASURE, SINCE ISSUE #2396: THE SHARE OF ARRIVING DUNGEONS THE PLAYER
+CLEARS BEFORE THEY HIT THEIR CITY, PER DIFFICULTY TIER.** Every dungeon a surge
+lands has one first event: the player clears it, or its timer runs out and costs
+its standing city something (an ordinary dungeon's hit, or since 2026-10-13 a
+Quest dungeon's), or neither happens before the run ends or its city falls under
+it. Section 3 prints the three shares at each tier, with the shipped rules.
+
+Measured on 2026-10-29 at `a41b79991`, 400 campaigns a tier (seeds 0 to 399),
+no empire tree, with the shipped cadence and rules:
+
+    tier   arriving   cleared first   hit first   neither   cities lost   won     earned opened
+       1       86.0           14.6%       70.0%     15.3%          4.30   44.2%          97.2%
+       2      125.9            8.3%       70.8%     21.0%          7.33   35.0%          88.8%
+       4      301.5            5.0%       61.6%     33.4%         20.52    5.8%          30.2%
+       8      393.5            2.6%       49.4%     48.0%         24.05    0.0%           0.0%
+
+**SO THE OLD WORLD'S HEADLINE DOES NOT HOLD IN THE SHIPPED ONE**: at tier 4 the
+earned Cataclysm dungeon opens in 30.2% of campaigns, where the finding below
+says 0.0%. Nothing here says why; the old investigation is kept as it was.
+
+**THE "WALK-DAYS ARRIVING PER DAY AGAINST 1.0" FRAMING IS RETIRED.** It was
+written for a model in which a dungeon stayed on the map until it was cleared,
+so a player who could not out-walk the arrival rate watched the board fill and
+the empire fall. On 2026-10-13 an ordinary dungeon began hitting its city once
+and leaving, so a board no longer has to be kept clear for an empire to stand,
+and an arrival rate above 1.0 no longer means the empire falls. Ruled by the
+coordinating session on issue #2396, from the design and the shipped rules. The
+arrival rate is still printed in section 1, as a description of how much walking
+arrives per day, and nothing is concluded from where it sits against 1.0.
+
+**WHAT IT RUNS.** The shipped cadence -- an opening wave of `surge_opening_count`,
+then `surge_dungeon_count` every `surge_interval_days` -- and every rule
+`TuningConfig` ships, all read from the config with no pin. Until issue #2396
+this file held 4 dungeons every 120 days and three rules at their September
+values (an ordinary dungeon staying after it hits its city, a Quest dungeon's
+timer costing its city nothing, a hit sized without the tree's floors).
+
+## What it found in the old world, NOT RE-MEASURED
+
+**EVERYTHING FROM HERE TO "Conditions" WAS MEASURED AT 4 DUNGEONS EVERY 120 DAYS
+WITH THOSE THREE RULES HELD**, at 400 campaigns a cell, and was not re-measured
+when issue #2396 moved this file to the shipped world. It is kept as the record
+of issue #1392's investigation; the command below no longer prints these
+figures.
 
 Issue [#1392] recorded that a player who has bought nothing from the empire tree
 loses every city they can lose at difficulty tier 4 and reaches the earned
 Cataclysm dungeon in 2% of campaigns. Re-measured on `998d758` it is **0.0%**.
 Nothing had investigated why. This file is that investigation, kept so the
 answer can be re-measured rather than re-derived.
-
-**SINCE 2026-10-16 THE BOARD CANNOT BE KEPT CLEAR AT TIER 1 EITHER.** The owner
-that day: "I want surges to summon a lot more dungeons". At the shipped cadence
--- an opening wave of 12, then 8 dungeons every 90 days -- the later waves alone
-land about 1.90 walk-days a day at tier 1, more than one player can walk, so
-"can the board be kept clear" is answered no at tier 1 too.
-`test_the_arrival_rate_is_the_engines_own_arithmetic` in
-`sim/tests/test_analysis_scripts.py` computes that figure. The findings below
-were measured before then, at 4 every 120.
 
 **IT MEASURES AND PROPOSES NOTHING.** Every counterfactual in section 4 changes
 one setting to say whether that step is load-bearing. None of them is a
@@ -62,24 +99,16 @@ completes 3.31 quest objectives against a requirement of at least ten.
 
 ## Conditions
 
-**THE FIGURES IN THIS DOCSTRING WERE MEASURED BEFORE THE OPENING WAVE OF 12
-EXISTED (2026-10-16)**, at the cadence they state, 4 every 120, and were not
-re-run. `base_config` now holds the shipped opening size, so section 1's
-tier-1 row prints the opening wave and no longer prints 0.71.
-
-**THIS FILE DESCRIBES THE MODEL AS IT WAS BEFORE 2026-10-12, WHEN AN ORDINARY
-DUNGEON STAYED ON THE MAP AFTER IT HIT ITS CITY.** That day
-`TuningConfig.dungeon_persists_after_resolve` became False by default, by the
-owner's ruling of 2026-10-08 that such a dungeon does its damage and then
-despawns. Step 2 above, "nothing removes a dungeon but a clear", is no longer
-true of the shipped model. `base_config` holds the setting True so that every
-figure here is still what the command below prints, and the section 4 row
-"detonated dungeon leaves" is the shipped rule, not a counterfactual. No figure
-here was re-measured under the shipped rule.
+**THE FINDINGS ABOVE DESCRIBE THE MODEL BEFORE 2026-10-12**, when an ordinary
+dungeon stayed on the map after it hit its city; step 2, "nothing removes a
+dungeon but a clear", is not true of the shipped model, which is why the framing
+was retired. Section 4's row for that rule is now "detonated dungeon stays", the
+old rule as a counterfactual against the shipped one.
 
 Every campaign figure runs under `triage`, STATIC surges at the shipped
-`surge_dungeon_count` and `surge_interval_days`, resolve floor ratio 2.0, dungeon
-power escalation 0.10 per 100 days, and craft 12 days for +4% of a tier width --
+`surge_dungeon_count`, `surge_interval_days` and `surge_opening_count`, resolve
+floor ratio 2.0, dungeon power escalation 0.10 per 100 days, and craft 12 days
+for +4% of a tier width, with every other rule as `TuningConfig` ships it --
 identical to `analyse_surge_cadence.base_config` at its shipped count and
 interval, so the two files' figures are comparable.
 
@@ -93,8 +122,8 @@ nothing**; sections 1 and 2 are exact arithmetic and are right at any setting.
 CATACLYSM_TIER_THROUGHPUT_TRIALS=400 python -u sim/analyse_tier_throughput.py
 ```
 
-400 campaigns a cell is about four minutes and is what the figures quoted in this
-docstring and on [#1392] were measured at.
+400 campaigns a cell was about four minutes in the old world and is what the
+figures quoted above and on [#1392] were measured at.
 
 [#1349]: https://github.com/sdubois777/Cataclysm/issues/1349
 [#1392]: https://github.com/sdubois777/Cataclysm/issues/1392
@@ -138,15 +167,9 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
 
     @param over  one setting to change, for section 4. Applied last, so it wins.
     """
-    # 4 EVERY 120 DAYS, HELD ON PURPOSE. Since 2026-10-13 `TuningConfig` ships
-    # 5 every 90. Every figure this file's docstring and the issues quote
-    # was measured at 4 every 120, which is what shipped then, and none was
-    # re-measured, so the two are held where they were. AT 5 EVERY 90 THE
-    # HEADLINE MOVES: `arrival_rate` gives 1.19 walk-days a day at tier 1,
-    # above the 1.0 this file's framing needs tier 1 to stay under
-    # (computed 2026-10-13 by this function with the next line removed).
-    shipped = replace(TuningConfig(), surge_interval_days=120.0,
-                      surge_dungeon_count=4)
+    # THE CADENCE AS IT SHIPS, read from the config since issue #2396; this
+    # held 4 every 120 by name until then.
+    shipped = TuningConfig()
     cfg = replace(
         shipped,
         tier=tier,
@@ -162,21 +185,7 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
-        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
-        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
-        # leaves after it hits its city. Every figure this file's docstring
-        # and the issues quote was measured with the dungeon staying, and none
-        # has been re-measured, so the setting is held where it was. Remove
-        # this line to measure the shipped rule; the figures then move.
-        dungeon_persists_after_resolve=True,
-        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
-        # Quest dungeon's timer hit its city. This file's figures were
-        # measured with that timer costing the city nothing, and none
-        # was re-measured. Remove this line to measure the shipped rule.
-        quest_timer_hits_city=False,
-        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
-        # of a dungeon's floors, the tree's included.
-        hit_scales_with_natural_floors=False,
+        # EVERY OTHER RULE IS THE ONE `TuningConfig` SHIPS, since issue #2396.
     ).with_tree(tree)
     return replace(cfg, **over) if over else cfg
 
@@ -203,14 +212,19 @@ def wave_multiplier(cfg: TuningConfig) -> float:
 
 
 def dungeons_per_surge(cfg: TuningConfig) -> int:
-    """How many dungeons one wave lands, the way `trigger_surge` counts them.
+    """How many dungeons one scheduled wave lands, the way `trigger_surge`
+    counts them.
 
     CALLED UNBOUND ON A STAND-IN, the way `analyse_surge_cadence.surge_count_for`
     does and for the same reason: `Simulation.surge_count` reads `self.cfg` and
     `self.surge_index` and nothing else, and building a real `Simulation` builds
     a whole empire graph for one integer.
+
+    AT WAVE INDEX 1, A LATER WAVE AND NOT THE OPENING, since issue #2396: the
+    opening wave is `surge_opening_count`, a one-off, and a rate per day is the
+    later waves' rate.
     """
-    base = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=0))
+    base = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=1))
     return max(1, round(base * wave_multiplier(cfg)))
 
 
@@ -237,11 +251,13 @@ def arrival_rate(cfg: TuningConfig) -> float:
     """Walk-days of dungeon arriving per calendar day, from scheduled waves.
 
     **A LOWER BOUND AND NOT AN ESTIMATE.** It counts the scheduled wave only.
-    Surges fired by a city falling and by the board emptying land on top of it,
-    and at tier 4 the first of those is 89% of every surge that fires.
+    Surges fired by a city falling and by the board emptying land on top of it
+    (at tier 4, in the old world, the first of those was 89% of every surge).
 
-    Above 1.0 the player cannot keep the board clear however they play, because
-    they walk at most one day per day.
+    **A DESCRIPTION AND NOT A VERDICT, since issue #2396.** Above 1.0 a player
+    cannot walk everything that arrives; under the shipped rules that no longer
+    means the empire falls, because an ordinary dungeon hits once and leaves.
+    What the player does manage is `cleared_first%` in section 3.
     """
     return (dungeons_per_surge(cfg) * walk_days_per_dungeon(cfg)
             / cfg.surge_interval_days)
@@ -251,9 +267,11 @@ def section_arrival_rate() -> dict:
     print("=" * 78)
     print("1. WALK-DAYS ARRIVING PER CALENDAR DAY, with no empire tree")
     print("=" * 78)
-    print("   Exact arithmetic; no campaigns are run. A player walks at most one")
-    print("   day per day, so above 1.00 the board can only grow. Scheduled")
-    print("   waves only -- a surge fired by a city falling lands on top.")
+    print("   Exact arithmetic; no campaigns are run. A DESCRIPTION, NOT A")
+    print("   VERDICT: since 2026-10-13 an ordinary dungeon hits once and")
+    print("   leaves, so a rate above 1.00 no longer means the board fills and")
+    print("   the empire falls (issue #2396). Section 3 measures what the")
+    print("   player clears. Scheduled waves only, after the opening wave.")
     print()
     print(f"   {'tier':>5} {'active':>7} {'wave x':>7} "
           f"{'dungeons/surge':>15} {'walk days each':>15} "
@@ -269,17 +287,8 @@ def section_arrival_rate() -> dict:
               f"{per * walk:>16.0f} {cfg.surge_interval_days:>5.0f} "
               f"{rate:>17.2f}")
     print()
-    # NOT `min(...)` OVER A COMPREHENSION. It raises on an empty sequence,
-    # and the sequence is empty exactly when no tier is over 1.0 -- which is
-    # the outcome a balance change would be TRYING for. The script crashed
-    # there, and a guard proof of the arrival-rate test found it.
-    over = [t for t, r in out.items() if r > 1.0]
-    print(f"   THE BOARD CANNOT BE KEPT CLEAR FROM TIER {min(over)} UPWARD."
-          if over else
-          "   EVERY TIER IS UNDER 1.00: the board can be kept clear at all "
-          "of them.")
     print(f"   Tier 1 is {out[1]:.2f} and tier 4 is {out[4]:.2f}, which is "
-          f"{out[4] / out[1]:.2f} times as much work per day.")
+          f"{out[4] / out[1]:.2f} times as much walking arriving per day.")
     return out
 
 
@@ -369,6 +378,13 @@ class _Ledger(Simulation):
         self.last_stand_risk: float | None = None
         self.entered_last_stand = False
         self.ended_in: str | None = None
+        #: Every dungeon a surge landed, by id, and its FIRST event: "cleared"
+        #: if the player cleared it before its timer cost a city anything, "hit"
+        #: if its timer cost a standing city something first, None while
+        #: neither has happened. Issue #2396's measure. A dungeon whose city
+        #: fell under it, or that was still standing when the run ended, stays
+        #: None and is counted as neither.
+        self.first_event: dict[int, str | None] = {}
 
     def step(self, policy) -> None:
         if self.dying:
@@ -396,6 +412,9 @@ class _Ledger(Simulation):
         super().trigger_surge(from_city_fall=from_city_fall)
         if self._next_did <= before:
             return
+        for did in range(before, self._next_did):
+            if did in self.dungeons:
+                self.first_event.setdefault(did, None)
         self.spawned += self._next_did - before
         if from_city_fall:
             self.surges_from_fall += 1
@@ -411,9 +430,22 @@ class _Ledger(Simulation):
             self.last_stand_day = self.day
             self.last_stand_risk = self.death_chance(self.last_stand)
 
+    def _resolve(self, d) -> None:
+        """A timer ran out. It is a HIT when the engine's own tallies of what a
+        timer cost a city move: `resolved` for an ordinary dungeon, `quest_hits`
+        for a Quest dungeon. Read off the engine rather than re-derived."""
+        hits_before = (self.resolved, self.quest_hits)
+        super()._resolve(d)
+        if ((self.resolved, self.quest_hits) != hits_before
+                and self.first_event.get(d.did, "") is None):
+            self.first_event[d.did] = "hit"
+
     def _finish_current(self) -> None:
-        d, was_lost = self.current, self.lost
+        d, was_lost, cleared_before = self.current, self.lost, self.cleared
         super()._finish_current()
+        if (d is not None and self.cleared > cleared_before
+                and self.first_event.get(d.did, "") is None):
+            self.first_event[d.did] = "cleared"
         if self.lost and not was_lost and d is not None:
             self.ended_in = ("died in the Last Stand"
                              if (self.last_stand is not None
@@ -486,8 +518,17 @@ def measure(cfg: TuningConfig, seed0: int = 0, trials: int = 0,
         key = ("won" if r.won else s.ended_in if r.lost else "ran out of days")
         ends[key] = ends.get(key, 0) + 1
     ls = [s for s in sims if s.last_stand_day is not None]
+    events = [e for s in sims for e in s.first_event.values()]
+    arrived = max(1, len(events))
     return {
         "n": trials,
+        # ISSUE #2396'S MEASURE: of every dungeon a surge landed, the share the
+        # player cleared before its timer cost a city anything, the share whose
+        # timer hit first, and the share with neither.
+        "arrived": len(events) / trials,
+        "clearedFirst%": 100.0 * events.count("cleared") / arrived,
+        "hitFirst%": 100.0 * events.count("hit") / arrived,
+        "neither%": 100.0 * events.count(None) / arrived,
         "days": statistics.fmean([r.survived_days for r in res]),
         "cities": cities, "cities_se": cities_se,
         "earned%": earned, "earned%se": earned_se,
@@ -528,6 +569,10 @@ def _row(label: str, s: dict) -> str:
             f"{s['noSafe%']:>8.1f} {s['walk%']:>6.1f} {s['safest']:>7.3f}")
 
 
+#: The difficulty tiers section 3 measures issue #2396's share at.
+SHARE_TIERS = (1, 2, 4, 8)
+
+
 def section_campaigns() -> dict:
     print()
     print("=" * 78)
@@ -542,9 +587,22 @@ def section_campaigns() -> dict:
     print()
     cells = {}
     print(_HDR)
-    for tier in (1, 4):
+    for tier in SHARE_TIERS:
         cells[tier] = measure(base_config(tier=tier))
         print(_row(f"no tree, tier {tier}", cells[tier]))
+
+    print()
+    print("   THE MEASURE, issue #2396: of every dungeon a surge landed, its")
+    print("   FIRST event. cleared = the player cleared it before its timer cost")
+    print("   a city anything; hit = its timer cost a standing city something")
+    print("   first; neither = its city fell under it or the run ended first.")
+    print()
+    print(f"   {'world':<20} {'arrived':>8} {'cleared first%':>15} "
+          f"{'hit first%':>11} {'neither%':>9}")
+    for tier, s in cells.items():
+        print(f"   {'no tree, tier ' + str(tier):<20} {s['arrived']:>8.1f} "
+              f"{s['clearedFirst%']:>15.1f} {s['hitFirst%']:>11.1f} "
+              f"{s['neither%']:>9.1f}")
 
     print()
     print(f"   {'world':<20} {'scheduled':>10} {'from a fall':>12} "
@@ -573,15 +631,23 @@ def section_campaigns() -> dict:
 
 #: `(label, one setting to change)`. **NONE OF THESE IS A PROPOSAL.** Each says
 #: what that one step is worth, holding every other setting where it ships.
+#: The surge rows HALVE AND DOUBLE WHAT SHIPS, read from the config, since issue
+#: #2396; they were "2, not 4" and "240, not 120" written out. The dungeon row is
+#: the old rule as a counterfactual, because the shipped one is now the control.
+_SHIPS = TuningConfig()
 LEVERS = (
     ("shipped, the control", {}),
     ("no surge when a city falls", dict(surge_on_city_fall=False)),
     ("no surge when board empties", dict(surge_on_empty_board=False)),
-    ("detonated dungeon leaves", dict(dungeon_persists_after_resolve=False)),
-    ("a surge lands 2, not 4", dict(surge_dungeon_count=2)),
+    ("detonated dungeon stays", dict(dungeon_persists_after_resolve=True)),
+    (f"a surge lands {_SHIPS.surge_dungeon_count // 2}, not "
+     f"{_SHIPS.surge_dungeon_count}",
+     dict(surge_dungeon_count=_SHIPS.surge_dungeon_count // 2)),
     ("no tier wave multiplier", dict(cataclysm_volume_exponent=0.0)),
     ("the player refuses nothing", dict(death_risk_tolerance=1.0)),
-    ("surge gap 240, not 120", dict(surge_interval_days=240.0)),
+    (f"surge gap {2 * _SHIPS.surge_interval_days:g}, not "
+     f"{_SHIPS.surge_interval_days:g}",
+     dict(surge_interval_days=2 * _SHIPS.surge_interval_days)),
 )
 
 
@@ -657,9 +723,11 @@ def section_truncation() -> dict:
 
 
 def main() -> None:
-    print(f"conditions: triage policy, STATIC surges, "
+    print(f"conditions: triage policy, STATIC surges, an opening wave of "
+          f"{TuningConfig().surge_opening_count}, "
           f"surge_dungeon_count={TuningConfig().surge_dungeon_count}, "
           f"surge_interval_days={TuningConfig().surge_interval_days:g},")
+    print("            every rule TuningConfig ships (issue #2396),")
     print("            resolve floor ratio 2.0, escalation 0.10 per 100 days, "
           "craft 12 days for +4%, empire tree TREE_NONE,")
     print(f"            {TRIALS} campaigns per cell"

@@ -3367,95 +3367,88 @@ def test_the_report_states_the_owners_wording(board_empty_run):
 
 @pytest.fixture(scope="module")
 def throughput_run():
-    """The diagnosis of why an uninvested player loses everything at tier 4.
+    """The diagnosis of why an uninvested player loses everything at tier 4,
+    and since issue #2396 the share of arriving dungeons cleared before they hit.
 
-    At the default `TRIALS` of 1 it runs 20 campaigns in total, which is about
-    a second. Module-scoped so every test below shares the one run.
+    At the default `TRIALS` of 1 it runs 14 campaigns in total -- four tiers in
+    section 3, eight levers in section 4, two policies in section 5 -- which is
+    about a second. Module-scoped so every test below shares the one run.
     """
     return run("analyse_tier_throughput.py")
 
 
 def test_the_arrival_rate_is_the_engines_own_arithmetic(throughput_run):
-    """**THE HEADLINE OF THE WHOLE FILE**: more walk-days of dungeon arrive at
-    tier 4 than a day contains, so the board can only grow.
+    """The arrival rate is printed as a description, computed from
+    `TuningConfig` and the engine's own methods rather than trusted.
 
-    Recomputed here from `TuningConfig` and the engine's own methods rather
-    than trusted, because the script prints a sentence naming the first tier
-    above 1.0 and that sentence is exactly the kind that goes stale silently --
-    it is the failure this whole file was built for.
+    **THE VERDICT IT CARRIED IS RETIRED, issue #2396.** This test asserted that
+    tier 1 lands more than 1.0 walk-days a day and that the script names the
+    first tier "the board cannot be kept clear" from. That framing was written
+    for a model in which a dungeon stayed until it was cleared; since
+    2026-10-13 an ordinary dungeon hits once and leaves, so a rate above 1.0 no
+    longer means the empire falls. The ruling: keep the rate as a printed,
+    descriptive figure, and measure the share of arriving dungeons cleared
+    before they hit -- which `test_every_arrival_has_one_first_event` checks.
     """
-    from dataclasses import replace
     from types import SimpleNamespace
 
-    from cataclysm_sim.config import TuningConfig
     from cataclysm_sim.engine import Simulation
 
-    _, ns = throughput_run
-    rate = {t: ns["arrival_rate"](ns["base_config"](tier=t))
-            for t in (1, 2, 4, 8)}
-
-    # TIER 1 AT THE SHIPPED CADENCE, since 2026-10-16: the later waves, 8
-    # every 90 days, through the script's own functions. Ruled that day: "the
-    # test's figure is computed from the shipped cadence". A later wave and
-    # not the opening, so `surge_count` is asked at wave index 1; the
-    # opening's 12 would raise it further. It is above 1.0, so the board
-    # cannot be kept clear at tier 1 either.
-    shipped = TuningConfig()
-    cfg = replace(ns["base_config"](tier=1),
-                  surge_interval_days=shipped.surge_interval_days,
-                  surge_dungeon_count=shipped.surge_dungeon_count)
-    later = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=1))
-    per_wave = max(1, round(later * ns["wave_multiplier"](cfg)))
-    tier_1 = (per_wave * ns["walk_days_per_dungeon"](cfg)
-              / cfg.surge_interval_days)
-    print(f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day")
-    assert tier_1 > 1.0, (
-        f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day. "
-        "Under 1.0 means the waves shrank: the owner asked on 2026-10-16 for "
-        "surges to summon a lot more dungeons, and the board then could not "
-        "be kept clear at tier 1.")
-    assert rate[4] > 1.0, (
-        f"tier 4 now lands {rate[4]:.2f} walk-days a day. Below 1.0 the "
-        "uninvested player can keep the board clear and issue #1392's finding "
-        "should be re-measured, not just this test updated.")
+    printed, ns = throughput_run
+    rate = {}
+    for tier in (1, 2, 4, 8):
+        cfg = ns["base_config"](tier=tier)
+        # A LATER WAVE, wave index 1, not the opening one -- see
+        # `dungeons_per_surge` in the script.
+        later = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=1))
+        per_wave = max(1, round(later * ns["wave_multiplier"](cfg)))
+        rate[tier] = (per_wave * ns["walk_days_per_dungeon"](cfg)
+                      / cfg.surge_interval_days)
+        assert ns["arrival_rate"](cfg) == pytest.approx(rate[tier])
     assert rate[1] < rate[2] < rate[4] < rate[8], (
         "the arrival rate no longer rises with the difficulty tier: "
-        f"{rate}. That is the mechanism this file reports.")
-
-    printed, _ = throughput_run
-    over = [t for t in (1, 2, 3, 4, 5, 6, 8)
-            if ns["arrival_rate"](ns["base_config"](tier=t)) > 1.0]
-    assert (f"THE BOARD CANNOT BE KEPT CLEAR FROM TIER {min(over)} UPWARD"
-            in printed), (
-        f"the script names a different tier than the {min(over)} its own "
-        "numbers give.")
+        f"{rate}. That is the mechanism this file describes.")
+    assert f"Tier 1 is {rate[1]:.2f} and tier 4 is {rate[4]:.2f}" in printed
+    assert "A DESCRIPTION, NOT A" in printed
+    assert "CANNOT BE KEPT CLEAR" not in printed, (
+        "the script prints a verdict from the arrival rate again; issue #2396 "
+        "retired it")
 
 
-def test_the_arrival_rate_section_survives_every_tier_being_safe(
-        throughput_run):
-    """**IT USED TO CRASH THERE**, on `min()` over an empty sequence, and a
-    guard proof of the test above found it: the break was caught by the "does
-    it run at all" test while nine others errored. Every tier under 1.0 is the
-    outcome a balance change would be trying for, so the script has to be able
-    to report it."""
-    import io
-    import contextlib
+def test_every_arrival_has_one_first_event(throughput_run):
+    """ISSUE #2396'S MEASURE: of every dungeon a surge landed, the share the
+    player cleared before its timer cost a city anything.
+
+    `_Ledger.first_event` records, per arriving dungeon, "cleared", "hit" or
+    None. This checks the record against the engine's own tallies on the same
+    campaigns -- no more clears than the engine counted, no more hits than its
+    `resolved` and `quest_hits` -- and that both events actually occur, so a
+    hook that stopped firing cannot read as a measurement of zero."""
+    from cataclysm_sim import policies
 
     _, ns = throughput_run
-    # THE FUNCTION'S OWN GLOBALS AND NOT `ns`. `runpy.run_path` returns a
-    # COPY of the module dictionary, so rebinding a name in `ns` does not
-    # change what `section_arrival_rate` looks up -- the first version of
-    # this test did that and the section ran unpatched.
-    g = ns["section_arrival_rate"].__globals__
-    real = g["arrival_rate"]
-    out = io.StringIO()
-    try:
-        g["arrival_rate"] = lambda cfg: 0.5
-        with contextlib.redirect_stdout(out):
-            ns["section_arrival_rate"]()
-    finally:
-        g["arrival_rate"] = real
-    assert "EVERY TIER IS UNDER 1.00" in out.getvalue()
+    cfg = ns["base_config"](tier=1)
+    cleared = hits = 0
+    for seed in range(4):
+        s = ns["_Ledger"](cfg, seed=seed)
+        r = s.run(ns["ledger_policy"](policies.ALL["triage"]))
+        events = list(s.first_event.values())
+        assert set(events) <= {"cleared", "hit", None}
+        assert 0 < len(events) <= s.spawned
+        assert events.count("cleared") <= r.dungeons_cleared
+        assert events.count("hit") <= r.dungeons_resolved + r.quest_hits
+        cleared += events.count("cleared")
+        hits += events.count("hit")
+    assert cleared > 0, (
+        "no arriving dungeon was cleared before it hit in four tier 1 "
+        "campaigns, so the 'cleared' half of the record is not firing")
+    assert hits > 0, (
+        "no arriving dungeon hit its city first in four tier 1 campaigns, so "
+        "the 'hit' half of the record is not firing")
+
+    s = ns["measure"](cfg, seed0=0, trials=4)
+    assert s["clearedFirst%"] + s["hitFirst%"] + s["neither%"] == pytest.approx(100.0)
+    assert s["clearedFirst%"] == pytest.approx(100.0 * cleared / (s["arrived"] * 4))
 
 
 def test_the_wave_multiplier_comes_from_the_pattern_table(throughput_run):
