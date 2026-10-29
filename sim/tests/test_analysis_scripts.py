@@ -3309,8 +3309,12 @@ def test_the_settings_block_states_the_three_conditions(board_empty_run):
     something the balance report does not use are the surge size, the number of
     active Cataclysms, and the policy."""
     printed, ns = board_empty_run
+    # THE SURGE SIZE IS READ FROM THE CONFIG, since issue #2396; this pinned
+    # "4 dungeons" while the script held 4 by name.
     for expected in ("policy                        triage",
-                     "surge size                    4 dungeons",
+                     f"surge size                    {ns['SHIPPED_COUNT']} dungeons",
+                     f"opening wave {ns['base_config']().surge_opening_count}",
+                     "rules                         every rule TuningConfig ships",
                      "active Cataclysms             1 at tier 1, 4 at tier 4",
                      "minimum gap, as shipped       25 days",
                      f"campaigns per cell            {2 * ns['TRIALS']}"):

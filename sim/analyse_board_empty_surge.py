@@ -14,8 +14,10 @@ was worse.
 WHAT THIS FILE IS FOR. The rule itself is not in question; two things about it
 are, and both are measurements rather than arguments.
 
-  1. **Does keeping the 120-day clock as well actually matter?** It does if a
-     board can stay non-empty forever, and section 1 shows that it can.
+  1. **Does keeping the scheduled clock as well actually matter?** It does if
+     a board can stay non-empty forever, and section 1 shows that it can. (The
+     clock is `surge_interval_days`, read from the config: 90 days since
+     2026-10-13, and 120 when this file was written.)
   2. **Is `surge_interval_min` of 25 days the right brake?** It is now the only
      one, so section 4 sweeps it. NOTHING HERE WRITES A CONSTANT. Every cell
      replaces a copy of the config for the length of one batch, exactly as
@@ -23,8 +25,10 @@ are, and both are measurements rather than arguments.
      recommendation lives on the issue where the owner can rule on it.
 
 **THE WEAKEST PLAYER IS MEASURED FIRST AND IS WORLD 0.** A player with no empire
-tree loses every losable city at difficulty tier 4 at the shipped cadence and
-reaches the earned Cataclysm dungeon in almost no campaign -- issue [#1392].
+tree lost every losable city at difficulty tier 4 at the cadence of the time and
+reached the earned Cataclysm dungeon in almost no campaign -- issue [#1392],
+measured at 4 dungeons every 120 days under the rules of September and not
+re-measured since issue #2396 moved this file to the shipped ones.
 Under this rule their dungeons detonating undefeated pull the next wave forward,
 so that is the case most likely to be made too harsh, and the minimum gap is the
 lever if it is. A stronger player emptying the board faster is the case the rule
@@ -58,10 +62,19 @@ figure without them is not a figure: the surge size, the number of active
 Cataclysms, and the policy. All three default to something the balance report
 does not use. `settings_lines` prints them and section 0 repeats them.
 
-Cost: about 33 ms a campaign, so the default report of
-`CATACLYSM_BOARD_EMPTY_TRIALS=1` is a smoke test that measures nothing and says
-so. Set it to 1000 for 2,000 campaigns a cell -- the size the figures on #1090
-were taken at -- and raise `CATACLYSM_BOARD_EMPTY_JOBS` with it.
+WHAT IT RUNS, SINCE ISSUE #2396. The shipped cadence -- `surge_dungeon_count`,
+`surge_interval_days` and the opening wave `surge_opening_count` -- and every rule
+`TuningConfig` ships, all read from the config with no pin. Until then this file
+held 4 dungeons every 120 days and three rules at their September values (an
+ordinary dungeon staying after it hits its city, a Quest dungeon's timer costing
+its city nothing, a hit sized without the tree's floors). **The figures on issues
+#1406 and #1392 were measured in that world and have not been re-measured.**
+
+Cost: about 33 ms a campaign under the rules of September, not re-measured, so
+the default report of `CATACLYSM_BOARD_EMPTY_TRIALS=1` is a smoke test that
+measures nothing and says so. Set it to 1000 for 2,000 campaigns a cell -- the
+size the figures on #1090 were taken at -- and raise `CATACLYSM_BOARD_EMPTY_JOBS`
+with it.
 """
 
 from __future__ import annotations
@@ -122,25 +135,25 @@ def _env_floats(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
 
 #: What `development` ships, read off `TuningConfig` rather than written out, so
 #: this file cannot claim the wrong baseline after somebody moves a constant.
+#: Since issue #2396 nothing here holds an older cadence: until then the
+#: interval and the size were written out as 120 and 4.
 SHIPPED_MIN_GAP = TuningConfig().surge_interval_min
-#: NO LONGER WHAT SHIPS, AND HELD ON PURPOSE. Since 2026-10-13 `TuningConfig`
-#: ships 5 dungeons every 90 days. This file's axes, its tables and every
-#: figure its docstring and the issues quote are those of 4 every 120, which
-#: is what shipped when they were measured, and none was re-measured. The two
-#: are written out so the file goes on measuring that world. The names are
-#: kept because the rest of the file and its tests use them. To measure what
-#: ships, read them off `TuningConfig()` again and give the axes a 5 and a 90.
-SHIPPED_INTERVAL = 120.0
-SHIPPED_COUNT = 4
+SHIPPED_INTERVAL = TuningConfig().surge_interval_days
+SHIPPED_COUNT = TuningConfig().surge_dungeon_count
 
 #: The minimum-gap axis, in days. 25 is what `TuningConfig.surge_interval_min`
 #: ships and is therefore the control; the rest bracket it in both directions so
-#: the sweep can say whether the shipped value is a plateau or a slope. 120 is
-#: the shipped surge interval, at which the brake is as strong as the clock and
-#: the rule can add no surge at all -- the far end that says what the rule is
-#: worth in total.
+#: the sweep can say whether the shipped value is a plateau or a slope. The far
+#: end is the shipped surge interval, read from the config, at which the brake
+#: is as strong as the clock and the rule can add no surge at all -- the end
+#: that says what the rule is worth in total. **NOTHING ON THE AXIS MAY EXCEED
+#: THAT INTERVAL**: `Simulation.surge_gap` floors the scheduled gap at
+#: `surge_interval_min`, so a cell above it moves the clock as well as the
+#: brake. The axis said 90 and 120 until issue #2396, when the interval became
+#: 90 and the 120 cell began doing exactly that.
 MIN_GAPS = _env_floats("CATACLYSM_BOARD_EMPTY_GAPS",
-                       (10.0, 15.0, 25.0, 40.0, 60.0, 90.0, 120.0))
+                       tuple(sorted({10.0, 15.0, 25.0, 40.0, 60.0,
+                                     float(SHIPPED_INTERVAL)})))
 
 #: `(label, tree, difficulty tier)`. **World 0 is the weakest player and is
 #: measured first**; see the module docstring.
@@ -174,9 +187,10 @@ else:
     SELECTED_INDICES = tuple(range(len(WORLDS)))
 
 #: Which world section 5 measures the noise floor in. **NOT WORLD 0.** The
-#: weakest player wins 0.0% of campaigns and loses 24.04 cities of 25 whatever
-#: happens, so a block-to-block spread taken there is 0.103 points on a win rate
-#: and understates the noise everywhere a difference actually appears. This is
+#: weakest player won 0.0% of campaigns and lost 24.04 cities of 25 whatever
+#: happened, so a block-to-block spread taken there was 0.103 points on a win
+#: rate and understated the noise everywhere a difference actually appears --
+#: measured under the rules of September and not re-measured since issue #2396. This is
 #: the first world in `SELECTED_INDICES` that is not world 0, which is the
 #: tier-1 player with no empire tree -- the weakest player who still has
 #: outcomes that move.
@@ -203,6 +217,8 @@ def base_config(tier: int = 1, tree=TREE_NONE, min_gap: float | None = None,
     interval**, so the two files' figures are comparable; see the module
     docstring for why it is copied rather than imported, and
     `sim/tests/test_analysis_scripts.py` for the guard that keeps them equal.
+    Both read the cadence from `TuningConfig` since issue #2396, so the copy
+    holds nothing that can drift on its own: only the report settings below.
 
     @param min_gap  what to set `surge_interval_min` to. None leaves it where
                     `TuningConfig` ships it.
@@ -221,21 +237,9 @@ def base_config(tier: int = 1, tree=TREE_NONE, min_gap: float | None = None,
         craft_days=12,
         craft_power_gain_frac=0.04,
         surge_on_empty_board=on,
-        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
-        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
-        # leaves after it hits its city. Every figure this file's docstring
-        # and the issues quote was measured with the dungeon staying, and none
-        # has been re-measured, so the setting is held where it was. Remove
-        # this line to measure the shipped rule; the figures then move.
-        dungeon_persists_after_resolve=True,
-        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
-        # Quest dungeon's timer hit its city. This file's figures were
-        # measured with that timer costing the city nothing, and none
-        # was re-measured. Remove this line to measure the shipped rule.
-        quest_timer_hits_city=False,
-        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
-        # of a dungeon's floors, the tree's included.
-        hit_scales_with_natural_floors=False,
+        # EVERY OTHER RULE IS THE ONE `TuningConfig` SHIPS, since issue #2396.
+        # This held three at their September values until then; see the module
+        # docstring.
     ).with_tree(tree)
     if min_gap is not None:
         cfg = replace(cfg, surge_interval_min=float(min_gap))
@@ -547,7 +551,10 @@ def settings_lines() -> list[str]:
     return [
         "  policy                        triage",
         f"  surge size                    {cfg.surge_dungeon_count} dungeons, "
-        f"cap {cfg.surge_count_max}, mode {cfg.surge_mode.value}",
+        f"cap {cfg.surge_count_max}, mode {cfg.surge_mode.value}, opening "
+        f"wave {cfg.surge_opening_count}",
+        "  rules                         every rule TuningConfig ships "
+        "(issue #2396)",
         f"  active Cataclysms             1 at tier 1, "
         f"{base_config(tier=4).active_cataclysm_count()} at tier 4",
         f"  surge interval                {cfg.surge_interval_days:g} days",
@@ -578,7 +585,7 @@ def section_0_settings() -> None:
 
 
 def section_1_what_never_leaves(measured: dict[str, dict]) -> dict:
-    """Why the 120-day clock has to stay.
+    """Why the scheduled clock has to stay.
 
     A pure board-empty trigger that REPLACED the clock would give fewer surges
     than today to any player whose board never empties, which makes the game
