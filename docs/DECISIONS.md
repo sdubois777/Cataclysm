@@ -80,9 +80,21 @@ tools/tests/test_unreal_build.py`. The break: in `main`, `moved = move_aside_whe
 
 and the keep-three test passes, since it calls `move_aside_when_released` itself.
 
-### NOT YET PROVED
+### THE PROOF, AS REGISTERED
 
-Recorded below when the proof has run.
+Run 2026-10-29 in a git-archive copy of `f28ae7ff0`, the commit that registered it. Printed: "PROVED: 2 failed, 91
+passed in 4.53s | restored: 93 passed in 1.16s". named_failures, exactly the two registered:
+
+- `tools/tests/test_unreal_build.py::test_a_failed_build_leaves_no_earlier_runs_log_to_read`
+- `tools/tests/test_unreal_build.py::test_the_tests_command_moves_the_log_before_the_run_reads_it`
+
+The keep-three test passed with the break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `f28ae7ff0`: "7032 passed, 8 skipped"; JUnit tests 7040, failures 0, errors 0, skipped 8 (the base's
+7037 and the three new tests). ruff: "All checks passed!" The worktree's real `game/Saved/Logs/Cataclysm.log` was still
+in place after the whole suite.
 
 ### NO GENRE SOURCE
 
