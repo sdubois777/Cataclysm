@@ -7,7 +7,8 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `sim/cataclysm_sim/engine.py` (`Simulation._fall` counts what it absorbs and passes the depth to
 `_make_dungeon` through a new `making_floors` attribute); `sim/tests/test_a_fallen_city_is_as_deep_as_what_it_absorbed.py`
 (new, seven tests); `tools/tests/test_surge_port.py` (the test that recorded the model rolling the depth replaced by
-one comparing the two rules); `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` (one comment, corrected); this
+one comparing the two rules); `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` (one comment, corrected);
+`sim/tests/test_resolved_counts_a_detonation.py` (#1373's control rewritten to build its two states by hand); this
 file. **It changes how the simulation plays.**
 
 ### SAID FIRST
@@ -115,6 +116,42 @@ That is issue #1341 ... `tools/tests/test_surge_port.py` holds the divergence de
 part of that is false, so it now says the model follows the same rule since #1341 and that the test compares the two.
 **It is a comment and changes no behaviour.** The coordinating session ruled it into this branch on 2026-10-29. GitHub's
 "Game compiles" job is the evidence that the header still parses and compiles; no automation window was run for it.
+
+### IT MADE ONE STATE RARER, AND #1373'S CONTROL WAS REWRITTEN FOR IT
+
+**The first suite of record failed one test**, at `4c0bc7ff9`: "1 failed, 7072 passed, 8 skipped", failing
+`sim/tests/test_resolved_counts_a_detonation.py::TestOverWholeCampaigns::test_the_old_arithmetic_really_did_count_more`.
+That control on issue #1373's fix searched campaigns 0 to 79 at `TuningConfig()` on `triage` for one where a Fallen
+City's timer runs out or a dungeon stands on a city that has already fallen. Its docstring said a change that made the
+situation genuinely rare should fail it rather than widen the search.
+
+**THE REACHABILITY, MEASURED** on 2026-10-29 with the file's own `_Counted`, seeds 0 to 399:
+
+| Code | Campaigns reaching either state | Of those, inside the 80 seeds searched |
+| :-- | --: | :-- |
+| `development` at `6d7bacf79` | 7 of 400 (seeds 77, 247, 250, 312, 338, 341, 360) | one, seed 77 |
+| this branch | 2 of 400 (seeds 222 and 341) | none |
+
+**#1341 made the situation rarer.** The old test was already passing on one seed of 80. Shallower Fallen Cities,
+retaken sooner, are a plausible cause; it was not traced campaign by campaign.
+
+**As ruled by the coordinating session on 2026-10-29**, the control now builds both states by hand, as the file's other
+tests build the negative cases: a Fallen City dungeon's timer run out, and an ordinary dungeon's timer run out on a city
+fallen by hand. In each, the old arithmetic counts 1 and the reported tally 0. Its class docstring says it shows "the two
+arithmetics differ in these states", and records the reachability above. The check that the old tally is never below
+the reported one over whole campaigns is kept, as `test_the_old_tally_never_counts_fewer`.
+
+### A SECOND PROOF, REGISTERED BEFORE IT RUNS
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m pytest
+sim/tests/test_resolved_counts_a_detonation.py`. The break takes the old arithmetic's extra term out of `_Counted._resolve`
+in that test file: the two lines that add one for every non-Quest timer before `super()._resolve(d)` are removed, and
+`self.old_tally += self.resolved - before[0]` is added after it, so the old tally counts only what the reported one
+counts. Predicted named_failures, exactly one:
+
+- `sim/tests/test_resolved_counts_a_detonation.py::TestTheTwoArithmeticsDifferInTheseStates::test_the_old_arithmetic_really_did_count_more`
+
+`test_the_old_tally_never_counts_fewer` passes with the break in, since the two tallies are then equal.
 
 ### NO GENRE SOURCE
 

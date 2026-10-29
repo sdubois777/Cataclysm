@@ -198,14 +198,13 @@ class _Counted(Simulation):
             self.bites += 1
 
 
-#: How many seeds the search below may look through. 80 since 2026-10-16,
-#: ruled by the coordinating session: with the opening wave of 12, waves of 8,
-#: the ordinary hit at 0.7, the Quest move and no Quest Siege, 6.3% of
-#: campaigns reach a Fallen City timer running out or a dungeon on a fallen
-#: city (1,268 of 20,000 seeds at 3a48236a), and seeds 0 to 31 reach none.
-#: Disjoint blocks of seeds holding the assertion below: 53 seeds 362 of 377,
-#: 64 seeds 308 of 312, 75 seeds 265 of 266, 80 seeds 250 of 250, 100 seeds
-#: 199 of 200. It was 32, about a second; 80 is about 2.6 s.
+#: How many whole campaigns the tests below run. 80 since 2026-10-16, when it
+#: was sized for a search this file no longer makes: the control on #1373's fix
+#: looked through these campaigns for one that reached a Fallen City timer
+#: running out or a dungeon on a fallen city. ISSUE #1341 MADE THAT RARER, and
+#: the control now builds both states by hand; see
+#: `test_the_old_arithmetic_really_did_count_more`. The two tests that still run
+#: campaigns need only that some dungeon detonates, which every block does.
 SEED_LIMIT = 80
 
 
@@ -246,43 +245,56 @@ class TestOverWholeCampaigns:
             "TuningConfig() defaults, so the equality above is comparing zero "
             "against zero")
 
-    def test_the_old_arithmetic_really_did_count_more(self, campaigns):
-        """**THE CONTROL ON THE FIX ITSELF.** If the two tallies agreed there
-        was nothing to fix and every test above would pass against the code as
-        it stood.
-
-        **THE SEEDS ARE SEARCHED FOR BY OUTCOME RATHER THAN FIXED, AND THAT IS
-        THE POINT.** An earlier version summed the gap over seeds 0 to 3. The
-        board-empty surge rule being built on issue #1406 changes which
-        campaigns those seeds produce; measured on that branch, none of the four
-        reached either free case and this control failed for a reason that had
-        nothing to do with what it guards. **The situation is no rarer** --
-        across `range(32)` at `TuningConfig()` defaults on the `triage` policy,
-        5 seeds show a positive gap without that rule and 6 with it, but not the
-        same seeds, and seeds 0 to 3 hold three of the first set and none of the
-        second. Fixed seeds had simply stopped covering it.
-
-        The search is bounded and the bound is asserted, so a change that made
-        the situation genuinely rare fails here rather than widening the search
-        until it finds one.
-        """
+    def test_the_old_tally_never_counts_fewer(self, campaigns):
+        """The reported count is a subset of what the old arithmetic counted,
+        in every campaign: it only ever left timers out."""
         for seed, reported, _, old in campaigns:
             assert old >= reported, (
                 f"campaign {seed}: counting every non-Quest timer gave {old}, "
                 f"fewer than the {reported} that cost a city something. The "
                 "second is a subset of the first and cannot exceed it")
 
-        with_a_gap = [seed for seed, reported, _, old in campaigns
-                      if old > reported]
 
-        assert with_a_gap, (
-            f"in {SEED_LIMIT} campaigns, counting every non-Quest timer gave "
-            "the same total as counting the ones that cost a city something. "
-            "So no campaign here reaches a Fallen City dungeon whose timer "
-            "runs out, or a dungeon standing on a city that has already "
-            "fallen, and this file's negative cases are unreachable in play. "
-            "Issue #1373")
+class TestTheTwoArithmeticsDifferInTheseStates:
+    """**THE CONTROL ON THE FIX ITSELF.** If the two tallies agreed there was
+    nothing to fix, and every test in this file would pass against the code as
+    it stood before #1373. This shows the two arithmetics differ in these
+    states: a Fallen City whose timer runs out, and an ordinary dungeon whose
+    city has already fallen. The old one counts each, and the reported one
+    counts neither.
 
+    BUILT BY HAND, SINCE ISSUE #1341. It used to search whole campaigns for one
+    that reached either state, and #1341 made that rarer. Measured on
+    2026-10-29 with `_Counted`, seeds 0 to 399 at `TuningConfig()` on `triage`:
+    7 of 400 campaigns on `development` at `6d7bacf79`, and 2 of 400 once a
+    Fallen City is as deep as what it absorbed. Of the 80 seeds the search
+    looked through, one reached it before #1341 and none after. Shallower
+    Fallen Cities, retaken sooner, are a plausible cause and were not traced.
+    The states are still reachable in play; that is a measurement now rather
+    than this test's job.
+    """
+
+    def test_the_old_arithmetic_really_did_count_more(self):
+        sim = _Counted(TuningConfig(), seed=1)
+        city = a_standing_city(sim)
+        sim._resolve(sim._make_dungeon(DungeonType.FALLEN_CITY, city))
+        assert (sim.old_tally, sim.resolved) == (1, 0), (
+            f"a Fallen City's timer running out: the old arithmetic counted "
+            f"{sim.old_tally} and the reported tally {sim.resolved}. The old "
+            "one counted every non-Quest timer, so it should count this one "
+            "and the reported one should not. Issue #1373")
+
+        sim = _Counted(TuningConfig(), seed=1)
+        city = a_standing_city(sim)
+        d = sim._make_dungeon(DungeonType.BASIC, city)
+        # FALLEN BY HAND, as in `test_an_ordinary_dungeon_on_a_fallen_city_is_not_counted`.
+        city.fallen = True
+        sim.empire._invalidate()
+        sim._resolve(d)
+        assert (sim.old_tally, sim.resolved) == (1, 0), (
+            f"an ordinary dungeon's timer running out on a fallen city: the "
+            f"old arithmetic counted {sim.old_tally} and the reported tally "
+            f"{sim.resolved}. Issue #1373")
 
 class TestTheFieldStillMeansWhatItSays:
     def test_the_comment_on_the_field_is_the_one_the_arithmetic_earns(self):
