@@ -2,6 +2,66 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The row generator refuses a Stack Seconds cell on an action that does not read it (#2337)
+
+**Affects:** `tools/generate_datatables.py` (a list, `ACTIONS_THAT_READ_STACK_SECONDS`, and one refusal in
+`enchantment_effects`); `tools/tests/test_generate_datatables.py` (two tests); this file. No game code and no data: a
+regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). No Unreal window, ruled by the coordinating
+session for a change that moves neither the CSVs nor the assets. **Closes
+[#2337](https://github.com/sdubois777/Cataclysm/issues/2337).**
+
+### SAID FIRST
+
+- **THE EXCEPTION THE ISSUE WAITED FOR HAS LANDED.** The issue said one action would come to read `Stack Seconds` as a
+  stun's seconds, for "Chronomancer's Time-Lock (6-Piece Bonus)". It is `stun_near_the_dying`
+  (`STUN_NEAR_THE_DYING_ACTION`), and since traps layer 3 the slow, `slow_for_seconds`, reads it as the slow's seconds too.
+  Both are in the list the refusal reads.
+- **NO MERGED ROW FAILS IT.** Re-counted at development `21d6a6308`: **51** rows of `EnchantmentEffects.csv` state a
+  `StackSeconds` (the issue counted 34 on 2026-10-08): 44 stat rows scaled by `own_stacks`, 3 `enemy_armor_removed`, 1
+  `attacker_damage_removed`, 1 `smite_nearby`, 1 `stun_near_the_dying`, 1 `slow_for_seconds`. Every action among them reads
+  the cell.
+
+### THE RULING (the coordinating session, 2026-10-28)
+
+> 2. #2337: a Stack Seconds cell on an action that does not read it is dropped without a word.
+>    - The issue's exception has landed or not; check. Write the refusal to read the generator's own list of actions
+>      that take the cell, not a second hand-kept list.
+>    - The test uses an apply_status row refused and the same row without the cell carried through.
+>    - Re-count the 34 rows today.
+
+### WHAT WAS BUILT
+
+- **`ACTIONS_THAT_READ_STACK_SECONDS`**, beside `SLOW_FOR_SECONDS_ACTION`: built from the same names the reading branches
+  of `enchantment_effects` test, `PLACED_ACTIONS`, `NEARBY_ACTIONS`, `STUN_NEAR_THE_DYING_ACTION` and
+  `SLOW_FOR_SECONDS_ACTION`, rather than typed again. The generator had no single list before: each reading branch tests
+  its own constant. A stat row reads the column only when scaled by `own_stacks`, which is not an action.
+- **The refusal**, after the existing Stack Seconds branches: a row with an Action, a Stack Seconds cell, and an action not
+  in that list stops the generator with "`<row>` states Stack Seconds on the action `<action>`, which does not read it, so
+  it would be dropped. The column is read on a stat row scaled by own_stacks and on these actions: ...". The branches above
+  it are unchanged, so the actions that count without a window (`NTH_ACTIONS`, the two kept-stack actions, the gadget's
+  shot on the Nth trap, a nearby action with no Every Nth) are still refused there with their own messages.
+
+### TESTS AND THE PROOF
+
+- `test_stack_seconds_on_an_action_that_does_not_read_it_is_refused`, on the status layer's made-up sheet: CONTROLS
+  first, the `apply_status` first-hit row without the cell is carried through with `StackSeconds` 0.0, and the
+  `stun_near_the_dying` row with Stack Seconds 2 is carried with 2.0; the same `apply_status` row with Stack Seconds 3 is
+  refused, the message naming the action.
+- `test_the_actions_that_read_stack_seconds_are_the_reading_branches`: the list equals the four names the branches read,
+  and holds none of the windowless actions or `apply_status`. It cannot see a fifth reading branch; a name missing from
+  the list is caught by the refusal itself, which refuses that branch's rows with a cell, so its own tests fail.
+- **The proof**, `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree: `and False ` before
+  `action not in ACTIONS_THAT_READ_STACK_SECONDS)` (anchor counted once). Command
+  `python -m pytest tools/tests/test_generate_datatables.py`. Printed: "PROVED: 1 failed, 1031 passed in 19.63s |
+  restored: 1032 passed in 19.12s"; named_failures
+  `tools/tests/test_generate_datatables.py::TestAllDotsOnTheFirstHitAndTheStunNearTheDying::test_stack_seconds_on_an_action_that_does_not_read_it_is_refused`.
+
+### NO GENRE SOURCE
+
+None. This is a data check.
+
+---
+
 ## 2026-10-28 — A creature's energy shield refills at a fifth of its maximum a second, three seconds after damage (#1562)
 
 **Affects:** `CataclysmEnemyCharacter.h` and `.cpp` (a constant, `EnergyShieldRegenShareOfMaximum`, and the shield's

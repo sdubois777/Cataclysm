@@ -7907,6 +7907,21 @@ def enchantment_effects(book) -> list[dict]:
                 f"states Stack Seconds with no Every Nth, so they would be "
                 f"dropped.")
 
+        # AND STACK SECONDS ON ANY OTHER ACTION. Issue #2337. The branches
+        # above read the column for the actions in
+        # `ACTIONS_THAT_READ_STACK_SECONDS` and refuse it on the ones that
+        # count without a window; every other action, `apply_status` among
+        # them, carried nothing and wrote 0.0, so a row stating "lasts 3
+        # seconds" there lasted nothing and said nothing.
+        if (action and stack_text
+                and action not in ACTIONS_THAT_READ_STACK_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Stack Seconds "
+                f"on the action {action}, which does not read it, so it would "
+                f"be dropped. The column is read on a stat row scaled by "
+                f"own_stacks and on these actions: "
+                f"{', '.join(sorted(ACTIONS_THAT_READ_STACK_SECONDS))}.")
+
         # THE STEP'S HIGH END, WHEN THE STEP ROLLS WITH THE VALUE. Issue #1833,
         # the kill counter: "for every 100,000-500,000 kills" states the step
         # as a range, and the item's roll picks one step where it picks the
@@ -12239,6 +12254,21 @@ def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
 #: cell: the slow is always Cripple's.
 SLOW_FOR_SECONDS_ACTION = "slow_for_seconds"
 SLOW_FOR_SECONDS_EVENTS = ("trap_triggered",)
+
+#: THE ACTIONS THAT READ A `Stack Seconds` CELL, built from the same names the
+#: reading branches of `enchantment_effects` test rather than typed again. Issue
+#: #2337. A placed stack's window (`PLACED_ACTIONS`), a nearby action's window
+#: for its Every Nth count (`NEARBY_ACTIONS`), the stun near the dying's seconds
+#: and the slow's seconds. A stat row reads the column only when scaled by
+#: `own_stacks`, which is not an action. Every other action drops the cell, so
+#: a cell on one is refused. Adding an action that reads the column means adding
+#: its name here as well as its branch. The test of this list does NOT catch a
+#: missing name: it compares the list with these four sources, so it cannot see a
+#: fifth. What fails is the refusal below: the new action's rows that state a cell
+#: are refused, so that branch's own tests fail.
+ACTIONS_THAT_READ_STACK_SECONDS = frozenset({
+    *PLACED_ACTIONS, *NEARBY_ACTIONS, STUN_NEAR_THE_DYING_ACTION,
+    SLOW_FOR_SECONDS_ACTION})
 
 #: The strongest slow the action may state, in per cent: Cripple's own cap in
 #: `game/Data/StatusEffects.csv`, which the game holds it to.

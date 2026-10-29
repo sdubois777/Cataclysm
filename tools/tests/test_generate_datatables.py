@@ -6761,6 +6761,33 @@ class TestAllDotsOnTheFirstHitAndTheStunNearTheDying:
                 out[0]["TriggerCooldown"], out[0]["StackSeconds"]) == (
             "apply_status", "first_hit_dealt", 100.0, 100.0, "", "All DoTs", 0.0, 0.0)
 
+    def test_stack_seconds_on_an_action_that_does_not_read_it_is_refused(self, tmp_path):
+        """Issue #2337. A Stack Seconds cell on `apply_status`, which does not
+        read it, used to be written as 0.0 without a word. THE CONTROLS: the
+        same row without the cell is carried through, and the cell on the stun
+        near the dying, which reads it as the stun's seconds, is carried."""
+        out = gen.enchantment_effects(self.dots(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["StackSeconds"]) == ("apply_status", 0.0)
+
+        out = gen.enchantment_effects(self.lock(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["StackSeconds"]) == ("stun_near_the_dying", 2.0)
+
+        with pytest.raises(gen.DataError,
+                           match="states Stack Seconds on the action apply_status, "
+                                 "which does not read it"):
+            gen.enchantment_effects(self.dots(tmp_path, {"Stack Seconds": 3}))
+
+    def test_the_actions_that_read_stack_seconds_are_the_reading_branches(self):
+        """The list the refusal reads is built from the names the reading
+        branches test, and holds no action that counts without a window."""
+        assert gen.ACTIONS_THAT_READ_STACK_SECONDS == {
+            *gen.PLACED_ACTIONS, *gen.NEARBY_ACTIONS,
+            gen.STUN_NEAR_THE_DYING_ACTION, gen.SLOW_FOR_SECONDS_ACTION}
+        for windowless in (*gen.NTH_ACTIONS, gen.KEPT_STACKS_REPEAT_SKILL_ACTION,
+                           gen.KEPT_STACKS_FREE_NEXT_ABILITY_ACTION,
+                           gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION, "apply_status"):
+            assert windowless not in gen.ACTIONS_THAT_READ_STACK_SECONDS, windowless
+
     def test_without_its_stated_nought_the_first_hit_row_would_wait_a_quarter_second(
             self, tmp_path):
         """Why the row states a Trigger Cooldown of 0: the sentence says "against
