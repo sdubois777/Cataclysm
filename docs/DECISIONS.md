@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — Seven passive stats shipped under a condition get a probe each, so the ask is measured rather than read (#2236)
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (seven probes, seven table entries, the
+count 17 to 24, one include, one comment that said "eight"); `tools/tests/test_every_conditioned_stat_has_an_asker.py`
+(`READ_FROM_THE_CODE_AND_NOT_PROBED` emptied, the pin 17 to 24); this file. Tests only: no game code, no generator code,
+no data. **Closes [#2236](https://github.com/sdubois777/Cataclysm/issues/2236).**
+
+### SAID FIRST
+
+- **THE UNREAL TEST COUNT DOES NOT MOVE.** Every conditioned probe runs inside ONE test,
+  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`, which loops over `ConditionedProbes()`.
+  Seven probes add assertions to it and add no test.
+- **TEN SHIPPED PASSIVE ROWS STATE THESE SEVEN STATS, EIGHT OF THEM UNDER A CONDITION**, and until this change nothing
+  had run the ask behind the eight: `Masochist_basic_ll_a2`, `Masochist_capstone_50`, `Masochist_keystone_ll_kA`,
+  `Masochist_capstone_200` (two rows), `Ravager_keystone_spine_003` and `Masochist_basic_ll_b2`. Each consumer was read
+  on 2026-10-06 as asking `StatForSkill` with the wearer's own state. The probes measure it.
+- **IF A PROBE FAILS AT ITS FIRST RUN, THAT IS A DEAD SHIPPED ROW**, a finding of its own; the probe is not loosened.
+  Ruled by the coordinating session, 2026-10-28.
+
+### THE RULING
+
+The coordinating session, 2026-10-28: "#2236: approved as proposed." Seven probes, the Python list emptied and the
+pin moved, this entry, and three guard proofs (`DoNotExpireOn`, `HealthCostIsSuppressed`, `UCataclysmNova::Step`, each
+ask replaced by its fallback). "If the walk-speed observable needs more than a probe-sized test, say so before writing
+it": it did not; it copies `ProbeScaledMovementSpeed`.
+
+### WHAT WAS BUILT
+
+Each probe is the shape of the conditioned probes before it: one character, one modifier that holds below half health,
+the game's own function read before and after.
+
+| Stat | Read through | Above half health | Below half health |
+| :-- | :-- | :-- | :-- |
+| `cooldown_skip_chance` | `UCataclysmGameplayAbility::CooldownIsSkipped`, roll pinned at 50, chance 100 | not skipped | skipped |
+| `debuffs_do_not_expire` | `UCataclysmDebuffs::DoNotExpireOn` | no | yes |
+| `fervour_loss_suppressed` | `UCataclysmFervour::LossIsSuppressed`, no healing tags, a Fervour pool given | no | yes |
+| `fervour_per_cast` | `UCataclysmFervour::GainForCast`, flat 10, a pool of 100 from empty | 0 | 10 |
+| `health_cost_suppressed` | `UCataclysmSkillTemplate::HealthCostIsSuppressed`, a class resource set given | no | yes |
+| `movement_speed_reduction_suppressed` | `ACataclysmPlayerCharacter::RefreshMovementSpeed` on a spawned player, movement speed 50% less unconditioned | the walk speed | twice it |
+| `nova_damage_of_missing_health` | `UCataclysmNova::Step`, flat 20, nobody else in the world | 0 at three fifths | 1,200 at two fifths |
+
+The nova is read at three fifths rather than full health because at full health nothing is missing and the nova is
+worth nothing whatever the stat says, so a zero there would prove nothing about the condition. At three fifths of the
+probe's 10,000 health, 4,000 is missing, so a row whose condition was ignored would give 800 there. Reading 0 is what
+shows the condition refused the row.
+
+### THE RUN, 2026-10-29, AT 4f9ee3081 ON 8246a547d
+
+No probe failed at its first run, so none of the eight shipped rows is dead: each consumer asks the stat pipeline with
+the wearer's state, as read on 2026-10-06. Registered before the run at 4353 + 0.
+
+| Step | Printed |
+| :-- | :-- |
+| The probes' test alone, `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 41 actions, 38 files compiled" |
+| The whole Unreal suite | "4353 tests performed, 4353 succeeded, 0 failed"; "Declared: 4353 tests in the tree at 4f9ee3081; 4353 performed, gap 0" |
+| Python of record | "7027 passed, 8 skipped"; JUnit tests 7035, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,345 MB. The suite's memory summary: peak used virtual 8,107 MB.
+
+### THE THREE GUARD PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix the whole test name, each anchor counted once in `read_text`. ALL THREE
+NAME THE SAME TEST, so each was told apart by its broken run's failed assertions, read from the run's whole log kept on
+disk: every one had to contain the proof's stat name, and the runner would have stopped otherwise.
+
+| Proof | The break | Printed | The broken run's one failed assertion |
+| :-- | :-- | :-- | :-- |
+| A | `DoNotExpireOn` returns `0.0f > 0.0f` instead of asking | "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed \| restored: 1 tests performed, 1 succeeded, 0 failed" | "debuffs_do_not_expire is asked for, so below half health: yes" to be true |
+| B | `HealthCostIsSuppressed` returns `0.0f > 0.0f` instead of asking | the same summary | "health_cost_suppressed is asked for, so below half health: yes" to be true |
+| C | `UCataclysmNova::Step` takes a share of `0.0f` instead of asking | the same summary | "nova_damage_of_missing_health is asked for, so below half health a nova of 20% of the 6,000 missing" to be 1200, but it was 0 |
+
+Each file's hash was the same after its proof as before. No proof was run for the other four probes; three was the
+budget ruled.
+
+### NO GENRE SOURCE
+
+None. These are tests of existing wiring.
+
+---
+
 ## 2026-10-28 — An Infernal Brand's explosion takes its status tag with its stacks, so a spent brand is no longer a debuff (#1537)
 
 **Affects:** `UCataclysmEnemyModifiers::BrandOnHit` in `CataclysmEnemyModifiers.cpp` (one call), and one new test in

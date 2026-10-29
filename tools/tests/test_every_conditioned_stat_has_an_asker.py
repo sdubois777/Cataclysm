@@ -58,19 +58,11 @@ PROBES_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Tests"
 TABLES = ("ScaledProbes", "Probes", "ConditionedProbes")
 
 #: Stats the shipped passives state under a condition whose asker was read from
-#: the code on 2026-10-06 and has NO PROBE in any of the three tables. Each is
-#: asked for with `StatForSkill` and the wearer's own state. A name leaves this
-#: set when a probe is written for it; `test_no_unprobed_name_has_a_probe` fails
-#: if one is left here after that.
-READ_FROM_THE_CODE_AND_NOT_PROBED = frozenset({
-    "cooldown_skip_chance",
-    "debuffs_do_not_expire",
-    "fervour_loss_suppressed",
-    "fervour_per_cast",
-    "health_cost_suppressed",
-    "movement_speed_reduction_suppressed",
-    "nova_damage_of_missing_health",
-})
+#: the code and has NO PROBE in any of the three tables. A name leaves this set
+#: when a probe is written for it; `test_no_unprobed_name_has_a_probe` fails if
+#: one is left here after that. EMPTY SINCE ISSUE #2236: the seven names read on
+#: 2026-10-06 each have a conditioned probe now.
+READ_FROM_THE_CODE_AND_NOT_PROBED: frozenset[str] = frozenset()
 
 
 def table(accessor: str) -> set[str]:
@@ -100,7 +92,7 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     DIFFER, which is what shows `Probes` did not match another table's tail."""
     sizes = {accessor: len(table(accessor)) for accessor in TABLES}
 
-    assert sizes["ConditionedProbes"] == 17, sizes
+    assert sizes["ConditionedProbes"] == 24, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes
