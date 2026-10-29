@@ -259,6 +259,17 @@ bool UCataclysmInventoryComponent::RemoveItemAt(int32 Slot)
 	return true;
 }
 
+bool UCataclysmInventoryComponent::RestoreSlots(const TArray<FCataclysmCarriedSlot>& Saved)
+{
+	if (Saved.Num() != SlotCount)
+	{
+		return false;
+	}
+	Slots = Saved;
+	++Changes;
+	return true;
+}
+
 void UCataclysmInventoryComponent::RemoveEverything()
 {
 	for (FCataclysmCarriedSlot& Slot : Slots)

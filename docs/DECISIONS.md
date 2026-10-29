@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A character record can be put back into a possessed player, with the figure its passive points were handed with (#753, character step)
+
+**Affects:** `FCataclysmSaveApply::CharacterInto` in `game/Source/Cataclysm/Save/CataclysmSaveApply.h` and `.cpp` (new);
+one `SaveGame` field on `UCataclysmCharacterSave` (`CataclysmSaveRecords.h`) and one line in
+`FCataclysmSaveGather::CharacterFrom` (`CataclysmSaveGather.cpp`); `RestorePassiveAllocation` and
+`RestoreSpentAttributePoints` on `ACataclysmPlayerState` (`CataclysmPlayerState.h`, `.cpp`) and the comment that said
+the figure is not in the save record; `RestoreSlots` on `UCataclysmInventoryComponent`; `RestoreWornGear` and
+`AnnounceRestored` on `UCataclysmEquipmentComponent`; the fixture `game/Tests/SaveFixtures/Character_v3.json`; a new
+test file `game/Source/Cataclysm/Tests/CataclysmSaveCharacterRestoreTests.cpp`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **THE GAME STILL LOADS NOTHING.** `CharacterInto` and `RunInto` exist and nothing in the game calls either.
+- **ONE CHANGE TO THE DESIGN AS RULED: THE WORN GEAR IS NOT PUT BACK THROUGH `EquipInto`.** Read while building:
+  `EquipInto` puts a two-handed weapon in the first weapon slot and empties the second unless
+  `MayHoldTwoTwoHanded()` holds, and that permission is a stat (`BothHandsFullStat`) on the stat line, which a passive
+  node can grant. Every equipment change also announces, and `ACataclysmPlayerCharacter::OnEquipmentChanged` then
+  refreshes the stats and calls `UCataclysmWearing::ReturnSecondTwoHandedWeapon`. With the passive allocation restored
+  after the gear, as ruled, a character saved holding two two-handed weapons would lose the second through either
+  route. So the gear goes back through `RestoreWornGear`, which places each saved item in its saved slot and does not
+  announce, and `CharacterInto` announces once after the allocation is back. **Not tested:** no test holds two
+  two-handed weapons; the case is argued from the code.
+- **`EquipInto` CHECKS NO LEVEL AND NO ATTRIBUTE** (the ruling's first change asked which applies): it checks only that
+  the item's base exists and suits the slot. So gear does not need the attribute points first in order to be
+  accepted; they come first anyway, because the one announcement must find them in place.
+- **THE ZERO-HEALTH TRAP #753 DESCRIBES IS ALREADY CLOSED.** Since 2026-08-31 a direct write of health to 0 runs the
+  death path (`UCataclysmVitalAttributeSet::PostAttributeBaseChange` calls `NotifyIfHealthReachedZero`), which
+  `Cataclysm.HealthWrite.APlayerEmptiedByADirectWriteDies` checks. And health is not in the character record: it is in
+  the run record's floor placement, which `FCataclysmSaveApply::PlacementInto` puts back and nothing calls.
+
+### What it was
+
+The character record was written and nothing read it. Of what it holds, three parts had no way back onto a player: the
+48 bag slots by position (only `AddItem` and `SwapSlots`), the spent attribute points (only `SpendAttributePoints`,
+which refuses points above the level's), and the passive allocation (only `SetPassiveAllocation`, which computes the
+figure of points the level and bosses did not pay for from the level at the moment of the call). That figure was not
+saved either; the 2026-10-09 entry's "THE ORDER A SAVE LOADER MUST KEEP" says both are the loader's to add.
+
+### The ruling, 2026-10-29 (the coordinating session, from the code and the design)
+
+Save the figure; restore values exactly, the save being the authority, and check only the record's shape; put the
+passive allocation back after the gear. A record whose carried slots are not the inventory's 48 is refused before
+anything changes, as `RunInto` refuses a record without its 25 cities.
+
+**The start-up questions, ruled the same day for a later step, none needing the owner:**
+
+| Question | Ruling |
+|---|---|
+| What happens at start-up when saves exist | Now, a console command that loads a named character, as the test path; as the design, a character select screen, which `docs/Cataclysm_GDD_v2.md` names among its key screens ("Login / Character select / Character creator") and which the owner's rule that every system gets a basic interface requires. Not "always continue the most recent". |
+| How a character's current run is found | Add the current run's identifier to the character record. Structure, not design. |
+| A character saved dead with its run still going | Restore it as saved, where it fell, so the death path runs on load: `docs/Save_System_Design.md` section 6 writes the death before it is processed "so the record holds it where it fell". |
+
+**A REQUIREMENT ON THE STEP THAT BUILDS START-UP LOADING, NOT ON THIS ONE.** The third ruling is sound only if a record
+holding a dead character always means the death has not been processed. So processing a death (the penalty against
+the shared empire clock, and the respawn at the capital) must raise a save write. Otherwise a crash after the penalty
+and before the next write would charge it twice on load. That step must check this and add the write if it is missing.
+
+### The change
+
+`CharacterInto(Record, Character, OutSkillsRefused, OutWhy)` refuses, changing nothing, when the character has no
+player state, inventory or equipment, when the record does not hold 48 carried slots, or when a worn item names a slot
+that does not exist or one already named. Otherwise, in order: the level, experience and kills; the creation choice;
+the spent attribute points (`RestoreSpentAttributePoints`); the worn gear (`RestoreWornGear`, silent); the bag
+(`RestoreSlots`, by position, raising no save trigger); the passive allocation, the bosses and the figure
+(`RestorePassiveAllocation`, computing nothing); one announcement (`AnnounceRestored`), which refreshes the stat line
+and refills the skill slots from the worn weapons; then each saved skill choice through `AssignSkill`, which checks it
+against those skills, counting any it refuses. The record's new field is `PassivePointsAnAllocationWasHandedWith`.
+**No schema version bump**, for the reason the run record's `PartialDay` comment gives.
+
+### How it is checked
+
+`Cataclysm.SaveApply.ARestoredCharacterHoldsWhatItWasSavedWith`: a possessed player is played through the game's own
+calls: level 10, a passive allocation of three points more than level 10 and one boss pay for, then level 40 with
+experience, kills, a creation choice, 12 points in vitality and 5 in agility, a sword and a ring each with a flat
+health affix, a helm in bag slot 3 and boots in slot 7, and a skill choice. (Set-up: the figure is 3, and computing it
+again at level 40 would give a different one.) It is saved, written to JSON, read back and put into a second possessed
+player, which then holds every value the first holds (the figure, the attribute points, the worn items, the 48 bag
+slots, the skill choices) and has the same derived stat line, every attribute but the four pools' current values.
+**CONTROL:** a third player played by the same calls as the first has the same stat line as the first. It prints a
+line beginning "CHARACTER RESTORE".
+
+`Cataclysm.SaveApply.ACharacterRecordThatCannotBeRestoredChangesNothing`: the record into a character with no player
+state is refused with a reason and its bag is unchanged; the record with one carried slot taken away is refused with a
+reason and the possessed player handed it is unchanged. **CONTROL:** the record whole is accepted. It prints a line
+beginning "CHARACTER REFUSAL".
+
+### Not covered
+
+Choosing which character and run to load at start-up (the rulings above, for a later step); vitals and position, in
+the run record's floor placement; the character's name, partition, residue, private stash and private upgrade points,
+which have no home on the player and most of which nothing writes; co-operative play; and a character holding two
+two-handed weapons, which no test builds.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each |
+| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "CHARACTER RESTORE" and "CHARACTER REFUSAL" lines | quoted as printed |
+| P1, `CharacterInto` puts the allocation on through `SetPassiveAllocation` | the restore test fails on "the figure ... is put back as saved" (0 restored, 3 saved) and on "every value the record holds"; whether the stat line also differs is not predicted; the CONTROL holds |
+| P2, `CharacterFrom` does not gather the figure | the same two assertions, the figure 0; the stat line not predicted; the CONTROL holds |
+| P3, `CharacterInto` skips the attribute points | the restore test fails on "the spent attribute points", "every value the record holds" and "the derived stat line"; the CONTROL holds |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-29 — Three analysis scripts run the shipped cadence and rules, and the throughput script measures the share cleared before a hit (#2396)
 
 **Affects:** `sim/analyse_surge_cadence.py`, `sim/analyse_board_empty_surge.py`, `sim/analyse_tier_throughput.py` (one

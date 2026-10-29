@@ -192,6 +192,15 @@ public:
 	void RemoveEverything();
 
 	/**
+	 * Puts the 48 saved slots back exactly, each in the position it was saved in. Issue #753, the character step.
+	 *
+	 * REFUSED, CHANGING NOTHING, when the saved list does not hold exactly `SlotCount` slots: the shape is checked and
+	 * the contents are not, because the save is the authority for what was carried. IT RAISES NO SAVE TRIGGER, unlike
+	 * every other change to the bag: putting back what the file holds is not a change the file needs to record.
+	 */
+	bool RestoreSlots(const TArray<FCataclysmCarriedSlot>& Saved);
+
+	/**
 	 * Adds crafting materials, stacking them onto any already carried.
 	 *
 	 * @return the slot they went into, or **INDEX_NONE when there was no room**,

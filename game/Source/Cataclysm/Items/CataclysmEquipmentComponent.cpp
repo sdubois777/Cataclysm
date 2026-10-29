@@ -519,6 +519,27 @@ bool UCataclysmEquipmentComponent::NoteKillOnWornWeapons(UAbilitySystemComponent
 	return bCrossed;
 }
 
+void UCataclysmEquipmentComponent::RestoreWornGear(const TArray<TPair<ECataclysmGearSlot, FCataclysmItem>>& Worn)
+{
+	for (FCataclysmItem& Slot : Slots)
+	{
+		Slot = FCataclysmItem();
+	}
+	for (const TPair<ECataclysmGearSlot, FCataclysmItem>& Entry : Worn)
+	{
+		const int32 Index = static_cast<int32>(Entry.Key);
+		if (Slots.IsValidIndex(Index))
+		{
+			Slots[Index] = Entry.Value;
+		}
+	}
+}
+
+void UCataclysmEquipmentComponent::AnnounceRestored()
+{
+	AnnounceChange();
+}
+
 void UCataclysmEquipmentComponent::UnequipEverything()
 {
 	bool bAnything = false;

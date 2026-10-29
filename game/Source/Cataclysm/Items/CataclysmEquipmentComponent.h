@@ -273,6 +273,23 @@ public:
 	void UnequipEverything();
 
 	/**
+	 * Puts saved worn gear back exactly: every slot emptied, then each saved item placed in the slot it was saved in.
+	 * Issue #753, the character step.
+	 *
+	 * IT DOES NOT ANNOUNCE, AND THAT IS THE POINT. An announcement makes the wearer refresh its stats and hand back a
+	 * second two-handed weapon it is not allowed to hold (`UCataclysmWearing::ReturnSecondTwoHandedWeapon`), and that
+	 * permission comes from the stat line, which a passive node can grant. Gear is restored before the passive
+	 * allocation, so announcing here would judge two two-handed weapons against an allocation not yet back.
+	 * `FCataclysmSaveApply::CharacterInto` calls `AnnounceRestored` once everything is back. NOT `EquipInto`, for the
+	 * same reason: it puts a two-handed weapon in the first weapon slot and empties the second unless the permission is
+	 * already held. Slots outside `ECataclysmGearSlot::Count` are skipped; `CharacterInto` refuses such a record first.
+	 */
+	void RestoreWornGear(const TArray<TPair<ECataclysmGearSlot, FCataclysmItem>>& Worn);
+
+	/** The one announcement after a save restore. See `RestoreWornGear`. */
+	void AnnounceRestored();
+
+	/**
 	 * One kill by the wearer: each worn weapon's `FCataclysmItem::Kills` rises
 	 * by one. Issue #1833, the kill counter; ruled 2026-09-25 under the owner's
 	 * delegation, since both weapons' damage is in every blow.
