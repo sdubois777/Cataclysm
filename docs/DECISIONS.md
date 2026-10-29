@@ -2,6 +2,72 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Typing Cataclysm.PlayerLevel during play applies it to a character whose level is not settled, and warns for one whose level is (#1540)
+
+**Affects:** `CVarPlayerLevel` in `CataclysmPlayerClassStats.cpp` (its comment, its help text and a change callback),
+`ACataclysmPlayerState` in `CataclysmPlayerState.h` and `.cpp` (`StartingLevelChanged` and `HasSettledLevel`), and one
+new test in `CataclysmCharacterLevelTests.cpp`. Fixes [#1540](https://github.com/sdubois777/Cataclysm/issues/1540).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **THE ISSUE WAS HALF TRUE AT `faf969780`.** It says a change during play does nothing. On a character whose level is
+  not settled, `ACataclysmPlayerState::GetCharacterLevel` reads the variable every time it is asked, so the character
+  sheet, the passive points, a minion the player summons and a save took the new level at once. Only the stat line
+  waited, until the next refresh (a change of gear, a point spent). So the sheet could say 100 while maximum health
+  stayed at the old level's figure, which is what the owner saw: 510. On a character whose level is settled, by a
+  level gained or a save loaded, the change reached nothing, as the issue says.
+- **ONE EXISTING TEST NOW LOGS THE NEW WARNING.**
+  `Cataclysm.CharacterLevel.GainingALevelActuallyMakesTheCharacterStronger` sets the variable to 3 on a character
+  that has earned level 40, to show the earned level is kept. It still asserts that, and it now also produces the
+  warning. A warning does not fail a test here: `bElevateLogWarningsToErrors` is not set in any configuration.
+
+### The ruling, 2026-10-29 — a judgement
+
+The issue proposed a message only, saying the change takes effect the next time Play is pressed. That message would be
+false while the character sheet already shows the new level. **The judgement:** apply or say why not.
+
+| Character in play | On a change to `Cataclysm.PlayerLevel` |
+|---|---|
+| Level not settled | `RefreshCharacterStats`, and one log line: "Cataclysm.PlayerLevel applied at level N: ..." |
+| Level settled | Unchanged, and one warning naming the settled level: "... has settled its level at N, so nothing changed. ..." |
+
+It rests on a ruling the decisions log already holds. Under "`Cataclysm.PlayerLevel` lowered by hand after spending is
+left as the rule acting" (ruling point 5), on a character whose level the variable still decides, a change acts at once
+on the points earned. The stat line now acts at once as well. **A level gained still overrides the variable**: nothing
+changes for a settled character. The help text, which said "Read when the pawn is possessed, so press Play again after
+changing it", now says both.
+
+The callback is bound with `SetOnChangedCallback` on the variable, the way `Cataclysm.DungeonSubType` in
+`CataclysmDungeonGameMode.cpp` binds its own, and does nothing before the object system is up, since a value set from a
+configuration file arrives at start-up. It answers every player state with a possessed character, found with an object
+iterator, skipping a world being torn down.
+
+### How it is checked
+
+`Cataclysm.CharacterLevel.ChangingTheStartingLevelInPlayAppliesOrSaysWhyNot`: a level 10 character in play, its level
+not settled; the variable set to 40 at console priority. Maximum health becomes the class line's level 40 figure, and
+one log line says "applied at level 40". **CONTROL:** one point of experience settles the level at 40; the variable set
+to 5 leaves maximum health at the level 40 figure, and one warning says "settled its level at 40". It prints a line
+beginning "PLAYER LEVEL IN PLAY".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "PLAYER LEVEL IN PLAY" line | quoted as printed |
+| P1, the refresh removed | the test fails on "an unsettled character takes the new level's health at once", and on nothing else |
+| P2, the settled check removed | the test fails on both CONTROL assertions (the health becomes the level 5 figure, and no warning is logged), and on the expected warning not being found |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-29 — A `.cpp` reaches the header that defines every project type it names with `Type::` (#2022)
 
 **Affects:** `tools/tests/test_a_cpp_file_reaches_the_header_of_every_type_it_qualifies.py` (new: the rule and three

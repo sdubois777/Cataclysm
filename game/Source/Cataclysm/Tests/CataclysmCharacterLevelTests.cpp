@@ -553,4 +553,117 @@ bool FCataclysmLevelReachesTheSaveRecord::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot,
+	"Cataclysm.CharacterLevel.ChangingTheStartingLevelInPlayAppliesOrSaysWhyNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot::RunTest(const FString&)
+{
+	using namespace CataclysmCharacterLevelTest;
+
+	// ISSUE #1540. Typing `Cataclysm.PlayerLevel` during play changed the level
+	// the character sheet showed and left the health where it was, and said
+	// nothing. Ruled 2026-10-29: a character whose level is not settled takes the
+	// change at once and the log says so. CONTROL: a character whose level is
+	// settled keeps it, and one warning names that level.
+	struct FCapture : public FOutputDevice
+	{
+		FCapture() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FCapture() { if (GLog) { GLog->RemoveOutputDevice(this); } }
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			if (Category == FName(TEXT("LogCataclysm")))
+			{
+				Lines.Add({ FString(Text), Verbosity });
+			}
+		}
+		int32 Count(const TCHAR* Needle, ELogVerbosity::Type Verbosity)
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			int32 Found = 0;
+			for (const TPair<FString, ELogVerbosity::Type>& Line : Lines)
+			{
+				Found += Line.Value == Verbosity && Line.Key.Contains(Needle, ESearchCase::CaseSensitive) ? 1 : 0;
+			}
+			return Found;
+		}
+		TArray<TPair<FString, ELogVerbosity::Type>> Lines;
+	};
+
+	FStartingLevel Starting(10);
+	if (!Starting.IsUsable())
+	{
+		AddError(TEXT("Cataclysm.PlayerLevel does not exist."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("player state"), PlayerState) || !TestNotNull(TEXT("player character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	UAbilitySystemComponent* ASC = Character->GetAbilitySystemComponent();
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!TestNotNull(TEXT("ability system"), ASC) || !TestNotNull(TEXT("DT_ClassStats"), Table))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FString& ClassName = UCataclysmPlayerClassStats::ChosenClass();
+	Character->ApplyChosenClassStats();
+
+	const float AtTen = UCataclysmClassStats::BaseFor(Table, ClassName, TEXT("max_health"), 10);
+	const float AtForty = UCataclysmClassStats::BaseFor(Table, ClassName, TEXT("max_health"), 40);
+	const float AtFive = UCataclysmClassStats::BaseFor(Table, ClassName, TEXT("max_health"), 5);
+	if (!TestFalse(TEXT("set-up: the character is not settled"), PlayerState->HasSettledLevel())
+		|| !TestEqual(TEXT("set-up: a level 10 character has the level 10 health"),
+					  ASC->GetNumericAttribute(MaxHealth), AtTen)
+		|| !TestTrue(TEXT("set-up: levels 5, 10 and 40 give three different healths"),
+					 AtFive != AtTen && AtTen != AtForty && AtFive != AtForty))
+	{
+		return false;
+	}
+
+	FCapture Capture;
+
+	// UNSETTLED: THE CHANGE APPLIES AT ONCE.
+	Starting.Variable->Set(40, ECVF_SetByConsole);
+	const float AfterForty = ASC->GetNumericAttribute(MaxHealth);
+	const int32 Applied = Capture.Count(TEXT("applied at level 40"), ELogVerbosity::Log);
+
+	// SETTLED: ONE GRANT OF EXPERIENCE SETTLES THE LEVEL AT 40, AND THE CHANGE TO 5 DOES NOTHING.
+	PlayerState->GrantExperience(1);
+	AddExpectedError(TEXT("settled its level at 40"), EAutomationExpectedErrorFlags::Contains, 1);
+	Starting.Variable->Set(5, ECVF_SetByConsole);
+	const float AfterFive = ASC->GetNumericAttribute(MaxHealth);
+	const int32 Warned = Capture.Count(TEXT("settled its level at 40"), ELogVerbosity::Warning);
+
+	AddInfo(FString::Printf(TEXT("PLAYER LEVEL IN PLAY: maximum health %.1f at 10, %.1f after 40 (%d applied lines), "
+								 "%.1f after 5 once settled (%d warnings); the class line gives %.1f at 40 and %.1f at 5"),
+							AtTen, AfterForty, Applied, AfterFive, Warned, AtForty, AtFive));
+	TestEqual(TEXT("an unsettled character takes the new level's health at once"), AfterForty, AtForty);
+	TestEqual(TEXT("and one line says it was applied at level 40"), Applied, 1);
+	TestTrue(TEXT("set-up: one grant settled the level at 40"),
+			 PlayerState->HasSettledLevel() && PlayerState->GetCharacterLevel() == 40);
+	TestEqual(TEXT("CONTROL: a settled character keeps its health"), AfterFive, AtForty);
+	TestEqual(TEXT("CONTROL: and one warning names the level it is settled at"), Warned, 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
