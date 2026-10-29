@@ -147,8 +147,10 @@ CAMPAIGNS = 320
 #: docstring: the walk distribution is flat where the median falls.
 WALK_TOLERANCE_DAYS = 1
 
-#: The Pillar's own median is noisier -- 200 campaigns produce only about 230
-#: dungeons there against 16,000 on an Outpost -- and it is not the figure the
+#: The Pillar's own median is noisier -- this file's 320 campaigns produce 345
+#: dungeons there against 22,633 on an Outpost, measured on 2026-10-29 with the
+#: policies of issue #1388 (this said about 230 against 16,000, from when the
+#: file ran 200; issue #1389) -- and it is not the figure the
 #: Pillar claim rests on. `TestAPillarSiegeCanNeverBeAnswered` carries that,
 #: exactly and without campaigns. Ten blocks of 200 spread it over 120 to
 #: 126.5 against a 10,000-campaign answer of 123, so four is what was measured
