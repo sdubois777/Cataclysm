@@ -10,7 +10,7 @@ Fixes [#888](https://github.com/sdubois777/Cataclysm/issues/888).
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w84 below passed every registered figure, and both proofs were PROVED.**
 
 ### What it was
 
@@ -46,7 +46,21 @@ twenty are not all the same. **CONTROL:** seed 5678 rolls a different twenty. It
 
 ### Run
 
-Not run yet.
+**Window w84 (lock `dungeon-w84`, `fix/the-sandbox-rarity-roll-takes-a-seed-1` at `d615701c1`, on `baa8c3cb7`,
+2026-10-29) passed.** The lock was taken at 04:24 on a free-memory reading immediately before it of 10,808 MB, after
+both of `development`'s runs at `baa8c3cb7` succeeded, with none in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4356 / 0 | `4356 tests performed, 4356 succeeded, 0 failed`; declared 4356, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7761`, peak 8,060 |
+| Python (JUnit) | of record | 7037 tests, 0 failures, 0 errors, 8 skipped ("7029 passed, 8 skipped"); ruff `All checks passed!` |
+| The "RARITY SEED" line | quoted as printed | "1234 rolled 11012010101011020002, 1234 again 11012010101011020002, 5678 11000210121102000020" |
+| P1, the set seed ignored | fails on "and the twenty are not all the same"; the rest not predicted | "1 tests performed, 0 succeeded, 1 failed: ASetRarityRollSeedRollsTheSameRaritiesEveryTime", printing "1234 rolled 11111111111111111111, 1234 again 33333333333333333333, 5678 00000000000000000000": it failed on "not all the same" as registered, and also on the same-seed equality, which was not predicted either way; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the count not advanced | fails on "and the twenty are not all the same" | the same failure line, printing "11111111111111111111" for all three: it failed on "not all the same" as registered, and also on the CONTROL, which was not registered (with no count every seed gave one rarity twenty times, and these three gave the same one); restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
