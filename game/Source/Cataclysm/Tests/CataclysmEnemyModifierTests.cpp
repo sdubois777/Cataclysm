@@ -3573,4 +3573,75 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandTagEndsTest,
 	return true;
 }
 
+
+CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
+	"Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #1611. Sacrifice wrote the creature's health directly, the one
+	// route that restores health and reads none of the healing rules. Through
+	// the shared heal a reduction of its healing received now cuts it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ONE WOUNDED EATER AND AN ALLY BESIDE IT, far from the other pair, stepped
+	// through one interval; answers what the eater regained.
+	const auto Regained = [&](const FVector& Where, float ReductionPercent, float& Gain) -> bool
+	{
+		ACataclysmEnemyCharacter* Eater = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		ACataclysmEnemyCharacter* Ally =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where + FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!TestNotNull(TEXT("set-up: an eater"), Eater) || !TestNotNull(TEXT("set-up: an ally"), Ally))
+		{
+			return false;
+		}
+		for (ACataclysmEnemyCharacter* Each : {Eater, Ally})
+		{
+			Each->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Each->SetHealth(1000.0f);
+		}
+		UAbilitySystemComponent* Own = Eater->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("set-up: the eater has an ability system"), Own))
+		{
+			return false;
+		}
+		Own->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 200.0f);
+		Own->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute(),
+									 ReductionPercent);
+		Eater->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+		Eater->SecondsSinceSacrifice = 0.0f;
+
+		const float Before = Own->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		// SIX SECONDS AT A QUARTER OF A SECOND A STEP IS TWENTY-FOUR STEPS, the interval.
+		for (int32 Step = 0; Step < 24; ++Step)
+		{
+			UCataclysmEnemyModifiers::TimedStep(Eater, 0.25f);
+		}
+		if (!TestTrue(TEXT("set-up: the ally was sacrificed"), UCataclysmSkillEffects::IsDead(Ally)))
+		{
+			return false;
+		}
+		Gain = Own->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) - Before;
+		return true;
+	};
+
+	float Whole = -1.0f;
+	float Halved = -1.0f;
+	if (!Regained(FVector::ZeroVector, 0.0f, Whole) || !Regained(FVector(0.0f, 20000.0f, 0.0f), 50.0f, Halved))
+	{
+		return false;
+	}
+	const float Quarter = 1000.0f * UCataclysmEnemyModifiers::SacrificeHealShareOfHealth;
+	AddInfo(FString::Printf(TEXT("SACRIFICE HEAL: %.1f regained with no reduction, %.1f with 50%%; a quarter is %.1f"),
+							Whole, Halved, Quarter));
+	TestEqual(TEXT("CONTROL: with no reduction the eater regains a quarter of its maximum"), Whole, Quarter, 0.01f);
+	TestEqual(TEXT("with its healing received reduced by half it regains an eighth"), Halved, Quarter * 0.5f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

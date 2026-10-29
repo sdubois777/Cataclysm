@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Infernal Sacrifice heals through the shared heal, so the rules on healing reach it (#1611)
+
+**Affects:** the Infernal Sacrifice step in `CataclysmEnemyModifiers.cpp` (one heal), and one new test in
+`CataclysmEnemyModifierTests.cpp`. Fixes [#1611](https://github.com/sdubois777/Cataclysm/issues/1611).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **TWO THINGS WERE NOT TRACED:** which shipped sources write a creature's healing-received reduction (rather than the
+  player's), and where Necrosis's "denies the target all healing" is applied. Neither is claimed here.
+
+### What it was, read again at `7ca6edb06`
+
+Sacrifice killed the nearest ally and wrote the creature's health base to `min(maximum, now + a quarter of maximum)`,
+the one route that restores health without `UCataclysmRegeneration::TopUp`. #1607 and #1608, the other two, are closed.
+So it read none of what `TopUp` applies: a held swing forbidding healing, `healing_received`, the healing-received
+reduction attribute, an ailment's rider on healing received, and the healing ceiling with its reduction. The row says
+only "Sacrifice nearby allies to heal yourself and gain temporary damage buffs"; the design asks for no bypass.
+
+**THE SHIPPED ROW THIS MAKES REACH SACRIFICE:** `Positive_Disease_effects_reduce_enemy_healing_by_50_100`, "Disease
+effects reduce enemy healing by 50%-100%", written as an `ailment_healing_received` rider on Disease, which `TopUp`
+applies. A diseased creature's Field Medic heal was cut by it and its Sacrifice heal was not.
+
+### What changed
+
+The heal goes through `TopUp` with the same quarter of maximum, as the Field Medic's heal in the same file does.
+`TopUp` stops at the maximum, as the write did.
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt`: a creature of 1,000 health
+wounded to 200, carrying Infernal Sacrifice with an ally beside it, stepped through one interval. **CONTROL:** with no
+reduction it regains a quarter, 250. With its healing-received reduction at 50% it regains an eighth, 125. It prints a
+line beginning "SACRIFICE HEAL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4354 / 0: `development`'s 4353, and one test is added |
+| Python | of record, with JUnit, and ruff |
+| The "SACRIFICE HEAL" line | quoted as printed |
+| P1, the direct write restored | the test fails: with the reduction it regains the full quarter |
+| P2, the heal amount nought in the call | the CONTROL fails: it regains nothing |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-28 — Seven passive stats shipped under a condition get a probe each, so the ask is measured rather than read (#2236)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (seven probes, seven table entries, the

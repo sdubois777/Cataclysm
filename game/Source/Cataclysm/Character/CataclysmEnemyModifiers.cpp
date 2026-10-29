@@ -1001,19 +1001,22 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 
 				Victim->HandleDeath();
 
+				// THROUGH TopUp, AS THE FIELD MEDIC'S HEAL IS, and not by writing
+				// the attribute. Issue #1611: the write reached none of the rules
+				// that stand between a restoration and a health bar -- the healing
+				// received, its reduction, an ailment's rider on it, the ceiling --
+				// so a diseased creature ate its pack-mate and healed the full
+				// quarter. TopUp also stops at the maximum, as the write did.
 				UAbilitySystemComponent* Own =
 					UCataclysmTargeting::AbilitySystemOf(Enemy);
 				if (Own)
 				{
 					const float Max = Own->GetNumericAttribute(
 						UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-					const float Now = Own->GetNumericAttribute(
-						UCataclysmVitalAttributeSet::GetHealthAttribute());
-
-					Own->SetNumericAttributeBase(
-						UCataclysmVitalAttributeSet::GetHealthAttribute(),
-						FMath::Min(Max,
-								   Now + Max * SacrificeHealShareOfHealth));
+					UCataclysmRegeneration::TopUp(
+						*Own, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+						UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
+						Max * SacrificeHealShareOfHealth);
 				}
 
 				// AND THE DAMAGE BUFF THE ROW PROMISES. Commander is the buff
