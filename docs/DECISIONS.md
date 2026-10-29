@@ -14,7 +14,8 @@ test file `game/Source/Cataclysm/Tests/CataclysmSaveRunRestoreTests.cpp`. Issue
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NOT YET PASSED IN UNREAL.** Window w94 below stopped at the build, on a name clash in the new test file; the two
+  helpers were renamed, and nothing has been built since.
 - **THIS IS A FIRST STEP AND THE GAME STILL LOADS NOTHING.** `RunInto` exists and nothing in the game calls it.
   `ACataclysmGameMode::StartPlay` still begins a new run with two new identifiers. **Not covered, each needing the
   project owner's decisions:** choosing which run and character to load at start-up (a new-game flow, a continue
@@ -100,7 +101,21 @@ beginning "RUN REFUSAL".
 
 ### Run
 
-Not run yet.
+**Window w94 (lock `dungeon-w94`, `feat/a-run-record-can-be-put-back-into-a-run-1` at `e1e18f156`, on `a41b79991`,
+2026-10-29) STOPPED at the build. Nothing after it ran.** `development`'s CI run at `a41b79991` and its last Unreal run,
+at `17366a34d`, succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull
+request was open, and free memory read 10,830 MB immediately before. The lock was released before anything was written
+here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Failed - 73 actions, 63 files compiled`: 13 errors, all in `CataclysmSaveRunRestoreTests.cpp`, beginning "error C2872: 'Internal': ambiguous symbol" and "error C2882: 'Internal': illegal use of namespace identifier in expression" |
+
+**THE FAULT WAS THE TEST FILE'S.** Its helper function `Internal` has the name of a namespace the engine declares, so
+every call was ambiguous, and the format-string error (C7595) followed from it. The two helpers are now
+`InternalValues` and `VisibleValues`. No other file failed to compile; nothing in `RunInto` or the save changed.
+
+The next window is registered as above.
 
 ---
 

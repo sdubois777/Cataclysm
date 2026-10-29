@@ -61,7 +61,7 @@ namespace CataclysmSaveRunRestoreTest
 	}
 
 	/** What a player sees of the run: the map as drawn, and every dungeon on it. */
-	FString Visible(const UCataclysmEmpireRun& Run)
+	FString VisibleValues(const UCataclysmEmpireRun& Run)
 	{
 		FString Out = Run.Map->Render();
 		for (const FCataclysmDungeon& Dungeon : Run.Dungeons)
@@ -78,7 +78,7 @@ namespace CataclysmSaveRunRestoreTest
 
 	/** Everything else the run holds that decides what it does next: the clock, the scheduler, the streams, the
 	 *  tallies, the identity, and each city's saved fields. */
-	FString Internal(const UCataclysmEmpireRun& Run)
+	FString InternalValues(const UCataclysmEmpireRun& Run)
 	{
 		FString Out = FString::Printf(TEXT("day %d %.4f cur %d owed %d | surge %d %d %.4f %d | streams %d %d %d stalker %d"
 										   " | next %d tier %d slots %d"),
@@ -194,19 +194,19 @@ bool FCataclysmSaveRunRestoreAdvancesTheSameTest::RunTest(const FString& Paramet
 			Restored->AdvanceDay();
 			Twin->AdvanceDay();
 		}
-		const FString LiveInternal = Internal(*Live);
-		const FString LiveVisible = Visible(*Live);
-		if (RestoredInternal == INDEX_NONE && Internal(*Restored) != LiveInternal)
+		const FString LiveInternal = InternalValues(*Live);
+		const FString LiveVisible = VisibleValues(*Live);
+		if (RestoredInternal == INDEX_NONE && InternalValues(*Restored) != LiveInternal)
 		{
 			RestoredInternal = Day;
 			FirstDifference = FString::Printf(TEXT("live [%s] restored [%s]"), *LiveInternal.Left(300),
-											  *Internal(*Restored).Left(300));
+											  *InternalValues(*Restored).Left(300));
 		}
-		if (RestoredVisible == INDEX_NONE && Visible(*Restored) != LiveVisible)
+		if (RestoredVisible == INDEX_NONE && VisibleValues(*Restored) != LiveVisible)
 		{
 			RestoredVisible = Day;
 		}
-		if (TwinDiffers == INDEX_NONE && (Internal(*Twin) != LiveInternal || Visible(*Twin) != LiveVisible))
+		if (TwinDiffers == INDEX_NONE && (InternalValues(*Twin) != LiveInternal || VisibleValues(*Twin) != LiveVisible))
 		{
 			TwinDiffers = Day;
 		}
@@ -255,10 +255,10 @@ bool FCataclysmSaveRunRestoreRefusesTest::RunTest(const FString& Parameters)
 	Broken->DungeonTimers.Pop();
 
 	UCataclysmEmpireRun* Target = PlayedRun(3);
-	const FString Before = Internal(*Target) + Visible(*Target);
+	const FString Before = InternalValues(*Target) + VisibleValues(*Target);
 	FString Refusal;
 	const bool bRefusedAccepted = FCataclysmSaveApply::RunInto(*Broken, *Target, Refusal);
-	const FString After = Internal(*Target) + Visible(*Target);
+	const FString After = InternalValues(*Target) + VisibleValues(*Target);
 
 	UCataclysmEmpireRun* Accepting = PlayedRun(3);
 	FString AcceptWhy;
