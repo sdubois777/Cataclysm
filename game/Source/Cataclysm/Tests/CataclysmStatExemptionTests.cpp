@@ -49,6 +49,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNova.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -6810,6 +6811,229 @@ namespace CataclysmStatExemptionTest
 					  WhenHurt.DealtToHealth > AtFull.DealtToHealth * 1.2f);
 	}
 
+	// ------------------------------------------------------------------------
+	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
+	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
+	// `tools/tests/test_every_conditioned_stat_has_an_asker.py`, on the strength
+	// of reading its consumer on 2026-10-06. Each probe below is the shape of the
+	// ones above, read through the function the game calls.
+	// ------------------------------------------------------------------------
+
+	/**
+	 * `cooldown_skip_chance`, read by `UCataclysmGameplayAbility::CooldownIsSkipped`.
+	 * Shipped under `health_at_or_below` 5 (`Masochist_basic_ll_a2`). The roll is
+	 * pinned at 50, so a chance of 100 skips and a chance of nothing does not.
+	 */
+	void ProbeConditionedCooldownSkipChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const UCataclysmSelfBuffSkill* Skill = SupportBuffOn(Fighter);
+		if (!Test.TestNotNull(TEXT("a skill"), Skill))
+		{
+			return;
+		}
+		const FPinnedRoll Roll(TEXT("Cataclysm.CooldownSkipRoll"), 50.0f);
+		ConditionedBelowHalf(Fighter, TEXT("cooldown_skip_chance"), ECataclysmStatBucket::Flat, 100.0f, 0.0f);
+		Test.TestFalse(TEXT("cooldown_skip_chance at full health: a roll of 50 skips nothing"),
+					   Skill->CooldownIsSkipped(Fighter.AbilitySystem));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("cooldown_skip_chance is asked for, so below half health the same roll skips the cooldown"),
+					  Skill->CooldownIsSkipped(Fighter.AbilitySystem));
+	}
+
+	/**
+	 * `debuffs_do_not_expire`, read by `UCataclysmDebuffs::DoNotExpireOn`.
+	 * Shipped under `health_above` 50 (`Masochist_capstone_50`).
+	 */
+	void ProbeConditionedDebuffsDoNotExpire(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmDebuffs::DoNotExpireStat, ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("debuffs_do_not_expire at full health: no"),
+					   UCataclysmDebuffs::DoNotExpireOn(Fighter.AbilitySystem));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("debuffs_do_not_expire is asked for, so below half health: yes"),
+					  UCataclysmDebuffs::DoNotExpireOn(Fighter.AbilitySystem));
+	}
+
+	/**
+	 * `fervour_loss_suppressed`, read by `UCataclysmFervour::LossIsSuppressed`.
+	 * Shipped under `health_at_or_below` 20 (`Masochist_keystone_ll_kA`). A
+	 * Fervour pool first, without which the answer is no for everybody. The
+	 * probe's row requires no tag, so healing with no tags is enough to ask.
+	 */
+	void ProbeConditionedFervourLossSuppressed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::LossSuppressedStat, ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("fervour_loss_suppressed at full health: no"),
+					   UCataclysmFervour::LossIsSuppressed(Fighter.AbilitySystem, FGameplayTagContainer()));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("fervour_loss_suppressed is asked for, so below half health: yes"),
+					  UCataclysmFervour::LossIsSuppressed(Fighter.AbilitySystem, FGameplayTagContainer()));
+	}
+
+	/**
+	 * `fervour_per_cast`, read by `UCataclysmFervour::GainForCast`. Shipped under
+	 * `health_below` 20 (`Masochist_capstone_200`). A Fervour pool of 100 from
+	 * empty, so a cast's 10 fits under it.
+	 */
+	void ProbeConditionedFervourPerCast(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::PerCastStat, ECataclysmStatBucket::Flat, 10.0f, 0.0f);
+		Test.TestEqual(TEXT("fervour_per_cast at full health: a cast grants nothing"),
+					   UCataclysmFervour::GainForCast(Fighter.AbilitySystem), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("fervour_per_cast is asked for, so below half health a cast grants its 10"),
+					   UCataclysmFervour::GainForCast(Fighter.AbilitySystem), 10.0f, 0.001f);
+	}
+
+	/**
+	 * `health_cost_suppressed`, read by `UCataclysmSkillTemplate::HealthCostIsSuppressed`.
+	 * Shipped under `health_below` 20 (`Masochist_capstone_200`). A class
+	 * resource set first, which holds the flag's attribute; without it the
+	 * answer is no for everybody.
+	 */
+	void ProbeConditionedHealthCostSuppressed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		ConditionedBelowHalf(Fighter, UCataclysmSkillTemplate::HealthCostSuppressedStat, ECataclysmStatBucket::Flat,
+							 1.0f, 0.0f);
+		Test.TestFalse(TEXT("health_cost_suppressed at full health: no"),
+					   UCataclysmSkillTemplate::HealthCostIsSuppressed(Fighter.AbilitySystem));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("health_cost_suppressed is asked for, so below half health: yes"),
+					  UCataclysmSkillTemplate::HealthCostIsSuppressed(Fighter.AbilitySystem));
+	}
+
+	/**
+	 * `movement_speed_reduction_suppressed`, read by
+	 * `ACataclysmPlayerCharacter::RefreshMovementSpeed`. Shipped under
+	 * `enemies_in_reach_at_least` 1 (`Ravager_keystone_spine_003`).
+	 *
+	 * A SPAWNED PLAYER CHARACTER, for the reason `ProbeScaledMovementSpeed`
+	 * gives: the speed a player runs at is what its movement component holds.
+	 * Its movement speed carries 50% less with no condition; the suppression
+	 * holds below half health and drops that reduction.
+	 */
+	void ProbeConditionedMovementSpeedReductionSuppressed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmPlayerCharacter* Character = SpawnPotionHolder(World);
+		const ACataclysmPlayerState* PlayerState =
+			Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		UCataclysmAbilitySystemComponent* System =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+		const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+		if (!Test.TestNotNull(TEXT("an ability system"), System)
+			|| !Test.TestNotNull(TEXT("a movement component"), Movement))
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Slower;
+		Slower.Bucket = ECataclysmStatBucket::More;
+		Slower.Source = ECataclysmModifierSource::Enchantment;
+		Slower.Value = -50.0f;
+		FCataclysmStatModifier Refused;
+		Refused.Bucket = ECataclysmStatBucket::Flat;
+		Refused.Source = ECataclysmModifierSource::PassiveKeystone;
+		Refused.Value = 1.0f;
+		Refused.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Refused.ConditionValue = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Speed = Inputs.FindOrAdd(FName(TEXT("movement_speed")));
+		Speed.Base = 5.0f;
+		Speed.Modifiers = {Slower};
+		FCataclysmStatInputs& Flag =
+			Inputs.FindOrAdd(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat));
+		Flag.Base = 0.0f;
+		Flag.Modifiers = {Refused};
+		System->SetStatInputs(MoveTemp(Inputs));
+
+		Character->RefreshMovementSpeed();
+		const float Full = Movement->MaxWalkSpeed;
+		System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 400.0f);
+		Character->RefreshMovementSpeed();
+		const float Hurt = Movement->MaxWalkSpeed;
+		if (!Test.TestTrue(TEXT("movement_speed_reduction_suppressed: at full health the character runs at something"),
+						   Full > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("movement_speed_reduction_suppressed is asked for, so below half health the 50% less is "
+							"dropped and the speed is doubled"),
+					   Hurt, Full * 2.0f, 0.01f);
+	}
+
+	/**
+	 * `nova_damage_of_missing_health`, read by `UCataclysmNova::Step`. Shipped
+	 * under `health_at_or_below` 10 (`Masochist_basic_ll_b2`).
+	 *
+	 * READ AT THREE FIFTHS AND NOT AT FULL HEALTH, because at full health
+	 * nothing is missing and the nova is worth nothing whatever the stat says.
+	 * At three fifths 4,000 is missing and the row does not hold; at two fifths
+	 * 6,000 is missing and 20% of it is 1,200. Nothing else stands in the world,
+	 * so the nova strikes nobody and `Step` returns what it was worth.
+	 */
+	void ProbeConditionedNovaDamageOfMissingHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmNova::DamageStat, ECataclysmStatBucket::Flat, 20.0f, 0.0f);
+		AtHealthShare(Fighter, 0.6f);
+		Test.TestEqual(TEXT("nova_damage_of_missing_health above half health: no nova"),
+					   UCataclysmNova::Step(Fighter.Actor), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("nova_damage_of_missing_health is asked for, so below half health a nova of 20% of the "
+							"6,000 missing"),
+					   UCataclysmNova::Step(Fighter.Actor), 1200.0f, 0.01f);
+	}
+
 	/**
 	 * `skill_cost_paid_from_health`, read by `UCataclysmGameplayAbility::CostPool`.
 	 * Issue #2228. Granted under `health_below` 50, as the one row that states it
@@ -10275,6 +10499,13 @@ namespace CataclysmStatExemptionTest
 	{
 		static const TMap<FString, FProbe> Made = {
 			{TEXT("area_of_effect"),           &ProbeConditionedAreaOfEffect},
+			{TEXT("cooldown_skip_chance"),     &ProbeConditionedCooldownSkipChance},
+			{TEXT("debuffs_do_not_expire"),    &ProbeConditionedDebuffsDoNotExpire},
+			{TEXT("fervour_loss_suppressed"),  &ProbeConditionedFervourLossSuppressed},
+			{TEXT("fervour_per_cast"),         &ProbeConditionedFervourPerCast},
+			{TEXT("health_cost_suppressed"),   &ProbeConditionedHealthCostSuppressed},
+			{TEXT("movement_speed_reduction_suppressed"), &ProbeConditionedMovementSpeedReductionSuppressed},
+			{TEXT("nova_damage_of_missing_health"), &ProbeConditionedNovaDamageOfMissingHealth},
 			{TEXT("armor_penetration"),        &ProbeConditionedArmorPenetration},
 			{TEXT("block_chance"),             &ProbeConditionedBlockChance},
 			{TEXT("cooldown_reduction"),       &ProbeConditionedCooldownReduction},
@@ -10701,7 +10932,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryConditionedProbeTest,
  * a conditioned row on a stat outside `CONDITIONED_STATS_WITH_AN_ASKER`, and
  * the promise behind each name on that list can only be measured here.
  *
- * THESE EIGHT ARE THE STATS THE SHIPPED DATA CONDITIONS THAT NO OTHER PROBE
+ * THESE ARE THE STATS THE SHIPPED DATA CONDITIONS THAT NO OTHER PROBE
  * COVERED. The scaled probes above measure the same ask for the others: a scale
  * and a condition are both judged against the state handed over when the stat
  * is asked for. `tools/tests/test_every_conditioned_stat_has_an_asker.py` holds
@@ -10714,7 +10945,7 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
 
-	if (!TestEqual(TEXT("the seventeen probes are all here"), ConditionedProbes().Num(), 17))
+	if (!TestEqual(TEXT("the twenty-four probes are all here"), ConditionedProbes().Num(), 24))
 	{
 		return false;
 	}
