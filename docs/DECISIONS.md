@@ -101,6 +101,13 @@ Run 2026-10-29 in a git-archive copy of `e3688264b`, the commit that registered 
 in 0.11s | restored: 8 passed in 0.07s". named_failures, exactly the one registered, with "the design document states
 the reached share as 1.9; sim/cataclysm_sim/engine.py records 2.9".
 
+### EVIDENCE
+
+Python of record at `5067c858d`, before the owner's answer was recorded: "7099 passed, 8 skipped"; JUnit tests 7107,
+failures 0, errors 0, skipped 8. Again at `3839b24f6`, after it: "7099 passed, 8 skipped"; JUnit tests 7107, failures 0,
+errors 0, skipped 8. The count does not move because no test was added; one was changed. ruff: "All checks passed!" A
+regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0) both times.
+
 ### NO GENRE SOURCE
 
 None. This is a re-measurement of the project's own simulation.
