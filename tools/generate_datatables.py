@@ -12852,6 +12852,21 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"any class line or attribute names, and no flat row in this "
                 f"sheet supplies it either")
 
+        # AND A FLAT ROW ON A STAT THE GAME READS NOWHERE. Issue #2582, the
+        # passive half of #2387. A flat row supplies its own stat to the base
+        # check above, so it was never asked whether the game reads that stat.
+        # A node's rows reach the character through the same
+        # `UCataclysmPlayerClassStats::ApplyTo` that records a stat only when it
+        # is in `StatToAttribute` or `StatsWithNoAttribute`.
+        if (str(row["ValueKind"]).lower() == "flat"
+                and row["Stat"] not in stats_with_an_attribute()
+                and row["Stat"] not in stats_with_no_attribute()):
+            problems.append(
+                f"PassiveEffects/{row['Name']}: {row['Stat']!r} is a flat row "
+                f"on a stat the game reads nowhere: it is in neither "
+                f"UCataclysmPlayerClassStats::StatToAttribute nor "
+                f"StatsWithNoAttribute, so the node would grant nothing")
+
         for tag in (t.strip() for t in row["RequiredTags"].split(",")):
             if tag and tag not in known:
                 problems.append(

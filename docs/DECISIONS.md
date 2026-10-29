@@ -2,6 +2,53 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The row generator refuses a flat passive-node row on a stat the game reads nowhere (#2582)
+
+**Affects:** `tools/generate_datatables.py` (one refusal in `validate_passive_effects`, using the
+`stats_with_an_attribute()` reader #2387 added); `tools/tests/test_generate_datatables.py` (one test); this file. No game
+code and no data: a regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). No Unreal window, under
+the coordinating session's ruling for a change that moves neither the CSVs nor the assets. **Closes
+[#2582](https://github.com/sdubois777/Cataclysm/issues/2582).**
+
+### SAID FIRST
+
+- **THE PASSIVE HALF OF #2387.** `validate_passive_effects` adds a flat row's stat to the stats with a base, as the
+  enchantment validator did, so a flat node row on a stat the game reads nowhere was written and granted nothing, with no
+  message.
+- **NO MERGED ROW FAILS IT.** Counted at development `21d6a6308` (and the passive sheet is unchanged at `4faf66bfb`):
+  `PassiveEffects.csv` has 325 rows, 104 of them flat stat rows, and none names a stat outside `StatToAttribute` (130
+  names) and `StatsWithNoAttribute` (180).
+
+### THE RULING
+
+#2582, filed by the coordinating session from the gap #2387's entry named, says: count the merged flat Passive Effects
+rows on neither list and list any before refusing anything; otherwise add the same refusal to `validate_passive_effects`,
+naming the row and the stat, with a test on made-up rows and a control, and a guard proof with `tools/prove_guard.py`.
+
+### WHAT WAS BUILT
+
+In `validate_passive_effects`, after the base check: a row with Value Kind `flat` and a Stat in neither
+`stats_with_an_attribute()` nor `stats_with_no_attribute()` is reported as "PassiveEffects/`<row>`: `'<stat>'` is a flat
+row on a stat the game reads nowhere: it is in neither UCataclysmPlayerClassStats::StatToAttribute nor
+StatsWithNoAttribute, so the node would grant nothing". A passive row has no Action column, so every flat row is asked.
+
+### THE TEST AND THE PROOF
+
+- `test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused` (class `TestAPassiveNodeCanGrantSeveralStats`): CONTROLS
+  first, a flat node row on `armor` (a stat with an attribute) and on `leech_payout_rate` (one with none) each pass; a flat
+  row on the misspelt `armour` is refused with one complaint naming the row and the stat.
+- **The proof**, `tools/prove_guard.py` `break_and_run` in a git-archive copy of the working tree: `and False` after the
+  refusal's `== "flat"` (anchor counted once in `read_text`). Command `python -m pytest
+  tools/tests/test_generate_datatables.py`. Printed: "PROVED: 1 failed, 1032 passed in 19.95s | restored: 1033 passed in
+  19.01s"; named_failures
+  `tools/tests/test_generate_datatables.py::TestAPassiveNodeCanGrantSeveralStats::test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused`.
+
+### NO GENRE SOURCE
+
+None. This is a data check.
+
+---
+
 ## 2026-10-28 — The frame play starts in puts down one frame's share of a Horde floor's first wave, not two (#1554)
 
 **Affects:** `CataclysmDungeonGameMode.h` and `.cpp` (a field, `WaveBeganOnFrame`, set in `PopulateFloor` and honoured
