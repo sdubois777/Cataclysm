@@ -21,10 +21,13 @@ They are different kinds of number. Days-to-empty is exact arithmetic on
 constants: at 1% of the maximum a day plus 2.5 points for each day already
 stood, an Outpost's thousand points of defence is gone on day 25 and there is
 nothing to average. The median walk is one order statistic over a mixture of
-uniform floor ranges, and the mixture is nearly flat where the median sits --
-45% of Outpost dungeons walk in 12 days or fewer and 50% in 13 or fewer -- so
-two adjacent days are a coin flip and a block of 200 campaigns lands on either
-side at random. A guard demanding an exact median would fail on an unrelated
+uniform floor ranges, and the mixture is nearly flat where the median sits.
+Over this file's own 320 campaigns, measured on 2026-10-29 with the policies of
+issue #1388, 40.37% of Outpost dungeons walk in 12 days or fewer, 47.35% in 13
+or fewer and 55.76% in 14 or fewer: the median is 14, the days either side of
+it each hold about seven percent of the walks, and a block of campaigns lands
+on either side of a boundary at random. (This said 45% at 12 days and 50% at 13
+until issue #1389, figures from when the stated median was 13.) A guard demanding an exact median would fail on an unrelated
 change to the random stream and teach the next reader to widen it until it
 stopped complaining. So this measures, allows one day, and separately checks
 that the distribution really is flat enough to deserve that.
