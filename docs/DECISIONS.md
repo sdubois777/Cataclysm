@@ -60,8 +60,8 @@ default roll of -1, which rolls at random, so a run would pass or fail by chance
 
 | Figure | Registered |
 |---|---|
-| Whole Unreal suite | `development`'s measured total + 0, 0 failed |
-| Python | of record, with JUnit: two tests more, in one new file; and ruff |
+| Whole Unreal suite | 4354 / 0: `development` at `a01f2b7f6` (#2592) is 4354, and no Unreal test is added; the branch moved onto it as `test/console-variables-are-written-at-console-priority-1` |
+| Python | of record, with JUnit: 7037, `development`'s 7035 and the two in one new file; and ruff |
 | S1 and S2 | as above |
 
 ### Run
