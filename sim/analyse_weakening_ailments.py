@@ -134,17 +134,27 @@ def gem_chance(gem_name: str) -> float:
     raise SystemExit(f"game/Data/Gems.csv has no gem named {gem_name!r}")
 
 
-def affix_ceiling(affix: af.AilmentAffix) -> tuple[int, float]:
+def affix_ceiling(affix: af.AilmentAffix,
+                  two_handed_weapon: bool = False) -> tuple[int, float]:
     """How many pieces can carry this affix, and the chance they add up to.
 
     One per piece, not one per affix slot: `ailment_group` puts every roll of
     the same chance in one group, and a piece cannot carry two affixes from one
     group.
+
+    `two_handed_weapon` doubles the weapon's own chance, as the game does and
+    as the design document's two-handed rule states. Issue #1575: until then
+    this total was always the one-handed one, 165% rather than 180%.
     """
     pieces = sum(count for slot, count in af.GEAR_SLOTS.items()
                  if slot in affix.allowed_slots)
     per_piece = affix.chance_at(AFFIX_TIER, gear_level=GEAR_LEVEL)
-    return pieces, pieces * per_piece
+    total = pieces * per_piece
+    if two_handed_weapon and "Weapon" in affix.allowed_slots:
+        weapons = af.GEAR_SLOTS["Weapon"]
+        total += weapons * (affix.chance_at(AFFIX_TIER, gear_level=GEAR_LEVEL,
+                                            two_handed=True) - per_piece)
+    return pieces, total
 
 
 def what_the_effects_say() -> dict[str, str]:
@@ -179,8 +189,9 @@ def how_much_chance_is_reachable() -> dict[str, float]:
     print(f"Gems: {player_power.TOTAL_SOCKETS} sockets exist across the gear, at "
           f"{TOP_RARITY} rarity.\n")
     print(f"{'effect':<10}{'pieces':>8}{'per piece':>11}{'affixes':>10}"
-          f"{'per gem':>10}{'all sockets':>13}{'total':>10}")
-    print("-" * 72)
+          f"{'per gem':>10}{'all sockets':>13}{'total':>10}"
+          f"{'affixes, 2H':>13}")
+    print("-" * 85)
     totals: dict[str, float] = {}
     for name, affix in WEAKENING.items():
         pieces, from_affixes = affix_ceiling(affix)
@@ -190,8 +201,12 @@ def how_much_chance_is_reachable() -> dict[str, float]:
         print(f"{name:<10}{pieces:>8}"
               f"{affix.chance_at(AFFIX_TIER, gear_level=GEAR_LEVEL):>10.0f}%"
               f"{from_affixes:>9.0f}%{per_gem:>9.0f}%{from_gems:>12.0f}%"
-              f"{totals[name]:>9.0f}%")
+              f"{totals[name]:>9.0f}%"
+              f"{affix_ceiling(affix, two_handed_weapon=True)[1]:>12.0f}%")
     print()
+    print("  'affixes, 2H' is the affix total with a two-handed weapon, whose")
+    print("  chance is doubled like every affix rolled on it (issue #1575). The")
+    print("  other columns, and the sections below, are with a one-handed one.")
     print("  The gem column is the ceiling, not a plan: a build filling every")
     print("  socket with one utility gem gives up every other gem in the game.")
     print("  The affix column alone is what a build gets for free while")
@@ -234,6 +249,11 @@ def does_overflow_already_fill_the_caps(rows: dict[str, str],
                         f"{player_power.TOTAL_SOCKETS} sockets")
         print(f"{name:<10}{format_base(base):>8}{cap:>6.0f}%{needed:>14.0f}%"
               f"{from_affixes:>14.0f}%{reached:>26}")
+        _, two_handed = affix_ceiling(WEAKENING[name], two_handed_weapon=True)
+        gems_2h = math.ceil(max(0.0, needed - two_handed) / per_gem)
+        print(f"{'':<10}{'':>8}{'':>7}{'2H weapon':>15}"
+              f"{two_handed:>14.0f}%"
+              f"{('affixes alone' if two_handed >= needed else f'affixes + {gems_2h} of {player_power.TOTAL_SOCKETS} sockets'):>26}")
     print()
     print("  NEITHER CAP IS FILLED BY AFFIXES ALONE, and both are filled by")
     print("  affixes plus a handful of sockets. A build that wants the ailment")
@@ -271,9 +291,12 @@ def what_a_magnitude_affix_would_add(rows: dict[str, str]) -> None:
             print(f"  {'':<9} which is {at_affix_ceiling / value:.1f}x, "
                   f"against no percentage cap at all.")
             continue
+        _, two_handed = affix_ceiling(WEAKENING[name], two_handed_weapon=True)
+        at_2h = value * two_handed / af.AILMENT_CHANCE_CAP
         print(f"  {name:<9} affixes alone reach {at_affix_ceiling:.0f}{unit} "
               f"against a {cap:.0f}% cap, which is")
-        print(f"  {'':<9} {at_affix_ceiling / cap:.1f}x the cap. A few sockets "
+        print(f"  {'':<9} {at_affix_ceiling / cap:.1f}x the cap "
+              f"({at_2h / cap:.2f}x with a two-handed weapon). A few sockets "
               f"take it past.")
     print()
     print("  THE CONCLUSION. Chance to apply is already three levers in one:")

@@ -918,6 +918,22 @@ def test_the_affix_ceiling_is_the_computed_one(weakening_run):
         assert f"{total:>9.0f}%" in printed
 
 
+def test_a_two_handed_weapon_adds_its_own_chance_again(weakening_run):
+    """Issue #1575. A two-handed weapon doubles its own chance, so the affix
+    total with one is the one-handed total plus one more weapon's chance --
+    180% against 165% at the top tier -- and the script prints it."""
+    printed, ns = weakening_run
+    from cataclysm_sim import affixes as af
+    for name in ("Cripple", "Weaken", "Shred", "Madness"):
+        affix = ns["WEAKENING"][name]
+        pieces, one = ns["affix_ceiling"](affix)
+        pieces_2h, two = ns["affix_ceiling"](affix, two_handed_weapon=True)
+        weapon = affix.chance_at(ns["AFFIX_TIER"], gear_level=ns["GEAR_LEVEL"])
+        assert pieces_2h == pieces
+        assert two == pytest.approx(one + af.GEAR_SLOTS["Weapon"] * weapon)
+        assert f"{two:>12.0f}%" in printed
+
+
 def test_the_chance_needed_to_fill_a_cap_is_the_solved_one(weakening_run):
     """267% for Cripple and 400% for Weaken. Derived from the overflow rule --
     magnitude is total chance over 100 -- rather than measured, so this checks

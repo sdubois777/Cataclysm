@@ -1968,7 +1968,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**Measured 2026-08-05**, at the top affix tier on fully upgraded gear. Eleven pieces can carry a chance to apply, one each, for 165%. Cripple reaches its 80% cap at 267% and Weaken at 400%, so affixes alone reach 0.6 and 0.4 of the cap and one Cataclysmic gem takes Cripple past it, four take Weaken past it. A build that wants one of these effects fills its cap; a build that does not, does not. `sim/analyse_weakening_ailments.py` prints the working.
+**Measured 2026-08-05**, at the top affix tier on fully upgraded gear, with a one-handed weapon. Eleven pieces can carry a chance to apply, one each, for 165%. With a two-handed weapon the weapon's chance doubles, as every affix rolled on it does, and the same eleven pieces carry 180% (re-measured 2026-10-29, issue #1575). Cripple reaches its 80% cap at 267% and Weaken at 400%, so affixes alone reach 0.6 and 0.4 of the cap with a one-handed weapon and 0.68 and 0.45 with a two-handed one, and with either weapon one Cataclysmic gem takes Cripple past it, four take Weaken past it. A build that wants one of these effects fills its cap; a build that does not, does not. `sim/analyse_weakening_ailments.py` prints the working.
 
   
 

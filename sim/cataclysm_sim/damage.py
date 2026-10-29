@@ -304,7 +304,8 @@ STUN_IMMUNITY_SECONDS = 5.0
 #: the next hit re-stuns immediately and the target never acts again -- which is
 #: exactly the "chain-stunned by large hits" the window exists to stop. Blunt's
 #: 0.75 second base reaches 5 seconds at 667% chance to stun, and the weakening
-#: ailments show that much chance is reachable: affixes alone reach 165% and gems
+#: ailments show that much chance is reachable: affixes alone reach 165% with a
+#: one-handed weapon and 180% with a two-handed one (issue #1575), and gems
 #: reach 150% each.
 #:
 #: AT THIS CAP A STUNNED TARGET ALWAYS GETS AT LEAST 2 SECONDS TO ACT, because 3

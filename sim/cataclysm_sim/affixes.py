@@ -2310,8 +2310,19 @@ class AilmentAffix:
         return tier_band(self.top_chance, tier)
 
     def chance_at(self, tier: int, roll: float = 1.0,
-                  gear_level: int = MAX_GEAR_LEVEL) -> float:
-        return affix_value(self.top_chance, tier, roll, gear_level)
+                  gear_level: int = MAX_GEAR_LEVEL,
+                  two_handed: bool = False) -> float:
+        """This affix's chance on a piece, in percent.
+
+        `two_handed` applies TWO_HANDED_MULTIPLIER, as `StatAffix.value_at`
+        does, since issue #1575. The design document: "A two-handed weapon
+        multiplies both its implicit values and every affix rolled on it by 2",
+        and the game's `UCataclysmItemValues::AffixValue` doubles an ailment
+        chance on a two-handed weapon like every other affix. It is only ever
+        true for an affix rolled on a two-handed weapon.
+        """
+        chance = affix_value(self.top_chance, tier, roll, gear_level)
+        return chance * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
 
     def slots_available(self) -> int:
         return slots_available_to(self.allowed_slots)
@@ -2353,8 +2364,9 @@ BURN = AilmentAffix("Chance to burn", "Burn", 15.0, gem="Of Embers")
 #: NO GEM, unlike every other entry here. Nothing in `game/Data/Gems.csv` applies
 #: stun, so an affix is the only way to buy chance beyond what a Blunt weapon
 #: gives free. That is also why the duration cap is hard to reach: eleven pieces
-#: of gear carrying one each reach 165%, which is 1.65 times the base duration,
-#: and the cap needs 400%.
+#: of gear carrying one each reach 165% with a one-handed weapon, which is 1.65
+#: times the base duration, or 180% with a two-handed one, whose own chance is
+#: doubled (issue #1575); the cap needs 400%.
 #:
 #: LAST EPOCH SELLS THE SAME STAT, which is what settled that the affix should
 #: exist at all. Its "Increased Stun Chance" suffix runs 15% to 25% at its first

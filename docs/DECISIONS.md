@@ -2,6 +2,94 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The simulation doubles an ailment chance rolled on a two-handed weapon, as the game does (#1575)
+
+**Affects:** `sim/cataclysm_sim/affixes.py` (`AilmentAffix.chance_at` takes `two_handed`; the stun affix's comment names
+the weapon); `sim/cataclysm_sim/damage.py` (one comment names the weapon); `sim/analyse_weakening_ailments.py`
+(`affix_ceiling` takes `two_handed_weapon`, and the report prints both totals); `docs/Cataclysm_GDD_v2.md` (the measured
+paragraph on the weakening ailments gives both totals and names the weapon); `tools/tests/test_weakening_ailments_scale_by_chance.py`
+(the pin moved with that paragraph); `sim/tests/test_an_ailment_chance_doubles_on_a_two_handed_weapon.py` (new, 24
+tests); `sim/tests/test_analysis_scripts.py` (one test added); this file. Python and documents only.
+
+### SAID FIRST
+
+- **A MEASUREMENT CORRECTION, NOT A DESIGN CHANGE.** The rule was already the design and already the game's. The
+  simulation, its analysis script and the design document's measured paragraph gave the one-handed figure for every
+  weapon. No rule, number in a data file or conclusion changes.
+- **NO `sim/experiments.py` FIGURE MOVES.** No ailment chance is read by `engine.py`, `character.py`, `policies.py`,
+  `scoring.py` or `experiments.py`, so no campaign reads one.
+- **THE CONCLUSIONS OF ISSUE #300 HOLD.** With a two-handed weapon the affix total is 180% rather than 165%. Affixes alone
+  then reach 0.68 of Cripple's cap and 0.45 of Weaken's, against 0.6 and 0.4, and the gems needed past each cap stay one
+  and four. Neither cap is filled by affixes alone with either weapon.
+- **THE #300 ENTRY'S DATED TABLE IS LEFT AS IT IS**, as ruled. It records what was measured on 2026-08-05.
+
+### THE RULE
+
+`docs/Cataclysm_GDD_v2.md`, "A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix": "A two-handed weapon
+multiplies **both** its implicit values and every affix rolled on it by **2**."
+
+The game follows it for the ailment affixes. In `game/Source/Cataclysm/Items/CataclysmItem.cpp`, the code that turns an
+item's affixes into stats adds an ailment affix as a flat modifier on that ailment's chance stat, valued with
+`UCataclysmItemValues::AffixValue(..., bTwoHanded)`, which returns `Value * (bTwoHanded ? TwoHandedMultiplier : 1.0f)`.
+The tooltip uses the same call. In the simulation `StatAffix.value_at` took `two_handed` and `AilmentAffix.chance_at` did
+not.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#1575: approved on branch
+fix/the-sim-doubles-an-ailment-chance-on-a-two-handed-weapon", with `chance_at` taking `two_handed` and using
+`TWO_HANDED_MULTIPLIER`; `affix_ceiling` reporting both totals; the doubling test, the one-handed control and the
+shared-constant check; the guard proof as proposed; the design document's measured paragraph giving both figures and
+naming the weapon, its conclusions kept, with the pin moved; this entry saying it is a measurement correction; the #300
+table left alone; and the design document's two-handed sentence quoted.
+
+### WHAT WAS BUILT
+
+- `AilmentAffix.chance_at(tier, roll, gear_level, two_handed=False)` multiplies by `TWO_HANDED_MULTIPLIER` when
+  `two_handed` is true, as `StatAffix.value_at` does.
+- `affix_ceiling(affix, two_handed_weapon=False)` adds the weapon's chance a second time when the weapon is two-handed.
+  The report's chance table gains an "affixes, 2H" column (180% for all four), the cap table a "2H weapon" row under each
+  capped ailment, and the closing section each ailment's fraction of its cap with a two-handed weapon.
+- The design document's paragraph now reads, in part: "with a one-handed weapon. Eleven pieces can carry a chance to
+  apply, one each, for 165%. With a two-handed weapon the weapon's chance doubles, as every affix rolled on it does, and
+  the same eleven pieces carry 180%".
+- Two comments that gave 165% as the affix total, at the stun affix in `affixes.py` and at the stun window in
+  `damage.py`, now say it is the one-handed total and give 180% beside it. Both comments' conclusions hold at 180%.
+
+### THE TESTS
+
+- `test_a_two_handed_weapon_doubles_the_chance`, for each of the eleven ailment affixes, at tiers 1 to 7 and rolls 0,
+  0.5 and 1.
+- `test_control_a_one_handed_chance_is_the_curve_unchanged`, CONTROL, for each of the eleven: the one-handed chance
+  is exactly `affix_value(top_chance, tier, roll, gear_level)`, with and without `two_handed=False`.
+- `test_a_stat_affix_and_an_ailment_affix_read_one_constant`: with `TWO_HANDED_MULTIPLIER` set to 2 and then 3, a stat
+  affix and an ailment affix both scale by it.
+- `test_there_are_eleven_ailment_affixes_to_check`, so the lists above cannot be empty.
+- `test_a_two_handed_weapon_adds_its_own_chance_again`, in `test_analysis_scripts.py`: the two-handed total is the
+  one-handed total plus one weapon's chance, and the script prints it.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_an_ailment_chance_doubles_on_a_two_handed_weapon.py sim/tests/test_analysis_scripts.py` (neither
+needs a git repository). The break, in `AilmentAffix.chance_at`: `return chance * (TWO_HANDED_MULTIPLIER if two_handed
+else 1.0)` becomes `return chance` (once in the file). Predicted named_failures, exactly thirteen:
+
+- `test_a_two_handed_weapon_doubles_the_chance`, all eleven: `[Chance to bleed]`, `[Chance to poison]`,
+  `[Chance to disease]`, `[Chance to apply void splinter]`, `[Chance to madden]`, `[Chance to necrose]`,
+  `[Chance to cripple]`, `[Chance to weaken]`, `[Chance to shred]`, `[Chance to burn]` and `[Chance to stun]`, in
+  `sim/tests/test_an_ailment_chance_doubles_on_a_two_handed_weapon.py`;
+- `sim/tests/test_an_ailment_chance_doubles_on_a_two_handed_weapon.py::test_a_stat_affix_and_an_ailment_affix_read_one_constant`;
+- `sim/tests/test_analysis_scripts.py::test_a_two_handed_weapon_adds_its_own_chance_again`.
+
+The eleven controls and the count test pass with the break in.
+
+### NO GENRE SOURCE
+
+None. This brings the simulation into line with a rule the design document and the game already state.
+
+---
+
 ## 2026-10-29 — A saved run keeps the difficulty tier it is played at and the Cataclysms it faces (#1471)
 
 **Affects:** `UCataclysmRunSave` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (two `SaveGame` fields and its
