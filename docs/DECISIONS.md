@@ -12,7 +12,10 @@ new tests in `CataclysmSaveWriterTests.cpp`. Fixes [#1471](https://github.com/sd
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w93 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly as registered.**
+- **A LIST OF A UENUM SURVIVES THE JSON BY NAME AND IN ORDER**, which was read and not run when written: w93 read back
+  "Pestilence, Famine, War, Demonic" as written, through the round trip and through the writer's file.
 - **NOTHING LOADS A RUN, SO NOTHING READS THESE BACK.** [#753](https://github.com/sdubois777/Cataclysm/issues/753) is
   open, as #1374's entry says. "Load" in the tests is reading the record back from JSON.
 
@@ -75,7 +78,24 @@ begun at tier 1 gathers tier 1 and a list of a different length (tier t faces t 
 
 ### Run
 
-Not run yet.
+**Window w93 (lock `dungeon-w93`, `fix/a-saved-run-keeps-its-tier-and-cataclysms-1` at `9027bc81d`, on `6d7bacf79`,
+2026-10-29) passed.** `development`'s CI run at `6d7bacf79` and its last Unreal run, at `bd51319c9`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,514 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| The round-trip test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The writer test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN IDENTITY" line | quoted as printed | "tier 4 facing ECataclysmType::Pestilence,ECataclysmType::Famine,ECataclysmType::War,ECataclysmType::Demonic; read back tier 4 facing [the same four, in that order]; tier 1 gathers tier 1 facing ECataclysmType::Pestilence" |
+| The "WRITTEN IDENTITY" line | quoted as printed | "the run is tier 4 facing [Pestilence, Famine, War, Demonic]; the file holds tier 4 facing [the same four, in that order]" |
+| Whole Unreal suite | 4366 / 0 | `4366 tests performed, 4366 succeeded, 0 failed`; declared 4366, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7755`, peak 8,074 |
+| Python (JUnit) | of record | 7059 tests, 0 failures, 0 errors, 8 skipped ("7051 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the tier not copied | the round trip fails on "the tier survives" only; both CONTROLs hold | failed on that only, "read back tier 1"; both CONTROLs held; restored passed. **PROVED** |
+| P2, the list not copied | the round trip fails on the list only; both CONTROLs hold | failed on that only, the list read back empty; both CONTROLs held, the tier 1 record's empty list being a different length from four; restored passed. **PROVED** |
+| P3, the writer does not call `IdentityFrom` | the writer test fails on both, the tier and the list | failed on both: "the file holds tier 1 facing" nothing; restored passed. **PROVED** |
 
 ---
 
