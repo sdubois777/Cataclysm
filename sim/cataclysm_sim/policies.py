@@ -72,6 +72,40 @@ def _quest_hit_fells(sim, d, city) -> bool:
     return sim.cfg.spec(DungeonType.BASIC, city.tier).defense_damage >= city.defense
 
 
+def quest_dungeons_to_finish(sim, d) -> int | None:
+    """How many more quest dungeons the Cataclysm that sent `d` needs, or None
+    when clearing `d` brings the Cataclysm dungeon no nearer. Issue #1388.
+
+    THE RULE IT READS. The project owner ruled on 2026-09-06 that the boss
+    opens when the quest objectives of HALF the active Cataclysms are met,
+    rounded up (`TuningConfig.cataclysms_required`), each by its own count
+    (`TuningConfig.quest_objectives_for`). Both policies used to read
+    `quest_objectives_required - sim.objectives`: a flat 8, now only a fallback,
+    minus every quest dungeon cleared from every Cataclysm. That said a player
+    with eight objectives all from one of four Cataclysms was done, when they had
+    finished one of the two the gate needs.
+
+    NONE, so the policy adds no bonus, when `d`'s Cataclysm is already finished,
+    or when enough are finished that the boss is open: in both cases the clear
+    counts towards nothing the gate reads.
+
+    COUNTED IN DUNGEONS AND NOT IN CATACLYSMS, which is a judgement rather than
+    something the ruling settles. It keeps the `1 + 1 / remaining` bonus on the
+    scale both policies were tuned at; a distance of one to four Cataclysms
+    would have rescaled it, which is a tuning change and not this correction.
+
+    A dungeon built by hand in a test names no Cataclysm and is measured against
+    `quest_objectives_for("")`, the documented fallback. In a campaign every
+    Quest dungeon names one: `trigger_surge` sets `source` on all it lands.
+    """
+    cfg = sim.cfg
+    complete = sim.cataclysms_complete()
+    if len(complete) >= cfg.cataclysms_required() or d.source in complete:
+        return None
+    done = sim.objectives_by_type.get(d.source, 0)
+    return max(1, cfg.quest_objectives_for(d.source) - done)
+
+
 def _resolve_fells(sim, d, city) -> bool:
     """Whether this ordinary dungeon's timer would fell its city.
 
@@ -509,15 +543,11 @@ def triage(sim, dungeons):
         siege = siege_urgency(sim, d, city, 5.0)
 
         if d.dtype is DungeonType.QUEST:
-            # THIS IS STALE AND IT IS ISSUE #1388. Both halves of the
-            # subtraction stopped meaning what they say when the owner ruled on
-            # 2026-09-06: `quest_objectives_required` is now only a fallback for
-            # a Cataclysm the roster does not name, and the gate reads
-            # `Simulation.cataclysms_complete` rather than this total. It is a
-            # heuristic and it still steers a campaign, so it was left alone
-            # rather than moved in the same change that moved the rule.
-            remaining = max(1, cfg.quest_objectives_required - sim.objectives)
-            value = 14.0 * (1.0 - 0.6 * danger) * (1.0 + 1.0 / remaining)
+            # HOW FAR THIS DUNGEON'S OWN CATACLYSM IS FROM FINISHED, since
+            # issue #1388, and no bonus once clearing it brings the boss no
+            # nearer. See `quest_dungeons_to_finish`.
+            remaining = quest_dungeons_to_finish(sim, d)
+            value = 14.0 * (1.0 - 0.6 * danger) * (1.0 + (1.0 / remaining if remaining else 0.0))
             # ITS TIMER HITS ITS HOST, since 2026-10-13, and this policy saw
             # it from 2026-10-16: a hit that would fell the host weighs what a
             # fatal ordinary hit weighs here.
@@ -609,15 +639,11 @@ def lane_aware(sim, dungeons):
         siege = siege_urgency(sim, d, city, 4.0)
 
         if d.dtype is DungeonType.QUEST:
-            # THIS IS STALE AND IT IS ISSUE #1388. Both halves of the
-            # subtraction stopped meaning what they say when the owner ruled on
-            # 2026-09-06: `quest_objectives_required` is now only a fallback for
-            # a Cataclysm the roster does not name, and the gate reads
-            # `Simulation.cataclysms_complete` rather than this total. It is a
-            # heuristic and it still steers a campaign, so it was left alone
-            # rather than moved in the same change that moved the rule.
-            remaining = max(1, cfg.quest_objectives_required - sim.objectives)
-            value = 14.0 * (1.0 - 0.7 * peril) * (1.0 + 1.0 / remaining)
+            # HOW FAR THIS DUNGEON'S OWN CATACLYSM IS FROM FINISHED, since
+            # issue #1388, and no bonus once clearing it brings the boss no
+            # nearer. See `quest_dungeons_to_finish`.
+            remaining = quest_dungeons_to_finish(sim, d)
+            value = 14.0 * (1.0 - 0.7 * peril) * (1.0 + (1.0 / remaining if remaining else 0.0))
             # ITS TIMER HITS ITS HOST, since 2026-10-13, and this policy saw
             # it from 2026-10-16: a hit that would fell the host weighs what a
             # fatal ordinary hit weighs here.
