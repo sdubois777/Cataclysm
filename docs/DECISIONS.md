@@ -46,7 +46,7 @@ beginning "SUMMONER LEVEL".
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Whole Unreal suite | 4358 / 0: `development`'s measured 4357 at `922b9cf21` + 1 |
 | Python | of record, with JUnit, and ruff |
 | The "SUMMONER LEVEL" line | quoted as printed |
 | P1, the enemy branch removed | the test fails: the enemy's Imp is raised at 50 |
