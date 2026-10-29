@@ -827,19 +827,36 @@ def delete_when_released(path: pathlib.Path,
                   TESTS, so they do not sleep
     @param clock  where the time waited is read from; ONLY EVER PASSED BY TESTS
     """
+    return _when_released(path, lambda: path.unlink(missing_ok=True), "deleted", "delete",
+                          retry_seconds=retry_seconds, limit_seconds=limit_seconds,
+                          wait=wait, clock=clock)
+
+
+def _when_released(path: pathlib.Path, attempt: Callable[[], object], done: str, verb: str,
+                   *,
+                   retry_seconds: float,
+                   limit_seconds: float,
+                   wait: Callable[[float], None],
+                   clock: Callable[[], float]) -> float:
+    """Call `attempt` until another process stops holding `path` open.
+
+    The loop `delete_when_released` had, shared with `move_aside_when_released`,
+    because a rename is refused on a held file exactly as a delete is (issue
+    #1533). `done` and `verb` only word the error. Returns the seconds waited.
+    """
     started = clock()
     announced = False
     while True:
         try:
-            path.unlink(missing_ok=True)
+            attempt()
             return clock() - started
         except PermissionError as error:
             waited = clock() - started
             if waited >= limit_seconds:
                 raise FileStillHeld(
-                    f"{path} could not be deleted: another process held it open "
+                    f"{path} could not be {done}: another process held it open "
                     f"for {waited:g} seconds, the limit, and Windows refuses to "
-                    f"delete a file held open ({error}). Issue #2459.") from error
+                    f"{verb} a file held open ({error}). Issue #2459.") from error
             # THE FIRST WAIT, BY A FLAG AND NOT BY `waited == 0`, which a real clock almost never reads after a
             # refused attempt, so the line would rarely print (found in review, 2026-10-24, #2459).
             if not announced:
@@ -848,6 +865,60 @@ def delete_when_released(path: pathlib.Path,
                       f"{retry_seconds:g} seconds for up to {limit_seconds:g} "
                       "seconds. Issue #2459.", flush=True)
             wait(retry_seconds)
+
+
+#: The name a previous log is moved aside to by the tests command, before the
+#: build, followed by the time it was moved and `.log`. Issue #1533.
+MOVED_ASIDE_PREFIX = "Cataclysm-before-tests-"
+
+#: How many logs moved aside under `MOVED_ASIDE_PREFIX` are kept. Issue #1533.
+MOVED_ASIDE_KEPT = 3
+
+
+def move_aside_when_released(path: pathlib.Path,
+                             *,
+                             kept: int = MOVED_ASIDE_KEPT,
+                             stamp: Callable[[], str] = lambda: time.strftime("%Y.%m.%d-%H.%M.%S"),
+                             retry_seconds: float = HELD_FILE_RETRY_SECONDS,
+                             limit_seconds: float = HELD_FILE_LIMIT_SECONDS,
+                             wait: Callable[[float], None] = time.sleep,
+                             clock: Callable[[], float] = time.monotonic) -> pathlib.Path | None:
+    """Rename `path` beside itself as `MOVED_ASIDE_PREFIX` + a time, and keep
+    the newest `kept` of those. Returns where it went, or None when there was
+    nothing to move.
+
+    WHY. Issue #1533. The tests command deleted the log only once the build had
+    succeeded, so after a FAILED build `game/Saved/Logs/Cataclysm.log` was still
+    the previous run's complete log, with nothing in it saying so; anyone reading
+    the file read an earlier run's results. Moving it aside before the build
+    leaves no `Cataclysm.log` to read after a failed one. And moving rather than
+    deleting keeps what the file held: in the main checkout that can be the
+    owner's playtest log, which the delete in `run_automation_tests` used to
+    destroy on every test run.
+
+    ONLY NAMES WITH THE PREFIX ARE EVER DELETED, the oldest first by
+    modification time, which a rename keeps, so it is the age of what the log
+    says. The engine's own `Cataclysm-backup-*` logs and any log the owner
+    renamed are never touched.
+
+    @param stamp  the time written into the new name; ONLY EVER PASSED BY TESTS
+    """
+    if not path.is_file():
+        return None
+    target = path.with_name(f"{MOVED_ASIDE_PREFIX}{stamp()}.log")
+    count = 2
+    while target.exists():
+        target = path.with_name(f"{MOVED_ASIDE_PREFIX}{stamp()}-{count}.log")
+        count += 1
+    _when_released(path, lambda: path.rename(target), "moved aside", "rename",
+                   retry_seconds=retry_seconds, limit_seconds=limit_seconds,
+                   wait=wait, clock=clock)
+
+    moved = sorted(path.parent.glob(f"{MOVED_ASIDE_PREFIX}*.log"),
+                   key=lambda one: (one.stat().st_mtime, one.name), reverse=True)
+    for old in moved[kept:]:
+        old.unlink(missing_ok=True)
+    return target
 
 
 def run_automation_tests(prefix: str = "Cataclysm",
@@ -1387,6 +1458,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Rebuild before running any test; the binaries may still hold "
               "the break (python tools/unreal_build.py build).")
         return 0
+
+    # THE PREVIOUS LOG MOVED ASIDE BEFORE THE BUILD, FOR THE TESTS COMMAND ONLY.
+    # Issue #1533. A failed build returns below before `run_automation_tests`
+    # deletes the log, which left the previous run's complete results in
+    # `Cataclysm.log` to be read as this run's. Moved, not deleted, so a playtest
+    # log in the main checkout is kept under a name that says what it is.
+    if arguments.command == "tests":
+        moved = move_aside_when_released(TEST_LOG)
+        if moved is not None:
+            print(f"Moved the previous {TEST_LOG.name} aside to {moved.name}, so "
+                  f"no earlier run's results can be read as this run's. Issue #1533.")
 
     if not (arguments.command == "tests" and arguments.no_build):
         outcome = build(arguments.target)

@@ -955,6 +955,20 @@ def a_recovery_file_outside_the_repository(tmp_path: pathlib.Path,
     return path
 
 
+@pytest.fixture(autouse=True)
+def a_test_log_outside_the_repository(tmp_path: pathlib.Path,
+                                      monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
+    """Where `main` looks for the automation log, for every test in this file.
+    Issue #1533: the tests command moves that log aside before it builds, so a
+    test driving `main(["tests"])` against the real path would rename the real
+    `game/Saved/Logs/Cataclysm.log`. Measured: the first run of this file with
+    the move in place did exactly that."""
+    log = tmp_path / "Logs" / "Cataclysm.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(unreal_build, "TEST_LOG", log)
+    return log
+
+
 def a_source_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
     """A file `prove_cpp_guard` can break, outside the real repository."""
     monkeypatch.setattr("unreal_build.REPO_ROOT", tmp_path)
@@ -1728,3 +1742,107 @@ def test_a_builder_that_raises_still_forgets_the_saved_originals(
 
     assert source.read_bytes() == original
     assert not a_recovery_file_outside_the_repository.exists()
+
+
+# ---------------------------------------------------------------------------
+# The previous log is moved aside before the build. Issue #1533.
+# ---------------------------------------------------------------------------
+
+def test_a_failed_build_leaves_no_earlier_runs_log_to_read(
+        monkeypatch, a_test_log_outside_the_repository) -> None:
+    """Issue #1533. A failed build returns before `run_automation_tests` deletes
+    the log, so the previous run's complete results used to stay in
+    `Cataclysm.log` with nothing saying they were old. The tests command now
+    moves the log aside first: after a failed build there is no `Cataclysm.log`,
+    and the old one is kept under the moved-aside name.
+
+    CONTROL: the `build` command moves nothing; only the tests command reads
+    the log."""
+    import unreal_build as module
+
+    log = a_test_log_outside_the_repository
+    monkeypatch.setattr(module, "build",
+                        lambda *args, **kwargs: outcome(BUILD_THAT_FAILED, returncode=6))
+
+    log.write_text("an earlier run's results\n", encoding="utf-8")
+    assert module.main(["build"]) == 1
+    assert log.is_file(), "control: the build command must leave the log where it is"
+    assert not list(log.parent.glob(module.MOVED_ASIDE_PREFIX + "*.log")), (
+        "control: the build command must move nothing aside")
+
+    assert module.main(["tests"]) == 1
+    assert not log.exists(), (
+        "after a failed build of the tests command there must be no Cataclysm.log "
+        "holding an earlier run's results")
+    (moved,) = log.parent.glob(module.MOVED_ASIDE_PREFIX + "*.log")
+    assert moved.read_text(encoding="utf-8") == "an earlier run's results\n", (
+        "the earlier log must be kept, not deleted")
+
+
+def test_the_tests_command_moves_the_log_before_the_run_reads_it(
+        monkeypatch, a_test_log_outside_the_repository) -> None:
+    """Issue #1533. With a build that succeeds, the old log is already moved
+    aside when the test run starts, so the run cannot read it and the delete in
+    `run_automation_tests` has nothing of the owner's to destroy."""
+    import unreal_build as module
+
+    log = a_test_log_outside_the_repository
+    log.write_text("a playtest\n", encoding="utf-8")
+    monkeypatch.setattr(module, "build",
+                        lambda *args, **kwargs: outcome(BUILD_THAT_DID_NOTHING))
+    seen = []
+
+    def run(*args, **kwargs):
+        seen.append(log.exists())
+        return module.parse_test_log(TEST_LOG)
+
+    monkeypatch.setattr(module, "run_automation_tests", run)
+    monkeypatch.setattr(module, "declared_tests", lambda: ())
+    monkeypatch.setattr(module, "current_commit", lambda: "0" * 40)
+
+    module.main(["tests"])
+    assert seen == [False], (
+        f"the old log must be gone from Cataclysm.log before the run starts; the "
+        f"run saw it there: {seen}")
+    (moved,) = log.parent.glob(module.MOVED_ASIDE_PREFIX + "*.log")
+    assert moved.read_text(encoding="utf-8") == "a playtest\n"
+
+
+def test_only_the_newest_three_moved_aside_logs_are_kept_and_no_other_name(
+        tmp_path) -> None:
+    """Issue #1533. The newest `MOVED_ASIDE_KEPT` (3) moved-aside logs are kept
+    by modification time, which a rename keeps; older ones of THAT PREFIX are
+    deleted. CONTROL: the engine's own backup and a log the owner renamed are
+    never touched."""
+    import os
+    import unreal_build as module
+
+    logs = tmp_path / "Logs"
+    logs.mkdir(exist_ok=True)
+    olds = []
+    for index in range(4):
+        old = logs / f"{module.MOVED_ASIDE_PREFIX}2026.10.0{index + 1}-00.00.00.log"
+        old.write_text(f"old {index}\n", encoding="utf-8")
+        os.utime(old, (1_000 + index, 1_000 + index))
+        olds.append(old)
+    engine_backup = logs / "Cataclysm-backup-2026.09.11-19.03.03.log"
+    playsession = logs / "Cataclysm-playsession-2026-08-31-no-healing.log"
+    for other in (engine_backup, playsession):
+        other.write_text("keep\n", encoding="utf-8")
+        os.utime(other, (1, 1))
+    log = logs / "Cataclysm.log"
+    log.write_text("the newest\n", encoding="utf-8")
+    os.utime(log, (2_000, 2_000))
+
+    moved = module.move_aside_when_released(log, stamp=lambda: "2026.10.29-12.00.00")
+
+    assert moved is not None and moved.read_text(encoding="utf-8") == "the newest\n"
+    assert not log.exists()
+    kept = sorted(one.name for one in logs.glob(module.MOVED_ASIDE_PREFIX + "*.log"))
+    assert kept == sorted([moved.name, olds[3].name, olds[2].name]), (
+        f"the newest three must be kept and the two oldest deleted; kept {kept}")
+    assert engine_backup.is_file() and playsession.is_file(), (
+        "control: names without the prefix must never be touched")
+    assert module.move_aside_when_released(log) is None, (
+        "a log that is not there is nothing to move, not an error")
+
