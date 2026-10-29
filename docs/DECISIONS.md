@@ -69,9 +69,21 @@ from `batch` (once in the file). Predicted named_failures, exactly one:
 
 and the control and the "Done." test passing with the break in.
 
-### NOT YET PROVED
+### THE PROOF, AS REGISTERED
 
-Recorded below when the proof has run.
+Run 2026-10-29 in a git-archive copy of `e43412ee3`, the commit that registered it. Printed: "PROVED: 1 failed, 2
+passed in 0.17s | restored: 3 passed in 0.09s". named_failures, exactly the one registered:
+
+- `sim/tests/test_the_sweep_counts_its_campaigns.py::test_a_batch_moves_the_count_by_the_campaigns_it_ran`
+
+Its message: "a batch of 2 campaigns moved the count from 0 to 0". The control and the "Done." test passed with the
+break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `e43412ee3`: "7042 passed, 8 skipped"; JUnit tests 7050, failures 0, errors 0, skipped 8 (the base's
+7047 and the three new tests). ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff
+--exit-code` exited 0).
 
 ### NO GENRE SOURCE
 
