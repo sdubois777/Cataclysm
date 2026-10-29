@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The balance sweep counts the campaigns it runs and prints the count; it runs 31,820 or 33,920, not about 25,000 (#693)
+
+**Affects:** `sim/experiments.py` (a module counter `campaigns_run` that `batch` adds its campaigns to, the report's
+"Done." line printing it, and `header_lines`' docstring); `CLAUDE.md` (the sentence giving the count);
+`sim/tests/test_the_sweep_counts_its_campaigns.py` (new, three tests); this file. Python and documents only. **Part of
+[#693](https://github.com/sdubois777/Cataclysm/issues/693), which STAYS OPEN** for the owner's reduction to about
+10,000 campaigns (their words of 2026-08-18: "We probably need to lower that run number from 25,000 campaigns to 10,000
+anyways"). That needs a real sweep at the lower counts and a check of which comparisons stop being resolvable, which is
+the owner's trade to see; it is not done here.
+
+### SAID FIRST
+
+- **"ABOUT 25,000" WAS LOW BY 27 TO 36 PERCENT.** Read from `main()`'s loops at `cf6c73e69` (every campaign goes
+  through `batch`; `policy_spread` runs all seven policies; `TRIALS` is 250; `run_days_for` runs no campaign):
+
+| Experiment | Cells x campaigns | Campaigns |
+| :-- | :-- | --: |
+| `exp_calibrate` | 3 ratios x 3 intervals x 3 counts x 80 | 2,160 |
+| `exp_policies`, called twice | 2 x (7 policies x 250) | 3,500 |
+| `exp_forge` | 5 rates x 2 settings x 3 policies x 120 | 3,600 |
+| `exp_surge_modes` | 6 configs x (250 + 7 x 120) | 6,540 |
+| `exp_death_spiral` | 2 modes x 2 x 150 | 600 |
+| `exp_explorer` | 6 flats x (150 + 7 x 120) | 5,940 |
+| `exp_days_vs_floors` | 6 trees x (150 + 7 x 120) | 5,940 |
+| `exp_presets` | surge sizes x 2 tiers x 7 presets x 150 | 4,200 or 2,100 |
+| `exp_escalation` | 6 x 2 x 120 | 1,440 |
+| **total** | | **33,920 or 31,820** |
+
+  `exp_presets` runs once for each of the calibrated dungeons per surge and `PRESET_SECOND_SURGE_SIZE` (7), with a
+  repeat removed. Calibration picks the count from 5, 6 and 7 by its results, so the total is 33,920 when it picks 5 or
+  6 and 31,820 when it picks 7. That is decided at run time, which is why both are stated and why the run now prints
+  its own.
+- **"20 MINUTES OR MORE" WAS NOT RE-MEASURED** and is left as it was in `CLAUDE.md`, as ruled; the docstring's
+  "roughly eighteen minutes" is left too. No full sweep was run for this change.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: "#693: approved on branch fix/the-sweep-states-how-many-campaigns-it-ran", with a
+module-level counter that `batch()` adds its trials to, printed on the "Done." line; a fast test with the control that
+`run_days_for` moves nothing; a prove_guard proof removing the increment; the count corrected in `CLAUDE.md` and the
+header docstring with both values and why; "20 minutes or more" left as is; and #693 kept open for the reduction.
+
+### WHAT WAS BUILT
+
+- `campaigns_run = 0` at module level. `batch` runs its campaigns and then adds how many it ran, `len(results)`, so a
+  campaign that raised is not counted.
+- The last line of the report is now "Done. `<count>` campaigns run.", the count with thousands separators.
+- `header_lines`' docstring and `CLAUDE.md` give 31,820 or 33,920 and why it depends on calibration, and say the
+  report prints the count.
+
+### THE TESTS
+
+- `test_a_batch_moves_the_count_by_the_campaigns_it_ran`: a batch of 2 moves the count by 2 (0.02 s).
+- `test_working_out_a_walk_length_runs_no_campaign_and_counts_none`: CONTROL, `run_days_for` moves nothing.
+- `test_the_reports_last_line_prints_the_count`: read from `main()`'s syntax tree, not its text, the one f-string
+  printing "Done." names `campaigns_run`, so a comment naming it does not satisfy the test.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_the_sweep_counts_its_campaigns.py`. The break: the line `campaigns_run += len(results)` removed
+from `batch` (once in the file). Predicted named_failures, exactly one:
+
+- `sim/tests/test_the_sweep_counts_its_campaigns.py::test_a_batch_moves_the_count_by_the_campaigns_it_ran`
+
+and the control and the "Done." test passing with the break in.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `e43412ee3`, the commit that registered it. Printed: "PROVED: 1 failed, 2
+passed in 0.17s | restored: 3 passed in 0.09s". named_failures, exactly the one registered:
+
+- `sim/tests/test_the_sweep_counts_its_campaigns.py::test_a_batch_moves_the_count_by_the_campaigns_it_ran`
+
+Its message: "a batch of 2 campaigns moved the count from 0 to 0". The control and the "Done." test passed with the
+break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `e43412ee3`: "7042 passed, 8 skipped"; JUnit tests 7050, failures 0, errors 0, skipped 8 (the base's
+7047 and the three new tests). ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff
+--exit-code` exited 0).
+
+### NO GENRE SOURCE
+
+None. This is a count of the project's own simulation runs.
+
+---
+
 ## 2026-10-29 — The widget generator registers each widget it adds with its Widget Blueprint (#1566)
 
 **Affects:** `UCataclysmWidgetAuthoring::AddWidget` in `game/Source/CataclysmEditor/CataclysmWidgetAuthoring.cpp` (one

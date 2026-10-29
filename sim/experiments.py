@@ -157,9 +157,15 @@ def cataclysm_power_key(cfg: TuningConfig) -> list[str]:
 def header_lines() -> list[str]:
     """Everything printed before the first section, including which tier this is.
 
-    A FUNCTION SO IT CAN BE TESTED. `main()` runs about 25,000 campaigns and
-    takes roughly eighteen minutes, so a test that called it to read the header
-    would never be run. `sim/tests/test_sweep_tier.py` calls this instead.
+    A FUNCTION SO IT CAN BE TESTED. `main()` runs 31,820 or 33,920 campaigns
+    and takes roughly eighteen minutes, so a test that called it to read the
+    header would never be run. `sim/tests/test_sweep_tier.py` calls this instead.
+
+    THE CAMPAIGN COUNT, read from `main()`'s loops on 2026-10-29 (issue #693):
+    33,920 when calibration picks five or six dungeons per surge, and 31,820
+    when it picks seven, because `exp_presets` then runs at one surge size
+    instead of two. It used to say about 25,000. The report's last line prints
+    the count the run actually made, from `campaigns_run`.
     """
     ceiling = scoring.tier_bounds(SWEEP_TIER)[1]
     return [
@@ -193,8 +199,17 @@ def header_lines() -> list[str]:
     ]
 
 
+#: Every campaign this process has run through `batch`, which every campaign in
+#: the sweep goes through. Printed on the report's last line, so the total is
+#: stated by the run rather than in prose that goes stale. Issue #693.
+campaigns_run = 0
+
+
 def batch(cfg: TuningConfig, policy, trials: int = TRIALS, seed0: int = 0):
-    return [Simulation(cfg, seed=seed0 + i).run(policy) for i in range(trials)]
+    global campaigns_run
+    results = [Simulation(cfg, seed=seed0 + i).run(policy) for i in range(trials)]
+    campaigns_run += len(results)
+    return results
 
 
 def mean(xs):
@@ -1542,7 +1557,7 @@ def main():
     exp_presets(base)
     exp_escalation(base, SurgeMode.ACCELERATING)
 
-    print(f"\n{'=' * 100}\nDone.\n{'=' * 100}")
+    print(f"\n{'=' * 100}\nDone. {campaigns_run:,} campaigns run.\n{'=' * 100}")
 
 
 if __name__ == "__main__":
