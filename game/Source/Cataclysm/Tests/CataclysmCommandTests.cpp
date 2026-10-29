@@ -1966,9 +1966,10 @@ namespace CataclysmMinionDeathTest
 	 * the summoner's weapon.
 	 *
 	 * THE LEVEL IS ASKED OF THE ENGINE AND THE REST IS NOT. A summoner built
-	 * here has no player state, so a minion takes the level the class stats
-	 * are previewed at -- the path every non-player summoner takes -- and it
-	 * is not a figure this file can state.
+	 * here is a bare actor with no player state, so a minion takes the level
+	 * the class stats are previewed at -- the path a summoner that is neither a
+	 * player, an enemy nor a minion takes (issue #1702) -- and it is not a
+	 * figure this file can state.
 	 */
 	float ImpExplosionDamage()
 	{

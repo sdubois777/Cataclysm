@@ -2,6 +2,135 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — An enemy summoner's minion is raised at its tier's reference level, not a preview console variable (#1702)
+
+**Affects:** `LevelOfSummoner` in `CataclysmMinion.cpp` (two branches and its comment), one new test in
+`CataclysmEnemyModifierTests.cpp`, the `ImpBlow` helper in `CataclysmEnemyBehaviourTests.cpp` and in
+`CataclysmDamageTypeTests.cpp`, and one comment each in `CataclysmCommandTests.cpp`, `CataclysmMinionGearTests.cpp` and
+`CataclysmMinionOwnStatsTests.cpp`. Fixes [#1702](https://github.com/sdubois777/Cataclysm/issues/1702).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w86 below passed every registered figure, and both proofs were PROVED.** Window w85
+  before it stopped at the whole suite: four existing tests used an enemy character as a stand-in summoner and
+  expected the preview level. Their helpers were changed by ruling, below, before w86.
+- **NO SHIPPED PATH I TRACED REACHES THE ENEMY BRANCH TODAY.** Traced at `38e1c6c99`: a risen imp's curser must hold
+  `curse_death_raises_imp` and a necrosis killer `necrosis_kill_raises_imp_seconds`, both read through `StatForSkill`, and an
+  enemy's ability system is never given a stat line, so neither can be an enemy; the necrosis rise is also only called
+  from `ACataclysmPlayerCharacter`, with the player as killer. The Corrupted Stalker's one entry uses a Greataxe, which has
+  no summon skill. The other callers of `ACataclysmMinion::Spawn` are player skills, the player's skill gadget and
+  skill trap, and two set bonuses (Tyrant's Minion, the Warhound) whose commander or wearer was not traced further than
+  this: the Stalker's eighteen pieces carry no set.
+
+### What it was
+
+A minion's damage and health are its type row's base raised by its summoner's level. `LevelOfSummoner` read a level
+only from a player state and otherwise fell back to `UCataclysmPlayerClassStats::ChosenLevel()`, the
+`Cataclysm.PlayerLevel` console variable meant for previewing class stats.
+
+### The ruling, 2026-10-29
+
+| Summoner | Level | Why |
+|---|---|---|
+| A player | its player state's level, unchanged | |
+| An enemy | `UCataclysmPowerScore::ReferenceCharacter(tier).Level`, the tier from `ACataclysmGameMode::DifficultyTierIn` | **a judgement following a precedent:** the design raises a minion by "the summoner's level" (`docs/Cataclysm_GDD_v2.md`, the minion table: "The type's own base, raised by the summoner's **level**") and an enemy has none; the Corrupted Stalker takes its own level this way |
+| A minion | its own summoner's level, followed up a chain of at most eight | |
+| Anything else | the preview level, kept | only test scaffolding reaches it, a bare actor standing in for a summoner, and every minion figure those tests assert is at it |
+
+**FOUR TESTS USED AN ENEMY CHARACTER AS A STAND-IN SUMMONER, AND THE TRACE ABOVE DID NOT FIND THEM:** it followed
+shipped paths only. Window w85 failed them; the list is under Run. Ruled the same day: the `ImpBlow` helper in
+`CataclysmEnemyBehaviourTests.cpp` and in `CataclysmDamageTypeTests.cpp` now takes the summoner and asks
+`UCataclysmPowerScore::ReferenceCharacter(ACataclysmGameMode::DifficultyTierIn(Summoner)).Level`, as the game does.
+The reason given: the four check that a minion does not take its summoner's critical strike, weapon type or
+penetration, or that it goes to the fight, and the summoner's level is incidental to each; the stand-ins are enemy
+characters, so the ruled behaviour gives them the tier's level and the expected figure follows. A rule by team instead
+was refused as a rule nobody asked for.
+
+**THE SIX OTHER TEST FILES THAT CALL `ChosenLevel()` WERE READ, and none computes a minion figure from an enemy
+summoner:**
+
+| File | Its summoners | An enemy summoner? |
+|---|---|---|
+| `CataclysmAttributeAllocationTests.cpp` | none; the level counts attribute points | no |
+| `CataclysmCommandTests.cpp` | `FScopedCaster`, a bare actor, for `ImpExplosionDamage`; `FScopedCreature`, an enemy character, is the commander in one test, which takes a creature and summons nothing | one test, `FCataclysmResummonDeathClearsTest`, summons through a skill on an enemy character on the players' side and asserts only counts of minions and waits |
+| `CataclysmMinionAttackSpeedTests.cpp` | an enemy character on the players' side | yes, but the file asserts no level-raised figure; `ChosenLevel()` is passed to `ApplyTo` for class stats |
+| `CataclysmMinionGearTests.cpp` | a bare actor; its enemy characters are thralls | no |
+| `CataclysmMinionOwnStatsTests.cpp` | `FScopedFighter`, a bare actor | no |
+| `CataclysmPlayerClassStatsTests.cpp` | `FScopedCharacter`, a bare actor | no |
+
+Three comments, in `CataclysmCommandTests.cpp`, `CataclysmMinionGearTests.cpp` and `CataclysmMinionOwnStatsTests.cpp`,
+said every non-player summoner takes the preview level; that stopped being true with this change, and they now say it is
+a summoner that is neither a player, an enemy nor a minion.
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.AnEnemySummonersMinionTakesTheTiersReferenceLevel` (in the enemy modifier tests, where a
+player with a player state is made; proposed under `Cataclysm.Command.`): the tier at 5 and the preview level at 50,
+both at console priority. An Imp an enemy summons hits for the type's base raised at tier 5's reference level, not at
+50. **CONTROL:** an Imp the player summons hits for the base raised at 50, the player's level. It prints a line
+beginning "SUMMONER LEVEL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4358 / 0: `development`'s measured 4357 at `922b9cf21` + 1 |
+| Python | of record, with JUnit, and ruff |
+| The "SUMMONER LEVEL" line | quoted as printed |
+| P1, the enemy branch removed | the test fails: the enemy's Imp is raised at 50 |
+| P2, the tier ignored (always tier 1) | the test fails: the enemy's Imp is raised at tier 1's reference level |
+
+### Run
+
+**Window w85 (lock `dungeon-w85`, `fix/an-enemy-summoners-minion-takes-the-tiers-level-1` at `12214bad6`, on
+`922b9cf21`, 2026-10-29) STOPPED at the whole suite. No proof ran.** The lock was taken on a free-memory reading
+immediately before it of 11,421 MB, after both of `development`'s runs at `922b9cf21` succeeded, with none in progress
+or queued, the lock free, no build or editor process, no open pull request. It was released before anything was written
+here. The runner was stopped by hand during its Python step, after the failed suite; the runner would have stopped
+before the proofs on its own, and no source file was broken at any point.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "SUMMONER LEVEL" line | quoted as printed | "the enemy's Imp hits for 661.50 (level 62 gives 661.50), the player's for 535.50 (level 50 gives 535.50)" |
+| Whole Unreal suite | 4358 / 0 | `4358 tests performed, 4354 succeeded, 4 failed`; declared 4358, gap 0 |
+| Python | of record | not taken in the window; taken before it on the same head: 7037 tests, 0 failures, 0 errors, 7 skipped |
+| P1, P2 | | not run |
+
+The four failures, each expecting the Imp's blow at the preview level 20 and getting it at the default tier's
+reference level, 12:
+
+| Test | Expected | Printed |
+|---|---|---|
+| `Cataclysm.AI.ASummonedImpGoesToTheFightRatherThanStandingStill` | 220.5 | 136.5 |
+| `Cataclysm.AI.ASummonedImpNeverCriticallyStrikesEvenWhenItsSummonerWould` | 220.5 | 136.5 |
+| `Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersWeaponSubType` | 220.5 | 136.5 |
+| `Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersPenetration` | 77.17 | 47.75 |
+
+The next window is registered as above: the new test 1 / 1, the whole suite at `development`'s measured total + 1
+(4358 while that total is 4357), 0 failed, and P1 and P2 as registered.
+
+**Window w86 (lock `dungeon-w86`, `fix/an-enemy-summoners-minion-takes-the-tiers-level-2` at `88963cf57`, on
+`faf969780`, 2026-10-29) passed.** `faf969780` (#1533) changed only Python, so `development`'s Unreal total stayed 4357
+and the last Unreal run on `development`, at `922b9cf21`, succeeded; its CI run at `faf969780` succeeded. The lock was
+taken on a free-memory reading immediately before it of 11,760 MB, with no run in progress or queued, the lock free, no
+build or editor process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 9 actions, 6 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "SUMMONER LEVEL" line | quoted as printed | "the enemy's Imp hits for 661.50 (level 62 gives 661.50), the player's for 535.50 (level 50 gives 535.50)" |
+| Whole Unreal suite | 4358 / 0 | `4358 tests performed, 4358 succeeded, 0 failed`; declared 4358, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7754`, peak 8,082 |
+| Python (JUnit) | of record | 7040 tests, 0 failures, 0 errors, 8 skipped ("7032 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the enemy branch removed | the test fails: the enemy's Imp is raised at 50 | "1 tests performed, 0 succeeded, 1 failed: AnEnemySummonersMinionTakesTheTiersReferenceLevel", printing "the enemy's Imp hits for 535.50 (level 62 gives 661.50)": raised at 50, as registered; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the tier ignored (always tier 1) | the test fails: the enemy's Imp is raised at tier 1's reference level | the same failure line, printing "the enemy's Imp hits for 136.50": raised at 12, tier 1's reference level, as registered; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-29 — The tests command moves the previous automation log aside before it builds (#1533)
 
 **Affects:** `tools/unreal_build.py` (`move_aside_when_released`, `MOVED_ASIDE_PREFIX`, `MOVED_ASIDE_KEPT`, the

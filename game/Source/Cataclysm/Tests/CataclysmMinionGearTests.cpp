@@ -132,7 +132,8 @@ namespace CataclysmMinionGearTest
 	 *
 	 * NOT A GUESS AND NOT A CONSTANT. A summoner built here is an ordinary actor
 	 * with no player state, so the minion falls back to the level the class stats
-	 * are being previewed at -- the path every non-player summoner takes.
+	 * are being previewed at -- the path a summoner that is neither a player, an
+	 * enemy nor a minion takes (issue #1702).
 	 */
 	int32 LevelTheseTestsSee()
 	{

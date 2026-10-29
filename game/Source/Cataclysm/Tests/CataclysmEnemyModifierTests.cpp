@@ -36,6 +36,9 @@
 #include "Engine/World.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "HAL/IConsoleManager.h"
+#include "Player/CataclysmPowerScore.h"
+#include "AbilitySystem/CataclysmMinion.h"
 
 /**
  * Tests for which modifiers a creature is given, issue #742.
@@ -3641,6 +3644,69 @@ CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 							Whole, Halved, Quarter));
 	TestEqual(TEXT("CONTROL: with no reduction the eater regains a quarter of its maximum"), Whole, Quarter, 0.01f);
 	TestEqual(TEXT("with its healing received reduced by half it regains an eighth"), Halved, Quarter * 0.5f, 0.01f);
+	return true;
+}
+
+
+CATACLYSM_MODIFIER_TEST(FCataclysmEnemySummonerLevelTest,
+	"Cataclysm.EnemyModifiers.AnEnemySummonersMinionTakesTheTiersReferenceLevel")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #1702. A minion is raised by its summoner's level, and a summoner
+	// with no player state fell back to the preview console variable. An enemy
+	// summoner now takes its tier's reference level, as the Corrupted Stalker
+	// takes its own. CONTROL: a player's minion is raised at the player's level.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const CataclysmTestWorld::FScopedDifficultyTier Tier(5);
+	IConsoleVariable* Preview = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.PlayerLevel"));
+	if (!TestTrue(TEXT("set-up: the tier is set"), Tier.Found())
+		|| !TestNotNull(TEXT("set-up: the preview level console variable"), Preview))
+	{
+		return false;
+	}
+	const int32 Was = Preview->GetInt();
+	ON_SCOPE_EXIT { Preview->Set(Was, ECVF_SetByConsole); };
+	Preview->Set(50, ECVF_SetByConsole);
+
+	const int32 Reference = UCataclysmPowerScore::ReferenceCharacter(5).Level;
+	const FCataclysmMinionTypeRow* Imp =
+		ACataclysmMinion::FindType(ACataclysmMinion::LoadTypeTable(), TEXT("Imp"));
+	ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmPlayerCharacter* Player = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("set-up: the Imp's type row"), Imp) || !TestNotNull(TEXT("set-up: an enemy"), Enemy)
+		|| !TestNotNull(TEXT("set-up: a player"), Player)
+		|| !TestTrue(FString::Printf(TEXT("set-up: tier 5's reference level, %d, is not the preview's 50"), Reference),
+					 Reference > 0 && Reference != 50))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* FromTheEnemy =
+		ACataclysmMinion::Spawn(Enemy, FVector(300.0f, 0.0f, 0.0f), 20.0f, /*bBurns=*/false, TEXT("Imp"));
+	ACataclysmMinion* FromThePlayer =
+		ACataclysmMinion::Spawn(Player, FVector(0.0f, 300.0f, 0.0f), 20.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: the enemy's Imp"), FromTheEnemy)
+		|| !TestNotNull(TEXT("set-up: the player's Imp"), FromThePlayer))
+	{
+		return false;
+	}
+	const float AtReference = Imp->BaseDamage + Imp->DamagePerLevel * Reference;
+	const float AtFifty = Imp->BaseDamage + Imp->DamagePerLevel * 50.0f;
+	AddInfo(FString::Printf(TEXT("SUMMONER LEVEL: the enemy's Imp hits for %.2f (level %d gives %.2f), the player's for "
+								 "%.2f (level 50 gives %.2f)"),
+							FromTheEnemy->OwnDamagePerHit, Reference, AtReference, FromThePlayer->OwnDamagePerHit,
+							AtFifty));
+	TestEqual(TEXT("an enemy's Imp is raised at its tier's reference level"), FromTheEnemy->OwnDamagePerHit,
+			  AtReference, 0.01f);
+	TestEqual(TEXT("CONTROL: a player's Imp is raised at the player's level"), FromThePlayer->OwnDamagePerHit,
+			  AtFifty, 0.01f);
 	return true;
 }
 
