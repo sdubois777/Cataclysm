@@ -91,7 +91,7 @@ beginning "RUN REFUSAL".
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each |
-| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Whole Unreal suite | 4368 / 0: `development`'s 4366, measured by window w93 on the tests `02561d870` holds (since then only a header comment in `CataclysmSurge.h` touched C++, and `development`'s Unreal run at `17366a34d` succeeded), + 2 |
 | Python | of record, with JUnit, and ruff |
 | The "RUN RESTORE" and "RUN REFUSAL" lines | quoted as printed |
 | P1, `RunInto` does not restore `NextSurgeDay` | the first test fails on "agrees ... on every internal value", first differing on **day 0**; the CONTROL holds; whether and when the visible part differs is not predicted |
