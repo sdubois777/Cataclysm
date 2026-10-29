@@ -2392,6 +2392,10 @@ bool FCataclysmDungeonModeHordeWaveArrivesOverFramesTest::RunTest(const FString&
 	while (Mode->CreaturesStillArriving() > 0)
 	{
 		const int32 BeforeThisFrame = Mode->CurrentWave.Num();
+		// A REAL NEXT FRAME, as play gives it. Issue #1554: the frame `GoToFloor`
+		// put the first few down in has had its share, so a `Tick` in that same
+		// frame puts nothing down; this loop counts frames, so each is a new one.
+		++GFrameCounter;
 		Mode->Tick(OneFrame);
 		const int32 ThisFrame = Mode->CurrentWave.Num() - BeforeThisFrame;
 		++Frames;
@@ -3175,6 +3179,100 @@ bool FCataclysmRarityFromTheFloorsSeedTest::RunTest(const FString& Parameters)
 		bFloorsDiffer = bFloorsDiffer || First[Index] != First[0];
 	}
 	TestTrue(TEXT("CONTROL: the six floors do not all hold the same rungs"), bFloorsDiffer);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeFirstFrameTest,
+	"Cataclysm.DungeonMode.AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1554. The frame play starts in ran `GoToFloor`, whose population pass puts the first wave's first
+ * `WaveCreaturesPerFrame` down, and then the first `Tick`, which put down as many again: eight in the owner's session of
+ * 2026-09-10. Here the floor start and a `Tick` run without the frame counter moving, as they did there, and the frame
+ * puts down one share; the next frame puts down the next. CONTROL: a later wave, brought in by `Tick`, puts down one
+ * share in the frame it begins and one in the next, as before.
+ */
+bool FCataclysmDungeonModeHordeFirstFrameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	// THE DENSITY `AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne` USES, so a wave is several frames' shares.
+	Mode->EnemyScale = 0.25f;
+	const int32 PerFrame = ACataclysmDungeonGameMode::WaveCreaturesPerFrame;
+	constexpr float OneFrame = 1.0f / 60.0f;
+
+	// ---- The frame play starts in ----------------------------------------
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const int32 Whole = Mode->CurrentWave.Num() + Mode->CreaturesStillArriving();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the first wave of %d is more than two frames' shares"), Whole),
+				  Whole > 2 * PerFrame))
+	{
+		return false;
+	}
+	Mode->Tick(OneFrame);
+	const int32 InTheStartFrame = Mode->CurrentWave.Num();
+	++GFrameCounter;
+	Mode->Tick(OneFrame);
+	const int32 AfterTheNextFrame = Mode->CurrentWave.Num();
+	AddInfo(FString::Printf(TEXT("FIRST FRAME: the first wave put %d down in the frame play started and %d by the next"),
+							InTheStartFrame, AfterTheNextFrame));
+	TestEqual(TEXT("the frame play starts in puts down one frame's share, with its Tick"), InTheStartFrame, PerFrame);
+	TestEqual(TEXT("and the next frame puts down the next share"), AfterTheNextFrame, 2 * PerFrame);
+
+	// ---- CONTROL: a later wave, begun inside Tick ---------------------------
+	for (int32 Frames = 0; Frames <= 1000 && Mode->CreaturesStillArriving() > 0; ++Frames)
+	{
+		++GFrameCounter;
+		Mode->Tick(OneFrame);
+	}
+	TArray<ACataclysmEnemyCharacter*> FirstWave;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		FirstWave.Add(Enemy.Get());
+	}
+	for (ACataclysmEnemyCharacter* Enemy : FirstWave)
+	{
+		if (!TestTrue(TEXT("set-up: a creature of the first wave was killed"), KillOutright(Enemy)))
+		{
+			return false;
+		}
+	}
+	++GFrameCounter;
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	if (!TestEqual(TEXT("set-up: the second wave began"), Mode->WavesArrived, 2))
+	{
+		return false;
+	}
+	const int32 InItsFirstFrame = Mode->CurrentWave.Num();
+	if (!TestTrue(TEXT("set-up: the second wave is more than two frames' shares"),
+				  InItsFirstFrame + Mode->CreaturesStillArriving() > 2 * PerFrame))
+	{
+		return false;
+	}
+	++GFrameCounter;
+	Mode->Tick(OneFrame);
+	const int32 InItsSecondFrame = Mode->CurrentWave.Num();
+	AddInfo(FString::Printf(TEXT("FIRST FRAME: the second wave put %d down in the frame it began and %d by the next"),
+							InItsFirstFrame, InItsSecondFrame));
+	TestEqual(TEXT("CONTROL: a later wave puts down one share in the frame it begins"), InItsFirstFrame, PerFrame);
+	TestEqual(TEXT("CONTROL: and the next share in the next frame, as before"), InItsSecondFrame, 2 * PerFrame);
 	return true;
 }
 

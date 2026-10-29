@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-28 — The frame play starts in puts down one frame's share of a Horde floor's first wave, not two (#1554)
+
+**Affects:** `CataclysmDungeonGameMode.h` and `.cpp` (a field, `WaveBeganOnFrame`, set in `PopulateFloor` and honoured
+once in `Tick`), one new test in `CataclysmDungeonGameModeTests.cpp`, and a set-up line in an existing test there. Fixes
+[#1554](https://github.com/sdubois777/Cataclysm/issues/1554).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w79 below passed every registered figure, and both proofs were PROVED.**
+- **READ, NOT RE-MEASURED.** That the engine runs the first `Tick` in the frame `StartPlay` ran in rests on the
+  owner's session log of 2026-09-10, as #1554 states; the test reproduces it by not moving the frame counter.
+
+### What it was, read again at `4faf66bfb`
+
+`StartPlay` calls `GoToFloor`, whose `PopulateFloor` queues a Horde floor's wave and puts the first
+`WaveCreaturesPerFrame` (4) down itself; `Tick` calls `ContinueTheWaveArriving` every frame, and nothing remembered
+that this frame had had its share, so the first `Tick` in the same frame put down 4 more. A later wave begins inside
+`Tick`'s beat, after that frame's arriving call, so it was never affected.
+
+### What changed
+
+`PopulateFloor` records the engine's frame number (`GFrameCounter`) when it puts a wave's first few down, and `Tick`
+passes over its arriving call once in that frame and then forgets the number. The guard is in `Tick` rather than in
+`ContinueTheWaveArriving`, as #1554 suggested, because `GoToFloor` empties a still-arriving wave by calling that function
+in a loop within one frame, and because a guard there would stop every test that calls `Tick` many times without moving
+the frame counter. Forgetting the number after one pass is what lets those tests go on: their first `Tick` after a floor
+start puts nothing down, and the rest arrive as before.
+
+**THE EXISTING TEST'S FRAMES WERE MADE REAL**, approved by the coordinating session on 2026-10-28 with no assertion
+changed. `AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne` counts the frames a wave takes and asserts every frame
+puts down at least one; it called `Tick` repeatedly without moving `GFrameCounter`, so each call was the same engine
+frame, and its first `Tick` now rightly puts nothing down in the frame `GoToFloor` already used. It now advances
+`GFrameCounter` before each `Tick`, which is what each of its frames stands for.
+
+### How it is checked
+
+`Cataclysm.DungeonMode.AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare`, at the density the frames test uses:
+`GoToFloor` and a `Tick` in one frame put down 4, and the next frame 8 in all. **CONTROL:** the first wave let arrive and
+killed, the second wave brought in by `Tick` puts down 4 in the frame it begins and 8 by the next, as before. It prints
+lines beginning "FIRST FRAME".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | 4352 / 0: `development` at `1e78c2bce` (#2337) is 4351, and one test is added |
+| Python | of record, with JUnit, and ruff |
+| The "FIRST FRAME" lines | quoted as printed |
+| P1, `Tick`'s pass-over never taken | the new test fails: 8 in the frame play starts in |
+| P2, the number not forgotten after the pass | `AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena` fails: its first wave never finishes arriving, every `Tick` in the unmoved frame passing over |
+
+**P2 IS NOT A BREAK OF THE CONTROL, AND NO NARROW ONE IS.** The control guards against the pass-over reaching later
+frames. Read through: comparing with `>=` instead of `==` changes nothing, because the number is forgotten after the
+first pass; setting it to the next frame makes the start frame put down 8, which is P1's failure. The over-reach that
+can happen is the pass-over repeating within one frame, and P2 breaks exactly that.
+
+### Run
+
+**Window w79 (lock `dungeon-w79`, `fix/a-hordes-first-frame-puts-down-one-share` at `8f05ae562`, on `1e78c2bce`,
+2026-10-28) passed.** The lock was taken at 19:50 on a free-memory reading immediately before it of 11,457 MB, after
+`development`'s CI run at `1e78c2bce` finished with success at 19:49; that merge, Python only, started no Unreal run, the
+last on `development` (`fe3b03447`) having succeeded. None in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The new test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4352 / 0 | `4352 tests performed, 4352 succeeded, 0 failed`; declared 4352, gap 0, the frames test with its frames made real among them |
+| Memory | quoted | `final_used_virtual_mb=7763`, peak 8,081 |
+| Python (JUnit) | of record | 7034 tests, 0 failures, 0 errors, 8 skipped ("7026 passed, 8 skipped"); ruff `All checks passed!` |
+| The "FIRST FRAME" lines | quoted as printed | "the first wave put 4 down in the frame play started and 8 by the next"; "the second wave put 4 down in the frame it began and 8 by the next" |
+| P1, `Tick`'s pass-over never taken | the new test fails: 8 in the frame play starts in | "1 tests performed, 0 succeeded, 1 failed: AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare", printing "the first wave put 8 down in the frame play started and 12 by the next"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the number not forgotten after the pass | `AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena` fails | "1 tests performed, 0 succeeded, 1 failed: AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena", on "Expected 'the first wave finished arriving' to be true"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+
+---
+
 ## 2026-10-28 — The row generator refuses a Stack Seconds cell on an action that does not read it (#2337)
 
 **Affects:** `tools/generate_datatables.py` (a list, `ACTIONS_THAT_READ_STACK_SECONDS`, and one refusal in
