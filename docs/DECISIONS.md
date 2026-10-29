@@ -10,7 +10,7 @@ regeneration written in `ApplyStartingAttributes`), and two new tests in `Catacl
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **BUILT AND RUN: window w78 below passed every registered figure, and both proofs were PROVED.**
 - **THE SUCCUBUS IS COVERED BY THE SAME CHANGE.** Its shield comes from its kind's `EnergyShieldFraction`, not from
   Shielder, and its regeneration was nought too, so it did not refill either; the design says it does.
 
@@ -61,7 +61,23 @@ They are two tests so that a failure names which source of shield stopped refill
 
 ### Run
 
-Not run yet.
+**Window w78 (lock `dungeon-w78`, `fix/a-creatures-shield-refills-1` at `df85590cf`, on `4faf66bfb`, 2026-10-28)
+passed.** The lock was taken at 18:51 on a free-memory reading immediately before it of 11,475 MB, with the other
+conditions met: `development`'s CI run at `4faf66bfb` succeeded, and that merge, Python only, started no Unreal run, the
+last on `development` (`21d6a6308`) having succeeded; none in progress or queued, the lock free, no build or editor
+process, no open pull request. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| The Shielder test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The kind's test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | 4351 / 0 | `4351 tests performed, 4351 succeeded, 0 failed`; declared 4351, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7686`, peak 8,007 |
+| Python (JUnit) | 7032 | 7032 tests, 0 failures, 0 errors, 8 skipped ("7024 passed, 8 skipped"); ruff `All checks passed!` |
+| The "SHIELD REFILL" lines | quoted as printed | "Shielder: maximum 80.5, 40.2 after the hit, 40.2 at 2.5 s, 56.3 at 4 s"; "the kind's own shield: maximum 500.0, 250.0 after the hit, 250.0 at 2.5 s, 350.0 at 4 s". Each came back 0.20 of its maximum in the second after the wait |
+| P1, the rate written as nought | the Shielder test fails | "1 tests performed, 0 succeeded, 1 failed: AFloorCreatureThatDrawsShielderRefillsItsShieldThreeSecondsAfterDamage", printing "40.2 at 4 s"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
+| P2, the rate from Shielder's share only | the kind's test fails | "1 tests performed, 0 succeeded, 1 failed: ACreatureWhoseKindCarriesAShieldRefillsItThreeSecondsAfterDamage", printing "250.0 at 4 s"; restored "1 tests performed, 1 succeeded, 0 failed". **PROVED** |
 
 ---
 
