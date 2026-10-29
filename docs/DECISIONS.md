@@ -153,6 +153,10 @@ counts. Predicted named_failures, exactly one:
 
 `test_the_old_tally_never_counts_fewer` passes with the break in, since the two tallies are then equal.
 
+Run 2026-10-29 in a git-archive copy of `9f1da3b06`, the commit that registered it. Printed: "PROVED: 1 failed, 10 passed
+in 1.16s | restored: 11 passed in 1.06s". named_failures, exactly the one registered, with "a Fallen City's timer running
+out: the old arithmetic counted 0 and the reported tally 0."
+
 ### NO GENRE SOURCE
 
 None. This brings the simulation into line with a rule the design document and the game already state.
