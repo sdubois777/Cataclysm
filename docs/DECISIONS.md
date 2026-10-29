@@ -48,10 +48,34 @@ worth nothing whatever the stat says, so a zero there would prove nothing about 
 probe's 10,000 health, 4,000 is missing, so a row whose condition was ignored would give 800 there. Reading 0 is what
 shows the condition refused the row.
 
-### NOT YET COMPILED OR RUN
+### THE RUN, 2026-10-29, AT 4f9ee3081 ON 8246a547d
 
-Written by reading. The window that builds and runs it, and the three guard proofs, are recorded below when they have
-run.
+No probe failed at its first run, so none of the eight shipped rows is dead: each consumer asks the stat pipeline with
+the wearer's state, as read on 2026-10-06. Registered before the run at 4353 + 0.
+
+| Step | Printed |
+| :-- | :-- |
+| The probes' test alone, `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` | "1 tests performed, 1 succeeded, 0 failed"; "Build: Succeeded - 41 actions, 38 files compiled" |
+| The whole Unreal suite | "4353 tests performed, 4353 succeeded, 0 failed"; "Declared: 4353 tests in the tree at 4f9ee3081; 4353 performed, gap 0" |
+| Python of record | "7027 passed, 8 skipped"; JUnit tests 7035, failures 0, errors 0, skipped 8 |
+| ruff | "All checks passed!" |
+
+Free memory before the lock was taken: 11,345 MB. The suite's memory summary: peak used virtual 8,107 MB.
+
+### THE THREE GUARD PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, prefix the whole test name, each anchor counted once in `read_text`. ALL THREE
+NAME THE SAME TEST, so each was told apart by its broken run's failed assertions, read from the run's whole log kept on
+disk: every one had to contain the proof's stat name, and the runner would have stopped otherwise.
+
+| Proof | The break | Printed | The broken run's one failed assertion |
+| :-- | :-- | :-- | :-- |
+| A | `DoNotExpireOn` returns `0.0f > 0.0f` instead of asking | "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed \| restored: 1 tests performed, 1 succeeded, 0 failed" | "debuffs_do_not_expire is asked for, so below half health: yes" to be true |
+| B | `HealthCostIsSuppressed` returns `0.0f > 0.0f` instead of asking | the same summary | "health_cost_suppressed is asked for, so below half health: yes" to be true |
+| C | `UCataclysmNova::Step` takes a share of `0.0f` instead of asking | the same summary | "nova_damage_of_missing_health is asked for, so below half health a nova of 20% of the 6,000 missing" to be 1200, but it was 0 |
+
+Each file's hash was the same after its proof as before. No proof was run for the other four probes; three was the
+budget ruled.
 
 ### NO GENRE SOURCE
 
