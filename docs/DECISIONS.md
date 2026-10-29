@@ -66,7 +66,7 @@ begun at tier 1 gathers tier 1 and a list of a different length (tier t faces t 
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each |
-| Whole Unreal suite | 4366 / 0: `development`'s 4364, measured by window w92 on the tests `bd51319c9` holds (`5df1b86c6` after it changes no C++), + 2 |
+| Whole Unreal suite | 4366 / 0: `development`'s 4364, measured by window w92 on the tests `bd51319c9` holds (`5df1b86c6` and `6d7bacf79` after it change no C++), + 2 |
 | Python | of record, with JUnit, and ruff |
 | The "RUN IDENTITY" and "WRITTEN IDENTITY" lines | quoted as printed |
 | P1, `IdentityFrom` does not copy the tier | the round trip fails on "the tier survives" only; both CONTROLs hold |
