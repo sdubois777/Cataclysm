@@ -2720,7 +2720,8 @@ def test_the_dose_actually_reaches_the_model(quest_move_chance_run):
 
 @pytest.fixture(scope="module")
 def cadence_run():
-    """About 3.4 seconds -- the second most expensive script in this file.
+    """About 5.3 seconds for one run, measured 2026-10-29 with the shipped cadence
+    and rules (issue #2396); it was about 3.4 under the rules of September.
 
     Its default narrows the sweep axes to their two ends for exactly this
     reason; see `_axis` in the script. The full grid is `grid_cells()` batches
@@ -2937,9 +2938,11 @@ def test_the_fan_out_measures_what_this_process_measures(cadence_run):
 
 def test_every_section_measures_each_batch_once(cadence_run):
     """Sections 3, 4 and 5 name their batches the same way, so the batch two of
-    them want is measured once. What ships -- 4 every 120 days -- is section
-    3's whole table and also a cell of the grid; measuring it twice would have
-    been about eight thousand redundant campaigns at the size the issue quotes.
+    them want is measured once. What ships -- read from the config, 8 every 90
+    days since 2026-10-16 -- is section 3's whole table and also a cell of the
+    grid; measuring it twice would have been about eight thousand redundant
+    campaigns at the size the issue quotes. Issue #2396 kept the shipped
+    cadence inside the smoke grid for this reason.
     """
     _, ns = cadence_run
     keys = ns["all_cells"]()
@@ -3046,9 +3049,14 @@ def test_a_smoke_sized_cadence_run_says_its_shares_are_noise(cadence_run):
     if ns["TRIALS"] < ns["SMOKE_BELOW"]:
         assert "IS A SMOKE TEST AND EVERY SHARE BELOW IS NOISE" in printed
         assert "CATACLYSM_SURGE_CADENCE_TRIALS=1000" in printed
-        assert ns["COUNTS"] == (4, 20) and ns["INTERVALS"] == (30, 120), (
-            "the smoke run no longer narrows to the ends of the axes, so it "
-            "costs the fast suite the full thirteen seconds.")
+        shipped_count = ns["SHIPPED_COUNT"]
+        shipped_interval = int(ns["SHIPPED_INTERVAL"])
+        assert ns["COUNTS"] == tuple(sorted({shipped_count, 20})), (
+            "the smoke run no longer narrows the count axis to the shipped "
+            "size and 20, so it costs the fast suite the full grid.")
+        assert ns["INTERVALS"] == tuple(sorted({30, shipped_interval})), (
+            "the smoke run no longer narrows the interval axis to 30 and the "
+            "shipped interval.")
     else:
         assert "SMOKE TEST" not in printed
 

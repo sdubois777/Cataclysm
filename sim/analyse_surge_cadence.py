@@ -153,6 +153,16 @@ of the knob; at tier 8 all eight are and the multiplier is about 4.4.
 `section_2_realised_size` prints the whole table, and **every grid row carries the
 realised mean it actually ran at** rather than only the knob it was set from.
 
+WHAT IT RUNS, SINCE ISSUE #2396. The shipped cadence -- `surge_dungeon_count` and
+`surge_interval_days`, an opening wave of `surge_opening_count` -- and every rule
+`TuningConfig` ships, all read from the config with no pin. Until then this file
+held 4 dungeons every 120 days and three rules at their September values (an
+ordinary dungeon staying after it hits its city, a Quest dungeon's timer costing
+its city nothing, a hit sized without the tree's floors), because its axes and
+figures were built around them. **THE FIGURES ON ISSUE #1090 WERE MEASURED IN
+THAT WORLD AND HAVE NOT BEEN RE-MEASURED**; this file's own exact-arithmetic
+tables were, by the run that moved it.
+
 RUNNING IT. The default is a smoke test that proves the code path and nothing
 else; every share it prints is one campaign. The real grid is 5 core-hours, so
 it fans out across processes:
@@ -192,9 +202,15 @@ def _env_ints(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
     return default if not raw else tuple(int(part) for part in raw.split(","))
 
 
-def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
+def _axis(name: str, full: tuple[int, ...], smoke: bool,
+          keep: tuple[int, ...] = ()) -> tuple[int, ...]:
     """One sweep axis: whatever the environment says, else the full axis, else
-    -- for a smoke run nobody asked to widen -- only its two ends.
+    -- for a smoke run nobody asked to widen -- only `keep`, or the two ends.
+
+    `keep` IS THE SHIPPED VALUE AND THE FAR END, since issue #2396. The two ends
+    used to include what shipped (4 dungeons every 120 days was the smallest
+    wave at the longest gap); the shipped cadence is now inside both axes, and a
+    smoke grid without it could not show that sections 3 and 4 share a batch.
 
     WHY THE SMOKE RUN IS NARROWED AT ALL. `sim/tests/test_analysis_scripts.py`
     executes this file, so its default cost is paid by continuous integration on
@@ -211,6 +227,8 @@ def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
     """
     if os.environ.get(name, "").strip() or not smoke:
         return _env_ints(name, full)
+    if keep:
+        return tuple(sorted(set(keep)))
     return (full[0], full[-1]) if len(full) > 1 else full
 
 
@@ -229,8 +247,9 @@ def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
 #: Set `CATACLYSM_SURGE_CADENCE_TRIALS=1000` for 2,000 campaigns a cell, which is
 #: the size the figures on issue [#1090] were taken at. That is 2,000 times
 #: `grid_cells()` campaigns (240,000 at the full axes, 192,000 when there were
-#: four worlds) and several core-hours, so raise `CATACLYSM_SURGE_CADENCE_JOBS`
-#: with it.
+#: four worlds) and several core-hours -- about five, measured under the rules of
+#: September and not re-measured since issue #2396 -- so raise
+#: `CATACLYSM_SURGE_CADENCE_JOBS` with it.
 TRIALS = int(os.environ.get("CATACLYSM_SURGE_CADENCE_TRIALS", "1"))
 
 #: Below this many campaigns a block, every share printed is noise and the run
@@ -245,20 +264,35 @@ BLOCKS = (("A", 0), ("B", TRIALS))
 #: what issue [#1379] measured a real block-to-block spread over.
 NOISE_BLOCKS = 6
 
-#: The count axis. 4 is what `sim/cataclysm_sim/config.py` and
-#: `UCataclysmSurgeScheduler` both ship, 5 is what `experiments.exp_calibrate`
-#: chooses and the balance report runs at, 10 brackets the two, and 14 is
-#: `surge_count_max` -- the most the shipped game will ever spawn, which the
-#: owner ruled on 2026-09-06 stays where it is. 20 is the number in the owner's
-#: question and is the one value here that CANNOT SHIP without moving that cap;
-#: it is measured so the grid shows what the ruling costs. See the module
-#: docstring.
-COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS", (4, 5, 10, 14, 20), SMOKE)
+#: What `development` ships, read off `TuningConfig` rather than written out so
+#: this file cannot claim the wrong baseline after somebody moves the constant.
+#: Since issue #2396 nothing here holds an older cadence: until then these were
+#: written out as 4 and 120.
+SHIPPED_COUNT = TuningConfig().surge_dungeon_count
+SHIPPED_INTERVAL = TuningConfig().surge_interval_days
+SHIPPED_OPENING = TuningConfig().surge_opening_count
+SHIPPED_COUNT_CAP = TuningConfig().surge_count_max
 
-#: The interval axis, in days between surges. 120 ships; 30 is close to the
-#: shortest gap `surge_interval_min` (25) would ever allow an escalating run to
-#: reach, so it is the floor of what the game's own arithmetic considers sane.
-INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
+#: The count axis. 5 is what the balance report and the design document's
+#: figures run at; the shipped size is `SHIPPED_COUNT`, read from the config (8
+#: since 2026-10-16); 10 brackets them; 14 is `surge_count_max` -- the most the
+#: shipped game will ever spawn, which the owner ruled on 2026-09-06 stays where
+#: it is. 20 is the number in the owner's question and is the one value here that
+#: CANNOT SHIP without moving that cap; it is measured so the grid shows what the
+#: ruling costs. See the module docstring. (4, which shipped until 2026-10-13,
+#: left the axis on issue #2396.)
+COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS",
+               tuple(sorted({5, SHIPPED_COUNT, 10, 14, 20})), SMOKE,
+               keep=(SHIPPED_COUNT, 20))
+
+#: The interval axis, in days between surges. The shipped interval is
+#: `SHIPPED_INTERVAL`, read from the config (90 since 2026-10-13); 120 is the
+#: balance report's and what shipped before; 30 is close to the shortest gap
+#: `surge_interval_min` (25) would ever allow an escalating run to reach, so it
+#: is the floor of what the game's own arithmetic considers sane.
+INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS",
+                  tuple(sorted({30, 60, int(SHIPPED_INTERVAL), 120})), SMOKE,
+                  keep=(30, int(SHIPPED_INTERVAL)))
 
 #: The active Cataclysm type count the one-line preset summaries below are
 #: quoted at. **NAMED BECAUSE THREE NODES PAY PER ACTIVE TYPE**, so a preset's
@@ -270,9 +304,10 @@ ACTIVE = 1
 #: the entries rather than trusting a number here (this said four; issue #1433).
 #:
 #: TIER 4 IS THE SECOND TIER AND HERE IS WHY. The tier is the number of active
-#: Cataclysms, so it multiplies the realised surge size: at tier 4 the shipped
-#: knob of 4 already spawns about 11 dungeons a surge, which puts the owner's 20
-#: inside the grid at a knob of 7 or 8 rather than off the end of it. It is also
+#: Cataclysms, so it multiplies the realised surge size: at tier 4 a knob of 4
+#: spawns about 11 dungeons a surge, which puts the owner's 20 inside the grid at
+#: a knob of 7 or 8 rather than off the end of it (the volume arithmetic, which
+#: no rule of issue #2396 touches; section 2 prints it at every knob). It is also
 #: the midpoint of the eight-tier ladder, so it says whether a cadence chosen at
 #: tier 1 survives being multiplied. Tier 8 multiplies by 4.4 and would have made
 #: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
@@ -324,8 +359,8 @@ CITY_TIERS = (CityTier.OUTPOST, CityTier.BULWARK,
               CityTier.SANCTUARY, CityTier.PILLAR)
 
 
-def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
-                tree=TREE_NONE) -> TuningConfig:
+def base_config(tier: int = 1, count: int | None = None,
+                interval: float | None = None, tree=TREE_NONE) -> TuningConfig:
     """The settings every row runs under. See the module docstring.
 
     THE `surge_count_max` LINE IS NOT HOUSEKEEPING. `Simulation.surge_count`
@@ -333,7 +368,12 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
     knob of 14 and the top half of the count axis measures nothing. It is raised
     only when the knob asks for more, so the shipped cap still applies at every
     cell that does not exceed it.
+
+    `count` and `interval` DEFAULT TO WHAT SHIPS, read from the config, since
+    issue #2396; they defaulted to 4 and 120 written out.
     """
+    count = SHIPPED_COUNT if count is None else count
+    interval = SHIPPED_INTERVAL if interval is None else interval
     return replace(
         TuningConfig(),
         tier=tier,
@@ -351,38 +391,12 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
-        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
-        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
-        # leaves after it hits its city. Every figure this file's docstring
-        # and the issues quote was measured with the dungeon staying, and none
-        # has been re-measured, so the setting is held where it was. Remove
-        # this line to measure the shipped rule; the figures then move.
-        dungeon_persists_after_resolve=True,
-        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
-        # Quest dungeon's timer hit its city. This file's figures were
-        # measured with that timer costing the city nothing, and none
-        # was re-measured. Remove this line to measure the shipped rule.
-        quest_timer_hits_city=False,
-        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
-        # of a dungeon's floors, the tree's included.
-        hit_scales_with_natural_floors=False,
+        # EVERY OTHER RULE IS THE ONE `TuningConfig` SHIPS, since issue #2396.
+        # This held three at their September values until then; see the module
+        # docstring.
     ).with_tree(tree)
 
 
-#: What `development` ships, read off `TuningConfig` rather than written out so
-#: this file cannot claim the wrong baseline after somebody moves the constant.
-#: NO LONGER WHAT SHIPS, AND HELD ON PURPOSE. Since 2026-10-13 `TuningConfig`
-#: ships 5 dungeons every 90 days. This file's axes, its tables and every
-#: figure its docstring and the issues quote are those of 4 every 120, which
-#: is what shipped when they were measured, and none was re-measured. The two
-#: are written out so the file goes on measuring that world. The names are
-#: kept because the rest of the file and its tests use them. To measure what
-#: ships, read them off `TuningConfig()` again and give the axes a 5 and a 90.
-#: THE RECORDED FIGURES WERE MEASURED BEFORE THE OPENING WAVE OF 12 EXISTED
-#: (2026-10-16), at the cadences they each state, and were not re-run.
-SHIPPED_COUNT = 4
-SHIPPED_INTERVAL = 120.0
-SHIPPED_COUNT_CAP = TuningConfig().surge_count_max
 def surge_count_for(tier: int, count: int, cap: int | None = None) -> int:
     """What `Simulation.surge_count` returns for this knob, at this cap.
 
@@ -750,8 +764,10 @@ def section_2_realised_size() -> dict:
     print(f"\n    {'tier':>5}{'volume':>9}"
           + "".join(f"{f'knob {c}':>10}" for c in COUNTS))
     for tier, cell in table.items():
-        mark = ("   <- the shipped knob of 4 already spawns ~20 here"
-                if tier == max(table) else "")
+        mark = (f"   <- the shipped knob of {SHIPPED_COUNT} spawns "
+                f"{cell['shipped_cap'][SHIPPED_COUNT]} here"
+                if tier == max(table) and SHIPPED_COUNT in cell['shipped_cap']
+                else "")
         print(f"    {tier:>5}{cell['volume']:>9.2f}"
               + "".join(f"{cell['shipped_cap'][c]:>10}" for c in COUNTS)
               + mark)
@@ -803,8 +819,8 @@ def _cell_key(world_index: int, count: int, interval: int, seed0: int) -> str:
     THE SEED GOES IN THE NAME RATHER THAN A BLOCK LETTER so that sections 3, 4
     and 5 all name their work the same way and can be measured in one pass. It
     also makes the duplicates collapse: section 3's cell IS the grid's
-    (4, 120) cell in the same world, and naming them identically means it is
-    measured once rather than twice.
+    shipped-cadence cell in the same world, and naming them identically means it
+    is measured once rather than twice.
     """
     return f"{world_index},{count},{interval},{seed0}"
 
@@ -1044,7 +1060,10 @@ def settings_lines() -> list[str]:
         "  AXES, not constants             difficulty tier, empire tree, "
         "dungeons per surge, days between",
         "  shipped cadence                 "
-        f"{SHIPPED_COUNT} dungeons every {SHIPPED_INTERVAL:.0f} days, static",
+        f"an opening wave of {SHIPPED_OPENING}, then {SHIPPED_COUNT} dungeons "
+        f"every {SHIPPED_INTERVAL:.0f} days, static -- read from TuningConfig",
+        "  rules                           every rule TuningConfig ships "
+        "(issue #2396)",
     ]
 
 
