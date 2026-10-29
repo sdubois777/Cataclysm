@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The Last Stand figures on record are re-measured, reached in 1.9% of campaigns not 45.9%, and the owner accepts that balance, superseding the near-fatal ruling (#2615)
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (the measured Last Stand paragraph, the two paragraphs on how firmly it is
+resolved, the sentence on the owner's near-fatal ruling, and a row in the history table); `sim/README.md` (the same
+table and its caveats); `sim/cataclysm_sim/engine.py` (a dated record block in `_open_last_stand`'s docstring, the
+2026-09-07 block marked superseded, and one sentence dated); `tools/tests/test_the_last_stand_figures_are_consistent.py`
+(its anchors, one number word set, one claim and four superseded statements); this file. Documents and tests only;
+nothing the simulation does changes.
+
+### SAID FIRST
+
+- **THE FIGURES WERE STALE BY MORE THAN 40 POINTS.** The design document said the Last Stand is reached in 45.9% of
+  campaigns. Re-measured on 2026-10-29 at the same settings with the simulation's rules of that date: **1.9%**.
+- **THE FALL IS ONLY PARTLY ATTRIBUTED.** The same campaigns with three rules held at their September values give 15.5%,
+  so those three account for 13.6 of the 44.0 points. **The other 30.4 points are not attributed** to any change.
+- **THE OWNER'S RULING OF 2026-09-05 THAT A COLLAPSE SHOULD BE NEAR-FATAL IS SUPERSEDED.** The coordinating session put
+  the question to the project owner on 2026-10-29 with these figures, offering the option worded "A collapse is now rare;
+  let the Last Stand be winnable about 1 in 7. Record that the near-fatal ruling is superseded." The owner answered,
+  verbatim: **"Accept today's balance"**. The balance accepted: the Last Stand reached in 1.9% of campaigns, cleared 1 in
+  6.8 of those reached (17 clears; 95% range 1 in 4.5 to 1 in 10.7), a campaign won 48.7% of the time, and 1.87 cities
+  lost. The 2026-09-05 ruling had been made at a clear rate of 1 in 54.
+- **THE CLEAR RATE IS SOFT.** It rests on 17 clears in 116 Last Stands; its block standard deviation is 60% of the figure.
+- **`sim/analyse_siege_dose.py`'S `BASE` STILL HOLDS THE THREE RULES AT THEIR SEPTEMBER VALUES**, as ruled: this change
+  does not touch it. Its own comment says so ("THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED"). **That is
+  now misleading to a reader who runs the script to reproduce the design document's figures**: run as it ships, it gives
+  the held figures below, not the document's. `sim/README.md` says so beside its table.
+
+### THE MEASUREMENT
+
+Run 2026-10-29 between 14:04 and 14:12 on commit `17366a34d`, with `sim/analyse_siege_dose.py`'s `measure` imported (the
+instrument the 2026-09-07 run used), over six disjoint blocks of 1,000 seeds (0 to 5,999), at tier 1, `No tree`,
+`triage`, static surges every 120 days for 5, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for
++4% of a tier width, Siege damage live. Two sets, run in parallel. **Also running on the machine**: the continuous
+integration runner's compile, eight `cl.exe` processes in the Services session, most likely the one started by
+merging #1341's header comment. No Unreal window; the editor lock was free. The campaigns are seeded, and a second run
+of the first set reproduced every figure exactly.
+
+| | 2026-09-07 | **Shipped rules, 2026-10-29** | Three rules held at September values |
+| :-- | --: | --: | --: |
+| Last Stand reached | 45.9% | **1.9%** (116) | 15.5% (928) |
+| Cleared, per Last Stand reached | 1 in 24.6 | **1 in 6.8** (17) | 1 in 21.1 (44) |
+| Earned Cataclysm dungeon opens | 54.9% | **99.0%** (5,937) | 82.7% |
+| Earned dungeon won | 40.4% | **49.0%** (2,907) | 40.0% |
+| Campaign won at all | 24.1% | **48.7%** (2,924) | 33.8% |
+| Cities lost, of 25 | 13.61 | **1.87** | 8.21 |
+| Sieges created per campaign | 8.99 | **6.62** | not taken |
+
+The three rules: an ordinary dungeon leaves after it hits its city (`dungeon_persists_after_resolve` False since
+2026-10-12), a Quest dungeon's timer hits its city (`quest_timer_hits_city` True since 2026-10-13), and a hit is sized
+by all of a dungeon's floors (`hit_scales_with_natural_floors` True since 2026-10-13). Shipped-rules block standard
+deviations: 0.32 on the earned share, 0.62 on its win rate, 0.20 on the Last Stand share, 0.10 on cities lost, 0.60 on
+won at all, 0.24 on Sieges, and 8.75 points on the clear rate, whose six blocks run 1 in 3.7 to 1 in 20; pooled 95%
+interval (Wilson) 1 in 4.5 to 1 in 10.7.
+
+### THE RULING
+
+The coordinating session, 2026-10-29: #2615 approved with both runs; the paragraph takes the shipped figures and states
+the three rules' values and the run's date and commit; the held run goes here as a partial attribution with the rest
+unattributed; `analyse_siege_dose.py`'s `BASE` is not changed here, and this entry says whether that misleads. Then,
+after the owner's answer above: record that the near-fatal ruling is superseded, quoting the answer, with the figures it
+rests on, and nowhere describe that ruling as untouched by the new figures.
+
+### WHAT WAS CHANGED
+
+- `docs/Cataclysm_GDD_v2.md`: the measured paragraph gives the new figures, the commit and date, the three rules, the
+  figures it replaces and the partial attribution. The resolution paragraph and the clear-rate paragraph give the new
+  spreads. The sentence on the near-fatal ruling now records that the owner superseded it, with the answer and the
+  figures, and the opening statement that reaching the Last Stand "is effectively the end of the run ... and that is
+  intended" now says that design is superseded. The history table's 2026-09-07 row is no longer marked as today, and a
+  2026-10-29 row is added.
+- `sim/README.md`: the same, in its table, its preface (whose two caveats, that the figures predate the board-empty
+  surge and `death_resolves_dungeon`, no longer apply, since both are in the shipped rules measured), its history table,
+  and its description of the Last Stand, which said the owner ruled a near-unwinnable fight the intended shape.
+- `sim/cataclysm_sim/engine.py`: a record block headed "RE-MEASURED ON 2026-10-29 FOR ISSUE #2615", a superseded note on
+  the 2026-09-07 block, which still read as current; the docstring's opening "NEAR-FATAL BY DESIGN" and a 2026-09-06
+  block's statement that the ruling stood are dated and marked superseded; the closing instruction not to tune the four
+  constants towards a fairer fight is dated, and says the owner did not rule on tuning them either way; and a comment in
+  `_empire_day` that called the fight near-fatal no longer does.
+- `tools/tests/test_the_last_stand_figures_are_consistent.py`: its anchors bracket the new block; "five", "seven" and
+  "ten" are number words; "met in about two campaigns in a hundred" is a recognised claim for 1% to 3%; and four
+  statements of the 2026-09-07 run are added to those that may not be live, one of them the old sentence on the
+  near-fatal ruling. That one is the only place the word the owner's answer retired still appears, as a string the test
+  forbids.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_the_last_stand_figures_are_consistent.py`. The break, in the new record block in `engine.py`:
+`Last Stand **reached in 1.9%**` becomes `Last Stand **reached in 2.9%**` (once in the file). Predicted named_failures,
+exactly one:
+
+- `tools/tests/test_the_last_stand_figures_are_consistent.py::test_the_headline_figures_match_the_simulation_record`
+
+It shows the test now reads the new block: a document and a record that disagree on this run fail.
+
+Run 2026-10-29 in a git-archive copy of `e3688264b`, the commit that registered it. Printed: "PROVED: 1 failed, 7 passed
+in 0.11s | restored: 8 passed in 0.07s". named_failures, exactly the one registered, with "the design document states
+the reached share as 1.9; sim/cataclysm_sim/engine.py records 2.9".
+
+### EVIDENCE
+
+Python of record at `5067c858d`, before the owner's answer was recorded: "7099 passed, 8 skipped"; JUnit tests 7107,
+failures 0, errors 0, skipped 8. Again at `3839b24f6`, after it: "7099 passed, 8 skipped"; JUnit tests 7107, failures 0,
+errors 0, skipped 8. The count does not move because no test was added; one was changed. ruff: "All checks passed!" A
+regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0) both times.
+
+### NO GENRE SOURCE
+
+None. This is a re-measurement of the project's own simulation.
+
+---
+
 ## 2026-10-29 — The simulation sizes a Fallen City by the ordinary dungeons it absorbed, as the design and the game do (#1341)
 
 **Affects:** `sim/cataclysm_sim/engine.py` (`Simulation._fall` counts what it absorbs and passes the depth to
