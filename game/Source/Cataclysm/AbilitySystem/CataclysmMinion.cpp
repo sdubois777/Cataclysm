@@ -40,6 +40,9 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "GameFramework/Pawn.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPowerScore.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Data/CataclysmDataRows.h"
@@ -95,21 +98,28 @@ namespace
 	 * level".
 	 *
 	 * THE FALLBACK IS NOT A CORNER CASE. A character's level lives on its
-	 * player state, and an ENEMY summoner has none -- so every minion summoned
-	 * by anything but a player takes this path.
+	 * player state, and an ENEMY summoner has none -- which is what the two
+	 * branches below the player's answer.
 	 * `UCataclysmEquipmentComponent` asks the same question the same way.
 	 *
-	 * AND WHAT IT FALLS BACK TO IS A PREVIEW CONTROL, WHICH IS FILED RATHER
-	 * THAN FIXED HERE. `UCataclysmPlayerClassStats::ChosenLevel` is
-	 * documented as "which level the console variable asks for", meant for
-	 * previewing class stats in the editor rather than describing anything
-	 * in the world. Nothing in the game reaches it today: both places that
-	 * create a minion are player weapon skills, at
-	 * `CataclysmSkillTemplates.cpp` lines 3022 and 3263, and a player pawn
-	 * has a player state. Issue #1702 carries it, and it has no fix yet
-	 * because an enemy has no level of its own to use instead.
+	 * AN ENEMY SUMMONER IS AT ITS TIER'S REFERENCE LEVEL. Issue #1702, ruled
+	 * 2026-10-29, a judgement following a precedent: the design raises a
+	 * minion by "the summoner's level" and an enemy has none, so it takes the
+	 * level `UCataclysmPowerScore::ReferenceCharacter` gives the difficulty
+	 * tier, which is how the Corrupted Stalker takes its own. No shipped path
+	 * reaches this today: risen imps need their curser or killer to hold a
+	 * stat only a player's stat line carries.
+	 *
+	 * A MINION SUMMONER IS AT ITS OWN SUMMONER'S LEVEL, asked the same way.
+	 *
+	 * AND ANYTHING ELSE FALLS BACK TO A PREVIEW CONTROL, which only test
+	 * scaffolding reaches today: a bare actor standing in for a summoner.
+	 * `UCataclysmPlayerClassStats::ChosenLevel` is documented as "which level
+	 * the console variable asks for", meant for previewing class stats in the
+	 * editor rather than describing anything in the world. Kept, ruled the
+	 * same day, because every minion figure those tests assert is at it.
 	 */
-	int32 LevelOfSummoner(const AActor* Summoner)
+	int32 LevelOfSummoner(const AActor* Summoner, int32 Depth = 0)
 	{
 		if (const APawn* Pawn = Cast<const APawn>(Summoner))
 		{
@@ -118,6 +128,20 @@ namespace
 			{
 				return State->GetCharacterLevel();
 			}
+		}
+		if (const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Summoner))
+		{
+			// A CHAIN OF MINIONS IS FOLLOWED, NOT LOOPED: a summoner that names
+			// itself, or a ring, stops at the preview level below.
+			if (Depth < 8 && Minion->Summoner != Summoner)
+			{
+				return LevelOfSummoner(Minion->Summoner, Depth + 1);
+			}
+		}
+		else if (Summoner && Summoner->IsA<ACataclysmEnemyCharacter>())
+		{
+			return UCataclysmPowerScore::ReferenceCharacter(
+				ACataclysmGameMode::DifficultyTierIn(Summoner)).Level;
 		}
 		return UCataclysmPlayerClassStats::ChosenLevel();
 	}

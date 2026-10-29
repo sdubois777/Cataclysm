@@ -2,6 +2,62 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — An enemy summoner's minion is raised at its tier's reference level, not a preview console variable (#1702)
+
+**Affects:** `LevelOfSummoner` in `CataclysmMinion.cpp` (two branches and its comment), and one new test in
+`CataclysmEnemyModifierTests.cpp`. Fixes [#1702](https://github.com/sdubois777/Cataclysm/issues/1702).
+
+### SAID FIRST
+
+- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NO SHIPPED PATH I TRACED REACHES THE ENEMY BRANCH TODAY.** Traced at `38e1c6c99`: a risen imp's curser must hold
+  `curse_death_raises_imp` and a necrosis killer `necrosis_kill_raises_imp_seconds`, both read through `StatForSkill`, and an
+  enemy's ability system is never given a stat line, so neither can be an enemy; the necrosis rise is also only called
+  from `ACataclysmPlayerCharacter`, with the player as killer. The Corrupted Stalker's one entry uses a Greataxe, which has
+  no summon skill. The other callers of `ACataclysmMinion::Spawn` are player skills, the player's skill gadget and
+  skill trap, and two set bonuses (Tyrant's Minion, the Warhound) whose commander or wearer was not traced further than
+  this: the Stalker's eighteen pieces carry no set.
+
+### What it was
+
+A minion's damage and health are its type row's base raised by its summoner's level. `LevelOfSummoner` read a level
+only from a player state and otherwise fell back to `UCataclysmPlayerClassStats::ChosenLevel()`, the
+`Cataclysm.PlayerLevel` console variable meant for previewing class stats.
+
+### The ruling, 2026-10-29
+
+| Summoner | Level | Why |
+|---|---|---|
+| A player | its player state's level, unchanged | |
+| An enemy | `UCataclysmPowerScore::ReferenceCharacter(tier).Level`, the tier from `ACataclysmGameMode::DifficultyTierIn` | **a judgement following a precedent:** the design raises a minion by "the summoner's level" (`docs/Cataclysm_GDD_v2.md`, the minion table: "The type's own base, raised by the summoner's **level**") and an enemy has none; the Corrupted Stalker takes its own level this way |
+| A minion | its own summoner's level, followed up a chain of at most eight | |
+| Anything else | the preview level, kept | only test scaffolding reaches it, a bare actor standing in for a summoner, and every minion figure those tests assert is at it |
+
+### How it is checked
+
+`Cataclysm.EnemyModifiers.AnEnemySummonersMinionTakesTheTiersReferenceLevel` (in the enemy modifier tests, where a
+player with a player state is made; proposed under `Cataclysm.Command.`): the tier at 5 and the preview level at 50,
+both at console priority. An Imp an enemy summons hits for the type's base raised at tier 5's reference level, not at
+50. **CONTROL:** an Imp the player summons hits for the base raised at 50, the player's level. It prints a line
+beginning "SUMMONER LEVEL".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1 |
+| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Python | of record, with JUnit, and ruff |
+| The "SUMMONER LEVEL" line | quoted as printed |
+| P1, the enemy branch removed | the test fails: the enemy's Imp is raised at 50 |
+| P2, the tier ignored (always tier 1) | the test fails: the enemy's Imp is raised at tier 1's reference level |
+
+### Run
+
+Not run yet.
+
+---
+
 ## 2026-10-29 — The tests command moves the previous automation log aside before it builds (#1533)
 
 **Affects:** `tools/unreal_build.py` (`move_aside_when_released`, `MOVED_ASIDE_PREFIX`, `MOVED_ASIDE_KEPT`, the
