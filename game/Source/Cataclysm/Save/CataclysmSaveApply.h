@@ -10,6 +10,7 @@ class ACataclysmDroppedItem;
 class ACataclysmEnemyCharacter;
 class ACataclysmPlayerCharacter;
 class UWorld;
+class UCataclysmEmpireRun;
 
 /** What putting a floor back actually did. */
 struct CATACLYSM_API FCataclysmFloorRestored
@@ -135,4 +136,31 @@ public:
 	 * field existed reads back as.
 	 */
 	static bool MaximumsInto(AActor& Actor, float MaxHealth, float MaxEnergyShield);
+
+	/**
+	 * Puts a saved run back into a run object, so that it advances exactly as
+	 * the run it was saved from. Issue #753, its first step, ruled 2026-10-29.
+	 *
+	 * REFUSED, AND NOTHING CHANGED, when the record does not hold the 25 cities
+	 * at their own ids, or when its dungeons and their timers disagree --
+	 * `UCataclysmEmpireRun::DungeonsAgreeWithTimers`, the check the writer makes
+	 * before it writes them. `OutWhy` says which.
+	 *
+	 * THE ORDER: the modifier pool is filled, as
+	 * `UCataclysmGameInstance::BeginEmpireRun` fills it; `Begin` builds the map,
+	 * the clock and the scheduler, with the record's mode, rung and tier and a
+	 * seed of 0; then every saved value is written over what `Begin` made. Each
+	 * city's saved fields go onto the rebuilt map, which supplies what is not
+	 * saved (names, rings, lanes, the central city). The streams are put back with
+	 * `Initialize` from their saved positions, which continues each sequence;
+	 * their starting seeds are overwritten, and nothing reads those.
+	 *
+	 * IT TOUCHES NOTHING OUTSIDE THE RUN. `Begin` creates the run's own map,
+	 * clock and scheduler with the run as their owner and sets its fields; it
+	 * logs nothing and raises nothing.
+	 *
+	 * NOT COVERED: choosing which run to load at start-up, the character record
+	 * and the floor record, each of which needs the owner's decisions (#753).
+	 */
+	static bool RunInto(const UCataclysmRunSave& Record, UCataclysmEmpireRun& Run, FString& OutWhy);
 };

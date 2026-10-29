@@ -275,6 +275,16 @@ bool FCataclysmSaveGather::SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
 	// already generated. See `UCataclysmRunSave::RandomStreamSeed`.
 	Record.RandomStreamSeed = Run.Stream.GetCurrentSeed();
 
+	// AND WHAT A RESTORE NEEDS THAT NOTHING ABOVE HOLDS, issue #753: the day of
+	// the last surge, which the empty-board and city-fall surges measure from,
+	// and where the run's other two streams had got to, with the Corrupted
+	// Stalker's seed. The three were made from the seed the run began with,
+	// which is not kept, so none can be worked out again on a restore.
+	Record.LastSurgeDay = Surges->LastSurgeDay;
+	Record.CataclysmStreamSeed = Run.CataclysmStream.GetCurrentSeed();
+	Record.ModifierStreamSeed = Run.ModifierStream.GetCurrentSeed();
+	Record.CorruptedStalkerSeed = Run.CorruptedStalkerSeed;
+
 	return true;
 }
 

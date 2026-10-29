@@ -207,5 +207,9 @@
 		"Death",
 		"War",
 		"Pestilence"
-	]
+	],
+	"LastSurgeDay": 96,
+	"CataclysmStreamSeed": 1357924680,
+	"ModifierStreamSeed": -246813579,
+	"CorruptedStalkerSeed": 864209753
 }
