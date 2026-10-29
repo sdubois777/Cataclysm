@@ -102,7 +102,7 @@ two-handed weapons, which no test builds.
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each |
-| Whole Unreal suite | `development`'s measured total + 2, 0 failed |
+| Whole Unreal suite | 4370 / 0: `development`'s 4368, measured by window w95 on the tests `3a0fedef8` holds (`b4d8526e9` and `728168628` after it change no C++, and `development`'s Unreal run at `3a0fedef8` succeeded), + 2 |
 | Python | of record, with JUnit, and ruff |
 | The "CHARACTER RESTORE" and "CHARACTER REFUSAL" lines | quoted as printed |
 | P1, `CharacterInto` puts the allocation on through `SetPassiveAllocation` | the restore test fails on "the figure ... is put back as saved" (0 restored, 3 saved) and on "every value the record holds"; whether the stat line also differs is not predicted; the CONTROL holds |
