@@ -42,7 +42,7 @@ line beginning "SACRIFICE HEAL".
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | 4354 / 0: `development`'s 4353, and one test is added |
+| Whole Unreal suite | 4354 / 0: `development` at `d84004057` (#2590, #2236) is 4353, and one test is added; the branch moved onto it as `fix/infernal-sacrifice-heals-through-the-healing-rules-1` |
 | Python | of record, with JUnit, and ruff |
 | The "SACRIFICE HEAL" line | quoted as printed |
 | P1, the direct write restored | the test fails: with the reduction it regains the full quarter |
