@@ -89,6 +89,13 @@ The eleven controls and the count test pass with the break in.
 Run 2026-10-29 in a git-archive copy of `716baf08e`, the commit that registered it. Printed: "PROVED: 13 failed, 190
 passed in 45.79s | restored: 203 passed in 47.34s". named_failures, exactly the thirteen registered.
 
+### EVIDENCE
+
+The proof ran at a commit id from before the branch was moved onto `6d7bacf79`; the move left every file's change the
+same (per-file zero-context patch ids compared, eight files). Python of record at `f93488f01`: "7076 passed, 8
+skipped"; JUnit tests 7084, failures 0, errors 0, skipped 8 (the base's 7059 and the 25 new tests). ruff: "All checks
+passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
 ### NO GENRE SOURCE
 
 None. This brings the simulation into line with a rule the design document and the game already state.
