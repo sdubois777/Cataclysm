@@ -14,8 +14,8 @@ test file `game/Source/Cataclysm/Tests/CataclysmSaveRunRestoreTests.cpp`. Issue
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Window w94 below stopped at the build, on a name clash in the new test file; the two
-  helpers were renamed, and nothing has been built since.
+- **BUILT AND RUN: window w95 below passed every registered figure, and all three proofs were PROVED, each first
+  differing on day 0 as registered.** Window w94 before it stopped at the build, on a name clash in the new test file.
 - **THIS IS A FIRST STEP AND THE GAME STILL LOADS NOTHING.** `RunInto` exists and nothing in the game calls it.
   `ACataclysmGameMode::StartPlay` still begins a new run with two new identifiers. **Not covered, each needing the
   project owner's decisions:** choosing which run and character to load at start-up (a new-game flow, a continue
@@ -116,6 +116,30 @@ every call was ambiguous, and the format-string error (C7595) followed from it. 
 `InternalValues` and `VisibleValues`. No other file failed to compile; nothing in `RunInto` or the save changed.
 
 The next window is registered as above.
+
+**Window w95 (lock `dungeon-w95`, `feat/a-run-record-can-be-put-back-into-a-run-1` at `8768f9bbe`, on `a41b79991`,
+2026-10-29) passed.** `development`'s CI run at `a41b79991` and its last Unreal run, at `17366a34d`, succeeded; no run
+was in progress or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory
+read 10,597 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.26.cpp` (w94's failed build had compiled the rest of the change) |
+| The restore test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The refusal test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "RUN RESTORE" line | quoted as printed | "after 60 days played, over 200 days compared the restored run first differs on day -1 in its internal values and on day -1 in what is visible; the twin run on day -1 (-1 is never); 4 surges fired, last on day 241; 15 dungeons" |
+| The "RUN REFUSAL" line | quoted as printed | "a record with 15 dungeons and 14 timers was refused ("15 dungeons stand and 14 timers count down"); the run handed over is unchanged; the same record whole was accepted" |
+| Whole Unreal suite | 4368 / 0 | `4368 tests performed, 4368 succeeded, 0 failed`; declared 4368, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7773`, peak 8,085 |
+| Python (JUnit) | of record | 7107 tests, 0 failures, 0 errors, 8 skipped ("7099 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, `RunInto` does not restore `NextSurgeDay` | fails on the internal values, first on day 0; the CONTROL holds | failed first on day 0 ("surge 1 1 91.0000 1" live against "surge 1 1 0.0000 1" restored); the CONTROL held; the visible part first differed on day 1, also failing "and on everything visible", which was not predicted either way; restored passed. **PROVED** |
+| P2, `LastSurgeDay` not gathered | the same, first on day 0 | failed first on day 0 (the last surge day 1 live against 0 restored); the CONTROL held; the visible part never differed in the 200 days; restored passed. **PROVED** |
+| P3, `ModifierStreamSeed` not gathered | the same, first on day 0 | failed first on day 0 (the modifier stream's position); the CONTROL held; the visible part first differed on day 31, also failing "and on everything visible", not predicted either way; restored passed. **PROVED** |
+
+**WHAT THE PROOFS SHOW BEYOND THEIR REGISTRATION.** Each missing value is a real difference in the run, and only two of
+the three became visible within 200 days: a lost `NextSurgeDay` on day 1, a lost modifier stream position on day 31,
+and a lost `LastSurgeDay` not at all in this run, which surged on day 1 and so had a last surge day of 1. That is why
+the comparison includes the internal values: a test of the visible part alone would have passed P2.
 
 ---
 
