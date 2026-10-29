@@ -44,7 +44,9 @@ the game's own function read before and after.
 | `nova_damage_of_missing_health` | `UCataclysmNova::Step`, flat 20, nobody else in the world | 0 at three fifths | 1,200 at two fifths |
 
 The nova is read at three fifths rather than full health because at full health nothing is missing and the nova is
-worth nothing whatever the stat says.
+worth nothing whatever the stat says, so a zero there would prove nothing about the condition. At three fifths of the
+probe's 10,000 health, 4,000 is missing, so a row whose condition was ignored would give 800 there. Reading 0 is what
+shows the condition refused the row.
 
 ### NOT YET COMPILED OR RUN
 

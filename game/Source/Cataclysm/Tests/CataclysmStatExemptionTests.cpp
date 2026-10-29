@@ -7011,7 +7011,9 @@ namespace CataclysmStatExemptionTest
 	 *
 	 * READ AT THREE FIFTHS AND NOT AT FULL HEALTH, because at full health
 	 * nothing is missing and the nova is worth nothing whatever the stat says.
-	 * At three fifths 4,000 is missing and the row does not hold; at two fifths
+	 * At three fifths 4,000 is missing and the row does not hold, so a row whose
+	 * condition was ignored would give 800 there and the 0 is the condition's
+	 * doing; at two fifths
 	 * 6,000 is missing and 20% of it is 1,200. Nothing else stands in the world,
 	 * so the nova strikes nobody and `Step` returns what it was worth.
 	 */
