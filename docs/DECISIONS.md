@@ -39,7 +39,7 @@ line beginning "BRAND TAG".
 | Figure | Registered |
 |---|---|
 | The new test alone | 1 / 1 |
-| Whole Unreal suite | `development`'s measured total + 1, 0 failed |
+| Whole Unreal suite | 4353 / 0: `development` at `7ca6edb06` (#2587) is 4352, and one test is added; the branch moved onto it as `fix/an-infernal-brands-explosion-takes-its-tag-1` |
 | Python | of record, with JUnit, and ruff |
 | The "BRAND TAG" line | quoted as printed |
 | P1, the removal deleted | the test fails: the tag is still carried after the explosion |
