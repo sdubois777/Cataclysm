@@ -13,7 +13,8 @@ its class comment); `FCataclysmSaveGather::ProgressFrom` in `CataclysmSaveGather
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NOT YET PASSED IN UNREAL.** Window w91 below stopped at the round-trip test alone, on a fault in that test's own
+  set-up; it was corrected, and nothing has run since.
 - **NOTHING LOADS A RUN, SO NOTHING READS THESE BACK.** [#753](https://github.com/sdubois777/Cataclysm/issues/753),
   "The game saves itself and cannot load what it saved", is open, and `CataclysmSaveApply.h` has no function for a
   run. This change makes the file hold what a loader will need; "load" in its tests means reading the record back from
@@ -89,7 +90,23 @@ line beginning "WRITTEN PROGRESS".
 
 ### Run
 
-Not run yet.
+**Window w91 (lock `dungeon-w91`, `fix/a-saved-run-keeps-what-the-player-achieved` at `a0e89b78b`, on `6cbc60b13`,
+2026-10-29) STOPPED at the round-trip test alone. Nothing after it ran.** `development`'s CI run at `6cbc60b13` and its
+last Unreal run, at `235370ad5`, succeeded; no run was in progress or queued, the lock was free, no build or editor
+process ran, and free memory read 10,955 MB immediately before. **One pre-check did not hold: pull request #2610 was
+open.** It is the enchantment session's Python-only #1385, which the coordinating session said it was holding until
+this window merged, and the lock was taken on that. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 73 actions, 63 files compiled` |
+| `ARunsProgressSurvivesTheRecordAndItsJson` alone | 1 / 1 | `1 tests performed, 0 succeeded, 1 failed`: "Expected 'set-up: and read back' to be not null", then "a Run record was refused: the schema version is below the first real one -- the record says it is version 0; the first real version is 1" |
+
+**THE FAULT WAS THE TEST'S.** A record made with `NewObject` has `SchemaVersion` 0, and reading JSON refuses anything
+below version 1; the writer stamps `UCataclysmRunSave::SchemaVersionNow` (`CataclysmSaveWriter.cpp`) and the test did
+not. The test now stamps it the same way before writing. No assertion changed.
+
+The next window is registered as above.
 
 ---
 

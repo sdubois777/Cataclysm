@@ -2386,6 +2386,9 @@ bool FCataclysmSaveWriterProgressRoundTripTest::RunTest(const FString&)
 		return false;
 	}
 
+	// STAMPED AS THE WRITER STAMPS IT (`UCataclysmSaveWriter::WriteTheRunRecord`). A record made here is version 0,
+	// and reading refuses anything below the first real version, which window w91 found (#1374).
+	FromPlayed->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
 	FString Json;
 	FString Error;
 	if (!TestTrue(TEXT("set-up: the played record is written to JSON"), FCataclysmSaveStorage::ToJson(FromPlayed, Json, Error)))
