@@ -1744,8 +1744,9 @@ class Simulation:
         **RE-MEASURED ON 2026-10-29 FOR ISSUE #2615**, on `17366a34d`, with
         `sim/analyse_siege_dose.py`'s `measure` imported, over six disjoint
         blocks of 1,000 seeds at the settings above, and with the three rules
-        that instrument holds at their September values set as `TuningConfig`
-        ships them: an ordinary dungeon leaves after it hits its city, a Quest
+        that instrument held at their September values until issue #2620 set
+        as `TuningConfig` ships them: an ordinary dungeon leaves after it hits
+        its city, a Quest
         dungeon's timer hits its city, and a hit is sized by all of a dungeon's
         floors. With NO empire tree:
 

@@ -2,6 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — The Siege dose script runs the rules the model ships, and reproduces the design document's Last Stand figures (#2620)
+
+**Affects:** `sim/analyse_siege_dose.py` (`base_config` no longer holds three rules at their September values; every
+figure its docstring, comments and printed text state re-measured or marked); `sim/tests/test_analysis_scripts.py`
+(one test added, two docstrings and one settings check corrected); `sim/README.md` (the sentence #2619 added);
+`sim/cataclysm_sim/engine.py` (one sentence of the #2615 record block, tense only); this file. Python and documents only.
+
+### SAID FIRST
+
+- **THE SCRIPT AS IT SHIPS NOW REPRODUCES THE DESIGN DOCUMENT'S FIGURES.** At `CATACLYSM_SIEGE_DOSE_TRIALS=1000` its
+  `measure` on its own `BASE` gives, for seeds 0 to 999 and 1,000 to 1,999, earned dungeon opened 99.0% and 98.8%,
+  won 48.3% and 49.1%, Last Stand reached 1.7% and 2.0%, campaign won 48.2% and 48.6%, cities lost 1.89 and 1.85 --
+  blocks 0 and 1 of the #2615 measurement, to every digit.
+- **NO SEPTEMBER VARIANT IS KEPT IN THE SCRIPT.** No test or document cites one: the tests in
+  `test_analysis_scripts.py` assert no campaign share, and every document quoting the September figures quotes them as
+  measured, in `docs/DECISIONS.md` and the design document's history table, where they stay.
+- **THE SCRIPT STATED THREE THINGS THAT WERE FALSE INDEPENDENTLY OF THE RULES, AND ALL THREE ARE CORRECTED:**
+  - it named two test files, `sim/tests/test_the_siege_prose_in_the_dose_script_is_true.py` and
+    `sim/tests/test_siege_dose_curves.py`, that do not exist and have never existed in git history; the checks they
+    describe are in the `analyse_siege_dose.py` section of `test_analysis_scripts.py`;
+  - it printed "(NOT the TuningConfig default of 4)"; the default has been 8 dungeons every 90 days since 2026-10-13,
+    and the line now reads the default from the config;
+  - it said the curves at 1,000 campaigns a block are "34,000 campaigns in all"; its ladders and candidates are
+    nineteen cells, so 38,000.
+- **ONE PARAGRAPH IS MARKED, NOT RE-MEASURED**: the timings of `test_analysis_scripts.py` with and without this
+  section (10.1, 23.3 and 27.7 seconds, and the 13.2 and 7.9 derived from them), which are 2026-09-06 figures. The
+  script's own run times were re-measured.
+
+### THE RULING
+
+The coordinating session, 2026-10-29, from the design and not an owner question: move `BASE` to the shipped values of
+the three rules so the script as it ships reproduces the figures the design document states; re-measure every figure
+the script's docstring, comments or printed text states and correct each, or say where it stands that it was not
+re-measured; keep the September figures where they already are and no September variant in the script unless a test
+or document cites one; update the `sim/README.md` sentence #2619 added; and the usual evidence.
+
+### WHAT WAS RE-MEASURED
+
+On 2026-10-29 at `a41b79991` with this branch's `BASE`, seeds 0 to 999 unless stated:
+
+| Statement | Was | Now |
+| :-- | :-- | :-- |
+| The two readings of won per Last Stand reached | 1 in 16.0 against 1 in 26.6 | **1 in 1.9 against 1 in 4.2**, on 17 Last Stands |
+| Why they differ | "half the campaigns that open the earned boss go on to reach a Last Stand" | **11 of the 17 campaigns that reached a Last Stand had opened the earned boss first**; of the 990 that opened it, 11 (1.1%) reached one |
+| Share of days the player is free to choose | about 8% (#1351's measurement) | **4.2%**; #1351's figure is kept as its own |
+| One run of the script at 3 / 4 / 5 / 12 campaigns a block | 3.95 / 5.25 / 6.29 / 11.2 s | **2.03 / 2.51 / 3.43 / 8.81 s**, no compile running |
+| The two-readings test's own batch, seeds 0 to 149 | -- | 3 Last Stands, all 3 also opened the earned boss, so the test still has what it needs |
+
+The days-to-fall figures (25 / 39 / 55 / 70, and 14 / 23 / 34 / 47 at the old growth) are arithmetic on the Siege
+constants, which none of the three rules touches; the tests that recompute them pass unchanged.
+
+### THE GUARD
+
+`test_the_base_runs_every_rule_the_model_ships` compares every field of `base_config()` with `TuningConfig()` and
+allows only the nine settings the design document's balance figures are taken at to differ (tier, surge mode, surge
+interval, surge size, resolve floor ratio, escalation, craft days, craft gain, tree). A rule held back again fails by
+name.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_analysis_scripts.py` (it needs no git repository). The break puts one held rule back: the line
+`dungeon_persists_after_resolve=True,` is inserted after `craft_power_gain_frac=0.04,` in `base_config` (that line is
+once in the file). Predicted named_failures, exactly one:
+
+- `sim/tests/test_analysis_scripts.py::test_the_base_runs_every_rule_the_model_ships`
+
+The other checks on this script assert no campaign share, so a changed rule is not predicted to fail any of them.
+
+### NO GENRE SOURCE
+
+None. This brings a measurement script into line with the model it measures.
+
+---
+
 ## 2026-10-29 — A run record can be put back into a run, which then advances exactly as the run it was saved from (#753, first step)
 
 **Affects:** `FCataclysmSaveApply::RunInto` in `game/Source/Cataclysm/Save/CataclysmSaveApply.h` and `.cpp` (new);
