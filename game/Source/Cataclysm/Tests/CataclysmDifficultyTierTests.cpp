@@ -95,8 +95,8 @@ CATACLYSM_TEST(FCataclysmTierWithNoGameModeTest,
 		return false;
 	}
 	const int32 Was = Variable->GetInt();
-	ON_SCOPE_EXIT { Variable->Set(Was); };
-	Variable->Set(0);
+	ON_SCOPE_EXIT { Variable->Set(Was, ECVF_SetByConsole); };
+	Variable->Set(0, ECVF_SetByConsole);
 
 	TestEqual(TEXT("no game mode answers the lowest tier"),
 		ACataclysmGameMode::DifficultyTierFor(nullptr),
@@ -120,8 +120,8 @@ CATACLYSM_TEST(FCataclysmTierFromTheGameModeTest,
 		return false;
 	}
 	const int32 Was = Variable->GetInt();
-	ON_SCOPE_EXIT { Variable->Set(Was); };
-	Variable->Set(0);
+	ON_SCOPE_EXIT { Variable->Set(Was, ECVF_SetByConsole); };
+	Variable->Set(0, ECVF_SetByConsole);
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
@@ -174,7 +174,7 @@ CATACLYSM_TEST(FCataclysmTierConsoleOverrideTest,
 		return false;
 	}
 	const int32 Was = Variable->GetInt();
-	ON_SCOPE_EXIT { Variable->Set(Was); };
+	ON_SCOPE_EXIT { Variable->Set(Was, ECVF_SetByConsole); };
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
@@ -194,22 +194,22 @@ CATACLYSM_TEST(FCataclysmTierConsoleOverrideTest,
 
 	// ZERO MEANS "USE THE GAME MODE'S", so the console variable is a sentinel
 	// rather than a second copy of the default.
-	Variable->Set(0);
+	Variable->Set(0, ECVF_SetByConsole);
 	TestEqual(TEXT("zero defers to the game mode"),
 		ACataclysmGameMode::DifficultyTierFor(Mode), 2);
 
-	Variable->Set(8);
+	Variable->Set(8, ECVF_SetByConsole);
 	TestEqual(TEXT("and a set value beats it"),
 		ACataclysmGameMode::DifficultyTierFor(Mode), 8);
 
 	// A console variable is typed by hand while playing, and a tier of 40 would
 	// make armour worth almost nothing without saying so.
-	Variable->Set(40);
+	Variable->Set(40, ECVF_SetByConsole);
 	TestEqual(TEXT("above the highest tier is clamped to it"),
 		ACataclysmGameMode::DifficultyTierFor(Mode),
 		ACataclysmGameMode::HighestDifficultyTier);
 
-	Variable->Set(-3);
+	Variable->Set(-3, ECVF_SetByConsole);
 	TestEqual(TEXT("a negative reads as unset, so the game mode answers"),
 		ACataclysmGameMode::DifficultyTierFor(Mode), 2);
 	return true;
@@ -250,7 +250,7 @@ CATACLYSM_TEST(FCataclysmTierReachesARealHitTest,
 		return false;
 	}
 	const int32 Was = Variable->GetInt();
-	ON_SCOPE_EXIT { Variable->Set(Was); };
+	ON_SCOPE_EXIT { Variable->Set(Was, ECVF_SetByConsole); };
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!World)
@@ -307,7 +307,7 @@ CATACLYSM_TEST(FCataclysmTierReachesARealHitTest,
 
 	const auto DamageTakenAtTier = [&](int32 Tier) -> float
 	{
-		Variable->Set(Tier);
+		Variable->Set(Tier, ECVF_SetByConsole);
 		const float Before = HealthNow();
 		UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Defender, 10'000.0f);
 		return Before - HealthNow();

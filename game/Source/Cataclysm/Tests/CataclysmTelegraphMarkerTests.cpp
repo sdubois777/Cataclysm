@@ -943,7 +943,7 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 	}
 
 	const FString Original = Variable->GetString();
-	ON_SCOPE_EXIT { Variable->Set(*Original, ECVF_SetByCode); };
+	ON_SCOPE_EXIT { Variable->Set(*Original, ECVF_SetByConsole); };
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
@@ -958,7 +958,7 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 		return false;
 	}
 
-	Variable->Set(TEXT("22C9D6"), ECVF_SetByCode);
+	Variable->Set(TEXT("22C9D6"), ECVF_SetByConsole);
 
 	ACataclysmTelegraphMarker* Overridden = ACataclysmTelegraphMarker::ShowCircle(
 		Caster, FVector::ZeroVector, /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);
@@ -978,7 +978,7 @@ bool FCataclysmTelegraphMarkerColourCanBeOverriddenLive::RunTest(const FString&)
 
 	// A TYPO PUTS THE DESIGN BACK rather than leaving a marker black or
 	// refusing to draw the warning at all. This reads a value a person typed.
-	Variable->Set(TEXT("nonsense"), ECVF_SetByCode);
+	Variable->Set(TEXT("nonsense"), ECVF_SetByConsole);
 
 	ACataclysmTelegraphMarker* Fallback = ACataclysmTelegraphMarker::ShowCircle(
 		Caster, FVector(1000.0f, 0.0f, 0.0f), /*RadiusCm=*/3.5f * M, /*Seconds=*/1.4f);

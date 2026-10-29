@@ -1184,24 +1184,24 @@ CATACLYSM_TEST(FCataclysmChosenLevelIsClamped,
 	}
 
 	const int32 Restore = Level->GetInt();
-	ON_SCOPE_EXIT { Level->Set(Restore, ECVF_SetByCode); };
+	ON_SCOPE_EXIT { Level->Set(Restore, ECVF_SetByConsole); };
 
 	// WRITTEN THROUGH THE CONSOLE VARIABLE AND NOT THROUGH THE C++ VARIABLE,
 	// because a console variable keeps a copy of the value beside whatever it
 	// references and assigning to the other one leaves the two disagreeing.
-	Level->Set(0, ECVF_SetByCode);
+	Level->Set(0, ECVF_SetByConsole);
 	TestEqual(TEXT("level zero is raised to one"),
 		UCataclysmPlayerClassStats::ChosenLevel(), 1);
 
-	Level->Set(-50, ECVF_SetByCode);
+	Level->Set(-50, ECVF_SetByConsole);
 	TestEqual(TEXT("and so is a negative level"),
 		UCataclysmPlayerClassStats::ChosenLevel(), 1);
 
-	Level->Set(9999, ECVF_SetByCode);
+	Level->Set(9999, ECVF_SetByConsole);
 	TestEqual(TEXT("and a level past the end is lowered to the maximum"),
 		UCataclysmPlayerClassStats::ChosenLevel(), UCataclysmClassStats::MaxLevel);
 
-	Level->Set(20, ECVF_SetByCode);
+	Level->Set(20, ECVF_SetByConsole);
 	TestEqual(TEXT("and a level inside the range is left alone"),
 		UCataclysmPlayerClassStats::ChosenLevel(), 20);
 

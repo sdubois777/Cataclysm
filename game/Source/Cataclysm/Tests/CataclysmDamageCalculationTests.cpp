@@ -1009,13 +1009,13 @@ CATACLYSM_TEST(FCataclysmResistancePenaltyReachesThePlayerTest,
 		// PUT BACK WHATEVER IT WAS, because the console variable is global and
 		// every other test in the run reads it through
 		// ACataclysmGameMode::DifficultyTierFor.
-		Tier->Set(Was, ECVF_SetByCode);
+		Tier->Set(Was, ECVF_SetByConsole);
 		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
 	};
 
 	// AN ENEMY FIRST, so the player figure below is evidence of the rule
 	// rather than of the tier being set at all.
-	Tier->Set(8, ECVF_SetByCode);
+	Tier->Set(8, ECVF_SetByConsole);
 
 	AActor* Enemy = World->SpawnActor<AActor>();
 	UCataclysmAbilitySystemComponent* EnemyAbilities =
@@ -1053,12 +1053,12 @@ CATACLYSM_TEST(FCataclysmResistancePenaltyReachesThePlayerTest,
 
 	// AND THE TIER IS WHAT DECIDES IT, not the fact of being a player. Without
 	// this a penalty hard-coded to 75 would pass every line above.
-	Tier->Set(1, ECVF_SetByCode);
+	Tier->Set(1, ECVF_SetByConsole);
 	TestEqual(TEXT("the same player at difficulty tier 1 is penalised nothing"),
 		UCataclysmDamageCalculation::ResistancePenaltyFor(PlayerAbilities),
 		0.0f, 0.001f);
 
-	Tier->Set(5, ECVF_SetByCode);
+	Tier->Set(5, ECVF_SetByConsole);
 	TestEqual(TEXT("and 30 at difficulty tier 5"),
 		UCataclysmDamageCalculation::ResistancePenaltyFor(PlayerAbilities),
 		30.0f, 0.001f);

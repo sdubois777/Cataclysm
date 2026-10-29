@@ -2,6 +2,92 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — Every console variable a test writes is written at console priority, so no test passes by the order tests run in (#1470)
+
+**Affects:** 54 writes in nine Unreal test files, now at `ECVF_SetByConsole`; one comment in `CataclysmTestWorld.h`;
+and a new Python test, `tools/tests/test_console_variables_in_tests_are_written_at_console_priority.py`. Test code only.
+Fixes [#1470](https://github.com/sdubois777/Cataclysm/issues/1470).
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w83 below passed every registered figure, and both scripted runs came out as registered.**
+- **IT WAS WIDER THAN THE ISSUE NAMED.** #1470 named `Cataclysm.DifficultyTier`. `Cataclysm.CooldownResetRoll` has the
+  same fault: `Cataclysm.Enchantments.*` and `Cataclysm.SkillAssignment.*` wrote it at code priority and pass only
+  because they sort before `Cataclysm.Triggers.*`, which writes it at console priority. And the scan found 54 writes
+  below console priority, not the ten counted when the issue was read: `CataclysmEnemyBehaviourTests.cpp` writes three
+  more variables (a chase speed and the Brute's two cooldowns) with a plain `Set`.
+
+### What it was
+
+Unreal remembers the priority a console variable was last set at and silently discards a later write at a lower one,
+and automation tests run in name order in one process. So a test writing at code priority (`ECVF_SetByCode`, which a
+plain `Set(value)` is) works only while no test sorting before it has written the same variable at console priority.
+No game code writes any of these variables; the one console variable game code writes, the floor override, it writes
+at console priority.
+
+### What changed
+
+Ruled by the coordinating session on 2026-10-29: every console variable write in `game/Source/Cataclysm/Tests/` is at
+`ECVF_SetByConsole`, each restore at the same priority. By file: `CataclysmCharacterLevelTests.cpp` 6,
+`CataclysmDamageCalculationTests.cpp` 4, `CataclysmDifficultyTierTests.cpp` 11, `CataclysmEnchantmentEffectTests.cpp` 5,
+`CataclysmEnemyBehaviourTests.cpp` 16, `CataclysmPassiveTreeTests.cpp` 2, `CataclysmPlayerClassStatsTests.cpp` 5,
+`CataclysmSkillAssignmentTests.cpp` 2, `CataclysmTelegraphMarkerTests.cpp` 3. No assertion changed.
+
+**THE RULE.** The new Python test finds every `->Set(` whose receiver is a name the file declares as an
+`IConsoleVariable*`, or a `FindConsoleVariable(...)` or `AsVariable()` call written in place, and fails on any without
+`ECVF_SetByConsole`. It found 210 such writes on 2026-10-29 and also fails if it finds fewer than 200, so a scan that
+stopped finding them cannot pass on nothing. Proved with `prove_guard`, one write in `CataclysmDifficultyTierTests.cpp`
+put back to `ECVF_SetByCode`: "PROVED: 1 failed, 1 passed | restored: 2 passed", the failure
+`test_every_console_variable_a_test_writes_is_written_at_console_priority`.
+
+### Scripted evidence that the order no longer matters, and why it is not a proof
+
+A green run proves nothing here, because the tests were green before. So the tier tests that write the variable are
+renamed to sort after `Cataclysm.Drop.`, as `Cataclysm.DropZ.Difficulty.*` and
+`Cataclysm.DropZ.Damage.TheResistancePenaltyReachesAPlayerAndNotAnEnemy`, and the prefix `Cataclysm.Drop` is run, which
+takes the Drop tests first. **These are scripted runs, not guard proofs:** the rename has to be in both halves of a
+proof, so the restored half runs without the renamed tests and proves nothing; only the first half is the evidence.
+
+| Run | Registered |
+|---|---|
+| S1, renamed, at console priority | the prefix passes, 0 failed |
+| S2, renamed, with the old code-priority writes | `TheConsoleVariableBeatsTheGameMode`, `AnArmouredDefenderTakesMoreDamageAtAHigherTier` and `TheResistancePenaltyReachesAPlayerAndNotAnEnemy` fail; the two tests that set 0, which the Drop tests' restore leaves in place, pass either way |
+
+**THE COOLDOWN-RESET TESTS GET NO SUCH RUN, AND WHY.** With their code-priority write ignored, those tests read the
+default roll of -1, which rolls at random, so a run would pass or fail by chance and show nothing about the cause.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Whole Unreal suite | 4354 / 0: `development` at `a01f2b7f6` (#2592) is 4354, and no Unreal test is added; the branch moved onto it as `test/console-variables-are-written-at-console-priority-1` |
+| Python | of record, with JUnit: 7037, `development`'s 7035 and the two in one new file; and ruff |
+| S1 and S2 | as above |
+
+### Run
+
+**Window w83 (lock `dungeon-w83`, `test/console-variables-are-written-at-console-priority-1` at `3c68183fc`, on
+`a01f2b7f6`, 2026-10-29) passed.** The lock was taken at 02:58 on a free-memory reading immediately before it of
+11,255 MB, after both of `development`'s runs at `a01f2b7f6` succeeded, with none in progress or queued, the lock free,
+no build or editor process, no open pull request. The lock was released before anything was written here. The move onto
+`a01f2b7f6` met only the top of this file; `CataclysmPlayerClassStatsTests.cpp`, which #2592 also changed, merged
+without a conflict (patch ids before and after `2573652043`).
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 72 actions, 62 files compiled` |
+| Whole Unreal suite | 4354 / 0 | `4354 tests performed, 4354 succeeded, 0 failed`; declared 4354, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7999`, peak 8,327 |
+| Python (JUnit) | 7037 | 7037 tests, 0 failures, 0 errors, 8 skipped ("7029 passed, 8 skipped"); ruff `All checks passed!` |
+| S1, renamed, at console priority | the prefix passes | with the edit in: "55 tests performed, 55 succeeded, 0 failed" |
+| S2, renamed, the old code-priority writes | the three named tests fail | with the edit in: "55 tests performed, 52 succeeded, 3 failed: TheResistancePenaltyReachesAPlayerAndNotAnEnemy, AnArmouredDefenderTakesMoreDamageAtAHigherTier, TheConsoleVariableBeatsTheGameMode" |
+
+Both runs used `prove_cpp_guard` for its build, run, restore and rebuild, so its summary words appear in the log ("NOT A
+PROOF" for S1, "PROVED" for S2); neither is a guard proof, for the reason above. Their restored halves ran the prefix
+without the renamed tests: "49 tests performed, 49 succeeded, 0 failed" both times.
+
+---
+
 ## 2026-10-29 — Two sentences that said nothing grants armour penetration now name the four rows that do (#1252)
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp` (the armour penetration entry of

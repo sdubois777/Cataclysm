@@ -294,7 +294,7 @@ namespace CataclysmPassiveTest
 			if (Variable)
 			{
 				Previous = Variable->GetString();
-				Variable->Set(ClassName, ECVF_SetByCode);
+				Variable->Set(ClassName, ECVF_SetByConsole);
 			}
 		}
 
@@ -302,7 +302,7 @@ namespace CataclysmPassiveTest
 		{
 			if (Variable)
 			{
-				Variable->Set(*Previous, ECVF_SetByCode);
+				Variable->Set(*Previous, ECVF_SetByConsole);
 			}
 		}
 
