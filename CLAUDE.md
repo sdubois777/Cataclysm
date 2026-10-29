@@ -35,15 +35,24 @@ python -m ruff check .                    # lint
 
 **"About 65 seconds" is what this line said until 2026-09-07, and it had not been
 true for a long time.** Measured that day: **4,745 tests in 349.8 seconds**, five
-minutes fifty, on a developer machine with two other sessions working on it. On
-the continuous integration runner the same suite takes longer still -- nine runs
-measured between 7m30s and 10m10s, which is why the job's cap was raised from ten
-minutes to thirty in [#1452](https://github.com/sdubois777/Cataclysm/pull/1452).
+minutes fifty, on a developer machine with two other sessions working on it. In
+continuous integration the same suite takes longer still -- nine runs measured
+between 7m30s and 10m10s, which is why the job's cap was raised from ten minutes
+to thirty in [#1452](https://github.com/sdubois777/Cataclysm/pull/1452).
 
-**Nobody knows why the runner is slower than a developer machine**, and nobody
-has run `pytest --durations` on either. That is issue #1451. One trap recorded
-there: the suite's run-to-run variation is larger than what a whole pull request
-contributes, so two total times cannot attribute growth to any change.
+**That job runs on GitHub's hosted `ubuntu-24.04` machine, not on this desktop**
+(`runs-on: ubuntu-latest` in `.github/workflows/ci.yml`); only the Unreal workflow
+uses the runner installed here. Measured on the same commit, `603f2efee`, on
+2026-10-29: **7035 passed, 8 skipped in 337.08 s on this desktop, and 7021
+passed, 22 skipped in 486.98 s on the hosted machine**, which skips 14 more
+because it has no Unreal install. `pytest --durations=40` here showed the 40
+slowest tests taking 62.9% of the per-test time, and
+`sim/tests/test_sweep_tier.py` the largest single file (issue #2602). The hosted
+job prints no per-test times. **This said "nobody knows why the runner is slower"
+and that nobody had run `pytest --durations`, until that measurement; issue
+#1451.** One trap recorded there: the suite's run-to-run variation is larger than
+what a whole pull request contributes, so two total times cannot attribute growth
+to any change.
 
 Those two are what continuous integration runs. `pytest` from the repository root
 collects `sim/tests/` and `tools/tests/` together. Running `sim/tests/` on its
