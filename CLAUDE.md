@@ -99,7 +99,10 @@ cd sim && python verify_scoring_port.py       # compare against the real source
 cd sim && python experiments.py               # full sweeps -- SLOW, see below
 ```
 
-`experiments.py` runs about 25,000 simulated campaigns and takes 20 minutes or
+`experiments.py` runs 31,820 or 33,920 simulated campaigns -- 33,920 when its
+calibration picks five or six dungeons per surge, 31,820 when it picks seven,
+because the preset comparison then runs at one surge size rather than two; the
+report's last line prints the count -- and takes 20 minutes or
 more — longer on a machine you are also working on, where it has been seen to
 take 40. Both figures are being revisited in issue #693, which proposes fewer
 campaigns.
