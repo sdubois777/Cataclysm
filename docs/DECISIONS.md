@@ -51,9 +51,19 @@ pytest tools/tests/test_a_log_capture_in_the_tests_flushes_first.py`. The break:
 
 and the two tests on made-up text pass with the break in.
 
-### NOT YET PROVED
+### THE PROOF, AS REGISTERED
 
-Recorded below when the proof has run.
+Run 2026-10-29 in a git-archive copy of `73d6aef4d`, the commit that registered it. Printed: "PROVED: 1 failed, 2
+passed in 2.28s | restored: 3 passed in 1.32s". named_failures, exactly the one registered:
+
+- `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py::test_every_log_capture_in_the_tests_flushes_before_it_reads`
+
+The two tests on made-up text passed with the break in, as predicted.
+
+### EVIDENCE
+
+Python of record at `73d6aef4d`: "7032 passed, 8 skipped"; JUnit tests 7040, failures 0, errors 0, skipped 8 (the base's
+7037 and the three new tests). ruff: "All checks passed!"
 
 ### NO GENRE SOURCE
 
