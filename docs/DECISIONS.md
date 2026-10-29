@@ -2,6 +2,162 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-29 — A policy that lets a city fall to keep crafting, measured beside triage (#1454)
+
+**Affects:** `sim/cataclysm_sim/policies.py` (one policy, `sacrifice_to_craft`, and one constant,
+`SACRIFICE_KEEPS_DISTANCE`, added and registered in `ALL`); `sim/tests/test_a_policy_sacrifices_a_city_to_keep_crafting.py`
+(new, four tests); `sim/README.md` ("seven ways to play" now eight); this file. Python and documents only.
+
+### SAID FIRST
+
+- **AT TIER 4 WITH THE EXPLORER TREE FULLY INVESTED, LETTING CITIES FALL TO CRAFT DOES NOT MAKE THE DUNGEONS
+  SURVIVABLE.** The idle share, all of it days when no dungeon on the board was safe to enter, is 35.9% and 34.1% under
+  `sacrifice_to_craft` against 35.8% and 34.1% under `triage`, in two blocks of 1,000 campaigns. The extra forge time
+  (about 2% of days rising to about 11%) comes out of days spent in dungeons, not out of idle days. For #1425's owner
+  question, this rules out the reading that a player who trades cities for crafting closes the gap at that investment.
+- **WHERE IT DOES CHANGE THE RESULT:** at tier 1 it wins more campaigns and loses more cities in both blocks, with no
+  tree (won 45.2% and 48.3% become 52.1% and 50.9%) and with the Explorer tree (64.0% and 65.5% become 69.6% and 69.4%).
+  At tier 4 with no tree the win share does not separate from triage's, and the earned Cataclysm dungeon opens less
+  often in both blocks (30.1% and 29.7% become 26.1% and 25.9%).
+- **THE NUMBERS WERE MEASURED WITH A COPY OF `policies.py` THAT DIFFERS FROM THE COMMITTED ONE BY ONE BLANK LINE** before
+  `ALL`, added afterwards for layout. The policy's code is the same.
+- **`CLAUDE.md` STILL SAYS "SEVEN WAYS TO PLAY"** in its layout table. It is not edited here; the coordinating session
+  has it.
+- **`experiments.py`'s `policy_spread` reads `ALL`, so the full report gains a row for the new policy.** No sweep was
+  run for this change, and no figure the report prints for the other seven policies is touched by it.
+- **`random_pick`'s docstring says "Never crafts". It does craft**, when nothing safe is standing and the player can
+  craft (`policies.py`, `random_pick`). Not changed here.
+
+### THE RULING
+
+The coordinating session, 2026-10-29, on the owner's own words quoted in issue #1454 (2026-09-07): a player "will have
+to decide when to sacrifice a city to craft and when not to". The policy is wanted; the rule for which city and when was
+left to this session, to be stated in plain words in the docstring and kept to one decision rule, not a search.
+
+### STEP 1: WHEN EACH POLICY CRAFTS, AND WHAT MAKES IT STOP
+
+Read from `policies.py` at `728168628`. "Can craft" is `Simulation.can_craft()`: materials at least `craft_material_cost`
+(40). "Safe" is a dungeon whose death chance is within `death_risk_tolerance` (0.35).
+
+| Policy | Crafts when | Stops crafting when |
+| :-- | :-- | :-- |
+| `random` (`random_pick`) | nothing safe is standing and it can craft | anything safe is standing |
+| `greedy_loot` | nothing safe is standing and it can craft | anything safe is standing |
+| `never_craft` | never | -- |
+| `always_craft` | whenever it can craft | it runs out of materials |
+| `nearest_deadline` | no endgame dungeon is open, nothing safe is standing, and it can craft | an endgame dungeon is open, or anything safe is standing |
+| `triage` | no endgame dungeon is open, it can craft, and either dungeons stand but none is safe, or no city is breached, it holds 1.5 times a craft's materials, and no safe dungeon whose timer costs its city something runs out within `craft_days` (12) | an endgame dungeon is open, a city is breached, such a safe dungeon is due within a craft, or materials fall under 1.5 times a craft, while something safe stands |
+| `lane_aware` | the same as `triage`, with "distance to defeat is still 3" in place of "no city is breached" | the same, with that change |
+| `sacrifice_to_craft` (new) | what `triage` does, and also whenever no endgame dungeon is open, it can craft, and every dungeon due within a craft (safe or not) stands on a city whose fall would leave at least two more falls before the Pillar | a dungeon is due within a craft on a city whose fall would leave fewer than two, and `triage` would not craft either |
+
+### STEP 2: THE RULE, AND WHY THIS ONE
+
+In plain words, as the docstring states it: do what `triage` does, and also go to the forge when `triage` would not, if
+the player has the materials for a craft and every dungeon due to hit during the craft stands on a city that, if it fell,
+would still leave at least two more cities to fall before the Cataclysm reaches the Pillar.
+
+"Two more cities" is `Empire.distance_to_defeat()` minus that city's `lane_criticality()`, compared with
+`SACRIFICE_KEEPS_DISTANCE = 2`. At the start of a campaign distance to defeat is 3, every Outpost's criticality is 1,
+every Bulwark's 2 and every Sanctuary's 3, so the rule lets any Outpost go and defends every Bulwark and Sanctuary; as
+cities fall it defends more of what is left. Each due dungeon is judged on its own, not the set of them falling together.
+
+Alternatives considered:
+
+- **Let a city go only when its fall costs nothing** (`lane_criticality` 0). Tried first. At the start of a campaign no
+  city has criticality 0, so it never let a city go; most of the extra forge time it measured came from crafting when
+  nothing was due, which is not the trade the owner described. Rejected.
+- **Let a city go when the player's power falls short of the dungeons by some margin.** Needs a threshold on a second
+  axis and reads the same power model the safety check already reads; it is a search over two quantities, not one rule.
+  Not built.
+- **Spend a fixed share of days at the forge whatever is due.** Decides how much to craft, not which city to give up, so
+  it does not answer the owner's question. Not built.
+
+Chosen: the distance rule. It is one comparison, it reads the quantity the run is lost on (falls left before the
+Pillar), and it is the owner's "when to sacrifice and when not to": spare a city whose loss the empire can absorb,
+defend one whose loss would bring the end near. The threshold 2 is a judgement, not derived: it keeps any sacrifice from
+leaving the run one fall from the Last Stand. No genre source settles it; see NO GENRE SOURCE.
+
+The policy is not added to the `SCORING_POLICIES` tuples in the three policy test files. Those test the scoring
+`triage` and `lane_aware` do; the new policy reaches that scoring only by calling `triage`, and
+`test_policies_see_sieges.py` runs its control-policy check over it, which passes because its own source names no
+siege helper.
+
+### STEP 3 AND 4: MEASURED BESIDE TRIAGE
+
+Measured 2026-10-29 at `728168628` with the policy added, 2,000 campaigns a world in two blocks (seeds 0 to 999 and
+1,000 to 1,999). Each world is the analysis script's own `base_config` (the shipped cadence and rules, 12 opening
+dungeons then 8 every 90 days) at the tier and tree shown, run through that script's day ledger (`_Ledger`) and policy
+wrapper (`ledger_policy`), so the idle split is the script's own. Rows: `analyse_surge_cadence.py`'s instruments. Idle is
+split as empty board / nothing survivable / declined; every idle day measured was "nothing survivable". Shares are of
+days survived.
+
+| Tier | Tree | Policy | Block | Idle (empty / nothing survivable / declined) | Forge | In a dungeon | Cities lost | Earned opened | Won |
+| --: | :-- | :-- | :-- | :-- | --: | --: | --: | --: | --: |
+| 1 | none | `triage` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 5.4% | 89.4% | 4.07 | 97.6% | 45.2% |
+| 1 | none | `triage` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 5.4% | 89.3% | 3.76 | 97.9% | 48.3% |
+| 1 | none | `sacrifice_to_craft` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 11.8% | 83.0% | 4.43 | 98.0% | 52.1% |
+| 1 | none | `sacrifice_to_craft` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 11.8% | 83.0% | 4.09 | 97.5% | 50.9% |
+| 1 | Explorer | `triage` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 37.3% | 52.8% | 0.92 | 99.9% | 64.0% |
+| 1 | Explorer | `triage` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 37.5% | 52.5% | 0.94 | 100.0% | 65.5% |
+| 1 | Explorer | `sacrifice_to_craft` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 46.8% | 44.0% | 1.65 | 99.9% | 69.6% |
+| 1 | Explorer | `sacrifice_to_craft` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 46.3% | 44.3% | 1.71 | 99.8% | 69.4% |
+| 4 | none | `triage` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 0.4% | 94.1% | 20.55 | 30.1% | 5.3% |
+| 4 | none | `triage` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 0.3% | 94.1% | 20.55 | 29.7% | 7.0% |
+| 4 | none | `sacrifice_to_craft` | 0-999 | 0.0% (0.0 / 0.0 / 0.0) | 6.2% | 88.6% | 21.42 | 26.1% | 6.8% |
+| 4 | none | `sacrifice_to_craft` | 1000-1999 | 0.0% (0.0 / 0.0 / 0.0) | 6.2% | 88.5% | 21.24 | 25.9% | 6.8% |
+| 4 | Explorer | `triage` | 0-999 | 35.8% (0.0 / 35.8 / 0.0) | 2.1% | 58.1% | 15.24 | 2.6% | 0.1% |
+| 4 | Explorer | `triage` | 1000-1999 | 34.1% (0.0 / 34.1 / 0.0) | 2.2% | 59.4% | 15.51 | 2.0% | 0.2% |
+| 4 | Explorer | `sacrifice_to_craft` | 0-999 | 35.9% (0.0 / 35.9 / 0.0) | 10.7% | 49.8% | 15.43 | 4.6% | 1.2% |
+| 4 | Explorer | `sacrifice_to_craft` | 1000-1999 | 34.1% (0.0 / 34.1 / 0.0) | 11.6% | 50.6% | 15.60 | 4.3% | 0.5% |
+
+"Explorer" is `TREE_EXPLORER_AS_DESIGNED`, every node bought. The `triage` rows reproduce the figures recorded for
+#1392 and #1425 on 2026-10-29 at `bca951517` to every digit.
+
+**Step 4, the tier-4 Explorer world through `analyse_board_empty_surge.py`'s instruments** (its `base_config` with the
+board-empty surge on, its `_Ledger` and `ledger_policy`), same blocks: every figure equals the cadence script's row above
+for both policies -- `sacrifice_to_craft` idle 35.9% and 34.1%, all of it nothing survivable, empty board 0.0%, declined
+0.0%; `triage` 35.8% and 34.1%. The board never emptied in this world, so the board-empty surge never fired and the two
+scripts measured the same campaigns.
+
+A standard error is not printed for these runs. Where this entry says two policies separate, both blocks of one lie on
+the same side of both blocks of the other; where they do not, it says so.
+
+### THE TESTS
+
+`sim/tests/test_a_policy_sacrifices_a_city_to_keep_crafting.py`, four tests, each on a hand-built board at tier 1 with no
+tree, surges switched off and the board cleared, so the only dungeon is the one the case is about: a Timed Basic dungeon
+due in one day, on a city whose defence is half the hit, so the hit fells it, and safe to enter, so `triage` answers it
+rather than crafting because it is stuck.
+
+- `test_it_is_registered_with_every_other_policy`: `ALL["sacrifice_to_craft"]` is the policy.
+- `test_it_crafts_while_a_city_it_can_spare_is_about_to_fall`: the city is an Outpost; `triage` answers the dungeon and
+  `sacrifice_to_craft` goes to the forge.
+- `test_control_it_defends_a_city_it_cannot_spare`: the same on a Bulwark; both answer the dungeon.
+- `test_without_the_materials_it_cannot_sacrifice_anything`: one material short of a craft; it answers the dungeon.
+
+`test_engine.py` runs every policy in `ALL` through a campaign, so it now runs this one too.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_a_policy_sacrifices_a_city_to_keep_crafting.py`. The break, in `policies.sacrifice_to_craft`:
+`crit.get(d.city_id, 0) >= SACRIFICE_KEEPS_DISTANCE` becomes `crit.get(d.city_id, 0) > SACRIFICE_KEEPS_DISTANCE` (once
+in the file), so an Outpost whose fall leaves exactly two falls is no longer spared. Predicted named_failures, exactly
+one:
+
+- `sim/tests/test_a_policy_sacrifices_a_city_to_keep_crafting.py::test_it_crafts_while_a_city_it_can_spare_is_about_to_fall`
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+### NO GENRE SOURCE
+
+None. The empire layer's trade of a city for crafting time is specific to this game; the rule and its threshold are a
+judgement, labelled as one above.
+
+---
+
 ## 2026-10-29 — A character record can be put back into a possessed player, with the figure its passive points were handed with (#753, character step)
 
 **Affects:** `FCataclysmSaveApply::CharacterInto` in `game/Source/Cataclysm/Save/CataclysmSaveApply.h` and `.cpp` (new);

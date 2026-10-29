@@ -686,6 +686,51 @@ def lane_aware(sim, dungeons):
     return best
 
 
+#: How many more cities must still stand between the Cataclysm and the Pillar
+#: after a city falls for `sacrifice_to_craft` to let that city go. Two means a
+#: sacrifice never leaves the run one fall from the Last Stand.
+SACRIFICE_KEEPS_DISTANCE = 2
+
+
+def sacrifice_to_craft(sim, dungeons):
+    """Triage, but willing to let a city fall to keep its time at the forge.
+
+    THE RULE, IN ONE SENTENCE. Do what `triage` does, and also go to the forge
+    when `triage` would not, if the player has the materials for a craft and
+    every dungeon due to hit during the craft stands on a city that, if it
+    fell, would still leave at least two more cities to fall before the
+    Cataclysm reaches the Pillar.
+
+    "Due to hit during the craft" is a dungeon whose timer runs out within
+    `craft_days` and whose timer costs its city something: an ordinary dungeon
+    that resolves, or a Quest dungeon whose timer hits its host. "Two more
+    cities" is `Empire.distance_to_defeat` after that city's fall, read through
+    `lane_criticality` (the drop its fall would cause); see
+    `SACRIFICE_KEEPS_DISTANCE`. At the start of a campaign that lets any
+    Outpost go and defends every Bulwark and Sanctuary; as cities fall, it
+    defends more of what is left. When nothing is due at all, the condition
+    holds and it crafts. Each due dungeon is judged on its own, not the set of
+    them falling together.
+
+    WHY IT EXISTS. Issue #1454. The project owner, 2026-09-07: a player "will
+    have to decide when to sacrifice a city to craft and when not to". No
+    other policy here makes that trade: `triage` and `lane_aware` stop crafting
+    whenever any dungeon is due within a craft, and `always_craft` crafts
+    whatever is due.
+    """
+    cfg = sim.cfg
+    if _endgame(dungeons) is None and sim.can_craft():
+        crit = sim.empire.lane_criticality()
+        distance = sim.empire.distance_to_defeat()
+        due = [d for d in dungeons
+               if (d.resolves or _quest_timer_hits(sim, d))
+               and d.resolve_in <= cfg.craft_days]
+        if all(distance - crit.get(d.city_id, 0) >= SACRIFICE_KEEPS_DISTANCE
+               for d in due):
+            return CRAFT
+    return triage(sim, dungeons)
+
+
 ALL = {
     "random": random_pick,
     "greedy_loot": greedy_loot,
@@ -694,4 +739,5 @@ ALL = {
     "nearest_deadline": nearest_deadline,
     "triage": triage,
     "lane_aware": lane_aware,
+    "sacrifice_to_craft": sacrifice_to_craft,
 }
