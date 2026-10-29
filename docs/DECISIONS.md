@@ -6,7 +6,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `sim/cataclysm_sim/policies.py` (a new `quest_dungeons_to_finish`, read by `triage` and `lane_aware`, and the
 two "THIS IS STALE AND IT IS ISSUE #1388" comments removed); `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py`
-(new, seven tests); this file. **It changes how the simulation plays**: both policies steer differently between Quest
+(new, six tests: four functions, two of them run for both policies); this file. **It changes how the simulation plays**: both policies steer differently between Quest
 dungeons. Python and documents only.
 
 ### SAID FIRST
@@ -98,6 +98,28 @@ break, in `quest_dungeons_to_finish`: `cfg.cataclysms_required() or d.source in 
 
 The boss-open test, the control and the fallback test pass with the break in. The control's last line still gets None,
 because one active Cataclysm finished also opens the boss.
+
+### THE PROOF, AS REGISTERED
+
+Run 2026-10-29 in a git-archive copy of `ffb3b1440`, the commit that registered it. Printed: "PROVED: 2 failed, 4
+passed in 0.22s | restored: 6 passed in 0.09s". named_failures, exactly the two registered, each with "Chaos is
+finished, so clearing another of its quest dungeons brings the boss no nearer and must carry no bonus".
+
+**WHAT IT DID NOT SHOW.** Both failures stop at the assertion on `quest_dungeons_to_finish`, before the assertion on which
+dungeon the policy picks. So it proves the helper is checked, not that the policy-level assertion can fail.
+
+### A SECOND PROOF, REGISTERED BEFORE IT RUNS
+
+Same command, in a git-archive copy of the commit that registers this. The break puts the old reading back at both
+policy sites: `remaining = quest_dungeons_to_finish(sim, d)` becomes
+`remaining = max(1, cfg.quest_objectives_required - sim.objectives)` (twice in the file, once in each policy); the helper
+is left as it is. Predicted named_failures, the same two:
+
+- `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py::test_a_quest_dungeon_from_an_unfinished_cataclysm_is_worth_more[triage]`
+- `sim/tests/test_policies_value_a_quest_dungeon_by_its_own_cataclysm.py::test_a_quest_dungeon_from_an_unfinished_cataclysm_is_worth_more[lane_aware]`
+
+each failing at the policy's choice, because both twins then get the same bonus and a tie keeps the first. The boss-open
+test passes (it expects the first), and so do the control and the fallback test, which call only the helper.
 
 ### NO GENRE SOURCE
 
