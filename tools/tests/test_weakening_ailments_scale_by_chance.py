@@ -12,7 +12,8 @@ to 100%, magnitude above that through `ailment_application` in
 roll-over rule the design document's own table states.
 
     Cripple reaches its 80% cap at 267% chance, Weaken at 400%
-    eleven gear pieces can carry the affix, one each, for 165%
+    eleven gear pieces can carry the affix, one each, for 165% with a
+      one-handed weapon and 180% with a two-handed one (issue #1575)
     so affixes alone reach 0.6 and 0.4 of the cap, and one to four of the
       forty-five sockets take each past it
 
@@ -110,8 +111,12 @@ def test_it_says_why_one_affix_is_enough(document):
 def test_it_gives_the_measured_figures(document):
     """The claim is quantitative and the numbers are what make it checkable.
     `sim/analyse_weakening_ailments.py` prints all of them."""
-    for figure in ("Eleven pieces can carry a chance to apply, one each, "
-                   "for 165%",
+    for figure in ("with a one-handed weapon. Eleven pieces can carry a "
+                   "chance to apply, one each, for 165%",
+                   # ISSUE #1575: A TWO-HANDED WEAPON DOUBLES ITS OWN CHANCE, as
+                   # it doubles every affix rolled on it, so the total differs
+                   # by weapon and the document has to say which it gives.
+                   "the same eleven pieces carry 180%",
                    "Cripple reaches its 80% cap at 267% and Weaken at 400%"):
         assert figure in document, (
             f"the design document no longer states {figure!r}. Issue #300's "
