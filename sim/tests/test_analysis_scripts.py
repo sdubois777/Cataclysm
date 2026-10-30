@@ -3590,7 +3590,11 @@ def test_refusing_the_last_stand_really_refuses_it(throughput_run):
 
     _, ns = throughput_run
     cfg = ns["base_config"](tier=4)
-    s = ns["_Ledger"](cfg, seed=1)
+    # SEED 0 SINCE 2026-10-30. Seed 1 stopped opening the Last Stand at tier 4
+    # when each active Cataclysm began sending quest dungeons at its tier-1
+    # rate (`Simulation.quest_chance`): it now ends on day 483 in the earned
+    # dungeon. Seed 0 opens the Last Stand and runs to the last day refusing it.
+    s = ns["_Ledger"](cfg, seed=0)
     r = s.run(ns["ledger_policy"](policies.ALL["triage"],
                                   refuse_last_stand=True))
     assert s.last_stand is not None, (
