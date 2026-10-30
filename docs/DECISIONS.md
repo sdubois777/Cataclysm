@@ -219,6 +219,32 @@ uncommitted, which also compiles it alone: `Build: Succeeded - 5 actions, 2 file
 Module.Cataclysm.11.cpp`. The other files the proofs break (`CataclysmSaveGather.cpp`, `CataclysmDungeonGameMode.cpp`)
 already include that header, and P1 compiled `CataclysmDungeonGameMode.cpp` alone without error.
 
+**Window w105 (lock `dungeon-w105`, `906ffc9b6`, 2026-10-30) PASSED EVERY STEP, AND ALL SIX PROOFS PROVED AS
+REGISTERED.** The first Python suite of record at `906ffc9b6` was ended at 54% at about 15:25, with no result line: the
+enchantment session's own measurement was stopped at 15:25:16 by a kill that matched every pytest process on the machine
+by name, as that session and the coordinating session reported; this run's log stops at that minute. It was run again:
+7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run output, measured
+at 15:36:25: `development` at `08bdfae16` with its CI run a success, its last Unreal run (at `2082da17b`) a success; no
+run in progress or queued; the lock free; no build or editor process; no pull request open; no simulation or pytest
+process; 11,307 MB of physical memory free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the include was compiled before the window) |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each, with the same lines as w103 |
+| Whole Unreal suite | `4383 tests performed, 4383 succeeded, 0 failed`; declared 4383, gap 0, as registered; memory peak 8,147 MB, final 7,865 MB |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED. Broken: 13 performed, 1 failed, `ADungeonWalksCountersComeBackFromALoad`, one assertion, 'every counter of the walk came back' with "debt 0" where "debt 7"; restored 13 of 13 |
+| P2 | PROVED. Broken: 1 failed, `APlayersThrallComesBackUnderThePlayersCommand`, four assertions: commanded, the player's side, the Second Self, the reserve "30 ... but it was 0"; its line "saved max 100.0 health 60.0, loaded max 100.0 health 60.0 ... Fervour 20 saved, 20 loaded; the other an enemy"; restored 13 of 13 |
+| P3 | PROVED. Broken: 1 failed, `ACreaturesHeldSoulsAndTheFedBossComeBack`, one assertion: the boss "max 949.0 damage 105.0" saved, "max 1349.0" loaded, its souls holder unchanged; restored 13 of 13 |
+| P4 | PROVED. Broken: 1 failed, `AWalksCreatureStateComesBackFromALoad`, one assertion: "standing 0.65" saved, "standing 1.00" loaded, every other field the same; restored 13 of 13 |
+| P5 | PROVED. Broken: 2 failed, `ACreaturesHeldSoulsAndTheFedBossComeBack` (both creatures' damage 0.0 and 12.0 where 45.5 and 47.0) and `ARestoredCreatureHitsAsHardAsItDid` (damage 0.0 in both halves, armour and maximum as saved); restored 13 of 13 |
+| P6 | PROVED. Broken: 1 failed, `ARestoredCreatureHitsAsHardAsItDid`, one assertion, 'an illusion is not saved as a creature'; its line "the illusion SAVED, the creature beside it saved"; restored 13 of 13 |
+
+Each proof failed the tests registered for it and no other, each for its registered reason, and its restored half had
+no failed assertion. P3's saved maximum is 949.0 rather than 549.0 because the test's set-up uses the same restore
+call the break changed, so the set-up gave the void's health once and the load once more.
+
 ---
 
 ## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)
