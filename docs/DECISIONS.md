@@ -19,7 +19,8 @@ opening; comments that said nothing loads a save, in `CataclysmSaveApply.h`, `Ca
 
 ### SAID FIRST
 
-- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **BUILT AND RUN: window w99 below passed every registered figure, and all three proofs were PROVED, each failing
+  exactly the tests registered.** Window w98 before it stopped at the build, on one name in the new test file.
 - **FOUR DEPARTURES FROM THE PROPOSAL THAT WAS RULED, each found while building:**
   - **`DeathProcessed` writes the run record only, not the character record as well.** Processing a death changes
     nothing the character record holds: the days are the run's, and the health is in the run record's floor
@@ -150,7 +151,34 @@ released before anything was written here.
 inside a test that says `using namespace CataclysmSaveLoadTest` the name was ambiguous. It is renamed `FLoadScene`. No
 other file failed to compile.
 
-The next window is registered as above.
+The next window is registered as above. Before it, the branch was compiled once with `python tools/unreal_build.py
+build` and no lock, at the coordinating session's request: `Build: Succeeded - 5 actions, 1 file compiled:
+Module.Cataclysm.26.cpp`, at `77feb3c89`.
+
+**Window w99 (lock `dungeon-w99`, `feat/a-saved-character-and-its-run-load-at-the-console-3` at `772df9e23`, on
+`553c8c72b`, 2026-10-30) passed.** `development`'s CI run at `553c8c72b`, which was still running at the first check and
+was waited for, succeeded, and its last Unreal run, at `50d5b1366`, succeeded, every head since changing documents or
+Python only; no run was in progress or queued, the lock was free, no build or editor process ran, no pull request was
+open, and free memory read 11,740 MB immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 41 actions, 38 files compiled` |
+| The four new tests alone | 1 / 1 each | `1 tests performed, 1 succeeded, 0 failed`, each |
+| The "LOAD ROUND TRIP" line | quoted as printed | "Loaded (character ... and run ... were put back: day 12, 0 creatures, placed where it was saved); held values match; the same slots; name kept; run id kept" |
+| The "LOAD REFUSALS" line | quoted as printed | "no character record: Refused, and nothing was changed (... could not be read: there is nothing in that slot); no run named: Loaded with a new run (... because the character record names no run); an empty run slot: Loaded with a new run (... because there is no run record in 'Run_...'); a run slot that is not JSON: Loaded with a new run (... could not be read: what is in the slot is not a JSON object, a Run record could not be parsed as a JSON object); a run written by a newer build: Refused, and nothing was changed (... at version 99 where this build reads version 1; it is refused, and so is the character, because beginning a new run would replace the character's run and lose the newer one); a run saved inside an empire dungeon: Refused, and nothing was changed (the run was saved inside empire dungeon 3, and loading inside a dungeon is not built yet: a character who died there would stand up without paying the death's days)" |
+| The "LOAD DEAD" line | quoted as printed | "Loaded (... no empire run, 0 creatures, placed where it was saved); dead after the load, last trigger 'the character dying', 2 synchronous writes; standing after standing up, last trigger 'a death having been paid for'" |
+| The "DEATH PROCESSED" line | quoted as printed | "entered on day 2, the death charged 5 days, the record holds day 7 and health 510; the last trigger was 'a death having been paid for'" |
+| Whole Unreal suite | 4374 / 0 | `4374 tests performed, 4374 succeeded, 0 failed`; declared 4374, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7766`, peak 8,074 |
+| Python (JUnit) | of record | 7114 tests, 0 failures, 0 errors, 8 skipped ("7106 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the load skipped | the round trip on "every value saved came back" only; the unreadable-run test on "the character came back" in its three new-run cases | exactly those: the held values DIFFER, the slots, the name and the run id kept; "the character came back" 20 where 9 was expected, in the three new-run cases; the other two tests passed; the CONTROL held. **PROVED** |
+| P2, no `DeathProcessed` | the dead test on the trigger after standing up; the death-processed test on the last write, the day and the health | exactly those: the trigger 6 (the death's) where 8 was expected, in both; the record held day 1 where 7 was expected, and health 0. **PROVED** |
+| P3, `CurrentRunId` not written | the round trip on the outcome, every value, the slots and the run id, the name kept; the dead test | exactly those: "Loaded with a new run ... because the character record names no run; held values DIFFER; OTHER slots; name kept; run id LOST"; the dead test failed on the outcome, the death, both triggers, the synchronous write and the slots; the other two passed; the CONTROL held. **PROVED** |
+
+**TWO DETAILS NOT PREDICTED, neither a fault.** The text that is not JSON was read as JSON that is not an object
+(`NotARecord`), not as `NotValidJson`; the test checks only that the report says it could not be read. And a fresh test
+player is at level 20, not 1, which is the figure P1's failures printed.
 
 ---
 
