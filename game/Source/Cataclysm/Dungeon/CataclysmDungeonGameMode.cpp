@@ -78,6 +78,7 @@
 #include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
 #include "HAL/IConsoleManager.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
@@ -14671,7 +14672,7 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 }
 
 bool ACataclysmDungeonGameMode::ResumeEmpireDungeon(int32 DungeonId, int32 Floor, bool bOnTheDarkFloorSaved,
-													int32 DarkFloorFellFromSaved)
+													int32 DarkFloorFellFromSaved, const FCataclysmSavedWalk* Walk)
 {
 	// REFUSED, CHANGING NOTHING, before anything is bound. A walk already under way is not left here, as entering
 	// leaves it: leaving runs the days that walk owes, and a load must not run any day the record has not.
@@ -14694,7 +14695,110 @@ bool ACataclysmDungeonGameMode::ResumeEmpireDungeon(int32 DungeonId, int32 Floor
 	bOnTheDarkFloor = bOnTheDarkFloorSaved;
 	DarkFloorFellFrom = bOnTheDarkFloorSaved ? DarkFloorFellFromSaved : 0;
 	GoToFloor(Floor);
+
+	// AND THE WALK'S COUNTERS, AFTER THE FLOOR IS BUILT: its start added to some of them, and the saved counts
+	// already hold that floor's additions. Issue #753, Group 1.
+	if (Walk)
+	{
+		RestoreWalkState(*Walk);
+	}
 	return true;
+}
+
+FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
+{
+	FCataclysmSavedWalk Walk;
+	Walk.MarchOfProgressCommandersKilled = MarchOfProgressCommandersKilled;
+	Walk.PactBuffNow = PactBuffNow;
+	Walk.PactBuffNext = PactBuffNext;
+	Walk.PactCurseCounts = PactCurseCounts;
+	Walk.PactsTaken = PactsTaken;
+	Walk.BloodDebtPaid = BloodDebtPaid;
+	Walk.BloodPriceStacks = BloodPriceStacks;
+	Walk.InfernalBeaconStacks = InfernalBeaconStacks;
+	Walk.AbyssalRiftSuccesses = AbyssalRiftSuccesses;
+	Walk.RawSewageStacks = RawSewageStacks;
+	Walk.PestilentBeaconsLeftStanding = PestilentBeaconsLeftStanding;
+	Walk.WastingSicknessStacks = WastingSicknessStacks;
+	Walk.StarvationCurseMovementStacks = StarvationCurseMovementStacks;
+	Walk.StarvationCurseHealthStacks = StarvationCurseHealthStacks;
+	Walk.ChaosTouchedStacks = ChaosTouchedStacks;
+	Walk.NothingIsForgottenHealth = NothingIsForgottenHealth;
+	Walk.NothingIsForgottenDamage = NothingIsForgottenDamage;
+	Walk.NothingIsForgottenHealthGiven = NothingIsForgottenHealthGiven;
+	Walk.NothingIsForgottenDamageGiven = NothingIsForgottenDamageGiven;
+	Walk.TrickOrTreatPickups = TrickOrTreatPickups;
+	Walk.TrickOrTreatRaised = TrickOrTreatRaised;
+	Walk.EchoChamberCopiesMade = EchoChamberCopiesMade;
+	Walk.EchoChamberHitsOnThePlayer = EchoChamberHitsOnThePlayer;
+	Walk.WildMagicTriggered = WildMagicTriggered;
+	Walk.WildMagicLast = WildMagicLast;
+	Walk.SoulHarvestGiven = SoulHarvestGiven;
+	return Walk;
+}
+
+void ACataclysmDungeonGameMode::RestoreWalkState(const FCataclysmSavedWalk& Walk)
+{
+	MarchOfProgressCommandersKilled = Walk.MarchOfProgressCommandersKilled;
+	PactBuffNow = Walk.PactBuffNow;
+	PactBuffNext = Walk.PactBuffNext;
+	// A LIST OF THE WRONG LENGTH WAS NOT SAVED BY THIS BUILD and is left as the floor start made it.
+	if (Walk.PactCurseCounts.Num() == PactCurseCounts.Num())
+	{
+		PactCurseCounts = Walk.PactCurseCounts;
+	}
+	PactsTaken = Walk.PactsTaken;
+	BloodDebtPaid = Walk.BloodDebtPaid;
+	BloodPriceStacks = Walk.BloodPriceStacks;
+	InfernalBeaconStacks = Walk.InfernalBeaconStacks;
+	AbyssalRiftSuccesses = Walk.AbyssalRiftSuccesses;
+	RawSewageStacks = Walk.RawSewageStacks;
+	PestilentBeaconsLeftStanding = Walk.PestilentBeaconsLeftStanding;
+	WastingSicknessStacks = Walk.WastingSicknessStacks;
+	StarvationCurseMovementStacks = Walk.StarvationCurseMovementStacks;
+	StarvationCurseHealthStacks = Walk.StarvationCurseHealthStacks;
+	if (Walk.ChaosTouchedStacks.Num() == ChaosTouchedStacks.Num())
+	{
+		ChaosTouchedStacks = Walk.ChaosTouchedStacks;
+	}
+	NothingIsForgottenHealth = Walk.NothingIsForgottenHealth;
+	NothingIsForgottenDamage = Walk.NothingIsForgottenDamage;
+	NothingIsForgottenHealthGiven = Walk.NothingIsForgottenHealthGiven;
+	NothingIsForgottenDamageGiven = Walk.NothingIsForgottenDamageGiven;
+	TrickOrTreatPickups = Walk.TrickOrTreatPickups;
+	TrickOrTreatRaised = Walk.TrickOrTreatRaised;
+	EchoChamberCopiesMade = Walk.EchoChamberCopiesMade;
+	EchoChamberHitsOnThePlayer = Walk.EchoChamberHitsOnThePlayer;
+	WildMagicTriggered = Walk.WildMagicTriggered;
+	WildMagicLast = Walk.WildMagicLast;
+	SoulHarvestGiven = Walk.SoulHarvestGiven;
+
+	ApplyRestoredWalkEffects();
+}
+
+void ACataclysmDungeonGameMode::ApplyRestoredWalkEffects()
+{
+	// THE MAXIMUM-HEALTH RULES' FOUR STEPS (Pact of Temptation, Wasting Sickness, Starvation Curse, Chaos Touched),
+	// then Blood Debt and Infernal Beacons: each compares its counter with its mirror and, when they differ, rebuilds
+	// the player's whole floor effect set. Each was read on 2026-10-30 and moves no timer. NOT CALLED: Blood Price,
+	// Raw Sewage, Abyssal Rifts and the steps that advance a clock or act on the player's position, which would make
+	// this an extra beat; they catch up on the next beat, as after any floor start.
+	//
+	// A COUNTER RESTORED TO WHAT THE FLOOR START GAVE IT IS ALREADY APPLIED: the floor start's
+	// `ApplyFloorRulesKeepingHealth` runs `WriteTheMaximumHealthRulesBack`, whose steps set the mirrors from the
+	// counters the floor start had just added to.
+	WriteTheMaximumHealthRulesBack();
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	if (Player && AbilitySystem)
+	{
+		StepBloodDebt(Player, AbilitySystem);
+		StepInfernalBeacons(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::LeaveEmpireDungeon()

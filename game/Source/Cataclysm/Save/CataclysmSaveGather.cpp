@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -177,9 +178,18 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		// Trick or Treat pair, an Unstable Portal's Warden. Each exists because of a rule's own state
 		// -- a clock, a count, a pair -- and that state is not saved, so the creature is not either.
 		// Written back it would be an ordinary creature of its kind, with a brain, that could be hurt
-		// and paid for. NO PATH IN PLAY RESTORES A FLOOR TODAY (`FCataclysmSaveApply::FloorInto` has
-		// test callers only); this guards the day one does. Issues #1820 and #41.
+		// and paid for. `Cataclysm.LoadCharacter` restores a floor since 2026-10-30 (#753); until then
+		// this said no path in play did. Issues #1820 and #41.
 		if (Creature->bRaisedByARule)
+		{
+			continue;
+		}
+
+		// NOR A CREATURE THE PLAYER COMMANDS: a thrall `UCataclysmCommand::Subjugate` took, the Second Self among
+		// them. The record holds no owner and no team, so written back it was an ordinary creature of its kind,
+		// hostile, and in a dungeon one of the floor's own (#751 to #753's Group 1). It is lost on a load, as a
+		// summoned minion is; #753's Group 2 gives a saved creature the role that keeps it.
+		if (Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Creature)))
 		{
 			continue;
 		}

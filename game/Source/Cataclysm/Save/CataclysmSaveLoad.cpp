@@ -247,7 +247,8 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			// THE DUNGEON ENTERED AGAIN AT THE SAVED FLOOR, then the floor's creatures and drops put back onto what
 			// it built. Asked of nothing that can refuse: every refusal of `ResumeEmpireDungeon` is asked above.
 			if (!DungeonMode->ResumeEmpireDungeon(SavedRun->CurrentDungeonId, SavedRun->Floor.Floor,
-												  SavedRun->Floor.bOnTheDarkFloor, SavedRun->Floor.DarkFloorFellFrom))
+												  SavedRun->Floor.bOnTheDarkFloor, SavedRun->Floor.DarkFloorFellFrom,
+												  &SavedRun->Walk))
 			{
 				UE_LOG(LogCataclysm, Error, TEXT("Cataclysm.LoadCharacter: dungeon %d could not be entered again at "
 												 "floor %d after every check for it had passed."),

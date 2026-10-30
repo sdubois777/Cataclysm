@@ -329,7 +329,27 @@ public:
 	 * @return whether the dungeon was entered
 	 */
 	bool ResumeEmpireDungeon(int32 DungeonId, int32 Floor, bool bOnTheDarkFloorSaved = false,
-							 int32 DarkFloorFellFromSaved = 0);
+							 int32 DarkFloorFellFromSaved = 0, const struct FCataclysmSavedWalk* Walk = nullptr);
+
+	/**
+	 * What this walk's rules have built up across its floors, for the save. Issue #753, Group 1. Read by
+	 * `UCataclysmSaveWriter` while a dungeon is bound; see `FCataclysmSavedWalk` for what is in it and what is not.
+	 */
+	struct FCataclysmSavedWalk WalkStateNow() const;
+
+	/**
+	 * Puts a saved walk's counters back, and rebuilds what they do to the player. Issue #753, Group 1.
+	 *
+	 * AFTER THE FLOOR IS BUILT, NEVER BEFORE: `ResumeEmpireDungeon` calls it after `GoToFloor`, because a floor's
+	 * start adds to some counters itself (a Starvation curse and a Chaos touch a floor), and the saved counts already
+	 * hold the saved floor's own additions. Written before, the floor start would add them a second time.
+	 *
+	 * THE EFFECTS ARE REBUILT BY THE RULES' OWN STEPS, not by zeroing their "applied" mirrors: each step rebuilds the
+	 * player's whole floor effect set when its counter differs from its mirror. Only the steps that move no timer
+	 * are called (`WriteTheMaximumHealthRulesBack`'s four, Blood Debt, Infernal Beacons); the rest catch up on the
+	 * next beat, as after any floor start.
+	 */
+	void RestoreWalkState(const struct FCataclysmSavedWalk& Walk);
 
 	/**
 	 * Stop walking it without clearing it.
@@ -3168,6 +3188,9 @@ private:
 	 * `EnterEmpireDungeon` and `ResumeEmpireDungeon` both begin with it. Issue #753, the dungeon step.
 	 */
 	void BindEmpireDungeon(int32 DungeonId, const struct FCataclysmDungeon& Dungeon, class UCataclysmEmpireRun& Run);
+
+	/** `RestoreWalkState`'s rebuild: the steps that rebuild the player's effects and move no timer. Issue #753. */
+	void ApplyRestoredWalkEffects();
 
 	/** Unstable Portal's mini-boss: an Abyssal Warden beside the stairs at the mini-boss rung. */
 	void RaiseTheUnstablePortalsWarden();
