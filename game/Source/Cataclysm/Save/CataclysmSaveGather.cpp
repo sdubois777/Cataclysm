@@ -3,6 +3,8 @@
 #include "Save/CataclysmSaveGather.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -93,6 +95,17 @@ FCataclysmSavedCharacterPlacement FCataclysmSaveGather::PlacementFrom(
 	Placed.Yaw = Character.GetActorRotation().Yaw;
 
 	VitalsOf(Character, Placed.Health, Placed.Mana, Placed.EnergyShield);
+
+	// AND THE POTIONS, every slot and the drinks taken. Issue #753, the dungeon step.
+	if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(&Character)))
+	{
+		for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+		{
+			Placed.PotionCharges.Add(Holder->GetPotionCharges(Slot));
+		}
+		Placed.PotionsDrunk = Holder->GetPotionsDrunk();
+	}
 
 	return Placed;
 }

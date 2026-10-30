@@ -8,6 +8,7 @@
 
 class ACataclysmDroppedItem;
 class ACataclysmEnemyCharacter;
+class ACataclysmDungeonGameMode;
 class ACataclysmPlayerCharacter;
 class UWorld;
 class UCataclysmEmpireRun;
@@ -119,6 +120,17 @@ public:
 	 */
 	static FCataclysmFloorRestored FloorInto(UWorld& World,
 											 const FCataclysmSavedFloor& Saved);
+
+	/**
+	 * Put a saved floor's creatures and drops back onto a dungeon floor the dungeon has just rebuilt. Issue #753, the
+	 * dungeon step, ruled 2026-10-30.
+	 *
+	 * NOT `FloorInto`, IN TWO WAYS. The creatures the floor's rules raised are kept, because the rebuild placed them
+	 * and the save holds none; and each creature put back is added to the dungeon's `FloorEnemies`, which the stairs
+	 * and a kill's payout count. NO CHARACTER IS PLACED: `PlacementInto` does that, last.
+	 */
+	static FCataclysmFloorRestored DungeonFloorInto(ACataclysmDungeonGameMode& Dungeon,
+													const FCataclysmSavedFloor& Saved);
 
 	/** Write health, mana and energy shield onto a character's attributes. */
 	static bool VitalsInto(AActor& Actor, float Health, float Mana, float EnergyShield);

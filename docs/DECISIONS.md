@@ -2,6 +2,138 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A run saved inside an empire dungeon loads onto its floor, and a death there is paid for after the load (#753, dungeon step)
+
+**Affects:** `ACataclysmDungeonGameMode::ResumeEmpireDungeon` (new) and `BindEmpireDungeon` (new, the binding half of
+`EnterEmpireDungeon`) in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`;
+`FCataclysmSaveApply::DungeonFloorInto` (new) and `PlacementInto` in `CataclysmSaveApply.h` and `.cpp`;
+`UCataclysmFloorContents::ClearTheFloor`, which can keep the creatures a floor's rules raised
+(`CataclysmFloorContents.h`, `.cpp`); two `SaveGame` fields, `PotionCharges` and `PotionsDrunk`, on
+`FCataclysmSavedCharacterPlacement` (`CataclysmSaveRecords.h`) and the gather that fills them
+(`CataclysmSaveGather.cpp`); `UCataclysmSaveWriter::BeginRun`, which can begin on the dark floor
+(`CataclysmSaveWriter.h`, `.cpp`); the loader `FCataclysmSaveLoad` (`CataclysmSaveLoad.h`, `.cpp`); the fixture
+`game/Tests/SaveFixtures/Run_v1.json`; three new tests and one changed one in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md` and its opening;
+and a correction to the start-up entry below. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753) stays
+open.
+
+### SAID FIRST
+
+- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **A FAULT IN THE START-UP STEP (#2627) IS CORRECTED HERE, FIRST.** `FCataclysmSaveApply::FloorInto` places the
+  record's characters as well as its creatures, and the loader called it before telling the writer the loaded run and
+  then placed the character again. A character saved dead therefore died inside `FloorInto`, and its death's
+  synchronous write went to the slots the loading world began with, not to the loaded ones as the start-up entry
+  says. **#2627's test passed while checking slot names only**: `ACharacterSavedDeadIsLoadedDead` compared the
+  writer's slot names after the load, under the message "into the slots the load came from", and never where the
+  death was written. Nothing was lost in play (the loaded slots already held the death, and `DeathProcessed` wrote
+  them), but the character was placed twice and a stated rule was false. Now the loader hands `FloorInto` the floor
+  with its characters taken out, and places the character once, last. That test gains the assertion "nothing was
+  written to the slots the loading world began with", its slot message says only what it checks, and P4 below proves
+  the guard. Ruled 2026-10-30.
+- **THE WALK'S AND THE FLOOR'S RULE STATE IS NOT RESTORED, AND THAT IS A KNOWN GAP CLOSED BY THE NEXT STEP.** About 60
+  pieces of state that `LeaveEmpireDungeon` resets are in no record: the Corrupted Stalker's health, potions and hunt,
+  echoes, March of Progress, the Pact's buff and curses, Blood Debt, Blood Price, the Starvation curse and Chaos touch
+  counts, Infernal Beacon stacks, Raw Sewage, the totems, relics, boxes and altars, the quarantine, the rift and the
+  rest. A load builds the floor as a floor starting. `docs/Cataclysm_GDD_v2.md` says quitting buys "a breather and not
+  a reset", so every rule state that carries a cost or a reward across floors must be saved; ruled 2026-10-30 to be a
+  design requirement rather than an owner's question. #753's next step lists the ~60, sorted into those that carry
+  across floors and those that last one floor, with what saving each needs. **No player can reach the gap meanwhile:**
+  loading is only the console command `Cataclysm.LoadCharacter` until the start-up screen exists.
+- **FOUR POTION SLOTS, NOT THREE, AND THE DRINKS TAKEN.** The ruling said three charge fields; the game has
+  `UCataclysmPotions::SlotCount` = 4, held on the ability system with a count of drinks taken this walk, which
+  `Famine_Diminishing_Returns` weakens each drink by. All four and the count are saved.
+- **EACH CREATURE PUT BACK JOINS THE DUNGEON'S `FloorEnemies`.** Found while building: the stairs, the floor's clear and
+  a kill's payout count that list, so a creature spawned beside it would let the stairs open with it standing.
+
+### What it was
+
+A run saved inside an empire dungeon was refused whole, since the start-up step, because nothing entered the dungeon
+again and a death there would have stood up without paying (`EndTheDungeonForADeath` charges nothing without
+`EmpireDungeonId`, which only `EnterEmpireDungeon` set). `EnterEmpireDungeon` also leaves a walk under way, refills the
+potions, tells the clock, and charges floor 1's time, and a load must do none of the four again: the record's day, part
+day and days owed already hold every floor walked, and `RunInto` puts the clock's dungeon back. The potion charges were
+in no record.
+
+### The rulings, 2026-10-30 (the coordinating session, on the proposal)
+
+- **The player re-enters the dungeon at the saved floor**, so `EmpireDungeonId` is set and a death there pays; the
+  floor's creatures come back through the floor restore; the placement comes back last.
+- **Q1:** load without the walk's and floor's rule state in this step, recorded here and as a "Not restored" row in
+  section 6; saving what carries across floors is a design requirement from the GDD sentence above, and the next step.
+- **Q2:** the rebuilt floor places the rule-raised creatures fresh, and the restore clears and restores only the
+  others.
+- **Q3:** save the potion charges now, on the placement, restored by `PlacementInto`, with no version bump;
+  `ResumeEmpireDungeon` does not refill.
+- The `Cataclysm.DungeonSeed` console variable, which overrides the seed, is documented and not handled: a save made
+  with it set and loaded without it rebuilds a different layout. It is a playtest switch.
+- **R1 and R2**, on the start-up fault: the assertion goes in the existing test, and four proofs are allowed.
+
+### The change
+
+`EnterEmpireDungeon`'s binding half (the number, the seed, the depth, the kind, the sub-type, the bosses, the
+modifiers, their score and pool, and every built modifier) is now `BindEmpireDungeon`, which it calls.
+`ResumeEmpireDungeon(DungeonId, Floor, bOnTheDarkFloor, DarkFloorFellFrom)` refuses, changing nothing, with no run,
+with a walk under way, when the dungeon is not on the map or the floor is not one of its floors; otherwise it binds,
+sets the dark floor, and calls `GoToFloor`. It leaves nothing, refills nothing, tells the clock nothing and charges no
+time.
+
+The loader, for a run whose `CurrentDungeonId` is not -1, refuses the whole load, changing nothing, when the level has
+no dungeon game mode, when that dungeon is walking another, when the record's map holds no such dungeon, or when the
+record's floor is not that dungeon's name or not one of its floors. Otherwise, after the run and the character as
+before: `ResumeEmpireDungeon`; `DungeonFloorInto`, which clears every creature the floor's rules did not raise and
+every drop, puts the saved creatures and drops back, and adds each creature to `FloorEnemies`; the writer begun on the
+saved floor, the dark floor included, and handed the loaded records; the placement last, its potions before its
+vitals so that a death there writes them.
+
+### How it is checked
+
+`Cataclysm.SaveLoad.ACharacterSavedInADungeonComesBackOnItsFloor`: a dungeon carrying Demonic Guide is placed by hand,
+entered and walked to floor 3; one creature is hurt to 41 health, the potions are spent to 25, 15, 5 and 0 with two
+drinks taken, and the character is moved and hurt; it is saved. A second world with a dungeon game mode loads it: the
+dungeon is the one walked, on floor 3, built from the same seed; every saved creature stands in `FloorEnemies`, the
+hurt one at its health; the guide the floor's rule raised still stands; the day, part day and days owed are what was
+saved; and the character's place, health and potions came back. **CONTROL:** before the load the dungeon walks nothing.
+It prints a line beginning "LOAD DUNGEON".
+
+`Cataclysm.SaveLoad.ADeathInADungeonIsPaidForAfterALoad`: a character killed on floor 2, which wrote it at no health,
+is loaded into a dungeon world: dead after the load; standing up runs the walk's days and charges the death's, the
+ordinary dungeon resolves and leaves the map, the walk ends, and the paid death is written. **CONTROL:** before the
+load the character is alive. It prints a line beginning "LOAD DUNGEON DEATH".
+
+`Cataclysm.SaveLoad.ARunSavedInADungeonIsRefusedWhereItCannotBeResumed`: four refused loads, each with the character,
+the game's run and the walk unchanged: no dungeon in the level, a walk under way, a dungeon the record's map does not
+hold, a floor the dungeon does not have. It prints a line beginning "LOAD DUNGEON REFUSALS".
+
+`Cataclysm.SaveLoad.ACharacterSavedDeadIsLoadedDead`, the start-up step's test, gains "and nothing was written to the
+slots the loading world began with", and its message "into the slots the load came from" becomes "the writer now
+names the slots the load came from".
+
+### Not covered
+
+The walk's and the floor's rule state (the next step); the packs a creature was placed in, and rule effects applied to
+a creature when it is placed, which a creature put back does not get; the `Cataclysm.DungeonSeed` override; a new-game
+flow, a continue flow and the character select screen (#49).
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4377 / 0: `development`'s 4374, measured by window w99, + 3, unless a merge before the window adds an Unreal test |
+| Python | of record, with JUnit, and ruff |
+| The "LOAD DUNGEON", "LOAD DUNGEON DEATH", "LOAD DUNGEON REFUSALS" and "LOAD DEAD" lines | quoted as printed |
+| P1, the loader does not call `ResumeEmpireDungeon` | the dungeon test fails on the dungeon walked, the floor, the seed and the guide; the dungeon-death test fails on the days charged and the dungeon resolving; the refusals test and the start-up tests pass; the CONTROL holds |
+| P2, `ResumeEmpireDungeon` charges floor time | the dungeon test fails on the days owed; the dungeon-death test fails on the days charged; the others pass |
+| P3, the dungeon's restore clears every creature | the dungeon test fails on "the creature the floor's rule raised is still standing" only; the others pass |
+| P4, the loader hands `FloorInto` the floor with its characters | `ACharacterSavedDeadIsLoadedDead` fails on "nothing was written to the slots the loading world began with" only; nothing else fails |
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-30 — A saved character and its run can be loaded at the console, and paying for a death writes the save (#753, start-up step)
 
 **Affects:** `FCataclysmSaveLoad` and the console command `Cataclysm.LoadCharacter` in
@@ -82,6 +214,12 @@ the loaded identifiers and handed the loaded records (`AdoptLoaded`), and the pl
 `PlacementInto`. A placement at no health runs the death through the game's own path, and its synchronous write goes to
 the loaded slots.
 
+**CORRECTED 2026-10-30, BY THE DUNGEON STEP ABOVE: THE SENTENCE BEFORE THIS WAS WRONG.** `FloorInto` places the
+record's characters too, and the loader called it before telling the writer the loaded run, so a character saved dead
+died there and its death's write went to the slots the loading world began with. The loader now hands `FloorInto` the
+floor without its characters and places the character once, last; the dungeon step's entry says how it was found and
+how it is guarded.
+
 **A run that cannot be read begins a new one and says why**: the character record names no run, the slot is empty,
 the file does not read, the record names another run, or `RunInto` refuses it. The new run is begun at the
 character's lethality rung, with a new identifier. **A run record that holds no cities was saved with no empire run
@@ -110,7 +248,8 @@ character back with a new run on day 0 and say why; a run written at version 99,
 `Cataclysm.SaveLoad.ACharacterSavedDeadIsLoadedDead`: a character killed in one world, which wrote it at no health, is
 loaded into another: dead after the load, its death's write raised and written before the load returned, into the
 loaded slots; it stands back up, and standing up raises `DeathProcessed`. **CONTROL:** before the load the character
-is alive. It prints a line beginning "LOAD DEAD".
+is alive. It prints a line beginning "LOAD DEAD". **CORRECTED 2026-10-30: it checked the writer's slot NAMES after
+the load, not where the death was written, and the death was written elsewhere.** The dungeon step adds the check.
 
 `Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty`: a character in an entered empire dungeon dies and
 stands back up; the last write is `DeathProcessed`, and the run record on disk holds the day after the death's days

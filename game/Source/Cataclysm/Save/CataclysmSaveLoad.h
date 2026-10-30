@@ -44,21 +44,24 @@ struct CATACLYSM_API FCataclysmLoadReport
  * THE ORDER, AND WHY. Everything that can refuse is asked before anything is changed, so a refusal changes nothing:
  *   1. the character record is read; a record that cannot be read, or one written by a newer build, is refused;
  *   2. the run record `CurrentRunId` names is read; one written by a newer build refuses the whole load;
- *   3. a run saved inside an empire dungeon, or on a floor this level is not, refuses the whole load;
+ *   3. a run saved inside an empire dungeon refuses the whole load unless this level's dungeon can enter it again
+ *      at its floor; a run saved outside one, on a floor this level is not, refuses it too;
  *   4. the run is put into a new run object, which nothing holds yet;
  *   5. the character is put back, `FCataclysmSaveApply::CharacterInto`, which refuses before changing anything.
- * Then the run becomes the game's, the run's kills and its floor go back, the writer is told the loaded identifiers
- * and handed the loaded records, and the character's placement goes back LAST: a character saved at no health dies
- * there, and the death's own write must reach the loaded slots.
+ * Then the run becomes the game's, the run's kills go back, a dungeon is entered again at the saved floor
+ * (`ACataclysmDungeonGameMode::ResumeEmpireDungeon`), the floor's creatures and drops go back, the writer is told the
+ * loaded identifiers and handed the loaded records, and the character's placement goes back LAST and once: a
+ * character saved at no health dies there, and the death's own write reaches the loaded slots.
  *
  * A RUN THAT CANNOT BE READ BEGINS A NEW ONE AND SAYS SO: no run named, an empty slot, a file that will not read, or a
  * record `FCataclysmSaveApply::RunInto` refuses. #753's acceptance criteria. A RUN WRITTEN BY A NEWER BUILD IS NOT
  * ONE OF THOSE, ruled 2026-10-30: it refuses the whole load, because a new run would replace the character's
  * `CurrentRunId` at its next write and lose the newer run (`docs/Save_System_Design.md` section 5, rule 5).
  *
- * A RUN SAVED INSIDE AN EMPIRE DUNGEON IS REFUSED, and that is required rather than convenient: the death's days are
- * charged only while the dungeon is entered, and nothing here enters one, so a character who died inside would stand
- * up without paying. Re-entering the dungeon at the saved floor is #753's next step.
+ * A RUN SAVED INSIDE AN EMPIRE DUNGEON IS ENTERED AGAIN, since the dungeon step of 2026-10-30, because the death's
+ * days are charged only while the dungeon is entered. Where it cannot be (no dungeon in this level, a walk already
+ * under way, a dungeon or floor the record does not hold) it is refused whole. THE WALK'S AND THE FLOOR'S RULE STATE
+ * IS NOT SAVED, and comes back as a floor starting; #753's next step saves what carries across floors.
  */
 struct CATACLYSM_API FCataclysmSaveLoad
 {

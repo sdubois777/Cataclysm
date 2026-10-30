@@ -4,13 +4,16 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
@@ -556,23 +559,36 @@ bool FCataclysmSaveLoadDeadTest::RunTest(const FString&)
 
 	TestFalse(TEXT("CONTROL: before the load the character is alive"), UCataclysmSkillEffects::IsDead(Scene.Character));
 
+	// THE SLOTS THE LOADING WORLD BEGAN WITH, which nothing may write. Until 2026-10-30 the death the load ran was
+	// written there, before the writer was told the loaded run. Deleted on the way out either way.
+	const FString BeganRunSlot = Scene.Writer->RunSlotName();
+	const FString BeganCharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT
+	{
+		Delete(BeganRunSlot);
+		Delete(BeganCharacterSlot);
+	};
+
 	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
 																			 Saved.CharacterId);
 	const bool bDeadAfterTheLoad = UCataclysmSkillEffects::IsDead(Scene.Character);
 	const ECataclysmSaveTrigger AfterTheLoad = Scene.Writer->LastTrigger();
 	const int32 Synchronous = Scene.Writer->SynchronousWrites();
 	const bool bSameSlots = Scene.Writer->RunSlotName() == Saved.RunSlot();
+	const bool bNothingWhereTheWorldBegan = !UGameplayStatics::DoesSaveGameExist(BeganRunSlot, UserIndex)
+		&& !UGameplayStatics::DoesSaveGameExist(BeganCharacterSlot, UserIndex);
 
 	Scene.Character->Revive();
 	const bool bStandingAfterRevive = !UCataclysmSkillEffects::IsDead(Scene.Character);
 	const ECataclysmSaveTrigger AfterRevive = Scene.Writer->LastTrigger();
 	WaitForSlot(Saved.RunSlot());
 
-	AddInfo(FString::Printf(TEXT("LOAD DEAD: %s (%s); %s after the load, last trigger '%s', %d synchronous writes; "
-								 "%s after standing up, last trigger '%s'"),
+	AddInfo(FString::Printf(TEXT("LOAD DEAD: %s (%s); %s after the load, last trigger '%s', %d synchronous writes, "
+								 "%s in the slots the world began with; %s after standing up, last trigger '%s'"),
 							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
 							bDeadAfterTheLoad ? TEXT("dead") : TEXT("ALIVE"),
 							UCataclysmSaveTriggers::NameOf(AfterTheLoad), Synchronous,
+							bNothingWhereTheWorldBegan ? TEXT("nothing") : TEXT("A WRITE"),
 							bStandingAfterRevive ? TEXT("standing") : TEXT("STILL DEAD"),
 							UCataclysmSaveTriggers::NameOf(AfterRevive)));
 
@@ -582,7 +598,8 @@ bool FCataclysmSaveLoadDeadTest::RunTest(const FString&)
 	TestEqual(TEXT("its death raised the death's own write"),
 			  static_cast<int32>(AfterTheLoad), static_cast<int32>(ECataclysmSaveTrigger::CharacterDied));
 	TestTrue(TEXT("which was written before the load returned"), Synchronous > 0);
-	TestTrue(TEXT("into the slots the load came from"), bSameSlots);
+	TestTrue(TEXT("the writer now names the slots the load came from"), bSameSlots);
+	TestTrue(TEXT("and nothing was written to the slots the loading world began with"), bNothingWhereTheWorldBegan);
 	TestTrue(TEXT("it stands back up"), bStandingAfterRevive);
 	TestEqual(TEXT("and standing up raised the write that says the death was paid for"),
 			  static_cast<int32>(AfterRevive), static_cast<int32>(ECataclysmSaveTrigger::DeathProcessed));
@@ -695,6 +712,454 @@ bool FCataclysmSaveLoadDeathProcessedTest::RunTest(const FString&)
 			  static_cast<int32>(Last), static_cast<int32>(ECataclysmSaveTrigger::DeathProcessed));
 	TestEqual(TEXT("the record holds the day after the death's days"), Written->Day, DayInside + Run->DeathDayCost());
 	TestTrue(TEXT("and the character standing"), WrittenHealth > 0.0f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Inside an empire dungeon
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** A loading or saving world with a dungeon game mode that has begun play, as `L_Dungeon` has. */
+	struct FDungeonScene
+	{
+		FLoadScene Base;
+		ACataclysmDungeonGameMode* Mode = nullptr;
+
+		bool IsUsable() const { return Base.IsUsable() && Mode; }
+	};
+
+	FDungeonScene MakeDungeonScene()
+	{
+		FDungeonScene Out;
+		Out.Base = MakeScene();
+		if (Out.Base.World)
+		{
+			Out.Mode = Out.Base.World->SpawnActor<ACataclysmDungeonGameMode>();
+			if (Out.Mode)
+			{
+				Out.Mode->StartPlay();
+			}
+		}
+		return Out;
+	}
+
+	/** What a world saved inside a dungeon left behind, beside its identifiers. */
+	struct FSavedInADungeon : FSaved
+	{
+		int32 DungeonId = INDEX_NONE;
+		int32 Floor = 0;
+		int32 PlanSeed = 0;
+		int32 CreaturesSaved = 0;
+		float HurtHealth = -1.0f;
+		int32 Day = 0;
+		float PartialDay = 0.0f;
+		int32 DaysOwed = 0;
+	};
+
+	float HealthOfActor(const AActor& Actor)
+	{
+		const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(&Actor);
+		return AbilitySystem ? AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+							 : -1.0f;
+	}
+
+	/** The character's place, health and potions, which the placement holds. */
+	FString PlacementHeld(const FLoadScene& Scene)
+	{
+		const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Scene.Character));
+		const FVector At = Scene.Character->GetActorLocation();
+		return FString::Printf(TEXT("health %.1f at %.0f %.0f %.0f potions %.0f %.0f %.0f %.0f drunk %d"),
+							   HealthOf(*Scene.Character), At.X, At.Y, At.Z,
+							   Holder ? Holder->GetPotionCharges(0) : -1.0f, Holder ? Holder->GetPotionCharges(1) : -1.0f,
+							   Holder ? Holder->GetPotionCharges(2) : -1.0f, Holder ? Holder->GetPotionCharges(3) : -1.0f,
+							   Holder ? Holder->GetPotionsDrunk() : -1);
+	}
+
+	/** The creatures of the dungeon's list that no rule raised, standing. */
+	TArray<ACataclysmEnemyCharacter*> UnruledStanding(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Out;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			if (IsValid(Enemy) && !Enemy->bRaisedByARule && !UCataclysmSkillEffects::IsDead(Enemy))
+			{
+				Out.Add(Enemy.Get());
+			}
+		}
+		return Out;
+	}
+
+	/**
+	 * Walks a dungeon placed by hand down to a floor, in a world of its own, and saves there through the writer: with
+	 * the death trigger, which writes both records before it returns, or by killing the character, which writes it at
+	 * no health. One creature is hurt, the potions are spent below full, and the character is moved and hurt first.
+	 *
+	 * @param bWithTheGuide  the dungeon carries Demonic Guide, whose guide is a creature the floor's rule raises
+	 */
+	bool SaveInADungeon(FAutomationTestBase& Test, bool bDies, bool bWithTheGuide, int32 Floor, FSavedInADungeon& Out)
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// THE TEST'S OWN SLOTS BEFORE THE DUNGEON IS ENTERED, so the floor changes write where this test deletes.
+		Out.RunId = FGuid::NewGuid();
+		Out.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Out.RunId, Out.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+
+		UCataclysmEmpireRun* Run = Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
+		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Run && Run->Map && Run->Clock))
+		{
+			return false;
+		}
+		Run->AdvanceDay();
+		Run->Dungeons.Empty();
+		Run->Clock->Timers.Empty();
+
+		Out.DungeonId = PlaceByHand(*Run, AnOutpostOf(*Run));
+		if (!Test.TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"), Out.DungeonId != INDEX_NONE))
+		{
+			return false;
+		}
+		if (bWithTheGuide)
+		{
+			for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == Out.DungeonId)
+				{
+					Dungeon.Modifiers = {FName(UCataclysmDungeonModifierEffects::DemonicGuideKey)};
+				}
+			}
+		}
+		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(Out.DungeonId))
+			|| !Test.TestTrue(TEXT("set-up: the walk reached the floor"), Scene.Mode->GoToFloor(Floor))
+			|| !Test.TestNotNull(TEXT("set-up: the floor was built"), Scene.Mode->CurrentFloor.Get()))
+		{
+			return false;
+		}
+		if (bWithTheGuide
+			&& !Test.TestNotNull(TEXT("set-up: the guide stands on the floor"), Scene.Mode->DemonicGuideOnTheFloor()))
+		{
+			return false;
+		}
+		Out.Floor = Floor;
+		Out.PlanSeed = Scene.Mode->CurrentFloor->GetPlan().Seed;
+
+		const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+		if (!Test.TestTrue(TEXT("set-up: the floor has a creature to hurt"), Standing.Num() > 0))
+		{
+			return false;
+		}
+		if (UAbilitySystemComponent* Hurt = UCataclysmTargeting::AbilitySystemOf(Standing[0]))
+		{
+			Hurt->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 41.0f);
+		}
+		Out.HurtHealth = HealthOfActor(*Standing[0]);
+
+		if (UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Scene.Base.Character)))
+		{
+			Holder->SetPotionCharges(0, 25.0f);
+			Holder->SetPotionCharges(1, 15.0f);
+			Holder->SetPotionCharges(2, 5.0f);
+			Holder->SetPotionCharges(3, 0.0f);
+			Holder->SetPotionsDrunk(2);
+		}
+		Scene.Base.Character->SetActorLocation(Scene.Base.Character->GetActorLocation() + FVector(120.0f, 60.0f, 0.0f));
+		SetHealth(*Scene.Base.Character, 37.0f);
+		Out.Held = PlacementHeld(Scene.Base);
+
+		if (bDies)
+		{
+			UCataclysmSkillEffects::ReduceHealthDirectly(Scene.Base.Character, Scene.Base.Character, 1000000.0f);
+			if (!Test.TestTrue(TEXT("set-up: the character died, which wrote the save"),
+							   UCataclysmSkillEffects::IsDead(Scene.Base.Character)))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		}
+
+		WaitForSlot(Out.RunSlot());
+		const UCataclysmRunSave* Written = Read<UCataclysmRunSave>(Out.RunSlot());
+		if (!Test.TestNotNull(TEXT("set-up: the run record was written"), Written)
+			|| !Test.TestEqual(TEXT("set-up: the run record says it was saved inside the dungeon"),
+							   Written->CurrentDungeonId, Out.DungeonId))
+		{
+			return false;
+		}
+		Out.CreaturesSaved = Written->Floor.Creatures.Num();
+		Out.Day = Written->Day;
+		Out.PartialDay = Written->PartialDay;
+		Out.DaysOwed = Written->DaysOwed;
+		return Test.TestNotNull(TEXT("set-up: the character record was written"),
+								Read<UCataclysmCharacterSave>(Out.CharacterSlot()));
+	}
+}
+
+/**
+ * A character saved on a dungeon's third floor comes back on that floor of that dungeon: entered again, with the same
+ * layout, its creatures back with their health, the guide the floor's rule raises still standing, its potions as
+ * saved, and no day charged by the load. Issue #753, the dungeon step, ruled 2026-10-30.
+ *
+ * THE CONTROL is the loading dungeon before the load, walking nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadDungeonTest,
+	"Cataclysm.SaveLoad.ACharacterSavedInADungeonComesBackOnItsFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadDungeonTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSavedInADungeon Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveInADungeon(*this, /*bDies=*/false, /*bWithTheGuide=*/true, /*Floor=*/3, Saved))
+	{
+		return false;
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestEqual(TEXT("CONTROL: before the load the dungeon is walking nothing"), Scene.Mode->EmpireDungeonId,
+			  static_cast<int32>(INDEX_NONE));
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+
+	const UCataclysmEmpireRun* Run = Scene.Base.Instance->EmpireRun.Get();
+	const int32 Seed = Scene.Mode->CurrentFloor ? Scene.Mode->CurrentFloor->GetPlan().Seed : 0;
+	const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+	bool bHurtOneBack = false;
+	for (const ACataclysmEnemyCharacter* Creature : Standing)
+	{
+		bHurtOneBack |= FMath::IsNearlyEqual(HealthOfActor(*Creature), Saved.HurtHealth, 0.5f);
+	}
+	const bool bGuideStanding = IsValid(Scene.Mode->DemonicGuideOnTheFloor());
+	const int32 Day = Run ? Run->Day() : -1;
+	const float PartialDay = Run && Run->Clock ? Run->Clock->PartialDay : -1.0f;
+	const int32 DaysOwed = Run ? Run->DaysOwed() : -1;
+	const FString Held = PlacementHeld(Scene.Base);
+
+	AddInfo(FString::Printf(TEXT("LOAD DUNGEON: %s (%s); dungeon %d floor %d (saved %d floor %d); seed %s; %d of %d "
+								 "creatures standing, the hurt one %s; the guide %s; day %d part %.3f owed %d (saved %d "
+								 "%.3f %d); placement %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Scene.Mode->EmpireDungeonId,
+							Scene.Mode->FloorNumber, Saved.DungeonId, Saved.Floor,
+							Seed == Saved.PlanSeed ? TEXT("the same") : TEXT("DIFFERS"), Standing.Num(),
+							Saved.CreaturesSaved, bHurtOneBack ? TEXT("back") : TEXT("NOT BACK"),
+							bGuideStanding ? TEXT("standing") : TEXT("GONE"), Day, PartialDay, DaysOwed, Saved.Day,
+							Saved.PartialDay, Saved.DaysOwed, Held == Saved.Held ? TEXT("matches") : TEXT("DIFFERS")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the dungeon it was saved in is the one being walked"), Scene.Mode->EmpireDungeonId, Saved.DungeonId);
+	TestEqual(TEXT("on the floor it was saved on"), Scene.Mode->FloorNumber, Saved.Floor);
+	TestEqual(TEXT("built from the same seed"), Seed, Saved.PlanSeed);
+	TestEqual(TEXT("every creature saved is standing on the floor and in its list"), Standing.Num(),
+			  Saved.CreaturesSaved);
+	TestTrue(TEXT("the hurt one with the health it had"), bHurtOneBack);
+	TestTrue(TEXT("the creature the floor's rule raised is still standing"), bGuideStanding);
+	TestEqual(TEXT("no day was charged by the load"), Day, Saved.Day);
+	TestEqual(TEXT("no part of a day"), PartialDay, Saved.PartialDay, 0.0001f);
+	TestEqual(TEXT("and the walk owes the days it owed"), DaysOwed, Saved.DaysOwed);
+	TestEqual(TEXT("the character's place, health and potions came back"), Held, Saved.Held);
+	return true;
+}
+
+/**
+ * A character that died inside a dungeon and is loaded there pays the death's days when it stands back up, which is
+ * the reason a load enters the dungeon again. Issue #753, the dungeon step.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadDungeonDeathTest,
+	"Cataclysm.SaveLoad.ADeathInADungeonIsPaidForAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadDungeonDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSavedInADungeon Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveInADungeon(*this, /*bDies=*/true, /*bWithTheGuide=*/false, /*Floor=*/2, Saved))
+	{
+		return false;
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestFalse(TEXT("CONTROL: before the load the character is alive"),
+			  UCataclysmSkillEffects::IsDead(Scene.Base.Character));
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bDeadAfterTheLoad = UCataclysmSkillEffects::IsDead(Scene.Base.Character);
+	const UCataclysmEmpireRun* Run = Scene.Base.Instance->EmpireRun.Get();
+	const int32 Cost = Run ? Run->DeathDayCost() : -1;
+
+	Scene.Base.Character->Revive();
+	const int32 DayAfter = Run ? Run->Day() : -1;
+	const bool bResolved = Run && Run->FindDungeon(Saved.DungeonId) == nullptr;
+	const ECataclysmSaveTrigger Last = Scene.Base.Writer->LastTrigger();
+	WaitForSlot(Saved.RunSlot());
+
+	AddInfo(FString::Printf(TEXT("LOAD DUNGEON DEATH: %s (%s); %s after the load; saved on day %d owing %d, the death "
+								 "costs %d, day %d after standing up; walking %d; the dungeon %s; last trigger '%s'"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bDeadAfterTheLoad ? TEXT("dead") : TEXT("ALIVE"), Saved.Day, Saved.DaysOwed, Cost,
+							DayAfter, Scene.Mode->EmpireDungeonId,
+							bResolved ? TEXT("resolved and left the map") : TEXT("is STILL ON THE MAP"),
+							UCataclysmSaveTriggers::NameOf(Last)));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the character is dead after the load"), bDeadAfterTheLoad);
+	TestEqual(TEXT("standing up ran the walk's days and charged the death's"), DayAfter,
+			  Saved.Day + Saved.DaysOwed + Cost);
+	TestTrue(TEXT("the ordinary dungeon resolved on the death"), bResolved);
+	TestEqual(TEXT("and the walk ended"), Scene.Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and the paid death was written"), static_cast<int32>(Last),
+			  static_cast<int32>(ECataclysmSaveTrigger::DeathProcessed));
+	return true;
+}
+
+/**
+ * A run saved inside a dungeon that cannot be entered again here is refused, and nothing changes: no dungeon in the
+ * level, a walk already under way, a dungeon the record does not hold, a floor the dungeon does not have.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadDungeonRefusedTest,
+	"Cataclysm.SaveLoad.ARunSavedInADungeonIsRefusedWhereItCannotBeResumed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadDungeonRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSavedInADungeon Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveInADungeon(*this, /*bDies=*/false, /*bWithTheGuide=*/false, /*Floor=*/2, Saved))
+	{
+		return false;
+	}
+
+	TArray<FString> Lines;
+
+	/** One refused load: the report says why, and the character, the game's run and the walk are unchanged. */
+	auto RefusedOnce = [this, &Lines](const TCHAR* Case, bool bWithADungeon, bool bAlreadyWalking,
+											  const TCHAR* Says)
+	{
+		FDungeonScene Scene;
+		if (bWithADungeon)
+		{
+			Scene = MakeDungeonScene();
+		}
+		else
+		{
+			Scene.Base = MakeScene();
+		}
+		if (!TestTrue(FString::Printf(TEXT("%s: set-up: the loading world was built"), Case),
+					  Scene.Base.IsUsable() && (!bWithADungeon || Scene.Mode)))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		UCataclysmEmpireRun* RunBefore = Scene.Base.Instance->BeginEmpireRun(5);
+		int32 WalkingBefore = INDEX_NONE;
+		if (bAlreadyWalking && RunBefore && Scene.Mode)
+		{
+			RunBefore->Dungeons.Empty();
+			if (RunBefore->Clock)
+			{
+				RunBefore->Clock->Timers.Empty();
+			}
+			const int32 Walking = PlaceByHand(*RunBefore, AnOutpostOf(*RunBefore));
+			if (!TestTrue(FString::Printf(TEXT("%s: set-up: the loading dungeon is walking one of its own"), Case),
+						  Walking != INDEX_NONE && Scene.Mode->EnterEmpireDungeon(Walking)))
+			{
+				return;
+			}
+			WalkingBefore = Walking;
+		}
+		const int32 LevelBefore = Scene.Base.State->GetCharacterLevel();
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		Lines.Add(FString::Printf(TEXT("%s: %s (%s)"), Case, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why));
+
+		TestEqual(FString::Printf(TEXT("%s: refused"), Case), static_cast<int32>(Report.Outcome),
+				  static_cast<int32>(ECataclysmLoadOutcome::Refused));
+		TestTrue(FString::Printf(TEXT("%s: the report says '%s'"), Case, Says), Report.Why.Contains(Says));
+		TestEqual(FString::Printf(TEXT("%s: the character is unchanged"), Case), Scene.Base.State->GetCharacterLevel(),
+				  LevelBefore);
+		TestTrue(FString::Printf(TEXT("%s: the game holds the run it held"), Case),
+				 Scene.Base.Instance->EmpireRun.Get() == RunBefore);
+		if (Scene.Mode)
+		{
+			TestEqual(FString::Printf(TEXT("%s: the walk is unchanged"), Case), Scene.Mode->EmpireDungeonId,
+					  WalkingBefore);
+		}
+	};
+
+	RefusedOnce(TEXT("no dungeon in the level"), /*bWithADungeon=*/false, false, TEXT("has no dungeon to enter it in"));
+	RefusedOnce(TEXT("a walk under way"), /*bWithADungeon=*/true, /*bAlreadyWalking=*/true, TEXT("leave it first"));
+
+	FString Error;
+	UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Saved.RunSlot());
+	if (TestNotNull(TEXT("set-up: the run record reads"), Record))
+	{
+		Record->CurrentDungeonId = 999;
+		if (TestTrue(TEXT("set-up: the run record names a dungeon its map does not hold"),
+					 FCataclysmSaveStorage::WriteToSlot(Record, Saved.RunSlot(), UserIndex, Error)))
+		{
+			RefusedOnce(TEXT("a dungeon not on the record's map"), true, false, TEXT("holds no such dungeon"));
+		}
+		Record->CurrentDungeonId = Saved.DungeonId;
+		Record->Floor.Floor = 99;
+		if (TestTrue(TEXT("set-up: the run record names a floor the dungeon does not have"),
+					 FCataclysmSaveStorage::WriteToSlot(Record, Saved.RunSlot(), UserIndex, Error)))
+		{
+			RefusedOnce(TEXT("a floor the dungeon does not have"), true, false, TEXT("that dungeon has 20 floors"));
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("LOAD DUNGEON REFUSALS: %s"), *FString::Join(Lines, TEXT("; "))));
 	return true;
 }
 

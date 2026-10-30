@@ -181,7 +181,14 @@
 				"Yaw": -45,
 				"Health": 318.75,
 				"Mana": 82.5,
-				"EnergyShield": 25
+				"EnergyShield": 25,
+				"PotionCharges": [
+					30,
+					20,
+					10,
+					0
+				],
+				"PotionsDrunk": 2
 			}
 		]
 	},
