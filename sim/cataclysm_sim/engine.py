@@ -414,8 +414,17 @@ class Simulation:
         # one day a floor they change run time and reward at the same time. The
         # game can separate the two; this model cannot. Until 2026-10-13 they
         # changed the size of the dungeon's hit as well.
-        floors = max(1, int(round(
-            floors + cfg.tree.floors_added(cfg.active_cataclysm_count()))))
+        #
+        # NO CATACLYSM-TYPE DUNGEON TAKES THE PER-CATACLYSM FLOORS, since
+        # 2026-10-30. `Infinite Depths` deepens ordinary, Quest and Fallen City
+        # dungeons and not the Cataclysm boss dungeon -- the project owner, "Not
+        # to the boss dungeon" -- and the Last Stand is that dungeon moved to the
+        # Pillar (the design document's "Last Stand", lead sentence), so neither
+        # is deepened. Counting no active Cataclysms leaves the tree's flat
+        # floors (`floor_delta`) on both. `docs/DECISIONS.md`, 2026-10-30.
+        per_type = (0 if dtype is DungeonType.CATACLYSM
+                    else cfg.active_cataclysm_count())
+        floors = max(1, int(round(floors + cfg.tree.floors_added(per_type))))
 
         # Subtype and modifiers. One modifier per tier; Sacrificial starts with
         # double, which is exactly what makes it a gamble worth taking.
@@ -723,6 +732,21 @@ class Simulation:
         gap = max(cfg.surge_interval_min, gap)
         return gap + cfg.tree.surge_bonus_days
 
+    def quest_chance(self, volume: float) -> float:
+        """The chance a dungeon in a surge of this `volume` is a Quest dungeon.
+
+        With `quest_chance_per_cataclysm_held`, `quest_dungeon_chance x max(1,
+        N / volume)`, N the active Cataclysms: each of them then sends quest
+        dungeons at its tier-1 rate, where a flat chance spread over a wave that
+        grows as volume (sum of count_mult to the 0.7) gave each fewer as the tier
+        rose. Never below `quest_dungeon_chance` and never above 1. See the field.
+        """
+        cfg = self.cfg
+        if not cfg.quest_chance_per_cataclysm_held or volume <= 0:
+            return cfg.quest_dungeon_chance
+        held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)
+        return min(1.0, held)
+
     def trigger_surge(self, from_city_fall: bool = False) -> None:
         cfg = self.cfg
         # Only the exposed frontier can be attacked. Everything behind a
@@ -743,6 +767,7 @@ class Simulation:
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
         count = max(1, int(round(self.surge_count() * volume)))
+        quest_chance = self.quest_chance(volume)
         quest_sieges: dict[str, int] = {}
 
         for _ in range(count):
@@ -762,7 +787,7 @@ class Simulation:
 
             city = self.rng.choices(pool, weights=w, k=1)[0]
             dtype = (DungeonType.QUEST
-                     if self.rng.random() < cfg.quest_dungeon_chance
+                     if self.rng.random() < quest_chance
                      else DungeonType.BASIC)
 
             # AT MOST `quest_sieges_per_wave_max` SIEGE-CARRYING QUEST DUNGEONS
@@ -1807,6 +1832,13 @@ class Simulation:
         d.floors += (cfg.last_stand_floor_bonus
                      + len(absorbed) * cfg.last_stand_floors_per_absorbed
                      + ruin * cfg.last_stand_floors_per_fallen_city)
+        # AT MOST `last_stand_floor_cap` FLOORS FROM TIER 4, a limit that grows
+        # with the tier: 125 at tier 4 to 250 at tier 8, none below. Without it
+        # a Last Stand at tiers 6 to 8 was 500 to 1,100 floors and never cleared.
+        # The project owner, 2026-10-30: "Falling wins". See the config fields.
+        cap = cfg.last_stand_floor_cap()
+        if cap is not None:
+            d.floors = min(d.floors, cap)
 
         # THROUGH `_walk_days` RATHER THAN `run_days_for`, WHICH CHANGES NOTHING
         # TODAY AND IS THE POINT. A bare `run_days_for` knows nothing about

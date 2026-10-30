@@ -358,6 +358,10 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
+**From difficulty tier 4 the Last Stand has a depth limit, and the limit grows with the tier**: at most 125 floors at tier 4, 156 at tier 5, 188 at tier 6, 219 at tier 7 and 250 at tier 8, applied after everything below has been added. Tiers 1 to 3 have no limit. Without it, at tiers 6 to 8 almost every run reached a Last Stand of 500 to 1,100 floors and none was won. The project owner chose on 2026-10-30, verbatim "Falling wins": tiers 5 to 8 are winnable for a fully invested Explorer, with the win rate falling as the tier rises to a few percent at tier 8. That superseded, for tiers 4 and up, the aim of a Last Stand cleared about 1 time in 7 at every tier. The limit changes no reward: clearing the Last Stand ends the run as won whatever its depth. `docs/DECISIONS.md`, 2026-10-30, has the measurements.
+
+  
+
 **The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost.
 
 
