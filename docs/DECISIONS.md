@@ -202,6 +202,29 @@ at 11,643 MB once it had finished.
 - The second named the holder in both worlds: "holders [(25,21): ArrivingPackSites; ]" after the walk and "holders
   [(26,20): ArrivingPackSites; ]" after the load -- the last floor's pack sites, said first above.
 
+**Window w107 (lock `dungeon-w107`, `8ab793dce`, on `3d29e5b3f`, 2026-10-30) FAILED FOUR EXISTING TESTS IN THE WHOLE
+SUITE; no proof ran.** Before it: `Build: Succeeded - 26 actions, 23 files compiled` with no lock; Python of record at
+`8ab793dce` 7141 tests, 0 failures, 0 errors, 8 skipped, ruff `All checks passed!`. The pre-checks, kept in the run
+output, measured at 17:20:31: `development` at `3d29e5b3f`, its CI and Unreal runs a success there; no run in progress
+or queued; the lock free; no build, editor, simulation or pytest process; 11,625 MB free. The lock was released before
+anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | `1 tests performed, 1 succeeded, 0 failed`, each. "LOAD REBUILD choices and cells on floor 3" and "... creatures and zones on floor 2", every list equal; "LOAD HORDE: ... the start's floor 35 x 41 entrance X=31 Y=35; saved on wave 3 the arena 36 x 46 entrance X=11 Y=37, loaded 36 x 46 entrance X=11 Y=37"; "LOAD SIGHT: ... 219 of the saved carry a reality"; "PLACED AROUND: statues (26,20)(15,14)(40,26), again (26,20)(15,14)(40,26)"; "PLACED AFTER: floor 4 left a pack site on the statue's cell (40,26); statues (26,20)(15,14)(40,26), built again after it (26,20)(15,14)(40,26)" |
+| Whole Unreal suite | `4387 tests performed, 4383 succeeded, 4 failed: AFloorChangeClearsTheCountAndKeepsTheWraith, AFloorChangeClearsTheFloorCountsAndKeepsTheRung, AFloorChangePutsEveryCreaturesDamageBack, ARisenCreatureDoesNotCountTowardTheNextFloor`; declared 4387, gap 0; memory peak 8,412 MB, final 8,059 MB |
+| Python (JUnit) | 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**THE FOUR ARE F2'S CHECK REFUSING A FLOOR THAT IS NOT THE ARENA, WHICH EACH TEST USES AS ONE.** Each, in
+`CataclysmDungeonModifierEffectsTests.cpp`, builds an ordinary floor 1, then sets `Mode->DungeonSubType` to Horde and
+calls `GoToFloor(2)` (the switch at lines 17166, 17923, 19414 and 20985), and asserts the creatures live through "the
+change of wave": "the wraith lived through the change of wave", "the champion lived through the change of wave",
+"both risen creatures lived into the next wave ... 2, but it was 0", and the survivor's damage 160 where 100 (its
+damage was not put back because it is a new creature). The brief's flag alone kept the ordinary floor as the arena;
+`bThatArenaStands` compares the layout too, which differs, so the arena is carved and the creatures are cleared, as on
+a load. In play a dungeon's sub-type does not change between its floors. Ruling asked of the coordinating session.
+
 ---
 
 ## 2026-10-30 — A creature placed on a dungeon floor is built from the enemy score: eased by the tier's relief, never below floor 1 of a 12-floor dungeon, and with its damage scaled by the tier (#1569)
