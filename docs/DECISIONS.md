@@ -19,7 +19,8 @@ this file.
 - **THE NO-TREE PLAYER DOES NOT: ITS TIER 2 IS ABOVE ITS TIER 1** by about 3 to 4 points, and its tier 3 is about level
   with tier 4 at the start of a tier. The relief that tier 2 needs for the Explorer also helps a player who did not need
   it, while tier 1 has none. Help at tier 1 (the line continued gives 0.06) is the only lever found; it is not measured
-  and not built. The coordinating session shows the owner this before merge, with that option.
+  and not built. **The project owner saw this table on 2026-10-30, with that option, and approved it as built, verbatim
+  "Merge as built": no relief at tier 1, and the no-tree inversion is accepted.**
 - **TIERS 4 TO 8 DO NOT CHANGE.** The relief's line and the limit's values there are the same as merged in #2631; only
   how they are stored changed. Re-measured on this change's code, every tier 4-8 figure equals the #2631 table to every digit.
 - **THE GAME APPLIES NONE OF IT YET**, as before: the relief constants change and nothing reads them (#1569); there is
@@ -119,7 +120,10 @@ Moved, none deleted, each to the world it now describes:
 - `test_tiers_five_to_eight_are_winnable.py`: `test_the_last_stand_limit_starts_at_tier_four_and_grows_with_the_tier` is
   now `test_the_last_stand_limit_grows_with_the_tier_from_tier_four_to_eight` (tiers 4-8 and tier 1);
   `test_control_a_tier_three_last_stand_is_not_limited` is now `test_control_a_tier_one_last_stand_is_not_limited`.
-- `tools/tests/test_content_relief_port.py`: the ruled list is 0, 0.19, 0.32, 0.45 ... 0.97.
+- `tools/tests/test_content_relief_port.py`: the ruled list is 0, 0.19, 0.32, 0.45 ... 0.97. It still holds the game's
+  three constants in `CataclysmEnemyScore.h` equal to `TuningConfig`'s, now 0.19, 0.13 and tier 2, and still states that
+  no game code reads them. The C++ change is those two constants and their comment; the continuous integration "Game
+  compiles" job is its evidence, as for #2628.
 
 ### REGISTERED BEFORE THE PROOFS
 
