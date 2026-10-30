@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-30 — A restored creature hits as hard as it did, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
+## 2026-10-30 — A restored creature is the creature it was and an illusion is not saved, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
 
 **Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on
 `FCataclysmSavedWalk`, and `ClassResource` on `FCataclysmSavedCharacterPlacement`, in
@@ -19,15 +19,37 @@ Decisions made outside the Google Drive documents, newest first.
 
 - **NOT YET PASSED IN UNREAL.** Window w102 below stopped at the roles test, on the fault in the next item; it has been
   corrected and the next window is registered below.
-- **A FAULT IN MERGED CODE IS CORRECTED HERE FIRST: SINCE #751 A CREATURE PUT BACK FROM A SAVE HAD NO ATTACK DAMAGE.**
-  `FCataclysmSavedCreature` held none and `FCataclysmSaveApply::CreatureInto` never set it; a creature's damage is set
-  by whoever spawns it (`ACataclysmDungeonGameMode` calls `SetAttackDamage` with its figure for the kind), so every
-  restored creature had its class's starting damage, which read 0 in w102. Found by the roles test, whose holder came
-  back at damage 0.0 where 45.5 and whose boss at 12.0 where 47.0. Ruled 2026-10-30 (Q1 (a)): the record now holds
-  the creature's own damage (`AttackDamage`, read through a new public `GetStartingAttackDamage`), and `CreatureInto`
-  sets it before writing the saved maximum and health back, because `SetAttackDamage` runs `ApplyStartingAttributes`,
-  which rewrites them. Its rarity's scale comes back with `RarityStep`; Soul Harvest's and the void's additions come
-  back through the roles. No version bump: 0 means not saved and leaves the damage as before.
+- **THREE FAULTS IN MERGED CODE, ALL SINCE #751, ARE CORRECTED HERE FIRST.**
+  1. **A creature put back from a save had no attack damage.** `FCataclysmSavedCreature` held none and
+     `FCataclysmSaveApply::CreatureInto` never set it; a creature's damage is set by whoever spawns it
+     (`ACataclysmDungeonGameMode::ApplyDesignedStats` calls `SetAttackDamage` with its figure for the kind). Found
+     by the roles test in w102, whose holder came back at damage 0.0 where 45.5 and whose boss at 12.0 where 47.0.
+  2. **Nor its armour or its starting health.** Found by the sweep the coordinating session asked for once the
+     damage turned up: `ApplyDesignedStats` also calls `SetArmour` and `SetHealth`, and neither figure was saved. The
+     saved maximum health attribute was put back, but the starting figure it is rebuilt from was not, so any later
+     `ApplyStartingAttributes` (for one, taking the creature with `Subjugate`, through
+     `SetCommanderHealthMultiplier`) rebuilt the maximum from the class's default and healed it to full.
+  3. **An illusion came back as a real creature.** `SpawnPlacedCreature` marks a floor creature an illusion when
+     Illusory Enemies rolls it (`SetIsAnIllusion`); it is not marked raised by a rule, `FloorFrom` had no check for it
+     and the record no flag, so it was saved and came back real. `FloorFrom` now skips it, as a rule-raised creature.
+  The record now holds the creature's own attack damage, armour and starting health (`AttackDamage`, `Armour`,
+  `StartingHealth`, read through new public `GetStartingAttackDamage`, `GetStartingArmour`, `GetStartingMaxHealth`)
+  and the placed damage multiplier (`PlacedDamageMultiplier`), and `CreatureInto` sets all four before writing the
+  saved maximum and health back, because `SetHealth`, `SetArmour` and `SetAttackDamage` each run
+  `ApplyStartingAttributes`, which rewrites them. The rarity's scale comes back with `RarityStep`; Soul Harvest's and
+  the void's additions through the roles. Ruled 2026-10-30. No version bump: zero health, armour below zero and a
+  multiplier of 1 mean not saved and leave the creature as before.
+- **THE SWEEP OF WHAT PLACEMENT SETS** (`SpawnPlacedCreature`, `ApplyDesignedStats`, `ApplyStartingAttributes`, every
+  caller of `SetIsAnIllusion` and `SetPlacedDamageMultiplier`). Already restored: the class, location and facing,
+  the rarity step, the modifier rows (with those `DrawModifiersForRarity` drew), `bRisenFromTheDead`, the current and
+  maximum health and energy shield, and the team (the class's own, Monsters). Evasion, critical chance and multiplier
+  and resistance are the class's own figures, which placement does not change. Restored by this branch: the four
+  figures above. Moved to Group 3, as a rule's per-floor state: `SightRadiusMultiplier` (the floor's or an arriving
+  wave's), and `FloorRealityRow` (the floor's every-creature modifier, whose row is in the modifier rows and is
+  restored; the field only keeps `DrawModifiersForRarity` from counting it).
+- **GRAVE TIDE'S CREATURES ARE NOT MARKED RAISED BY A RULE, SO THE PLACED MULTIPLIER REACHES THEM.** Read in
+  `StepGraveTide`: it sets each raised creature's placed damage multiplier once and adds it to `FloorEnemies`, and
+  sets no `bRaisedByARule`, so `FloorFrom` saves it and a load put it back at multiplier 1 until this branch.
 - **THE FLOOR RULES' MULTIPLIERS REACH A RESTORED CREATURE ON THE DUNGEON'S NEXT BEAT, NOT AT ONCE** (the coordinating
   session's question). The rules that multiply a creature's damage (`StepInfernalBeacons`, `StepPactOfTemptation`
   and the like) set each creature's multiplier from inside `StepFloorRulesThatChange`, which `Tick` runs once
@@ -96,9 +118,12 @@ Fervour; after the load the thrall is commanded by the player, on its side, the 
 as saved, the reserve is 30 and the player's Fervour 20. **CONTROL:** the other Brute is an ordinary enemy. It prints a
 line beginning "THRALL LOAD".
 
-`Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid`: a Brute given its own attack damage in a level world, and a
-creature the dungeon placed on its floor with its kind's damage, are each saved and loaded into another world, and
-each hits for the damage it did. It prints a line beginning "LOAD DAMAGE". It guards the fault named first.
+`Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid`: a Brute given its own starting health, armour and attack
+damage in a level world, beside an illusion, and a creature the dungeon placed with its kind's figures and given a
+placed damage multiplier of 0.6, are each saved and loaded into another world. Each comes back with its damage and
+armour, and the same `SetCommanderHealthMultiplier(1.5)` rebuild gives each the maximum it gave the saved creature.
+The saved floor does not hold the illusion. **CONTROL:** it holds the Brute beside it. It prints a line beginning
+"LOAD DAMAGE". It guards the three faults named first.
 
 `Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack`: in a dungeon one creature is given 3 souls and another is
 made the void's boss, through the restore's own call; after the load the souls are held again with the same figures,
@@ -123,6 +148,7 @@ again, and which is why the Second Self flag is saved.
 | P3, the restore also calls `ApplyNothingIsForgottenFigures` | the roles test fails on the boss's figures only, its maximum given the void's health a second time |
 | P4, the load hands the walk over with the Stalker's health share reset | the creature-state test fails at its round-trip check only, its set-up check passing |
 | P5, `CreatureFrom` does not read the attack damage | the damage test fails, in both halves, and the roles test fails on both creatures' damage; nothing else fails |
+| P6, `FloorFrom`'s illusion check removed | the damage test fails on "an illusion is not saved as a creature" only; its CONTROL holds; nothing else fails |
 
 ### Run
 

@@ -278,9 +278,21 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	// ITS ATTACK DAMAGE, which nothing put back until #753's Group 2. BEFORE THE MAXIMUMS AND VITALS: `SetAttackDamage`
 	// runs `ApplyStartingAttributes`, which rewrites the maximum and the health from the creature's figures, and the
 	// two writes below put the saved ones back over that.
+	if (Saved.StartingHealth > 0.0f)
+	{
+		Creature->SetHealth(Saved.StartingHealth);
+	}
+	if (Saved.Armour >= 0.0f)
+	{
+		Creature->SetArmour(Saved.Armour);
+	}
 	if (Saved.AttackDamage > 0.0f)
 	{
 		Creature->SetAttackDamage(Saved.AttackDamage);
+	}
+	if (!FMath::IsNearlyEqual(Saved.PlacedDamageMultiplier, 1.0f))
+	{
+		Creature->SetPlacedDamageMultiplier(Saved.PlacedDamageMultiplier);
 	}
 
 	// AND THE VITALS LAST, AFTER THE CREATURE HAS APPLIED ITS OWN STAT BLOCK.

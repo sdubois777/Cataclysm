@@ -1852,9 +1852,14 @@ bool FCataclysmSaveLoadCreatureRolesTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 /**
- * A creature put back from a save hits as hard as it did: its attack damage equals the saved creature's, in a level
- * world and on a dungeon floor. Issue #753, Group 2, ruled 2026-10-30. THE FAULT IT GUARDS, since #751: nothing saved
- * the damage and the restore never set it, so every restored creature had its class's starting damage, 0 here.
+ * A creature put back from a save is the creature it was: its attack damage, its armour, the starting health its
+ * maximum is rebuilt from, and on a dungeon floor the damage multiplier its placement gave it; and an illusion is not
+ * saved as a creature at all. Issue #753, Group 2, ruled 2026-10-30. THE FAULTS IT GUARDS, all since #751: nothing saved
+ * the damage, the armour or the starting health and the restore set none of them, and an illusion came back real.
+ *
+ * THE STARTING HEALTH IS CHECKED THROUGH A REBUILD: after the save and after the load, the same
+ * `SetCommanderHealthMultiplier(1.5)` call rebuilds each creature's maximum from its starting health, which is what
+ * taking a restored creature with `Subjugate` does in play.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCreatureDamageTest,
 	"Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid",
@@ -1864,28 +1869,38 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 {
 	using namespace CataclysmSaveLoadTest;
 
-	auto DamageOf = [](const ACataclysmEnemyCharacter& Creature)
+	auto Figure = [](const ACataclysmEnemyCharacter& Creature, const FGameplayAttribute& Attribute)
 	{
 		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
-		return Abilities ? Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
-						 : -1.0f;
+		return Abilities ? Abilities->GetNumericAttribute(Attribute) : -1.0f;
 	};
-	auto DamageAt = [&DamageOf](UWorld* World, const FVector& At)
+	auto Line = [&Figure](ACataclysmEnemyCharacter& Creature)
+	{
+		const float Damage = Figure(Creature, UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+		const float Armour = Figure(Creature, UCataclysmCombatAttributeSet::GetArmorAttribute());
+		Creature.SetCommanderHealthMultiplier(1.5f);
+		const float Rebuilt = Figure(Creature, UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		return FString::Printf(TEXT("damage %.1f armour %.1f rebuilt max %.1f"), Damage, Armour, Rebuilt);
+	};
+	auto CreatureAt = [](UWorld* World, const FVector& At) -> ACataclysmEnemyCharacter*
 	{
 		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
 		{
 			if (IsValid(*It) && FVector::Dist2D(It->GetActorLocation(), At) < 1.0f)
 			{
-				return DamageOf(**It);
+				return *It;
 			}
 		}
-		return -1.0f;
+		return nullptr;
 	};
 
-	// IN A LEVEL WORLD: a Brute given its own attack damage.
-	float LevelSaved = -1.0f;
-	float LevelLoaded = -1.0f;
+	// IN A LEVEL WORLD: a Brute given its own damage, armour and starting health, beside an illusion.
+	FString LevelSaved = TEXT("(not saved)");
+	FString LevelLoaded = TEXT("(not loaded)");
+	bool bIllusionSaved = true;
+	bool bBesideItSaved = false;
 	const FVector LevelAt(700.0f, 300.0f, 100.0f);
+	const FVector IllusionAt(-700.0f, 300.0f, 100.0f);
 	{
 		FSaved Saved;
 		ON_SCOPE_EXIT { Saved.Forget(); };
@@ -1903,24 +1918,38 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 			Saved.RunId = FGuid::NewGuid();
 			Saved.CharacterId = FGuid::NewGuid();
 			Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
-			FCataclysmSavedCreature Brute;
-			Brute.ArchetypeRow = FName(TEXT("Brute"));
-			Brute.Location = LevelAt;
-			Brute.Health = 100.0f;
-			Brute.MaxHealth = 100.0f;
-			ACataclysmEnemyCharacter* Creature = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute);
-			if (!TestNotNull(TEXT("level: set-up: the Brute stands"), Creature))
+			auto Brute = [](const FVector& At)
+			{
+				FCataclysmSavedCreature Record;
+				Record.ArchetypeRow = FName(TEXT("Brute"));
+				Record.Location = At;
+				Record.Health = 100.0f;
+				Record.MaxHealth = 100.0f;
+				return Record;
+			};
+			ACataclysmEnemyCharacter* Creature = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(LevelAt));
+			ACataclysmEnemyCharacter* Illusion = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(IllusionAt));
+			if (!TestNotNull(TEXT("level: set-up: the Brute stands"), Creature)
+				|| !TestNotNull(TEXT("level: set-up: the illusion stands"), Illusion))
 			{
 				return false;
 			}
+			Creature->SetHealth(250.0f);
+			Creature->SetArmour(55.0f);
 			Creature->SetAttackDamage(37.5f);
-			LevelSaved = DamageOf(*Creature);
-			if (!TestTrue(TEXT("level: set-up: the Brute hits for something"), LevelSaved > 0.0f))
-			{
-				return false;
-			}
+			Illusion->SetIsAnIllusion(true);
 			Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
 			WaitForSlot(Saved.RunSlot());
+			if (const UCataclysmRunSave* Written = Read<UCataclysmRunSave>(Saved.RunSlot()))
+			{
+				bIllusionSaved = false;
+				for (const FCataclysmSavedCreature& Record : Written->Floor.Creatures)
+				{
+					bIllusionSaved |= FVector::Dist2D(Record.Location, IllusionAt) < 1.0f;
+					bBesideItSaved |= FVector::Dist2D(Record.Location, LevelAt) < 1.0f;
+				}
+			}
+			LevelSaved = Line(*Creature);
 		}
 		FLoadScene Scene = MakeScene();
 		if (!TestTrue(TEXT("level: set-up: the loading world was built"), Scene.IsUsable()))
@@ -1933,12 +1962,15 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 		FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character, Saved.CharacterId);
-		LevelLoaded = DamageAt(Scene.World, LevelAt);
+		if (ACataclysmEnemyCharacter* Back = CreatureAt(Scene.World, LevelAt))
+		{
+			LevelLoaded = Line(*Back);
+		}
 	}
 
-	// ON A DUNGEON FLOOR: a creature the dungeon placed, with the damage the dungeon gave its kind.
-	float DungeonSaved = -1.0f;
-	float DungeonLoaded = -1.0f;
+	// ON A DUNGEON FLOOR: a creature the dungeon placed with its kind's figures, given a placed damage multiplier.
+	FString DungeonSaved = TEXT("(not saved)");
+	FString DungeonLoaded = TEXT("(not loaded)");
 	{
 		FSaved Saved;
 		ON_SCOPE_EXIT { Saved.Forget(); };
@@ -1969,14 +2001,11 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 			{
 				return false;
 			}
+			Standing[0]->SetPlacedDamageMultiplier(0.6f);
 			DungeonAt = Standing[0]->GetActorLocation();
-			DungeonSaved = DamageOf(*Standing[0]);
-			if (!TestTrue(TEXT("dungeon: set-up: the creature hits for something"), DungeonSaved > 0.0f))
-			{
-				return false;
-			}
 			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
 			WaitForSlot(Saved.RunSlot());
+			DungeonSaved = Line(*Standing[0]);
 		}
 		FDungeonScene Scene = MakeDungeonScene();
 		if (!TestTrue(TEXT("dungeon: set-up: the loading dungeon world was built"), Scene.IsUsable()))
@@ -1989,15 +2018,22 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 		FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character, Saved.CharacterId);
-		DungeonLoaded = DamageAt(Scene.Base.World, DungeonAt);
+		if (ACataclysmEnemyCharacter* Back = CreatureAt(Scene.Base.World, DungeonAt))
+		{
+			DungeonLoaded = Line(*Back);
+		}
 	}
 
-	AddInfo(FString::Printf(TEXT("LOAD DAMAGE: in a level, saved %.1f, loaded %.1f; on a dungeon floor, saved %.1f, "
-								 "loaded %.1f"),
-							LevelSaved, LevelLoaded, DungeonSaved, DungeonLoaded));
+	AddInfo(FString::Printf(TEXT("LOAD DAMAGE: in a level, saved %s, loaded %s; on a dungeon floor, saved %s, loaded "
+								 "%s; the illusion %s, the creature beside it %s"),
+							*LevelSaved, *LevelLoaded, *DungeonSaved, *DungeonLoaded,
+							bIllusionSaved ? TEXT("SAVED") : TEXT("not saved"),
+							bBesideItSaved ? TEXT("saved") : TEXT("NOT SAVED")));
 
-	TestEqual(TEXT("in a level world the restored creature hits as hard as it did"), LevelLoaded, LevelSaved);
+	TestEqual(TEXT("in a level world the restored creature is the creature it was"), LevelLoaded, LevelSaved);
 	TestEqual(TEXT("and on a dungeon floor"), DungeonLoaded, DungeonSaved);
+	TestFalse(TEXT("an illusion is not saved as a creature"), bIllusionSaved);
+	TestTrue(TEXT("CONTROL: the creature beside it is"), bBesideItSaved);
 	return true;
 }
 

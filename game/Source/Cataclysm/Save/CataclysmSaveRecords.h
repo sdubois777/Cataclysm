@@ -177,6 +177,22 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float AttackDamage = 0.0f;
+
+	/**
+	 * THE REST OF WHAT PLACEMENT SETS, found by the sweep of 2026-10-30 (#753, Group 2), each a fault since #751 like
+	 * the damage: the starting maximum health (`SetHealth`), which a later `ApplyStartingAttributes` rebuilds the
+	 * maximum from; the armour (`SetArmour`); and the placed damage multiplier (`SetPlacedDamageMultiplier`), which
+	 * Grave Tide sets once on the creatures its wave raises. Zero health, armour below zero and a multiplier of 1 mean
+	 * not saved, which is what an older file reads as, and leave the creature as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float StartingHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Armour = -1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float PlacedDamageMultiplier = 1.0f;
 };
 
 /**

@@ -129,7 +129,10 @@
 				"SoulHarvestSouls": 2,
 				"SoulHarvestHealthAdded": 15.5,
 				"bFedByNothingIsForgotten": false,
-				"AttackDamage": 42.5
+				"AttackDamage": 42.5,
+				"StartingHealth": 400,
+				"Armour": 120,
+				"PlacedDamageMultiplier": 0.6
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -153,7 +156,10 @@
 				"SoulHarvestSouls": 0,
 				"SoulHarvestHealthAdded": 0,
 				"bFedByNothingIsForgotten": false,
-				"AttackDamage": 18
+				"AttackDamage": 18,
+				"StartingHealth": 250,
+				"Armour": 0,
+				"PlacedDamageMultiplier": 1
 			}
 		],
 		"GroundItems": [

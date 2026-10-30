@@ -77,6 +77,9 @@ FCataclysmSavedCreature FCataclysmSaveGather::CreatureFrom(
 	Saved.ModifierRows = Creature.ModifierRows;
 	Saved.bRisenFromTheDead = Creature.bRisenFromTheDead;
 	Saved.AttackDamage = Creature.GetStartingAttackDamage();
+	Saved.StartingHealth = Creature.GetStartingMaxHealth();
+	Saved.Armour = Creature.GetStartingArmour();
+	Saved.PlacedDamageMultiplier = Creature.GetPlacedDamageMultiplier();
 	Saved.Location = Creature.GetActorLocation();
 
 	// YAW ALONE. A creature does not pitch or roll, and the record says so.
@@ -195,6 +198,14 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		// and paid for. `Cataclysm.LoadCharacter` restores a floor since 2026-10-30 (#753); until then
 		// this said no path in play did. Issues #1820 and #41.
 		if (Creature->bRaisedByARule)
+		{
+			continue;
+		}
+
+		// NOR AN ILLUSION: Illusory Enemies places it as a floor creature that is not real, and the record has no
+		// flag for that, so written back it was a real creature. A fault since #751, found by the sweep of
+		// 2026-10-30 (#753, Group 2). It is not saved, as a rule-raised creature is not.
+		if (Creature->IsAnIllusion())
 		{
 			continue;
 		}
