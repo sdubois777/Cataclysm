@@ -275,6 +275,14 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	// A RISEN CREATURE STILL PAYS NOTHING WHEN IT DIES AGAIN, the owner's decision of 2026-09-17.
 	Creature->bRisenFromTheDead = Saved.bRisenFromTheDead;
 
+	// ITS ATTACK DAMAGE, which nothing put back until #753's Group 2. BEFORE THE MAXIMUMS AND VITALS: `SetAttackDamage`
+	// runs `ApplyStartingAttributes`, which rewrites the maximum and the health from the creature's figures, and the
+	// two writes below put the saved ones back over that.
+	if (Saved.AttackDamage > 0.0f)
+	{
+		Creature->SetAttackDamage(Saved.AttackDamage);
+	}
+
 	// AND THE VITALS LAST, AFTER THE CREATURE HAS APPLIED ITS OWN STAT BLOCK.
 	// `ApplyStartingAttributes` runs from BeginPlay and writes the archetype's
 	// full health, so writing the saved figures before that would be

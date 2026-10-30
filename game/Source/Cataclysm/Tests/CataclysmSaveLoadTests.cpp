@@ -1847,4 +1847,158 @@ bool FCataclysmSaveLoadCreatureRolesTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A restored creature's attack damage
+// ---------------------------------------------------------------------------
+
+/**
+ * A creature put back from a save hits as hard as it did: its attack damage equals the saved creature's, in a level
+ * world and on a dungeon floor. Issue #753, Group 2, ruled 2026-10-30. THE FAULT IT GUARDS, since #751: nothing saved
+ * the damage and the restore never set it, so every restored creature had its class's starting damage, 0 here.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCreatureDamageTest,
+	"Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	auto DamageOf = [](const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
+		return Abilities ? Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+						 : -1.0f;
+	};
+	auto DamageAt = [&DamageOf](UWorld* World, const FVector& At)
+	{
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It) && FVector::Dist2D(It->GetActorLocation(), At) < 1.0f)
+			{
+				return DamageOf(**It);
+			}
+		}
+		return -1.0f;
+	};
+
+	// IN A LEVEL WORLD: a Brute given its own attack damage.
+	float LevelSaved = -1.0f;
+	float LevelLoaded = -1.0f;
+	const FVector LevelAt(700.0f, 300.0f, 100.0f);
+	{
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		{
+			FLoadScene Scene = MakeScene();
+			if (!TestTrue(TEXT("level: set-up: the saving world was built"), Scene.IsUsable()))
+			{
+				if (Scene.World)
+				{
+					Scene.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+			FCataclysmSavedCreature Brute;
+			Brute.ArchetypeRow = FName(TEXT("Brute"));
+			Brute.Location = LevelAt;
+			Brute.Health = 100.0f;
+			Brute.MaxHealth = 100.0f;
+			ACataclysmEnemyCharacter* Creature = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute);
+			if (!TestNotNull(TEXT("level: set-up: the Brute stands"), Creature))
+			{
+				return false;
+			}
+			Creature->SetAttackDamage(37.5f);
+			LevelSaved = DamageOf(*Creature);
+			if (!TestTrue(TEXT("level: set-up: the Brute hits for something"), LevelSaved > 0.0f))
+			{
+				return false;
+			}
+			Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("level: set-up: the loading world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character, Saved.CharacterId);
+		LevelLoaded = DamageAt(Scene.World, LevelAt);
+	}
+
+	// ON A DUNGEON FLOOR: a creature the dungeon placed, with the damage the dungeon gave its kind.
+	float DungeonSaved = -1.0f;
+	float DungeonLoaded = -1.0f;
+	{
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FVector DungeonAt = FVector::ZeroVector;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!TestTrue(TEXT("dungeon: set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+			if (!TestTrue(TEXT("dungeon: set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+				|| !TestTrue(TEXT("dungeon: set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+			if (!TestTrue(TEXT("dungeon: set-up: the floor has a creature"), Standing.Num() > 0))
+			{
+				return false;
+			}
+			DungeonAt = Standing[0]->GetActorLocation();
+			DungeonSaved = DamageOf(*Standing[0]);
+			if (!TestTrue(TEXT("dungeon: set-up: the creature hits for something"), DungeonSaved > 0.0f))
+			{
+				return false;
+			}
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("dungeon: set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character, Saved.CharacterId);
+		DungeonLoaded = DamageAt(Scene.Base.World, DungeonAt);
+	}
+
+	AddInfo(FString::Printf(TEXT("LOAD DAMAGE: in a level, saved %.1f, loaded %.1f; on a dungeon floor, saved %.1f, "
+								 "loaded %.1f"),
+							LevelSaved, LevelLoaded, DungeonSaved, DungeonLoaded));
+
+	TestEqual(TEXT("in a level world the restored creature hits as hard as it did"), LevelLoaded, LevelSaved);
+	TestEqual(TEXT("and on a dungeon floor"), DungeonLoaded, DungeonSaved);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

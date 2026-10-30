@@ -128,7 +128,8 @@
 				"CommanderHealthMultiplier": 1,
 				"SoulHarvestSouls": 2,
 				"SoulHarvestHealthAdded": 15.5,
-				"bFedByNothingIsForgotten": false
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 42.5
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -151,7 +152,8 @@
 				"CommanderHealthMultiplier": 1.25,
 				"SoulHarvestSouls": 0,
 				"SoulHarvestHealthAdded": 0,
-				"bFedByNothingIsForgotten": false
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 18
 			}
 		],
 		"GroundItems": [

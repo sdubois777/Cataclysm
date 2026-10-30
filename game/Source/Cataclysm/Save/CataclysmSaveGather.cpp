@@ -76,6 +76,7 @@ FCataclysmSavedCreature FCataclysmSaveGather::CreatureFrom(
 	Saved.RarityStep = Creature.RarityStep;
 	Saved.ModifierRows = Creature.ModifierRows;
 	Saved.bRisenFromTheDead = Creature.bRisenFromTheDead;
+	Saved.AttackDamage = Creature.GetStartingAttackDamage();
 	Saved.Location = Creature.GetActorLocation();
 
 	// YAW ALONE. A creature does not pitch or roll, and the record says so.

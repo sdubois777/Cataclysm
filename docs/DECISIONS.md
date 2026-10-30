@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-30 — A player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
+## 2026-10-30 — A restored creature hits as hard as it did, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
 
 **Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on
 `FCataclysmSavedWalk`, and `ClassResource` on `FCataclysmSavedCharacterPlacement`, in
@@ -17,7 +17,25 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **NOT YET PASSED IN UNREAL.** Window w102 below stopped at the roles test, on the fault in the next item; it has been
+  corrected and the next window is registered below.
+- **A FAULT IN MERGED CODE IS CORRECTED HERE FIRST: SINCE #751 A CREATURE PUT BACK FROM A SAVE HAD NO ATTACK DAMAGE.**
+  `FCataclysmSavedCreature` held none and `FCataclysmSaveApply::CreatureInto` never set it; a creature's damage is set
+  by whoever spawns it (`ACataclysmDungeonGameMode` calls `SetAttackDamage` with its figure for the kind), so every
+  restored creature had its class's starting damage, which read 0 in w102. Found by the roles test, whose holder came
+  back at damage 0.0 where 45.5 and whose boss at 12.0 where 47.0. Ruled 2026-10-30 (Q1 (a)): the record now holds
+  the creature's own damage (`AttackDamage`, read through a new public `GetStartingAttackDamage`), and `CreatureInto`
+  sets it before writing the saved maximum and health back, because `SetAttackDamage` runs `ApplyStartingAttributes`,
+  which rewrites them. Its rarity's scale comes back with `RarityStep`; Soul Harvest's and the void's additions come
+  back through the roles. No version bump: 0 means not saved and leaves the damage as before.
+- **THE FLOOR RULES' MULTIPLIERS REACH A RESTORED CREATURE ON THE DUNGEON'S NEXT BEAT, NOT AT ONCE** (the coordinating
+  session's question). The rules that multiply a creature's damage (`StepInfernalBeacons`, `StepPactOfTemptation`
+  and the like) set each creature's multiplier from inside `StepFloorRulesThatChange`, which `Tick` runs once
+  `SecondsBetweenWaveChecks`, 0.25 seconds, have passed since the last beat. A creature put back by a load is spawned
+  after the floor start, so until that beat it hits at its own damage times its rarity's scale, without the rules'
+  multipliers: at most 0.25 seconds and a frame. Not checked: whether any creature can land a blow that soon after
+  appearing; the ability wind-ups read (`StampedeWindUpSeconds` 0.83, `RockThrowWindUpSeconds` 1.0,
+  `StompWindUpSeconds` 1.4, `MoltenRoarWindUpSeconds` 2.0) are all longer, and the basic attacks' timing was not read.
 - **GROUP 1'S THRALL TEST IS REWRITTEN IN PLACE, AS RULED (R1).** `APlayersThrallIsNotSavedAsACreature` asserted the
   thrall was not saved: the interim state D3 (a) gave until D3 (b) kept it. It is now
   `APlayersThrallComesBackUnderThePlayersCommand`, with the same CONTROL, so reversing its assertion is the ruling
@@ -78,6 +96,10 @@ Fervour; after the load the thrall is commanded by the player, on its side, the 
 as saved, the reserve is 30 and the player's Fervour 20. **CONTROL:** the other Brute is an ordinary enemy. It prints a
 line beginning "THRALL LOAD".
 
+`Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid`: a Brute given its own attack damage in a level world, and a
+creature the dungeon placed on its floor with its kind's damage, are each saved and loaded into another world, and
+each hits for the damage it did. It prints a line beginning "LOAD DAMAGE". It guards the fault named first.
+
 `Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack`: in a dungeon one creature is given 3 souls and another is
 made the void's boss, through the restore's own call; after the load the souls are held again with the same figures,
 and the boss is the void's with its maximum and attack damage as saved. It prints a line beginning "LOAD SOULS".
@@ -92,14 +114,15 @@ again, and which is why the Second Self flag is saved.
 
 | Figure | Registered |
 |---|---|
-| The two new tests and the rewritten thrall test alone | 1 / 1 each |
-| Whole Unreal suite | 4382 / 0: `development`'s 4380, measured by window w101, + 2 (the thrall test is rewritten, not added), unless a merge before the window adds an Unreal test |
+| The three new tests and the rewritten thrall test alone | 1 / 1 each |
+| Whole Unreal suite | 4383 / 0: `development`'s 4380, measured by window w101, + 3 (the thrall test is rewritten, not added), unless a merge before the window adds an Unreal test |
 | Python | of record, with JUnit, and ruff |
-| The "LOAD WALK CREATURES", "THRALL LOAD" and "LOAD SOULS" lines | quoted as printed |
+| The "LOAD WALK CREATURES", "THRALL LOAD", "LOAD SOULS" and "LOAD DAMAGE" lines | quoted as printed |
 | P1, the load hands the walk over with `BloodDebtPaid` reset | `ADungeonWalksCountersComeBackFromALoad` fails at its round-trip check ("debt 0" where 7), and its set-up check passes; nothing else fails |
 | P2, the loader does not re-link a thrall | the thrall test fails on its commander, its side, the Second Self and the reserve; its health figures and the player's Fervour pass; its CONTROL holds |
 | P3, the restore also calls `ApplyNothingIsForgottenFigures` | the roles test fails on the boss's figures only, its maximum given the void's health a second time |
 | P4, the load hands the walk over with the Stalker's health share reset | the creature-state test fails at its round-trip check only, its set-up check passing |
+| P5, `CreatureFrom` does not read the attack damage | the damage test fails, in both halves, and the roles test fails on both creatures' damage; nothing else fails |
 
 ### Run
 

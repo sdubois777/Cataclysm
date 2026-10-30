@@ -165,6 +165,18 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	/** NOTHING IS FORGOTTEN: the boss the void fed. Its maximum health above already holds what the void gave. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bFedByNothingIsForgotten = false;
+
+	/**
+	 * The creature's own attack damage, what `ACataclysmEnemyCharacter::SetAttackDamage` was given: before its
+	 * rarity's scale, which `RarityStep` brings back, the floor rules' multipliers, which their beats re-apply, and
+	 * any rule's addition, which the roles above bring back. Issue #753, Group 2, ruled 2026-10-30.
+	 *
+	 * A FAULT SINCE #751, NOT A NEW FIGURE: nothing saved it and `FCataclysmSaveApply::CreatureInto` never set it, so
+	 * every creature a load put back had its class's starting damage, which read 0. ZERO MEANS NOT SAVED, which is
+	 * what an older file reads as, and the restore then leaves the damage as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float AttackDamage = 0.0f;
 };
 
 /**

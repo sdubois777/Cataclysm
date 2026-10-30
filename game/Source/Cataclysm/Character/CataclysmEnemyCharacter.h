@@ -471,6 +471,12 @@ public:
 	float GetCommanderHealthMultiplier() const { return CommanderHealthMultiplier; }
 
 	/**
+	 * What `SetAttackDamage` was last given: the creature's own attack damage, before its rarity's scale, the floor
+	 * rules' multipliers and any rule's addition. A save records it (#753, Group 2).
+	 */
+	float GetStartingAttackDamage() const { return StartingAttackDamage; }
+
+	/**
 	 * Makes this creature an illusion, or stops it being one.
 	 *
 	 * SAFE BEFORE OR AFTER `BeginPlay`, like `SetAttackDamage` and for the same
