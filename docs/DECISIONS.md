@@ -103,7 +103,30 @@ again, and which is why the Second Self flag is saved.
 
 ### Run
 
-Not yet run.
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, at `1372ebe20`:
+`Build: Succeeded - 73 actions, 63 files compiled`, 0 error lines.
+
+**Window w102 (lock `dungeon-w102`, `feat/creatures-walk-state-and-thralls-survive-a-load` at `1372ebe20`, on
+`2082da17b`, 2026-10-30) STOPPED at the third test alone. Nothing after it ran.** `development`'s CI and Unreal runs at
+`2082da17b` succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull
+request was open, no simulation or pytest process ran, and free memory read 11,942 MB immediately before. The lock was
+released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The creature-state test alone | `1 tests performed, 1 succeeded, 0 failed`: "every field matches" |
+| The thrall test alone | `1 tests performed, 1 succeeded, 0 failed`: "the thrall commanded by the player, on the player's side, the Second Self; saved max 100.0 health 60.0, loaded max 100.0 health 60.0; reserve 30 saved, 30 loaded; ..." |
+| The roles test alone | `1 tests performed, 0 succeeded, 1 failed`: "3 souls held after the load; the holder saved max 713.7 damage 45.5 ..., loaded max 713.7 damage 0.0 ...; the boss saved max 549.0 damage 47.0 ..., loaded ... damage 12.0" |
+
+**THE FAULT IS IN MERGED CODE, AND THE ROLES TEST IS WHAT FOUND IT: A CREATURE PUT BACK FROM A SAVE HAS NO ATTACK
+DAMAGE.** `FCataclysmSaveApply::CreatureInto` sets the rarity, the modifiers, the maximums and the vitals, and never
+the attack damage; `FCataclysmSavedCreature` holds none; and a creature's attack damage is set by whoever spawns it
+(`ACataclysmDungeonGameMode` calls `SetAttackDamage` with its figure for the creature's kind). So every creature a
+load puts back, since the floor restore was written (#751), has the damage its class starts with, which here read 0.
+The two failed figures are exactly that: the holder's damage is only Soul Harvest's addition worked out from 0, and the
+boss's is only the void's 12. The maximums, the souls and the boss link all came back. The roles test is not changed;
+the fault waits for the coordinating session's ruling.
 
 ---
 
