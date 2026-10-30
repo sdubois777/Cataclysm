@@ -223,7 +223,26 @@ change of wave": "the wraith lived through the change of wave", "the champion li
 "both risen creatures lived into the next wave ... 2, but it was 0", and the survivor's damage 160 where 100 (its
 damage was not put back because it is a new creature). The brief's flag alone kept the ordinary floor as the arena;
 `bThatArenaStands` compares the layout too, which differs, so the arena is carved and the creatures are cleared, as on
-a load. In play a dungeon's sub-type does not change between its floors. Ruling asked of the coordinating session.
+a load. In play a dungeon's sub-type does not change between its floors.
+
+**RULED 2026-10-30: THE CHECK STAYS STRICT (seed, carved-as floor and layout), AND THE FOUR TESTS ARE HORDE FROM THEIR
+FIRST FLOOR,** the order play uses. Taking the layout out of the check would have passed them unchanged and given up a
+load at Horde wave 2 or later under a pinned `Cataclysm.DungeonSeed`, the setting a playtest saving and loading would
+use. **No assertion changed.** The set-up changed only so: each of the four floor helpers
+(`AFloorCarryingTheChampionsRow`, `AFloorCarryingTheWraithsRow`, `AFloorCarryingTheMarchRow`,
+`AFloorCarryingTheResurgenceRow`) takes a sub-type as a last parameter, defaulting to none, and sets it before
+`StartPlay` builds the first floor when it is not none, so the helpers' other 39 calls (43 in all, counted) are as they were; the four tests
+pass Horde, and their mid-test switch line is removed. No further set-up change was needed to compile; whether one is
+needed to pass is the next window's.
+
+**WHY THE OTHER 38 OF THE FILE'S 42 MID-TEST SWITCHES DID NOT FAIL** (counted by script over every test body holding
+`DungeonSubType = ECataclysmDungeonSubType::Horde;`):
+
+| Switches | What the test does after the switch | Why the check passes or does not matter |
+|---|---|---|
+| 26 | goes to floor 1 first | floor 1 of a Horde dungeon is never the same arena, so the arena is carved there and every later wave keeps it |
+| 3 | builds no floor before the switch | no floor stands, so the first build carves the arena |
+| 9 | builds an ordinary floor, switches, and goes straight to a later wave, as the four did | these reach the check and now get a carved arena; what each asserts is what a floor change clears or forgets, or what the next floor holds, which a carved arena gives as well (`AFloorChangeClearsTheChainAndTheLord`, `AFloorChangeClearsTheTriggersAndTheZones`, `EachCommanderAddsItsTenAndTheyDoNotCompound`, `AFloorChangeForgetsHowManyCommanded`, `AFloorChangeForgetsTheAntiMagicZonesAndItsLock`, `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`, `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`, `PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre`, `ThoseInTheDarkAHordeArenaHasNoChasm`); all nine passed in w107 |
 
 ---
 
