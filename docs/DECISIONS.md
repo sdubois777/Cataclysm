@@ -21,7 +21,7 @@ this file.
   it, while tier 1 has none. Help at tier 1 (the line continued gives 0.06) is the only lever found; it is not measured
   and not built. The coordinating session shows the owner this before merge, with that option.
 - **TIERS 4 TO 8 DO NOT CHANGE.** The relief's line and the limit's values there are the same as merged in #2631; only
-  how they are stored changed. The re-measured tier 4-8 rows are recorded in a later commit.
+  how they are stored changed. Re-measured on this change's code, every tier 4-8 figure equals the #2631 table to every digit.
 - **THE GAME APPLIES NONE OF IT YET**, as before: the relief constants change and nothing reads them (#1569); there is
   no Last Stand in the game (#43, which has a line saying so).
 
@@ -62,7 +62,41 @@ tier 3 already made tier 3 easier than tier 4. 110, 120, 125, 156... still grow 
 
 ### MEASURED FOR THE OWNER
 
-Recorded in a later commit: the full tier 1-8 table on this change's code, both players, both policies, both starts.
+Measured 2026-10-30 on this change's code (`69d95642f`), in a clean worktree. Each world is `analyse_surge_cadence.py`'s
+`base_config` (12 opening dungeons, then 8 every 90 days; that script's escalation 0.10 and craft gain 0.04) at the tier
+and tree shown, `power_start_frac` 0.0 or 0.35. Tiers 1 to 3: 1,000 campaigns in two blocks of 500; tiers 4 to 8: 500
+in two blocks of 250. Explorer is `TREE_EXPLORER_AS_DESIGNED`.
+
+`triage`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 50.0 / 50.2 (0.4 / 0.2) | 38.2 / 41.2 (3.8 / 2.8) | 29.2 / 32.2 (15.8 / 15.2) | 19.2 / 22.8 (12.8 / 17.6) | 14.4 / 12.0 (14.0 / 12.0) | 8.4 / 6.4 (8.4 / 6.4) | 4.4 / 2.0 (4.4 / 2.0) | 3.6 / 2.4 (3.6 / 2.4) |
+| Explorer | 0.35 | 65.4 / 68.4 (0.0 / 0.0) | 52.6 / 55.2 (0.0 / 0.0) | 43.6 / 45.4 (4.8 / 5.6) | 30.4 / 30.0 (10.4 / 13.2) | 14.0 / 12.8 (9.6 / 11.6) | 7.6 / 10.8 (6.8 / 9.6) | 5.6 / 4.8 (5.6 / 4.8) | 2.0 / 3.6 (2.0 / 3.6) |
+| No tree | 0.0 | 31.8 / 32.6 (0.6 / 0.0) | 34.4 / 32.4 (3.8 / 2.8) | 24.8 / 27.6 (11.4 / 10.0) | 24.0 / 20.4 (11.2 / 8.4) | 10.0 / 9.6 (7.6 / 7.6) | 6.0 / 8.4 (4.8 / 7.6) | 2.8 / 1.2 (2.8 / 1.2) | 4.0 / 2.8 (4.0 / 2.8) |
+| No tree | 0.35 | 43.8 / 44.6 (0.8 / 0.0) | 44.0 / 43.6 (3.0 / 2.2) | 30.0 / 35.4 (9.4 / 11.2) | 29.2 / 28.4 (9.6 / 9.6) | 12.4 / 14.4 (10.8 / 12.4) | 6.8 / 10.0 (4.8 / 9.2) | 5.2 / 1.2 (5.2 / 1.2) | 2.8 / 2.0 (2.8 / 2.0) |
+
+`chase_quests`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 51.8 / 46.2 (0.0 / 0.2) | 39.2 / 40.8 (2.6 / 3.0) | 30.8 / 30.4 (16.6 / 15.4) | 22.4 / 23.6 (15.2 / 19.2) | 14.8 / 12.0 (14.4 / 11.6) | 6.4 / 6.0 (6.4 / 6.0) | 5.2 / 2.8 (5.2 / 2.8) | 2.0 / 3.2 (2.0 / 3.2) |
+| Explorer | 0.35 | 67.4 / 65.0 (0.0 / 0.2) | 52.0 / 49.8 (1.2 / 0.8) | 41.2 / 43.4 (8.6 / 10.0) | 33.6 / 38.8 (15.2 / 20.4) | 16.0 / 16.0 (13.6 / 13.2) | 7.6 / 9.2 (6.8 / 8.8) | 6.4 / 4.8 (6.4 / 4.8) | 2.0 / 2.8 (2.0 / 2.8) |
+| No tree | 0.0 | 32.0 / 33.0 (0.2 / 0.2) | 37.0 / 33.8 (4.2 / 2.4) | 26.8 / 23.6 (11.6 / 8.0) | 28.4 / 23.2 (10.0 / 8.0) | 15.2 / 13.6 (9.2 / 9.6) | 10.0 / 9.6 (5.2 / 5.2) | 2.0 / 3.2 (2.0 / 2.8) | 2.0 / 2.0 (2.0 / 2.0) |
+| No tree | 0.35 | 43.2 / 41.6 (0.4 / 0.4) | 48.0 / 44.0 (4.0 / 1.8) | 41.6 / 34.6 (14.8 / 10.0) | 38.0 / 29.2 (10.0 / 7.2) | 17.6 / 18.8 (7.6 / 12.0) | 14.4 / 12.0 (6.8 / 8.0) | 3.2 / 4.8 (2.8 / 4.8) | 3.6 / 2.8 (3.6 / 2.8) |
+
+Read with these facts:
+
+- **The Explorer's wins fall at every step from tier 1 to tier 8**, under both policies and both starts. Under
+  `chase_quests` the means of the two blocks are 49.0, 40.0, 30.6, 23.0, 13.4, 6.2, 4.0, 2.6 at 0.0 and 66.2, 50.9,
+  42.3, 36.2, 16.0, 8.4, 5.6, 2.4 at 0.35. The steps from tier 6 to tier 8 are small (+2.2 and +1.4 at 0.0; under
+  `triage` at 0.0, 3.2 against 3.0): within the noise of 500 campaigns, and none inverts.
+- **The no-tree player inverts** where SAID FIRST says: its tier 2 is above its tier 1 under `chase_quests` (35.4
+  against 32.5 at 0.0, 46.0 against 42.4 at 0.35) and under `triage` at 0.0 (33.4 against 32.2), and its tier 3 is
+  about level with tier 4 under `chase_quests` at 0.0 (25.2 against 25.8).
+- **Tiers 1 and 4 to 8 equal the #2631 table to every digit**, and tiers 2 and 3 equal candidate L's rows above, as
+  they should: nothing at tiers 1 and 4 to 8 changed, and the candidates were measured on the same code with the same
+  seeds.
 
 ### THE TESTS
 
@@ -100,6 +134,10 @@ in `sim/cataclysm_sim/config.py`.
 | 2 | `if tier < self.content_relief_from_tier:` becomes `if tier < 4:` (tiers 2 and 3 lose the relief; tiers 4 to 8 keep it) | `test_wins_fall_at_every_tier.py::test_the_relief_grows_at_every_step_from_tier_one`, `test_wins_fall_at_every_tier.py::test_a_tier_three_dungeon_unsafe_without_the_relief_is_safe_with_it`, `test_tier_content_relief.py::test_the_relief_continues_the_line_down_to_tier_two`, `tools/tests/test_content_relief_port.py::TestTheNumbersMatch::test_both_give_the_ruled_relief_at_every_tier` |
 
 (All `sim/tests/` paths but the last.)
+
+Run 2026-10-30 in a git-archive copy of `e5fad390f`, the commit that registered them. Printed: "PROVED: 2 failed, 23
+passed | restored: 25 passed" for the limit, and "PROVED: 4 failed, 21 passed | restored: 25 passed" for the relief.
+named_failures, exactly the ones registered for each.
 
 ### EVIDENCE
 
