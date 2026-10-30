@@ -158,7 +158,11 @@ the ones registered for each.
 
 ### EVIDENCE
 
-Recorded in the commit after the guard proofs.
+Python of record at `84749074a`, on `development` `2082da17b`: "7130 passed, 8 skipped"; JUnit tests 7138, failures 0,
+errors 0, skipped 8 -- the base's 7126 with the ten new tests and two existing tests that run once per policy in `ALL`
+(`test_engine.py::TestRunsAtAll::test_every_policy_completes_a_campaign` and
+`test_policies_see_sieges.py::TestTheControlsStayBlind::test_a_control_policy_does_not_consult_the_siege_helpers`).
+ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
 
 ### NO GENRE SOURCE
 
