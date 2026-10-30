@@ -15,8 +15,8 @@ test file `game/Source/Cataclysm/Tests/CataclysmSaveCharacterRestoreTests.cpp`. 
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Window w96 below stopped at the build, on one error in the new test file; it was
-  corrected, and nothing has been built since.
+- **BUILT AND RUN: window w97 below passed every registered figure, and all three proofs were PROVED, each failing
+  as registered.** Window w96 before it stopped at the build, on one error in the new test file.
 - **THE GAME STILL LOADS NOTHING.** `CharacterInto` and `RunInto` exist and nothing in the game calls either.
 - **ONE CHANGE TO THE DESIGN AS RULED: THE WORN GEAR IS NOT PUT BACK THROUGH `EquipInto`.** Read while building:
   `EquipInto` puts a two-handed weapon in the first weapon slot and empties the second unless
@@ -129,6 +129,31 @@ through a const pointer. The pointer is no longer const. No other file failed to
 the restore setters or the save changed.
 
 The next window is registered as above.
+
+**Window w97 (lock `dungeon-w97`, `feat/a-character-record-can-be-put-back-into-a-player` at `4833b5038`, on
+`728168628`, 2026-10-30) passed.** `development`'s CI run at `728168628` and its last Unreal run, at `3a0fedef8`,
+succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull request was
+open, and free memory read 12,130 MB immediately before, above the normal floor. The lock was released before anything
+was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.26.cpp` (w96's failed build had compiled the rest of the change) |
+| The restore test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The refusal test alone | 1 / 1 | `1 tests performed, 1 succeeded, 0 failed` |
+| The "CHARACTER RESTORE" line | quoted as printed | "figure 3 saved, 3 restored; vitality 12 saved, 12 restored; 0 skill choices refused; held values match; stat line matches; twin's stat line matches" |
+| The "CHARACTER REFUSAL" line | quoted as printed | "no player state refused ("the character has no player state, inventory or equipment to restore into"); 47 carried slots refused ("the record holds 47 carried slots and the inventory has 48"), the player unchanged; the whole record accepted" |
+| Whole Unreal suite | 4370 / 0 | `4370 tests performed, 4370 succeeded, 0 failed`; declared 4370, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7749`, peak 8,071 |
+| Python (JUnit) | of record | 7108 tests, 0 failures, 0 errors, 8 skipped ("7100 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the allocation through `SetPassiveAllocation` | fails on the figure and on every value; the stat line not predicted; the CONTROL holds | "figure 3 saved, 0 restored ... held values DIFFER; stat line matches; twin's stat line matches": failed on those two; the stat line MATCHED; restored passed. **PROVED** |
+| P2, the figure not gathered | the same two; the stat line not predicted | the same line and the same two failures; the stat line MATCHED; restored passed. **PROVED** |
+| P3, the attribute points skipped | fails on the points, every value and the stat line; the CONTROL holds | "vitality 12 saved, 0 restored ... held values DIFFER; stat line DIFFERS; twin's stat line matches": failed on those three; restored passed. **PROVED** |
+
+**WHY THE STAT LINE MATCHED IN P1 AND P2.** The figure only matters when points are spent above what is earned, and
+this test's allocation is on a node no tree holds (`Restore_test_node`), which adds nothing to the stat line whether
+its points are paid for or not. So a lost figure is invisible in the stats here, and the test catches it through the
+held values, which is why the figure is among them.
 
 ---
 
