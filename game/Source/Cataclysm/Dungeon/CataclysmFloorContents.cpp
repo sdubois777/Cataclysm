@@ -100,6 +100,19 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 				Doomed.Add(*It);
 			}
 		}
+		// AND EACH GROUND ZONE ONE OF THOSE CREATURES LEFT, and no other: the rebuilt floor's rules drew the rest, and a
+		// rule may draw its zones only while its list of them is empty (Wings of the Host's marks do), so a destroyed one
+		// would not come back.
+		// Gathered before any creature goes, while its zones still name it as their owner. Issue #753, Group 3a.
+		TSet<AActor*> Creatures;
+		Creatures.Append(Doomed);
+		for (TActorIterator<ACataclysmGroundZone> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && Creatures.Contains(It->GetOwner()))
+			{
+				Doomed.Add(*It);
+			}
+		}
 		for (AActor* Actor : Doomed)
 		{
 			if (IsValid(Actor))
@@ -129,7 +142,12 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 	// needing a second argument: the player has walked down a flight of stairs
 	// and the last floor's fight is over.
 	Destroyed += FloorContentsDestroyEvery<ACataclysmProjectile>(World);
-	Destroyed += FloorContentsDestroyEvery<ACataclysmGroundZone>(World);
+	// NOT ON A SAVE'S RESTORE INSIDE A DUNGEON, which runs after the floor was rebuilt: what is lying there is the
+	// rebuilt floor's, and the zones its creatures left were taken above with them. Issue #753, Group 3a.
+	if (!bKeepTheRulesCreatures || bCarryFollowers)
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmGroundZone>(World);
+	}
 
 	// AND THE TERRAIN A SKILL RAISED, WHICH WAS MISSED WHEN THE LINE ABOVE WAS
 	// WRITTEN. Issue #1647. `ACataclysmTerrain` was in neither list -- not
@@ -159,10 +177,18 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 	// AFTER THE HAZARDS RATHER THAN BEFORE, so the order reads the way the
 	// ownership does. Nothing depends on it -- both are destroyed in the same
 	// call and a zone whose owner has gone simply sweeps nothing.
-	Destroyed += FloorContentsDestroyEvery<ACataclysmFloorHazardSource>(World);
-	// AND A RULE'S PILLARS AND PITS, which close cells of the floor they stood on. Issues #1820 and #41. At a floor
-	// change the game mode removes them first, giving their cells back; this is what a save's restore reaches.
-	Destroyed += FloorContentsDestroyEvery<ACataclysmFloorObstacle>(World);
+	//
+	// THE HAZARD SOURCE, THE PILLARS AND THE PITS ARE KEPT ON A SAVE'S RESTORE INSIDE A DUNGEON, which runs after the
+	// floor was rebuilt: the gates', the section barriers' and the statues' pillars are the rebuilt floor's own, and
+	// destroying them opened every gate and barrier and left every statue's cell walkable after a load. Issue #753,
+	// Group 3a. The hazard source would be made again on demand; it is kept because it is the rebuilt floor's too.
+	if (!bKeepTheRulesCreatures || bCarryFollowers)
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmFloorHazardSource>(World);
+		// AND A RULE'S PILLARS AND PITS, which close cells of the floor they stood on. Issues #1820 and #41. At a floor
+		// change the game mode removes them first, giving their cells back.
+		Destroyed += FloorContentsDestroyEvery<ACataclysmFloorObstacle>(World);
+	}
 
 	return Destroyed;
 }

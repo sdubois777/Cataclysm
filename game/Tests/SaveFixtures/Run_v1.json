@@ -132,7 +132,9 @@
 				"AttackDamage": 42.5,
 				"StartingHealth": 400,
 				"Armour": 120,
-				"PlacedDamageMultiplier": 0.75
+				"PlacedDamageMultiplier": 0.75,
+				"SightRadiusMultiplier": 30,
+				"FloorRealityRow": "Demonic_Hellfire_Aura"
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -159,7 +161,9 @@
 				"AttackDamage": 18,
 				"StartingHealth": 250,
 				"Armour": 0,
-				"PlacedDamageMultiplier": 1
+				"PlacedDamageMultiplier": 1,
+				"SightRadiusMultiplier": 1,
+				"FloorRealityRow": "None"
 			}
 		],
 		"GroundItems": [

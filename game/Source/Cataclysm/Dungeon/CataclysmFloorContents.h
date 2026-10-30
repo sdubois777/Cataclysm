@@ -72,7 +72,9 @@ public:
 	 *                         restore has always had.
 	 * @param bKeepTheRulesCreatures  true for a save's restore inside a dungeon: a creature the floor's rules raised
 	 *                                (`bRaisedByARule`) is kept, because the rebuilt floor placed it and the save
-	 *                                holds none. Read only when `bCarryFollowers` is false. Issue #753.
+	 *                                holds none. Read only when `bCarryFollowers` is false. Issue #753. AND THE
+	 *                                REBUILT FLOOR'S OWN THINGS ARE KEPT: its pillars and pits, its hazard source and
+	 *                                every ground zone but those the destroyed creatures left. Issue #753, Group 3a.
 	 * @return how many actors were destroyed
 	 */
 	static int32 ClearTheFloor(UWorld& World, bool bCarryFollowers = false, bool bKeepTheRulesCreatures = false);

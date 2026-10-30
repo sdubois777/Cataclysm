@@ -80,6 +80,8 @@ FCataclysmSavedCreature FCataclysmSaveGather::CreatureFrom(
 	Saved.StartingHealth = Creature.GetStartingMaxHealth();
 	Saved.Armour = Creature.GetStartingArmour();
 	Saved.PlacedDamageMultiplier = Creature.GetPlacedDamageMultiplier();
+	Saved.SightRadiusMultiplier = Creature.SightRadiusMultiplier;
+	Saved.FloorRealityRow = Creature.FloorRealityRow;
 	Saved.Location = Creature.GetActorLocation();
 
 	// YAW ALONE. A creature does not pitch or roll, and the record says so.

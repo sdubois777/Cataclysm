@@ -193,6 +193,20 @@ struct CATACLYSM_API FCataclysmSavedCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float PlacedDamageMultiplier = 1.0f;
+
+	/**
+	 * HOW FAR THE CREATURE SEES, AS A MULTIPLE OF ITS CLASS'S RADIUS (`ACataclysmCharacterBase::SightRadiusMultiplier`),
+	 * and THE ONE ROW OF ITS MODIFIERS THE FLOOR GAVE (`ACataclysmEnemyCharacter::FloorRealityRow`, Unstable
+	 * Dimensions'). Placement sets both and nothing sets either again on a restored creature: a Horde creature saw at
+	 * its class's radius after a load instead of thirty times it, and a creature raised a rung later counted the floor's
+	 * row as its own and drew one modifier too few. One and none mean not saved, which is what an older file reads as,
+	 * and are each field's own default. Issue #753, Group 3a.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float SightRadiusMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName FloorRealityRow = NAME_None;
 };
 
 /**

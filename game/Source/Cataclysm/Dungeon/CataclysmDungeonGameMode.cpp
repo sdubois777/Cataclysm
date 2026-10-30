@@ -85,6 +85,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/DateTime.h"
+#include "Misc/ScopeExit.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -1549,7 +1550,18 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// standing on them, and it would move the entrance and the exit for no
 	// reason. The brief above is still decided first, because the floor number
 	// changed even though the floor did not.
-	if (FloorBrief.bSameArenaAsLastFloor && CurrentFloor->IsBuilt())
+	//
+	// **AND ONLY WHEN THE FLOOR STANDING IS THAT ARENA.** The brief's flag is true on wave 5 whether or not a wave 4 is
+	// standing, and a load has always built a floor at `StartPlay` before it resumes the dungeon, so the flag alone kept
+	// that floor's geometry and `PopulateFloor` placed none of the arena's objects. The same seed, carved-as floor number
+	// and layout is the same arena: the generator draws everything from them. Issue #753, Group 3a.
+	//
+	// THE SEED ASKED ONCE, because a negative `Cataclysm.DungeonSeed` reads the clock.
+	const int32 SeedNow = ChooseSeedForThisFloor();
+	const FIntVector ArenaNow(SeedNow, FloorBrief.CarvedAsFloorNumber, static_cast<int32>(FloorBrief.Layout));
+	bKeptTheArena = FloorBrief.bSameArenaAsLastFloor && CurrentFloor->IsBuilt() && BuiltArena.IsSet()
+		&& BuiltArena.GetValue() == ArenaNow;
+	if (bKeptTheArena)
 	{
 		return CurrentFloor;
 	}
@@ -1557,7 +1569,7 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	FCataclysmFloorRequest Request;
 	// THE DARK FLOOR'S OWN SEED WHILE THE PLAYER IS ON IT. The plan's seed is made from this and the floor number,
 	// and the population, the gated shortcuts and every stream a rule makes from the plan's seed follow it.
-	Request.DungeonSeed = ChooseSeedForThisFloor();
+	Request.DungeonSeed = SeedNow;
 
 	// THE BRIEF'S FLOOR NUMBER AND NOT `ChooseFloorNumber`. They are the same
 	// number for every dungeon but a Horde one, whose every floor is carved as
@@ -1581,10 +1593,12 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// built from and is told every gate's cells. Nothing is closed here: the barriers are closed in `PopulateFloor`,
 	// once the floor's creatures stand. Issues #1820 and #41, ruled 2026-10-08.
 	PlanTheSections(Plan);
+	BuiltArena.Reset();
 	if (!CurrentFloor->Build(Plan))
 	{
 		return nullptr;
 	}
+	BuiltArena = ArenaNow;
 	PlaceTheShortcutGates();
 	return CurrentFloor;
 }
@@ -1976,6 +1990,23 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		CloseTheSectionBarriers();
 	}
 
+	// WHAT STANDS NOW IS NOT COUNTED WHILE THE FLOOR'S OBJECTS ARE PLACED (`StoodBeforePlacement`), from the tithe altar
+	// below to the last of the arena's objects. Emptied after them, and on any way out of this function. Ruled
+	// 2026-10-30. Issue #753, Group 3a.
+	StoodBeforePlacement.Reset();
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (IsValid(*It) && (It->IsA<APawn>() || It->IsA<ACataclysmFloorObject>() || It->IsA<ACataclysmGroundZone>()
+							 || It->IsA<ACataclysmDungeonStairs>()))
+		{
+			StoodBeforePlacement.Add(*It);
+		}
+	}
+	ON_SCOPE_EXIT
+	{
+		StoodBeforePlacement.Reset();
+	};
+
 	// AND FORCED TITHES, ONCE A FLOOR OR WAVE, before the branch below: a Horde arena asks a tithe of each wave but the
 	// last, as the row asks one at "the end of each floor". Leaving the last altar unpaid owes the angels, brought at
 	// the next beat to this floor's entrance. Issues #1820 and #41.
@@ -1989,7 +2020,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// stairs. Issues #1820 and #41.
 	PlaceTheDivineGate();
 
-	if (!FloorBrief.bSameArenaAsLastFloor)
+	// AN ARENA KEPT STANDING KEEPS ITS OBJECTS; ONE CARVED, A LOAD'S INCLUDED, GETS THEM. Issue #753, Group 3a: the brief's
+	// flag alone placed none on a load past the first wave, which carves the arena afresh (`bKeptTheArena`).
+	if (!bKeptTheArena)
 	{
 		ClearFloorEnemies();
 
@@ -2137,6 +2170,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		}
 	}
 
+	// THE FLOOR'S OBJECTS ARE PLACED, so what stood before them is counted again. Issue #753, Group 3a.
+	StoodBeforePlacement.Reset();
+
 	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
 	// creatures into one wave. `BuildFloor` decided it; this only spends it.
@@ -2263,7 +2299,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// which is most floors in the game: an ordinary dungeon's creatures are not
 	// a wave and counting them as one would make the figure mean two things.
 	WavesArrived = FloorBrief.bWaveWalksIn
-		? (FloorBrief.bSameArenaAsLastFloor ? WavesArrived + 1 : 1)
+		? (bKeptTheArena ? WavesArrived + 1 : 1)
 		: 0;
 
 	// AND THE CLOCK STARTS AGAIN. Without this a wave that arrived a fraction
@@ -7996,11 +8032,13 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 
 	// WHAT STANDS ON THE FLOOR NOW, asked of the world rather than of any list: every living pawn -- creatures, rule
 	// fixtures, the player's followers and the player -- every floor object, every ground zone and the stairs.
+	// EXCEPT, WHILE THE FLOOR'S OBJECTS ARE BEING PLACED, WHAT STOOD BEFORE THEY BEGAN (`StoodBeforePlacement`), which
+	// is empty at every other time. Ruled 2026-10-30. Issue #753, Group 3a.
 	if (UWorld* World = GetWorld())
 	{
 		for (TActorIterator<APawn> It(World); It; ++It)
 		{
-			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It) && !StoodBeforePlacement.Contains(*It))
 			{
 				HoldWhere(It->GetActorLocation());
 			}
@@ -8008,28 +8046,28 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 		// AND EACH CREATURE'S PACK MIDDLE, which becomes a Morale Break group's middle, where its fled return.
 		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
 		{
-			if (IsValid(*It) && It->PackMiddleCell != FIntPoint(-1, -1))
+			if (IsValid(*It) && It->PackMiddleCell != FIntPoint(-1, -1) && !StoodBeforePlacement.Contains(*It))
 			{
 				Held.Add(It->PackMiddleCell);
 			}
 		}
 		for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
 		{
-			if (IsValid(*It))
+			if (IsValid(*It) && !StoodBeforePlacement.Contains(*It))
 			{
 				HoldWhere(It->GetActorLocation());
 			}
 		}
 		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
 		{
-			if (IsValid(*It))
+			if (IsValid(*It) && !StoodBeforePlacement.Contains(*It))
 			{
 				HoldWhere(It->GetActorLocation());
 			}
 		}
 		for (TActorIterator<ACataclysmDungeonStairs> It(World); It; ++It)
 		{
-			if (IsValid(*It))
+			if (IsValid(*It) && !StoodBeforePlacement.Contains(*It))
 			{
 				HoldWhere(It->GetActorLocation());
 			}
@@ -23216,7 +23254,7 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// there is not left over from a floor that has gone -- it is the loot they
 	// have just been dropped and have not picked up yet. Clearing it would
 	// delete the reward for the wave they have just fought.
-	if (bReplacingAFloor && !FloorBrief.bSameArenaAsLastFloor)
+	if (bReplacingAFloor && !bKeptTheArena)
 	{
 		if (UWorld* World = GetWorld())
 		{
@@ -23305,13 +23343,15 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// the arena between waves would undo the fight they were in the middle of,
 	// and there is no new entrance to put them at because there is no new floor.
 	//
-	// **`bReplacingAFloor` AS WELL, AND WITHOUT IT A LOADED SAVE LEAVES THE
-	// PLAYER NOWHERE.** `bSameArenaAsLastFloor` is true on wave 5 of an arena
+	// **`bKeptTheArena` AND NOT THE BRIEF'S FLAG, AND WITHOUT IT A LOADED SAVE LEAVES
+	// THE PLAYER NOWHERE.** `bSameArenaAsLastFloor` is true on wave 5 of an arena
 	// whether or not there is a wave 4 standing to be the same space as. Loading
 	// a save taken on wave 5 builds the arena from nothing, so there is no
 	// "where they already were" to leave them at and they have to be stood at
-	// the entrance like any other first floor.
-	if (!FloorBrief.bSameArenaAsLastFloor || !bReplacingAFloor)
+	// the entrance like any other first floor. This read `bReplacingAFloor` as
+	// well until issue #753's Group 3a, which a load's `StartPlay` floor made
+	// true; `bKeptTheArena` is false whenever the arena was carved.
+	if (!bKeptTheArena)
 	{
 		APawn* Moving = PawnToMove;
 		if (!Moving)
