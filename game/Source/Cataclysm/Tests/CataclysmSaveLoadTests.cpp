@@ -1076,7 +1076,7 @@ bool FCataclysmSaveLoadDungeonRefusedTest::RunTest(const FString&)
 	TArray<FString> Lines;
 
 	/** One refused load: the report says why, and the character, the game's run and the walk are unchanged. */
-	auto RefusedOnce = [this, &Lines](const TCHAR* Case, bool bWithADungeon, bool bAlreadyWalking,
+	auto RefusedOnce = [this, &Saved, &Lines](const TCHAR* Case, bool bWithADungeon, bool bAlreadyWalking,
 											  const TCHAR* Says)
 	{
 		FDungeonScene Scene;
