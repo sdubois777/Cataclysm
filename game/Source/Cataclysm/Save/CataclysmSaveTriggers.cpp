@@ -46,6 +46,11 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 	}
 }
 
+bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger)
+{
+	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed;
+}
+
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
 											 float Interval)
 {
@@ -105,6 +110,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::InventoryChanged:       return TEXT("an item entering or leaving the inventory");
 		case ECataclysmSaveTrigger::CharacterDied:          return TEXT("the character dying");
 		case ECataclysmSaveTrigger::AccountChanged:         return TEXT("the account record changing");
+		case ECataclysmSaveTrigger::DeathProcessed:         return TEXT("a death having been paid for");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -130,5 +136,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::InventoryChanged,
 		ECataclysmSaveTrigger::CharacterDied,
 		ECataclysmSaveTrigger::AccountChanged,
+		ECataclysmSaveTrigger::DeathProcessed,
 	};
 }

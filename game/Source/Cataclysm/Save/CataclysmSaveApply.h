@@ -159,8 +159,8 @@ public:
 	 * clock and scheduler with the run as their owner and sets its fields; it
 	 * logs nothing and raises nothing.
 	 *
-	 * NOT COVERED: choosing which run to load at start-up, the character record
-	 * and the floor record, each of which needs the owner's decisions (#753).
+	 * NOT COVERED: choosing which run to load, which `FCataclysmSaveLoad` does,
+	 * and the floor, which it puts back with `FloorInto` (#753).
 	 */
 	static bool RunInto(const UCataclysmRunSave& Record, UCataclysmEmpireRun& Run, FString& OutWhy);
 
@@ -184,7 +184,7 @@ public:
 	 *
 	 * NOT COVERED: vitals and position, which the run record's floor placement holds and `PlacementInto` puts back;
 	 * the name, the partition, residue and the private stash, which have no home on the player; and choosing which
-	 * character to load at start-up (#753).
+	 * character to load, which `FCataclysmSaveLoad` does (#753).
 	 */
 	static bool CharacterInto(const UCataclysmCharacterSave& Record, ACataclysmPlayerCharacter& Character,
 							  int32& OutSkillsRefused, FString& OutWhy);

@@ -550,6 +550,18 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 PassivePointsAnAllocationWasHandedWith = 0;
 
+	/**
+	 * The run this character is in the middle of: the `RunId` of the run record written beside it. Issue #753, the
+	 * start-up step, ruled 2026-10-29: "Add the current run's identifier to the character record."
+	 *
+	 * WRITTEN BY `UCataclysmSaveWriter::WriteTheCharacterRecord` on every character write, from the run the writer is
+	 * writing. READ BY `FCataclysmSaveLoad::CharacterAndRun`, which finds the run's slot through it. ALL ZEROS MEANS NO
+	 * RUN, and a load then begins a new one. NOT A SCHEMA VERSION BUMP, for the reason the field above gives: a file
+	 * written before it reads as all zeros, which is what such a character is treated as.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FGuid CurrentRunId;
+
 	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	float CataclysmicResidue = 0.0f;
@@ -572,7 +584,8 @@ public:
 	 * before this field existed reads as a character wearing nothing, which is
 	 * section 5's "field added with a sensible default".
 	 *
-	 * NOTHING RESTORES IT YET, because nothing loads a save at all (#753).
+	 * `FCataclysmSaveApply::CharacterInto` restores it, through
+	 * `UCataclysmEquipmentComponent::RestoreWornGear` (#753).
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmWornItem> WornGear;
@@ -606,7 +619,7 @@ public:
 	 *
 	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
 	 * default fill, so a file written before it reads as the character it always was (section 5 of
-	 * `docs/Save_System_Design.md`). NOTHING LOADS A SAVE YET (#753).
+	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back through `AssignSkill` (#753).
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmSkillChoice> SkillAssignment;

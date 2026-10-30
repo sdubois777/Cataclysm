@@ -2831,7 +2831,7 @@ public:
 	 *   attack or ability, with the Imp's health, saying "Beacon" under its bar, paying nothing, raised
 	 *   by the rule and not one of the floor's creatures.
 	 * - THE COUNT CLEARS WHEN THE PLAYER LEAVES THE DUNGEON, and is not saved, as Echoes of the Past's
-	 *   carried dead are not: nothing loads a save in play.
+	 *   carried dead are not: a run saved inside an empire dungeon is not loaded (#753).
 	 */
 	static const TCHAR* PestilentEmpowermentKey;
 

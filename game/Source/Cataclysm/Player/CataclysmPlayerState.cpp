@@ -756,6 +756,11 @@ void ACataclysmPlayerState::RestoreSpentAttributePoints(const FCataclysmAttribut
 	SpentAttributePoints = Points;
 }
 
+void ACataclysmPlayerState::RestoreRunKills(int32 Kills)
+{
+	RunKills = FMath::Max(0, Kills);
+}
+
 bool ACataclysmPlayerState::AssignSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason)
 {
 	ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());

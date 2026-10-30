@@ -2083,6 +2083,12 @@ void ACataclysmPlayerCharacter::Revive()
 	{
 		EnableInput(Driver);
 	}
+
+	// AND THE SAVE IS WRITTEN AGAIN, NOW THE DEATH IS PAID FOR. Issue #753, the start-up step, ruled 2026-10-30. The
+	// record on disk holds the character dead, from `HandleDeath`, and a load runs the death again from such a record;
+	// written here, after the dungeon is ended, the days charged and the character standing, the record holds the
+	// death as paid. LAST, so the record holds everything above. Asynchronous, as every write but the death's is.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::DeathProcessed);
 }
 
 bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const

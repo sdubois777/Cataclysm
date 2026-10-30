@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A saved character and its run can be loaded at the console, and paying for a death writes the save (#753, start-up step)
+
+**Affects:** `FCataclysmSaveLoad` and the console command `Cataclysm.LoadCharacter` in
+`game/Source/Cataclysm/Save/CataclysmSaveLoad.h` and `.cpp` (new); one `SaveGame` field, `CurrentRunId`, on
+`UCataclysmCharacterSave` (`CataclysmSaveRecords.h`); `UCataclysmSaveWriter` (`CataclysmSaveWriter.h`, `.cpp`), which
+writes that field, adopts loaded records and writes a death's processing whatever else wrote in the frame; a new
+trigger `DeathProcessed` and `WritesEvenIfTheRunWasWrittenThisFrame` in `CataclysmSaveTriggers.h` and `.cpp`;
+`ACataclysmPlayerCharacter::Revive` (`CataclysmPlayerCharacter.cpp`), which raises it; `RestoreRunKills` on
+`ACataclysmPlayerState` (`CataclysmPlayerState.h`, `.cpp`); the fixture `game/Tests/SaveFixtures/Character_v3.json`;
+the trigger list in `tools/tests/test_when_a_save_is_written.py`; section 6 of `docs/Save_System_Design.md` and its
+opening; comments that said nothing loads a save, in `CataclysmSaveApply.h`, `CataclysmSaveRecords.h`,
+`CataclysmSaveWriter.h`, `CataclysmPlayerState.h`, `CataclysmGameInstance.h`, `CataclysmItem.h` and
+`CataclysmDungeonModifierEffects.h`; a new test file `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **FOUR DEPARTURES FROM THE PROPOSAL THAT WAS RULED, each found while building:**
+  - **`DeathProcessed` writes the run record only, not the character record as well.** Processing a death changes
+    nothing the character record holds: the days are the run's, and the health is in the run record's floor
+    placement. And `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt` asserts that only an
+    inventory change and a death write the character record, so writing it here would have changed an existing
+    test's assertion.
+  - **`DeathProcessed` is written even when another write took the run record in the same frame.** The run record is
+    otherwise written at most once a frame. Leaving a dungeon can raise another trigger in the frame the death is paid
+    for, and skipping the processing write would leave the unpaid death on disk. `WritesEvenIfTheRunWasWrittenThisFrame`
+    answers true for the death and for this, and nothing else.
+  - **A run saved on a floor this level is not is refused whole as well**, besides one saved inside an empire dungeon:
+    the record's floor names a dungeon and a number, and `FloorInto` would put that floor's creatures into whatever
+    level the command was typed in.
+  - **No new function on `UCataclysmGameInstance`.** `EmpireRun` is a public property, and the loader sets it.
+
+### What it was
+
+Nothing read a save back. `RunInto` and `CharacterInto` existed and nothing called them, the character record did not
+say which run it was in, and `ACataclysmGameMode::BeginSavingThisRun` began a fresh run with two new identifiers every
+session. And processing a death raised no save write: `ACataclysmPlayerCharacter::HandleDeath` writes the death,
+synchronously, before the character is marked dead; `Revive`, after the respawn delay, ends the dungeon through
+`ACataclysmDungeonGameMode::EndTheDungeonForADeath`, which charges the death's days, and stands the character up; and
+nothing was written after that until the 15-second clock. A record holding a dead character is loaded as a death that
+runs again, so a crash in that gap would have charged the death twice.
+
+### The rulings, 2026-10-30 (the coordinating session, on the proposal)
+
+- **Q1, a run written by a newer build: the whole load is refused, nothing is changed, and it is reported.** The two
+  texts disagree, and the ruling chose between them. #753's acceptance criteria: "A run that cannot be read --
+  refused for being from a newer build, or unreadable -- starts a new one and says so, rather than failing silently."
+  `docs/Save_System_Design.md` section 5, rule 5: "A record from a newer version than the build understands is
+  refused, not guessed at. Report it plainly to the player. Silently loading a newer save loses data." The ruling:
+  section 5 governs, as the more specific rule; #753's "start a new one" applies to a run that cannot be read and not
+  to one written by a newer build. **#753's sentence does name the newer case**, so this replaces that part of the
+  criterion rather than reading it narrowly. The reason: a new run would be written over the character's
+  `CurrentRunId` at its next write, and the newer run would be lost to the character even after the player went back
+  to the newer build.
+- **Q2: `DeathProcessed` is written asynchronously.** Section 6's rule that a death is written first and synchronously
+  is about the death itself; this write only closes the gap after the penalty. `MustBeWrittenBeforeTheFrameEnds` and
+  its test stay as they were, and section 6 gains a paragraph saying so.
+- **Q3: the loader is its own pair of files**, `Save/CataclysmSaveLoad.h` and `.cpp`.
+- **The floor is split.** The level the command is typed in is put back here; **a run saved inside an empire dungeon
+  (`CurrentDungeonId` is not -1) is refused whole, and that is required rather than convenient**: the death's days are
+  charged only while the dungeon is entered (`EndTheDungeonForADeath` charges nothing without `EmpireDungeonId`, which
+  only `EnterEmpireDungeon` sets), and nothing here enters one, so a character who died inside would stand up without
+  paying. Re-entering the dungeon at the saved floor is #753's next step.
+- **The writer adopts the loaded records**, so its next write does not empty the fields it does not gather.
+
+### The change
+
+`FCataclysmSaveLoad::CharacterAndRun(World, Character, CharacterId)` asks everything that can refuse before it changes
+anything: the world's writer is writing and its game instance is this game's; the character record reads (one written
+by a newer build is reported as that); the run its `CurrentRunId` names is read, and one written by a newer build
+refuses everything; a run saved inside an empire dungeon, or on a floor other than the one this level's writer holds,
+refuses everything; the run goes into a new run object through `RunInto`; and the character goes back through
+`CharacterInto`, which refuses before changing anything. Then the run becomes the game instance's, the run's kills go
+back (`RestoreRunKills`), the floor goes back through `FloorInto` when the record holds one, the writer is begun with
+the loaded identifiers and handed the loaded records (`AdoptLoaded`), and the placement goes back last through
+`PlacementInto`. A placement at no health runs the death through the game's own path, and its synchronous write goes to
+the loaded slots.
+
+**A run that cannot be read begins a new one and says why**: the character record names no run, the slot is empty,
+the file does not read, the record names another run, or `RunInto` refuses it. The new run is begun at the
+character's lethality rung, with a new identifier. **A run record that holds no cities was saved with no empire run
+going**, and is loaded as that: the game instance holds no run, as before anything asked for one.
+
+`Cataclysm.LoadCharacter <character id>` finds the possessed player, calls it, and prints the outcome and the reason;
+the id is the 32 hex digits after `Character_` in the save file's name.
+
+`ACataclysmPlayerCharacter::Revive` raises `DeathProcessed` as its last line, after the dungeon is ended, the days are
+charged and the character stands. It writes the run record, asynchronously. **No schema version bump** for
+`CurrentRunId`, for the reason the field `PassivePointsAnAllocationWasHandedWith` gives.
+
+### How it is checked
+
+`Cataclysm.SaveLoad.ACharacterAndItsRunComeBackFromTheirSlots`: a character is played in one world (level 9, kills,
+three kills this run, health 37, a position, an empire run advanced 12 days) and saved through the writer; the saved
+character record is given a name. A second world, as the game makes one at Play, loads it. Every value compared comes
+back, the writer goes on into the same two slots, and its next write keeps the name and the run id. **CONTROL:** the
+second world holds other values before the load. It prints a line beginning "LOAD ROUND TRIP".
+
+`Cataclysm.SaveLoad.ARunThatCannotBeReadStartsANewOneAndSaysSo`: six loads, each into a fresh world. No character record
+is refused; a character record naming no run, an empty run slot, and a run slot that is not JSON each bring the
+character back with a new run on day 0 and say why; a run written at version 99, and a run saved inside empire dungeon
+3, are refused, with the character's level and the game's run unchanged. It prints a line beginning "LOAD REFUSALS".
+
+`Cataclysm.SaveLoad.ACharacterSavedDeadIsLoadedDead`: a character killed in one world, which wrote it at no health, is
+loaded into another: dead after the load, its death's write raised and written before the load returned, into the
+loaded slots; it stands back up, and standing up raises `DeathProcessed`. **CONTROL:** before the load the character
+is alive. It prints a line beginning "LOAD DEAD".
+
+`Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty`: a character in an entered empire dungeon dies and
+stands back up; the last write is `DeathProcessed`, and the run record on disk holds the day after the death's days
+and the character at more than no health. The kill and the standing up share one frame, so this also checks the
+processing write is not skipped by the once-a-frame limit. It prints a line beginning "DEATH PROCESSED".
+
+### Not covered
+
+Loading inside an empire dungeon (the next step); a new-game flow, a continue flow and the character select screen
+(#49); the account record; co-operative play. **Not proved:** that the processing write ignores the once-a-frame limit
+has no proof of its own; the last test covers it.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4374 / 0: `development`'s 4370, measured by window w97, + 4, unless a pull request merged before the window adds an Unreal test |
+| Python | of record, with JUnit, and ruff |
+| The "LOAD ROUND TRIP", "LOAD REFUSALS", "LOAD DEAD" and "DEATH PROCESSED" lines | quoted as printed |
+| P1, the load is skipped: `CharacterInto` is not called and the loaded run is not given to the game | the round trip fails on "every value saved came back" only; the unreadable-run test fails on "the character came back" in its three new-run cases; the dead and death-processed tests pass; the CONTROL holds |
+| P2, `Revive` raises no `DeathProcessed` | the dead test fails on the trigger after standing up; the death-processed test fails on the last write, the day and the health; the other two pass |
+| P3, the writer does not write `CurrentRunId` | the round trip fails on the outcome, every value, the slots and the run id, and keeps the name; the dead test fails, the load beginning a new run with no placement; the other two pass; the CONTROL holds |
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-29 — A policy that lets a city fall to keep crafting, measured beside triage (#1454)
 
 **Affects:** `sim/cataclysm_sim/policies.py` (one policy, `sacrifice_to_craft`, and one constant,
