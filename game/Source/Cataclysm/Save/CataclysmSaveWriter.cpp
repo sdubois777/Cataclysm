@@ -2,6 +2,7 @@
 
 #include "Save/CataclysmSaveWriter.h"
 
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -207,6 +208,10 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	LastRun->RunId = RunId;
 	LastRun->Characters = { CharacterId };
 	FloorRecordNow(LastRun->Floor);
+
+	// AND WHAT THE DUNGEON BEING WALKED HAS BUILT UP, or nothing while none is. Issue #753, Group 1.
+	const ACataclysmDungeonGameMode* Walking = ACataclysmDungeonGameMode::InWorld(const_cast<UWorld*>(World));
+	LastRun->Walk = Walking && Walking->EmpireDungeonId != INDEX_NONE ? Walking->WalkStateNow() : FCataclysmSavedWalk();
 
 	// AND THIS RUN'S KILLS, off the character playing it. Issue #1833.
 	if (const ACataclysmPlayerCharacter* Playing = FCataclysmSaveGather::CharacterIn(*World))

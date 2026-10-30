@@ -2,6 +2,158 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — What a dungeon's rules built up across its floors comes back with a load, and a player's thrall is no longer saved as an enemy (#753, Group 1)
+
+**Affects:** `FCataclysmSavedWalk` (new) and the run record's `Walk` field in
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`; `WalkStateNow`, `RestoreWalkState` and `ApplyRestoredWalkEffects`
+(new) and `ResumeEmpireDungeon` on `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`);
+`UCataclysmSaveWriter::WriteTheRunRecord` (`CataclysmSaveWriter.cpp`); the loader (`CataclysmSaveLoad.cpp`);
+`FCataclysmSaveGather::FloorFrom` (`CataclysmSaveGather.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`; three
+new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **BUILT AND RUN: window w101 below passed every registered figure, and all four proofs were PROVED, each failing
+  the test registered. ONE PROOF FAILED AT ANOTHER ASSERTION THAN PREDICTED:** P2 (`WalkStateNow` not reading
+  `BloodDebtPaid`) failed the counters test at its set-up check, "the walk holds every field set", which reads the
+  same function in the saving world, so the test returned before its round-trip check. A gather that drops a
+  counter is caught, by that set-up check rather than by the comparison after the load.
+- **A FAULT IN MERGED CODE IS CORRECTED HERE: SINCE #751 A LIVING THRALL WAS SAVED AS AN ORDINARY CREATURE AND CAME
+  BACK HOSTILE, AND SINCE #2629 IT ALSO HELD THE STAIRS.** `UCataclysmCommand::Subjugate` makes an enemy creature the
+  player's by owner and team (`CataclysmCommand.cpp` lines 877 and 878) and does not mark it raised by a rule;
+  `FCataclysmSaveGather::FloorFrom` skipped only the dead and the rule-raised; `FCataclysmSavedCreature` holds no owner
+  and no team; so `FCataclysmSaveApply::CreatureInto` brought it back on the creatures' side, and since the dungeon
+  step `DungeonFloorInto` added it to `FloorEnemies`. The Second Self is such a thrall. No player could reach it:
+  loading is only a console command. Now `FloorFrom` skips any creature whose commander is a player character, as
+  `ClearTheFloor`'s follower branch asks, so a thrall is lost on a load as a summoned minion is; #753's Group 2 gives
+  a saved creature the role that keeps it. Ruled 2026-10-30.
+- **ONE CORRECTION TO THE ORDER FIRST PROPOSED: THE "APPLIED" MIRRORS ARE NOT ZEROED.** Each rule's step compares its
+  counter with its mirror and, when they differ, sets the mirror and rebuilds the player's whole floor effect set
+  (`ApplyChangingFloorEffects`) from the mirrors. Restoring the counters and running the steps rebuilds the effects;
+  zeroing would add nothing.
+- **ONLY THE STEPS THAT MOVE NO TIMER ARE RUN ON A LOAD.** Read on 2026-10-30: `StepBloodPrice` adds a beat to its
+  bleed clock and may bleed the player, `StepRawSewage` may add a stack and moves its river clock, and
+  `StepAbyssalRifts` may open the rift; run outside the beat each would be an extra beat. So the restore runs
+  `WriteTheMaximumHealthRulesBack` (whose four steps are Pact of Temptation, Wasting Sickness, Starvation Curse and
+  Chaos Touched, each of which only compares and rebuilds) and `StepBloodDebt` and `StepInfernalBeacons` (which also
+  only compare and rebuild, the latter setting each creature's damage multiplier from its counter). The others catch
+  up on the next beat, a quarter of a second, as they do after any floor start.
+- **THE FLOOR START'S `ApplyFloorRulesToPlayer` IS NOT RUN AGAIN, AND MUST NOT BE.** Its "the player has left" block
+  runs whenever the floor's brief carries no modifiers, and zeroes eight of the counters below.
+- **A COUNTER RESTORED TO THE VALUE THE FLOOR START JUST GAVE IT IS ALREADY APPLIED** (the coordinating session's
+  question, checked in the code): the floor start's `ApplyFloorRulesKeepingHealth` runs `WriteTheMaximumHealthRulesBack`,
+  whose steps set the mirrors from the counters the floor start had just added to, so a run saved on floor 1 with
+  Starvation's single stack finds that stack applied and its step rebuilds nothing.
+
+### What it was
+
+A load inside an empire dungeon built the floor as a floor starting, and every count the dungeon's rules had built up
+over the floors walked started again from nothing, which `docs/Cataclysm_GDD_v2.md`'s "a breather and not a reset"
+forbids. The counters live on the game mode and are reset in two places: `LeaveEmpireDungeon`, and a block of
+`ApplyFloorRulesToPlayer` that runs when the floor's brief carries no modifiers.
+
+### The rulings, 2026-10-30 (the coordinating session)
+
+Group 1 of three: the counters on the game mode, saved in one struct on the run record, written back after the floor is
+built and before nothing. D1: the timers are not saved, under section 6's "Remaining durations on buffs and debuffs"
+row. D3 (a): the thrall skip, inside this group, with a test that fails on the merged code.
+
+### The change
+
+`FCataclysmSavedWalk` holds, each under the game mode's own name: March of Progress's commanders killed; Pact of
+Temptation's buff now, buff next, curse counts and pacts taken; Blood Debt paid; Blood Price stacks; Infernal Beacon
+stacks; Abyssal Rift successes; Raw Sewage stacks; Pestilent Empowerment's beacons left standing; Wasting Sickness
+stacks; the Starvation Curse's movement and health stacks; Chaos Touched's stacks; Nothing Is Forgotten's health,
+damage, health given and damage given; Trick or Treat's pickups and raised; Echo Chamber's copies made and hits on the
+player; Wild Magic's triggered count and last skill; Soul Harvest's souls given. `UCataclysmSaveWriter` fills it from
+the world's dungeon game mode while a dungeon is bound and writes it empty otherwise. `ResumeEmpireDungeon` takes it and
+calls `RestoreWalkState` after `GoToFloor`, which writes the counters and runs the steps named above. A list of the
+wrong length is not written back.
+
+**DELIBERATELY NOT SAVED**, and why:
+
+| What | Why |
+|---|---|
+| `EdictOfSilenceSecondsSinceLast`, `EdictOfSilencedUntilSeconds`, `NihilsEmbraceRewardUntilSeconds`, `MortalDecaySlowedUntilSeconds`, `TrickOrTreatHasteUntilSeconds`, `BloodPriceSecondsSinceBleed`, `RawSewageSecondsInARiver` | timers: section 6, decided 2026-08-20, "Remaining durations on buffs and debuffs" are not restored. They restart as at a floor start |
+| `WildMagicPending`, `EchoChamberPending` | a draw not yet fired: section 6, "The ability the character was casting" |
+| `MetresWalkedAtLastCleanse` | compared with the player's `MetresWalkedTotal`, which no record holds; on Group 2's list |
+| every `...Applied` mirror | rebuilt by the steps |
+
+### How it is checked
+
+`Cataclysm.SaveLoad.ADungeonWalksCountersComeBackFromALoad`: a dungeon with no modifiers is entered and walked to floor
+2, every counter is set to a value no other holds, and it is saved; a second dungeon world loads it, and its walk holds
+every counter as saved, compared as one line. **CONTROL:** before the load that world's walk holds other counters. It
+prints a line beginning "LOAD WALK".
+
+`Cataclysm.SaveLoad.AFloorStartIsNotCountedTwiceByALoad`: a dungeon carrying the Starvation Curse is entered and walked to
+floor 2, so the game's own floor starts give two stacks (set-up checks it); after the load the stacks are still two,
+and the player's walking speed and maximum health are what they were when saved. It prints a line beginning "LOAD
+STARVATION".
+
+`Cataclysm.SaveLoad.APlayersThrallIsNotSavedAsACreature`: two Brutes are put on a floor and the player takes one with
+`Subjugate`; the floor's record does not hold the thrall. **CONTROL:** it holds the other. It prints a line beginning
+"THRALL SAVE". It fails on the merged code.
+
+### Not covered, and not checked
+
+- **Groups 2 and 3**: the walk's state held by creatures (the Corrupted Stalker, Echoes of the Past, the tithe angels,
+  Soul Harvest's held souls, Nothing Is Forgotten's boss, the player's thralls kept rather than skipped,
+  `MetresWalkedAtLastCleanse`), and one floor's objects the player has used.
+- **Not checked: whether every counter's effect on creatures follows from the counter alone.** March of Progress and
+  Infernal Beacons read their counters when they act; the others were not each read.
+- **Not checked: other player-owned enemy creatures.** The search for one found only `Subjugate` making an enemy
+  creature the player's; every other team set on a creature is the Monsters team, on a rule-raised creature.
+  `ACataclysmMinion` is another class and is not saved at all.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests alone | 1 / 1 each |
+| Whole Unreal suite | 4380 / 0: `development`'s 4377, measured by window w100, + 3, unless a merge before the window adds an Unreal test |
+| Python | of record, with JUnit, and ruff |
+| The "LOAD WALK", "LOAD STARVATION" and "THRALL SAVE" lines | quoted as printed |
+| P1, the walk restored BEFORE `GoToFloor` | the floor-start test fails on the Starvation stacks (3 where 2); whether its speed or health check also fails depends on which kind the third stack rolls, and is not predicted. The counters test ALSO fails, on its one line: its dungeon carries no modifiers, so the floor start runs `ApplyFloorRulesToPlayer`'s "the player has left" block, which zeroes eight of the restored counters. (The proposal predicted it would pass; corrected before the run.) The thrall test passes |
+| P2, `WalkStateNow` does not read `BloodDebtPaid` | the counters test fails on its one line only; the others pass |
+| P3, the restore runs no step | the floor-start test fails on the player's speed and maximum health, and its stack count passes; the others pass |
+| P4, the thrall skip removed | the thrall test fails on "the thrall is not saved as a creature" only; its CONTROL holds; the others pass |
+
+### Run
+
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, at `8d427b5b0`:
+`Build: Succeeded - 73 actions, 63 files compiled`.
+
+**Window w101 (lock `dungeon-w101`, `feat/a-dungeon-walks-counters-survive-a-load` at `8d427b5b0`, on `da0423c54`,
+2026-10-30) passed.** `development` had not moved, so the branch was not moved. Its CI and Unreal runs at `da0423c54`
+succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull request was
+open, and free memory read 12,049 MB immediately before, measured after the simulation session's four probe processes
+had ended. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above had built it) |
+| The three new tests alone | 1 / 1 each | `1 tests performed, 1 succeeded, 0 failed`, each |
+| The "LOAD WALK" line | quoted as printed | "Loaded (... day 1, 233 creatures, placed where it was saved); every counter matches; saved 'march 4 pact 1 2 [1,0,2,0,3,] 6 debt 7 price 8 infernal 9 rift 10 sewage 11 pestilent 12 wasting 13 starvation 1 2 chaos [1,0,0,2,0,0,0,1,] void 14.50 15.25 16.00 17.00 trick 18 19 echo 20 21 wild 22 Load_test_skill souls 23' ..." |
+| The "LOAD STARVATION" line | quoted as printed | "... 2 stacks saved, 2 after the load; the player saved at speed 414.0 max health 510.0, loaded at speed 414.0 max health 510.0" |
+| The "THRALL SAVE" line | quoted as printed | "1 creatures saved; the thrall not saved; the creature beside it saved" |
+| Whole Unreal suite | 4380 / 0 | `4380 tests performed, 4380 succeeded, 0 failed`; declared 4380, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7882`, peak 8,164 |
+| Python (JUnit) | of record | 7126 tests, 0 failures, 0 errors, 8 skipped ("7118 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the walk restored before `GoToFloor` | the floor-start test on the stacks (3 where 2), its figures not predicted; the counters test on its one line; the thrall test passes | as registered: 3 stacks where 2, and the figures differed too (max health 484.5 where 510.0); the counters line differed. **PROVED** |
+| P2, `BloodDebtPaid` not read | the counters test on its one line only | the counters test only, **but at its set-up check** ("debt 0" where 7), not at the round-trip check, as said first above. **PROVED** |
+| P3, the restore runs no step | the floor-start test on the player's figures; its stack count passes | as registered: max health 510.0 where 484.5, the stacks 2 and 2. **PROVED** |
+| P4, the thrall skip removed | the thrall test on "the thrall is not saved" only; its CONTROL holds | as registered: "2 creatures saved; the thrall SAVED; the creature beside it saved". **PROVED** |
+
+**TWO THINGS THE RUNS SHOWED THAT WERE NOT PREDICTED, NEITHER A FAULT.** The Starvation Curse rolls each stack's kind
+at random, so the player's figures differed between runs (speed 414.0, 437.0 and 460.0; max health 510.0, 484.5 and
+459.0); the floor-start test compares the same run's saved and loaded figures, so its verdict does not depend on the
+roll. And P1 showed that a floor start also changes the Pact of Temptation's buffs ("pact 2 -1" where "1 2"):
+`PlaceThePactAltar` sets them, which the restore after the floor start overwrites with the saved ones, as it should.
+
+---
+
 ## 2026-10-30 — A run saved inside an empire dungeon loads onto its floor, and a death there is paid for after the load (#753, dungeon step)
 
 **Affects:** `ACataclysmDungeonGameMode::ResumeEmpireDungeon` (new) and `BindEmpireDungeon` (new, the binding half of

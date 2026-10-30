@@ -220,6 +220,121 @@ struct CATACLYSM_API FCataclysmSavedCharacterPlacement
 };
 
 /**
+ * What the rules of the dungeon being walked have built up across its floors. Issue #753, Group 1, ruled 2026-10-30.
+ *
+ * WHY. `docs/Cataclysm_GDD_v2.md`: quitting buys "a breather and not a reset", so a cost or a reward a dungeon's rules
+ * have added up over the floors walked must come back with the run. Each field is the game mode's own counter of the
+ * same name, read by `ACataclysmDungeonGameMode::WalkStateNow` and written back by `RestoreWalkState`.
+ *
+ * WHAT IS NOT HERE, ON PURPOSE. The timers (section 6 of `docs/Save_System_Design.md`: remaining durations are not
+ * restored); a Wild Magic or Echo Chamber draw not yet fired (the ability being cast is not restored); the "applied"
+ * mirrors, which the rules' steps rebuild; `MetresWalkedAtLastCleanse`, which is compared with a figure no record holds;
+ * and every rule's state that lasts one floor or belongs to a creature, which #753's later groups save.
+ *
+ * ALL ZERO, WITH NO PACT BUFF, WHILE NO DUNGEON IS BEING WALKED, and that is what a file written before the struct
+ * reads as. NOT A SCHEMA VERSION BUMP, for the `PartialDay` reason.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedWalk
+{
+	GENERATED_BODY()
+
+	/** March of Progress: commanders killed this walk. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 MarchOfProgressCommandersKilled = 0;
+
+	/** Pact of Temptation: the buff held now and the one offered next, or -1; the curses taken of each kind; pacts. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactBuffNow = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactBuffNext = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> PactCurseCounts;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactsTaken = 0;
+
+	/** Blood Debt: what has been paid. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 BloodDebtPaid = 0;
+
+	/** Blood Price: the stacks bought. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 BloodPriceStacks = 0;
+
+	/** Infernal Beacons: the stacks the creatures carry. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 InfernalBeaconStacks = 0;
+
+	/** Abyssal Rifts: rifts closed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 AbyssalRiftSuccesses = 0;
+
+	/** Raw Sewage: the stacks on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RawSewageStacks = 0;
+
+	/** Pestilent Empowerment: beacons left standing on the floors left. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PestilentBeaconsLeftStanding = 0;
+
+	/** Wasting Sickness: the stacks on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 WastingSicknessStacks = 0;
+
+	/** Starvation Curse: the stacks of each kind. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 StarvationCurseMovementStacks = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 StarvationCurseHealthStacks = 0;
+
+	/** Chaos Touched: the stacks of each kind. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> ChaosTouchedStacks;
+
+	/** Nothing Is Forgotten: what the void holds, and what it has given. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenDamage = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenHealthGiven = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenDamageGiven = 0.0f;
+
+	/** Trick or Treat: pickups taken and creatures raised. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 TrickOrTreatPickups = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 TrickOrTreatRaised = 0;
+
+	/** Echo Chamber: copies made, and hits they landed on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 EchoChamberCopiesMade = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 EchoChamberHitsOnThePlayer = 0;
+
+	/** Wild Magic: how many times it triggered, and the last skill it drew. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 WildMagicTriggered = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName WildMagicLast;
+
+	/** Soul Harvest: souls given. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulHarvestGiven = 0;
+};
+
+/**
  * The floor being fought on, as it stands.
  *
  * `Floor` IS ZERO WHEN NOBODY IS IN A DUNGEON, which is the ordinary case: a
@@ -924,6 +1039,10 @@ public:
 	 *  dungeon. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmSavedFloor Floor;
+
+	/** What the dungeon being walked has built up across its floors; see `FCataclysmSavedWalk`. Issue #753. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmSavedWalk Walk;
 
 	// ---- PROGRESS: what the player has achieved this run. Issue #1374. ----
 	//

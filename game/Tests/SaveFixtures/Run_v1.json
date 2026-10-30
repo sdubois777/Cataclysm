@@ -192,6 +192,49 @@
 			}
 		]
 	},
+	"Walk": {
+		"MarchOfProgressCommandersKilled": 2,
+		"PactBuffNow": 1,
+		"PactBuffNext": 3,
+		"PactCurseCounts": [
+			1,
+			0,
+			2,
+			0,
+			0
+		],
+		"PactsTaken": 3,
+		"BloodDebtPaid": 1,
+		"BloodPriceStacks": 2,
+		"InfernalBeaconStacks": 1,
+		"AbyssalRiftSuccesses": 1,
+		"RawSewageStacks": 3,
+		"PestilentBeaconsLeftStanding": 2,
+		"WastingSicknessStacks": 1,
+		"StarvationCurseMovementStacks": 2,
+		"StarvationCurseHealthStacks": 1,
+		"ChaosTouchedStacks": [
+			1,
+			0,
+			0,
+			2,
+			0,
+			0,
+			0,
+			1
+		],
+		"NothingIsForgottenHealth": 120,
+		"NothingIsForgottenDamage": 30,
+		"NothingIsForgottenHealthGiven": 40,
+		"NothingIsForgottenDamageGiven": 10,
+		"TrickOrTreatPickups": 2,
+		"TrickOrTreatRaised": 1,
+		"EchoChamberCopiesMade": 4,
+		"EchoChamberHitsOnThePlayer": 2,
+		"WildMagicTriggered": 5,
+		"WildMagicLast": "Chaos_Bolt",
+		"SoulHarvestGiven": 6
+	},
 	"QuestObjectives": 3,
 	"QuestObjectivesByCataclysm": {
 		"demonic": 2

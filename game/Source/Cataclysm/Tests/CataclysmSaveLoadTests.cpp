@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -19,11 +20,14 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveApply.h"
+#include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveLoad.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -1160,6 +1164,321 @@ bool FCataclysmSaveLoadDungeonRefusedTest::RunTest(const FString&)
 	}
 
 	AddInfo(FString::Printf(TEXT("LOAD DUNGEON REFUSALS: %s"), *FString::Join(Lines, TEXT("; "))));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a dungeon's rules built up across its floors
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** Every field of a walk, on one line, so two walks compare as one string. */
+	FString WalkLine(const FCataclysmSavedWalk& Walk)
+	{
+		auto Join = [](const TArray<int32>& Counts)
+		{
+			FString Out;
+			for (const int32 Count : Counts)
+			{
+				Out += FString::Printf(TEXT("%d,"), Count);
+			}
+			return Out;
+		};
+		return FString::Printf(
+			TEXT("march %d pact %d %d [%s] %d debt %d price %d infernal %d rift %d sewage %d pestilent %d wasting %d "
+				 "starvation %d %d chaos [%s] void %.2f %.2f %.2f %.2f trick %d %d echo %d %d wild %d %s souls %d"),
+			Walk.MarchOfProgressCommandersKilled, Walk.PactBuffNow, Walk.PactBuffNext, *Join(Walk.PactCurseCounts),
+			Walk.PactsTaken, Walk.BloodDebtPaid, Walk.BloodPriceStacks, Walk.InfernalBeaconStacks,
+			Walk.AbyssalRiftSuccesses, Walk.RawSewageStacks, Walk.PestilentBeaconsLeftStanding,
+			Walk.WastingSicknessStacks, Walk.StarvationCurseMovementStacks, Walk.StarvationCurseHealthStacks,
+			*Join(Walk.ChaosTouchedStacks), Walk.NothingIsForgottenHealth, Walk.NothingIsForgottenDamage,
+			Walk.NothingIsForgottenHealthGiven, Walk.NothingIsForgottenDamageGiven, Walk.TrickOrTreatPickups,
+			Walk.TrickOrTreatRaised, Walk.EchoChamberCopiesMade, Walk.EchoChamberHitsOnThePlayer,
+			Walk.WildMagicTriggered, *Walk.WildMagicLast.ToString(), Walk.SoulHarvestGiven);
+	}
+
+	/** A walk with every field set, each to a value no other field holds. */
+	FCataclysmSavedWalk EveryFieldSet()
+	{
+		FCataclysmSavedWalk Walk;
+		Walk.MarchOfProgressCommandersKilled = 4;
+		Walk.PactBuffNow = 1;
+		Walk.PactBuffNext = 2;
+		Walk.PactCurseCounts = {1, 0, 2, 0, 3};
+		Walk.PactsTaken = 6;
+		Walk.BloodDebtPaid = 7;
+		Walk.BloodPriceStacks = 8;
+		Walk.InfernalBeaconStacks = 9;
+		Walk.AbyssalRiftSuccesses = 10;
+		Walk.RawSewageStacks = 11;
+		Walk.PestilentBeaconsLeftStanding = 12;
+		Walk.WastingSicknessStacks = 13;
+		Walk.StarvationCurseMovementStacks = 1;
+		Walk.StarvationCurseHealthStacks = 2;
+		Walk.ChaosTouchedStacks = {1, 0, 0, 2, 0, 0, 0, 1};
+		Walk.NothingIsForgottenHealth = 14.5f;
+		Walk.NothingIsForgottenDamage = 15.25f;
+		Walk.NothingIsForgottenHealthGiven = 16.0f;
+		Walk.NothingIsForgottenDamageGiven = 17.0f;
+		Walk.TrickOrTreatPickups = 18;
+		Walk.TrickOrTreatRaised = 19;
+		Walk.EchoChamberCopiesMade = 20;
+		Walk.EchoChamberHitsOnThePlayer = 21;
+		Walk.WildMagicTriggered = 22;
+		Walk.WildMagicLast = FName(TEXT("Load_test_skill"));
+		Walk.SoulHarvestGiven = 23;
+		return Walk;
+	}
+
+	/** A dungeon placed by hand on a run of a world's own game instance, carrying the given modifiers. */
+	int32 PlaceADungeonCarrying(FAutomationTestBase& Test, const FDungeonScene& Scene, const TArray<FName>& Modifiers)
+	{
+		UCataclysmEmpireRun* Run = Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
+		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Run && Run->Map && Run->Clock))
+		{
+			return INDEX_NONE;
+		}
+		Run->AdvanceDay();
+		Run->Dungeons.Empty();
+		Run->Clock->Timers.Empty();
+		const int32 DungeonId = PlaceByHand(*Run, AnOutpostOf(*Run));
+		for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			if (Dungeon.DungeonId == DungeonId)
+			{
+				Dungeon.Modifiers = Modifiers;
+			}
+		}
+		return DungeonId;
+	}
+
+	/** The player's walking speed and maximum health, which the Starvation Curse lowers. */
+	FString StarvedFigures(const ACataclysmPlayerCharacter& Character)
+	{
+		const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(&Character);
+		const UCharacterMovementComponent* Movement = Character.GetCharacterMovement();
+		return FString::Printf(TEXT("speed %.1f max health %.1f"), Movement ? Movement->MaxWalkSpeed : -1.0f,
+							   AbilitySystem ? AbilitySystem->GetNumericAttribute(
+												   UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+											 : -1.0f);
+	}
+}
+
+/**
+ * Every counter a dungeon's rules build up across its floors comes back with the run. Issue #753, Group 1, ruled
+ * 2026-10-30: quitting buys "a breather and not a reset". THE CONTROL is the loading dungeon's walk before the load,
+ * which holds none of them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWalkTest,
+	"Cataclysm.SaveLoad.ADungeonWalksCountersComeBackFromALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWalkTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FCataclysmSavedWalk Set = EveryFieldSet();
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		Scene.Mode->RestoreWalkState(Set);
+		if (!TestEqual(TEXT("set-up: the walk holds every field set"), WalkLine(Scene.Mode->WalkStateNow()),
+					   WalkLine(Set)))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const bool bNothingBefore = WalkLine(Scene.Mode->WalkStateNow()) != WalkLine(Set);
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const FString After = WalkLine(Scene.Mode->WalkStateNow());
+
+	AddInfo(FString::Printf(TEXT("LOAD WALK: %s (%s); %s; saved '%s'; loaded '%s'"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							After == WalkLine(Set) ? TEXT("every counter matches") : TEXT("the counters DIFFER"),
+							*WalkLine(Set), *After));
+
+	TestTrue(TEXT("CONTROL: before the load the dungeon's walk held other counters"), bNothingBefore);
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("every counter of the walk came back"), After, WalkLine(Set));
+	return true;
+}
+
+/**
+ * A floor's start adds a Starvation curse; a load enters the saved floor again, and must not add the saved floor's
+ * stack a second time. And the stacks reach the player. Issue #753, Group 1, ruled 2026-10-30.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadFloorStartOnceTest,
+	"Cataclysm.SaveLoad.AFloorStartIsNotCountedTwiceByALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadFloorStartOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	int32 StacksSaved = -1;
+	FString FiguresSaved;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(
+			*this, Scene, {FName(UCataclysmDungeonModifierEffects::StarvationCurseKey)});
+		if (!TestTrue(TEXT("set-up: a dungeon carrying the Starvation Curse was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		const FCataclysmSavedWalk Walk = Scene.Mode->WalkStateNow();
+		StacksSaved = Walk.StarvationCurseMovementStacks + Walk.StarvationCurseHealthStacks;
+		if (!TestEqual(TEXT("set-up: two floor starts gave two Starvation stacks"), StacksSaved, 2))
+		{
+			return false;
+		}
+		FiguresSaved = StarvedFigures(*Scene.Base.Character);
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const FCataclysmSavedWalk Walk = Scene.Mode->WalkStateNow();
+	const int32 StacksAfter = Walk.StarvationCurseMovementStacks + Walk.StarvationCurseHealthStacks;
+	const FString FiguresAfter = StarvedFigures(*Scene.Base.Character);
+
+	AddInfo(FString::Printf(TEXT("LOAD STARVATION: %s (%s); %d stacks saved, %d after the load; the player saved at "
+								 "%s, loaded at %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StacksSaved, StacksAfter,
+							*FiguresSaved, *FiguresAfter));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the saved floor's start was not counted a second time"), StacksAfter, StacksSaved);
+	TestEqual(TEXT("and the stacks reach the player as they did"), FiguresAfter, FiguresSaved);
+	return true;
+}
+
+/**
+ * A creature the player commands is not saved as a creature: written back it was an ordinary one of its kind, hostile.
+ * Issue #753, Group 1, the fault D3 found. THE CONTROL is the ordinary creature beside it, which is saved.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadThrallTest,
+	"Cataclysm.SaveLoad.APlayersThrallIsNotSavedAsACreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	auto Brute = [](const FVector& At)
+	{
+		FCataclysmSavedCreature Saved;
+		Saved.ArchetypeRow = FName(TEXT("Brute"));
+		Saved.Location = At;
+		Saved.Health = 100.0f;
+		Saved.MaxHealth = 100.0f;
+		return Saved;
+	};
+	ACataclysmEnemyCharacter* Taken = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(500.0f, 0.0f, 100.0f)));
+	ACataclysmEnemyCharacter* Wild = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(-500.0f, 0.0f, 100.0f)));
+	if (!TestNotNull(TEXT("set-up: the first Brute stands"), Taken)
+		|| !TestNotNull(TEXT("set-up: the second Brute stands"), Wild)
+		|| !TestTrue(TEXT("set-up: the player took the first"), UCataclysmCommand::Subjugate(Scene.Character, Taken))
+		|| !TestTrue(TEXT("set-up: and commands it"), UCataclysmCommand::CommanderOf(Taken) == Scene.Character))
+	{
+		return false;
+	}
+
+	const FCataclysmSavedFloor Floor = FCataclysmSaveGather::FloorFrom(*Scene.World, FName(TEXT("Sandbox")), 1,
+																		FGuid::NewGuid());
+	bool bThrallSaved = false;
+	bool bWildSaved = false;
+	for (const FCataclysmSavedCreature& Creature : Floor.Creatures)
+	{
+		bThrallSaved |= FVector::Dist2D(Creature.Location, Taken->GetActorLocation()) < 1.0f;
+		bWildSaved |= FVector::Dist2D(Creature.Location, Wild->GetActorLocation()) < 1.0f;
+	}
+
+	AddInfo(FString::Printf(TEXT("THRALL SAVE: %d creatures saved; the thrall %s; the creature beside it %s"),
+							Floor.Creatures.Num(), bThrallSaved ? TEXT("SAVED") : TEXT("not saved"),
+							bWildSaved ? TEXT("saved") : TEXT("NOT SAVED")));
+
+	TestFalse(TEXT("the thrall is not saved as a creature"), bThrallSaved);
+	TestTrue(TEXT("CONTROL: the creature beside it is"), bWildSaved);
 	return true;
 }
 
