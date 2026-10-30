@@ -2,6 +2,115 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Wins fall at every tier for a fully invested Explorer: the content relief and the Last Stand's depth limit start at tier 2 (#1425)
+
+**Affects:** `sim/cataclysm_sim/config.py` (the relief starts at tier 2 on the same line; the Last Stand limit becomes a
+table by tier, `last_stand_floor_cap_by_tier`, replacing the tier 4-8 formula and its three fields);
+`sim/cataclysm_sim/engine.py` (comments only); `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`
+(`ContentReliefTierWidths` 0.19 and `ContentReliefFromTier` 2, and their comment); `docs/Cataclysm_GDD_v2.md` (the "Last
+Stand" paragraph); `sim/tests/test_wins_fall_at_every_tier.py` (new, 4 tests); `sim/tests/test_tier_content_relief.py`,
+`sim/tests/test_tiers_five_to_eight_are_winnable.py` and `tools/tests/test_content_relief_port.py` (moved, none deleted);
+this file.
+
+### SAID FIRST
+
+- **FOR THE FULLY INVESTED EXPLORER, WINS NOW FALL AT EVERY STEP FROM TIER 1 TO TIER 8**, by at least 6 points a step
+  between tiers 1 and 4, at both starts, under `chase_quests`. The table below is on this change's code.
+- **THE NO-TREE PLAYER DOES NOT: ITS TIER 2 IS ABOVE ITS TIER 1** by about 3 to 4 points, and its tier 3 is about level
+  with tier 4 at the start of a tier. The relief that tier 2 needs for the Explorer also helps a player who did not need
+  it, while tier 1 has none. Help at tier 1 (the line continued gives 0.06) is the only lever found; it is not measured
+  and not built. The coordinating session shows the owner this before merge, with that option.
+- **TIERS 4 TO 8 DO NOT CHANGE.** The relief's line and the limit's values there are the same as merged in #2631; only
+  how they are stored changed. The re-measured tier 4-8 rows are recorded in a later commit.
+- **THE GAME APPLIES NONE OF IT YET**, as before: the relief constants change and nothing reads them (#1569); there is
+  no Last Stand in the game (#43, which has a line saying so).
+
+### THE OWNER'S ANSWERS AND THE RULING (2026-10-30)
+
+After the tiers 5-8 table showed tier 3 harder to win than tier 4 -- the Explorer starting at the bottom of the tier won
+0.0% at tier 3 under `triage` against 19-23% at tier 4, because the relief (2026-10-29) and the Last Stand limit both
+began at tier 4 -- the project owner answered two questions:
+
+1. **"Merge as built"** for tiers 4 to 8 (#2631).
+2. **"Wins fall every tier"** for tiers 2 and 3: extend the weakening and the Last Stand limit down, tuned so a fully
+   invested Explorer's wins fall at every step from tier 1 to tier 8.
+
+The coordinating session set the target: for the Explorer under `chase_quests`, won at tier 1 above tier 2 above tier 3
+above tier 4 at `power_start_frac` 0.0 and 0.35, each step at least 3 points; the no-tree player reported. It then
+chose candidate **L** below: the relief's own line continued, and limits that keep growing with the tier.
+
+### THE CANDIDATES, MEASURED
+
+On the code that merged as #2631, `chase_quests`, `analyse_surge_cadence.py`'s world, 1,000 campaigns a world in two
+blocks of 500, tier 2 and tier 3 settings changed one tier at a time; tiers 1, 4 and 5 are that code's own rows. Means of
+the two blocks. "Steps" are tier 1 - tier 2, tier 2 - tier 3, tier 3 - tier 4.
+
+| Candidate | Tier 2 (relief, limit) | Tier 3 (relief, limit) | Explorer 0.0 steps | Explorer 0.35 steps | No tree 0.0 steps | No tree 0.35 steps |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| **L (built)** | 0.19, 110 | 0.32, 120 | +9.0, +9.4, +7.6 | +15.3, +8.6, +6.1 | -2.9, +10.2, -0.6 | -3.6, +7.9, +4.5 |
+| X | 0.25, 105 | 0.32, 120 | +8.9, +9.5, +7.6 | +11.3, +12.6, +6.1 | -6.1, +13.4, -0.6 | -6.7, +11.0, +4.5 |
+| Y | 0.19, 100 | 0.28, 115 | +8.9, +8.5, +8.6 | +15.2, +11.4, +3.4 | -4.0, +12.2, -1.5 | -3.8, +9.8, +2.8 |
+
+Shown not to work for the Explorer: tier 2 relief 0.0 or 0.10 with a limit of 100 or 110 leaves its tier 2 at 32.5 to
+33.0% at the bottom of the tier, within 0 to 2 points of any tier 3 that works (the tier 2 Explorer row at 0.0 with relief 0.0 and limit 100 is recorded in a later commit); tier 3 relief 0.36 with 120 or
+0.32 with 110 puts its tier 3 at 29.6 to 33.6%, too close to tier 2 unless tier 2 has 0.19 or more. They do bring the
+no-tree player's tier 2 level with its tier 1 (29.4 to 44.4%). Earlier the same day: relief 0.32 with a limit of 110 at
+tier 3 alone put tier 3 above tier 4 in 7 rows of 8; relief 0.25 with no limit put it below tier 4 in 6 of 8.
+
+Why the limits are not on the tier 4-8 line: continued down it gives 94 floors at tier 3 and 62 at tier 2, and 110 at
+tier 3 already made tier 3 easier than tier 4. 110, 120, 125, 156... still grow with the tier.
+
+### MEASURED FOR THE OWNER
+
+Recorded in a later commit: the full tier 1-8 table on this change's code, both players, both policies, both starts.
+
+### THE TESTS
+
+New, `sim/tests/test_wins_fall_at_every_tier.py`:
+
+- `test_tiers_two_and_three_have_a_last_stand_limit_and_it_grows_with_the_tier`: 110 and 120, and the limits from tier 2
+  to 8 strictly increase.
+- `test_the_relief_grows_at_every_step_from_tier_one`: 0 at tier 1, strictly increasing to tier 8.
+- `test_a_tier_two_last_stand_is_cut_to_its_limit`: a tier 2 Last Stand over 60 standing dungeons has 110 floors.
+- `test_a_tier_three_dungeon_unsafe_without_the_relief_is_safe_with_it`: an 80-floor Basic dungeon at tier 3 against a
+  player at the bottom of tier 3 kills 0.376 of the time without the relief, above the 0.35 tolerance, and 0.249 with
+  it. The control is asserted first.
+
+Moved, none deleted, each to the world it now describes:
+
+- `test_tier_content_relief.py`: `test_there_is_no_relief_at_tiers_one_to_three` is now
+  `test_there_is_no_relief_at_tier_one`, and `test_the_relief_continues_the_line_down_to_tier_two` pins 0.19 and 0.32;
+  `test_tiers_one_to_three_are_untouched_whatever_the_relief_holds` is now
+  `test_tier_one_is_untouched_whatever_the_relief_holds`.
+- `test_tiers_five_to_eight_are_winnable.py`: `test_the_last_stand_limit_starts_at_tier_four_and_grows_with_the_tier` is
+  now `test_the_last_stand_limit_grows_with_the_tier_from_tier_four_to_eight` (tiers 4-8 and tier 1);
+  `test_control_a_tier_three_last_stand_is_not_limited` is now `test_control_a_tier_one_last_stand_is_not_limited`.
+- `tools/tests/test_content_relief_port.py`: the ruled list is 0, 0.19, 0.32, 0.45 ... 0.97.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m pytest
+sim/tests/test_wins_fall_at_every_tier.py sim/tests/test_tier_content_relief.py
+sim/tests/test_tiers_five_to_eight_are_winnable.py tools/tests/test_content_relief_port.py`. Each break text occurs once
+in `sim/cataclysm_sim/config.py`.
+
+| # | Break | Predicted named_failures |
+| :-- | :-- | :-- |
+| 1 | `2: 110, 3: 120, 4: 125, 5: 156, 6: 188, 7: 219, 8: 250,` becomes `2: 999, 3: 999, 4: 125, 5: 156, 6: 188, 7: 219, 8: 250,` | `test_wins_fall_at_every_tier.py::test_tiers_two_and_three_have_a_last_stand_limit_and_it_grows_with_the_tier`, `test_wins_fall_at_every_tier.py::test_a_tier_two_last_stand_is_cut_to_its_limit` |
+| 2 | `if tier < self.content_relief_from_tier:` becomes `if tier < 4:` (tiers 2 and 3 lose the relief; tiers 4 to 8 keep it) | `test_wins_fall_at_every_tier.py::test_the_relief_grows_at_every_step_from_tier_one`, `test_wins_fall_at_every_tier.py::test_a_tier_three_dungeon_unsafe_without_the_relief_is_safe_with_it`, `test_tier_content_relief.py::test_the_relief_continues_the_line_down_to_tier_two`, `tools/tests/test_content_relief_port.py::TestTheNumbersMatch::test_both_give_the_ruled_relief_at_every_tier` |
+
+(All `sim/tests/` paths but the last.)
+
+### EVIDENCE
+
+Recorded in a later commit.
+
+### NO GENRE SOURCE
+
+None. The values are measured against the owner's stated shape for this game.
+
+---
+
 ## 2026-10-30 — A restored creature is the creature it was and an illusion is not saved, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
 
 **Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on
