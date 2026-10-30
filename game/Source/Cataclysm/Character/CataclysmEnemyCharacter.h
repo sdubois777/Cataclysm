@@ -471,6 +471,21 @@ public:
 	float GetCommanderHealthMultiplier() const { return CommanderHealthMultiplier; }
 
 	/**
+	 * What `SetAttackDamage` was last given: the creature's own attack damage, before its rarity's scale, the floor
+	 * rules' multipliers and any rule's addition. A save records it (#753, Group 2).
+	 */
+	float GetStartingAttackDamage() const { return StartingAttackDamage; }
+
+	/** What `SetHealth` was last given: the maximum before rarity and modifiers. A save records it (#753). */
+	float GetStartingMaxHealth() const { return StartingMaxHealth; }
+
+	/** What `SetArmour` was last given: the armour before its rarity's scale. A save records it (#753). */
+	float GetStartingArmour() const { return StartingArmour; }
+
+	/** What `SetPlacedDamageMultiplier` set, 1 when nothing did. A save records it (#753). */
+	float GetPlacedDamageMultiplier() const { return DamageMultiplierFrom(PlacedDamageSource); }
+
+	/**
 	 * Makes this creature an illusion, or stops it being one.
 	 *
 	 * SAFE BEFORE OR AFTER `BeginPlay`, like `SetAttackDamage` and for the same

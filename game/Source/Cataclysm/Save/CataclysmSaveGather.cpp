@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -11,6 +12,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "EngineUtils.h"
@@ -74,6 +76,10 @@ FCataclysmSavedCreature FCataclysmSaveGather::CreatureFrom(
 	Saved.RarityStep = Creature.RarityStep;
 	Saved.ModifierRows = Creature.ModifierRows;
 	Saved.bRisenFromTheDead = Creature.bRisenFromTheDead;
+	Saved.AttackDamage = Creature.GetStartingAttackDamage();
+	Saved.StartingHealth = Creature.GetStartingMaxHealth();
+	Saved.Armour = Creature.GetStartingArmour();
+	Saved.PlacedDamageMultiplier = Creature.GetPlacedDamageMultiplier();
 	Saved.Location = Creature.GetActorLocation();
 
 	// YAW ALONE. A creature does not pitch or roll, and the record says so.
@@ -96,6 +102,16 @@ FCataclysmSavedCharacterPlacement FCataclysmSaveGather::PlacementFrom(
 	Placed.Yaw = Character.GetActorRotation().Yaw;
 
 	VitalsOf(Character, Placed.Health, Placed.Mana, Placed.EnergyShield);
+
+	// AND THE CLASS RESOURCE, Fervour for the Masochist. Issue #753, Group 2.
+	if (const UAbilitySystemComponent* Resource = UCataclysmTargeting::AbilitySystemOf(&Character))
+	{
+		if (Resource->HasAttributeSetForAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()))
+		{
+			Placed.ClassResource =
+				Resource->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		}
+	}
 
 	// AND THE POTIONS, every slot and the drinks taken. Issue #753, the dungeon step.
 	if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
@@ -154,6 +170,7 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 	Saved.Floor = Floor;
 
 	UWorld* Mutable = const_cast<UWorld*>(&World);
+	const ACataclysmDungeonGameMode* DungeonMode = ACataclysmDungeonGameMode::InWorld(Mutable);
 
 	for (TActorIterator<ACataclysmEnemyCharacter> It(Mutable); It; ++It)
 	{
@@ -185,16 +202,32 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			continue;
 		}
 
-		// NOR A CREATURE THE PLAYER COMMANDS: a thrall `UCataclysmCommand::Subjugate` took, the Second Self among
-		// them. The record holds no owner and no team, so written back it was an ordinary creature of its kind,
-		// hostile, and in a dungeon one of the floor's own (#751 to #753's Group 1). It is lost on a load, as a
-		// summoned minion is; #753's Group 2 gives a saved creature the role that keeps it.
-		if (Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Creature)))
+		// NOR AN ILLUSION: Illusory Enemies places it as a floor creature that is not real, and the record has no
+		// flag for that, so written back it was a real creature. A fault since #751, found by the sweep of
+		// 2026-10-30 (#753, Group 2). It is not saved, as a rule-raised creature is not.
+		if (Creature->IsAnIllusion())
 		{
 			continue;
 		}
 
-		Saved.Creatures.Add(CreatureFrom(*Creature));
+		// A CREATURE THE PLAYER COMMANDS IS SAVED WITH THAT ROLE, since #753's Group 2. Group 1 skipped it, because the
+		// record then held no owner and no team and it came back hostile; now the record carries what the load needs
+		// to re-link it. And what the walk's rules hold for this creature: Soul Harvest's souls, Nothing Is Forgotten's
+		// boss. Ruled 2026-10-30.
+		FCataclysmSavedCreature Record = CreatureFrom(*Creature);
+		if (Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Creature)))
+		{
+			Record.bCommandedByThePlayer = true;
+			Record.bSecondSelf = Creature->bIsSecondSelf;
+			Record.ReservedFervour = Creature->ReservedFervour;
+			Record.CommanderHealthMultiplier = Creature->GetCommanderHealthMultiplier();
+		}
+		if (DungeonMode)
+		{
+			DungeonMode->SoulHarvestHeldBy(Creature, Record.SoulHarvestSouls, Record.SoulHarvestHealthAdded);
+			Record.bFedByNothingIsForgotten = DungeonMode->IsTheVoidsBoss(Creature);
+		}
+		Saved.Creatures.Add(Record);
 	}
 
 	for (TActorIterator<ACataclysmDroppedItem> It(Mutable); It; ++It)

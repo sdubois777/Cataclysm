@@ -2,6 +2,251 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A restored creature is the creature it was and an illusion is not saved, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
+
+**Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on
+`FCataclysmSavedWalk`, and `ClassResource` on `FCataclysmSavedCharacterPlacement`, in
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`; `FCataclysmSaveGather::FloorFrom` and `PlacementFrom`
+(`CataclysmSaveGather.cpp`); `FCataclysmSaveApply::ThrallInto` (new), `FloorInto`, `DungeonFloorInto` and
+`PlacementInto`, and `FCataclysmFloorRestored::Spawned` (`CataclysmSaveApply.h`, `.cpp`); `SoulHarvestHeldBy`,
+`IsTheVoidsBoss` and `RestoreCreatureRoles` (new), `WalkStateNow` and `RestoreWalkState` on `ACataclysmDungeonGameMode`
+(`CataclysmDungeonGameMode.h`, `.cpp`); the loader (`CataclysmSaveLoad.cpp`); the fixture
+`game/Tests/SaveFixtures/Run_v1.json`; two new tests and one rewritten in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Window w102 below stopped at the roles test, on the fault in the next item; it has been
+  corrected and the next window is registered below.
+- **THREE FAULTS IN MERGED CODE, ALL SINCE #751, ARE CORRECTED HERE FIRST.**
+  1. **A creature put back from a save had no attack damage.** `FCataclysmSavedCreature` held none and
+     `FCataclysmSaveApply::CreatureInto` never set it; a creature's damage is set by whoever spawns it
+     (`ACataclysmDungeonGameMode::ApplyDesignedStats` calls `SetAttackDamage` with its figure for the kind). Found
+     by the roles test in w102, whose holder came back at damage 0.0 where 45.5 and whose boss at 12.0 where 47.0.
+  2. **Nor its armour or its starting health.** Found by the sweep the coordinating session asked for once the
+     damage turned up: `ApplyDesignedStats` also calls `SetArmour` and `SetHealth`, and neither figure was saved. The
+     saved maximum health attribute was put back, but the starting figure it is rebuilt from was not, so any later
+     `ApplyStartingAttributes` (for one, taking the creature with `Subjugate`, through
+     `SetCommanderHealthMultiplier`) rebuilt the maximum from the class's default and healed it to full.
+  3. **An illusion came back as a real creature.** `SpawnPlacedCreature` marks a floor creature an illusion when
+     Illusory Enemies rolls it (`SetIsAnIllusion`); it is not marked raised by a rule, `FloorFrom` had no check for it
+     and the record no flag, so it was saved and came back real. `FloorFrom` now skips it, as a rule-raised creature.
+  The record now holds the creature's own attack damage, armour and starting health (`AttackDamage`, `Armour`,
+  `StartingHealth`, read through new public `GetStartingAttackDamage`, `GetStartingArmour`, `GetStartingMaxHealth`)
+  and the placed damage multiplier (`PlacedDamageMultiplier`), and `CreatureInto` sets all four before writing the
+  saved maximum and health back, because `SetHealth`, `SetArmour` and `SetAttackDamage` each run
+  `ApplyStartingAttributes`, which rewrites them. The rarity's scale comes back with `RarityStep`; Soul Harvest's and
+  the void's additions through the roles. Ruled 2026-10-30. No version bump: zero health, armour below zero and a
+  multiplier of 1 mean not saved and leave the creature as before.
+- **THE SWEEP OF WHAT PLACEMENT SETS** (`SpawnPlacedCreature`, `ApplyDesignedStats`, `ApplyStartingAttributes`, every
+  caller of `SetIsAnIllusion` and `SetPlacedDamageMultiplier`). Already restored: the class, location and facing,
+  the rarity step, the modifier rows (with those `DrawModifiersForRarity` drew), `bRisenFromTheDead`, the current and
+  maximum health and energy shield, and the team (the class's own, Monsters). Evasion, critical chance and multiplier
+  and resistance are the class's own figures, which placement does not change. Restored by this branch: the four
+  figures above. Moved to Group 3, as a rule's per-floor state: `SightRadiusMultiplier` (the floor's or an arriving
+  wave's), and `FloorRealityRow` (the floor's every-creature modifier, whose row is in the modifier rows and is
+  restored; the field only keeps `DrawModifiersForRarity` from counting it).
+- **GRAVE TIDE'S CREATURES ARE NOT MARKED RAISED BY A RULE, SO THE PLACED MULTIPLIER REACHES THEM.** Read in
+  `StepGraveTide`: it sets each raised creature's placed damage multiplier once and adds it to `FloorEnemies`, and
+  sets no `bRaisedByARule`, so `FloorFrom` saves it and a load put it back at multiplier 1 until this branch.
+- **THE FLOOR RULES' MULTIPLIERS REACH A RESTORED CREATURE ON THE DUNGEON'S NEXT BEAT, NOT AT ONCE** (the coordinating
+  session's question). The rules that multiply a creature's damage (`StepInfernalBeacons`, `StepPactOfTemptation`
+  and the like) set each creature's multiplier from inside `StepFloorRulesThatChange`, which `Tick` runs once
+  `SecondsBetweenWaveChecks`, 0.25 seconds, have passed since the last beat. A creature put back by a load is spawned
+  after the floor start, so until that beat it hits at its own damage times its rarity's scale, without the rules'
+  multipliers: at most 0.25 seconds and a frame. Not checked: whether any creature can land a blow that soon after
+  appearing; the ability wind-ups read (`StampedeWindUpSeconds` 0.83, `RockThrowWindUpSeconds` 1.0,
+  `StompWindUpSeconds` 1.4, `MoltenRoarWindUpSeconds` 2.0) are all longer, and the basic attacks' timing was not read.
+- **GROUP 1'S THRALL TEST IS REWRITTEN IN PLACE, AS RULED (R1).** `APlayersThrallIsNotSavedAsACreature` asserted the
+  thrall was not saved: the interim state D3 (a) gave until D3 (b) kept it. It is now
+  `APlayersThrallComesBackUnderThePlayersCommand`, with the same CONTROL, so reversing its assertion is the ruling
+  and not a weakened guard. P2 shows the new assertions can fail.
+- **A THRALL IS RE-LINKED, NOT TAKEN AGAIN: `UCataclysmCommand::Subjugate` IS NOT CALLED ON A LOAD.** Read in full
+  (`CataclysmCommand.cpp` lines 816 to 960) and with its caller: it charges nothing and raises no event, but it sets
+  the commander's health multiplier, which rewrites the creature's maximum through `ApplyStartingAttributes`, and it
+  heals the creature to full, which would undo the damage the save kept; and its caller, not Subjugate, puts 30
+  Fervour in the thrall's `ReservedFervour`, which `ReservedFervourOf` adds up as it is asked. So
+  `FCataclysmSaveApply::ThrallInto` makes Subjugate's two writes for owner and side, sets when it came under command
+  (now) and the Second Self flag, the saved `ReservedFervour` and multiplier, then writes the saved maximum and health
+  again. It does not check for room, clamp the commander's Fervour or heal. Ruled 2026-10-30.
+- **THE PLAYER'S CLASS RESOURCE (FERVOUR) IS NOW SAVED**, on the floor placement, folded into this group by ruling: it
+  was in no record. Every write of it is clamped (`UCataclysmClassResourceAttributeSet::PreAttributeChange`) to the
+  maximum less the Fervour the thralls hold back, so the loader re-links the thralls BEFORE the placement, and the
+  clamp meets the reserve the save met. The saved value was inside that same limit when written, so the clamp leaves
+  it as it was; it cannot come back above what the reserve leaves spendable.
+- **THE RESTORE-SIDE PROOF BREAKS THE LOAD'S CALL, NOT `RestoreWalkState` ITSELF.** Asked for after w101: a proof whose
+  failure is the counters test's round-trip check. A break inside `RestoreWalkState` (or `WalkStateNow`) would fail
+  that test's set-up check first, as w101's P2 did, because the set-up writes and reads the walk through the same
+  functions in the saving world. So P1 and P4 break the one call only a load makes, in `ResumeEmpireDungeon`: the
+  saved walk is handed over with one field reset.
+- **TWO ITEMS MOVED TO GROUP 3, AS RULED (R3):** the tithe angels, which `BringCreaturesNear` raises by a rule and a
+  floor change clears, and the echoes standing with whether they have appeared on this floor. Echoes of the Past's two
+  lists, which carry across floors, are here.
+
+### The change
+
+A saved creature's own record carries what it was to the walk (R2: no saved index or identifier): a thrall
+(`bCommandedByThePlayer`, `bSecondSelf`, `ReservedFervour`, `CommanderHealthMultiplier`), the souls Soul Harvest holds
+for it and the health they added (`SoulHarvestSouls`, `SoulHarvestHealthAdded`), and whether it is the boss Nothing Is
+Forgotten fed. `FloorFrom` fills them, asking the world's dungeon game mode for the two rules' state; Group 1's thrall
+skip is gone. `FloorInto` and `DungeonFloorInto` return each creature they spawned with its record's index, and keep a
+thrall out of `FloorEnemies`. The loader then re-links each: `ThrallInto`, and in a dungeon `RestoreCreatureRoles`.
+
+`RestoreCreatureRoles`: SOUL HARVEST holds the saved souls and the health they added (which the saved maximum
+includes) and calls `ApplySoulHarvestFigures` with bFreshBlock false, which works out the creature's own maximum by
+taking the added health away, re-adds the three figures, and keeps the current health where it is (read on
+2026-10-30). NOTHING IS FORGOTTEN makes the creature the void's boss again and adds back the attack damage the void
+gave (`NothingIsForgottenDamageGiven`, a Group 1 counter); `ApplyNothingIsForgottenFigures` is not called, because it
+adds the void's health to a maximum that already holds it.
+
+The walk gains, needing no creature identity: the Corrupted Stalker's hunt (whether it has hunted, whether slain, the
+share of its health left, its potions; the Stalker is raised again by its rule after the floor's wait, a timer, which
+restarts); Echoes of the Past's two lists, each death by the creature's name (`CataclysmDungeonCreatureName`), rung and
+attack, and a name this build does not know is left out; and Nihil's Embrace's metres walked since the last cleanse, one
+figure, from which the restore works out `MetresWalkedAtLastCleanse` against the loaded player's walked total.
+
+### How it is checked
+
+`Cataclysm.SaveLoad.AWalksCreatureStateComesBackFromALoad`: in a dungeon on floor 2 the walk is given every Group 2
+field set, saved and loaded into another dungeon world, which holds them all after the load. **CONTROL:** before the
+load it holds other values. It prints a line beginning "LOAD WALK CREATURES".
+
+`Cataclysm.SaveLoad.APlayersThrallComesBackUnderThePlayersCommand` (rewritten): a Brute taken by `Subjugate`, holding 30
+Fervour back, made the Second Self and hurt to 60% of its maximum, beside an ordinary Brute, with the player at 20
+Fervour; after the load the thrall is commanded by the player, on its side, the Second Self, with its maximum and health
+as saved, the reserve is 30 and the player's Fervour 20. **CONTROL:** the other Brute is an ordinary enemy. It prints a
+line beginning "THRALL LOAD".
+
+`Cataclysm.SaveLoad.ARestoredCreatureHitsAsHardAsItDid`: a Brute given its own starting health, armour and attack
+damage in a level world, beside an illusion, and a creature the dungeon placed with its kind's figures and given a
+placed damage multiplier of 0.6, are each saved and loaded into another world. Each comes back with its damage and
+armour, and the same `SetCommanderHealthMultiplier(1.5)` rebuild gives each the maximum it gave the saved creature.
+The saved floor does not hold the illusion. **CONTROL:** it holds the Brute beside it. It prints a line beginning
+"LOAD DAMAGE". It guards the three faults named first.
+
+`Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack`: in a dungeon one creature is given 3 souls and another is
+made the void's boss, through the restore's own call; after the load the souls are held again with the same figures,
+and the boss is the void's with its maximum and attack damage as saved. It prints a line beginning "LOAD SOULS".
+
+### Not covered
+
+Group 3, now including the tithe angels and the echoes standing; summoned minions (`ACataclysmMinion`), still not
+saved; the moment a thrall came under command, a time, which decides which thrall the Second Self is if it is chosen
+again, and which is why the Second Self flag is saved.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests and the rewritten thrall test alone | 1 / 1 each |
+| Whole Unreal suite | 4383 / 0: `development`'s 4380, measured by window w101, + 3 (the thrall test is rewritten, not added), unless a merge before the window adds an Unreal test |
+| Python | of record, with JUnit, and ruff |
+| The "LOAD WALK CREATURES", "THRALL LOAD", "LOAD SOULS" and "LOAD DAMAGE" lines | quoted as printed |
+| P1, the load hands the walk over with `BloodDebtPaid` reset | `ADungeonWalksCountersComeBackFromALoad` fails at its round-trip check ("debt 0" where 7), and its set-up check passes; nothing else fails |
+| P2, the loader does not re-link a thrall | the thrall test fails on its commander, its side, the Second Self and the reserve; its health figures and the player's Fervour pass; its CONTROL holds |
+| P3, the restore also calls `ApplyNothingIsForgottenFigures` | the roles test fails on the boss's figures only, its maximum given the void's health a second time |
+| P4, the load hands the walk over with the Stalker's health share reset | the creature-state test fails at its round-trip check only, its set-up check passing |
+| P5, `CreatureFrom` does not read the attack damage | the damage test fails, in both halves, and the roles test fails on both creatures' damage; nothing else fails |
+| P6, `FloorFrom`'s illusion check removed | the damage test fails on "an illusion is not saved as a creature" only; its CONTROL holds; nothing else fails |
+
+### Run
+
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, at `1372ebe20`:
+`Build: Succeeded - 73 actions, 63 files compiled`, 0 error lines.
+
+**Window w102 (lock `dungeon-w102`, `feat/creatures-walk-state-and-thralls-survive-a-load` at `1372ebe20`, on
+`2082da17b`, 2026-10-30) STOPPED at the third test alone. Nothing after it ran.** `development`'s CI and Unreal runs at
+`2082da17b` succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull
+request was open, no simulation or pytest process ran, and free memory read 11,942 MB immediately before. The lock was
+released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The creature-state test alone | `1 tests performed, 1 succeeded, 0 failed`: "every field matches" |
+| The thrall test alone | `1 tests performed, 1 succeeded, 0 failed`: "the thrall commanded by the player, on the player's side, the Second Self; saved max 100.0 health 60.0, loaded max 100.0 health 60.0; reserve 30 saved, 30 loaded; ..." |
+| The roles test alone | `1 tests performed, 0 succeeded, 1 failed`: "3 souls held after the load; the holder saved max 713.7 damage 45.5 ..., loaded max 713.7 damage 0.0 ...; the boss saved max 549.0 damage 47.0 ..., loaded ... damage 12.0" |
+
+**THE FAULT IS IN MERGED CODE, AND THE ROLES TEST IS WHAT FOUND IT: A CREATURE PUT BACK FROM A SAVE HAS NO ATTACK
+DAMAGE.** `FCataclysmSaveApply::CreatureInto` sets the rarity, the modifiers, the maximums and the vitals, and never
+the attack damage; `FCataclysmSavedCreature` holds none; and a creature's attack damage is set by whoever spawns it
+(`ACataclysmDungeonGameMode` calls `SetAttackDamage` with its figure for the creature's kind). So every creature a
+load puts back, since the floor restore was written (#751), has the damage its class starts with, which here read 0.
+The two failed figures are exactly that: the holder's damage is only Soul Harvest's addition worked out from 0, and the
+boss's is only the void's 12. The maximums, the souls and the boss link all came back. The roles test is not changed;
+the fault waits for the coordinating session's ruling.
+
+**Window w103 (lock `dungeon-w103`, `feat/creatures-walk-state-and-thralls-survive-a-load-2` at `d603e99dc`, on
+`08bdfae16`, 2026-10-30) FAILED ONE TEST IN THE WHOLE SUITE; no proof ran.** The six pre-checks were run before the lock was taken, but their
+printed readings, the free-memory figure among them, were not kept, so none is quoted here. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 41 actions, 38 files compiled` |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each; "LOAD SOULS: ... the holder saved max 713.7 damage 45.5 ..., loaded max 713.7 damage 45.5"; "LOAD DAMAGE: in a level, saved damage 37.5 armour 55.0 rebuilt max 375.0, loaded damage 37.5 armour 55.0 rebuilt max 375.0; on a dungeon floor, saved damage 21.0 armour 150.0 rebuilt max 823.5, loaded damage 21.0 armour 150.0 rebuilt max 823.5; the illusion not saved, the creature beside it saved" |
+| Whole Unreal suite | `4383 tests performed, 4382 succeeded, 1 failed: EveryFixtureHoldsEveryFieldItsRecordWrites`; declared 4383, gap 0 |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**THE FAILURE WAS THE FIXTURE'S VALUE, NOT THE CODE.** "Run_v1.json and the record it loads into disagree at the
+record.Floor.Creatures[0].PlacedDamageMultiplier is 0.600000 on one side and 0.600000 on the other": 0.6 has no exact
+32-bit float, so the record writes back a value the comparison, which is exact, finds different from the fixture's.
+The fixture now holds 0.75, which a float holds exactly, as every other fractional figure added to it already did
+(15.5, 35.5, 1.25, 0.75, 42.5). Nothing else changed.
+
+**Window w104 (lock `dungeon-w104`, `d28eac633`, 2026-10-30) STOPPED AT PROOF P2, whose build failed; P1 proved, and
+P3 to P6 did not run.** The Python suite of record at `d28eac633`, before the pre-checks: 7138 tests, 0 failures, 0
+errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run output, measured at 14:59:30:
+`development` at `08bdfae16` with its CI run a success, its last Unreal run (at `2082da17b`) a success; no run in
+progress or queued; the lock free; no build or editor process; no pull request open; no simulation process; 12,156 MB
+of physical memory free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (no game file changed since w103) |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each, with the same lines as w103 |
+| Whole Unreal suite | `4383 tests performed, 4383 succeeded, 0 failed`; declared 4383, gap 0; memory peak 8,177 MB, final 7,903 MB |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED: with the break in, 13 performed, 12 succeeded, 1 failed: `ADungeonWalksCountersComeBackFromALoad`; restored, 13 of 13 |
+| P2 | STOP: `the build itself failed: Result: Failed, compiled CataclysmSaveLoad.cpp, Module.Cataclysm.11.cpp` |
+
+**THE P2 BUILD FAILED ON A MISSING INCLUDE IN THIS BRANCH'S CODE, NOT ON THE BREAK.** A break makes the adaptive build
+compile `CataclysmSaveLoad.cpp` outside the unity file, and alone it had no definition of `ACataclysmEnemyCharacter`:
+"error C2664: 'bool IsValid(const UObject *)': cannot convert argument 1 from 'const T' to 'const UObject *'" at
+`IsValid(One.Key)` in `RelinkTheCreatures`. The ordinary build passed only because the unity file brought the header in
+from another file. The file now includes `Character/CataclysmEnemyCharacter.h`; compiled once with that edit
+uncommitted, which also compiles it alone: `Build: Succeeded - 5 actions, 2 files compiled: CataclysmSaveLoad.cpp,
+Module.Cataclysm.11.cpp`. The other files the proofs break (`CataclysmSaveGather.cpp`, `CataclysmDungeonGameMode.cpp`)
+already include that header, and P1 compiled `CataclysmDungeonGameMode.cpp` alone without error.
+
+**Window w105 (lock `dungeon-w105`, `906ffc9b6`, 2026-10-30) PASSED EVERY STEP, AND ALL SIX PROOFS PROVED AS
+REGISTERED.** The first Python suite of record at `906ffc9b6` was ended at 54% at about 15:25, with no result line: the
+enchantment session's own measurement was stopped at 15:25:16 by a kill that matched every pytest process on the machine
+by name, as that session and the coordinating session reported; this run's log stops at that minute. It was run again:
+7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run output, measured
+at 15:36:25: `development` at `08bdfae16` with its CI run a success, its last Unreal run (at `2082da17b`) a success; no
+run in progress or queued; the lock free; no build or editor process; no pull request open; no simulation or pytest
+process; 11,307 MB of physical memory free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the include was compiled before the window) |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each, with the same lines as w103 |
+| Whole Unreal suite | `4383 tests performed, 4383 succeeded, 0 failed`; declared 4383, gap 0, as registered; memory peak 8,147 MB, final 7,865 MB |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED. Broken: 13 performed, 1 failed, `ADungeonWalksCountersComeBackFromALoad`, one assertion, 'every counter of the walk came back' with "debt 0" where "debt 7"; restored 13 of 13 |
+| P2 | PROVED. Broken: 1 failed, `APlayersThrallComesBackUnderThePlayersCommand`, four assertions: commanded, the player's side, the Second Self, the reserve "30 ... but it was 0"; its line "saved max 100.0 health 60.0, loaded max 100.0 health 60.0 ... Fervour 20 saved, 20 loaded; the other an enemy"; restored 13 of 13 |
+| P3 | PROVED. Broken: 1 failed, `ACreaturesHeldSoulsAndTheFedBossComeBack`, one assertion: the boss "max 949.0 damage 105.0" saved, "max 1349.0" loaded, its souls holder unchanged; restored 13 of 13 |
+| P4 | PROVED. Broken: 1 failed, `AWalksCreatureStateComesBackFromALoad`, one assertion: "standing 0.65" saved, "standing 1.00" loaded, every other field the same; restored 13 of 13 |
+| P5 | PROVED. Broken: 2 failed, `ACreaturesHeldSoulsAndTheFedBossComeBack` (both creatures' damage 0.0 and 12.0 where 45.5 and 47.0) and `ARestoredCreatureHitsAsHardAsItDid` (damage 0.0 in both halves, armour and maximum as saved); restored 13 of 13 |
+| P6 | PROVED. Broken: 1 failed, `ARestoredCreatureHitsAsHardAsItDid`, one assertion, 'an illusion is not saved as a creature'; its line "the illusion SAVED, the creature beside it saved"; restored 13 of 13 |
+
+Each proof failed the tests registered for it and no other, each for its registered reason, and its restored half had
+no failed assertion. P3's saved maximum is 949.0 rather than 549.0 because the test's set-up uses the same restore
+call the break changed, so the set-up gave the void's health once and the load once more.
+
+---
+
 ## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)
 
 **Affects:** `sim/cataclysm_sim/config.py` (the Last Stand cap's three fields and `last_stand_floor_cap`;

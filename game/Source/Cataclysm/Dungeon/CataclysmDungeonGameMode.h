@@ -351,6 +351,24 @@ public:
 	 */
 	void RestoreWalkState(const struct FCataclysmSavedWalk& Walk);
 
+	/** The souls Soul Harvest's rule holds for this creature, and the maximum health they added. Issue #753, Group 2. */
+	void SoulHarvestHeldBy(const ACataclysmEnemyCharacter* Creature, int32& OutSouls, float& OutHealthAdded) const;
+
+	/** Whether this creature is the boss Nothing Is Forgotten fed. Issue #753, Group 2. */
+	bool IsTheVoidsBoss(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * Links a creature put back from a save to what its record says the walk's rules held for it. Issue #753, Group
+	 * 2, ruled 2026-10-30. Called after `RestoreWalkState`, whose counters this reads.
+	 *
+	 * SOUL HARVEST: its souls and the health they added (which the saved maximum includes) are held again, and
+	 * `ApplySoulHarvestFigures` re-applies the damage and resistance with bFreshBlock false, which keeps the health
+	 * where it is. NOTHING IS FORGOTTEN: the creature is the void's boss again, and the attack damage the void gave
+	 * (`NothingIsForgottenDamageGiven`) is added back; `ApplyNothingIsForgottenFigures` is NOT called, because it adds
+	 * the void's health to a maximum that already holds it.
+	 */
+	void RestoreCreatureRoles(ACataclysmEnemyCharacter& Creature, const struct FCataclysmSavedCreature& Saved);
+
 	/**
 	 * Stop walking it without clearing it.
 	 *

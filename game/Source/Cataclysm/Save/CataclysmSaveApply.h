@@ -33,6 +33,13 @@ struct CATACLYSM_API FCataclysmFloorRestored
 	 */
 	int32 Refused = 0;
 
+	/**
+	 * Each creature put back, with the index of the record it was made from, so a caller can re-link what the
+	 * record says it was: a thrall, Soul Harvest's souls, Nothing Is Forgotten's boss. Issue #753, Group 2. Valid
+	 * until the creatures are destroyed; a caller uses it at once.
+	 */
+	TArray<TPair<ACataclysmEnemyCharacter*, int32>> Spawned;
+
 	bool IsEverything(const FCataclysmSavedFloor& Record) const
 	{
 		return Refused == 0
@@ -131,6 +138,21 @@ public:
 	 */
 	static FCataclysmFloorRestored DungeonFloorInto(ACataclysmDungeonGameMode& Dungeon,
 													const FCataclysmSavedFloor& Saved);
+
+	/**
+	 * Put a saved thrall back under the player's command, without taking it again. Issue #753, Group 2, ruled
+	 * 2026-10-30.
+	 *
+	 * NOT `UCataclysmCommand::Subjugate`, which charges nothing and raises no event but changes the creature: it sets
+	 * the commander's health multiplier, which rewrites the maximum, and heals it to full, which would undo the damage
+	 * the save kept. This makes Subjugate's two writes for owner and side, sets when it came under command (now) and
+	 * the Second Self flag, the Fervour it holds back and its health multiplier, then writes the saved maximum and
+	 * health again. It does not check for room or clamp the commander's Fervour: it restores what was held.
+	 *
+	 * @return false, changing nothing, when the record is not a thrall's
+	 */
+	static bool ThrallInto(ACataclysmEnemyCharacter& Creature, const FCataclysmSavedCreature& Saved,
+						   ACataclysmPlayerCharacter& Player);
 
 	/** Write health, mana and energy shield onto a character's attributes. */
 	static bool VitalsInto(AActor& Actor, float Health, float Mana, float EnergyShield);

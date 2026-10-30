@@ -4,10 +4,12 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
@@ -273,6 +275,26 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	// A RISEN CREATURE STILL PAYS NOTHING WHEN IT DIES AGAIN, the owner's decision of 2026-09-17.
 	Creature->bRisenFromTheDead = Saved.bRisenFromTheDead;
 
+	// ITS ATTACK DAMAGE, which nothing put back until #753's Group 2. BEFORE THE MAXIMUMS AND VITALS: `SetAttackDamage`
+	// runs `ApplyStartingAttributes`, which rewrites the maximum and the health from the creature's figures, and the
+	// two writes below put the saved ones back over that.
+	if (Saved.StartingHealth > 0.0f)
+	{
+		Creature->SetHealth(Saved.StartingHealth);
+	}
+	if (Saved.Armour >= 0.0f)
+	{
+		Creature->SetArmour(Saved.Armour);
+	}
+	if (Saved.AttackDamage > 0.0f)
+	{
+		Creature->SetAttackDamage(Saved.AttackDamage);
+	}
+	if (!FMath::IsNearlyEqual(Saved.PlacedDamageMultiplier, 1.0f))
+	{
+		Creature->SetPlacedDamageMultiplier(Saved.PlacedDamageMultiplier);
+	}
+
 	// AND THE VITALS LAST, AFTER THE CREATURE HAS APPLIED ITS OWN STAT BLOCK.
 	// `ApplyStartingAttributes` runs from BeginPlay and writes the archetype's
 	// full health, so writing the saved figures before that would be
@@ -320,6 +342,18 @@ bool FCataclysmSaveApply::PlacementInto(
 	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
 	UCataclysmMovement::NoteRelocatedInstantly(&Character, Was);
 
+	// THE CLASS RESOURCE, BEFORE THE VITALS for the potions' reason below. Its write is clamped to the maximum less
+	// the Fervour the thralls hold back (`PreAttributeChange`); the loader re-links the thralls first, so the clamp
+	// meets the reserve the save met. Issue #753, Group 2.
+	if (UAbilitySystemComponent* Resource = UCataclysmTargeting::AbilitySystemOf(&Character))
+	{
+		if (Resource->HasAttributeSetForAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()))
+		{
+			Resource->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+											  Saved.ClassResource);
+		}
+	}
+
 	// THE POTIONS BEFORE THE VITALS, because a placement at no health dies in `VitalsInto`, and the death's own
 	// write must find the saved charges. A list of the wrong length was not saved and is left alone. Issue #753.
 	if (Saved.PotionCharges.Num() == UCataclysmPotions::SlotCount)
@@ -364,7 +398,12 @@ FCataclysmFloorRestored FCataclysmSaveApply::DungeonFloorInto(
 	{
 		if (ACataclysmEnemyCharacter* Back = CreatureInto(*World, Creature))
 		{
-			Dungeon.FloorEnemies.Add(Back);
+			// A THRALL IS THE PLAYER'S, not one of the floor's own: kept out of the list the stairs count.
+			if (!Creature.bCommandedByThePlayer)
+			{
+				Dungeon.FloorEnemies.Add(Back);
+			}
+			Restored.Spawned.Emplace(Back, static_cast<int32>(&Creature - Saved.Creatures.GetData()));
 			++Restored.Creatures;
 		}
 		else
@@ -389,6 +428,32 @@ FCataclysmFloorRestored FCataclysmSaveApply::DungeonFloorInto(
 	return Restored;
 }
 
+bool FCataclysmSaveApply::ThrallInto(ACataclysmEnemyCharacter& Creature, const FCataclysmSavedCreature& Saved,
+									ACataclysmPlayerCharacter& Player)
+{
+	if (!Saved.bCommandedByThePlayer)
+	{
+		return false;
+	}
+	// SUBJUGATE'S TWO WRITES FOR OWNER AND SIDE, in its order: `UCataclysmTeams::TeamOf` walks the owner chain.
+	Creature.SetOwner(&Player);
+	Creature.SetGenericTeamId(UCataclysmTeams::TeamOf(&Player));
+	if (const UWorld* World = Creature.GetWorld())
+	{
+		Creature.CommandedSinceSeconds = World->GetTimeSeconds();
+	}
+	Creature.bIsSecondSelf = Saved.bSecondSelf;
+	Creature.ReservedFervour = Saved.ReservedFervour;
+
+	// THE MULTIPLIER, SO A LATER `ApplyStartingAttributes` KEEPS IT; that call rewrites the maximum and the health,
+	// so the saved figures are written back after it.
+	Creature.SetCommanderHealthMultiplier(Saved.CommanderHealthMultiplier);
+	MaximumsInto(Creature, Saved.MaxHealth, Saved.MaxEnergyShield);
+	float Mana = 0.0f;
+	VitalsInto(Creature, Saved.Health, Mana, Saved.EnergyShield);
+	return true;
+}
+
 FCataclysmFloorRestored FCataclysmSaveApply::FloorInto(
 	UWorld& World, const FCataclysmSavedFloor& Saved)
 {
@@ -401,8 +466,9 @@ FCataclysmFloorRestored FCataclysmSaveApply::FloorInto(
 
 	for (const FCataclysmSavedCreature& Creature : Saved.Creatures)
 	{
-		if (CreatureInto(World, Creature))
+		if (ACataclysmEnemyCharacter* Back = CreatureInto(World, Creature))
 		{
+			Restored.Spawned.Emplace(Back, static_cast<int32>(&Creature - Saved.Creatures.GetData()));
 			++Restored.Creatures;
 		}
 		else

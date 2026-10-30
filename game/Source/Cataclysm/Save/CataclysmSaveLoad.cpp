@@ -3,6 +3,7 @@
 #include "Save/CataclysmSaveLoad.h"
 
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
@@ -47,6 +48,29 @@ namespace CataclysmSaveLoad
 		FString Json;
 		FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
 		return FCataclysmSaveStorage::ReadSchemaVersion(Json, OutVersion) && OutVersion > ThisBuildReads;
+	}
+
+	/**
+	 * Each creature put back that its record says was something to the walk: a thrall re-linked to the player (not
+	 * taken again), and in a dungeon Soul Harvest's souls and Nothing Is Forgotten's boss. Issue #753, Group 2. BEFORE
+	 * THE PLACEMENT, so the player's Fervour is written back against the reserve its thralls hold.
+	 */
+	void RelinkTheCreatures(const FCataclysmFloorRestored& Floor, const FCataclysmSavedFloor& Saved,
+							ACataclysmPlayerCharacter& Player, ACataclysmDungeonGameMode* Dungeon)
+	{
+		for (const TPair<ACataclysmEnemyCharacter*, int32>& One : Floor.Spawned)
+		{
+			if (!IsValid(One.Key) || !Saved.Creatures.IsValidIndex(One.Value))
+			{
+				continue;
+			}
+			const FCataclysmSavedCreature& Record = Saved.Creatures[One.Value];
+			FCataclysmSaveApply::ThrallInto(*One.Key, Record, Player);
+			if (Dungeon)
+			{
+				Dungeon->RestoreCreatureRoles(*One.Key, Record);
+			}
+		}
 	}
 
 	FCataclysmLoadReport Refused(const FString& Why)
@@ -254,11 +278,15 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 												 "floor %d after every check for it had passed."),
 					   SavedRun->CurrentDungeonId, SavedRun->Floor.Floor);
 			}
-			Report.CreaturesRestored = FCataclysmSaveApply::DungeonFloorInto(*DungeonMode, OnlyTheFloor).Creatures;
+			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::DungeonFloorInto(*DungeonMode, OnlyTheFloor);
+			Report.CreaturesRestored = Floor.Creatures;
+			RelinkTheCreatures(Floor, OnlyTheFloor, Character, DungeonMode);
 		}
 		else if (SavedRun->Floor.IsOccupied())
 		{
-			Report.CreaturesRestored = FCataclysmSaveApply::FloorInto(World, OnlyTheFloor).Creatures;
+			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::FloorInto(World, OnlyTheFloor);
+			Report.CreaturesRestored = Floor.Creatures;
+			RelinkTheCreatures(Floor, OnlyTheFloor, Character, nullptr);
 		}
 	}
 	else

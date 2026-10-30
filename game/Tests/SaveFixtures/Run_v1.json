@@ -121,7 +121,18 @@
 				"MaxHealth": 4000,
 				"EnergyShield": 0,
 				"MaxEnergyShield": 0,
-				"bRisenFromTheDead": true
+				"bRisenFromTheDead": true,
+				"bCommandedByThePlayer": false,
+				"bSecondSelf": false,
+				"ReservedFervour": 0,
+				"CommanderHealthMultiplier": 1,
+				"SoulHarvestSouls": 2,
+				"SoulHarvestHealthAdded": 15.5,
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 42.5,
+				"StartingHealth": 400,
+				"Armour": 120,
+				"PlacedDamageMultiplier": 0.75
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -137,7 +148,18 @@
 				"MaxHealth": 600,
 				"EnergyShield": 60.5,
 				"MaxEnergyShield": 121,
-				"bRisenFromTheDead": false
+				"bRisenFromTheDead": false,
+				"bCommandedByThePlayer": true,
+				"bSecondSelf": true,
+				"ReservedFervour": 30,
+				"CommanderHealthMultiplier": 1.25,
+				"SoulHarvestSouls": 0,
+				"SoulHarvestHealthAdded": 0,
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 18,
+				"StartingHealth": 250,
+				"Armour": 0,
+				"PlacedDamageMultiplier": 1
 			}
 		],
 		"GroundItems": [
@@ -188,7 +210,8 @@
 					10,
 					0
 				],
-				"PotionsDrunk": 2
+				"PotionsDrunk": 2,
+				"ClassResource": 35.5
 			}
 		]
 	},
@@ -233,7 +256,31 @@
 		"EchoChamberHitsOnThePlayer": 2,
 		"WildMagicTriggered": 5,
 		"WildMagicLast": "Chaos_Bolt",
-		"SoulHarvestGiven": 6
+		"SoulHarvestGiven": 6,
+		"bCorruptedStalkerHasHunted": true,
+		"bCorruptedStalkerSlain": false,
+		"CorruptedStalkerHealthShare": 0.75,
+		"CorruptedStalkerPotionCharges": [
+			30,
+			20,
+			10,
+			0
+		],
+		"EchoesThisFloor": [
+			{
+				"Kind": "Brute",
+				"Rung": 1,
+				"Attack": 0
+			}
+		],
+		"EchoesFromLastFloor": [
+			{
+				"Kind": "Hellhound",
+				"Rung": 0,
+				"Attack": -2
+			}
+		],
+		"MetresWalkedSinceCleanse": 42.5
 	},
 	"QuestObjectives": 3,
 	"QuestObjectivesByCataclysm": {
