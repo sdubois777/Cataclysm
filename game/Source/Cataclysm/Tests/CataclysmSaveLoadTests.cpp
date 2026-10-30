@@ -2214,10 +2214,11 @@ namespace CataclysmSaveLoadTest
 	 * pillar's, before and after. Then the CONTROL, a build of the same floor on another seed. Issue #753, Group 3a.
 	 */
 	void RoundTripTheRulesOfOneFloor(FAutomationTestBase& Test, const TCHAR* Which, const TArray<FName>& Modifiers,
-									 bool bChoiceAndCellRules)
+									 bool bChoiceAndCellRules, bool bToAFloorWithAClosedBarrier)
 	{
 		FSaved Saved;
 		ON_SCOPE_EXIT { Saved.Forget(); };
+		int32 Floor = 2;
 		FRuleCells Before;
 		TArray<FIntPoint> PillarsBefore;
 		{
@@ -2238,8 +2239,22 @@ namespace CataclysmSaveLoadTest
 										Scene.Mode->FloorNumber);
 			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, Modifiers);
 			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the rules was placed"), DungeonId != INDEX_NONE)
-				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
-				|| !Test.TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return;
+			}
+			// FLOOR 2, OR FOR THE BARRIERS THE FIRST FLOOR FROM 2 WITH A CLOSED SECTION BARRIER, so the barriers' list is
+			// not compared empty with empty. Not the last of the dungeon's twenty, which places no altar and no chasm.
+			bool bReached = Scene.Mode->GoToFloor(Floor);
+			while (bReached && bToAFloorWithAClosedBarrier && Scene.Mode->ClosedSectionBarrierCells().IsEmpty()
+				   && Floor < 19)
+			{
+				bReached = Scene.Mode->GoToFloor(++Floor);
+			}
+			if (!Test.TestTrue(FString::Printf(TEXT("set-up: the walk reached floor %d"), Floor), bReached)
+				|| (bToAFloorWithAClosedBarrier
+					&& !Test.TestTrue(TEXT("set-up: a floor from 2 to 19 has a closed section barrier"),
+									  !Scene.Mode->ClosedSectionBarrierCells().IsEmpty())))
 			{
 				return;
 			}
@@ -2280,7 +2295,7 @@ namespace CataclysmSaveLoadTest
 			Counts += FString::Printf(TEXT("%s %d/%d%s; "), *Before[Index].Key, Before[Index].Value.Num(), Loaded,
 									  bSame ? TEXT("") : TEXT(" DIFFER"));
 		}
-		Test.AddInfo(FString::Printf(TEXT("LOAD REBUILD %s: %s (%s); %spillar cells %d/%d%s"), Which,
+		Test.AddInfo(FString::Printf(TEXT("LOAD REBUILD %s on floor %d: %s (%s); %spillar cells %d/%d%s"), Which, Floor,
 									 FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *Counts,
 									 PillarsBefore.Num(), PillarsAfter.Num(),
 									 CellsText(PillarsAfter) == CellsText(PillarsBefore) ? TEXT("") : TEXT(" DIFFER")));
@@ -2300,7 +2315,7 @@ namespace CataclysmSaveLoadTest
 		// above are the seed's and not the same for any floor.
 		Scene.Mode->DungeonSeed += 7919;
 		bool bAnotherSeedDiffers = false;
-		if (Scene.Mode->GoToFloor(2))
+		if (Scene.Mode->GoToFloor(Floor))
 		{
 			const FRuleCells Other = RuleCellsNow(*Scene.Mode, bChoiceAndCellRules);
 			for (int32 Index = 0; Index < Before.Num() && Index < Other.Num(); ++Index)
@@ -2325,9 +2340,10 @@ bool FCataclysmSaveLoadRebuildOrderTest::RunTest(const FString&)
 {
 	using namespace CataclysmSaveLoadTest;
 
-	RoundTripTheRulesOfOneFloor(*this, TEXT("choices and cells"), ChoiceAndCellRules(), /*bChoiceAndCellRules=*/true);
+	RoundTripTheRulesOfOneFloor(*this, TEXT("choices and cells"), ChoiceAndCellRules(), /*bChoiceAndCellRules=*/true,
+								/*bToAFloorWithAClosedBarrier=*/true);
 	RoundTripTheRulesOfOneFloor(*this, TEXT("creatures and zones"), CreatureAndZoneRules(),
-								/*bChoiceAndCellRules=*/false);
+								/*bChoiceAndCellRules=*/false, /*bToAFloorWithAClosedBarrier=*/false);
 	return true;
 }
 
@@ -2613,6 +2629,54 @@ bool FCataclysmSaveLoadPlacedAroundTest::RunTest(const FString&)
 	TestEqual(TEXT("the same statues in the same order"), CellsText(StatuesAgain), CellsText(Statues));
 	TestEqual(TEXT("the same chasms in the same order"), CellsText(ChasmsAgain), CellsText(Chasms));
 	TestEqual(TEXT("nothing is held out of the cells once the floor is populated"), LeftHeldOut, 0);
+
+	// THE SECOND CASE: THE LAST FLOOR'S PACK SITES. `PopulateFloor` sets them after the objects are placed, so while the
+	// statues are placed they are the last floor's, and a statue that avoided one stood elsewhere after a walk than
+	// after a load (window w106). A floor from 3 to 19 is walked until two or more of its creatures share a pack middle
+	// on one of the statues' cells -- a pack site, a creature's own cell being held by no other -- and floor 2 is built
+	// again from it. Ruled 2026-10-30.
+	int32 PackSiteFloor = INDEX_NONE;
+	FIntPoint OnTheStatue(-1, -1);
+	for (int32 Next = 3; Next <= 19 && PackSiteFloor == INDEX_NONE; ++Next)
+	{
+		if (!Scene.Mode->GoToFloor(Next))
+		{
+			break;
+		}
+		TMap<FIntPoint, int32> Middles;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Scene.Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && Creature->PackMiddleCell != FIntPoint(-1, -1))
+			{
+				++Middles.FindOrAdd(Creature->PackMiddleCell);
+			}
+		}
+		for (const FIntPoint& Statue : Statues)
+		{
+			if (Middles.FindRef(Statue) >= 2)
+			{
+				PackSiteFloor = Next;
+				OnTheStatue = Statue;
+				break;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a floor from 3 to 19 left a pack site on one of the statues' cells"),
+				  PackSiteFloor != INDEX_NONE))
+	{
+		return false;
+	}
+	const bool bBuiltAfterIt = Scene.Mode->GoToFloor(2);
+	const TArray<FIntPoint> StatuesAfterIt = Scene.Mode->AngelicStatueCellsStanding();
+
+	AddInfo(FString::Printf(TEXT("PLACED AFTER: floor %d left a pack site on the statue's cell (%d,%d); statues %s, "
+								 "built again after it %s"),
+							PackSiteFloor, OnTheStatue.X, OnTheStatue.Y, *CellsText(Statues),
+							*CellsText(StatuesAfterIt)));
+
+	TestTrue(TEXT("floor 2 was built again after it"), bBuiltAfterIt);
+	TestEqual(TEXT("after a floor whose pack site was a statue's cell, the same statues in the same order"),
+			  CellsText(StatuesAfterIt), CellsText(Statues));
 	return true;
 }
 

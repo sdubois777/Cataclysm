@@ -1994,6 +1994,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// below to the last of the arena's objects. Emptied after them, and on any way out of this function. Ruled
 	// 2026-10-30. Issue #753, Group 3a.
 	StoodBeforePlacement.Reset();
+	bPlacingTheFloorsObjects = true;
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (IsValid(*It) && (It->IsA<APawn>() || It->IsA<ACataclysmFloorObject>() || It->IsA<ACataclysmGroundZone>()
@@ -2005,6 +2006,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	ON_SCOPE_EXIT
 	{
 		StoodBeforePlacement.Reset();
+		bPlacingTheFloorsObjects = false;
 	};
 
 	// AND FORCED TITHES, ONCE A FLOOR OR WAVE, before the branch below: a Horde arena asks a tithe of each wave but the
@@ -2172,6 +2174,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 	// THE FLOOR'S OBJECTS ARE PLACED, so what stood before them is counted again. Issue #753, Group 3a.
 	StoodBeforePlacement.Reset();
+	bPlacingTheFloorsObjects = false;
 
 	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
@@ -8075,18 +8078,28 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 	}
 
 	// AND THE CELLS KEPT FOR LATER, which nothing standing marks. See the declaration for what each is.
-	for (const FCataclysmEnemyPlacement& Waiting : WaveStillToArrive)
+	// THE FIVE THE POPULATION OR PLAY FILLS ARE THE LAST FLOOR'S WHILE THE FLOOR'S OBJECTS ARE PLACED, and are not
+	// counted then (`bPlacingTheFloorsObjects`). Ruled 2026-10-30. Issue #753, Group 3a.
+	const bool bCountTheLastPopulationsCells = !bPlacingTheFloorsObjects;
+	if (bCountTheLastPopulationsCells)
 	{
-		Held.Add(Waiting.Cell);
-	}
-	Held.Append(ArrivingPackSites);
-	for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
-	{
-		Held.Add(Group.Middle);
-	}
-	for (const FInfernalRainFall& Fall : InfernalRainFalls)
-	{
-		HoldWhere(Fall.Where);
+		for (const FCataclysmEnemyPlacement& Waiting : WaveStillToArrive)
+		{
+			Held.Add(Waiting.Cell);
+		}
+		Held.Append(ArrivingPackSites);
+		for (const FMoraleBreakGroup& Group : MoraleBreakGroups)
+		{
+			Held.Add(Group.Middle);
+		}
+		for (const FInfernalRainFall& Fall : InfernalRainFalls)
+		{
+			HoldWhere(Fall.Where);
+		}
+		for (const FDivineResurgenceGrave& Grave : DivineResurgenceGraves)
+		{
+			HoldWhere(Grave.Location);
+		}
 	}
 	Held.Append(RealityRiftCells);
 	if (RealityChamberRiftCell != FIntPoint(-1, -1))
@@ -8096,10 +8109,6 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 	for (const FInfestedVein& Vein : InfestedVeins)
 	{
 		Held.Add(Vein.Cell);
-	}
-	for (const FDivineResurgenceGrave& Grave : DivineResurgenceGraves)
-	{
-		HoldWhere(Grave.Location);
 	}
 	Held.Append(WarzonePointCells);
 	Held.Append(WarzonePlannedPoints);

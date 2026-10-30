@@ -6,8 +6,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `UCataclysmFloorContents::ClearTheFloor`'s restore branch (`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.h`,
 `.cpp`); `bKeptTheArena` and `BuiltArena` (new) on `ACataclysmDungeonGameMode`, read by `BuildFloor`, `PopulateFloor`
-and `GoToFloor` in place of `FCataclysmFloorBrief::bSameArenaAsLastFloor`; `StoodBeforePlacement` and
-`ActorsHeldOutOfPlacementNow` (new), filled by `PopulateFloor` and read by `CellsTheFloorHolds`
+and `GoToFloor` in place of `FCataclysmFloorBrief::bSameArenaAsLastFloor`; `StoodBeforePlacement`,
+`bPlacingTheFloorsObjects` and `ActorsHeldOutOfPlacementNow` (new), set by `PopulateFloor` and read by
+`CellsTheFloorHolds`
 (`CataclysmDungeonGameMode.h`, `.cpp`); `SightRadiusMultiplier` and `FloorRealityRow` on `FCataclysmSavedCreature`
 (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), read by `FCataclysmSaveGather::CreatureFrom` and written by
 `FCataclysmSaveApply::CreatureInto`; the fixture `game/Tests/SaveFixtures/Run_v1.json`; four new tests in
@@ -49,6 +50,17 @@ and `GoToFloor` in place of `FCataclysmFloorBrief::bSameArenaAsLastFloor`; `Stoo
   chasms), `CellsTheFloorHolds` leaves out every actor that stood when placement began, and counts the entrance, the
   exit and what this pass has put down. Placement during play still holds the player's cell. Ruled to the wider form
   after the reading found the stairs; the first ruling named the player and the followers.
+- **AND FIVE LISTS STILL HELD THE LAST FLOOR'S CELLS WHILE THE OBJECTS WERE PLACED (found by window w106 and two
+  probes, ruled 2026-10-30).** `CellsTheFloorHolds` counts `ArrivingPackSites`, `WaveStillToArrive`,
+  `MoraleBreakGroups`, `InfernalRainFalls` and `DivineResurgenceGraves`, and none is filled by placing: `PopulateFloor`
+  sets the pack sites after the objects (`ArrivingPackSites = Population.PackSites`), and the per-floor reset clears the
+  rest after it. So a floor's statue avoided the LAST floor's pack site, which after a walk was floor 1's (25,21) and
+  after a load the `StartPlay` floor's (26,20): the statue on (26,20) stood after the walk and was refused after the
+  load. Now, while the objects are placed (`bPlacingTheFloorsObjects`, set and cleared with `StoodBeforePlacement`),
+  those five are not counted. Every other list it counts is cleared by its own rule's placing, the rule absent or not.
+  **THIS CHANGES PLACEMENT ON AN ORDINARY WALK TOO**: until now a floor's objects avoided the previous floor's pack
+  sites and the other stale cells, which is the same fault seen without a load. A rounding of world positions to cells
+  would not have caught it: the two cells were two different previous floors' sites, not one position read two ways.
 - **NOT A FAULT: `WavesArrived` IS NOT SAVED.** A Horde wave loaded counts as wave 1, and only log lines (the
   population's and the wave end's) read it. Accepted as not a fault.
 
@@ -86,8 +98,9 @@ floor rebuilds it fresh. A save keys an object by its rule and its placement ind
 
 ### Tests
 
-`Cataclysm.SaveLoad.AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad`: two empire Halls floors, each saved on floor 2
-of 20 and loaded into a fresh world. The first carries the rules a choice is made at and the rules that close cells
+`Cataclysm.SaveLoad.AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad`: two empire Halls floors, each saved and loaded
+into a fresh world -- the first on the first floor from 2 with a closed section barrier, which the line names (floor 2
+of this dungeon's plan has no section boundary, found by window w106's probe), the second on floor 2. The first carries the rules a choice is made at and the rules that close cells
 (Forced Tithes, Pact of Temptation, Sanctioned Passage, Battlefield Relics, Pandora's Box, Carrion Feast, Infernal
 Beacons, War Banner, Grim Totems, Reality Rifts, Luxury Hoarders, Angelic Wardens, Those In The Dark, Lightforged Walls,
 Soul Chains); the second the rules' creatures and zones (Eternal Chorus, Necrotic Bloom, Golden Spires, Pestilent
@@ -111,7 +124,10 @@ restored creature's sight and reality row equal the saved. SET-UP: a creature ca
 Dark is built, then the player is stood on the first statue's cell, a thrall on the first chasm's and a second flight
 of stairs on the second statue's, and the same floor is built again: the same statues and chasms in the same order,
 and nothing held out once the floor is populated (`ActorsHeldOutOfPlacementNow` 0, so a leak shows). CONTROL: the
-player stood on the first statue's cell. Prints "PLACED AROUND".
+player stood on the first statue's cell. Prints "PLACED AROUND". THE SECOND CASE, the last floor's pack sites: floors 3
+to 19 are walked until two or more creatures share a pack middle on one of the statues' cells (a pack site; a creature's
+own cell is held by no other), and floor 2 is built again from that floor: the same statues in the same order. SET-UP:
+such a floor is found, and the line names it. Prints "PLACED AFTER".
 
 ### Registered before the run
 
@@ -122,8 +138,9 @@ player stood on the first statue's cell. Prints "PLACED AROUND".
 | Python | of record, with JUnit, and ruff |
 | P1, the restore branch destroys `ACataclysmFloorObstacle` again (the line moved out of its `if`) | the rebuild test fails on "and every pillar and pit stands where it stood" only, once for each of its two floors; nothing else fails |
 | P2, `BuildFloor` keeps the standing floor on the brief's flag alone again (`bThatArenaStands || true`), so `PopulateFloor` and the rest follow it | the Horde test fails on the arena and its objects; nothing else fails |
-| P3, `PopulateFloor` puts nothing in `StoodBeforePlacement`, so `CellsTheFloorHolds` counts what stood before again | the placed-around test fails on the statues and the chasms, its CONTROL holding; the rebuild test is not predicted, recorded either way. PROVED when the placed-around test fails as predicted and nothing fails restored |
-| P4, `FloorSourceCells` draws on a stream seeded from `FMath::Rand()` | each list whose rule draws its cells through `FloorSourceCells` (through `EternalChorusCells`, `InfestedVeinsCells` or `PlaceFloorObjects`) fails, and no other. The rebuild test, first floor: relics, boxes, purification altar, infernal beacons, war banner, totems, reality rifts, hoards, statues, and the pillars (the statues'); not the tithe, pact and gate altars (`ExitAltarWorld`, no draw), the chasms (`ChasmStream`), the Soul Chains gates (`GatedShortcutStream`) or the barriers (the plan's sections). Second floor: chorus sources, bloom flowers, spires, plague beacons, portals, quarantine, infection bloom, abyssal rift, veins, sarcophagi, shadow lights; not the Warzone points (on a Halls floor `WarzonePlannedPoints`, drawn on `GatedShortcutStream`), the Warzone gates or the pillars. The Horde test: all four rules. The placed-around test: the statues, not the chasms. The sight test passes. A list of one object may land on the same cell by chance; recorded if it does |
+| P3, `PopulateFloor` puts nothing in `StoodBeforePlacement`, so `CellsTheFloorHolds` counts what stood before again | the placed-around test's first case fails on the statues and the chasms, its CONTROL holding; its second case and the rebuild test are not predicted, recorded either way. PROVED when the placed-around test fails as predicted and nothing fails restored |
+| P4, `FloorSourceCells` draws on a stream seeded from `FMath::Rand()` | each list whose rule draws its cells through `FloorSourceCells` (through `EternalChorusCells`, `InfestedVeinsCells` or `PlaceFloorObjects`) fails, and no other. The rebuild test, first floor: relics, boxes, purification altar, infernal beacons, war banner, totems, reality rifts, hoards, statues, and the pillars (the statues'); not the tithe, pact and gate altars (`ExitAltarWorld`, no draw), the chasms (`ChasmStream`), the Soul Chains gates (`GatedShortcutStream`) or the barriers (the plan's sections). Second floor: chorus sources, bloom flowers, spires, plague beacons, portals, quarantine, infection bloom, abyssal rift, veins, sarcophagi, shadow lights; not the Warzone points (on a Halls floor `WarzonePlannedPoints`, drawn on `GatedShortcutStream`), the Warzone gates or the pillars. The Horde test: all four rules. The placed-around test: the statues in both its cases, not the chasms. The sight test passes. A list of one object may land on the same cell by chance; recorded if it does |
+| P7, `CellsTheFloorHolds` counts the five lists while the objects are placed (`bCountTheLastPopulationsCells` true) | the placed-around test's second case fails on its statues; the rebuild test is not predicted, recorded either way; nothing else fails |
 | P5, `CreatureFrom` does not read `SightRadiusMultiplier` | the sight test fails on its one assertion; nothing else fails |
 | P6, `CreatureFrom` does not read `FloorRealityRow` | the sight test fails on its one assertion; nothing else fails |
 
@@ -171,6 +188,19 @@ came back whole but for the statues and what follows them: "tithe altar 1/1; pac
   barrier opened once the creatures stood. A test design fault either way; not yet known which.
 - **NEXT: A PROBE**, asked of the coordinating session, before any change: the reason `AnObstacleMayClose` gave for
   each statue candidate in each world, the held set it was given, and the floor's boundaries and closed barriers.
+
+**Two probes (locks `dungeon-probe-w106` and `dungeon-probe2-w106`, 2026-10-30, at `6b9bccd95`), each one press:
+temporary log lines in `CataclysmDungeonGameMode.cpp`, the rebuild test alone, the file restored with git and built
+again, and the tree checked clean at `6b9bccd95` before and after; nothing committed.** Each pre-check passed before its
+lock; the first attempt for the second probe was refused at 6,505 MB free while another session compiled, and passed
+at 11,643 MB once it had finished.
+
+- The first: the candidate (26,20) "may close yes; held here no; held 100" after the walk and "may close NO; held here
+  yes; held 97" after the load, the held cell beside it moving one diagonal step, (25,21) after the walk. Every statue
+  placed got its pillar. And floor 2's plan has no section boundary ("boundaries 0, closed barrier cells 0"), where
+  floor 1's has one (9 closed cells): the barrier set-up had asked a floor that cannot have one.
+- The second named the holder in both worlds: "holders [(25,21): ArrivingPackSites; ]" after the walk and "holders
+  [(26,20): ArrivingPackSites; ]" after the load -- the last floor's pack sites, said first above.
 
 ---
 

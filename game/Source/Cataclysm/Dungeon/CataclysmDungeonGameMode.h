@@ -3106,6 +3106,17 @@ public:
 	 */
 	TSet<TWeakObjectPtr<AActor>> StoodBeforePlacement;
 
+	/**
+	 * TRUE WHILE `PopulateFloor` PLACES THE FLOOR'S OBJECTS, set and cleared with `StoodBeforePlacement`. While it is
+	 * set `CellsTheFloorHolds` does not count the five lists the population or play fills -- `ArrivingPackSites`,
+	 * `WaveStillToArrive`, `MoraleBreakGroups`, `InfernalRainFalls` and `DivineResurgenceGraves` -- because at that
+	 * moment they are still the last floor's: `PopulateFloor` sets the pack sites after the objects, and the per-floor
+	 * reset clears the rest after it. Counting them made a statue avoid the last floor's pack site, which is a different
+	 * cell after a walk and after a load. Every other list it counts is cleared by its own rule's placing, the rule
+	 * absent or not, so it is this pass's. Ruled 2026-10-30. Issue #753, Group 3a.
+	 */
+	bool bPlacingTheFloorsObjects = false;
+
 	/** How many actors `StoodBeforePlacement` holds: zero outside `PopulateFloor`'s placing. Public for a test. */
 	int32 ActorsHeldOutOfPlacementNow() const { return StoodBeforePlacement.Num(); }
 
