@@ -258,6 +258,7 @@ Each break text occurs once in its file. Names are the short names the engine's 
 | 1 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.cpp` | the relief is dropped: `const double Relief = ContentRelief(Floor.DifficultyTier) * TierWidth(Floor.DifficultyTier);` becomes `const double Relief = 0.0;` | `EveryFigureIsTheModels`, `TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth` |
 | 2 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.cpp` | every floor is built as floor 1 of a 12-floor dungeon: `return FMath::Max(0.0, FMath::Max(Here, Least));` becomes `return FMath::Max(0.0, FMath::Max(Least, Least + 0.0 * Here));` | `EveryFigureIsTheModels`, `TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth`, `ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon` |
 | 3 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyStrength.cpp` | the rarity is applied twice: the per-score factors are read from the creature's own rung instead of Common's -- `[&Common](const FName&, const FCataclysmEnemyRarityRow& Row)` becomes `[&Common, RarityStep](const FName&, const FCataclysmEnemyRarityRow& Row)`, and `if (Row.Step == 0)` becomes `if (Row.Step == RarityStep)` | `EveryFigureIsTheModels`, `TheRarityRaisesTheScoreAndTheCreatureScalesItOnce` |
+| 4 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.cpp` | the minimum is dropped, so the score is clamped at 0 again: `return FMath::Max(0.0, FMath::Max(Here, Least));` becomes `return FMath::Max(0.0, FMath::Max(Here, 0.0 * Least));` | `ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon` |
 
 Why each prediction, so a different result can be read:
 
@@ -272,10 +273,11 @@ Why each prediction, so a different result can be read:
   Starting health with Common's factor (0.5 against Legendary's 1.71125). The scale test is at rung 0, where the two rows
   are the same row, and `ACreaturePlacedOnAFloorIsBuiltFromTheScore` takes its expected figures from the same broken
   function, so both pass.
-
-**Not proved, and said so:** dropping the minimum alone (returning `max(0, Here)`) would be caught by
-`ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon`'s first equality and by nothing in the fixture, which has
-no row below the minimum. No proof of it was run.
+- **4.** The coordinating session asked for this proof because the minimum is a ruled rule held by one test. Floor 1
+  of a 50-floor tier-1 dungeon scores -21 and is then built at 0 instead of 24, so the minimum test's first equality
+  fails. Nothing in the fixture moves: of its 120 distinct floor-and-rung cases none is below the minimum (checked
+  against the model before registering; floor 1 of 12 equals the minimum exactly). The relief test's floors score above
+  the minimum, and the other three compare the function with itself.
 
 ### EVIDENCE
 
