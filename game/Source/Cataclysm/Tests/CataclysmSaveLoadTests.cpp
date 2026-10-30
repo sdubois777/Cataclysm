@@ -79,7 +79,7 @@ namespace CataclysmSaveLoadTest
 	}
 
 	/** A world with a game instance, a possessed player, and a save writer writing a run of its own. */
-	struct FScene
+	struct FLoadScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -97,9 +97,9 @@ namespace CataclysmSaveLoadTest
 	 * The scene, as the game makes it at Play: the game mode begins a run with two identifiers of its own on the
 	 * sandbox's floor 1 (`ACataclysmGameMode::BeginSavingThisRun`), which a load then replaces.
 	 */
-	FScene MakeScene()
+	FLoadScene MakeScene()
 	{
-		FScene Out;
+		FLoadScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -142,7 +142,7 @@ namespace CataclysmSaveLoadTest
 	}
 
 	/** Every value the test saves, as the scene now holds it. */
-	FString Held(const FScene& Scene)
+	FString Held(const FLoadScene& Scene)
 	{
 		const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
 		float Defence = 0.0f;
@@ -195,7 +195,7 @@ namespace CataclysmSaveLoadTest
 	 */
 	bool SaveACharacter(FAutomationTestBase& Test, bool bDies, FSaved& Out)
 	{
-		FScene Scene = MakeScene();
+		FLoadScene Scene = MakeScene();
 		if (!Test.TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
 		{
 			if (Scene.World)
@@ -348,7 +348,7 @@ bool FCataclysmSaveLoadRoundTripTest::RunTest(const FString&)
 		return false;
 	}
 
-	FScene Scene = MakeScene();
+	FLoadScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -429,7 +429,7 @@ bool FCataclysmSaveLoadUnreadableRunTest::RunTest(const FString&)
 	auto LoadOnce = [this, &Lines](const TCHAR* Case, const FGuid& CharacterId, ECataclysmLoadOutcome Expected,
 										   const TCHAR* Says)
 	{
-		FScene Scene = MakeScene();
+		FLoadScene Scene = MakeScene();
 		if (!TestTrue(FString::Printf(TEXT("%s: set-up: the loading world was built"), Case), Scene.IsUsable()))
 		{
 			if (Scene.World)
@@ -543,7 +543,7 @@ bool FCataclysmSaveLoadDeadTest::RunTest(const FString&)
 		return false;
 	}
 
-	FScene Scene = MakeScene();
+	FLoadScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -609,7 +609,7 @@ bool FCataclysmSaveLoadDeathProcessedTest::RunTest(const FString&)
 {
 	using namespace CataclysmSaveLoadTest;
 
-	FScene Scene = MakeScene();
+	FLoadScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)

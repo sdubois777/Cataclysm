@@ -136,7 +136,21 @@ has no proof of its own; the last test covers it.
 
 ### Run
 
-Not yet run.
+**Window w98 (lock `dungeon-w98`, `feat/a-saved-character-and-its-run-load-at-the-console-2` at `ecbb8a4c7`, on
+`315b9b14c`, 2026-10-30) STOPPED at the build. Nothing after it ran.** `development`'s CI run at `315b9b14c` and its last
+Unreal run, at `50d5b1366`, succeeded; no run was in progress or queued, the lock was free, no build or editor process
+ran, no pull request was open, and free memory read 11,420 MB immediately before, above the normal floor. The lock was
+released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Failed - 73 actions, 63 files compiled`: 34 errors, every one in `CataclysmSaveLoadTests.cpp`. The first is "error C2872: 'FScene': ambiguous symbol" at line 351, naming the engine's `FScene` (`Engine/Level.h` line 324, `friend class FScene;`) as the other candidate; the other 33 follow from it |
+
+**THE FAULT WAS THE TEST FILE'S.** Its scene struct was named `FScene`, which the engine's renderer also declares, and
+inside a test that says `using namespace CataclysmSaveLoadTest` the name was ambiguous. It is renamed `FLoadScene`. No
+other file failed to compile.
+
+The next window is registered as above.
 
 ---
 
