@@ -178,10 +178,8 @@ boss's is only the void's 12. The maximums, the souls and the boss link all came
 the fault waits for the coordinating session's ruling.
 
 **Window w103 (lock `dungeon-w103`, `feat/creatures-walk-state-and-thralls-survive-a-load-2` at `d603e99dc`, on
-`08bdfae16`, 2026-10-30) FAILED ONE TEST IN THE WHOLE SUITE; no proof ran.** `development`'s CI at `08bdfae16`
-succeeded, and its last Unreal run, at `2082da17b` (`08bdfae16` changes no game file), succeeded; no run was in progress
-or queued, the lock was free, no build or editor process or simulation process ran, no pull request was open, and free
-memory read 11,713 MB immediately before. The lock was released before anything was written here.
+`08bdfae16`, 2026-10-30) FAILED ONE TEST IN THE WHOLE SUITE; no proof ran.** The six pre-checks were run before the lock was taken, but their
+printed readings, the free-memory figure among them, were not kept, so none is quoted here. The lock was released before anything was written here.
 
 | Step | Printed |
 |---|---|
