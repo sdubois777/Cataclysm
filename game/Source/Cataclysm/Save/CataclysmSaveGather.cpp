@@ -4,6 +4,7 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -11,6 +12,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "EngineUtils.h"
@@ -97,6 +99,16 @@ FCataclysmSavedCharacterPlacement FCataclysmSaveGather::PlacementFrom(
 
 	VitalsOf(Character, Placed.Health, Placed.Mana, Placed.EnergyShield);
 
+	// AND THE CLASS RESOURCE, Fervour for the Masochist. Issue #753, Group 2.
+	if (const UAbilitySystemComponent* Resource = UCataclysmTargeting::AbilitySystemOf(&Character))
+	{
+		if (Resource->HasAttributeSetForAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()))
+		{
+			Placed.ClassResource =
+				Resource->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+		}
+	}
+
 	// AND THE POTIONS, every slot and the drinks taken. Issue #753, the dungeon step.
 	if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(&Character)))
@@ -154,6 +166,7 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 	Saved.Floor = Floor;
 
 	UWorld* Mutable = const_cast<UWorld*>(&World);
+	const ACataclysmDungeonGameMode* DungeonMode = ACataclysmDungeonGameMode::InWorld(Mutable);
 
 	for (TActorIterator<ACataclysmEnemyCharacter> It(Mutable); It; ++It)
 	{
@@ -185,16 +198,24 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			continue;
 		}
 
-		// NOR A CREATURE THE PLAYER COMMANDS: a thrall `UCataclysmCommand::Subjugate` took, the Second Self among
-		// them. The record holds no owner and no team, so written back it was an ordinary creature of its kind,
-		// hostile, and in a dungeon one of the floor's own (#751 to #753's Group 1). It is lost on a load, as a
-		// summoned minion is; #753's Group 2 gives a saved creature the role that keeps it.
+		// A CREATURE THE PLAYER COMMANDS IS SAVED WITH THAT ROLE, since #753's Group 2. Group 1 skipped it, because the
+		// record then held no owner and no team and it came back hostile; now the record carries what the load needs
+		// to re-link it. And what the walk's rules hold for this creature: Soul Harvest's souls, Nothing Is Forgotten's
+		// boss. Ruled 2026-10-30.
+		FCataclysmSavedCreature Record = CreatureFrom(*Creature);
 		if (Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Creature)))
 		{
-			continue;
+			Record.bCommandedByThePlayer = true;
+			Record.bSecondSelf = Creature->bIsSecondSelf;
+			Record.ReservedFervour = Creature->ReservedFervour;
+			Record.CommanderHealthMultiplier = Creature->GetCommanderHealthMultiplier();
 		}
-
-		Saved.Creatures.Add(CreatureFrom(*Creature));
+		if (DungeonMode)
+		{
+			DungeonMode->SoulHarvestHeldBy(Creature, Record.SoulHarvestSouls, Record.SoulHarvestHealthAdded);
+			Record.bFedByNothingIsForgotten = DungeonMode->IsTheVoidsBoss(Creature);
+		}
+		Saved.Creatures.Add(Record);
 	}
 
 	for (TActorIterator<ACataclysmDroppedItem> It(Mutable); It; ++It)

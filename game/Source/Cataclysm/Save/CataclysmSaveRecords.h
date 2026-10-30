@@ -130,6 +130,41 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bRisenFromTheDead = false;
+
+	/**
+	 * WHAT THIS CREATURE WAS TO THE WALK, carried by its own record so that the creature spawned from it can be
+	 * linked back with no saved identifier. Issue #753, Group 2, ruled 2026-10-30. Each defaults to "nothing", which
+	 * is what every creature in an older file was; not a version bump.
+	 *
+	 * A THRALL: commanded by the player (`UCataclysmCommand::Subjugate`), whether it is the Second Self, the Fervour
+	 * it holds back (`ReservedFervour`) and the health multiplier its commander gave it. The load re-links it with
+	 * these and does NOT call `Subjugate`, which would rescale it and heal it to full.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCommandedByThePlayer = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bSecondSelf = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ReservedFervour = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CommanderHealthMultiplier = 1.0f;
+
+	/**
+	 * SOUL HARVEST: the souls this creature holds, and the maximum health they added, which `MaxHealth` above already
+	 * includes. Its attack damage and resistance additions are worked out again from the souls on a load.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulHarvestSouls = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float SoulHarvestHealthAdded = 0.0f;
+
+	/** NOTHING IS FORGOTTEN: the boss the void fed. Its maximum health above already holds what the void gave. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFedByNothingIsForgotten = false;
 };
 
 /**
@@ -217,6 +252,30 @@ struct CATACLYSM_API FCataclysmSavedCharacterPlacement
 	/** The drinks taken this walk, which `Famine_Diminishing_Returns` weakens each drink by. Saved with the charges. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 PotionsDrunk = 0;
+
+	/**
+	 * The player's class resource (Fervour), as it stood. Issue #753, Group 2, ruled 2026-10-30. Written back after
+	 * the thralls are re-linked, so the clamp every write meets (`UCataclysmClassResourceAttributeSet::PreAttributeChange`,
+	 * to the maximum less the Fervour the thralls hold back) meets the same reserve it met when saved.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ClassResource = 0.0f;
+};
+
+/** One death Echoes of the Past will bring back: the creature's kind by name, its rung, its attack. Issue #753. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedEcho
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Rung = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Attack = -2;
 };
 
 /**
@@ -332,6 +391,34 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	/** Soul Harvest: souls given. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 SoulHarvestGiven = 0;
+
+	/**
+	 * Group 2, ruled 2026-10-30: the walk's state held for creatures, which needs no creature identity. The
+	 * Corrupted Stalker's hunt (whether it has hunted, whether it was slain, the share of its health left, its
+	 * potions); Echoes of the Past's two lists; and Nihil's Embrace's metres walked since the last cleanse, one figure
+	 * rather than the player's whole walked total. The Stalker itself is raised by its rule again, after the floor's
+	 * wait, which is a timer and restarts.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerHasHunted = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerSlain = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CorruptedStalkerHealthShare = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> CorruptedStalkerPotionCharges;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEcho> EchoesThisFloor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEcho> EchoesFromLastFloor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MetresWalkedSinceCleanse = 0.0f;
 };
 
 /**

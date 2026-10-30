@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
+
+**Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on
+`FCataclysmSavedWalk`, and `ClassResource` on `FCataclysmSavedCharacterPlacement`, in
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`; `FCataclysmSaveGather::FloorFrom` and `PlacementFrom`
+(`CataclysmSaveGather.cpp`); `FCataclysmSaveApply::ThrallInto` (new), `FloorInto`, `DungeonFloorInto` and
+`PlacementInto`, and `FCataclysmFloorRestored::Spawned` (`CataclysmSaveApply.h`, `.cpp`); `SoulHarvestHeldBy`,
+`IsTheVoidsBoss` and `RestoreCreatureRoles` (new), `WalkStateNow` and `RestoreWalkState` on `ACataclysmDungeonGameMode`
+(`CataclysmDungeonGameMode.h`, `.cpp`); the loader (`CataclysmSaveLoad.cpp`); the fixture
+`game/Tests/SaveFixtures/Run_v1.json`; two new tests and one rewritten in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open.
+
+### SAID FIRST
+
+- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **GROUP 1'S THRALL TEST IS REWRITTEN IN PLACE, AS RULED (R1).** `APlayersThrallIsNotSavedAsACreature` asserted the
+  thrall was not saved: the interim state D3 (a) gave until D3 (b) kept it. It is now
+  `APlayersThrallComesBackUnderThePlayersCommand`, with the same CONTROL, so reversing its assertion is the ruling
+  and not a weakened guard. P2 shows the new assertions can fail.
+- **A THRALL IS RE-LINKED, NOT TAKEN AGAIN: `UCataclysmCommand::Subjugate` IS NOT CALLED ON A LOAD.** Read in full
+  (`CataclysmCommand.cpp` lines 816 to 960) and with its caller: it charges nothing and raises no event, but it sets
+  the commander's health multiplier, which rewrites the creature's maximum through `ApplyStartingAttributes`, and it
+  heals the creature to full, which would undo the damage the save kept; and its caller, not Subjugate, puts 30
+  Fervour in the thrall's `ReservedFervour`, which `ReservedFervourOf` adds up as it is asked. So
+  `FCataclysmSaveApply::ThrallInto` makes Subjugate's two writes for owner and side, sets when it came under command
+  (now) and the Second Self flag, the saved `ReservedFervour` and multiplier, then writes the saved maximum and health
+  again. It does not check for room, clamp the commander's Fervour or heal. Ruled 2026-10-30.
+- **THE PLAYER'S CLASS RESOURCE (FERVOUR) IS NOW SAVED**, on the floor placement, folded into this group by ruling: it
+  was in no record. Every write of it is clamped (`UCataclysmClassResourceAttributeSet::PreAttributeChange`) to the
+  maximum less the Fervour the thralls hold back, so the loader re-links the thralls BEFORE the placement, and the
+  clamp meets the reserve the save met. The saved value was inside that same limit when written, so the clamp leaves
+  it as it was; it cannot come back above what the reserve leaves spendable.
+- **THE RESTORE-SIDE PROOF BREAKS THE LOAD'S CALL, NOT `RestoreWalkState` ITSELF.** Asked for after w101: a proof whose
+  failure is the counters test's round-trip check. A break inside `RestoreWalkState` (or `WalkStateNow`) would fail
+  that test's set-up check first, as w101's P2 did, because the set-up writes and reads the walk through the same
+  functions in the saving world. So P1 and P4 break the one call only a load makes, in `ResumeEmpireDungeon`: the
+  saved walk is handed over with one field reset.
+- **TWO ITEMS MOVED TO GROUP 3, AS RULED (R3):** the tithe angels, which `BringCreaturesNear` raises by a rule and a
+  floor change clears, and the echoes standing with whether they have appeared on this floor. Echoes of the Past's two
+  lists, which carry across floors, are here.
+
+### The change
+
+A saved creature's own record carries what it was to the walk (R2: no saved index or identifier): a thrall
+(`bCommandedByThePlayer`, `bSecondSelf`, `ReservedFervour`, `CommanderHealthMultiplier`), the souls Soul Harvest holds
+for it and the health they added (`SoulHarvestSouls`, `SoulHarvestHealthAdded`), and whether it is the boss Nothing Is
+Forgotten fed. `FloorFrom` fills them, asking the world's dungeon game mode for the two rules' state; Group 1's thrall
+skip is gone. `FloorInto` and `DungeonFloorInto` return each creature they spawned with its record's index, and keep a
+thrall out of `FloorEnemies`. The loader then re-links each: `ThrallInto`, and in a dungeon `RestoreCreatureRoles`.
+
+`RestoreCreatureRoles`: SOUL HARVEST holds the saved souls and the health they added (which the saved maximum
+includes) and calls `ApplySoulHarvestFigures` with bFreshBlock false, which works out the creature's own maximum by
+taking the added health away, re-adds the three figures, and keeps the current health where it is (read on
+2026-10-30). NOTHING IS FORGOTTEN makes the creature the void's boss again and adds back the attack damage the void
+gave (`NothingIsForgottenDamageGiven`, a Group 1 counter); `ApplyNothingIsForgottenFigures` is not called, because it
+adds the void's health to a maximum that already holds it.
+
+The walk gains, needing no creature identity: the Corrupted Stalker's hunt (whether it has hunted, whether slain, the
+share of its health left, its potions; the Stalker is raised again by its rule after the floor's wait, a timer, which
+restarts); Echoes of the Past's two lists, each death by the creature's name (`CataclysmDungeonCreatureName`), rung and
+attack, and a name this build does not know is left out; and Nihil's Embrace's metres walked since the last cleanse, one
+figure, from which the restore works out `MetresWalkedAtLastCleanse` against the loaded player's walked total.
+
+### How it is checked
+
+`Cataclysm.SaveLoad.AWalksCreatureStateComesBackFromALoad`: in a dungeon on floor 2 the walk is given every Group 2
+field set, saved and loaded into another dungeon world, which holds them all after the load. **CONTROL:** before the
+load it holds other values. It prints a line beginning "LOAD WALK CREATURES".
+
+`Cataclysm.SaveLoad.APlayersThrallComesBackUnderThePlayersCommand` (rewritten): a Brute taken by `Subjugate`, holding 30
+Fervour back, made the Second Self and hurt to 60% of its maximum, beside an ordinary Brute, with the player at 20
+Fervour; after the load the thrall is commanded by the player, on its side, the Second Self, with its maximum and health
+as saved, the reserve is 30 and the player's Fervour 20. **CONTROL:** the other Brute is an ordinary enemy. It prints a
+line beginning "THRALL LOAD".
+
+`Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack`: in a dungeon one creature is given 3 souls and another is
+made the void's boss, through the restore's own call; after the load the souls are held again with the same figures,
+and the boss is the void's with its maximum and attack damage as saved. It prints a line beginning "LOAD SOULS".
+
+### Not covered
+
+Group 3, now including the tithe angels and the echoes standing; summoned minions (`ACataclysmMinion`), still not
+saved; the moment a thrall came under command, a time, which decides which thrall the Second Self is if it is chosen
+again, and which is why the Second Self flag is saved.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests and the rewritten thrall test alone | 1 / 1 each |
+| Whole Unreal suite | 4382 / 0: `development`'s 4380, measured by window w101, + 2 (the thrall test is rewritten, not added), unless a merge before the window adds an Unreal test |
+| Python | of record, with JUnit, and ruff |
+| The "LOAD WALK CREATURES", "THRALL LOAD" and "LOAD SOULS" lines | quoted as printed |
+| P1, the load hands the walk over with `BloodDebtPaid` reset | `ADungeonWalksCountersComeBackFromALoad` fails at its round-trip check ("debt 0" where 7), and its set-up check passes; nothing else fails |
+| P2, the loader does not re-link a thrall | the thrall test fails on its commander, its side, the Second Self and the reserve; its health figures and the player's Fervour pass; its CONTROL holds |
+| P3, the restore also calls `ApplyNothingIsForgottenFigures` | the roles test fails on the boss's figures only, its maximum given the void's health a second time |
+| P4, the load hands the walk over with the Stalker's health share reset | the creature-state test fails at its round-trip check only, its set-up check passing |
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)
 
 **Affects:** `sim/cataclysm_sim/config.py` (the Last Stand cap's three fields and `last_stand_floor_cap`;

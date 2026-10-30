@@ -5,9 +5,12 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -15,11 +18,13 @@
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -1422,27 +1427,23 @@ bool FCataclysmSaveLoadFloorStartOnceTest::RunTest(const FString&)
 }
 
 /**
- * A creature the player commands is not saved as a creature: written back it was an ordinary one of its kind, hostile.
- * Issue #753, Group 1, the fault D3 found. THE CONTROL is the ordinary creature beside it, which is saved.
+ * A thrall comes back under the player's command, as it was: the same commander and side, the Second Self, the Fervour
+ * it holds back, and its maximum and current health, and the player's own Fervour. Issue #753, Group 2, ruled
+ * 2026-10-30.
+ *
+ * REWRITTEN IN PLACE FROM GROUP 1'S `APlayersThrallIsNotSavedAsACreature`, by ruling R1: that assertion recorded the
+ * interim state D3 (a) gave (the thrall skipped) before D3 (b) kept it. THE CONTROL is kept: the ordinary creature
+ * beside the thrall comes back an ordinary enemy. A thrall hurt below full shows a load that took it again, which
+ * heals to full.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadThrallTest,
-	"Cataclysm.SaveLoad.APlayersThrallIsNotSavedAsACreature",
+	"Cataclysm.SaveLoad.APlayersThrallComesBackUnderThePlayersCommand",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSaveLoadThrallTest::RunTest(const FString&)
 {
 	using namespace CataclysmSaveLoadTest;
-
-	FLoadScene Scene = MakeScene();
-	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
-	{
-		if (Scene.World)
-		{
-			Scene.World->DestroyWorld(false);
-		}
-		return false;
-	}
-	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	using Resource = UCataclysmClassResourceAttributeSet;
 
 	auto Brute = [](const FVector& At)
 	{
@@ -1453,32 +1454,396 @@ bool FCataclysmSaveLoadThrallTest::RunTest(const FString&)
 		Saved.MaxHealth = 100.0f;
 		return Saved;
 	};
-	ACataclysmEnemyCharacter* Taken = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(500.0f, 0.0f, 100.0f)));
-	ACataclysmEnemyCharacter* Wild = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(-500.0f, 0.0f, 100.0f)));
-	if (!TestNotNull(TEXT("set-up: the first Brute stands"), Taken)
-		|| !TestNotNull(TEXT("set-up: the second Brute stands"), Wild)
-		|| !TestTrue(TEXT("set-up: the player took the first"), UCataclysmCommand::Subjugate(Scene.Character, Taken))
-		|| !TestTrue(TEXT("set-up: and commands it"), UCataclysmCommand::CommanderOf(Taken) == Scene.Character))
+	auto Figures = [](const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
+		return FString::Printf(TEXT("max %.1f health %.1f"),
+							   Abilities ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f,
+							   Abilities ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f);
+	};
+	auto Fervour = [](const ACataclysmPlayerCharacter& Player)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Player);
+		return Abilities ? Abilities->GetNumericAttribute(Resource::GetClassResourceAttribute()) : -1.0f;
+	};
+	auto RoomForFervour = [](ACataclysmPlayerCharacter& Player)
+	{
+		if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Player))
+		{
+			Abilities->SetNumericAttributeBase(Resource::GetMaxClassResourceAttribute(), 100.0f);
+		}
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString FiguresSaved;
+	float ReserveSaved = -1.0f;
+	float FervourSaved = -1.0f;
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+
+		ACataclysmEnemyCharacter* Taken = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(500.0f, 0.0f, 100.0f)));
+		ACataclysmEnemyCharacter* Wild = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(-500.0f, 0.0f, 100.0f)));
+		if (!TestNotNull(TEXT("set-up: the first Brute stands"), Taken)
+			|| !TestNotNull(TEXT("set-up: the second Brute stands"), Wild)
+			|| !TestTrue(TEXT("set-up: the player took the first"), UCataclysmCommand::Subjugate(Scene.Character, Taken)))
+		{
+			return false;
+		}
+		// AS THE SKILL LEAVES IT: 30 Fervour held back, and the Second Self. Then hurt below full.
+		Taken->ReservedFervour = 30.0f;
+		Taken->bIsSecondSelf = true;
+		if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Taken))
+		{
+			Abilities->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * 0.6f);
+		}
+		RoomForFervour(*Scene.Character);
+		if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Scene.Character))
+		{
+			Abilities->SetNumericAttributeBase(Resource::GetClassResourceAttribute(), 20.0f);
+		}
+		FiguresSaved = Figures(*Taken);
+		ReserveSaved = UCataclysmCommand::ReservedFervourOf(Scene.Character);
+		FervourSaved = Fervour(*Scene.Character);
+		if (!TestEqual(TEXT("set-up: the thrall holds 30 Fervour back"), ReserveSaved, 30.0f)
+			|| !TestEqual(TEXT("set-up: the player holds 20 Fervour"), FervourSaved, 20.0f))
+		{
+			return false;
+		}
+		Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	RoomForFervour(*Scene.Character);
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
+																			 Saved.CharacterId);
+	ACataclysmEnemyCharacter* Thrall = nullptr;
+	ACataclysmEnemyCharacter* Other = nullptr;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(Scene.World); It; ++It)
+	{
+		if (!IsValid(*It))
+		{
+			continue;
+		}
+		if (FVector::Dist2D(It->GetActorLocation(), FVector(500.0f, 0.0f, 0.0f)) < 1.0f)
+		{
+			Thrall = *It;
+		}
+		else if (FVector::Dist2D(It->GetActorLocation(), FVector(-500.0f, 0.0f, 0.0f)) < 1.0f)
+		{
+			Other = *It;
+		}
+	}
+	if (!TestNotNull(TEXT("the thrall stands after the load"), Thrall)
+		|| !TestNotNull(TEXT("and the creature beside it"), Other))
 	{
 		return false;
 	}
+	const bool bCommanded = UCataclysmCommand::CommanderOf(Thrall) == Scene.Character;
+	const bool bOnThePlayersSide = Thrall->GetGenericTeamId() == UCataclysmTeams::TeamOf(Scene.Character);
+	const FString FiguresAfter = Figures(*Thrall);
+	const float ReserveAfter = UCataclysmCommand::ReservedFervourOf(Scene.Character);
+	const float FervourAfter = Fervour(*Scene.Character);
+	const bool bOtherIsAnEnemy = UCataclysmCommand::CommanderOf(Other) == nullptr
+		&& UCataclysmTargeting::IsHostileTo(Other, Scene.Character);
 
-	const FCataclysmSavedFloor Floor = FCataclysmSaveGather::FloorFrom(*Scene.World, FName(TEXT("Sandbox")), 1,
-																		FGuid::NewGuid());
-	bool bThrallSaved = false;
-	bool bWildSaved = false;
-	for (const FCataclysmSavedCreature& Creature : Floor.Creatures)
+	AddInfo(FString::Printf(TEXT("THRALL LOAD: %s (%s); the thrall %s, %s, %s; saved %s, loaded %s; reserve %.0f saved, "
+								 "%.0f loaded; Fervour %.0f saved, %.0f loaded; the other %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bCommanded ? TEXT("commanded by the player") : TEXT("NOT COMMANDED"),
+							bOnThePlayersSide ? TEXT("on the player's side") : TEXT("ON ANOTHER SIDE"),
+							Thrall->bIsSecondSelf ? TEXT("the Second Self") : TEXT("NOT THE SECOND SELF"),
+							*FiguresSaved, *FiguresAfter, ReserveSaved, ReserveAfter, FervourSaved, FervourAfter,
+							bOtherIsAnEnemy ? TEXT("an enemy") : TEXT("NOT AN ENEMY")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the thrall is commanded by the player"), bCommanded);
+	TestTrue(TEXT("and on the player's side"), bOnThePlayersSide);
+	TestTrue(TEXT("and still the Second Self"), Thrall->bIsSecondSelf);
+	TestEqual(TEXT("with the maximum and the health it had, not healed"), FiguresAfter, FiguresSaved);
+	TestEqual(TEXT("holding back the Fervour it held"), ReserveAfter, ReserveSaved);
+	TestEqual(TEXT("and the player has the Fervour it had"), FervourAfter, FervourSaved);
+	TestTrue(TEXT("CONTROL: the creature beside it is an ordinary enemy"), bOtherIsAnEnemy);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The walk's state held for creatures
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** Group 2's walk fields, on one line. */
+	FString CreatureWalkLine(const FCataclysmSavedWalk& Walk)
 	{
-		bThrallSaved |= FVector::Dist2D(Creature.Location, Taken->GetActorLocation()) < 1.0f;
-		bWildSaved |= FVector::Dist2D(Creature.Location, Wild->GetActorLocation()) < 1.0f;
+		auto Echoes = [](const TArray<FCataclysmSavedEcho>& List)
+		{
+			FString Out;
+			for (const FCataclysmSavedEcho& One : List)
+			{
+				Out += FString::Printf(TEXT("%s/%d/%d,"), *One.Kind.ToString(), One.Rung, One.Attack);
+			}
+			return Out;
+		};
+		FString Potions;
+		for (const float Charges : Walk.CorruptedStalkerPotionCharges)
+		{
+			Potions += FString::Printf(TEXT("%.0f,"), Charges);
+		}
+		return FString::Printf(TEXT("stalker %s %s %.2f [%s] echoes this [%s] last [%s] walked %.1f"),
+							   Walk.bCorruptedStalkerHasHunted ? TEXT("hunted") : TEXT("not-hunted"),
+							   Walk.bCorruptedStalkerSlain ? TEXT("slain") : TEXT("standing"),
+							   Walk.CorruptedStalkerHealthShare, *Potions, *Echoes(Walk.EchoesThisFloor),
+							   *Echoes(Walk.EchoesFromLastFloor), Walk.MetresWalkedSinceCleanse);
 	}
 
-	AddInfo(FString::Printf(TEXT("THRALL SAVE: %d creatures saved; the thrall %s; the creature beside it %s"),
-							Floor.Creatures.Num(), bThrallSaved ? TEXT("SAVED") : TEXT("not saved"),
-							bWildSaved ? TEXT("saved") : TEXT("NOT SAVED")));
+	FCataclysmSavedEcho AnEcho(ECataclysmDungeonCreature Kind, int32 Rung, int32 Attack)
+	{
+		FCataclysmSavedEcho Echo;
+		Echo.Kind = FName(CataclysmDungeonCreatureName(Kind));
+		Echo.Rung = Rung;
+		Echo.Attack = Attack;
+		return Echo;
+	}
 
-	TestFalse(TEXT("the thrall is not saved as a creature"), bThrallSaved);
-	TestTrue(TEXT("CONTROL: the creature beside it is"), bWildSaved);
+	/** Every Group 1 counter set, and Group 2's fields set to values no other holds. */
+	FCataclysmSavedWalk EveryCreatureFieldSet()
+	{
+		FCataclysmSavedWalk Walk = EveryFieldSet();
+		Walk.bCorruptedStalkerHasHunted = true;
+		Walk.bCorruptedStalkerSlain = false;
+		Walk.CorruptedStalkerHealthShare = 0.65f;
+		Walk.CorruptedStalkerPotionCharges = {25.0f, 15.0f, 5.0f, 0.0f};
+		Walk.EchoesThisFloor = {AnEcho(ECataclysmDungeonCreature::Brute, 2, 1),
+								AnEcho(ECataclysmDungeonCreature::Imp, 0, -2)};
+		Walk.EchoesFromLastFloor = {AnEcho(ECataclysmDungeonCreature::Hellhound, 1, 0)};
+		Walk.MetresWalkedSinceCleanse = 37.5f;
+		return Walk;
+	}
+
+	/** A creature's maximum health and attack damage. */
+	FString CreatureFigures(const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
+		return FString::Printf(TEXT("max %.1f damage %.1f"),
+							   Abilities ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f,
+							   Abilities ? Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) : -1.0f);
+	}
+}
+
+/**
+ * The walk's state held for creatures that needs no creature identity comes back with the run: the Corrupted
+ * Stalker's hunt, Echoes of the Past's two lists, and Nihil's Embrace's metres walked since the last cleanse. Issue
+ * #753, Group 2. THE CONTROL is the loading dungeon's walk before the load.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWalkCreaturesTest,
+	"Cataclysm.SaveLoad.AWalksCreatureStateComesBackFromALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWalkCreaturesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FCataclysmSavedWalk Set = EveryCreatureFieldSet();
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		Scene.Mode->RestoreWalkState(Set);
+		if (!TestEqual(TEXT("set-up: the walk holds every creature field set"),
+					   CreatureWalkLine(Scene.Mode->WalkStateNow()), CreatureWalkLine(Set)))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const bool bOtherBefore = CreatureWalkLine(Scene.Mode->WalkStateNow()) != CreatureWalkLine(Set);
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const FString After = CreatureWalkLine(Scene.Mode->WalkStateNow());
+
+	AddInfo(FString::Printf(TEXT("LOAD WALK CREATURES: %s (%s); %s; saved '%s'; loaded '%s'"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							After == CreatureWalkLine(Set) ? TEXT("every field matches") : TEXT("the fields DIFFER"),
+							*CreatureWalkLine(Set), *After));
+
+	TestTrue(TEXT("CONTROL: before the load the dungeon's walk held other values"), bOtherBefore);
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the walk's state held for creatures came back"), After, CreatureWalkLine(Set));
+	return true;
+}
+
+/**
+ * A creature holding Soul Harvest's souls, and the boss Nothing Is Forgotten fed, come back as what they were: the
+ * souls held and their figures, and the void's boss with its figures, its health not given twice. Issue #753, Group 2.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCreatureRolesTest,
+	"Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadCreatureRolesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString HolderSaved;
+	FString BossSaved;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+		if (!TestTrue(TEXT("set-up: the floor has two creatures"), Standing.Num() >= 2))
+		{
+			return false;
+		}
+
+		// THE VOID'S FIGURES FIRST, through the walk, then the two roles through the restore's own call, which is
+		// how a rule's state is put on a creature from outside the rule.
+		FCataclysmSavedWalk Walk = Scene.Mode->WalkStateNow();
+		Walk.NothingIsForgottenHealth = 400.0f;
+		Walk.NothingIsForgottenDamage = 50.0f;
+		Walk.NothingIsForgottenHealthGiven = 400.0f;
+		Walk.NothingIsForgottenDamageGiven = 12.0f;
+		Scene.Mode->RestoreWalkState(Walk);
+		FCataclysmSavedCreature Holder;
+		Holder.SoulHarvestSouls = 3;
+		Scene.Mode->RestoreCreatureRoles(*Standing[0], Holder);
+		FCataclysmSavedCreature Boss;
+		Boss.bFedByNothingIsForgotten = true;
+		Scene.Mode->RestoreCreatureRoles(*Standing[1], Boss);
+
+		HolderSaved = FString::Printf(TEXT("%s at %.0f %.0f"), *CreatureFigures(*Standing[0]),
+									  Standing[0]->GetActorLocation().X, Standing[0]->GetActorLocation().Y);
+		BossSaved = FString::Printf(TEXT("%s at %.0f %.0f"), *CreatureFigures(*Standing[1]),
+									Standing[1]->GetActorLocation().X, Standing[1]->GetActorLocation().Y);
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	FString HolderAfter = TEXT("(no creature holds souls)");
+	FString BossAfter = TEXT("(no boss)");
+	int32 SoulsAfter = 0;
+	for (ACataclysmEnemyCharacter* Creature : UnruledStanding(*Scene.Mode))
+	{
+		int32 Souls = 0;
+		float HealthAdded = 0.0f;
+		Scene.Mode->SoulHarvestHeldBy(Creature, Souls, HealthAdded);
+		if (Souls > 0)
+		{
+			SoulsAfter = Souls;
+			HolderAfter = FString::Printf(TEXT("%s at %.0f %.0f"), *CreatureFigures(*Creature),
+										  Creature->GetActorLocation().X, Creature->GetActorLocation().Y);
+		}
+		if (Scene.Mode->IsTheVoidsBoss(Creature))
+		{
+			BossAfter = FString::Printf(TEXT("%s at %.0f %.0f"), *CreatureFigures(*Creature),
+										Creature->GetActorLocation().X, Creature->GetActorLocation().Y);
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("LOAD SOULS: %s (%s); %d souls held after the load; the holder saved %s, loaded %s; "
+								 "the boss saved %s, loaded %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, SoulsAfter, *HolderSaved,
+							*HolderAfter, *BossSaved, *BossAfter));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the creature still holds its 3 souls"), SoulsAfter, 3);
+	TestEqual(TEXT("with the figures they gave it"), HolderAfter, HolderSaved);
+	TestEqual(TEXT("and the void's boss is the void's boss, its health not given twice"), BossAfter, BossSaved);
 	return true;
 }
 

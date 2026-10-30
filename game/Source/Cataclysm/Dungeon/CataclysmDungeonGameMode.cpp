@@ -14734,6 +14734,36 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 	Walk.WildMagicTriggered = WildMagicTriggered;
 	Walk.WildMagicLast = WildMagicLast;
 	Walk.SoulHarvestGiven = SoulHarvestGiven;
+
+	// GROUP 2: the Stalker's hunt, the echoes' two lists by the creature's name, and Nihil's walked distance.
+	Walk.bCorruptedStalkerHasHunted = bCorruptedStalkerHasHunted;
+	Walk.bCorruptedStalkerSlain = bCorruptedStalkerSlain;
+	Walk.CorruptedStalkerHealthShare = CorruptedStalkerHealthShare;
+	Walk.CorruptedStalkerPotionCharges = CorruptedStalkerPotionCharges;
+	auto Saved = [](const TArray<FEchoOfTheDead>& Echoes)
+	{
+		TArray<FCataclysmSavedEcho> Out;
+		for (const FEchoOfTheDead& Echo : Echoes)
+		{
+			FCataclysmSavedEcho One;
+			One.Kind = FName(CataclysmDungeonCreatureName(Echo.Kind));
+			One.Rung = Echo.Rung;
+			One.Attack = Echo.Attack;
+			Out.Add(One);
+		}
+		return Out;
+	};
+	Walk.EchoesThisFloor = Saved(EchoesThisFloor);
+	Walk.EchoesFromLastFloor = Saved(EchoesFromLastFloor);
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
+			Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr)
+	{
+		Walk.MetresWalkedSinceCleanse = FMath::Max(0.0f, AbilitySystem->MetresWalkedTotal() - MetresWalkedAtLastCleanse);
+	}
 	return Walk;
 }
 
@@ -14773,7 +14803,87 @@ void ACataclysmDungeonGameMode::RestoreWalkState(const FCataclysmSavedWalk& Walk
 	WildMagicLast = Walk.WildMagicLast;
 	SoulHarvestGiven = Walk.SoulHarvestGiven;
 
+	// GROUP 2. A kind named in the record that this build does not know is left out of the list.
+	bCorruptedStalkerHasHunted = Walk.bCorruptedStalkerHasHunted;
+	bCorruptedStalkerSlain = Walk.bCorruptedStalkerSlain;
+	CorruptedStalkerHealthShare = Walk.CorruptedStalkerHealthShare;
+	CorruptedStalkerPotionCharges = Walk.CorruptedStalkerPotionCharges;
+	auto Back = [](const TArray<FCataclysmSavedEcho>& Saved)
+	{
+		TArray<FEchoOfTheDead> Out;
+		for (const FCataclysmSavedEcho& One : Saved)
+		{
+			for (int32 Kind = 0; Kind < static_cast<int32>(ECataclysmDungeonCreature::Count); ++Kind)
+			{
+				const ECataclysmDungeonCreature AsKind = static_cast<ECataclysmDungeonCreature>(Kind);
+				if (One.Kind == FName(CataclysmDungeonCreatureName(AsKind)))
+				{
+					FEchoOfTheDead Echo;
+					Echo.Kind = AsKind;
+					Echo.Rung = One.Rung;
+					Echo.Attack = One.Attack;
+					Out.Add(Echo);
+					break;
+				}
+			}
+		}
+		return Out;
+	};
+	EchoesThisFloor = Back(Walk.EchoesThisFloor);
+	EchoesFromLastFloor = Back(Walk.EchoesFromLastFloor);
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
+			Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr)
+	{
+		MetresWalkedAtLastCleanse = AbilitySystem->MetresWalkedTotal() - Walk.MetresWalkedSinceCleanse;
+	}
+
 	ApplyRestoredWalkEffects();
+}
+
+void ACataclysmDungeonGameMode::SoulHarvestHeldBy(const ACataclysmEnemyCharacter* Creature, int32& OutSouls,
+												  float& OutHealthAdded) const
+{
+	OutSouls = 0;
+	OutHealthAdded = 0.0f;
+	if (const FSoulHarvestHeld* Held =
+			SoulHarvestHeld.Find(TWeakObjectPtr<ACataclysmEnemyCharacter>(const_cast<ACataclysmEnemyCharacter*>(Creature))))
+	{
+		OutSouls = Held->Souls;
+		OutHealthAdded = Held->HealthAdded;
+	}
+}
+
+bool ACataclysmDungeonGameMode::IsTheVoidsBoss(const ACataclysmEnemyCharacter* Creature) const
+{
+	return Creature != nullptr && NothingIsForgottenBoss.Get() == Creature;
+}
+
+void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& Creature,
+													 const FCataclysmSavedCreature& Saved)
+{
+	if (Saved.SoulHarvestSouls > 0)
+	{
+		FSoulHarvestHeld& Held = SoulHarvestHeld.FindOrAdd(&Creature);
+		Held.Souls = Saved.SoulHarvestSouls;
+		Held.HealthAdded = Saved.SoulHarvestHealthAdded;
+		Held.DamageAdded = 0.0f;
+		Held.ResistanceAdded = 0.0f;
+		ApplySoulHarvestFigures(&Creature, /*bFreshBlock=*/false);
+	}
+	if (Saved.bFedByNothingIsForgotten)
+	{
+		NothingIsForgottenBoss = &Creature;
+		if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature))
+		{
+			const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+			Abilities->SetNumericAttributeBase(Damage,
+											   Abilities->GetNumericAttribute(Damage) + NothingIsForgottenDamageGiven);
+		}
+	}
 }
 
 void ACataclysmDungeonGameMode::ApplyRestoredWalkEffects()
