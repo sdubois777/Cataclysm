@@ -145,7 +145,13 @@ named_failures, exactly the ones registered for each.
 
 ### EVIDENCE
 
-Recorded in a later commit.
+Python of record at `eb8665d66`, on `development` `08bdfae16`: "7133 passed, 8 skipped"; JUnit tests 7141, failures 0,
+errors 0, skipped 8. That is the base's 7138, plus the 4 tests in `test_wins_fall_at_every_tier.py`, plus 1 from
+splitting the tiers 1 to 3 relief test into a tier 1 test and a tiers 2 and 3 pin, less 2 from
+`test_tier_one_is_untouched_whatever_the_relief_holds`, which ran once for each of tiers 1, 2 and 3 and now runs for
+tier 1. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). The C++
+change is two constants and their comment in one header, read by nothing in the game; no build window was run, and the
+continuous integration "Game compiles" job is its evidence.
 
 ### NO GENRE SOURCE
 
