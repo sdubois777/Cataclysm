@@ -123,15 +123,17 @@ public:
 	static constexpr double ProceduralPerFloor = 0.5;
 	static constexpr double DepthTensionPerTier = 1.2;
 
-	// CONTENT RELIEF AT TIER 4 AND UP, AND NOTHING IN THE GAME APPLIES IT YET.
+	// CONTENT RELIEF AT TIER 2 AND UP, AND NOTHING IN THE GAME APPLIES IT YET.
 	// The model lowers every enemy score by
 	//
-	//     ContentReliefTierWidths + ContentReliefPerTierWidths x (tier - 4)
+	//     ContentReliefTierWidths + ContentReliefPerTierWidths x (tier - 2)
 	//
-	// tier widths in its comparison with the player's power: 0.45, 0.58,
-	// 0.71, 0.84 and 0.97 at difficulty tiers 4 to 8, none at tiers 1 to 3.
-	// The project owner, 2026-10-29, on issue #1425: "Weaken tier content",
-	// then "Relief grows by tier". These are the same three numbers as
+	// tier widths in its comparison with the player's power: 0.19 and 0.32 at
+	// difficulty tiers 2 and 3, 0.45, 0.58, 0.71, 0.84 and 0.97 at tiers 4 to
+	// 8, none at tier 1. The project owner, 2026-10-29, on issue #1425:
+	// "Weaken tier content", then "Relief grows by tier"; and on 2026-10-30,
+	// "Wins fall every tier", which moved its start from tier 4 down to tier 2
+	// on the same line. These are the same three numbers as
 	// `TuningConfig.content_relief_*` in `sim/cataclysm_sim/config.py`, and
 	// `tools/tests/test_content_relief_port.py` holds them equal.
 	//
@@ -140,11 +142,11 @@ public:
 	// ruling weakens creatures, not what they are worth. They belong on the
 	// strength path -- the conversion from enemy score to creature health and
 	// damage that issue #1569 builds -- and that conversion does not exist
-	// yet, so today a creature at tier 4 is exactly as strong as it was. The
+	// yet, so today a creature at tier 2 is exactly as strong as it was. The
 	// same test file states that gap so it cannot go unnoticed.
-	static constexpr double ContentReliefTierWidths = 0.45;
+	static constexpr double ContentReliefTierWidths = 0.19;
 	static constexpr double ContentReliefPerTierWidths = 0.13;
-	static constexpr int32 ContentReliefFromTier = 4;
+	static constexpr int32 ContentReliefFromTier = 2;
 
 	/**
 	 * The maximum Power Score a player is expected to reach by the end of each

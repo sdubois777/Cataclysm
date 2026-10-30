@@ -2,6 +2,165 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Wins fall at every tier for a fully invested Explorer: the content relief and the Last Stand's depth limit start at tier 2 (#1425)
+
+**Affects:** `sim/cataclysm_sim/config.py` (the relief starts at tier 2 on the same line; the Last Stand limit becomes a
+table by tier, `last_stand_floor_cap_by_tier`, replacing the tier 4-8 formula and its three fields);
+`sim/cataclysm_sim/engine.py` (comments only); `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`
+(`ContentReliefTierWidths` 0.19 and `ContentReliefFromTier` 2, and their comment); `docs/Cataclysm_GDD_v2.md` (the "Last
+Stand" paragraph); `sim/tests/test_wins_fall_at_every_tier.py` (new, 4 tests); `sim/tests/test_tier_content_relief.py`,
+`sim/tests/test_tiers_five_to_eight_are_winnable.py` and `tools/tests/test_content_relief_port.py` (moved, none deleted);
+this file.
+
+### SAID FIRST
+
+- **FOR THE FULLY INVESTED EXPLORER, WINS NOW FALL AT EVERY STEP FROM TIER 1 TO TIER 8**, by at least 6 points a step
+  between tiers 1 and 4, at both starts, under `chase_quests`. The table below is on this change's code.
+- **THE NO-TREE PLAYER DOES NOT: ITS TIER 2 IS ABOVE ITS TIER 1** by about 3 to 4 points, and its tier 3 is about level
+  with tier 4 at the start of a tier. The relief that tier 2 needs for the Explorer also helps a player who did not need
+  it, while tier 1 has none. Help at tier 1 (the line continued gives 0.06) is the only lever found; it is not measured
+  and not built. **The project owner saw this table on 2026-10-30, with that option, and approved it as built, verbatim
+  "Merge as built": no relief at tier 1, and the no-tree inversion is accepted.**
+- **TIERS 4 TO 8 DO NOT CHANGE.** The relief's line and the limit's values there are the same as merged in #2631; only
+  how they are stored changed. Re-measured on this change's code, every tier 4-8 figure equals the #2631 table to every digit.
+- **THE GAME APPLIES NONE OF IT YET**, as before: the relief constants change and nothing reads them (#1569); there is
+  no Last Stand in the game (#43, which has a line saying so).
+
+### THE OWNER'S ANSWERS AND THE RULING (2026-10-30)
+
+After the tiers 5-8 table showed tier 3 harder to win than tier 4 -- the Explorer starting at the bottom of the tier won
+0.0% at tier 3 under `triage` against 19-23% at tier 4, because the relief (2026-10-29) and the Last Stand limit both
+began at tier 4 -- the project owner answered two questions:
+
+1. **"Merge as built"** for tiers 4 to 8 (#2631).
+2. **"Wins fall every tier"** for tiers 2 and 3: extend the weakening and the Last Stand limit down, tuned so a fully
+   invested Explorer's wins fall at every step from tier 1 to tier 8.
+
+The coordinating session set the target: for the Explorer under `chase_quests`, won at tier 1 above tier 2 above tier 3
+above tier 4 at `power_start_frac` 0.0 and 0.35, each step at least 3 points; the no-tree player reported. It then
+chose candidate **L** below: the relief's own line continued, and limits that keep growing with the tier.
+
+### THE CANDIDATES, MEASURED
+
+On the code that merged as #2631, `chase_quests`, `analyse_surge_cadence.py`'s world, 1,000 campaigns a world in two
+blocks of 500, tier 2 and tier 3 settings changed one tier at a time; tiers 1, 4 and 5 are that code's own rows. Means of
+the two blocks. "Steps" are tier 1 - tier 2, tier 2 - tier 3, tier 3 - tier 4.
+
+| Candidate | Tier 2 (relief, limit) | Tier 3 (relief, limit) | Explorer 0.0 steps | Explorer 0.35 steps | No tree 0.0 steps | No tree 0.35 steps |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| **L (built)** | 0.19, 110 | 0.32, 120 | +9.0, +9.4, +7.6 | +15.3, +8.6, +6.1 | -2.9, +10.2, -0.6 | -3.6, +7.9, +4.5 |
+| X | 0.25, 105 | 0.32, 120 | +8.9, +9.5, +7.6 | +11.3, +12.6, +6.1 | -6.1, +13.4, -0.6 | -6.7, +11.0, +4.5 |
+| Y | 0.19, 100 | 0.28, 115 | +8.9, +8.5, +8.6 | +15.2, +11.4, +3.4 | -4.0, +12.2, -1.5 | -3.8, +9.8, +2.8 |
+
+Shown not to work for the Explorer: tier 2 relief 0.0 or 0.10 with a limit of 100 or 110 leaves its tier 2 at 28.2 to
+33.0% at the bottom of the tier (relief 0.0 with 100: 27.8 / 28.6; relief 0.10 with 100 or 110: 32.5 to 33.0), at or
+within 2 points of any tier 3 that works; tier 3 relief 0.36 with 120 or
+0.32 with 110 puts its tier 3 at 29.6 to 33.6%, too close to tier 2 unless tier 2 has 0.19 or more. They do bring the
+no-tree player's tier 2 level with its tier 1 (29.4 to 44.4%). Earlier the same day: relief 0.32 with a limit of 110 at
+tier 3 alone put tier 3 above tier 4 in 7 rows of 8; relief 0.25 with no limit put it below tier 4 in 6 of 8.
+
+Why the limits are not on the tier 4-8 line: continued down it gives 94 floors at tier 3 and 62 at tier 2, and 110 at
+tier 3 already made tier 3 easier than tier 4. 110, 120, 125, 156... still grow with the tier.
+
+### MEASURED FOR THE OWNER
+
+Measured 2026-10-30 on this change's code (`69d95642f`), in a clean worktree. Each world is `analyse_surge_cadence.py`'s
+`base_config` (12 opening dungeons, then 8 every 90 days; that script's escalation 0.10 and craft gain 0.04) at the tier
+and tree shown, `power_start_frac` 0.0 or 0.35. Tiers 1 to 3: 1,000 campaigns in two blocks of 500; tiers 4 to 8: 500
+in two blocks of 250. Explorer is `TREE_EXPLORER_AS_DESIGNED`.
+
+`triage`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 50.0 / 50.2 (0.4 / 0.2) | 38.2 / 41.2 (3.8 / 2.8) | 29.2 / 32.2 (15.8 / 15.2) | 19.2 / 22.8 (12.8 / 17.6) | 14.4 / 12.0 (14.0 / 12.0) | 8.4 / 6.4 (8.4 / 6.4) | 4.4 / 2.0 (4.4 / 2.0) | 3.6 / 2.4 (3.6 / 2.4) |
+| Explorer | 0.35 | 65.4 / 68.4 (0.0 / 0.0) | 52.6 / 55.2 (0.0 / 0.0) | 43.6 / 45.4 (4.8 / 5.6) | 30.4 / 30.0 (10.4 / 13.2) | 14.0 / 12.8 (9.6 / 11.6) | 7.6 / 10.8 (6.8 / 9.6) | 5.6 / 4.8 (5.6 / 4.8) | 2.0 / 3.6 (2.0 / 3.6) |
+| No tree | 0.0 | 31.8 / 32.6 (0.6 / 0.0) | 34.4 / 32.4 (3.8 / 2.8) | 24.8 / 27.6 (11.4 / 10.0) | 24.0 / 20.4 (11.2 / 8.4) | 10.0 / 9.6 (7.6 / 7.6) | 6.0 / 8.4 (4.8 / 7.6) | 2.8 / 1.2 (2.8 / 1.2) | 4.0 / 2.8 (4.0 / 2.8) |
+| No tree | 0.35 | 43.8 / 44.6 (0.8 / 0.0) | 44.0 / 43.6 (3.0 / 2.2) | 30.0 / 35.4 (9.4 / 11.2) | 29.2 / 28.4 (9.6 / 9.6) | 12.4 / 14.4 (10.8 / 12.4) | 6.8 / 10.0 (4.8 / 9.2) | 5.2 / 1.2 (5.2 / 1.2) | 2.8 / 2.0 (2.8 / 2.0) |
+
+`chase_quests`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 51.8 / 46.2 (0.0 / 0.2) | 39.2 / 40.8 (2.6 / 3.0) | 30.8 / 30.4 (16.6 / 15.4) | 22.4 / 23.6 (15.2 / 19.2) | 14.8 / 12.0 (14.4 / 11.6) | 6.4 / 6.0 (6.4 / 6.0) | 5.2 / 2.8 (5.2 / 2.8) | 2.0 / 3.2 (2.0 / 3.2) |
+| Explorer | 0.35 | 67.4 / 65.0 (0.0 / 0.2) | 52.0 / 49.8 (1.2 / 0.8) | 41.2 / 43.4 (8.6 / 10.0) | 33.6 / 38.8 (15.2 / 20.4) | 16.0 / 16.0 (13.6 / 13.2) | 7.6 / 9.2 (6.8 / 8.8) | 6.4 / 4.8 (6.4 / 4.8) | 2.0 / 2.8 (2.0 / 2.8) |
+| No tree | 0.0 | 32.0 / 33.0 (0.2 / 0.2) | 37.0 / 33.8 (4.2 / 2.4) | 26.8 / 23.6 (11.6 / 8.0) | 28.4 / 23.2 (10.0 / 8.0) | 15.2 / 13.6 (9.2 / 9.6) | 10.0 / 9.6 (5.2 / 5.2) | 2.0 / 3.2 (2.0 / 2.8) | 2.0 / 2.0 (2.0 / 2.0) |
+| No tree | 0.35 | 43.2 / 41.6 (0.4 / 0.4) | 48.0 / 44.0 (4.0 / 1.8) | 41.6 / 34.6 (14.8 / 10.0) | 38.0 / 29.2 (10.0 / 7.2) | 17.6 / 18.8 (7.6 / 12.0) | 14.4 / 12.0 (6.8 / 8.0) | 3.2 / 4.8 (2.8 / 4.8) | 3.6 / 2.8 (3.6 / 2.8) |
+
+Read with these facts:
+
+- **The Explorer's wins fall at every step from tier 1 to tier 8**, under both policies and both starts. Under
+  `chase_quests` the means of the two blocks are 49.0, 40.0, 30.6, 23.0, 13.4, 6.2, 4.0, 2.6 at 0.0 and 66.2, 50.9,
+  42.3, 36.2, 16.0, 8.4, 5.6, 2.4 at 0.35. The steps from tier 6 to tier 8 are small (+2.2 and +1.4 at 0.0; under
+  `triage` at 0.0, 3.2 against 3.0): within the noise of 500 campaigns, and none inverts.
+- **The no-tree player inverts** where SAID FIRST says: its tier 2 is above its tier 1 under `chase_quests` (35.4
+  against 32.5 at 0.0, 46.0 against 42.4 at 0.35) and under `triage` at 0.0 (33.4 against 32.2), and its tier 3 is
+  about level with tier 4 under `chase_quests` at 0.0 (25.2 against 25.8).
+- **Tiers 1 and 4 to 8 equal the #2631 table to every digit**, and tiers 2 and 3 equal candidate L's rows above, as
+  they should: nothing at tiers 1 and 4 to 8 changed, and the candidates were measured on the same code with the same
+  seeds.
+
+### THE TESTS
+
+New, `sim/tests/test_wins_fall_at_every_tier.py`:
+
+- `test_tiers_two_and_three_have_a_last_stand_limit_and_it_grows_with_the_tier`: 110 and 120, and the limits from tier 2
+  to 8 strictly increase.
+- `test_the_relief_grows_at_every_step_from_tier_one`: 0 at tier 1, strictly increasing to tier 8.
+- `test_a_tier_two_last_stand_is_cut_to_its_limit`: a tier 2 Last Stand over 60 standing dungeons has 110 floors.
+- `test_a_tier_three_dungeon_unsafe_without_the_relief_is_safe_with_it`: an 80-floor Basic dungeon at tier 3 against a
+  player at the bottom of tier 3 kills 0.376 of the time without the relief, above the 0.35 tolerance, and 0.249 with
+  it. The control is asserted first.
+
+Moved, none deleted, each to the world it now describes:
+
+- `test_tier_content_relief.py`: `test_there_is_no_relief_at_tiers_one_to_three` is now
+  `test_there_is_no_relief_at_tier_one`, and `test_the_relief_continues_the_line_down_to_tier_two` pins 0.19 and 0.32;
+  `test_tiers_one_to_three_are_untouched_whatever_the_relief_holds` is now
+  `test_tier_one_is_untouched_whatever_the_relief_holds`.
+- `test_tiers_five_to_eight_are_winnable.py`: `test_the_last_stand_limit_starts_at_tier_four_and_grows_with_the_tier` is
+  now `test_the_last_stand_limit_grows_with_the_tier_from_tier_four_to_eight` (tiers 4-8 and tier 1);
+  `test_control_a_tier_three_last_stand_is_not_limited` is now `test_control_a_tier_one_last_stand_is_not_limited`.
+- `tools/tests/test_content_relief_port.py`: the ruled list is 0, 0.19, 0.32, 0.45 ... 0.97. It still holds the game's
+  three constants in `CataclysmEnemyScore.h` equal to `TuningConfig`'s, now 0.19, 0.13 and tier 2, and still states that
+  no game code reads them. The C++ change is those two constants and their comment; the continuous integration "Game
+  compiles" job is its evidence, as for #2628.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m pytest
+sim/tests/test_wins_fall_at_every_tier.py sim/tests/test_tier_content_relief.py
+sim/tests/test_tiers_five_to_eight_are_winnable.py tools/tests/test_content_relief_port.py`. Each break text occurs once
+in `sim/cataclysm_sim/config.py`.
+
+| # | Break | Predicted named_failures |
+| :-- | :-- | :-- |
+| 1 | `2: 110, 3: 120, 4: 125, 5: 156, 6: 188, 7: 219, 8: 250,` becomes `2: 999, 3: 999, 4: 125, 5: 156, 6: 188, 7: 219, 8: 250,` | `test_wins_fall_at_every_tier.py::test_tiers_two_and_three_have_a_last_stand_limit_and_it_grows_with_the_tier`, `test_wins_fall_at_every_tier.py::test_a_tier_two_last_stand_is_cut_to_its_limit` |
+| 2 | `if tier < self.content_relief_from_tier:` becomes `if tier < 4:` (tiers 2 and 3 lose the relief; tiers 4 to 8 keep it) | `test_wins_fall_at_every_tier.py::test_the_relief_grows_at_every_step_from_tier_one`, `test_wins_fall_at_every_tier.py::test_a_tier_three_dungeon_unsafe_without_the_relief_is_safe_with_it`, `test_tier_content_relief.py::test_the_relief_continues_the_line_down_to_tier_two`, `tools/tests/test_content_relief_port.py::TestTheNumbersMatch::test_both_give_the_ruled_relief_at_every_tier` |
+
+(All `sim/tests/` paths but the last.)
+
+Run 2026-10-30 in a git-archive copy of `e5fad390f`, the commit that registered them. Printed: "PROVED: 2 failed, 23
+passed | restored: 25 passed" for the limit, and "PROVED: 4 failed, 21 passed | restored: 25 passed" for the relief.
+named_failures, exactly the ones registered for each.
+
+### EVIDENCE
+
+Python of record at `5b1d52b6e`, on `development` `904fe4f82` (moved there from `08bdfae16`, where the same run at
+`eb8665d66` printed the same counts): "7133 passed, 8 skipped"; JUnit tests 7141, failures 0,
+errors 0, skipped 8. That is the base's 7138, plus the 4 tests in `test_wins_fall_at_every_tier.py`, plus 1 from
+splitting the tiers 1 to 3 relief test into a tier 1 test and a tiers 2 and 3 pin, less 2 from
+`test_tier_one_is_untouched_whatever_the_relief_holds`, which ran once for each of tiers 1, 2 and 3 and now runs for
+tier 1. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). The C++
+change is two constants and their comment in one header, read by nothing in the game; no build window was run, and the
+continuous integration "Game compiles" job is its evidence.
+
+### NO GENRE SOURCE
+
+None. The values are measured against the owner's stated shape for this game.
+
+---
+
 ## 2026-10-30 — A restored creature is the creature it was and an illusion is not saved, a player's thrall comes back under command, and the walk's state held for creatures and the player's Fervour come back with a load (#753, Group 2)
 
 **Affects:** `FCataclysmSavedCreature`'s role fields, `FCataclysmSavedEcho` (new), Group 2's fields on

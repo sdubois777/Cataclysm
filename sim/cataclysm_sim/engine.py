@@ -567,7 +567,7 @@ class Simulation:
 
     def dungeon_power(self, d: Dungeon) -> float:
         """The dungeon's headline difficulty -- its middle floor, rarity-mixed,
-        including its modifiers, less the content relief at tier 4 and up
+        including its modifiers, less the content relief at tier 2 and up
         (`TuningConfig.content_relief`), the same relief `death_chance` gives."""
         cfg = self.cfg
         base = scoring.dungeon_score(cfg.tier, SCORING_TYPE[d.dtype], d.subtype,
@@ -585,12 +585,12 @@ class Simulation:
         # power_scale represents the Cataclysm strengthening over the run; fold
         # it in by treating the player as correspondingly weaker.
         effective_power = self.power / max(1e-9, d.power_scale)
-        # CONTENT RELIEF AT TIER 4 AND UP, issue #1425. Every enemy score lowered
+        # CONTENT RELIEF AT TIER 2 AND UP, issue #1425. Every enemy score lowered
         # by `content_relief` tier widths, which against the player is the same
         # as adding that many to the player's power after the scale above:
         # (score - r x width) x scale compared with power is score compared
-        # with power / scale + r x width. Zero at tiers 1 to 3, so they are
-        # untouched. It lives here and not in `scoring.py`, which is a copy of
+        # with power / scale + r x width. Zero at tier 1, so it is untouched
+        # (tiers 2 and 3 since 2026-10-30). It lives here and not in `scoring.py`, which is a copy of
         # another repository's file, and it does not reach the experience a
         # kill grants, which reads the score itself.
         effective_power += cfg.content_relief() * self.tier_width
@@ -1832,10 +1832,11 @@ class Simulation:
         d.floors += (cfg.last_stand_floor_bonus
                      + len(absorbed) * cfg.last_stand_floors_per_absorbed
                      + ruin * cfg.last_stand_floors_per_fallen_city)
-        # AT MOST `last_stand_floor_cap` FLOORS FROM TIER 4, a limit that grows
-        # with the tier: 125 at tier 4 to 250 at tier 8, none below. Without it
-        # a Last Stand at tiers 6 to 8 was 500 to 1,100 floors and never cleared.
-        # The project owner, 2026-10-30: "Falling wins". See the config fields.
+        # AT MOST `last_stand_floor_cap` FLOORS FROM TIER 2, a limit that grows
+        # with the tier: 110 and 120 at tiers 2 and 3, 125 at tier 4 to 250 at
+        # tier 8, none at tier 1. Without it a Last Stand at tiers 6 to 8 was 500
+        # to 1,100 floors and never cleared. The project owner, 2026-10-30:
+        # "Falling wins", then "Wins fall every tier". See the config field.
         cap = cfg.last_stand_floor_cap()
         if cap is not None:
             d.floors = min(d.floors, cap)
