@@ -381,7 +381,11 @@ passed in 0.14s | restored: 8 passed in 0.06s". named_failures, exactly the two 
 
 ### EVIDENCE
 
-Recorded in the commit after the guard proof.
+Python of record at `abf197170`, on `development` `728168628`: "7112 passed, 8 skipped"; JUnit tests 7120, failures 0,
+errors 0, skipped 8 -- the base's 7108 with the eight new simulation tests and the four new checks against the game
+header. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
+The C++ change is three constants and their comment in one header, read by nothing in the game; no build window was
+run, and the continuous integration "Game compiles" job is its evidence.
 
 ### NO GENRE SOURCE
 
