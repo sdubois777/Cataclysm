@@ -167,7 +167,8 @@ namespace CataclysmSaveCharacterRestoreTest
 	/** The whole derived stat line: every attribute but the four pools' current values, which the record does not hold. */
 	FString StatLine(const FPlayer& Player)
 	{
-		const UAbilitySystemComponent* System = Player.Character->GetAbilitySystemComponent();
+		// NOT CONST: `GetAllAttributes` is not a const function, which window w96's build found.
+		UAbilitySystemComponent* System = Player.Character->GetAbilitySystemComponent();
 		TArray<FGameplayAttribute> Attributes;
 		System->GetAllAttributes(Attributes);
 		TArray<FString> Lines;

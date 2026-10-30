@@ -15,7 +15,8 @@ test file `game/Source/Cataclysm/Tests/CataclysmSaveCharacterRestoreTests.cpp`. 
 
 ### SAID FIRST
 
-- **NOT BUILT AND NOT RUN IN UNREAL WHEN WRITTEN.**
+- **NOT YET PASSED IN UNREAL.** Window w96 below stopped at the build, on one error in the new test file; it was
+  corrected, and nothing has been built since.
 - **THE GAME STILL LOADS NOTHING.** `CharacterInto` and `RunInto` exist and nothing in the game calls either.
 - **ONE CHANGE TO THE DESIGN AS RULED: THE WORN GEAR IS NOT PUT BACK THROUGH `EquipInto`.** Read while building:
   `EquipInto` puts a two-handed weapon in the first weapon slot and empties the second unless
@@ -111,7 +112,23 @@ two-handed weapons, which no test builds.
 
 ### Run
 
-Not run yet.
+**Window w96 (lock `dungeon-w96`, `feat/a-character-record-can-be-put-back-into-a-player` at `47a1162f9`, on
+`728168628`, 2026-10-29) STOPPED at the build. Nothing after it ran.** `development`'s CI run at `728168628` and its last
+Unreal run, at `3a0fedef8`, succeeded; no run was in progress or queued, the lock was free, no build or editor process
+ran, and no pull request was open. **Free memory read 11,706 MB immediately before, above the normal 10,240 MB floor.**
+For an hour before that it had read between 10,030 and 10,143 MB; the owner then allowed a one-time floor of 9,800 MB
+for this window, and the coordinating session closed two of the owner's applications, after which the normal floor was
+met and **the exception was not used.** The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Failed - 73 actions, 63 files compiled`: one error, in `CataclysmSaveCharacterRestoreTests.cpp` line 172, "error C2662: 'void UAbilitySystemComponent::GetAllAttributes(...)': cannot convert 'this' pointer from 'const UAbilitySystemComponent' to 'UAbilitySystemComponent &'" |
+
+**THE FAULT WAS THE TEST FILE'S.** Its stat-line helper called `GetAllAttributes`, which is not a const function,
+through a const pointer. The pointer is no longer const. No other file failed to compile; nothing in `CharacterInto`,
+the restore setters or the save changed.
+
+The next window is registered as above.
 
 ---
 
