@@ -1,12 +1,14 @@
-"""The content relief at tier 4 and up: the same three numbers in the model and
+"""The content relief at tier 2 and up: the same three numbers in the model and
 the game, and a visible statement that the game does not apply them yet.
 
 WHAT THE RELIEF IS. Issue #1425. The project owner, 2026-10-29: "Weaken tier
-content", then "Relief grows by tier". The model lowers every enemy score by
+content", then "Relief grows by tier"; 2026-10-30: "Wins fall every tier", which
+moved its start from tier 4 down to tier 2 on the same line. The model lowers
+every enemy score by
 
-    content_relief_tier_widths + content_relief_per_tier_widths x (tier - 4)
+    content_relief_tier_widths + content_relief_per_tier_widths x (tier - 2)
 
-tier widths in its comparison with the player's power, at difficulty tier 4 and
+tier widths in its comparison with the player's power, at difficulty tier 2 and
 up (`TuningConfig.content_relief`, read by `Simulation.death_chance` and
 `Simulation.dungeon_power`). The game carries the same numbers as
 `UCataclysmEnemyScore::ContentRelief*` in
@@ -93,13 +95,14 @@ class TestTheNumbersMatch:
             game = 0.0 if tier < first else base + step * (tier - first)
             assert game == pytest.approx(model.content_relief(tier)), tier
         assert [round(model.content_relief(t), 2) for t in range(1, 9)] == [
-            0.0, 0.0, 0.0, 0.45, 0.58, 0.71, 0.84, 0.97], (
-            "the relief the coordinating session ruled on 2026-10-29 has moved")
+            0.0, 0.19, 0.32, 0.45, 0.58, 0.71, 0.84, 0.97], (
+            "the relief the coordinating session ruled on 2026-10-29, continued "
+            "down to tier 2 on 2026-10-30, has moved")
 
 
 class TestTheGameDoesNotApplyItYet:
     """THE GAP, STATED. Issue #1569 has not landed, so nothing in the game
-    reads the relief, and a creature at tier 4 is as strong as before."""
+    reads the relief, and a creature at tier 2 is as strong as before."""
 
     def test_no_game_code_reads_the_relief(self):
         if not GAME_SOURCE.is_dir():

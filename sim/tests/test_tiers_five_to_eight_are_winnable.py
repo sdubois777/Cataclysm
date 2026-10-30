@@ -4,7 +4,9 @@ THE PROJECT OWNER, 2026-10-30, on the tiers 5-8 question: "Falling wins". The
 coordinating session ruled the parts the same day:
 
 1. The Last Stand has at most 125, 156, 188, 219 and 250 floors at difficulty
-   tiers 4 to 8 (`TuningConfig.last_stand_floor_cap`); tiers 1 to 3 have no limit.
+   tiers 4 to 8 (`TuningConfig.last_stand_floor_cap`). Tiers 2 and 3 have had a
+   limit too since the same day's "Wins fall every tier", pinned in
+   `test_wins_fall_at_every_tier.py`; tier 1 has none.
 2. `Infinite Depths`' per-Cataclysm floors deepen no Cataclysm-type dungeon: not
    the earned boss dungeon and not the Last Stand, which is that dungeon moved.
 3. Each active Cataclysm sends quest dungeons at its tier-1 rate
@@ -48,10 +50,13 @@ def volume(sim: Simulation) -> float:
 
 # -- the Last Stand's depth limit ------------------------------------------------
 
-def test_the_last_stand_limit_starts_at_tier_four_and_grows_with_the_tier():
+def test_the_last_stand_limit_grows_with_the_tier_from_tier_four_to_eight():
+    """Moved 2026-10-30: tiers 2 and 3 gained a limit (110 and 120), pinned in
+    `test_wins_fall_at_every_tier.py`. Tiers 4 to 8 are unchanged."""
     cfg = TuningConfig()
-    assert [cfg.last_stand_floor_cap(t) for t in range(1, 9)] == [
-        None, None, None, 125, 156, 188, 219, 250]
+    assert [cfg.last_stand_floor_cap(t) for t in range(4, 9)] == [
+        125, 156, 188, 219, 250]
+    assert cfg.last_stand_floor_cap(1) is None
 
 
 def stand_over(tier: int, standing: int):
@@ -74,11 +79,12 @@ def test_a_last_stand_deeper_than_its_limit_is_cut_to_it():
         "the walk was not worked out from the limited depth")
 
 
-def test_control_a_tier_three_last_stand_is_not_limited():
-    """THE CONTROL: the same board at tier 3, where there is no limit, gives a
+def test_control_a_tier_one_last_stand_is_not_limited():
+    """THE CONTROL: the same board at tier 1, where there is no limit, gives a
     Last Stand deeper than any tier's limit -- so the case above is the limit
-    at work and not a board that was never deep."""
-    _, stand = stand_over(3, standing=60)
+    at work and not a board that was never deep. It was tier 3 until tier 3
+    gained a limit on 2026-10-30."""
+    _, stand = stand_over(1, standing=60)
     assert stand.floors > 250
 
 

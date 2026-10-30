@@ -1,12 +1,15 @@
-"""Every enemy score at tier 4 and up is lowered in the comparison with the
+"""Every enemy score at tier 2 and up is lowered in the comparison with the
 player's power, by a relief that grows with the tier.
 
 ISSUE #1425. The project owner, 2026-10-29, in three answers: "Check gear
-first", "Weaken tier content", "Relief grows by tier". The relief is
+first", "Weaken tier content", "Relief grows by tier"; and on 2026-10-30, "Wins
+fall every tier", which moved the start from tier 4 down to tier 2 on the same
+line. The relief is
 
-    content_relief_tier_widths + content_relief_per_tier_widths x (tier - 4)
+    content_relief_tier_widths + content_relief_per_tier_widths x (tier - 2)
 
-tier widths, 0.45 to 0.97 across tiers 4 to 8 and none at tiers 1 to 3. It is
+tier widths: 0.19 and 0.32 at tiers 2 and 3, 0.45 to 0.97 across tiers 4 to 8,
+and none at tier 1. It is
 applied in `Simulation.death_chance` and `Simulation.dungeon_power` and nowhere
 else; `scoring.py` is a copy of another repository's file and is not touched.
 
@@ -45,9 +48,16 @@ def hand_set(cfg: TuningConfig, floors: int = 80):
     return sim, d
 
 
-def test_there_is_no_relief_at_tiers_one_to_three():
+def test_there_is_no_relief_at_tier_one():
+    """Moved 2026-10-30: it was tiers 1 to 3 until the relief began at tier 2."""
+    assert TuningConfig().content_relief(1) == 0.0
+
+
+def test_the_relief_continues_the_line_down_to_tier_two():
+    """THE TIERS 2 AND 3 VALUES, pinned: the tier 4 to 8 line continued down
+    one and two tiers, 0.45 - 0.13 and 0.45 - 2 x 0.13. "Wins fall every tier"."""
     cfg = TuningConfig()
-    assert [cfg.content_relief(t) for t in (1, 2, 3)] == [0.0, 0.0, 0.0]
+    assert [cfg.content_relief(t) for t in (2, 3)] == pytest.approx([0.19, 0.32])
 
 
 def test_the_relief_follows_the_ruled_formula_at_tiers_four_to_eight():
@@ -98,10 +108,11 @@ def test_the_headline_power_is_lowered_by_the_same_relief():
     assert drop == pytest.approx(0.45 * scoring.tier_width(4))
 
 
-@pytest.mark.parametrize("tier", [1, 2, 3])
-def test_tiers_one_to_three_are_untouched_whatever_the_relief_holds(tier):
+def test_tier_one_is_untouched_whatever_the_relief_holds():
     """Even a large relief changes nothing below its first tier, so every
-    figure measured at tiers 1 to 3 before this change still holds."""
+    figure measured at tier 1 before this change still holds. Tiers 2 and 3
+    were in this test until the relief began at tier 2 on 2026-10-30."""
+    tier = 1
     plain, d0 = hand_set(config(tier, relief=False), floors=40)
     large = replace(config(tier), content_relief_tier_widths=2.0,
                     content_relief_per_tier_widths=1.0)

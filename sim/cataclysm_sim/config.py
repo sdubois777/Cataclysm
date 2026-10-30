@@ -795,14 +795,15 @@ class TuningConfig:
     # numbers work at every tier. Dungeon difficulty comes from scoring.py.
     power_start_frac: float = 0.35
 
-    # CONTENT RELIEF AT TIER 4 AND UP: every enemy score is lowered by this many
+    # CONTENT RELIEF AT TIER 2 AND UP: every enemy score is lowered by this many
     # tier widths in the comparison with the player's power, and nowhere else.
     # At tier t >= `content_relief_from_tier` it is
     #
-    #     content_relief_tier_widths + content_relief_per_tier_widths x (t - 4)
+    #     content_relief_tier_widths + content_relief_per_tier_widths x (t - 2)
     #
-    # which is 0.45, 0.58, 0.71, 0.84 and 0.97 at tiers 4 to 8, and 0 at tiers 1
-    # to 3. `Simulation.death_chance` and `Simulation.dungeon_power` read it;
+    # which is 0.19 and 0.32 at tiers 2 and 3, 0.45, 0.58, 0.71, 0.84 and 0.97 at
+    # tiers 4 to 8, and 0 at tier 1. `Simulation.death_chance` and
+    # `Simulation.dungeon_power` read it;
     # `scoring.py` is a copy of another repository's file and is not touched,
     # and the score a kill grants as experience is not lowered.
     #
@@ -815,13 +816,20 @@ class TuningConfig:
     # widths a tier. The numbers are the coordinating session's, set above the
     # largest need measured at each tier. `docs/DECISIONS.md`, 2026-10-29.
     #
+    # TIERS 2 AND 3 SINCE 2026-10-30. It began at tier 4 with 0.45, which left
+    # tier 3 harder than tier 4: the project owner, "Wins fall every tier". The
+    # same line continued down -- 0.45 - 0.13 at tier 3, 0.45 - 2 x 0.13 at tier
+    # 2 -- was measured to give the fully invested Explorer wins that fall at
+    # every step from tier 1 to tier 8; the coordinating session ruled it. Tier
+    # 1 has none. `docs/DECISIONS.md`, 2026-10-30.
+    #
     # THE GAME CARRIES THE SAME THREE NUMBERS in `UCataclysmEnemyScore`
     # (`ContentReliefTierWidths` and its neighbours) and does not apply them
     # yet: creature strength there does not follow the enemy score until issue
     # #1569. `tools/tests/test_content_relief_port.py` holds both.
-    content_relief_tier_widths: float = 0.45
+    content_relief_tier_widths: float = 0.19
     content_relief_per_tier_widths: float = 0.13
-    content_relief_from_tier: int = 4
+    content_relief_from_tier: int = 2
 
     # The Cataclysm gets stronger as the run goes on. Without this, power is
     # never scarce, looting alone always suffices, and the forge is a trap that
@@ -1011,27 +1019,30 @@ class TuningConfig:
     last_stand_power_per_fallen_city: float = 0.05
     last_stand_floors_per_fallen_city: int = 4
 
-    # THE LAST STAND'S DEPTH IS LIMITED FROM TIER 4, AND THE LIMIT GROWS WITH
-    # THE TIER: at difficulty tier t >= `last_stand_floor_cap_from_tier` the
-    # Last Stand has at most
+    # THE LAST STAND'S DEPTH IS LIMITED FROM TIER 2, AND THE LIMIT GROWS WITH
+    # THE TIER: at most 110 and 120 floors at tiers 2 and 3, then 125, 156, 188,
+    # 219 and 250 at tiers 4 to 8 (125 + 31.25 x (tier - 4), rounded). Tier 1 has
+    # no limit. `Simulation._open_last_stand` applies it after the three terms
+    # above; the power increase per fallen city is not limited.
     #
-    #     last_stand_floor_cap_at_first_tier + last_stand_floor_cap_per_tier x (t - 4)
+    # WHY, TIERS 4 TO 8. At tiers 6 to 8 almost every run reaches the Last Stand,
+    # and with 70 to 190 dungeons absorbed it was 500 to 1,100 floors deep and
+    # never cleared, so those tiers could not be won at all. The project owner,
+    # 2026-10-30, on the tiers 5-8 question: "Falling wins" -- the win rate falls
+    # from about tier 4's down to a few percent at tier 8 -- which superseded
+    # "about 1 in 7 at every tier" for the Last Stand. The coordinating session
+    # set the shape: from tier 4, about 125 floors there to 250 at tier 8,
+    # linear in the tier.
     #
-    # floors, rounded: 125, 156, 188, 219 and 250 at tiers 4 to 8. Tiers 1 to 3
-    # have no limit. `Simulation._open_last_stand` applies it after the three
-    # terms above; the power increase per fallen city is not limited.
-    #
-    # WHY. At tiers 6 to 8 almost every run reaches the Last Stand, and with
-    # 70 to 190 dungeons absorbed it was 500 to 1,100 floors deep and never
-    # cleared, so those tiers could not be won at all. The project owner,
-    # 2026-10-30, on the tiers 5-8 question: "Falling wins" -- the win rate
-    # falls from about tier 4's down to a few percent at tier 8 -- which
-    # superseded "about 1 in 7 at every tier" for the Last Stand. The
-    # coordinating session set the shape: from tier 4, about 125 floors there
-    # to 250 at tier 8, linear in the tier. `docs/DECISIONS.md`, 2026-10-30.
-    last_stand_floor_cap_at_first_tier: int = 125
-    last_stand_floor_cap_per_tier: float = 31.25
-    last_stand_floor_cap_from_tier: int = 4
+    # WHY, TIERS 2 AND 3, the same day. Starting at tier 4 left tier 3 harder
+    # than tier 4; the owner: "Wins fall every tier". 110 and 120 are not on the
+    # tier 4-8 line (it would give 94 and 62, which measured too easy at tier 3);
+    # they were measured with the relief at those tiers and keep the limit
+    # growing with the tier. A table rather than a formula, because the values
+    # below tier 4 are measured choices. `docs/DECISIONS.md`, 2026-10-30.
+    last_stand_floor_cap_by_tier: dict[int, int] = field(default_factory=lambda: {
+        2: 110, 3: 120, 4: 125, 5: 156, 6: 188, 7: 219, 8: 250,
+    })
 
     # How much deeper the EARNED Cataclysm dungeon gets for each ordinary
     # dungeon the player has cleared. The design document: "Every dungeon
@@ -1210,13 +1221,10 @@ class TuningConfig:
 
     def last_stand_floor_cap(self, tier: int | None = None) -> int | None:
         """The most floors a Last Stand may have at `tier` (this campaign's when
-        None), or None below `last_stand_floor_cap_from_tier`. See the fields."""
+        None), or None at a tier `last_stand_floor_cap_by_tier` does not name
+        (tier 1). See the field."""
         tier = self.tier if tier is None else tier
-        if tier < self.last_stand_floor_cap_from_tier:
-            return None
-        return int(round(self.last_stand_floor_cap_at_first_tier
-                         + self.last_stand_floor_cap_per_tier
-                         * (tier - self.last_stand_floor_cap_from_tier)))
+        return self.last_stand_floor_cap_by_tier.get(tier)
 
     def content_relief(self, tier: int | None = None) -> float:
         """Tier widths taken off every enemy score at `tier` (this campaign's
