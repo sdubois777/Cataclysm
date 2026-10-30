@@ -1011,6 +1011,28 @@ class TuningConfig:
     last_stand_power_per_fallen_city: float = 0.05
     last_stand_floors_per_fallen_city: int = 4
 
+    # THE LAST STAND'S DEPTH IS LIMITED FROM TIER 4, AND THE LIMIT GROWS WITH
+    # THE TIER: at difficulty tier t >= `last_stand_floor_cap_from_tier` the
+    # Last Stand has at most
+    #
+    #     last_stand_floor_cap_at_first_tier + last_stand_floor_cap_per_tier x (t - 4)
+    #
+    # floors, rounded: 125, 156, 188, 219 and 250 at tiers 4 to 8. Tiers 1 to 3
+    # have no limit. `Simulation._open_last_stand` applies it after the three
+    # terms above; the power increase per fallen city is not limited.
+    #
+    # WHY. At tiers 6 to 8 almost every run reaches the Last Stand, and with
+    # 70 to 190 dungeons absorbed it was 500 to 1,100 floors deep and never
+    # cleared, so those tiers could not be won at all. The project owner,
+    # 2026-10-30, on the tiers 5-8 question: "Falling wins" -- the win rate
+    # falls from about tier 4's down to a few percent at tier 8 -- which
+    # superseded "about 1 in 7 at every tier" for the Last Stand. The
+    # coordinating session set the shape: from tier 4, about 125 floors there
+    # to 250 at tier 8, linear in the tier. `docs/DECISIONS.md`, 2026-10-30.
+    last_stand_floor_cap_at_first_tier: int = 125
+    last_stand_floor_cap_per_tier: float = 31.25
+    last_stand_floor_cap_from_tier: int = 4
+
     # How much deeper the EARNED Cataclysm dungeon gets for each ordinary
     # dungeon the player has cleared. The design document: "Every dungeon
     # defeated adds one floor to the Cataclysm boss dungeon."
@@ -1113,6 +1135,20 @@ class TuningConfig:
     # Chance a surge-spawned dungeon is a Quest rather than a Basic.
     quest_dungeon_chance: float = 0.12
 
+    # EACH ACTIVE CATACLYSM SENDS QUEST DUNGEONS AT ITS TIER-1 RATE. A wave's
+    # size grows with the active Cataclysms only as (sum of count_mult) to the
+    # power `cataclysm_volume_exponent`, so a flat `quest_dungeon_chance` spread
+    # over N of them gave each fewer quest dungeons as the tier rose: 0.99 per
+    # later wave at tier 1, 0.53 at tier 8, against counts of 5 to 10 each.
+    # When this is on, a surge's chance is
+    #
+    #     quest_dungeon_chance x max(1, N / that surge's volume)
+    #
+    # (`Simulation.quest_chance`), which leaves tier 1 where it was and is 0.22
+    # at tier 8 with the average roster. Ruled by the coordinating session on
+    # 2026-10-30 with the owner's "Falling wins"; `docs/DECISIONS.md`.
+    quest_chance_per_cataclysm_held: bool = True
+
     # A QUEST DUNGEON THAT CARRIES A SIEGE (War's, `QUEST_SUBTYPE_BY_CATACLYSM`)
     # NEVER LEAVES ON ITS OWN AND MOVES ON WHEN ITS CITY FALLS, so it bites
     # until the player clears it. Measured on 2026-10-16, about ten a War
@@ -1171,6 +1207,16 @@ class TuningConfig:
 
     def spec(self, dtype: DungeonType, tier: CityTier) -> DungeonSpec:
         return self.DUNGEON_SPECS[(dtype, tier)]
+
+    def last_stand_floor_cap(self, tier: int | None = None) -> int | None:
+        """The most floors a Last Stand may have at `tier` (this campaign's when
+        None), or None below `last_stand_floor_cap_from_tier`. See the fields."""
+        tier = self.tier if tier is None else tier
+        if tier < self.last_stand_floor_cap_from_tier:
+            return None
+        return int(round(self.last_stand_floor_cap_at_first_tier
+                         + self.last_stand_floor_cap_per_tier
+                         * (tier - self.last_stand_floor_cap_from_tier)))
 
     def content_relief(self, tier: int | None = None) -> float:
         """Tier widths taken off every enemy score at `tier` (this campaign's

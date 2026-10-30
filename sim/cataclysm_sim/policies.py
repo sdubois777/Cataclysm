@@ -732,6 +732,43 @@ def sacrifice_to_craft(sim, dungeons):
     return triage(sim, dungeons)
 
 
+def chase_quests(sim, dungeons):
+    """Triage, but going after the quest dungeons that open the boss first.
+
+    THE RULE. Take the Cataclysm dungeon whenever one is open, as every policy
+    here does. Otherwise, of the dungeons safe to enter, take a Quest dungeon
+    sent by one of the active Cataclysms still needed to open the boss -- the
+    ones nearest their own quest count, as many as are still missing from half
+    the active Cataclysms, rounded up -- with the shortest walk first. When none
+    of those is safe to enter, do what `triage` does.
+
+    WHY IT EXISTS. At difficulty tiers 4 to 8 a run is lost to the Last Stand
+    before the boss can open: on the day it opened, the Cataclysms nearest
+    finished had about half their quest dungeons cleared at tiers 5 and 6,
+    because `triage` spends its days defending cities. This is the play style the
+    coordinating session adopted on 2026-10-30 with the project owner's "Falling
+    wins". `triage` is left as it was, because every recorded design figure and
+    many tests name it; `docs/DECISIONS.md`, 2026-10-30, says which figures use
+    which.
+    """
+    end = _endgame(dungeons)
+    if end is not None:
+        return end
+    cfg = sim.cfg
+    need = {t: cfg.quest_objectives_for(t) for t in sim.active_types}
+    unfinished = [t for t in sim.active_types
+                  if sim.objectives_by_type.get(t, 0) < need[t]]
+    missing = cfg.cataclysms_required() - (len(sim.active_types) - len(unfinished))
+    nearest = set(sorted(unfinished,
+                         key=lambda t: need[t] - sim.objectives_by_type.get(t, 0))
+                  [:max(0, missing)])
+    wanted = [d for d in _safe(sim, dungeons)
+              if d.dtype is DungeonType.QUEST and d.source in nearest]
+    if wanted:
+        return min(wanted, key=lambda d: d.run_days)
+    return triage(sim, dungeons)
+
+
 ALL = {
     "random": random_pick,
     "greedy_loot": greedy_loot,
@@ -741,4 +778,5 @@ ALL = {
     "triage": triage,
     "lane_aware": lane_aware,
     "sacrifice_to_craft": sacrifice_to_craft,
+    "chase_quests": chase_quests,
 }

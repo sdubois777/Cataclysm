@@ -625,7 +625,7 @@ cataclysm_sim/
   config.py     every tunable number; the five UNKNOWNs are tagged
   world.py      the empire graph
   engine.py     the day loop
-  policies.py   eight ways to play, from careless to optimal
+  policies.py   nine ways to play, from careless to optimal
 experiments.py  the sweeps and the report
 ```
 

@@ -2,6 +2,175 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)
+
+**Affects:** `sim/cataclysm_sim/config.py` (the Last Stand cap's three fields and `last_stand_floor_cap`;
+`quest_chance_per_cataclysm_held`); `sim/cataclysm_sim/engine.py` (`_make_dungeon`, `_open_last_stand`,
+`trigger_surge` and the new `quest_chance`); `sim/cataclysm_sim/policies.py` (`chase_quests`, registered in `ALL`);
+`docs/Empire_Development_Tree_Final.json` (the `Infinite Depths` node's text); `docs/Cataclysm_GDD_v2.md` ("Last
+Stand", one paragraph); `sim/README.md` (nine ways to play); `sim/tests/test_tiers_five_to_eight_are_winnable.py`
+(new, 10 tests); `sim/tests/test_analysis_scripts.py` (one test's seed); this file. Python and documents only.
+
+### SAID FIRST
+
+- **AT TIERS 6 TO 8 ALMOST EVERY WIN IS A LAST STAND CLEAR.** The Last Stand is reached in 98-100% of runs there,
+  and the earned boss dungeon opens in 0-20%. So the cap is what sets the win rate at those tiers, and the cap was
+  chosen to make it fall: about 20-39% won at tier 4, down to 2-4% at tier 8, for both players and both policies.
+- **THE OWNER CHOSE ON AN ESTIMATE, AND THE NO-TREE PLAYER CAME OUT ABOVE IT AT TIERS 5 AND 6.** The figures shown to
+  the owner for tiers 5 to 8 were estimated from Last Stand clear chances. In play, the fully invested Explorer is
+  within them except tier 5, which is 2 to 5 points higher. The no-tree player at tiers 5 and 6 is 5 to 8 points
+  higher, because quest-chasing and the quest rate also open the earned dungeon there. The coordinating session ruled
+  on 2026-10-30 to proceed as built, and the owner sees this table before merge.
+- **TIER 3 IS NOW HARDER THAN TIER 4**, because the relief (2026-10-29) and the Last Stand cap both start at tier 4.
+  For example, the Explorer starting at the bottom of the tier under `triage` wins 0.0% at tier 3 against 19-23% at
+  tier 4. The coordinating session is putting that to the owner, with a measured variant that extends both to tier
+  3; the variant is not in this change.
+- **`triage` IS UNCHANGED, AND THE DESIGN FIGURES ON RECORD STAY `triage` FIGURES.** The coordinating session's
+  ruling of 2026-10-30: keep `triage` for the recorded design figures, and report both `triage` and `chase_quests` in
+  new measurements. This entry does.
+- **THE GAME HAS NONE OF THIS YET, AND NOTHING IN IT CHANGES.** It has no empire upgrade tree (#38), no Cataclysm
+  boss dungeon (slice 6 of #1324) and no Last Stand (#43). #38 and #43 carry comments saying their builds must follow
+  the Infinite Depths rule and the Last Stand cap.
+- **NO SWEEP WAS RUN.** `experiments.py`'s report gains a row for the new policy, and its tier 4 to 8 figures move.
+
+### THE OWNER'S ANSWERS (2026-10-30, relayed by the coordinating session, recorded on #1425)
+
+After the report on why tiers 5 to 8 were not won (the Last Stand reached first in 97-100% of runs at 500 to 1,100
+floors and never cleared; the quest objectives not met before it; the earned dungeon killing 61-94% of those who
+entered it):
+
+1. **Tiers 5 to 8, "Winnable, rarer each tier".** They should be winnable for the fully invested Explorer, with the
+   win rate falling from about tier 4's down to a few percent at tier 8. Only unruled numbers may be tuned: the quest
+   counts per Cataclysm and "half the active Cataclysms" stay.
+2. **The Last Stand, "Keep it rare but possible"**: limit its depth so it stays about as winnable as at tier 1.
+3. **Infinite Depths, "Not to the boss dungeon".**
+
+The proposal measured that 1 and 2 cannot both hold at tiers 6 to 8: with the Last Stand reached in nearly every run,
+a Last Stand cleared about 1 time in 7 gives about 1 win in 7 at tier 8. The owner then chose **"Falling wins"**, which
+supersedes "about 1 in 7 at every tier" for tiers 4 and up. The coordinating session ruled the shapes the same day.
+
+### WHAT CHANGED
+
+| Rule | Where | What it does |
+| :-- | :-- | :-- |
+| The Last Stand's depth limit | `TuningConfig.last_stand_floor_cap`, applied in `Simulation._open_last_stand` | At most 125 + 31.25 x (tier - 4) floors, rounded: 125, 156, 188, 219, 250 at tiers 4 to 8. None at tiers 1 to 3. The power increase per fallen city is not limited. |
+| Infinite Depths skips Cataclysm-type dungeons | `Simulation._make_dungeon` | A Cataclysm-type dungeon gets `floors_added(0)`: the tree's flat floors and not the per-Cataclysm ones. That covers the earned boss dungeon and the Last Stand, which the design's "Last Stand" lead sentence makes the boss dungeon moved. |
+| Quest dungeons per Cataclysm hold the tier-1 rate | `Simulation.quest_chance`, read by `trigger_surge`; switch `quest_chance_per_cataclysm_held` | A surge's quest chance is `quest_dungeon_chance x max(1, N / volume)`: 0.12 at tier 1, about 0.22 at tier 8. |
+| A quest-chasing play style | `policies.chase_quests`, in `ALL` | The Cataclysm dungeon when open; else the shortest safe Quest dungeon sent by one of the Cataclysms still needed to open the boss; else what `triage` does. |
+
+`cataclysm_volume_exponent` stays 0.7, as ruled. The node text: "+2 floors per active Cataclysm type per point, to
+every dungeon except the Cataclysm boss dungeon." The design document's "Last Stand" section gains a paragraph with the
+limit and the owner's words. No reward depends on the Last Stand's depth: clearing it ends the run as won.
+
+Rejected while choosing the cap, measured in the proposal: one fixed cap for every tier (it kept the Last Stand about
+1 in 7 everywhere, which made tier 8 about as winnable as tier 4); capping only the absorbed-dungeon term (2-7% at
+tiers 2 to 8, still too deep); a cap that also starts at tier 2 (it moved tier 3 by up to 20 points).
+
+### MEASURED FOR THE OWNER
+
+Measured 2026-10-30 on this change's code -- `71b889c1a`, and for the worlds re-run after window w101 its rebase
+`a187bbfdc`, whose simulation files are identical -- in a clean worktree. Each world is `analyse_surge_cadence.py`'s
+`base_config` (12 opening dungeons, then 8 every 90 days; that script's escalation 0.10 and craft gain 0.04) at the tier
+and tree shown, with `power_start_frac` 0.0 (the design's arrival point, the end-of-tier-3 ceiling at tier 4) or the
+shipped 0.35. Tiers 1 to 3: 1,000 campaigns in two blocks of 500; tiers 4 to 8: 500 in two blocks of 250. Explorer is
+`TREE_EXPLORER_AS_DESIGNED`.
+
+`triage`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 50.0 / 50.2 (0.4 / 0.2) | 7.4 / 7.4 (0.6 / 0.0) | 0.0 / 0.0 (0.0 / 0.0) | 19.2 / 22.8 (12.8 / 17.6) | 14.4 / 12.0 (14.0 / 12.0) | 8.4 / 6.4 (8.4 / 6.4) | 4.4 / 2.0 (4.4 / 2.0) | 3.6 / 2.4 (3.6 / 2.4) |
+| Explorer | 0.35 | 65.4 / 68.4 (0.0 / 0.0) | 40.6 / 43.4 (0.2 / 0.0) | 9.8 / 12.6 (0.0 / 0.2) | 30.4 / 30.0 (10.4 / 13.2) | 14.0 / 12.8 (9.6 / 11.6) | 7.6 / 10.8 (6.8 / 9.6) | 5.6 / 4.8 (5.6 / 4.8) | 2.0 / 3.6 (2.0 / 3.6) |
+| No tree | 0.0 | 31.8 / 32.6 (0.6 / 0.0) | 22.6 / 27.4 (0.2 / 0.0) | 5.8 / 11.4 (0.0 / 0.2) | 24.0 / 20.4 (11.2 / 8.4) | 10.0 / 9.6 (7.6 / 7.6) | 6.0 / 8.4 (4.8 / 7.6) | 2.8 / 1.2 (2.8 / 1.2) | 4.0 / 2.8 (4.0 / 2.8) |
+| No tree | 0.35 | 43.8 / 44.6 (0.8 / 0.0) | 35.0 / 32.6 (0.0 / 0.0) | 10.6 / 16.2 (0.2 / 0.6) | 29.2 / 28.4 (9.6 / 9.6) | 12.4 / 14.4 (10.8 / 12.4) | 6.8 / 10.0 (4.8 / 9.2) | 5.2 / 1.2 (5.2 / 1.2) | 2.8 / 2.0 (2.8 / 2.0) |
+
+`chase_quests`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 51.8 / 46.2 (0.0 / 0.2) | 7.4 / 5.6 (0.4 / 0.0) | 0.0 / 0.0 (0.0 / 0.0) | 22.4 / 23.6 (15.2 / 19.2) | 14.8 / 12.0 (14.4 / 11.6) | 6.4 / 6.0 (6.4 / 6.0) | 5.2 / 2.8 (5.2 / 2.8) | 2.0 / 3.2 (2.0 / 3.2) |
+| Explorer | 0.35 | 67.4 / 65.0 (0.0 / 0.2) | 40.0 / 41.6 (0.0 / 0.2) | 8.2 / 10.0 (0.2 / 0.2) | 33.6 / 38.8 (15.2 / 20.4) | 16.0 / 16.0 (13.6 / 13.2) | 7.6 / 9.2 (6.8 / 8.8) | 6.4 / 4.8 (6.4 / 4.8) | 2.0 / 2.8 (2.0 / 2.8) |
+| No tree | 0.0 | 32.0 / 33.0 (0.2 / 0.2) | 25.8 / 26.0 (0.0 / 0.4) | 11.4 / 9.2 (0.2 / 0.0) | 28.4 / 23.2 (10.0 / 8.0) | 15.2 / 13.6 (9.2 / 9.6) | 10.0 / 9.6 (5.2 / 5.2) | 2.0 / 3.2 (2.0 / 2.8) | 2.0 / 2.0 (2.0 / 2.0) |
+| No tree | 0.35 | 43.2 / 41.6 (0.4 / 0.4) | 34.4 / 36.2 (0.2 / 0.4) | 15.8 / 14.4 (0.6 / 0.0) | 38.0 / 29.2 (10.0 / 7.2) | 17.6 / 18.8 (7.6 / 12.0) | 14.4 / 12.0 (6.8 / 8.0) | 3.2 / 4.8 (2.8 / 4.8) | 3.6 / 2.8 (3.6 / 2.8) |
+
+Read with these facts:
+
+- **Against the estimate the owner chose on** (`chase_quests`, 0.35): the Explorer at tier 5 is 16.0 / 16.0 against about
+  11-14, and at tiers 6 to 8 within it (7.6 / 9.2, 6.4 / 4.8, 2.0 / 2.8 against about 7-8, 4-5, 2-3). The no-tree player at
+  tiers 5 and 6 is 17.6 / 18.8 and 14.4 / 12.0 against about 10-13 and 6-7, because the earned dungeon opens in 18-21% of
+  those runs; the estimate counted Last Stand clears only. The coordinating session ruled on 2026-10-30 to proceed as built.
+- **Before this change** (the relief world of 2026-10-29), the Explorer at 0.35 under `triage` won 6.6 / 7.1% at tier 4
+  and 0.2% or less at tiers 5 to 8, and the no-tree player 12.1 / 13.3% and 2.0% or less.
+- **Tiers 1 to 3 against the relief world** (phase 2 of the proposal, `triage`, 0.35): tier 1 within noise (Explorer
+  64.0 / 65.5 then, 65.4 / 68.4 now; no tree 45.2 / 48.3, 43.8 / 44.6). Tier 2 Explorer 34.4 / 34.2 then, 40.6 / 43.4 now,
+  because `Infinite Depths` no longer deepens the earned boss dungeon. Tier 3 no tree 9.7 / 11.8 then, 10.6 / 16.2 now.
+- **Tier 3 is below tier 4 in every row**, and the Explorer starting at 0.0 wins 0.0% at tier 3: the Last Stand is
+  reached in all of those runs and is not limited at tier 3. Tier 2 for that player is 5.6-7.4%. The coordinating session
+  is asking the owner about it; two measured variants that extend relief and the cap to tier 3 are in its report, not here.
+
+### THE TESTS
+
+`sim/tests/test_tiers_five_to_eight_are_winnable.py`, 10 tests, each rule with a control:
+
+- `test_the_last_stand_limit_starts_at_tier_four_and_grows_with_the_tier`: `last_stand_floor_cap` is None at tiers 1 to
+  3 and 125, 156, 188, 219, 250 at 4 to 8.
+- `test_a_last_stand_deeper_than_its_limit_is_cut_to_it`: a tier 6 Last Stand over 60 standing dungeons has 188 floors
+  and the walk of 188. Control, `test_control_a_tier_three_last_stand_is_not_limited`: the same board at tier 3 gives
+  more than 250.
+- `test_infinite_depths_does_not_deepen_a_cataclysm_dungeon`: at tier 4 a Cataclysm-type dungeon made with the
+  Explorer tree is as deep as one made with `floor_delta_per_type` 0. Control,
+  `test_control_infinite_depths_still_deepens_an_ordinary_dungeon`: an ordinary dungeon is 80 floors deeper.
+- `test_each_cataclysm_keeps_its_tier_one_quest_rate_at_tier_eight`: `quest_chance` is `0.12 x N / volume` at tier 8.
+  Control, `test_control_tier_one_and_the_switch_keep_the_flat_chance`: 0.12 at tier 1, and at tier 8 with the switch
+  off.
+- `test_it_is_registered_with_every_other_policy`; `test_it_takes_the_quest_dungeon_that_opens_the_boss_where_triage_defends`:
+  a tier 4 board with an ordinary dungeon about to fell an Outpost and a safe Quest dungeon of a Cataclysm one clear
+  short of its count; `triage` defends and `chase_quests` takes the Quest dungeon. Control,
+  `test_control_a_finished_cataclysms_quest_dungeon_is_not_chased`: with that Cataclysm's count already met, both
+  defend.
+
+`test_engine.py` and `test_policies_see_sieges.py` run once per policy in `ALL`, so each gains a case for
+`chase_quests`.
+
+**One existing test moved, none deleted.** `sim/tests/test_analysis_scripts.py::test_refusing_the_last_stand_really_refuses_it`
+needs a tier-4 campaign that opens the Last Stand. Seed 1 now ends on day 483 in the earned dungeon. With
+`quest_chance_per_cataclysm_held` off it opens the Last Stand and runs to day 2,500 again, so the quest rate is the
+cause. The test uses seed 0, which opens it and runs to the last day refusing it, with a comment saying why.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run`, each in a git-archive copy of the commit that registers this, command `python
+-m pytest sim/tests/test_tiers_five_to_eight_are_winnable.py`. Each break text occurs once in its file.
+
+| # | Break | Predicted named_failures |
+| :-- | :-- | :-- |
+| 1 | `engine.py`: `cap = cfg.last_stand_floor_cap()` becomes `cap = None` | `test_a_last_stand_deeper_than_its_limit_is_cut_to_it` |
+| 2 | `engine.py`: `per_type = (0 if dtype is DungeonType.CATACLYSM` becomes `per_type = (cfg.active_cataclysm_count() if dtype is DungeonType.CATACLYSM` | `test_infinite_depths_does_not_deepen_a_cataclysm_dungeon` |
+| 3 | `engine.py`: `held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)` becomes `held = cfg.quest_dungeon_chance` | `test_each_cataclysm_keeps_its_tier_one_quest_rate_at_tier_eight` |
+| 4 | `policies.py`: `if d.dtype is DungeonType.QUEST and d.source in nearest]` becomes `if d.dtype is DungeonType.QUEST and d.source not in nearest]` | `test_it_takes_the_quest_dungeon_that_opens_the_boss_where_triage_defends` and `test_control_a_finished_cataclysms_quest_dungeon_is_not_chased` |
+
+All in `sim/tests/test_tiers_five_to_eight_are_winnable.py`; no other test predicted.
+
+Run 2026-10-30 in a git-archive copy of `4c830920c`, the commit that registered them; after a rebase onto
+`2082da17b` the same commit is `0ef73caff`, with identical content. Printed, in order: "PROVED: 1 failed, 9 passed |
+restored: 10 passed" three times, then "PROVED: 2 failed, 8 passed | restored: 10 passed". named_failures, exactly
+the ones registered for each.
+
+### EVIDENCE
+
+Python of record at `84749074a`, on `development` `2082da17b`: "7130 passed, 8 skipped"; JUnit tests 7138, failures 0,
+errors 0, skipped 8 -- the base's 7126 with the ten new tests and two existing tests that run once per policy in `ALL`
+(`test_engine.py::TestRunsAtAll::test_every_policy_completes_a_campaign` and
+`test_policies_see_sieges.py::TestTheControlsStayBlind::test_a_control_policy_does_not_consult_the_siege_helpers`).
+ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
+
+### NO GENRE SOURCE
+
+None. How deep a game's final fight may grow, and how many of a faction's quests appear as more factions are active,
+are specific to this game; the values are the coordinating session's against the owner's stated shape.
+
+---
+
 ## 2026-10-30 — What a dungeon's rules built up across its floors comes back with a load, and a player's thrall is no longer saved as an enemy (#753, Group 1)
 
 **Affects:** `FCataclysmSavedWalk` (new) and the run record's `Walk` field in

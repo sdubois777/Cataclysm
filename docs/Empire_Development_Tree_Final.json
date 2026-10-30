@@ -1712,7 +1712,7 @@
       "data": {
         "kind": "basic",
         "name": "Infinite Depths",
-        "description": "+2 floors per active Cataclysm type per point.",
+        "description": "+2 floors per active Cataclysm type per point, to every dungeon except the Cataclysm boss dungeon.",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 10
