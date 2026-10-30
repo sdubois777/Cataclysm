@@ -3,6 +3,7 @@
 #include "Save/CataclysmSaveLoad.h"
 
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"

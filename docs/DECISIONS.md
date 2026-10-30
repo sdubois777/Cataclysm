@@ -194,6 +194,31 @@ record.Floor.Creatures[0].PlacedDamageMultiplier is 0.600000 on one side and 0.6
 The fixture now holds 0.75, which a float holds exactly, as every other fractional figure added to it already did
 (15.5, 35.5, 1.25, 0.75, 42.5). Nothing else changed.
 
+**Window w104 (lock `dungeon-w104`, `d28eac633`, 2026-10-30) STOPPED AT PROOF P2, whose build failed; P1 proved, and
+P3 to P6 did not run.** The Python suite of record at `d28eac633`, before the pre-checks: 7138 tests, 0 failures, 0
+errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run output, measured at 14:59:30:
+`development` at `08bdfae16` with its CI run a success, its last Unreal run (at `2082da17b`) a success; no run in
+progress or queued; the lock free; no build or editor process; no pull request open; no simulation process; 12,156 MB
+of physical memory free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (no game file changed since w103) |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each, with the same lines as w103 |
+| Whole Unreal suite | `4383 tests performed, 4383 succeeded, 0 failed`; declared 4383, gap 0; memory peak 8,177 MB, final 7,903 MB |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED: with the break in, 13 performed, 12 succeeded, 1 failed: `ADungeonWalksCountersComeBackFromALoad`; restored, 13 of 13 |
+| P2 | STOP: `the build itself failed: Result: Failed, compiled CataclysmSaveLoad.cpp, Module.Cataclysm.11.cpp` |
+
+**THE P2 BUILD FAILED ON A MISSING INCLUDE IN THIS BRANCH'S CODE, NOT ON THE BREAK.** A break makes the adaptive build
+compile `CataclysmSaveLoad.cpp` outside the unity file, and alone it had no definition of `ACataclysmEnemyCharacter`:
+"error C2664: 'bool IsValid(const UObject *)': cannot convert argument 1 from 'const T' to 'const UObject *'" at
+`IsValid(One.Key)` in `RelinkTheCreatures`. The ordinary build passed only because the unity file brought the header in
+from another file. The file now includes `Character/CataclysmEnemyCharacter.h`; compiled once with that edit
+uncommitted, which also compiles it alone: `Build: Succeeded - 5 actions, 2 files compiled: CataclysmSaveLoad.cpp,
+Module.Cataclysm.11.cpp`. The other files the proofs break (`CataclysmSaveGather.cpp`, `CataclysmDungeonGameMode.cpp`)
+already include that header, and P1 compiled `CataclysmDungeonGameMode.cpp` alone without error.
+
 ---
 
 ## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)
