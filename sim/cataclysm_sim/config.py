@@ -795,6 +795,34 @@ class TuningConfig:
     # numbers work at every tier. Dungeon difficulty comes from scoring.py.
     power_start_frac: float = 0.35
 
+    # CONTENT RELIEF AT TIER 4 AND UP: every enemy score is lowered by this many
+    # tier widths in the comparison with the player's power, and nowhere else.
+    # At tier t >= `content_relief_from_tier` it is
+    #
+    #     content_relief_tier_widths + content_relief_per_tier_widths x (t - 4)
+    #
+    # which is 0.45, 0.58, 0.71, 0.84 and 0.97 at tiers 4 to 8, and 0 at tiers 1
+    # to 3. `Simulation.death_chance` and `Simulation.dungeon_power` read it;
+    # `scoring.py` is a copy of another repository's file and is not touched,
+    # and the score a kill grants as experience is not lowered.
+    #
+    # WHY IT GROWS WITH THE TIER. The project owner, 2026-10-29, on issue #1425,
+    # in three answers: "Check gear first", "Weaken tier content", "Relief grows
+    # by tier". The Explorer tree as designed adds 20 floors a dungeon for each
+    # active Cataclysm, and the active count is the tier, so its dungeons are
+    # deeper at every tier; the relief a fully invested Explorer needs to have
+    # one safe opening dungeon at the start of a tier rose by about 0.13 tier
+    # widths a tier. The numbers are the coordinating session's, set above the
+    # largest need measured at each tier. `docs/DECISIONS.md`, 2026-10-29.
+    #
+    # THE GAME CARRIES THE SAME THREE NUMBERS in `UCataclysmEnemyScore`
+    # (`ContentReliefTierWidths` and its neighbours) and does not apply them
+    # yet: creature strength there does not follow the enemy score until issue
+    # #1569. `tools/tests/test_content_relief_port.py` holds both.
+    content_relief_tier_widths: float = 0.45
+    content_relief_per_tier_widths: float = 0.13
+    content_relief_from_tier: int = 4
+
     # The Cataclysm gets stronger as the run goes on. Without this, power is
     # never scarce, looting alone always suffices, and the forge is a trap that
     # only ever costs you cities. This is the treadmill that makes gear matter.
@@ -1143,6 +1171,17 @@ class TuningConfig:
 
     def spec(self, dtype: DungeonType, tier: CityTier) -> DungeonSpec:
         return self.DUNGEON_SPECS[(dtype, tier)]
+
+    def content_relief(self, tier: int | None = None) -> float:
+        """Tier widths taken off every enemy score at `tier` (this campaign's
+        when None) in the comparison with the player's power. 0 below
+        `content_relief_from_tier`; see the fields for the rule and its source."""
+        tier = self.tier if tier is None else tier
+        if tier < self.content_relief_from_tier:
+            return 0.0
+        return (self.content_relief_tier_widths
+                + self.content_relief_per_tier_widths
+                * (tier - self.content_relief_from_tier))
 
     def active_cataclysm_count(self) -> int:
         """How many Cataclysms are active at once in this campaign.

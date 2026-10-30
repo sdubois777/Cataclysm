@@ -123,6 +123,29 @@ public:
 	static constexpr double ProceduralPerFloor = 0.5;
 	static constexpr double DepthTensionPerTier = 1.2;
 
+	// CONTENT RELIEF AT TIER 4 AND UP, AND NOTHING IN THE GAME APPLIES IT YET.
+	// The model lowers every enemy score by
+	//
+	//     ContentReliefTierWidths + ContentReliefPerTierWidths x (tier - 4)
+	//
+	// tier widths in its comparison with the player's power: 0.45, 0.58,
+	// 0.71, 0.84 and 0.97 at difficulty tiers 4 to 8, none at tiers 1 to 3.
+	// The project owner, 2026-10-29, on issue #1425: "Weaken tier content",
+	// then "Relief grows by tier". These are the same three numbers as
+	// `TuningConfig.content_relief_*` in `sim/cataclysm_sim/config.py`, and
+	// `tools/tests/test_content_relief_port.py` holds them equal.
+	//
+	// THEY ARE NOT PART OF THE PORTED FORMULA and `ScoreFor` does not read
+	// them: the score is also the experience a kill grants, and the owner's
+	// ruling weakens creatures, not what they are worth. They belong on the
+	// strength path -- the conversion from enemy score to creature health and
+	// damage that issue #1569 builds -- and that conversion does not exist
+	// yet, so today a creature at tier 4 is exactly as strong as it was. The
+	// same test file states that gap so it cannot go unnoticed.
+	static constexpr double ContentReliefTierWidths = 0.45;
+	static constexpr double ContentReliefPerTierWidths = 0.13;
+	static constexpr int32 ContentReliefFromTier = 4;
+
 	/**
 	 * The maximum Power Score a player is expected to reach by the end of each
 	 * difficulty tier. Index 0 is the floor of tier 1.

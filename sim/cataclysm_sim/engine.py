@@ -558,11 +558,12 @@ class Simulation:
 
     def dungeon_power(self, d: Dungeon) -> float:
         """The dungeon's headline difficulty -- its middle floor, rarity-mixed,
-        including its modifiers."""
+        including its modifiers, less the content relief at tier 4 and up
+        (`TuningConfig.content_relief`), the same relief `death_chance` gives."""
         cfg = self.cfg
         base = scoring.dungeon_score(cfg.tier, SCORING_TYPE[d.dtype], d.subtype,
                                      d.floors, d.modifier_score)
-        return base * d.power_scale
+        return (base - cfg.content_relief() * self.tier_width) * d.power_scale
 
     def death_chance(self, d: Dungeon) -> float:
         """Overwhelm, evaluated across the dungeon's whole floor range.
@@ -575,6 +576,15 @@ class Simulation:
         # power_scale represents the Cataclysm strengthening over the run; fold
         # it in by treating the player as correspondingly weaker.
         effective_power = self.power / max(1e-9, d.power_scale)
+        # CONTENT RELIEF AT TIER 4 AND UP, issue #1425. Every enemy score lowered
+        # by `content_relief` tier widths, which against the player is the same
+        # as adding that many to the player's power after the scale above:
+        # (score - r x width) x scale compared with power is score compared
+        # with power / scale + r x width. Zero at tiers 1 to 3, so they are
+        # untouched. It lives here and not in `scoring.py`, which is a copy of
+        # another repository's file, and it does not reach the experience a
+        # kill grants, which reads the score itself.
+        effective_power += cfg.content_relief() * self.tier_width
         return combat.death_chance(
             player_power=effective_power,
             tier=cfg.tier,
