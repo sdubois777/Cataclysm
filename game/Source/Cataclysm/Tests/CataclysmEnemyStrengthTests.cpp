@@ -16,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/UnrealType.h"
 
 /**
  * Tests for the strength a creature on a dungeon floor is built with. Issue #1569.
@@ -330,8 +331,14 @@ bool FCataclysmEnemyStrengthAFloorBuildsIt::RunTest(const FString& Parameters)
 	TestEqual(TEXT("its Starting health is the score's"), Imp->GetStartingMaxHealth(), Expected.Health, 0.01f);
 	TestEqual(TEXT("its Starting damage is the score's, scaled by the tier"), Imp->GetStartingAttackDamage(),
 			  Expected.AttackDamage, 0.01f);
-	// THE CONTROL: not the sandbox's fixed figure, so the floor really built it.
-	TestNotEqual(TEXT("and it is not the fixed sandbox Imp"), Imp->GetStartingMaxHealth(), GameMode->ImpHealth);
+	// THE CONTROL: not the sandbox's fixed figure, so the floor really built it. `ImpHealth` is protected, so it is read
+	// through its reflected property rather than by name.
+	const FFloatProperty* Fixed = FindFProperty<FFloatProperty>(ACataclysmGameMode::StaticClass(), TEXT("ImpHealth"));
+	if (TestNotNull(TEXT("the sandbox's ImpHealth setting"), Fixed))
+	{
+		TestNotEqual(TEXT("and it is not the fixed sandbox Imp"), Imp->GetStartingMaxHealth(),
+					 Fixed->GetPropertyValue_InContainer(GameMode));
+	}
 	return true;
 }
 
