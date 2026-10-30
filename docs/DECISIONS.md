@@ -68,7 +68,45 @@ tiers 2 to 8, still too deep); a cap that also starts at tier 2 (it moved tier 3
 
 ### MEASURED FOR THE OWNER
 
-Recorded in a later commit, when the measurement interrupted by window w101 has finished.
+Measured 2026-10-30 on this change's code -- `71b889c1a`, and for the worlds re-run after window w101 its rebase
+`a187bbfdc`, whose simulation files are identical -- in a clean worktree. Each world is `analyse_surge_cadence.py`'s
+`base_config` (12 opening dungeons, then 8 every 90 days; that script's escalation 0.10 and craft gain 0.04) at the tier
+and tree shown, with `power_start_frac` 0.0 (the design's arrival point, the end-of-tier-3 ceiling at tier 4) or the
+shipped 0.35. Tiers 1 to 3: 1,000 campaigns in two blocks of 500; tiers 4 to 8: 500 in two blocks of 250. Explorer is
+`TREE_EXPLORER_AS_DESIGNED`.
+
+`triage`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 50.0 / 50.2 (0.4 / 0.2) | 7.4 / 7.4 (0.6 / 0.0) | 0.0 / 0.0 (0.0 / 0.0) | 19.2 / 22.8 (12.8 / 17.6) | 14.4 / 12.0 (14.0 / 12.0) | 8.4 / 6.4 (8.4 / 6.4) | 4.4 / 2.0 (4.4 / 2.0) | 3.6 / 2.4 (3.6 / 2.4) |
+| Explorer | 0.35 | 65.4 / 68.4 (0.0 / 0.0) | 40.6 / 43.4 (0.2 / 0.0) | 9.8 / 12.6 (0.0 / 0.2) | 30.4 / 30.0 (10.4 / 13.2) | 14.0 / 12.8 (9.6 / 11.6) | 7.6 / 10.8 (6.8 / 9.6) | 5.6 / 4.8 (5.6 / 4.8) | 2.0 / 3.6 (2.0 / 3.6) |
+| No tree | 0.0 | 31.8 / 32.6 (0.6 / 0.0) | 22.6 / 27.4 (0.2 / 0.0) | 5.8 / 11.4 (0.0 / 0.2) | 24.0 / 20.4 (11.2 / 8.4) | 10.0 / 9.6 (7.6 / 7.6) | 6.0 / 8.4 (4.8 / 7.6) | 2.8 / 1.2 (2.8 / 1.2) | 4.0 / 2.8 (4.0 / 2.8) |
+| No tree | 0.35 | 43.8 / 44.6 (0.8 / 0.0) | 35.0 / 32.6 (0.0 / 0.0) | 10.6 / 16.2 (0.2 / 0.6) | 29.2 / 28.4 (9.6 / 9.6) | 12.4 / 14.4 (10.8 / 12.4) | 6.8 / 10.0 (4.8 / 9.2) | 5.2 / 1.2 (5.2 / 1.2) | 2.8 / 2.0 (2.8 / 2.0) |
+
+`chase_quests`, won % (block 1 / block 2; in brackets, of those, won through the Last Stand):
+
+| Player | Start | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+| :-- | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.0 | 51.8 / 46.2 (0.0 / 0.2) | 7.4 / 5.6 (0.4 / 0.0) | 0.0 / 0.0 (0.0 / 0.0) | 22.4 / 23.6 (15.2 / 19.2) | 14.8 / 12.0 (14.4 / 11.6) | 6.4 / 6.0 (6.4 / 6.0) | 5.2 / 2.8 (5.2 / 2.8) | 2.0 / 3.2 (2.0 / 3.2) |
+| Explorer | 0.35 | 67.4 / 65.0 (0.0 / 0.2) | 40.0 / 41.6 (0.0 / 0.2) | 8.2 / 10.0 (0.2 / 0.2) | 33.6 / 38.8 (15.2 / 20.4) | 16.0 / 16.0 (13.6 / 13.2) | 7.6 / 9.2 (6.8 / 8.8) | 6.4 / 4.8 (6.4 / 4.8) | 2.0 / 2.8 (2.0 / 2.8) |
+| No tree | 0.0 | 32.0 / 33.0 (0.2 / 0.2) | 25.8 / 26.0 (0.0 / 0.4) | 11.4 / 9.2 (0.2 / 0.0) | 28.4 / 23.2 (10.0 / 8.0) | 15.2 / 13.6 (9.2 / 9.6) | 10.0 / 9.6 (5.2 / 5.2) | 2.0 / 3.2 (2.0 / 2.8) | 2.0 / 2.0 (2.0 / 2.0) |
+| No tree | 0.35 | 43.2 / 41.6 (0.4 / 0.4) | 34.4 / 36.2 (0.2 / 0.4) | 15.8 / 14.4 (0.6 / 0.0) | 38.0 / 29.2 (10.0 / 7.2) | 17.6 / 18.8 (7.6 / 12.0) | 14.4 / 12.0 (6.8 / 8.0) | 3.2 / 4.8 (2.8 / 4.8) | 3.6 / 2.8 (3.6 / 2.8) |
+
+Read with these facts:
+
+- **Against the estimate the owner chose on** (`chase_quests`, 0.35): the Explorer at tier 5 is 16.0 / 16.0 against about
+  11-14, and at tiers 6 to 8 within it (7.6 / 9.2, 6.4 / 4.8, 2.0 / 2.8 against about 7-8, 4-5, 2-3). The no-tree player at
+  tiers 5 and 6 is 17.6 / 18.8 and 14.4 / 12.0 against about 10-13 and 6-7, because the earned dungeon opens in 18-21% of
+  those runs; the estimate counted Last Stand clears only. The coordinating session ruled on 2026-10-30 to proceed as built.
+- **Before this change** (the relief world of 2026-10-29), the Explorer at 0.35 under `triage` won 6.6 / 7.1% at tier 4
+  and 0.2% or less at tiers 5 to 8, and the no-tree player 12.1 / 13.3% and 2.0% or less.
+- **Tiers 1 to 3 against the relief world** (phase 2 of the proposal, `triage`, 0.35): tier 1 within noise (Explorer
+  64.0 / 65.5 then, 65.4 / 68.4 now; no tree 45.2 / 48.3, 43.8 / 44.6). Tier 2 Explorer 34.4 / 34.2 then, 40.6 / 43.4 now,
+  because `Infinite Depths` no longer deepens the earned boss dungeon. Tier 3 no tree 9.7 / 11.8 then, 10.6 / 16.2 now.
+- **Tier 3 is below tier 4 in every row**, and the Explorer starting at 0.0 wins 0.0% at tier 3: the Last Stand is
+  reached in all of those runs and is not limited at tier 3. Tier 2 for that player is 5.6-7.4%. The coordinating session
+  is asking the owner about it; two measured variants that extend relief and the cap to tier 3 are in its report, not here.
 
 ### THE TESTS
 
@@ -112,6 +150,11 @@ cause. The test uses seed 0, which opens it and runs to the last day refusing it
 | 4 | `policies.py`: `if d.dtype is DungeonType.QUEST and d.source in nearest]` becomes `if d.dtype is DungeonType.QUEST and d.source not in nearest]` | `test_it_takes_the_quest_dungeon_that_opens_the_boss_where_triage_defends` and `test_control_a_finished_cataclysms_quest_dungeon_is_not_chased` |
 
 All in `sim/tests/test_tiers_five_to_eight_are_winnable.py`; no other test predicted.
+
+Run 2026-10-30 in a git-archive copy of `4c830920c`, the commit that registered them; after a rebase onto
+`2082da17b` the same commit is `0ef73caff`, with identical content. Printed, in order: "PROVED: 1 failed, 9 passed |
+restored: 10 passed" three times, then "PROVED: 2 failed, 8 passed | restored: 10 passed". named_failures, exactly
+the ones registered for each.
 
 ### EVIDENCE
 
