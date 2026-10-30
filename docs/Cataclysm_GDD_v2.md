@@ -1000,7 +1000,7 @@ So chasing Cataclysmic gear is what pushes a character toward the maximum Power 
 
   
 
-Gear and gem rarity reach one rarity above the difficulty tier, because there are eight of each and because the best upgrade stone that can drop is capped by the current difficulty tier. Gear level is tier + 2 capped at +10, which clears every rarity gate in section VI and reaches exactly +10 at tier 8. The one-above is the same rule the affix tier gate uses, and section VII gives the reason and the tier-by-tier table. It caps what a drop *may* be; what a drop is *likely* to be also moves with the tier, and section VII covers that too.
+The reference character wears gear and gems of the tier's own rarity, Everyday at tier 1 through Cataclysmic at tier 8, as the table shows. A drop can reach one rarity above the difficulty tier at full weight, because there are eight of each and because the best upgrade stone that can drop is capped by the current difficulty tier, but the calibration ceiling does not count that rung. The one-above is the same rule the affix tier gate uses, and section VII gives the reason and the tier-by-tier table; what a drop is *likely* to be also moves with the tier, and section VII covers that too. Gear level is tier + 2 capped at +10, which clears every rarity gate in section VI and reaches exactly +10 at tier 8. Decided by the project owner on 2026-10-29 (#1425): the table is right.
 
   
 
