@@ -52,8 +52,9 @@ the two blocks. "Steps" are tier 1 - tier 2, tier 2 - tier 3, tier 3 - tier 4.
 | X | 0.25, 105 | 0.32, 120 | +8.9, +9.5, +7.6 | +11.3, +12.6, +6.1 | -6.1, +13.4, -0.6 | -6.7, +11.0, +4.5 |
 | Y | 0.19, 100 | 0.28, 115 | +8.9, +8.5, +8.6 | +15.2, +11.4, +3.4 | -4.0, +12.2, -1.5 | -3.8, +9.8, +2.8 |
 
-Shown not to work for the Explorer: tier 2 relief 0.0 or 0.10 with a limit of 100 or 110 leaves its tier 2 at 32.5 to
-33.0% at the bottom of the tier, within 0 to 2 points of any tier 3 that works (the tier 2 Explorer row at 0.0 with relief 0.0 and limit 100 is recorded in a later commit); tier 3 relief 0.36 with 120 or
+Shown not to work for the Explorer: tier 2 relief 0.0 or 0.10 with a limit of 100 or 110 leaves its tier 2 at 28.2 to
+33.0% at the bottom of the tier (relief 0.0 with 100: 27.8 / 28.6; relief 0.10 with 100 or 110: 32.5 to 33.0), at or
+within 2 points of any tier 3 that works; tier 3 relief 0.36 with 120 or
 0.32 with 110 puts its tier 3 at 29.6 to 33.6%, too close to tier 2 unless tier 2 has 0.19 or more. They do bring the
 no-tree player's tier 2 level with its tier 1 (29.4 to 44.4%). Earlier the same day: relief 0.32 with a limit of 110 at
 tier 3 alone put tier 3 above tier 4 in 7 rows of 8; relief 0.25 with no limit put it below tier 4 in 6 of 8.
@@ -145,7 +146,8 @@ named_failures, exactly the ones registered for each.
 
 ### EVIDENCE
 
-Python of record at `eb8665d66`, on `development` `08bdfae16`: "7133 passed, 8 skipped"; JUnit tests 7141, failures 0,
+Python of record at `5b1d52b6e`, on `development` `904fe4f82` (moved there from `08bdfae16`, where the same run at
+`eb8665d66` printed the same counts): "7133 passed, 8 skipped"; JUnit tests 7141, failures 0,
 errors 0, skipped 8. That is the base's 7138, plus the 4 tests in `test_wins_fall_at_every_tier.py`, plus 1 from
 splitting the tiers 1 to 3 relief test into a tier 1 test and a tiers 2 and 3 pin, less 2 from
 `test_tier_one_is_untouched_whatever_the_relief_holds`, which ran once for each of tiers 1, 2 and 3 and now runs for
