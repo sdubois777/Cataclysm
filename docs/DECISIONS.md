@@ -14,7 +14,11 @@ new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6
 
 ### SAID FIRST
 
-- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **BUILT AND RUN: window w101 below passed every registered figure, and all four proofs were PROVED, each failing
+  the test registered. ONE PROOF FAILED AT ANOTHER ASSERTION THAN PREDICTED:** P2 (`WalkStateNow` not reading
+  `BloodDebtPaid`) failed the counters test at its set-up check, "the walk holds every field set", which reads the
+  same function in the saving world, so the test returned before its round-trip check. A gather that drops a
+  counter is caught, by that set-up check rather than by the comparison after the load.
 - **A FAULT IN MERGED CODE IS CORRECTED HERE: SINCE #751 A LIVING THRALL WAS SAVED AS AN ORDINARY CREATURE AND CAME
   BACK HOSTILE, AND SINCE #2629 IT ALSO HELD THE STAIRS.** `UCataclysmCommand::Subjugate` makes an enemy creature the
   player's by owner and team (`CataclysmCommand.cpp` lines 877 and 878) and does not mark it raised by a rule;
@@ -118,7 +122,35 @@ STARVATION".
 
 ### Run
 
-Not yet run.
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, at `8d427b5b0`:
+`Build: Succeeded - 73 actions, 63 files compiled`.
+
+**Window w101 (lock `dungeon-w101`, `feat/a-dungeon-walks-counters-survive-a-load` at `8d427b5b0`, on `da0423c54`,
+2026-10-30) passed.** `development` had not moved, so the branch was not moved. Its CI and Unreal runs at `da0423c54`
+succeeded; no run was in progress or queued, the lock was free, no build or editor process ran, no pull request was
+open, and free memory read 12,049 MB immediately before, measured after the simulation session's four probe processes
+had ended. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above had built it) |
+| The three new tests alone | 1 / 1 each | `1 tests performed, 1 succeeded, 0 failed`, each |
+| The "LOAD WALK" line | quoted as printed | "Loaded (... day 1, 233 creatures, placed where it was saved); every counter matches; saved 'march 4 pact 1 2 [1,0,2,0,3,] 6 debt 7 price 8 infernal 9 rift 10 sewage 11 pestilent 12 wasting 13 starvation 1 2 chaos [1,0,0,2,0,0,0,1,] void 14.50 15.25 16.00 17.00 trick 18 19 echo 20 21 wild 22 Load_test_skill souls 23' ..." |
+| The "LOAD STARVATION" line | quoted as printed | "... 2 stacks saved, 2 after the load; the player saved at speed 414.0 max health 510.0, loaded at speed 414.0 max health 510.0" |
+| The "THRALL SAVE" line | quoted as printed | "1 creatures saved; the thrall not saved; the creature beside it saved" |
+| Whole Unreal suite | 4380 / 0 | `4380 tests performed, 4380 succeeded, 0 failed`; declared 4380, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7882`, peak 8,164 |
+| Python (JUnit) | of record | 7126 tests, 0 failures, 0 errors, 8 skipped ("7118 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, the walk restored before `GoToFloor` | the floor-start test on the stacks (3 where 2), its figures not predicted; the counters test on its one line; the thrall test passes | as registered: 3 stacks where 2, and the figures differed too (max health 484.5 where 510.0); the counters line differed. **PROVED** |
+| P2, `BloodDebtPaid` not read | the counters test on its one line only | the counters test only, **but at its set-up check** ("debt 0" where 7), not at the round-trip check, as said first above. **PROVED** |
+| P3, the restore runs no step | the floor-start test on the player's figures; its stack count passes | as registered: max health 510.0 where 484.5, the stacks 2 and 2. **PROVED** |
+| P4, the thrall skip removed | the thrall test on "the thrall is not saved" only; its CONTROL holds | as registered: "2 creatures saved; the thrall SAVED; the creature beside it saved". **PROVED** |
+
+**TWO THINGS THE RUNS SHOWED THAT WERE NOT PREDICTED, NEITHER A FAULT.** The Starvation Curse rolls each stack's kind
+at random, so the player's figures differed between runs (speed 414.0, 437.0 and 460.0; max health 510.0, 484.5 and
+459.0); the floor-start test compares the same run's saved and loaded figures, so its verdict does not depend on the
+roll. And P1 showed that a floor start also changes the Pact of Temptation's buffs ("pact 2 -1" where "1 2"):
+`PlaceThePactAltar` sets them, which the restore after the floor start overwrites with the saved ones, as it should.
 
 ---
 
