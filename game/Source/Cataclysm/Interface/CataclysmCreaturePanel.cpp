@@ -4,6 +4,7 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmCombatOverlay.h"
 
@@ -92,21 +93,9 @@ bool UCataclysmCreaturePanel::StillDescribed(float SecondsSincePointedAt)
 
 const UDataTable* UCataclysmCreaturePanel::LoadEnemyArchetypeTable()
 {
-	const UDataTable* Table = LoadObject<UDataTable>(
-		nullptr, TEXT("/Game/Data/DT_EnemyArchetypes.DT_EnemyArchetypes"));
-	if (!Table)
-	{
-		// NAMES BOTH SCRIPTS, because the two failures look the same from here:
-		// the model never produced the CSV, or the CSV was never imported as an
-		// asset. Every other loader in this project says the same thing.
-		UE_LOG(LogCataclysm, Error,
-			TEXT("Could not load DT_EnemyArchetypes. It is produced by "
-				 "tools/generate_datatable_assets.py from "
-				 "game/Data/EnemyArchetypes.csv, which "
-				 "tools/generate_datatables.py produces from the design "
-				 "workbook."));
-	}
-	return Table;
+	// ONE LOADER, AND IT LIVES WITH THE CODE THAT BUILDS CREATURES FROM THESE ROWS since issue #1569. This panel only
+	// prints a row's name.
+	return UCataclysmEnemyStrength::LoadEnemyArchetypeTable();
 }
 
 const UDataTable* UCataclysmCreaturePanel::LoadEnemyModifierTable()

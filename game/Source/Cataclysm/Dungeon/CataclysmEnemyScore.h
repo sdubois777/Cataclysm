@@ -139,11 +139,10 @@ public:
 	//
 	// THEY ARE NOT PART OF THE PORTED FORMULA and `ScoreFor` does not read
 	// them: the score is also the experience a kill grants, and the owner's
-	// ruling weakens creatures, not what they are worth. They belong on the
-	// strength path -- the conversion from enemy score to creature health and
-	// damage that issue #1569 builds -- and that conversion does not exist
-	// yet, so today a creature at tier 2 is exactly as strong as it was. The
-	// same test file states that gap so it cannot go unnoticed.
+	// ruling weakens creatures, not what they are worth. They are read on the
+	// strength path only, by `ContentRelief` and `StrengthScoreFor` below,
+	// which issue #1569 built: the conversion from enemy score to the health
+	// and damage a creature on a dungeon floor is placed with.
 	static constexpr double ContentReliefTierWidths = 0.19;
 	static constexpr double ContentReliefPerTierWidths = 0.13;
 	static constexpr int32 ContentReliefFromTier = 2;
@@ -231,4 +230,42 @@ public:
 	 */
 	static FCataclysmScoredFloor FloorFor(const ACataclysmGameMode* Mode,
 										  int32 DifficultyTier);
+
+	// ---------------------------------------------------------------------
+	// THE STRENGTH THE GAME BUILDS A CREATURE WITH. Issue #1569.
+	// ---------------------------------------------------------------------
+	//
+	// The project owner, 2026-09-11: creature health and damage come from the
+	// design's enemy score on each floor. Three rulings of 2026-10-30 ease that
+	// score before it becomes health and damage, and all three live here and in
+	// `UCataclysmEnemyStrength`, never in `ScoreFor` above: `ScoreFor` is also
+	// the experience a kill grants, and the rulings weaken creatures, not what
+	// they are worth. `enemy_stats.strength_on_floor` in the simulation is the
+	// same arithmetic, and `Cataclysm.EnemyStrength.EveryFigureIsTheModels`
+	// holds the two equal through `game/Tests/EnemyStrength/ExpectedFigures.csv`.
+
+	/** Damage is multiplied by this at difficulty tier 1, rising evenly to one at
+	 *  the last tier. The owner: "Scale damage to a target", then "Approve". */
+	static constexpr double DamageScaleAtFirstTier = 0.20;
+
+	/** The minimum strength is what the same creature scores on floor 1 of a
+	 *  dungeon this many floors deep, of the same kind, after the relief. */
+	static constexpr int32 MinimumStrengthReferenceFloors = 12;
+
+	/** The tier widths taken off every score on the strength path at this tier:
+	 *  the three `ContentRelief` constants above, 0 below their first tier. */
+	static double ContentRelief(int32 Tier);
+
+	/** What a creature's damage is multiplied by at this tier: 0.20 at tier 1,
+	 *  rising evenly to 1.00 at tier 8. */
+	static double DamageScale(int32 Tier);
+
+	/**
+	 * The score a creature on this floor is BUILT from: `ScoreFor` less the
+	 * tier relief, never below the same creature on floor 1 of a
+	 * `MinimumStrengthReferenceFloors`-floor dungeon of the same kind (which
+	 * without it scores nothing on the first floors of a deep dungeon), and
+	 * never below zero.
+	 */
+	static double StrengthScoreFor(const FCataclysmScoredFloor& Floor, int32 RarityStep);
 };
