@@ -120,10 +120,10 @@ player stood on the first statue's cell. Prints "PLACED AROUND".
 | The four new tests alone | 1 / 1 each, their lines quoted |
 | Whole Unreal suite | 4387 / 0: `development`'s 4383, measured by window w105, + 4. Any seed-searching statue or chasm test whose expected values move under the exclusion is updated to the new values and listed here with the reason; none is deleted |
 | Python | of record, with JUnit, and ruff |
-| P1, the restore branch destroys `ACataclysmFloorObstacle` again | the rebuild test fails on "and every pillar and pit stands where it stood" only; nothing else fails |
-| P2, `BuildFloor` and `PopulateFloor` read the brief's flag alone again | the Horde test fails on the arena and its objects; nothing else fails |
-| P3, `CellsTheFloorHolds` counts `StoodBeforePlacement` again | the placed-around test fails on the statues and the chasms, its CONTROL holding; the rebuild test is not predicted, recorded either way. PROVED when the placed-around test fails as predicted and nothing fails restored |
-| P4, `FloorSourceCells` draws on a stream seeded from `FMath::Rand()` | the rebuild, Horde and placed-around tests fail on their lists; the sight test passes |
+| P1, the restore branch destroys `ACataclysmFloorObstacle` again (the line moved out of its `if`) | the rebuild test fails on "and every pillar and pit stands where it stood" only, once for each of its two floors; nothing else fails |
+| P2, `BuildFloor` keeps the standing floor on the brief's flag alone again (`bThatArenaStands || true`), so `PopulateFloor` and the rest follow it | the Horde test fails on the arena and its objects; nothing else fails |
+| P3, `PopulateFloor` puts nothing in `StoodBeforePlacement`, so `CellsTheFloorHolds` counts what stood before again | the placed-around test fails on the statues and the chasms, its CONTROL holding; the rebuild test is not predicted, recorded either way. PROVED when the placed-around test fails as predicted and nothing fails restored |
+| P4, `FloorSourceCells` draws on a stream seeded from `FMath::Rand()` | the rebuild, Horde and placed-around tests fail on their lists -- the placed-around test on its statues, not its chasms, which `PlaceTheChasms` draws on a stream of its own; the sight test passes |
 | P5, `CreatureFrom` does not read `SightRadiusMultiplier` | the sight test fails on its one assertion; nothing else fails |
 | P6, `CreatureFrom` does not read `FloorRealityRow` | the sight test fails on its one assertion; nothing else fails |
 
@@ -136,6 +136,11 @@ file, and alone it had never included the enemy's header, which the unity file h
 existing tests at its line 800 and after failed with the new ones. It includes `Character/CataclysmEnemyCharacter.h`
 now. The second: `Build: Succeeded - 5 actions, 1 file compiled: CataclysmSaveLoadTests.cpp`. No warning in a changed
 file in either. Every other changed file was compiled alone in the first, without error.
+
+Rebased onto `3d29e5b3f` (#2633, the simulation and `CataclysmEnemyScore.h`; no Unreal test): `Build: Succeeded - 36
+actions, 33 files compiled`. Python of record there: 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks
+passed!`. Then `BuildFloor`'s condition was put on one line of its own (`bThatArenaStands`), so P2's break is one line:
+`Build: Succeeded - 9 actions, 6 files compiled`, `CataclysmDungeonGameMode.cpp` among them. No behaviour changed.
 
 ---
 

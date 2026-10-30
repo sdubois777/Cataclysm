@@ -1559,8 +1559,8 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// THE SEED ASKED ONCE, because a negative `Cataclysm.DungeonSeed` reads the clock.
 	const int32 SeedNow = ChooseSeedForThisFloor();
 	const FIntVector ArenaNow(SeedNow, FloorBrief.CarvedAsFloorNumber, static_cast<int32>(FloorBrief.Layout));
-	bKeptTheArena = FloorBrief.bSameArenaAsLastFloor && CurrentFloor->IsBuilt() && BuiltArena.IsSet()
-		&& BuiltArena.GetValue() == ArenaNow;
+	const bool bThatArenaStands = BuiltArena.IsSet() && BuiltArena.GetValue() == ArenaNow;
+	bKeptTheArena = FloorBrief.bSameArenaAsLastFloor && CurrentFloor->IsBuilt() && bThatArenaStands;
 	if (bKeptTheArena)
 	{
 		return CurrentFloor;
