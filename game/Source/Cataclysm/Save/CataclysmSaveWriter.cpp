@@ -75,6 +75,12 @@ void UCataclysmSaveWriter::BeginRun(const FGuid& InRunId, const FGuid& InCharact
 		*CharacterId.ToString(EGuidFormats::Digits));
 }
 
+void UCataclysmSaveWriter::AdoptLoaded(UCataclysmRunSave* Run, UCataclysmCharacterSave* Character)
+{
+	LastRun = Run;
+	LastCharacter = Character;
+}
+
 void UCataclysmSaveWriter::SetFloor(FName InDungeon, int32 InFloor, bool bInOnTheDarkFloor,
 									int32 InDarkFloorFellFrom)
 {
@@ -180,9 +186,12 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	// be replaced by the next before reaching the disk. The state the last one
 	// writes is the state all four would have written, because the gather runs
 	// after all of them have died.
-	const bool bMustWriteNow =
-		UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds(Trigger);
-	if (!bMustWriteNow && LastRunWriteFrame == GFrameCounter && StartedCount > 0)
+	// A DEATH, AND THE PROCESSING OF ONE, ARE WRITTEN WHATEVER ELSE WROTE IN THE SAME FRAME. The processing write
+	// exists to replace the record of an unpaid death with the paid one, and leaving the dungeon on the way can raise
+	// another trigger in that frame; skipping it would leave the unpaid death on disk. Issue #753, the start-up step.
+	const bool bWritesWhateverElseWroteThisFrame =
+		UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(Trigger);
+	if (!bWritesWhateverElseWroteThisFrame && LastRunWriteFrame == GFrameCounter && StartedCount > 0)
 	{
 		return false;
 	}
@@ -286,6 +295,9 @@ bool UCataclysmSaveWriter::WriteTheCharacterRecord(ECataclysmSaveTrigger Trigger
 
 	LastCharacter->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
 	LastCharacter->CharacterId = CharacterId;
+
+	// AND THE RUN IT IS IN, which is how a load finds the run's slot. Issue #753, the start-up step.
+	LastCharacter->CurrentRunId = RunId;
 
 	if (!FCataclysmSaveGather::CharacterFrom(*Character, *LastCharacter))
 	{

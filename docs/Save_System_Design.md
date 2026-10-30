@@ -9,12 +9,13 @@ committed example save files as its test, the clock and the write triggers,
 and reading a live floor into a record and putting it back. Issues #529, #750
 and #751.
 
-**What is NOT built is the choosing half.** Nothing reads a save back at
-start-up, because nothing decides between starting a new run and continuing
-one -- there is no such screen and no such design. `ACataclysmGameMode` begins
-a fresh run every session, so the files the game writes are written and never
-read. **Everything below describes a save system that saves and does not yet
-load.**
+**Of the choosing half, only a console command is built.** Since 2026-10-30,
+`Cataclysm.LoadCharacter <character id>` (`FCataclysmSaveLoad`) reads a
+character and the run it names back into the running game (#753). There is
+still no new-game flow, no continue flow and no character select screen (#49);
+a run saved inside an empire dungeon is refused until loading inside one is
+built; and `ACataclysmGameMode` still begins a fresh run every session, which
+the command then replaces.
 
 | Section | Built? |
 | :-- | :-- |
@@ -22,7 +23,7 @@ load.**
 | 3, partitioning | Built. `UCataclysmSavePartition` |
 | 4, storage format | Built. `FCataclysmSaveStorage` |
 | 5, versioning and migration | Built. `FCataclysmSaveMigration`, and `game/Tests/SaveFixtures/` |
-| 6, when a save is written | Built. `UCataclysmSaveWriter` holds the clock and the triggers, `FCataclysmSaveGather` reads a floor and `FCataclysmSaveApply` puts one back. **Nothing reads a save back**, because nothing chooses between starting a run and continuing one |
+| 6, when a save is written | Built. `UCataclysmSaveWriter` holds the clock and the triggers, `FCataclysmSaveGather` reads a floor and `FCataclysmSaveApply` puts one back. **Reading back** is `FCataclysmSaveLoad`, reached only by the console command `Cataclysm.LoadCharacter`; nothing chooses a run at start-up yet |
 
 ---
 
@@ -406,6 +407,7 @@ threshold are tuning constants and only playing settles them.**
 | Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds |
 | An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
 | The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
+| A death having been paid for | `ACataclysmPlayerCharacter::Revive`, last: after the dungeon is ended, the death's days are charged and the character stands. The run record only, asynchronously. Since 2026-10-30 (#753) |
 
 **The run record is written at most once a frame**, unless it is a death.
 Several creatures dying together raise several triggers in one frame, and each
@@ -422,6 +424,17 @@ The one rule that cannot be relaxed. For a Hardcore character, death is the even
 this whole feature exists to make stick, so it is written in the same frame the
 health reaches zero, through the synchronous write, before the death is otherwise
 processed. Everything else may be written asynchronously.
+
+**Paying for a death is written too, and it is an ordinary write.**
+`ACataclysmPlayerCharacter::Revive` raises `DeathProcessed` once the dungeon is
+ended, the death's days are charged and the character stands, so the record on
+disk stops holding a death that has been paid for. Without it a crash before the
+next clock write would leave the unpaid death on disk, and a load, which runs the
+death again from such a record, would charge it a second time. It is
+asynchronous, like every write but the death's: the rule above is about the
+death itself, and this write only closes the gap after the penalty. Like the
+death, it is written even when another write took the run record in the same
+frame. Decided 2026-10-30 (#753).
 
 ### Writing must not stall the frame
 

@@ -223,8 +223,8 @@ public:
 
 	/**
 	 * Put a saved lifetime count back, a negative one as nought. Issue #1833.
-	 * Nothing loads a save yet (#753); this is here for when something does,
-	 * as `SetLevelAndExperience` is.
+	 * `FCataclysmSaveApply::CharacterInto` calls it when a character is loaded
+	 * (#753), as it does `SetLevelAndExperience`.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Kills")
 	void SetLifetimeKills(int32 Kills);
@@ -540,6 +540,9 @@ public:
 	 */
 	void RestoreSpentAttributePoints(const FCataclysmAttributePoints& Points);
 
+	/** Puts the saved kills of this run back exactly, for a save restore. Issue #753, the start-up step. */
+	void RestoreRunKills(int32 Kills);
+
 	/** Which trees this character can spend in, from the damage types its worn weapons carry. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	TArray<FString> ReachableTrees() const;
@@ -759,7 +762,7 @@ protected:
 
 	/**
 	 * See `GetSkillAssignment`. Issue #837 layer 3. Written by `AssignSkill` and `ClearSkillChoice` and by nothing
-	 * else; nothing loads a save into it yet (#753).
+	 * else; a loaded save reaches it through `AssignSkill` (#753).
 	 *
 	 * REPLICATED, because the client's screen of layer 4 draws the keys from it.
 	 */

@@ -286,7 +286,7 @@ struct CATACLYSM_API FCataclysmItem
 	 *
 	 * SET ONLY BY `ACataclysmPlayerCharacter::GiveStartingWeapon` AND `ApplyCreationChoice`. False on every drop and
 	 * every item built elsewhere. SAVED WITH THE ITEM; a field with a default is not a schema version bump, and a file
-	 * without it reads as false. Nothing loads a save yet (#753).
+	 * without it reads as false. `Cataclysm.LoadCharacter` loads a save since 2026-10-30 (#753).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	bool bMadeAtCreation = false;

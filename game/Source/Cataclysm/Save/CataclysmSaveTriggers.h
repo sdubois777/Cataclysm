@@ -57,6 +57,20 @@ enum class ECataclysmSaveTrigger : uint8
 	 * It exists so that the rule below has something to be a rule about.
 	 */
 	AccountChanged = 7,
+
+	/**
+	 * A death has been paid for: the dungeon ended, the days charged, and the character stood back up. Issue #753,
+	 * the start-up step, ruled 2026-10-30.
+	 *
+	 * WHY IT EXISTS. The death write above leaves a record holding the character dead, and a load runs the death
+	 * again from it, which is right until the death has been paid for. Without this the record would keep the
+	 * unpaid death until the next clock write, and a crash in that gap would charge the death twice on load.
+	 * `ACataclysmPlayerCharacter::Revive` raises it last.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, OF THE RUN RECORD ONLY. Processing a death changes nothing the character record
+	 * holds: the days are the run's, and the health is in the run record's floor placement.
+	 */
+	DeathProcessed = 8,
 };
 
 /**
@@ -119,6 +133,16 @@ public:
 	 * character as well as the floor it fell on.
 	 */
 	static bool WritesTheCharacterRecord(ECataclysmSaveTrigger Trigger);
+
+	/**
+	 * Whether this trigger writes the run record even when another write already wrote it in the same frame.
+	 *
+	 * THE DEATH AND THE PROCESSING OF ONE. The run record is otherwise written at most once a frame, which is right
+	 * when several creatures die together. A death must be written whatever else happened; the processing write must
+	 * replace the unpaid death on disk, and a trigger raised on the way out of the dungeon in the same frame would
+	 * otherwise stop it. Issue #753, the start-up step.
+	 */
+	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 
 	/** Whether enough time has passed for the clock to write again. */
 	static bool ClockHasElapsed(float SecondsSinceLastWrite, float Interval);

@@ -31,10 +31,9 @@ struct FCataclysmSavedFloor;
  * refuses an empty slot name on purpose, because writing to one would put every
  * character in the game into a single shared file.
  *
- * WHAT IS DELIBERATELY NOT HERE. Loading. Nothing reads a save back at start-up,
- * because nothing chooses between starting a new run and continuing one -- there
- * is no such screen and no such design. The storage layer can read a record
- * today; what is missing is whoever decides which one.
+ * WHAT IS DELIBERATELY NOT HERE. Loading. `FCataclysmSaveLoad` reads a character
+ * and its run back and hands both records here through `AdoptLoaded`, so the
+ * writing goes on into the same slots. Issue #753, the start-up step.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmSaveWriter : public UTickableWorldSubsystem
@@ -61,16 +60,30 @@ public:
 	 * Say which run and which character this session is playing, and where they
 	 * are.
 	 *
-	 * NOTHING BUT THE GAME MODE CALLS THIS, and what it passes is a run started
-	 * fresh each session. **There is no new-game or continue flow**, so a run
-	 * begun here is written and never read back. That is the honest state of it:
-	 * the writing half of the save system is built and the choosing half is not.
+	 * THE GAME MODE CALLS THIS with a run started fresh each session, and
+	 * `FCataclysmSaveLoad` calls it again with a loaded character's identifiers,
+	 * so the writing goes on into the slots the load came from (#753). **There is
+	 * no new-game or continue flow yet**: the console command
+	 * `Cataclysm.LoadCharacter` is the only way a save is read back.
 	 */
 	void BeginRun(const FGuid& InRunId, const FGuid& InCharacterId,
 				  FName InDungeon, int32 InFloor);
 
 	/** Whether a run has been begun, so there is somewhere to write. */
 	bool IsWriting() const { return RunId.IsValid() && CharacterId.IsValid(); }
+
+	/**
+	 * Start every later write from these records rather than from fresh ones. Issue #753, the start-up step.
+	 *
+	 * WHY A LOAD NEEDS IT. Each write fills only the fields the game holds and leaves the rest of the record as it
+	 * was. A fresh record would write the character's name, partition, residue and stash as empty into the slot the
+	 * load came from. CALL IT AFTER `BeginRun`. A null run record is taken as given: the next write starts a fresh one.
+	 */
+	void AdoptLoaded(UCataclysmRunSave* Run, UCataclysmCharacterSave* Character);
+
+	/** The dungeon name and the floor number the writer holds, which a load compares with the record's floor. */
+	FName HoldsTheDungeon() const { return Dungeon; }
+	int32 HoldsTheFloor() const { return Floor; }
 
 	/**
 	 * Something happened that the design says is worth writing for.
@@ -141,6 +154,9 @@ public:
 	/** The run record as it was last built. Null until something has been written. */
 	const UCataclysmRunSave* LastRunRecord() const { return LastRun; }
 
+	/** The character record as it was last built or adopted. Null until then. */
+	const UCataclysmCharacterSave* LastCharacterRecord() const { return LastCharacter; }
+
 	//~ Which slots it writes to.
 
 	FString RunSlotName() const;
@@ -210,8 +226,11 @@ private:
 	 * those writes but the last would be overwritten by the next before it
 	 * reached the disk.
 	 *
-	 * A SYNCHRONOUS WRITE IGNORES IT. A death must be written whatever else
-	 * happened in the frame, which is the one rule section 6 does not relax.
+	 * A DEATH, AND THE PROCESSING OF ONE, IGNORE IT:
+	 * `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`. A death
+	 * must be written whatever else happened in the frame, which is the one rule
+	 * section 6 does not relax, and the write after it is paid for must replace
+	 * the unpaid death on disk (#753).
 	 */
 	uint64 LastRunWriteFrame = 0;
 

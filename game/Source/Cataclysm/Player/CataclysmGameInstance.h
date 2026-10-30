@@ -32,9 +32,9 @@ class UCataclysmEmpireRun;
  *   - **It does not advance the day by itself.** Nothing does. The day moves
  *     when a console command says so, and eventually when the player finishes a
  *     dungeon or spends days at the forge.
- *   - **It does not load or save a run.** `UCataclysmRunSave` carries an
- *     `int32 Day` that nothing computes, and the empire graph is in no save
- *     record at all.
+ *   - **It does not load or save a run itself.** The save writer reads the
+ *     run from here, and `FCataclysmSaveLoad` puts a loaded one into
+ *     `EmpireRun` (#753).
  *   - **It does nothing when the run is lost.** The Cataclysm reaching the
  *     Pillar opens the Last Stand, which is issue #43.
  */
