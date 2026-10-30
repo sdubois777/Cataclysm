@@ -60535,15 +60535,17 @@ bool FCataclysmCorruptedStalkerBuildTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	// The ruled tables' ends, and held there outside 1 to 8.
+	// The ruled tables' ends, and held there outside 1 to 8. RE-FITTED BY ISSUE #1569: the Boss the tables are fitted
+	// against is now built as the game builds a floor creature (relief, minimum, damage scaled by the tier), so the
+	// derived numbers moved -- health 1.33 to 1.15 at tier 8, damage 1.12 to 0.22 at tier 1 and 3.68 to 2.97 at tier 8.
 	TestEqual(TEXT("the health multiplier is 0.49 at tier 1"), Effects::CorruptedStalkerHealthMultiplier(1), 0.49f,
 			  0.0001f);
-	TestEqual(TEXT("and 1.33 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.33f, 0.0001f);
-	TestEqual(TEXT("the damage multiplier is 1.12 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 1.12f,
+	TestEqual(TEXT("and 1.15 at tier 8"), Effects::CorruptedStalkerHealthMultiplier(8), 1.15f, 0.0001f);
+	TestEqual(TEXT("the damage multiplier is 0.22 at tier 1"), Effects::CorruptedStalkerDamageMultiplier(1), 0.22f,
 			  0.0001f);
-	TestEqual(TEXT("and 3.68 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 3.68f, 0.0001f);
-	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 1.12f, 0.0001f);
-	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.33f, 0.0001f);
+	TestEqual(TEXT("and 2.97 at tier 8"), Effects::CorruptedStalkerDamageMultiplier(8), 2.97f, 0.0001f);
+	TestEqual(TEXT("below tier 1, tier 1's"), Effects::CorruptedStalkerDamageMultiplier(0), 0.22f, 0.0001f);
+	TestEqual(TEXT("above tier 8, tier 8's"), Effects::CorruptedStalkerHealthMultiplier(9), 1.15f, 0.0001f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
