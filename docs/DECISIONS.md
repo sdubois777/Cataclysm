@@ -198,7 +198,12 @@ named constants and their comment, read by nothing in the game); `sim/tests/test
 - **THE CAUSE IS THE EXPLORER TREE'S DEPTH, NOT THE TIER'S ENEMIES.** `TREE_EXPLORER_AS_DESIGNED` adds 20 floors a dungeon for each active Cataclysm, and the active count is the
   tier, so the relief that player needs grows about 0.13 tier widths a tier; the no-tree player needs none at any
   tier. THE DEPTH FINDING below has the table.
-- **WHAT THE RELIEF DOES AND DOES NOT DO.** Recorded with the figures, in the commit after the guard proof.
+- **WHAT THE RELIEF DOES AND DOES NOT DO.** **THE TARGET IS MET AT EVERY TIER 4 TO 8, AND THE INVESTED EXPLORER STILL ALMOST NEVER WINS ABOVE TIER 4.** With the
+  ruled relief and the player at the bottom of the tier, the "nothing survivable" idle of the fully invested Explorer is
+  0.0% at tier 4 (68.2% and 68.3% without) and at most 0.1% at tiers 5 to 8 (50.3% to 62.7% without). It wins 1.3% and
+  1.0% of tier-4 campaigns at that start and 6.6% and 7.1% at the shipped 0.35, and 0.2% or less at tiers 5 to 8. Cities
+  lost barely move. The no-tree player's wins rise at tier 4 (3.8% and 5.3% become 8.6%, at 0.0) and change by about a
+  point or less at tiers 5 to 8. Entering dungeons is what the target asked for; winning at tiers 5 to 8 is not reached.
 - **`power_start_frac` STAYS 0.35**, the coordinating session's ruling of 2026-10-29. The target is defined at the
   design's arrival point, 0.0, so every row below is reported at both.
 - **NO SWEEP WAS RUN.** `experiments.py`'s figures at tiers 4 to 8 move with this change and were not re-measured.
@@ -262,7 +267,74 @@ game's copy, and the game following in its own change.
 
 ### MEASURED FOR THE OWNER
 
-Recorded in the commit after the guard proof.
+Measured 2026-10-29 at this branch's `3d510ce51` (the relief code; tests and documents after it change no simulation
+code), in a clean worktree. Each world is `analyse_surge_cadence.py`'s `base_config` (the shipped cadence: 12 opening
+dungeons, then 8 every 90 days; that script's escalation 0.10, craft gain 0.04 and resolve-floor ratio 2.0) at the
+tier and tree shown, with `power_start_frac` as shown, run with `triage` through that script's `_Ledger` and
+`ledger_policy`. "None" sets both relief fields to 0; the relief column otherwise is what `TuningConfig` ships on this
+branch. **Tiers 4 and 5: 2,000 campaigns in two blocks (seeds 0 to 999, 1,000 to 1,999). Tiers 6 to 8: shortened to
+1,000 in two blocks of 500 (seeds 0 to 499, 500 to 999)**, to finish before the next build window. Two figures with a
+slash are the two blocks; one figure is both. Shares are of days survived. "--" means no idle at all.
+
+`TREE_EXPLORER_AS_DESIGNED`:
+
+| Tier | Start | Relief | Idle (empty / nothing survivable / declined) | Forge | In a dungeon | Cities lost | Earned opened | Won |
+| --: | :-- | :-- | :-- | --: | --: | --: | --: | --: |
+| 4 | 0.0 | none | 68.2 / 68.3% (0.0 / all / 0.0) | 0.0% | 31.6 / 31.5% | 15.64 / 15.98 | 0.0% | 0.0% |
+| 4 | 0.0 | 0.45 | 0.0% (--) | 3.9% | 87.6 / 87.5% | 14.85 / 14.91 | 7.8 / 9.0% | 1.3 / 1.0% |
+| 4 | 0.35 | none | 35.8 / 34.1% (0.0 / all / 0.0) | 2.1 / 2.2% | 58.1 / 59.4% | 15.24 / 15.51 | 2.6 / 2.0% | 0.1 / 0.2% |
+| 4 | 0.35 | 0.45 | 0.0% (--) | 2.6% | 88.8% | 14.43 / 14.53 | 29.0 / 29.2% | 6.6 / 7.1% |
+| 5 | 0.0 | none | 62.7 / 62.1% (0.0 / all / 0.0) | 0.0% | 37.1 / 37.7% | 17.30 / 16.96 | 0.0% | 0.0% |
+| 5 | 0.0 | 0.58 | 0.0 / 0.1% (0.0 / all / 0.0) | 3.1 / 3.2% | 90.5 / 90.3% | 16.86 / 16.69 | 0.3 / 0.1% | 0.1% |
+| 5 | 0.35 | none | 62.7 / 62.1% (0.0 / all / 0.0) | 0.0% | 37.1 / 37.7% | 17.30 / 16.96 | 0.0% | 0.0% |
+| 5 | 0.35 | 0.58 | 0.0% (--) | 1.0 / 0.9% | 92.7 / 92.8% | 17.50 / 17.64 | 1.1 / 0.9% | 0.2 / 0.1% |
+| 6 | 0.0 | none | 57.3 / 57.7% (0.0 / all / 0.0) | 0.0% | 42.5 / 42.1% | 18.09 / 18.36 | 0.0% | 0.0% |
+| 6 | 0.0 | 0.71 | 0.0% (--) | 0.4 / 0.7% | 94.4 / 94.0% | 18.32 / 18.37 | 0.0% | 0.0% |
+| 6 | 0.35 | none | 57.3 / 57.7% (0.0 / all / 0.0) | 0.0% | 42.5 / 42.1% | 18.09 / 18.36 | 0.0% | 0.0% |
+| 6 | 0.35 | 0.71 | 0.0% (--) | 0.4 / 0.5% | 94.6% | 18.98 / 19.15 | 0.2 / 0.0% | 0.0% |
+| 7 | 0.0 | none | 53.6 / 53.8% (0.0 / all / 0.0) | 0.0% | 46.2 / 45.9% | 19.47 / 19.59 | 0.0% | 0.0% |
+| 7 | 0.0 | 0.84 | 0.1 / 0.0% (0.0 / all / 0.0) | 0.4 / 0.6% | 95.1% | 19.95 / 19.73 | 0.0% | 0.0% |
+| 7 | 0.35 | none | 53.6 / 53.8% (0.0 / all / 0.0) | 0.0% | 46.2 / 45.9% | 19.47 / 19.59 | 0.0% | 0.0% |
+| 7 | 0.35 | 0.84 | 0.0% (--) | 0.2 / 0.4% | 95.9 / 95.7% | 20.22 / 19.98 | 0.0% | 0.0% |
+| 8 | 0.0 | none | 50.3 / 50.4% (0.0 / all / 0.0) | 0.0% | 49.5 / 49.4% | 20.75 / 20.60 | 0.0% | 0.0% |
+| 8 | 0.0 | 0.97 | 0.0% (--) | 0.3% | 96.1 / 96.0% | 21.01 / 20.86 | 0.0% | 0.0% |
+| 8 | 0.35 | none | 50.3 / 50.4% (0.0 / all / 0.0) | 0.0% | 49.5 / 49.4% | 20.75 / 20.60 | 0.0% | 0.0% |
+| 8 | 0.35 | 0.97 | 0.0% (--) | 0.2 / 0.1% | 96.7 / 96.6% | 21.29 / 21.23 | 0.0% | 0.0% |
+
+No tree:
+
+| Tier | Start | Relief | Idle (empty / nothing survivable / declined) | Forge | In a dungeon | Cities lost | Earned opened | Won |
+| --: | :-- | :-- | :-- | --: | --: | --: | --: | --: |
+| 4 | 0.0 | none | 0.0% (--) | 0.4% | 93.5% | 21.11 / 21.02 | 23.9 / 25.6% | 3.8 / 5.3% |
+| 4 | 0.0 | 0.45 | 0.0% (--) | 0.4 / 0.3% | 94.5 / 94.4% | 20.39 / 20.31 | 31.3 / 33.4% | 8.6% |
+| 4 | 0.35 | none | 0.0% (--) | 0.4 / 0.3% | 94.1% | 20.55 | 30.1 / 29.7% | 5.3 / 7.0% |
+| 4 | 0.35 | 0.45 | 0.0% (--) | 0.4% | 95.0% | 19.86 / 19.97 | 36.1 / 36.7% | 12.1 / 13.3% |
+| 5 | 0.0 | none | 0.0% (--) | 0.1 / 0.2% | 94.3% | 23.80 / 23.72 | 1.1 / 1.5% | 0.2 / 0.4% |
+| 5 | 0.0 | 0.58 | 0.0% (--) | 0.2% | 95.3 / 95.4% | 23.79 / 23.74 | 2.7 / 3.5% | 0.6 / 0.9% |
+| 5 | 0.35 | none | 0.0% (--) | 0.1 / 0.2% | 94.8% | 23.82 / 23.75 | 1.7 / 2.1% | 0.4 / 0.6% |
+| 5 | 0.35 | 0.58 | 0.0% (--) | 0.2% | 95.8% | 23.75 / 23.64 | 3.0 / 3.9% | 1.1 / 2.0% |
+| 6 | 0.0 | none | 0.0% (--) | 0.1% | 94.6% | 23.98 / 23.97 | 0.4 / 0.8% | 0.2 / 0.4% |
+| 6 | 0.0 | 0.71 | 0.0% (--) | 0.1% | 95.7 / 95.8% | 23.94 / 23.89 | 2.0 / 1.8% | 1.2 / 0.8% |
+| 6 | 0.35 | none | 0.0% (--) | 0.1% | 95.1% | 23.93 / 23.96 | 1.4% | 0.4 / 0.2% |
+| 6 | 0.35 | 0.71 | 0.0% (--) | 0.1% | 96.2 / 96.3% | 23.95 / 23.92 | 2.2 / 1.6% | 1.4 / 0.8% |
+| 7 | 0.0 | none | 0.0% (--) | 0.1% | 94.8% | 24.05 / 24.04 | 0.0% | 0.0% |
+| 7 | 0.0 | 0.84 | 0.0% (--) | 0.0 / 0.1% | 96.2% | 24.04 / 24.05 | 0.0% | 0.2 / 0.0% |
+| 7 | 0.35 | none | 0.0% (--) | 0.0% | 95.4 / 95.3% | 24.05 / 24.03 | 0.0% | 0.0 / 0.2% |
+| 7 | 0.35 | 0.84 | 0.0% (--) | 0.0 / 0.1% | 96.6% | 24.03 / 24.04 | 0.0% | 0.2 / 0.0% |
+| 8 | 0.0 | none | 0.0% (--) | 0.0% | 95.0% | 24.07 / 24.04 | 0.0% | 0.0% |
+| 8 | 0.0 | 0.97 | 0.0% (--) | 0.0 / 0.1% | 96.6 / 96.5% | 24.08 / 24.01 | 0.0% | 0.2 / 0.0% |
+| 8 | 0.35 | none | 0.0% (--) | 0.0% | 95.5% | 24.05 / 24.02 | 0.0% | 0.0 / 0.2% |
+| 8 | 0.35 | 0.97 | 0.0% (--) | 0.0 / 0.1% | 97.0 / 96.9% | 24.08 / 24.02 | 0.0% | 0.0% |
+
+Read with these facts:
+
+- At tiers 5 to 8 with no relief the Explorer rows at 0.0 and 0.35 are identical to every digit: in both no dungeon is
+  ever safe, so the player never clears one and never gains power. The tier-4 Explorer rows at 0.35 without relief
+  reproduce the #1425 measurement of 2026-10-29 to every digit, and the tier-4 rows at 0.0 with 0.45 reproduce the
+  proposal's wrapped measurement of the same relief.
+- At tiers 7 and 8 with no tree, one block in several rows counts 0.2% of campaigns won while the earned Cataclysm
+  dungeon opened in 0.0%. It appears with and without the relief, so it is the existing counting and not this change;
+  it is not explained here.
 
 ### THE TESTS
 
@@ -303,6 +375,9 @@ named_failures, exactly two:
 
 - `sim/tests/test_tier_content_relief.py::test_a_tier_four_dungeon_unsafe_without_the_relief_is_safe_with_it`
 - `sim/tests/test_tier_content_relief.py::test_the_relief_is_the_players_power_raised_by_that_many_tier_widths`
+
+Run 2026-10-29 in a git-archive copy of `a1c0d5007`, the commit that registered it. Printed: "PROVED: 2 failed, 6
+passed in 0.14s | restored: 8 passed in 0.06s". named_failures, exactly the two registered.
 
 ### EVIDENCE
 
