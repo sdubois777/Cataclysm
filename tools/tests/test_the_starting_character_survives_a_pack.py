@@ -443,3 +443,35 @@ def test_no_class_survives_that_fight_at_level_one(
         f"{sorted(set(class_lines) - set(level_one_losers))}. On 2026-08-24 "
         f"none of them did. Issue #806 records that as unfixed, so if it is "
         f"fixed now, update the issue and this test.")
+
+
+#: THE TARGET THE CREATURE DAMAGE SCALE WAS TUNED TO, ruled 2026-10-30 (issue #1569): the starting character beats a
+#: full pack of Common Imps, as the game builds them on each floor, on every floor of a 12-floor tier-1 Basic dungeon,
+#: with at least this share of its health left on the last floor.
+SCALED_PACK_FLOORS = 12
+SCALED_PACK_LEAST_HEALTH_LEFT = 0.10
+
+
+def test_the_starting_character_beats_a_pack_of_the_creatures_the_game_builds_on_every_tier_one_floor(
+        constants, class_lines, slots, weapon) -> None:
+    """THE GUARD ON THE DAMAGE SCALE. The game builds a creature from the design's enemy score on its floor, with its
+    damage multiplied by `enemy_stats.damage_scale` (0.20 at tier 1). The project owner chose "Scale damage to a
+    target", and the coordinating session set this target: a fresh character survives a full 10-Imp pack on every floor
+    of a typical tier-1 dungeon, trading blows, with at least 10% of its health left on the last floor. Unscaled, the
+    same character died from floor 6. The sandbox's fixed Imp above is not what a dungeon floor builds."""
+    from cataclysm_sim import enemy_stats as es
+
+    class_name = constants["starting_class"]
+    level = int(constants["default_level"])
+    for floor in range(1, SCALED_PACK_FLOORS + 1):
+        imp = es.strength_on_floor("Common", 1, "Basic", "None", SCALED_PACK_FLOORS, floor, kind="Imp")
+        result = fight(class_name, level=level, lines=class_lines, slots=slots, weapon=weapon,
+                       constants=dict(constants, imp_health=str(imp.health), imp_damage=str(imp.damage_per_hit)))
+        assert result["won"] is True, (
+            f"a {class_name} at level {level} loses to {constants['imp_count']} Imps as the game builds them on floor "
+            f"{floor} of a {SCALED_PACK_FLOORS}-floor tier-1 dungeon (health {imp.health:.1f}, damage {imp.damage_per_hit:.2f} "
+            f"a hit). The damage scale was tuned so this fight is won on every floor. Issue #1569.")
+        if floor == SCALED_PACK_FLOORS:
+            assert result["health_left"] >= SCALED_PACK_LEAST_HEALTH_LEFT * result["max_health"], (
+                f"the last floor is won with {result['health_left']:.0f} of {result['max_health']:.0f} health, under the "
+                f"{SCALED_PACK_LEAST_HEALTH_LEFT:.0%} the damage scale was tuned to leave. Issue #1569.")

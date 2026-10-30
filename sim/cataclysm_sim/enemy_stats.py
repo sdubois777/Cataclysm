@@ -809,6 +809,83 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 
 
 # --------------------------------------------------------------------------
+# What a creature in the game is built with: the design's score, eased
+# --------------------------------------------------------------------------
+#
+# ISSUE #1569. The project owner, 2026-09-11: creature health and damage come from
+# the design's enemy score on each floor. Three rulings of 2026-10-30 shape what
+# the game builds from that score, and all three live here and in the game's copy
+# (`UCataclysmEnemyScore::StrengthScoreFor` and `UCataclysmEnemyStrength`), never
+# in `scoring.py`, which is a copy of another repository's file:
+#
+#   1. THE TIER RELIEF (#1425) is subtracted from the score. `TuningConfig.
+#      content_relief` tier widths: none at tier 1, 0.19 at tier 2 to 0.97 at 8.
+#   2. A MINIMUM: never less than the same creature scores on floor 1 of a
+#      12-floor dungeon of the same kind, after the relief. Without it the first
+#      floors of a deep dungeon score nothing -- depth tension is negative below
+#      the middle floor -- and their creatures had 1 health and 0 damage.
+#   3. DAMAGE IS SCALED BY THE TIER: x0.20 at tier 1, rising evenly to x1.00 at
+#      tier 8. The project owner, "Scale damage to a target" and then "Approve":
+#      a fresh starting character beats a full 10-Imp pack on every floor of a
+#      12-floor tier-1 Basic dungeon with at least 10% of its health left, and
+#      the tier 8 figures this module's damage constants were fitted to (issue
+#      #108) are unchanged.
+#
+# `stats_on_floor` ABOVE IS LEFT THE DESIGN'S FIGURE, deliberately. `affixes.py`
+# anchors every offensive number on a Common enemy's health from it, and the
+# relief exists to make tiers easier: re-deriving the player's damage from the
+# eased creature would take the ease straight back out. So the anchor stays the
+# design's creature and the game builds the eased one, from here.
+# `docs/DECISIONS.md`, 2026-10-30.
+
+#: Damage is multiplied by this at difficulty tier 1 ...
+DAMAGE_SCALE_AT_FIRST_TIER = 0.20
+#: ... rising evenly to one at the last tier.
+LAST_TIER = 8
+#: The minimum strength is what the creature scores on floor 1 of a dungeon this deep.
+MINIMUM_STRENGTH_REFERENCE_FLOORS = 12
+
+
+def damage_scale(tier: int) -> float:
+    """What a creature's damage is multiplied by at this difficulty tier: 0.20 at
+    tier 1, rising evenly to 1.00 at tier 8."""
+    tier = min(max(tier, 1), LAST_TIER)
+    return (DAMAGE_SCALE_AT_FIRST_TIER
+            + (1.0 - DAMAGE_SCALE_AT_FIRST_TIER) * (tier - 1) / (LAST_TIER - 1))
+
+
+def strength_score(rarity: str, tier: int, dungeon_type: str = "Basic",
+                   subtype: str = "None", total_floors: int = 50,
+                   floor: int | None = None,
+                   modifier_score: float = 0.0) -> float:
+    """The score the game builds a creature from: the design's score on this
+    floor less the tier relief, and never below the same creature on floor 1 of
+    a 12-floor dungeon of the same kind, nor below nothing."""
+    from .config import TuningConfig
+    floor = total_floors if floor is None else floor
+    relief = TuningConfig().content_relief(tier) * scoring.tier_width(tier)
+    here = scoring.enemy_scores(tier, dungeon_type, subtype, total_floors,
+                                floor, modifier_score)[rarity] - relief
+    least = scoring.enemy_scores(tier, dungeon_type, subtype,
+                                 MINIMUM_STRENGTH_REFERENCE_FLOORS, 1,
+                                 modifier_score)[rarity] - relief
+    return max(0.0, here, least)
+
+
+def strength_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
+                      subtype: str = "None", total_floors: int = 50,
+                      floor: int | None = None,
+                      modifier_score: float = 0.0,
+                      kind: Archetype | str = BASELINE) -> EnemyStats:
+    """The stat block the game builds for a creature on this floor: `stats_for`
+    at `strength_score`, with its damage multiplied by `damage_scale(tier)`."""
+    built = stats_for(rarity, strength_score(rarity, tier, dungeon_type, subtype,
+                                             total_floors, floor, modifier_score),
+                      kind, tier=tier)
+    return replace(built, damage_per_hit=built.damage_per_hit * damage_scale(tier))
+
+
+# --------------------------------------------------------------------------
 # The ceiling on what an enemy may stop
 # --------------------------------------------------------------------------
 

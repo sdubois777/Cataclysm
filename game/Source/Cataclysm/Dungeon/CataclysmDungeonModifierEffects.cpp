@@ -3308,10 +3308,12 @@ bool UCataclysmDungeonModifierEffects::CorruptedStalkerIsDue(float SecondsOnFloo
 
 namespace
 {
-	// TIERS 1 TO 8, RULED 2026-10-26. `sim/cataclysm_sim/fight.py` holds the same two tables and its test reads these
-	// back, so the two cannot drift apart in silence.
-	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.76f, 0.91f, 1.07f, 1.15f, 1.15f, 1.32f, 1.33f};
-	constexpr float CorruptedStalkerDamageMultipliers[8] = {1.12f, 2.12f, 2.76f, 3.04f, 3.08f, 2.95f, 3.32f, 3.68f};
+	// TIERS 1 TO 8, RULED 2026-10-26 AND RE-FITTED 2026-10-30. `sim/cataclysm_sim/fight.py` holds the same two tables and
+	// its test reads these back, so the two cannot drift apart in silence. The principle is unchanged -- the Stalker is as
+	// dangerous as a Boss on the same floor -- and the numbers follow the Boss the game now builds from the enemy score,
+	// eased by the tier relief and with damage scaled by the tier (issue #1569).
+	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.77f, 0.87f, 1.01f, 1.06f, 1.04f, 1.19f, 1.15f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.22f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
 }
 
 float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)
