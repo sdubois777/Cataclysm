@@ -12,10 +12,12 @@ and #751.
 **Of the choosing half, only a console command is built.** Since 2026-10-30,
 `Cataclysm.LoadCharacter <character id>` (`FCataclysmSaveLoad`) reads a
 character and the run it names back into the running game (#753). There is
-still no new-game flow, no continue flow and no character select screen (#49);
-a run saved inside an empire dungeon is refused until loading inside one is
-built; and `ACataclysmGameMode` still begins a fresh run every session, which
-the command then replaces.
+still no new-game flow, no continue flow and no character select screen (#49).
+A run saved inside an empire dungeon is loaded by entering the dungeon again at
+its floor, since the same day, and is refused where that cannot be done; the
+dungeon's and the floor's rule state is not restored yet (section 6). And
+`ACataclysmGameMode` still begins a fresh run every session, which the command
+then replaces.
 
 | Section | Built? |
 | :-- | :-- |
@@ -359,6 +361,7 @@ Decided 2026-08-20: **a neutral restart with the damage kept.**
 | Every creature that was alive, with the health it had. **A boss keeps every point taken off it** | How far through its attack cycle each creature was |
 | Each creature's rarity and its modifiers | Remaining durations on buffs and debuffs |
 | Items lying on the floor that were not picked up | The ability the character was casting |
+| The charges in each potion slot, and the drinks taken this walk, since 2026-10-30 | **The dungeon's and the floor's rule state, for now.** About 60 pieces, from the Corrupted Stalker's hunt to the Pact's curses and the Starvation curse's stacks: a load inside an empire dungeon builds the floor as a floor starting, with the creatures its rules raise placed fresh. Every one that carries a cost or a reward across floors must be saved, because quitting buys a breather and not a reset; #753's next step does it. Decided 2026-10-30 |
 
 **What a player gains by quitting mid-fight is a breather, not a reset.** They
 come back at the health they had, standing in front of a boss at the health it

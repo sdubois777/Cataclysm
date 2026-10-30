@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
@@ -149,26 +150,53 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	}
 
 	// 3. WHERE THE RUN WAS SAVED.
-	if (SavedRun)
+	ACataclysmDungeonGameMode* DungeonMode = nullptr;
+	if (SavedRun && SavedRun->CurrentDungeonId != INDEX_NONE)
 	{
-		// REQUIRED, NOT CONVENIENT. A death's days are charged only while the dungeon is entered, and nothing here
-		// enters one, so a character who died inside would stand up without paying. #753's next step enters it.
-		if (SavedRun->CurrentDungeonId != INDEX_NONE)
+		// INSIDE AN EMPIRE DUNGEON, WHICH IS ENTERED AGAIN AT ITS FLOOR. Issue #753, the dungeon step, ruled
+		// 2026-10-30. Entering is what makes a death there pay its days (`EndTheDungeonForADeath` charges nothing
+		// without `EmpireDungeonId`), so a run that cannot be entered again here is refused whole rather than loaded
+		// beside the dungeon.
+		const int32 SavedDungeon = SavedRun->CurrentDungeonId;
+		DungeonMode = ACataclysmDungeonGameMode::InWorld(&World);
+		if (!DungeonMode)
 		{
 			return Refused(FString::Printf(
-				TEXT("the run was saved inside empire dungeon %d, and loading inside a dungeon is not built yet: a "
-					 "character who died there would stand up without paying the death's days"),
-				SavedRun->CurrentDungeonId));
+				TEXT("the run was saved inside empire dungeon %d, and this level has no dungeon to enter it in: load "
+					 "it in a dungeon level, where Cataclysm.WalkDungeon works"), SavedDungeon));
 		}
-
-		if (SavedRun->Floor.IsOccupied()
-			&& (SavedRun->Floor.Dungeon != Writer->HoldsTheDungeon() || SavedRun->Floor.Floor != Writer->HoldsTheFloor()))
+		if (DungeonMode->EmpireDungeonId != INDEX_NONE)
 		{
 			return Refused(FString::Printf(
-				TEXT("the run was saved on floor %d of '%s', and this level is floor %d of '%s'"),
-				SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(), Writer->HoldsTheFloor(),
-				*Writer->HoldsTheDungeon().ToString()));
+				TEXT("the run was saved inside empire dungeon %d, and this level is walking dungeon %d: leave it "
+					 "first"), SavedDungeon, DungeonMode->EmpireDungeonId));
 		}
+		const FCataclysmDungeon* Saved = SavedRun->Dungeons.FindByPredicate(
+			[SavedDungeon](const FCataclysmDungeon& Each) { return Each.DungeonId == SavedDungeon; });
+		if (!Saved || SavedRun->Cities.Num() == 0)
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d, and the record holds no such dungeon on its map"),
+				SavedDungeon));
+		}
+		if (SavedRun->Floor.Dungeon != DungeonMode->DungeonName || SavedRun->Floor.Floor < 1
+			|| SavedRun->Floor.Floor > FMath::Max(1, Saved->Floors))
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d on floor %d of '%s', and this level's dungeon is "
+					 "'%s' and that dungeon has %d floors"),
+				SavedDungeon, SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(),
+				*DungeonMode->DungeonName.ToString(), Saved->Floors));
+		}
+	}
+	else if (SavedRun && SavedRun->Floor.IsOccupied()
+			 && (SavedRun->Floor.Dungeon != Writer->HoldsTheDungeon()
+				 || SavedRun->Floor.Floor != Writer->HoldsTheFloor()))
+	{
+		return Refused(FString::Printf(
+			TEXT("the run was saved on floor %d of '%s', and this level is floor %d of '%s'"),
+			SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(), Writer->HoldsTheFloor(),
+			*Writer->HoldsTheDungeon().ToString()));
 	}
 
 	// 4. THE EMPIRE, INTO AN OBJECT NOTHING HOLDS YET. A record saved with no empire run going holds no cities, and
@@ -206,9 +234,30 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		{
 			State->RestoreRunKills(SavedRun->RunKills);
 		}
-		if (SavedRun->Floor.IsOccupied())
+
+		// THE FLOOR WITHOUT ITS CHARACTERS: the placement goes back once, last, below. `FloorInto` places the
+		// record's characters too, and until 2026-10-30 this passed it the whole floor, so the character was placed
+		// here, before the writer was told the loaded run, and placed again below. A character saved dead then died
+		// here, and its death's write went to the slots the world began with rather than the loaded ones.
+		FCataclysmSavedFloor OnlyTheFloor = SavedRun->Floor;
+		OnlyTheFloor.Characters.Reset();
+
+		if (DungeonMode && RestoredEmpire)
 		{
-			Report.CreaturesRestored = FCataclysmSaveApply::FloorInto(World, SavedRun->Floor).Creatures;
+			// THE DUNGEON ENTERED AGAIN AT THE SAVED FLOOR, then the floor's creatures and drops put back onto what
+			// it built. Asked of nothing that can refuse: every refusal of `ResumeEmpireDungeon` is asked above.
+			if (!DungeonMode->ResumeEmpireDungeon(SavedRun->CurrentDungeonId, SavedRun->Floor.Floor,
+												  SavedRun->Floor.bOnTheDarkFloor, SavedRun->Floor.DarkFloorFellFrom))
+			{
+				UE_LOG(LogCataclysm, Error, TEXT("Cataclysm.LoadCharacter: dungeon %d could not be entered again at "
+												 "floor %d after every check for it had passed."),
+					   SavedRun->CurrentDungeonId, SavedRun->Floor.Floor);
+			}
+			Report.CreaturesRestored = FCataclysmSaveApply::DungeonFloorInto(*DungeonMode, OnlyTheFloor).Creatures;
+		}
+		else if (SavedRun->Floor.IsOccupied())
+		{
+			Report.CreaturesRestored = FCataclysmSaveApply::FloorInto(World, OnlyTheFloor).Creatures;
 		}
 	}
 	else
@@ -219,11 +268,17 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 								 static_cast<int32>(SavedCharacter->Partition.Lethality));
 	}
 
-	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS.
-	Writer->BeginRun(RunId, CharacterId, Writer->HoldsTheDungeon(), Writer->HoldsTheFloor());
+	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS, on the saved floor when there is one.
+	const bool bSavedFloor = SavedRun && SavedRun->Floor.IsOccupied();
+	Writer->BeginRun(RunId, CharacterId,
+					 bSavedFloor ? SavedRun->Floor.Dungeon : Writer->HoldsTheDungeon(),
+					 bSavedFloor ? SavedRun->Floor.Floor : Writer->HoldsTheFloor(),
+					 bSavedFloor && SavedRun->Floor.bOnTheDarkFloor,
+					 bSavedFloor ? SavedRun->Floor.DarkFloorFellFrom : 0);
 	Writer->AdoptLoaded(SavedRun, SavedCharacter);
 
-	// THE PLACEMENT LAST: a character saved at no health dies here, and its death's write goes to the slots above.
+	// THE PLACEMENT LAST, AND ONCE: a character saved at no health dies here, after the writer was told the loaded
+	// run, so its death's write goes to the loaded slots.
 	bool bPlaced = false;
 	if (SavedRun)
 	{

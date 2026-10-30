@@ -70,7 +70,10 @@ public:
 	 *                         kept, except deployed gadgets, which are destroyed.
 	 *                         False, the default, keeps the behaviour a save's
 	 *                         restore has always had.
+	 * @param bKeepTheRulesCreatures  true for a save's restore inside a dungeon: a creature the floor's rules raised
+	 *                                (`bRaisedByARule`) is kept, because the rebuilt floor placed it and the save
+	 *                                holds none. Read only when `bCarryFollowers` is false. Issue #753.
 	 * @return how many actors were destroyed
 	 */
-	static int32 ClearTheFloor(UWorld& World, bool bCarryFollowers = false);
+	static int32 ClearTheFloor(UWorld& World, bool bCarryFollowers = false, bool bKeepTheRulesCreatures = false);
 };

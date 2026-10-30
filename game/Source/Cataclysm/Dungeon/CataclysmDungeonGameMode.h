@@ -312,6 +312,26 @@ public:
 	bool EnterEmpireDungeon(int32 DungeonId);
 
 	/**
+	 * Walk again into a dungeon a saved run was inside, at the floor it was saved on. Issue #753, the dungeon step,
+	 * ruled 2026-10-30.
+	 *
+	 * WHAT `EnterEmpireDungeon` DOES AND THIS DOES NOT: leave a walk under way, refill the potions, tell the clock,
+	 * and charge floor 1's time. A loaded run already holds all four: the clock's dungeon, the day, the part day and
+	 * the days owed come back with the run record, and the potions with the placement. What both do is
+	 * `BindEmpireDungeon`, so the two cannot set the dungeon up differently.
+	 *
+	 * REFUSED, CHANGING NOTHING, with no run, while a walk is under way, when the dungeon is not on the map, or when
+	 * the floor is not one of its floors.
+	 *
+	 * THE WALK'S AND THE FLOOR'S RULE STATE IS NOT RESTORED: the floor is built as a floor starting, with the
+	 * creatures its rules raise placed fresh. The next step of #753 saves the rule state that carries across floors.
+	 *
+	 * @return whether the dungeon was entered
+	 */
+	bool ResumeEmpireDungeon(int32 DungeonId, int32 Floor, bool bOnTheDarkFloorSaved = false,
+							 int32 DarkFloorFellFromSaved = 0);
+
+	/**
 	 * Stop walking it without clearing it.
 	 *
 	 * ITS TIMER STARTS AGAIN and the dungeon stays on the map. That is what
@@ -3143,6 +3163,12 @@ public:
 	static bool DiedAsAFloorsBoss(const AActor* Died);
 
 private:
+	/**
+	 * Takes a dungeon of the map as the one being walked: its number, seed, depth, kind, bosses and modifiers.
+	 * `EnterEmpireDungeon` and `ResumeEmpireDungeon` both begin with it. Issue #753, the dungeon step.
+	 */
+	void BindEmpireDungeon(int32 DungeonId, const struct FCataclysmDungeon& Dungeon, class UCataclysmEmpireRun& Run);
+
 	/** Unstable Portal's mini-boss: an Abyssal Warden beside the stairs at the mini-boss rung. */
 	void RaiseTheUnstablePortalsWarden();
 

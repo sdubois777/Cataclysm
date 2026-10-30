@@ -14556,72 +14556,7 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 		return false;
 	}
 
-	// THE DUNGEON'S OWN NUMBERS, NOT THE SETTINGS'. `TotalFloors` and
-	// `DungeonSeed` were stand-ins for exactly these; this header used to say
-	// there was no dungeon object to take them from.
-	//
-	// THE SEED IS DERIVED FROM THE DUNGEON'S NUMBER rather than stored on it,
-	// because a dungeon is a strategy-layer record and how a floor is carved is
-	// not its business. Any two dungeons get different floors and one dungeon
-	// gets the same floors twice, which is all a seed has to do.
-	//
-	// FROM `FCataclysmDungeon::WalkSeed`, since 2026-10-22, the same number worked out where the empire can ask it
-	// too: an Ascendant's Edicts are drawn on a stream made from it.
-	EmpireDungeonId = DungeonId;
-	DungeonSeed = Dungeon->WalkSeed();
-	TotalFloors = FMath::Max(1, Dungeon->Floors);
-	DungeonType = Dungeon->Type;
-
-	// AND WHAT IT DOES DIFFERENTLY. `UCataclysmEnemyScore` reads this back off
-	// the game mode and adds the sub-type's weight to every creature on the
-	// floor, so a Sacrificial dungeon's enemies really are worth more than a
-	// plain one's. Until the surge scheduler rolled a sub-type this was left at
-	// whatever the settings said, which in a real run was always `None`.
-	DungeonSubType = Dungeon->SubType;
-
-	// AND HOW MANY BOSSES IT HOLDS. Issue #1466: one for every dungeon but a Fallen City, which holds one per dungeon
-	// that was standing on it when it fell, and `FCataclysmDungeonFloorRules::BossAtTheExit` spreads them down the
-	// floors. Until then the count was written to the save and read by nothing.
-	DungeonBosses = FMath::Max(1, Dungeon->Bosses);
-
-	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
-	// game mode and adds it to every creature on the floor, which is how a
-	// dungeon modifier makes a dungeon harder --
-	// `docs/Cataclysm_GDD_v2.md` section VIII. Until issue #41's modifier slice
-	// this was hard-zeroed in the score model itself.
-	//
-	// AND THE EDICT AN ASCENDANT LEFT ON ITS CITY, WHILE ITS 30 DAYS RUN, since 2026-10-22: every dungeon on that
-	// city carries it beyond its count and its score counts it. Read on entry, on the run's day now, so the walk
-	// carries what its city held the day it began. `UCataclysmEmpireRun::ModifierScoreCarriedBy` is the dungeon's
-	// own score when its city carries none.
-	DungeonModifierScore = Run->ModifierScoreCarriedBy(DungeonId);
-
-	// AND WHICH ONES THEY ARE, AND WHAT ELSE THIS DUNGEON COULD HAVE DRAWN.
-	// Both are needed by rules that decide a floor's modifiers rather than a
-	// dungeon's: a Volatile dungeon re-draws them for every floor and needs the
-	// pool, and the Unstable Dimensions modifier adds one per floor and needs to
-	// know whether the dungeon is carrying it. `FCataclysmDungeonFloorRules` is
-	// where both rules live. Issue #41.
-	//
-	// NARROWED ONCE, HERE, rather than on every floor.
-	// `UCataclysmEmpireRun::ModifierPool` is the whole 123-row table and
-	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
-	// change while the player is inside one dungeon.
-	DungeonModifiers = Run->ModifiersCarriedBy(DungeonId);
-	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
-		Run->ModifierPool, Run->ActiveCataclysms);
-
-	// AND EVERY ROW THAT DOES SOMETHING IN PLAY, OF ANY CATACLYSM, for Reality Twister, which draws "from any
-	// Cataclysm". Built and partly built: a partly built row still acts, and a row with no rule does nothing. Issues
-	// #1820 and #41.
-	DungeonEveryBuiltModifier.Reset();
-	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
-	{
-		if (UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt)
-		{
-			DungeonEveryBuiltModifier.Add(Row);
-		}
-	}
+	BindEmpireDungeon(DungeonId, *Dungeon, *Run);
 
 	// EVERY POTION SLOT IS FULL ON ENTERING A DUNGEON, and only here. Issue
 	// #806. Path of Exile refills flasks in town; this game's town is the
@@ -14661,6 +14596,104 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// `WalkDaysPerFloor`, which a city upgrade can have lowered.
 	SpendFloorTimeInTheEmpire();
 
+	return true;
+}
+
+void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCataclysmDungeon& Dungeon,
+												  UCataclysmEmpireRun& Run)
+{
+	// THE DUNGEON'S OWN NUMBERS, NOT THE SETTINGS'. `TotalFloors` and
+	// `DungeonSeed` were stand-ins for exactly these; this header used to say
+	// there was no dungeon object to take them from.
+	//
+	// THE SEED IS DERIVED FROM THE DUNGEON'S NUMBER rather than stored on it,
+	// because a dungeon is a strategy-layer record and how a floor is carved is
+	// not its business. Any two dungeons get different floors and one dungeon
+	// gets the same floors twice, which is all a seed has to do.
+	//
+	// FROM `FCataclysmDungeon::WalkSeed`, since 2026-10-22, the same number worked out where the empire can ask it
+	// too: an Ascendant's Edicts are drawn on a stream made from it.
+	EmpireDungeonId = DungeonId;
+	DungeonSeed = Dungeon.WalkSeed();
+	TotalFloors = FMath::Max(1, Dungeon.Floors);
+	DungeonType = Dungeon.Type;
+
+	// AND WHAT IT DOES DIFFERENTLY. `UCataclysmEnemyScore` reads this back off
+	// the game mode and adds the sub-type's weight to every creature on the
+	// floor, so a Sacrificial dungeon's enemies really are worth more than a
+	// plain one's. Until the surge scheduler rolled a sub-type this was left at
+	// whatever the settings said, which in a real run was always `None`.
+	DungeonSubType = Dungeon.SubType;
+
+	// AND HOW MANY BOSSES IT HOLDS. Issue #1466: one for every dungeon but a Fallen City, which holds one per dungeon
+	// that was standing on it when it fell, and `FCataclysmDungeonFloorRules::BossAtTheExit` spreads them down the
+	// floors. Until then the count was written to the save and read by nothing.
+	DungeonBosses = FMath::Max(1, Dungeon.Bosses);
+
+	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
+	// game mode and adds it to every creature on the floor, which is how a
+	// dungeon modifier makes a dungeon harder --
+	// `docs/Cataclysm_GDD_v2.md` section VIII. Until issue #41's modifier slice
+	// this was hard-zeroed in the score model itself.
+	//
+	// AND THE EDICT AN ASCENDANT LEFT ON ITS CITY, WHILE ITS 30 DAYS RUN, since 2026-10-22: every dungeon on that
+	// city carries it beyond its count and its score counts it. Read on entry, on the run's day now, so the walk
+	// carries what its city held the day it began. `UCataclysmEmpireRun::ModifierScoreCarriedBy` is the dungeon's
+	// own score when its city carries none.
+	DungeonModifierScore = Run.ModifierScoreCarriedBy(DungeonId);
+
+	// AND WHICH ONES THEY ARE, AND WHAT ELSE THIS DUNGEON COULD HAVE DRAWN.
+	// Both are needed by rules that decide a floor's modifiers rather than a
+	// dungeon's: a Volatile dungeon re-draws them for every floor and needs the
+	// pool, and the Unstable Dimensions modifier adds one per floor and needs to
+	// know whether the dungeon is carrying it. `FCataclysmDungeonFloorRules` is
+	// where both rules live. Issue #41.
+	//
+	// NARROWED ONCE, HERE, rather than on every floor.
+	// `UCataclysmEmpireRun::ModifierPool` is the whole 123-row table and
+	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
+	// change while the player is inside one dungeon.
+	DungeonModifiers = Run.ModifiersCarriedBy(DungeonId);
+	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
+		Run.ModifierPool, Run.ActiveCataclysms);
+
+	// AND EVERY ROW THAT DOES SOMETHING IN PLAY, OF ANY CATACLYSM, for Reality Twister, which draws "from any
+	// Cataclysm". Built and partly built: a partly built row still acts, and a row with no rule does nothing. Issues
+	// #1820 and #41.
+	DungeonEveryBuiltModifier.Reset();
+	for (const FCataclysmDungeonModifier& Row : Run.ModifierPool)
+	{
+		if (UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt)
+		{
+			DungeonEveryBuiltModifier.Add(Row);
+		}
+	}
+}
+
+bool ACataclysmDungeonGameMode::ResumeEmpireDungeon(int32 DungeonId, int32 Floor, bool bOnTheDarkFloorSaved,
+													int32 DarkFloorFellFromSaved)
+{
+	// REFUSED, CHANGING NOTHING, before anything is bound. A walk already under way is not left here, as entering
+	// leaves it: leaving runs the days that walk owes, and a load must not run any day the record has not.
+	UCataclysmEmpireRun* Run = EmpireRun();
+	if (!Run || EmpireDungeonId != INDEX_NONE)
+	{
+		return false;
+	}
+	const FCataclysmDungeon* Dungeon = Run->FindDungeon(DungeonId);
+	if (!Dungeon || Floor < 1 || Floor > FMath::Max(1, Dungeon->Floors))
+	{
+		return false;
+	}
+
+	BindEmpireDungeon(DungeonId, *Dungeon, *Run);
+
+	// THE SAVED FLOOR, AND THE DARK FLOOR WHEN IT WAS THAT, which builds the floor the seed gives it. NOT A REFILL,
+	// NOT `Clock->EnterDungeon` AND NOT A FLOOR'S TIME: the potions come back from the save with the placement, the
+	// run record put the clock's dungeon back, and its day, part day and days owed already hold every floor walked.
+	bOnTheDarkFloor = bOnTheDarkFloorSaved;
+	DarkFloorFellFrom = bOnTheDarkFloorSaved ? DarkFloorFellFromSaved : 0;
+	GoToFloor(Floor);
 	return true;
 }
 

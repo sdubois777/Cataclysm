@@ -54,7 +54,7 @@ namespace
 	}
 }
 
-int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers)
+int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers, bool bKeepTheRulesCreatures)
 {
 	int32 Destroyed = 0;
 
@@ -75,6 +75,27 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 		for (TActorIterator<ACataclysmMinion> It(&World); It; ++It)
 		{
 			if (IsValid(*It) && It->IsDeployable())
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (AActor* Actor : Doomed)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+				++Destroyed;
+			}
+		}
+	}
+	else if (bKeepTheRulesCreatures)
+	{
+		// EVERY CREATURE NOT RAISED BY A RULE, gathered first and destroyed after for the reason
+		// `FloorContentsDestroyEvery` gives. Issue #753, the dungeon step.
+		TArray<AActor*> Doomed;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && !It->bRaisedByARule)
 			{
 				Doomed.Add(*It);
 			}

@@ -67,7 +67,8 @@ public:
 	 * `Cataclysm.LoadCharacter` is the only way a save is read back.
 	 */
 	void BeginRun(const FGuid& InRunId, const FGuid& InCharacterId,
-				  FName InDungeon, int32 InFloor);
+				  FName InDungeon, int32 InFloor, bool bInOnTheDarkFloor = false,
+				  int32 InDarkFloorFellFrom = 0);
 
 	/** Whether a run has been begun, so there is somewhere to write. */
 	bool IsWriting() const { return RunId.IsValid() && CharacterId.IsValid(); }

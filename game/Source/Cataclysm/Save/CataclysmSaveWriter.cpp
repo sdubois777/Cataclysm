@@ -52,16 +52,17 @@ TStatId UCataclysmSaveWriter::GetStatId() const
 }
 
 void UCataclysmSaveWriter::BeginRun(const FGuid& InRunId, const FGuid& InCharacterId,
-									FName InDungeon, int32 InFloor)
+									FName InDungeon, int32 InFloor, bool bInOnTheDarkFloor,
+									int32 InDarkFloorFellFrom)
 {
 	RunId = InRunId;
 	CharacterId = InCharacterId;
 	Dungeon = InDungeon;
 	Floor = InFloor;
 
-	// A RUN BEGINS ON NO DARK FLOOR. Issues #1820 and #41.
-	bOnTheDarkFloor = false;
-	DarkFloorFellFrom = 0;
+	// A RUN BEGINS ON NO DARK FLOOR, unless a load says it was saved on one. Issues #1820, #41 and #753.
+	bOnTheDarkFloor = bInOnTheDarkFloor;
+	DarkFloorFellFrom = bInOnTheDarkFloor ? InDarkFloorFellFrom : 0;
 
 	// THE CLOCK STARTS FROM THE BEGINNING OF THE RUN rather than from whenever
 	// the subsystem was made, so the first write is one interval into play and

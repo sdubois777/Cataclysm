@@ -202,6 +202,21 @@ struct CATACLYSM_API FCataclysmSavedCharacterPlacement
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float EnergyShield = 0.0f;
+
+	/**
+	 * The charges in each potion slot, `UCataclysmPotions::SlotCount` of them. Issue #753, the dungeon step, ruled
+	 * 2026-10-30: a load that handed back full potions mid-dungeon would be the most direct reset a player could use.
+	 *
+	 * AN EMPTY LIST MEANS NOT SAVED, which is what a file written before the field reads as, and
+	 * `FCataclysmSaveApply::PlacementInto` then leaves the slots as they are. NOT A SCHEMA VERSION BUMP, for the run
+	 * record's `PartialDay` reason.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> PotionCharges;
+
+	/** The drinks taken this walk, which `Famine_Diminishing_Returns` weakens each drink by. Saved with the charges. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PotionsDrunk = 0;
 };
 
 /**

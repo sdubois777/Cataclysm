@@ -5,6 +5,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmPotions.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -318,7 +320,73 @@ bool FCataclysmSaveApply::PlacementInto(
 	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
 	UCataclysmMovement::NoteRelocatedInstantly(&Character, Was);
 
+	// THE POTIONS BEFORE THE VITALS, because a placement at no health dies in `VitalsInto`, and the death's own
+	// write must find the saved charges. A list of the wrong length was not saved and is left alone. Issue #753.
+	if (Saved.PotionCharges.Num() == UCataclysmPotions::SlotCount)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(&Character)))
+		{
+			for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+			{
+				Holder->SetPotionCharges(Slot, Saved.PotionCharges[Slot]);
+			}
+			Holder->SetPotionsDrunk(Saved.PotionsDrunk);
+		}
+	}
+
 	return VitalsInto(Character, Saved.Health, Saved.Mana, Saved.EnergyShield);
+}
+
+FCataclysmFloorRestored FCataclysmSaveApply::DungeonFloorInto(
+	ACataclysmDungeonGameMode& Dungeon, const FCataclysmSavedFloor& Saved)
+{
+	FCataclysmFloorRestored Restored;
+	UWorld* World = Dungeon.GetWorld();
+	if (!World)
+	{
+		return Restored;
+	}
+
+	// EVERY CREATURE BUT THE ONES THE FLOOR'S RULES RAISED, AND EVERY DROP. The rebuilt floor placed those fresh, and
+	// the save holds none of them (`FCataclysmSaveGather::FloorFrom` skips them), so clearing them would leave the
+	// floor without them. Ruled 2026-10-30.
+	Restored.Removed = UCataclysmFloorContents::ClearTheFloor(*World, /*bCarryFollowers=*/false,
+															  /*bKeepTheRulesCreatures=*/true);
+	Dungeon.FloorEnemies.RemoveAll([](const TObjectPtr<ACataclysmEnemyCharacter>& Enemy)
+	{
+		return !IsValid(Enemy);
+	});
+
+	// EACH ONE PUT BACK IS THE FLOOR'S, in `FloorEnemies`, which is what the stairs, the clear and a kill's payout
+	// count. One spawned beside the list would let the stairs open with it standing.
+	for (const FCataclysmSavedCreature& Creature : Saved.Creatures)
+	{
+		if (ACataclysmEnemyCharacter* Back = CreatureInto(*World, Creature))
+		{
+			Dungeon.FloorEnemies.Add(Back);
+			++Restored.Creatures;
+		}
+		else
+		{
+			++Restored.Refused;
+		}
+	}
+
+	for (const FCataclysmSavedGroundItem& Drop : Saved.GroundItems)
+	{
+		if (GroundItemInto(*World, Drop))
+		{
+			++Restored.GroundItems;
+		}
+		else
+		{
+			++Restored.Refused;
+		}
+	}
+
+	// NO CHARACTER IS PLACED HERE. The loader places the character once, last.
+	return Restored;
 }
 
 FCataclysmFloorRestored FCataclysmSaveApply::FloorInto(
