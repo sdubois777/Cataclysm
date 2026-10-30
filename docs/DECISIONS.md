@@ -19,7 +19,8 @@ open.
 
 ### SAID FIRST
 
-- **NOT YET BUILT IN UNREAL.** Nothing in this entry has been compiled or run; the window is registered below.
+- **BUILT AND RUN: window w100 below passed every registered figure, and all four proofs were PROVED, each failing
+  exactly the assertions registered and nothing else.**
 - **A FAULT IN THE START-UP STEP (#2627) IS CORRECTED HERE, FIRST.** `FCataclysmSaveApply::FloorInto` places the
   record's characters as well as its creatures, and the loader called it before telling the writer the loaded run and
   then placed the character again. A character saved dead therefore died inside `FloorInto`, and its death's
@@ -130,7 +131,31 @@ flow, a continue flow and the character select screen (#49).
 
 ### Run
 
-Not yet run.
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock. At `efa83b213` it
+printed `Build: Failed - 73 actions, 63 files compiled`: one error, C3493 and C2326 at `CataclysmSaveLoadTests.cpp`
+line 1123, the refusals test's lambda reading `Saved` without capturing it. Corrected in `ac063a903`, which printed
+`Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.26.cpp`.
+
+**Window w100 (lock `dungeon-w100`, `feat/a-run-saved-inside-a-dungeon-loads-onto-its-floor-2` at `98eec3c85`, on
+`05eedf8a8`, 2026-10-30) passed.** `development`'s CI and Unreal runs at `05eedf8a8` succeeded; no run was in progress
+or queued, the lock was free, no build or editor process ran, no pull request was open, and free memory read 11,992 MB
+immediately before. The lock was released before anything was written here.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | | `Build: Succeeded - 35 actions, 32 files compiled` |
+| The three new tests and `ACharacterSavedDeadIsLoadedDead` alone | 1 / 1 each | `1 tests performed, 1 succeeded, 0 failed`, each |
+| The "LOAD DUNGEON" line | quoted as printed | "Loaded (... day 1, 303 creatures, placed where it was saved); dungeon 12 floor 3 (saved 12 floor 3); seed the same; 303 of 303 creatures standing, the hurt one back; the guide standing; day 1 part 0.000 owed 1 (saved 1 0.000 1); placement matches" |
+| The "LOAD DUNGEON DEATH" line | quoted as printed | "Loaded (... day 1, 233 creatures, placed where it was saved); dead after the load; saved on day 1 owing 1, the death costs 5, day 7 after standing up; walking -1; the dungeon resolved and left the map; last trigger 'a death having been paid for'" |
+| The "LOAD DUNGEON REFUSALS" line | quoted as printed | "no dungeon in the level: Refused, and nothing was changed (... this level has no dungeon to enter it in ...); a walk under way: Refused ... (... this level is walking dungeon 0: leave it first); a dungeon not on the record's map: Refused ... (... empire dungeon 999, and the record holds no such dungeon on its map); a floor the dungeon does not have: Refused ... (... floor 99 of 'Dungeon', and this level's dungeon is 'Dungeon' and that dungeon has 20 floors)" |
+| The "LOAD DEAD" line | quoted as printed | "... dead after the load, last trigger 'the character dying', 2 synchronous writes, nothing in the slots the world began with; standing after standing up, last trigger 'a death having been paid for'" |
+| Whole Unreal suite | 4377 / 0 | `4377 tests performed, 4377 succeeded, 0 failed`; declared 4377, gap 0 |
+| Memory | quoted | `final_used_virtual_mb=7777`, peak 8,057 |
+| Python (JUnit) | of record | 7126 tests, 0 failures, 0 errors, 8 skipped ("7118 passed, 8 skipped"); ruff `All checks passed!` |
+| P1, `ResumeEmpireDungeon` not called | the dungeon test on the dungeon walked, the floor, the seed and the guide; the death test on the days and the resolve | exactly those six: walked -1 where 12, floor 1 where 3, a different seed, the guide gone; day 1 where 7 after standing up, the dungeon still on the map. The control held. **PROVED** |
+| P2, floor time charged on the resume | the dungeon test on the days owed; the death test on the days | exactly those two: owed 2 where 1; day 8 where 7. **PROVED** |
+| P3, every creature cleared | the dungeon test on the guide only | exactly that: "the guide GONE", the 303 creatures standing. **PROVED** |
+| P4, `FloorInto` handed the characters | `ACharacterSavedDeadIsLoadedDead` on the new assertion only | exactly that: "A WRITE in the slots the world began with". **PROVED** |
 
 ---
 
