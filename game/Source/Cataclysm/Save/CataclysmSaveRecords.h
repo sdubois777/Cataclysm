@@ -535,6 +535,21 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FName> DefeatedCataclysmBosses;
 
+	/**
+	 * `ACataclysmPlayerState::PassivePointsAnAllocationWasHandedWith`: the points of the allocation that the level
+	 * and the bosses did not pay for when it was handed over. Issue #753, the character step.
+	 *
+	 * SAVED BECAUSE IT CANNOT BE WORKED OUT AGAIN. `SetPassiveAllocation` computes it from the level at the moment of
+	 * the call, so a restore through that function would compute a different figure for a character that levelled up
+	 * after its allocation was handed over. The 2026-10-09 "order a save loader must keep" entry in
+	 * `docs/DECISIONS.md` says the loader has to add both this field and a way to restore it.
+	 * `FCataclysmSaveApply::CharacterInto` puts it back through `ACataclysmPlayerState::RestorePassiveAllocation`.
+	 * NOT A SCHEMA VERSION BUMP, for the reason the run record's `PartialDay` comment gives: a file written before
+	 * this field existed reads it as 0, which is what such a character held unless it was handed an allocation.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 PassivePointsAnAllocationWasHandedWith = 0;
+
 	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	float CataclysmicResidue = 0.0f;

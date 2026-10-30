@@ -20,6 +20,9 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
+#include "Player/CataclysmPlayerState.h"
 #include "UObject/UObjectIterator.h"
 
 namespace
@@ -469,6 +472,83 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.LastMoveFromCityId = Record.LastMoveFromCityId;
 	Run.LastMoveToCityId = Record.LastMoveToCityId;
 	Run.ActiveCataclysms = Record.ActiveCataclysms;
+
+	OutWhy.Reset();
+	return true;
+}
+
+bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, ACataclysmPlayerCharacter& Character,
+										int32& OutSkillsRefused, FString& OutWhy)
+{
+	OutSkillsRefused = 0;
+
+	// REFUSED BEFORE ANYTHING IS TOUCHED, as `RunInto` refuses: a record that
+	// cannot be put back whole is not put back in part.
+	ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmInventoryComponent* Inventory = Character.GetInventory();
+	UCataclysmEquipmentComponent* Equipment = Character.GetEquipment();
+	if (!State || !Inventory || !Equipment)
+	{
+		OutWhy = TEXT("the character has no player state, inventory or equipment to restore into");
+		return false;
+	}
+	if (Record.CarriedSlots.Num() != UCataclysmInventoryComponent::SlotCount)
+	{
+		OutWhy = FString::Printf(TEXT("the record holds %d carried slots and the inventory has %d"),
+								 Record.CarriedSlots.Num(), UCataclysmInventoryComponent::SlotCount);
+		return false;
+	}
+	TArray<TPair<ECataclysmGearSlot, FCataclysmItem>> Worn;
+	TSet<ECataclysmGearSlot> Named;
+	for (const FCataclysmWornItem& Saved : Record.WornGear)
+	{
+		if (static_cast<int32>(Saved.Slot) >= static_cast<int32>(ECataclysmGearSlot::Count) || Named.Contains(Saved.Slot))
+		{
+			OutWhy = FString::Printf(TEXT("the record names worn slot %d, which does not exist or is named twice"),
+									 static_cast<int32>(Saved.Slot));
+			return false;
+		}
+		Named.Add(Saved.Slot);
+		Worn.Add(TPair<ECataclysmGearSlot, FCataclysmItem>(Saved.Slot, Saved.Item));
+	}
+
+	// THE LEVEL, THE EXPERIENCE AND THE KILLS.
+	State->SetLevelAndExperience(Record.Level, Record.Experience);
+	State->SetLifetimeKills(Record.LifetimeKills);
+
+	// THE CREATION CHOICE, when one was made. It refreshes the stat line on the
+	// gear possession put on; the gear below replaces that.
+	if (!Record.StartingWeaponType.IsNone() || !Record.StartingDamageType.IsNone())
+	{
+		State->SetCreationChoice(Record.StartingWeaponType, Record.StartingDamageType);
+	}
+
+	// THE ATTRIBUTE POINTS, AS SPENT.
+	State->RestoreSpentAttributePoints(Record.SpentAttributePoints);
+
+	// THE WORN GEAR AND THE BAG, EACH IN ITS SAVED PLACE. The bag replaces the
+	// weapon possession put into it when the creation choice swapped weapons.
+	Equipment->RestoreWornGear(Worn);
+	Inventory->RestoreSlots(Record.CarriedSlots);
+
+	// THE PASSIVE ALLOCATION, THE BOSSES AND THE FIGURE, after the gear, and not
+	// computed again.
+	State->RestorePassiveAllocation(Record.PassiveAllocation, Record.DefeatedCataclysmBosses,
+									Record.PassivePointsAnAllocationWasHandedWith);
+
+	// ONE ANNOUNCEMENT, NOW THAT EVERYTHING IS BACK: the stat line, the second
+	// two-handed weapon's permission, and the skill slots from the worn weapons.
+	Equipment->AnnounceRestored();
+
+	// THE SKILL CHOICES, checked against the skills the worn weapons give.
+	for (const FCataclysmSkillChoice& Choice : Record.SkillAssignment)
+	{
+		FString Reason;
+		if (!State->AssignSkill(Choice.Slot, Choice.SkillRow, Reason))
+		{
+			++OutSkillsRefused;
+		}
+	}
 
 	OutWhy.Reset();
 	return true;

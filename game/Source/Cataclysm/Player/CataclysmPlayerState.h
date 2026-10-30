@@ -366,11 +366,12 @@ public:
 	 * NOUGHT UNTIL `SetPassiveAllocation` IS CALLED. A later call replaces it,
 	 * and `ResetPassivePoints` sets it back to nought.
 	 *
-	 * IT IS NOT IN THE SAVE RECORD. Nothing restores a save today (issue #753).
-	 * A restore must not hand a saved allocation to `SetPassiveAllocation` as
-	 * that function stands: points bought with points from gear would come back
-	 * counted as paid for. It has to restore the level, the bosses and this
-	 * figure as it was recorded.
+	 * IN THE SAVE RECORD since issue #753's character step, as
+	 * `UCataclysmCharacterSave::PassivePointsAnAllocationWasHandedWith`. A
+	 * restore must not hand a saved allocation to `SetPassiveAllocation`, which
+	 * would compute a new figure: `FCataclysmSaveApply::CharacterInto` restores
+	 * the level, the bosses and this figure as recorded, through
+	 * `RestorePassiveAllocation`.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	int32 PassivePointsAnAllocationWasHandedWith() const
@@ -518,6 +519,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	void SetPassiveAllocation(const FCataclysmPassiveAllocation& Allocation,
 							  const TArray<FName>& Bosses);
+
+	/**
+	 * Puts a saved allocation, the saved bosses and the saved figure back exactly as they were recorded. Issue #753,
+	 * the character step.
+	 *
+	 * FOR A SAVE RESTORE AND NOTHING ELSE. Unlike `SetPassiveAllocation` it computes nothing, checks nothing and does
+	 * not refresh the stat line: the save is the authority for these values, and `FCataclysmSaveApply::CharacterInto`
+	 * refreshes once when everything is back.
+	 */
+	void RestorePassiveAllocation(const FCataclysmPassiveAllocation& Allocation, const TArray<FName>& Bosses,
+								  int32 HandedWith);
+
+	/**
+	 * Puts saved spent attribute points back exactly. Issue #753, the character step.
+	 *
+	 * FOR A SAVE RESTORE AND NOTHING ELSE. `SpendAttributePoints` refuses points above the level's, which is right for
+	 * a player spending and wrong for a save putting back what was spent; this checks nothing and does not refresh the
+	 * stat line, for the reason `RestorePassiveAllocation` gives.
+	 */
+	void RestoreSpentAttributePoints(const FCataclysmAttributePoints& Points);
 
 	/** Which trees this character can spend in, from the damage types its worn weapons carry. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")

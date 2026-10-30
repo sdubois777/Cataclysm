@@ -163,4 +163,29 @@ public:
 	 * and the floor record, each of which needs the owner's decisions (#753).
 	 */
 	static bool RunInto(const UCataclysmRunSave& Record, UCataclysmEmpireRun& Run, FString& OutWhy);
+
+	/**
+	 * Puts a saved character back into a possessed player. Issue #753, its character step, ruled 2026-10-29.
+	 *
+	 * REFUSED, AND NOTHING CHANGED, when the character has no player state, inventory or equipment, when the record
+	 * does not hold the inventory's 48 slots, or when a worn item names a slot that does not exist or one already
+	 * named. `OutWhy` says which.
+	 *
+	 * THE ORDER: the level, the experience and the kills; the creation choice; the spent attribute points; the worn
+	 * gear, silently (`UCataclysmEquipmentComponent::RestoreWornGear` says why); the 48 bag slots by position; the
+	 * passive allocation, the bosses and the figure an allocation was handed with, after the gear as the 2026-10-09
+	 * "order a save loader must keep" entry requires, without computing the figure again; then ONE announcement, which
+	 * refreshes the stat line and refills the skill slots from the worn weapons; then each saved skill choice through
+	 * `AssignSkill`, which checks it against those skills. `OutSkillsRefused` counts the choices it refused.
+	 *
+	 * `EquipInto` CHECKS NO LEVEL AND NO ATTRIBUTE, read before this was written: only that the item exists and suits
+	 * the slot. So the attribute points need not come before the gear for gear to be accepted; they come first here
+	 * because the one announcement must find them in place.
+	 *
+	 * NOT COVERED: vitals and position, which the run record's floor placement holds and `PlacementInto` puts back;
+	 * the name, the partition, residue and the private stash, which have no home on the player; and choosing which
+	 * character to load at start-up (#753).
+	 */
+	static bool CharacterInto(const UCataclysmCharacterSave& Record, ACataclysmPlayerCharacter& Character,
+							  int32& OutSkillsRefused, FString& OutWhy);
 };

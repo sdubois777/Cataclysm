@@ -454,6 +454,9 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		// mistake it for.
 		Record.PassiveAllocation = State->GetPassiveAllocation();
 		Record.DefeatedCataclysmBosses = State->GetDefeatedCataclysmBosses();
+		// AND THE FIGURE AN ALLOCATION WAS HANDED WITH, which nothing can work out
+		// again from the rest. Issue #753, the character step.
+		Record.PassivePointsAnAllocationWasHandedWith = State->PassivePointsAnAllocationWasHandedWith();
 
 		// AND THE CHOSEN SKILLS, since issue #837 layer 3 (Q6: one field, no version bump). UNCONDITIONALLY, for the
 		// passive tree's reason: an empty list means exactly "nothing chosen", the default fill.

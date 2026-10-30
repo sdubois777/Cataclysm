@@ -743,6 +743,19 @@ FString ACataclysmPlayerState::RefusalForSkillChoice(ECataclysmAbilitySlot Slot,
 	return FString();
 }
 
+void ACataclysmPlayerState::RestorePassiveAllocation(const FCataclysmPassiveAllocation& Allocation,
+													const TArray<FName>& Bosses, int32 HandedWith)
+{
+	PassiveAllocation = Allocation;
+	DefeatedCataclysmBosses = Bosses;
+	PointsAnAllocationWasHandedWith = FMath::Max(0, HandedWith);
+}
+
+void ACataclysmPlayerState::RestoreSpentAttributePoints(const FCataclysmAttributePoints& Points)
+{
+	SpentAttributePoints = Points;
+}
+
 bool ACataclysmPlayerState::AssignSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason)
 {
 	ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());
