@@ -142,6 +142,36 @@ actions, 33 files compiled`. Python of record there: 7141 tests, 0 failures, 0 e
 passed!`. Then `BuildFloor`'s condition was put on one line of its own (`bThatArenaStands`), so P2's break is one line:
 `Build: Succeeded - 9 actions, 6 files compiled`, `CataclysmDungeonGameMode.cpp` among them. No behaviour changed.
 
+**Window w106 (lock `dungeon-w106`, `feat/floor-rebuilds-the-same-by-a-load-2` at `3e91b31e8`, on `3d29e5b3f`,
+2026-10-30) STOPPED AT THE FIRST TEST ALONE; nothing after it ran.** Python of record at `3e91b31e8` before the
+pre-checks: 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run
+output, measured at 16:47:41: `development` at `3d29e5b3f` with its CI and Unreal runs a success there; no run in
+progress or queued; the lock free; no build, editor, simulation or pytest process; 11,668 MB of physical memory free.
+The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The rebuild test alone | `1 tests performed, 0 succeeded, 1 failed` |
+
+The second floor (the rules' creatures and zones) came back whole: "chorus sources 2/2; bloom flowers 2/2; spires 2/2;
+plague beacons 2/2; portals 2/2; quarantine 1/1; infection bloom 1/1; abyssal rift 1/1; veins 3/3; sarcophagi 2/2;
+warzone points 2/2; warzone gates 4/4; shadow lights 3/3; pillar cells 4/4", and its CONTROL held. The first floor
+came back whole but for the statues and what follows them: "tithe altar 1/1; pact altar 1/1; divine gate 1/1; relics
+2/2; boxes 3/3; purification altar 1/1; infernal beacons 1/1; war banner 1/1; totems 2/2; reality rifts 5/5; hoards
+2/2; statues 3/2 DIFFER; chasms 37/37 DIFFER; soul chains gates 4/4; closed barriers 0/0; pillar cells 7/6 DIFFER".
+
+- **THE FIRST STATUE WAS REFUSED IN THE LOADING WORLD.** Saved "(26,20)(15,14)(40,26)", loaded "(15,14)(40,26)"; the
+  pillars differ by that statue's cell alone, so the gates' pillars and the other two statues' stood after the load
+  (F1). Every one of the 37 chasms moved, which one missing statue explains: the chasms are drawn with every statue's
+  cell closed. What refused (26,20) is not known: `AnObstacleMayClose` refuses a held cell, a closing that strands a
+  walkable cell, or one that splits a section while a barrier is closed, and reading has not found which input differs
+  between the walk and the load. The `StartPlay` floor carries no modifiers, so no list it kept is the cause.
+- **THE SET-UP FOUND NO CLOSED BARRIER** on the first floor, after the walk: either the plan found no boundary or every
+  barrier opened once the creatures stood. A test design fault either way; not yet known which.
+- **NEXT: A PROBE**, asked of the coordinating session, before any change: the reason `AnObstacleMayClose` gave for
+  each statue candidate in each world, the held set it was given, and the floor's boundaries and closed barriers.
+
 ---
 
 ## 2026-10-30 — A creature placed on a dungeon floor is built from the enemy score: eased by the tier's relief, never below floor 1 of a 12-floor dungeon, and with its damage scaled by the tier (#1569)
