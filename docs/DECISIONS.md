@@ -182,6 +182,140 @@ player is at level 20, not 1, which is the figure P1's failures printed.
 
 ---
 
+## 2026-10-29 — At tier 4 and up every enemy score is lowered in the comparison with the player's power, by a relief that grows with the tier, so a fully invested Explorer arriving with end-of-tier-3 gear can enter dungeons there (#1425)
+
+**Affects:** `sim/cataclysm_sim/config.py` (three `TuningConfig` fields and `content_relief`); `sim/cataclysm_sim/engine.py`
+(`Simulation.death_chance` and `dungeon_power` read it); `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h` (three
+named constants and their comment, read by nothing in the game); `sim/tests/test_tier_content_relief.py` (new);
+`tools/tests/test_content_relief_port.py` (new); no existing test moved; this file. `scoring.py` is not touched.
+
+### SAID FIRST
+
+- **THE GAME DOES NOT APPLY THE RELIEF YET.** It carries the three numbers and nothing reads them: creature health and
+  damage there are fixed settings that do not follow the enemy score until issue #1569 builds that conversion.
+  `tools/tests/test_content_relief_port.py::TestTheGameDoesNotApplyItYet` states the gap and fails when it closes.
+  #1569 has a comment saying its conversion must read the relief.
+- **THE CAUSE IS THE EXPLORER TREE'S DEPTH, NOT THE TIER'S ENEMIES.** `TREE_EXPLORER_AS_DESIGNED` adds 20 floors a dungeon for each active Cataclysm, and the active count is the
+  tier, so the relief that player needs grows about 0.13 tier widths a tier; the no-tree player needs none at any
+  tier. THE DEPTH FINDING below has the table.
+- **WHAT THE RELIEF DOES AND DOES NOT DO.** Recorded with the figures, in the commit after the guard proof.
+- **`power_start_frac` STAYS 0.35**, the coordinating session's ruling of 2026-10-29. The target is defined at the
+  design's arrival point, 0.0, so every row below is reported at both.
+- **NO SWEEP WAS RUN.** `experiments.py`'s figures at tiers 4 to 8 move with this change and were not re-measured.
+
+### THE OWNER'S THREE ANSWERS, IN ORDER (2026-10-29, relayed by the coordinating session, recorded on #1425)
+
+1. **"Check gear first."** Before deciding what tier 4 should be, measure whether the simulation's tier-4 player has the
+   gear a player who cleared tiers 1 to 3 would bring. It does, and more: the day loop's power is one number, set in
+   `Simulation.__init__` to `tier_min + tier_width x power_start_frac`; at tier 4 that is 1,508 + 0.35 x 717 = 1,759,
+   above the 1,508 the design calls the ceiling at the end of tier 3 ("the **ceiling** at the end of each difficulty
+   tier ... It is a calibration reference, not a requirement"). Starting the tier-4 Explorer at that ceiling made it
+   worse, not better: idle 68.2% and 68.3%, won 0.0%, against 35.8% and 34.1% at 0.35 and 0.0% at the tier-4 ceiling.
+2. **"Weaken tier content."** Lower dungeon strength at tiers 4 and up so that the fully invested Explorer arriving
+   with end-of-tier-3 gear can enter dungeons there. The coordinating session sets the numbers and the target: at tier
+   4, `TREE_EXPLORER_AS_DESIGNED`, triage, the shipped cadence and `power_start_frac` 0.0, the "nothing survivable" idle
+   at most 10% of days, with tiers 1 to 3 unchanged.
+3. **"Relief grows by tier."** After the depth finding below: keep the content route, with the relief growing with the
+   tier to match the tree's depth, so tiers 4 to 8 can all be entered by that player. The Explorer tree stays as
+   designed.
+
+The same day the owner answered a separate question on the gear ceiling, "Table is right"; that reword of
+`docs/Cataclysm_GDD_v2.md` section IV is on its own branch.
+
+### THE DEPTH FINDING
+
+`TREE_EXPLORER_AS_DESIGNED` adds `floor_delta` 20 plus `floor_delta_per_type` 20 for each active Cataclysm, and the
+active count is the tier: +100 floors a dungeon at tier 4 and +180 at tier 8. Opening dungeons averaged 117 floors at
+tier 4 and 193 at tier 8 for that player, 13 to 17 with no tree. At a tier's lowest power the enemy-score formula gives
+the same death chance at every tier (0.11 for a 12-floor Basic dungeon with no modifiers, 0.48 to 0.49 for a 112-floor
+one), so depth is what separates the two players. The relief (in tier widths) needed for one opening dungeon to be
+safe, `power_start_frac` 0.0, 20 seeds a tier, median / maximum:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Explorer | 0.00 / 0.00 | 0.01 / 0.13 | 0.19 / 0.25 | 0.36 / 0.41 | 0.48 / 0.53 | 0.61 / 0.63 | 0.75 / 0.77 | 0.86 / 0.89 |
+| No tree | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 | 0.00 / 0.00 |
+
+Below the relief a campaign needs, nothing on the board is ever safe, the player never clears a dungeon or gains
+materials, and the campaign plays identically to one with no relief at all. A single relief of 0.5 measured identical
+to no relief at tiers 6 to 8 for that reason. The tier-3 need (0.19 / 0.25) is not acted on: the owner said tiers 4
+and up.
+
+Two other tier-dependent sources were checked and are not the cause of this: modifiers (`modifiers_per_tier` x tier,
+about 11 points each) are 0.03 to 0.07 tier widths at every tier; day escalation divides the player's absolute power
+(`effective_power = power / power_scale`), so it costs more tier widths at higher tiers, and it is unchanged here.
+
+### THE RULE
+
+The coordinating session's numbers: `content_relief_tier_widths` 0.45, `content_relief_per_tier_widths` 0.13,
+`content_relief_from_tier` 4. Relief at tier t >= 4 is 0.45 + 0.13 x (t - 4) tier widths: 0.45, 0.58, 0.71, 0.84 and
+0.97, each above the largest need measured at its tier. It lowers every enemy score in `Simulation.death_chance`
+(as `effective_power += content_relief x tier_width`, which is the same comparison) and in `Simulation.dungeon_power`.
+It does not reach `scoring.py`, which is a copy of `calculateScores.tsx` in another repository, and in the game it is
+kept off `UCataclysmEnemyScore::ScoreFor`, because the score is also the experience a kill grants. It is additive and a
+share of tier width, the same form as every term of the design's enemy-score formula.
+
+Rejected: a multiplier through `power_scale` (it scales with absolute score, so it would bite hardest at tier 8, and it
+is the escalation mechanism's job); a limit on the Explorer's per-type floors (a tree change, which the owner declined).
+The 2026-10-16 entry is the precedent for the route: a `TuningConfig` change in the model first, a check holding the
+game's copy, and the game following in its own change.
+
+### MEASURED FOR THE OWNER
+
+Recorded in the commit after the guard proof.
+
+### THE TESTS
+
+`sim/tests/test_tier_content_relief.py`, eight tests:
+
+- `test_there_is_no_relief_at_tiers_one_to_three` and `test_the_relief_follows_the_ruled_formula_at_tiers_four_to_eight`:
+  `TuningConfig.content_relief` is 0 at tiers 1 to 3 and 0.45, 0.58, 0.71, 0.84, 0.97 at 4 to 8.
+- `test_a_tier_four_dungeon_unsafe_without_the_relief_is_safe_with_it`: a hand-set Basic dungeon of 80 floors with no
+  modifiers and no escalation, on an Outpost at tier 4, against a player at the bottom of tier 4 (1,508). Without the
+  relief its death chance is 0.378, above the 0.35 tolerance; with it, 0.206. The case asserts the control first.
+- `test_the_relief_is_the_players_power_raised_by_that_many_tier_widths`: at tier 5 with escalation 1.3, the engine's
+  death chance equals `combat.death_chance` at power / scale + relief x width.
+- `test_the_headline_power_is_lowered_by_the_same_relief`: `dungeon_power` drops by 0.45 x 717 at tier 4.
+- `test_tiers_one_to_three_are_untouched_whatever_the_relief_holds`, tiers 1, 2 and 3: with the relief set to 2.0
+  plus 1.0 a tier, death chance and headline power are exactly what they are with none.
+
+`tools/tests/test_content_relief_port.py`, four tests: the game's three constants equal `TuningConfig`'s; the formula
+worked from the game's numbers equals `content_relief` at every tier and the ruled list; no game `.h` or `.cpp` other
+than the header names the relief in code (the gap, stated, so #1569's conversion closing it fails the check rather
+than passing silently); and the header names it only in its three declarations, so `ScoreFor` and the experience it
+gives are untouched.
+
+**No existing test moved.** The full suite on the files committed as `8ca4755a8`, run before that commit, passed
+(7,112 passed, 8 skipped): no test pins a figure at tiers 4 to 8 that the relief changes. `experiments.py`'s report is not a test.
+
+**Tiers 1 to 3 unchanged, measured.** 300 campaigns, seeds 0 to 299, `analyse_surge_cadence.py`'s world at
+`power_start_frac` 0.35, development `728168628` against this branch at `3d510ce51`: tier 1 no tree, cities lost 4.29,
+earned 97.3%, won 44.3%, forge 5.1%, in a dungeon 89.7%, days 598 in both; tier 3 Explorer, cities 12.89, earned
+22.7%, won 4.0%, forge 4.5%, in a dungeon 83.9%, days 811 in both.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest sim/tests/test_tier_content_relief.py`. The break, in `Simulation.death_chance`:
+`effective_power += cfg.content_relief() * self.tier_width` becomes `effective_power += 0.0 * self.tier_width` (once in
+the file), so the comparison ignores the relief while `dungeon_power` and `content_relief` keep it. Predicted
+named_failures, exactly two:
+
+- `sim/tests/test_tier_content_relief.py::test_a_tier_four_dungeon_unsafe_without_the_relief_is_safe_with_it`
+- `sim/tests/test_tier_content_relief.py::test_the_relief_is_the_players_power_raised_by_that_many_tier_widths`
+
+### EVIDENCE
+
+Recorded in the commit after the guard proof.
+
+### NO GENRE SOURCE
+
+None for the numbers: how much to lower one tier's enemies for one investment path is specific to this game, and the
+values are the coordinating session's judgement against a stated target. The additive, share-of-tier-width form is the
+design's own.
+
+---
+
 ## 2026-10-29 — A policy that lets a city fall to keep crafting, measured beside triage (#1454)
 
 **Affects:** `sim/cataclysm_sim/policies.py` (one policy, `sacrifice_to_craft`, and one constant,
