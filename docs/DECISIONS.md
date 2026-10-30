@@ -2,6 +2,292 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A creature placed on a dungeon floor is built from the enemy score: eased by the tier's relief, never below floor 1 of a 12-floor dungeon, and with its damage scaled by the tier (#1569)
+
+**Affects:** `sim/cataclysm_sim/enemy_stats.py` (new `strength_score`, `strength_on_floor`, `damage_scale` and their
+three constants); `sim/cataclysm_sim/fight.py` (the Boss the Corrupted Stalker is fitted against is built by
+`strength_on_floor`; both multiplier tables re-fitted); `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h` and `.cpp`
+(`ContentRelief`, `DamageScale`, `StrengthScoreFor` and two constants); `game/Source/Cataclysm/Dungeon/CataclysmEnemyStrength.h` and `.cpp`
+(new: `StartingFiguresFor` and the shared `DT_EnemyArchetypes` loader); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`
+(`ApplyDesignedStats` rolls the rarity first, then builds the figures from the score);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp` (the Stalker's two tables);
+`game/Source/Cataclysm/Interface/CataclysmCreaturePanel.cpp` (calls the shared loader);
+`game/Source/Cataclysm/Tests/CataclysmEnemyStrengthTests.cpp` (new, 6 tests); `CataclysmDungeonModifierEffectsTests.cpp`
+and `CataclysmEnemyModifierTests.cpp` (moved, none deleted); `tools/generate_enemy_strength_fixture.py` and
+`game/Tests/EnemyStrength/ExpectedFigures.csv` (new, 840 rows); `sim/tests/test_creature_strength.py` (new, 7 tests);
+`tools/tests/test_enemy_strength_fixture_is_current.py` (new, 2 tests);
+`tools/tests/test_the_starting_character_survives_a_pack.py` (1 test added); `tools/tests/test_content_relief_port.py`
+(one class replaced, as its docstring said it would be); this file.
+
+### SAID FIRST
+
+- **EVERY CREATURE `ApplyDesignedStats` PLACES ON A DUNGEON FLOOR NOW GETS ITS HEALTH, ATTACK DAMAGE AND ARMOUR FROM
+  THE ENEMY SCORE OF THAT FLOOR**, as the model's conversion gives them, instead of the sandbox's fixed figures. Before
+  this, a Common Imp had 87 health and hit for 9 on every floor of every tier.
+- **THE SCORE A CREATURE IS BUILT FROM IS EASED; WHAT IT IS WORTH IS NOT.** The tier's content relief (#1425) is
+  subtracted on the strength path only. `UCataclysmEnemyScore::ScoreFor`, which is also the experience a kill grants, is
+  unchanged.
+- **DAMAGE ALONE IS SCALED BY THE TIER**: 0.20 at tier 1, rising evenly to 1.00 at tier 8. Unscaled, a pack of 10
+  Common Imps kills the starting character from floor 6 of a 12-floor tier-1 dungeon. Tier 8 is unchanged, so the
+  tier-8 fit the owner asked for under #108 still holds.
+- **THE CORRUPTED STALKER'S TWO MULTIPLIER TABLES MOVED.** The principle ruled on 2026-10-26 is unchanged -- the Stalker
+  is as dangerous as a Boss on the same floor -- and only the numbers derived from it moved, because that Boss is now
+  built the way the game builds one. Old and new values are below.
+- **ONE UNREAL TEST MOVED** in a full run of 4,389 tests, and it was the Stalker's table pin. Why no other did is
+  below, with the search that checked it.
+- **NOT COVERED, AND SAID SO:** the sandbox (`ACataclysmGameMode`) keeps its fixed figures; creatures spawned outside
+  `ApplyDesignedStats` -- rule fixtures such as the Chorus and the Spire, the Corrupted Stalker, a player's summons --
+  are not built from the score yet.
+
+### THE OWNER'S ANSWERS AND THE RULINGS
+
+1. **2026-09-11, the project owner: health and damage follow the enemy score** (#1558, closed). Before that ruling the
+   game's creatures had fixed figures; #97 had ruled that the conversion is the model's `stats_on_floor`.
+2. **2026-10-30, the owner, on the damage size (Q1): "Scale damage to a target".** The coordinating session set the
+   target: the pack test's Ravager (level 20, Weapon_Greataxe at gear level 0) beats 10 Common Imps on every floor of a
+   12-floor tier-1 Basic dungeon, with at least 10% of its health left on the last floor.
+3. **2026-10-30, the owner, on the scale's shape: "Approve"** -- linear in the tier, 0.20 at tier 1 to 1.00 at tier 8.
+
+The coordinating session ruled, 2026-10-30:
+
+- **The minimum (Q2):** a creature is never built weaker than the same creature on floor 1 of a 12-floor dungeon of
+  the same kind, sub-type and modifiers, after the relief.
+- **The sandbox keeps its fixed figures.** It has no floors, and its figures are the model's floor-50 answer, pinned by
+  `tools/tests/test_imp_matches_the_model.py` and its Brute and Gatekeeper siblings.
+- **The spawners listed under SAID FIRST are deferred**, not covered by this change.
+- **The Corrupted Stalker re-fits both tables**, health as well as damage: "Keep both halves ... the principle is
+  unchanged and only the derived numbers moved."
+- **`strength_on_floor` beside `stats_on_floor` is right**, for the reason under THE CONVERSION.
+
+### THE CONVERSION
+
+In the model (`enemy_stats.py`) and the game (`UCataclysmEnemyScore::StrengthScoreFor` and
+`UCataclysmEnemyStrength::StartingFiguresFor`), for a creature of kind K at rarity step S on a floor:
+
+- strength = max(0, score(floor, S) - relief, score(floor 1 of 12, S) - relief), where relief =
+  `content_relief(tier)` x `tier_width(tier)`;
+- Starting health = max(1, strength x Common's `HealthPerScore` x K's `HealthShare`);
+- Starting attack damage = strength x Common's `DamagePerScore` x K's `DamageShare` x `damage_scale(tier)`;
+- Starting armour = strength x Common's `ArmorPerScore` x K's `ArmorShare`.
+
+**Rarity is counted twice, once by each mechanism, on purpose, as the model counts it**: the score is taken at the
+rarity (it includes the rarity's weight), and the creature's own `UCataclysmEnemyRarity::ScalingFromCommon` multiplies
+the Starting figures by the rarity's per-step ratio. So the Starting figures use Common's per-score factors.
+
+**The rarity is now rolled before the figures**, because the score depends on it. `ApplyDesignedStats` calls
+`SetRarityStep` first; the roll draws from the same stream in the same order, so placement does not change.
+
+**WHY `strength_on_floor` IS A NEW FUNCTION AND `stats_on_floor` STAYS THE DESIGN FIGURE** (accepted by the coordinating
+session): `affixes.py` anchors every offensive number on a Common enemy's health from `stats_on_floor` at tier 8. Easing
+that by the relief (about 20% at tier 8) would re-derive the player's damage about 20% lower and take the owner's ease
+back out. So the player's offence stays anchored on the design creature, and the game builds the eased one. **It
+follows that `sim/tests/test_survivability.py`'s tier-8 fit measures the design creature, not the one the game builds.**
+
+### MEASURED FOR THE RULINGS
+
+All Python, on `development` `3d29e5b3f`, no build. Scripts in the session's scratchpad (`t306_q1q2.py`,
+`t307_scale.py`), not committed.
+
+**Q1, the damage without a scale.** The starting character is the fight model of
+`tools/tests/test_the_starting_character_survives_a_pack.py`: Ravager level 20, Weapon_Greataxe at gear level 0, 510
+health plus shield, takes 0.862 of a hit; it steps every 0.05 s with leech, regeneration and the skill rotation, and
+leaves out dodging, moving, criticals and Imps arriving over time. Tier 1, 12-floor Basic dungeon, 10 Common Imps:
+
+| Imp | Health | Damage a hit | One Imp: hits to kill the character | Fight against 10 Imps |
+| :-- | --: | --: | :-- | :-- |
+| the old fixed Imp | 87.0 | 9.0 | 66 hits, 59.4 s | wins in 7.05 s, 293 of 510 left |
+| floor 1 | 4.2 | 7.0 | 85, 76.5 s | wins in 3.95 s, 444 left |
+| floor 6 | 31.3 | 52.4 | 12, 10.8 s | dies at 2.65 s |
+| floor 12 | 63.9 | 106.8 | 6, 5.4 s | dies at 0.85 s |
+
+Floors 1-5 win (444, 335, 226, 116 and 7 health left); floors 6-12 die.
+
+**Q2, the minimum.** Strength and a Common Imp, 50-floor tier-1 Basic dungeon:
+
+| Floor | No minimum | Minimum = the tier's lowest power (0) | Minimum = floor 1 of a 12-floor dungeon (24) |
+| --: | :-- | :-- | :-- |
+| 1 | strength -21: health 1.0, damage 0.0 | the same as no minimum | strength 24: health 4.2, damage 7.0 |
+| 10 | 57: 10.0, 16.7 | the same | the same |
+| 25 | 188: 32.9, 55.0 | the same | the same |
+| 50 | 407: 71.2, 119.0 | the same | the same |
+
+Floors each option changes in a 50-floor Basic dungeon (the relief already subtracted at tiers 2-8):
+
+| Tier | No minimum: floors at 0 strength | Tier's-lowest-power option changes | Floor-1-of-12 option changes |
+| --: | :-- | :-- | :-- |
+| 1 | 1-3 | none | 1-6 |
+| 2 | none | 1-12 | 1-7 |
+| 4 | none | 1-24 | 1-8 |
+| 8 | none | 1-44 | 1-8 |
+
+**The scale.** Bisection on the target gives a largest tier-1 scale of 0.2063; 0.20 meets it and 0.21 does not. At
+0.20, tier 1, 12-floor Basic dungeon, 10 Common Imps:
+
+| Floor | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |
+| Imp health | 4.2 | 9.6 | 15.0 | 20.5 | 25.9 | 31.3 | 36.8 | 42.2 | 47.6 | 53.0 | 58.4 | 63.9 |
+| Damage a hit | 1.40 | 3.22 | 5.03 | 6.84 | 8.66 | 10.47 | 12.29 | 14.10 | 15.91 | 17.73 | 19.54 | 21.35 |
+| Health left of 510 | 510 | 490 | 468 | 446 | 425 | 403 | 381 | 359 | 337 | 315 | 107 | 66 (12.9%) |
+
+The fight lasts 3.95 s to floor 10 and 6.2 s on floors 11-12, where an Imp no longer dies to one blow.
+
+**Why the scale is not one constant.** Geared reference build (`sim/cataclysm_sim/reference_build.py`, through
+`damage.hits_to_kill`, no regeneration, healing or leech, and the player kills nothing, so the seconds are a lower
+bound); Imp attack interval 0.9 s:
+
+| Case | Constant 0.20 | Linear 0.20 to 1.00 |
+| :-- | :-- | :-- |
+| tier 4 start (level 38, affix tier 4, +5), floor 1 of 17 | 71.2 a hit; 314 hits; 10 Imps 28.3 s | 193.1; 116 hits; 10.4 s |
+| tier 4 start, floor 17 of 17 | 110.1; 203 hits; 18.3 s | 298.9; 75 hits; 6.8 s |
+| tier 8 start (level 88, affix tier 7, +9), floor 1 of 13 | 233.5; 399 hits; 35.9 s | 1,167.7; 80 hits; 7.2 s |
+| tier 8 start, floor 13 of 13 | 298.6; 312 hits; 28.1 s | 1,493.0; 63 hits; 5.7 s |
+| tier-8 fit, Gatekeeper (`test_survivability`: 1 < hits <= 5) | 10.0 hits: fails | 2.0: holds |
+| tier-8 fit, Herald Abyssal Warden (3-10) | 24.0: fails | 5.0: holds |
+| tier-8 fit, Common Imp (> 15) | 298.0 | 60.0 |
+
+The tier-4 and tier-8 characters' attributes are scaled from the reference build's (Vitality and Constitution times
+level / 100); that is a judgement.
+
+**What the scale moves in the simulation.** In a git-archive copy with the linear scale applied, the full Python suite
+printed "12 failed, 7116 passed, 13 skipped". Eleven are the git-dependent tools tests that fail in any archive copy.
+The twelfth was `sim/tests/test_the_corrupted_stalker_fight.py::test_the_ruled_tables_are_the_model_fitted_to_the_games_measured_build`
+("assert 0.22 == 1.12"), which is why the Stalker's tables moved. `engine.py`, `combat.py` and `experiments.py` never
+read creature damage, so no empire sweep or recorded campaign figure moves.
+
+### THE CORRUPTED STALKER'S TABLES
+
+`sim/cataclysm_sim/fight.py` and the game's `CorruptedStalkerHealthMultipliers` / `CorruptedStalkerDamageMultipliers`,
+re-fitted to the Boss `strength_on_floor` builds:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Health, ruled 2026-10-26 | 0.49 | 0.76 | 0.91 | 1.07 | 1.15 | 1.15 | 1.32 | 1.33 |
+| Health, now | 0.49 | 0.77 | 0.87 | 1.01 | 1.06 | 1.04 | 1.19 | 1.15 |
+| Damage, ruled 2026-10-26 | 1.12 | 2.12 | 2.76 | 3.04 | 3.08 | 2.95 | 3.32 | 3.68 |
+| Damage, now | 0.22 | 0.58 | 1.01 | 1.39 | 1.68 | 1.86 | 2.40 | 2.97 |
+
+Health moves because the relief lowers the Boss's health at tiers 2-8; tier 1 has no relief, so 0.49 stays. Damage
+moves at every tier below 8 because of the scale, and at tier 8 because of the relief.
+
+### THE TESTS
+
+New:
+
+- `game/Source/Cataclysm/Tests/CataclysmEnemyStrengthTests.cpp`, group `Cataclysm.EnemyStrength.`:
+  `EveryFigureIsTheModels` (every row of the fixture, rarity applied: strength, health, damage and armour within
+  max(0.01, 1e-4 x the figure)); `TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth`;
+  `ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon`; `DamageAloneIsScaledByTheTier`;
+  `TheRarityRaisesTheScoreAndTheCreatureScalesItOnce`; `ACreaturePlacedOnAFloorIsBuiltFromTheScore` (calls
+  `ApplyDesignedStats` in a test world; its control reads the sandbox's protected `ImpHealth` through reflection).
+- `tools/generate_enemy_strength_fixture.py` writes `game/Tests/EnemyStrength/ExpectedFigures.csv` from
+  `strength_on_floor`: the 7 kinds a floor places x 6 rarity steps x tiers 1, 2, 4 and 8 x 5 floor cases (Basic 12
+  floors at floors 1, 6 and 12; Cataclysm 50 at floor 25; Basic 12 floor 6 with a modifier score of 30) = 840 rows.
+  `tools/tests/test_enemy_strength_fixture_is_current.py` fails when it is stale or does not cover every kind and rung.
+- `sim/tests/test_creature_strength.py`, 7 tests: the scale; the relief taken off at tier 4; the tier-1 control; the
+  minimum lifting floor 1 of 50 to floor 1 of 12; the control at floor 10; damage alone scaled; the design anchor not
+  eased.
+- `tools/tests/test_the_starting_character_survives_a_pack.py::test_the_starting_character_beats_a_pack_of_the_creatures_the_game_builds_on_every_tier_one_floor`:
+  the owner's target, with at least 10% health left on floor 12.
+
+Moved, none deleted:
+
+- `tools/tests/test_content_relief_port.py`: `TestTheGameDoesNotApplyItYet`, which said it would fail when the game
+  applied the relief, is replaced by `TestTheStrengthPathAppliesIt`: only `CataclysmEnemyScore.cpp`'s game code reads the
+  relief, `StrengthScoreFor` subtracts it, and `ScoreFor` does not.
+- `Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel`: its five
+  table pins move to the new values -- health at tier 8 1.33 to 1.15 (and the "above tier 8" pin with it), damage at
+  tier 1 1.12 to 0.22 (and the "below tier 1" pin with it), damage at tier 8 3.68 to 2.97. Health at tier 1, 0.49, did not
+  move.
+- `CataclysmEnemyModifierTests.cpp`: one comment now says the helper rolls the rarity, then builds the figures, then
+  draws the modifiers.
+
+### THE FIRST UNREAL RUN, AND WHY ONLY ONE TEST MOVED
+
+A discovery run, registered by the coordinating session as "not predicted, listed from this run"; nothing merged from
+it. 2026-10-30, 17:01 to 17:15, commit `2b5749129`, lock held as `enchant-1569-w1`, free memory 11,774 MB before it.
+`python tools/unreal_build.py tests` printed: "4389 tests performed, 4388 succeeded, 1 failed:
+ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel", and "Declared: 4389 tests in the tree at
+2b5749129; 4389 performed, gap 0". The six `Cataclysm.EnemyStrength.` tests passed. The failure was five assertions,
+each an old table value (for example "Expected 'the damage multiplier is 1.12 at tier 1' to be 1.120000, but it was
+0.220000").
+
+**Why no other test moved: no test compares a creature `ApplyDesignedStats` built with a fixed figure.** Checked
+2026-10-30 by a read-only search of `game/Source/Cataclysm/Tests/*.cpp`, and four of its claims checked again by hand
+(the 176 clears, `PlaceCreatureAtRung`'s figures, the Heavenly Core pin and the phantasm's health). The search: every
+`Test(Equal|NotEqual|True|False)` within 400 characters of a health, attack damage or armour reader (`HealthOf`,
+`MaxHealthOf`, `AttackDamageOf`, `ArmourOf`, `GetHealth`, `GetMaxHealth`, `GetAttackDamage`, `GetArmour` and the
+`GetStarting*` getters) with a number as the expected value; every use of the sandbox's fixed-figure names (`ImpHealth`,
+`BruteAttackDamage` and the rest) and their accessors; figure reads in loops over `FloorEnemies`; figure reads on
+creatures a rule raises. What it found:
+
+- **`ApplyDesignedStats` has one caller in game code, `SpawnPlacedCreature`**, which builds a floor (`PopulateFloor`,
+  from `GoToFloor`) and raises every creature a floor rule brings (the Reaper, Grave Tide, Royal Guard, Echoes of the
+  Past, the Pandora's Box and War Banner waves, and the rest). Two tests call it directly: the new
+  `ACreaturePlacedOnAFloorIsBuiltFromTheScore`, and `CataclysmEnemyModifierTests.cpp`'s `FloorImpThatDraws`, whose three
+  tests compare the Imp with itself (a shield of half its own maximum health; health 1.5 times a control Imp's).
+- **Most tests that build a floor throw its creatures away.** `CataclysmDungeonModifierEffectsTests.cpp` calls
+  `ClearFloorEnemies()` 176 times, right after it builds a floor, and then places its own creatures with figures it
+  writes itself: `PlaceCreatureAtRung` spawns an Imp with 100 health and sets its attack damage to 100. Every fixed
+  figure checked on a "floor creature" in that file is one of those numbers.
+- **Tests that keep the floor's own creatures, or creatures a rule raises, check them relative to themselves:** counts
+  and positions (`Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt` and the Horde wave tests); rarity rungs,
+  including two runs from one seed (`TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor`, which still matches because
+  the rung is drawn in the same order); the share of illusions, by count and by damage above 0; a guard's maximum health
+  above its summoner's; damage equal to its own earlier reading, or twice it (Trial of Endurance), or its own times the
+  Grave Tide multiplier; health equal to its own maximum (the Reaper, the Blood-bonded Elite, voidlings); a saved figure
+  equal to the loaded one (`CataclysmSaveLoadTests.cpp`). Where such a creature strikes the player (the Reaper, an Echo), the
+  test first sets its attack damage to 100 (`GiveCreatureAttackDamage`, 33 uses). A phantasm's health is checked at 1,
+  which `SetHealth(1.0f)` writes after `ApplyDesignedStats`.
+- **The fixed figures the tests do check belong to floor objects that do not go through `ApplyDesignedStats`.** The
+  Eternal Chorus source, the Necrotic Bloom flower, the Golden Spire, the plague beacon, the infested vein, the
+  sarcophagus, the void portal, the abyssal rift, the infection bloom and the quarantine containment are each spawned
+  directly and given `ImpHealth`, and the Heavenly Core `GatekeeperHealth` (pinned at "the Gatekeeper's 1248"). The
+  tests compare each with its figure, and they pass because this change leaves those spawners alone, as ruled.
+- **Kills use far more damage than any creature has**: `ThePlayerKills` hits with 100,000% of the player's weapon
+  damage (101 calls, and 4 at 10,000,000%), and `KillOutright` writes health to 0. Floor creatures never attack on their
+  own in a test, because a test world is never ticked; only the game mode's `Tick` is called. Whether 100,000% still
+  exceeds every score-built health was not measured; the full run passing is the evidence that it does.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, `test_prefix="Cataclysm.EnemyStrength."`, on the commit that registers this.
+Each break text occurs once in its file. Names are the short names the engine's log prints.
+
+| # | File | Break | Predicted named_failures |
+| :-- | :-- | :-- | :-- |
+| 1 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.cpp` | the relief is dropped: `const double Relief = ContentRelief(Floor.DifficultyTier) * TierWidth(Floor.DifficultyTier);` becomes `const double Relief = 0.0;` | `EveryFigureIsTheModels`, `TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth` |
+| 2 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.cpp` | every floor is built as floor 1 of a 12-floor dungeon: `return FMath::Max(0.0, FMath::Max(Here, Least));` becomes `return FMath::Max(0.0, FMath::Max(Least, Least + 0.0 * Here));` | `EveryFigureIsTheModels`, `TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth`, `ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon` |
+| 3 | `game/Source/Cataclysm/Dungeon/CataclysmEnemyStrength.cpp` | the rarity is applied twice: the per-score factors are read from the creature's own rung instead of Common's -- `[&Common](const FName&, const FCataclysmEnemyRarityRow& Row)` becomes `[&Common, RarityStep](const FName&, const FCataclysmEnemyRarityRow& Row)`, and `if (Row.Step == 0)` becomes `if (Row.Step == RarityStep)` | `EveryFigureIsTheModels`, `TheRarityRaisesTheScoreAndTheCreatureScalesItOnce` |
+
+Why each prediction, so a different result can be read:
+
+- **1.** The fixture holds tiers 2, 4 and 8, where the relief is not zero, so its rows fail. The relief test compares
+  the strength with the score less 0.45 tier widths at tier 4. The minimum test is at tier 1, which has no relief. The
+  scale, rarity and floor tests compare the game's function with itself (`StrengthScoreFor` on both sides) and pass.
+- **2.** Floors 6 and 12 of the fixture differ from floor 1. In the relief test, floor 25 of 50 at tier 4 scores 1,846
+  and floor 1 of 12 scores 1,539, so both its equalities fail (the tier-1 control too: 188 against 24). In the minimum
+  test, floor 1 of 50 still equals floor 1 of 12 and passes, and "so it is built from its own score" at floor 10 (57
+  against 24) fails. The other three compare the function with itself.
+- **3.** Every fixture row at rungs 1-5 then carries the rarity ratio twice. The rarity test compares a Legendary's
+  Starting health with Common's factor (0.5 against Legendary's 1.71125). The scale test is at rung 0, where the two rows
+  are the same row, and `ACreaturePlacedOnAFloorIsBuiltFromTheScore` takes its expected figures from the same broken
+  function, so both pass.
+
+**Not proved, and said so:** dropping the minimum alone (returning `max(0, Here)`) would be caught by
+`ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon`'s first equality and by nothing in the fixture, which has
+no row below the minimum. No proof of it was run.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+### NO GENRE SOURCE
+
+None. The conversion is the model's own (#97), and the scale and the minimum are measured against targets set for this
+game.
+
+---
+
 ## 2026-10-30 — Wins fall at every tier for a fully invested Explorer: the content relief and the Last Stand's depth limit start at tier 2 (#1425)
 
 **Affects:** `sim/cataclysm_sim/config.py` (the relief starts at tier 2 on the same line; the Last Stand limit becomes a
