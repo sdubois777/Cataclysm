@@ -218,7 +218,7 @@ anything was written here.
 
 **THE FOUR ARE F2'S CHECK REFUSING A FLOOR THAT IS NOT THE ARENA, WHICH EACH TEST USES AS ONE.** Each, in
 `CataclysmDungeonModifierEffectsTests.cpp`, builds an ordinary floor 1, then sets `Mode->DungeonSubType` to Horde and
-calls `GoToFloor(2)` (the switch at lines 17166, 17923, 19414 and 20985), and asserts the creatures live through "the
+calls `GoToFloor(2)` (the switch at lines 17166, 17934, 19414 and 20985), and asserts the creatures live through "the
 change of wave": "the wraith lived through the change of wave", "the champion lived through the change of wave",
 "both risen creatures lived into the next wave ... 2, but it was 0", and the survivor's damage 160 where 100 (its
 damage was not put back because it is a new creature). The brief's flag alone kept the ordinary floor as the arena;
