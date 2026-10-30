@@ -177,6 +177,25 @@ The two failed figures are exactly that: the holder's damage is only Soul Harves
 boss's is only the void's 12. The maximums, the souls and the boss link all came back. The roles test is not changed;
 the fault waits for the coordinating session's ruling.
 
+**Window w103 (lock `dungeon-w103`, `feat/creatures-walk-state-and-thralls-survive-a-load-2` at `d603e99dc`, on
+`08bdfae16`, 2026-10-30) FAILED ONE TEST IN THE WHOLE SUITE; no proof ran.** `development`'s CI at `08bdfae16`
+succeeded, and its last Unreal run, at `2082da17b` (`08bdfae16` changes no game file), succeeded; no run was in progress
+or queued, the lock was free, no build or editor process or simulation process ran, no pull request was open, and free
+memory read 11,713 MB immediately before. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 41 actions, 38 files compiled` |
+| The four tests alone | `1 tests performed, 1 succeeded, 0 failed`, each; "LOAD SOULS: ... the holder saved max 713.7 damage 45.5 ..., loaded max 713.7 damage 45.5"; "LOAD DAMAGE: in a level, saved damage 37.5 armour 55.0 rebuilt max 375.0, loaded damage 37.5 armour 55.0 rebuilt max 375.0; on a dungeon floor, saved damage 21.0 armour 150.0 rebuilt max 823.5, loaded damage 21.0 armour 150.0 rebuilt max 823.5; the illusion not saved, the creature beside it saved" |
+| Whole Unreal suite | `4383 tests performed, 4382 succeeded, 1 failed: EveryFixtureHoldsEveryFieldItsRecordWrites`; declared 4383, gap 0 |
+| Python (JUnit) | 7138 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**THE FAILURE WAS THE FIXTURE'S VALUE, NOT THE CODE.** "Run_v1.json and the record it loads into disagree at the
+record.Floor.Creatures[0].PlacedDamageMultiplier is 0.600000 on one side and 0.600000 on the other": 0.6 has no exact
+32-bit float, so the record writes back a value the comparison, which is exact, finds different from the fixture's.
+The fixture now holds 0.75, which a float holds exactly, as every other fractional figure added to it already did
+(15.5, 35.5, 1.25, 0.75, 42.5). Nothing else changed.
+
 ---
 
 ## 2026-10-30 — Tiers 5 to 8 can be won by a fully invested Explorer, and less often at each tier: the Last Stand's depth is limited from tier 4, Infinite Depths skips the boss dungeon, quest dungeons keep their tier-1 rate per Cataclysm, and a quest-chasing play style is added (#1425)

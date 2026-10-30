@@ -132,7 +132,7 @@
 				"AttackDamage": 42.5,
 				"StartingHealth": 400,
 				"Armour": 120,
-				"PlacedDamageMultiplier": 0.6
+				"PlacedDamageMultiplier": 0.75
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
