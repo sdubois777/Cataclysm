@@ -145,7 +145,31 @@ after the tenth hit is not nought (the second).
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The editor window `enchant-1722-w1`**, 2026-10-30, on `feat/withering-blows-and-no-temporal-debt-1` (moved onto
+`development` `9af2dc817`, every file's change identical to the original `b9b657e55`). Its first run stopped at its
+own pre-check at 21:49:46, because the window script named the branch without its "-1"; nothing ran, and the lock
+was taken again at 21:50:16 after the processes and memory were checked again (11,409 MB free).
+
+- **The asset rebuild** changed exactly `DT_EnemyModifiers.uasset`, `DT_StatusEffects.uasset` and
+  `datatable_asset_sources.json`, committed as `34b25e7fd`, the tested head.
+- **The full Unreal suite** on `34b25e7fd`: "4404 tests performed, 4404 succeeded, 0 failed" and "Declared: 4404
+  tests in the tree at 34b25e7fd; 4404 performed, gap 0", as registered (3c-1's measured 4401, plus 3). 43 tests
+  reported skipping part of what they check: the Paragon-art halves a worktree does not have.
+- **The proofs**, each "PROVED" with exactly the registered named failures, each file's hash the same after, and
+  "restored: 3 tests performed, 3 succeeded, 0 failed" every time:
+
+| # | With the break in | The failed assertion |
+| :-- | :-- | :-- |
+| 1 | 3 performed, 2 succeeded, 1 failed | "'at the tenth hit Withering is taken off' to be false" |
+| 2 | 3 performed, 1 succeeded, 2 failed | the nine texts read ", , , , , , , , "; "control: five hits show five" and "the next hit starts again at one" read "" |
+| 3 | 3 performed, 2 succeeded, 1 failed | "'so the player walks at seven tenths' to be 280.000000, but it was 400.000000" |
+| 4 | 3 performed, 1 succeeded, 2 failed | "'and every stack is spent' to be 0, but it was 10"; the notes that fired "10 11 12 ... 20" |
+
+**Python of record** at `34b25e7fd`: "7175 passed, 8 skipped in 199.66s"; JUnit tests 7183, failures 0, errors 0,
+skipped 8. That is the base's 7174 plus 1, Wither's row in the status effect numbers test. ruff: "All checks
+passed!" A regenerate run left `game/Data` unchanged, and `CataclysmTags.ini` is current (197 tags). Before the
+asset commit the same suite failed one test, `test_datatable_assets_are_current`, naming exactly
+`EnemyModifiers.csv` and `StatusEffects.csv`; the asset rebuild is what it was waiting for.
 
 ---
 
