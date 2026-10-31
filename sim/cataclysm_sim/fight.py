@@ -8,10 +8,12 @@ against the game's measured build (`fitted_to_the_game`). This model computes th
 the same floor, and the damage multiplier that makes the Stalker kill the reference character as fast as that Boss
 does.
 
-THE BOSS IS THE SIMULATION'S, ruled the same day: `enemy_stats.stats_on_floor("Boss", tier, "Basic", "None", 50,
-floor=25)`, the middle floor of a fifty-floor Basic dungeon. A reading recorded with that ruling: the game's own
-creatures are not scaled by tier, so a Boss in the game is the same at tier 1 and tier 8, and this model's Boss is the
-design's.
+THE BOSS IS THE ONE THE GAME BUILDS, since 2026-10-30: `enemy_stats.strength_on_floor("Boss", tier, "Basic", "None",
+50, floor=25)`, the middle floor of a fifty-floor Basic dungeon. Until then it was `stats_on_floor`, the design's Boss,
+with a reading recorded on 2026-10-26 that the game's creatures were not scaled by tier. Issue #1569 made them follow
+the enemy score, eased by the tier relief and with damage scaled by the tier, so the coordinating session ruled the
+tables re-fitted to that Boss: the principle of 2026-10-26 stands -- the Stalker is as dangerous as a Boss on the same
+floor -- and only the numbers it derives moved. `docs/DECISIONS.md`, 2026-10-30.
 
 ITS POTIONS ARE COUNTED, as ruled: it holds the player's four slots of thirty charges, ten a drink, each drink healing
 35% of its maximum health over three seconds, one at a time. A fight as long as the Boss's leaves time for
@@ -85,9 +87,11 @@ GAME_ARMOUR = (1155.3, 1382.7, 1641.1, 1937.0, 2289.4, 2723.9, 2983.5, 3243.8)
 GAME_BLOW = (348.0, 468.0, 634.0, 867.0, 1195.0, 1661.0, 1874.0, 2101.0)
 
 #: The multipliers in the game, tiers 1 to 8: `fitted_to_the_game` to two decimals, ruled by the coordinating session
-#: on 2026-10-26. The game's copies are `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`.
-HEALTH_MULTIPLIERS = (0.49, 0.76, 0.91, 1.07, 1.15, 1.15, 1.32, 1.33)
-DAMAGE_MULTIPLIERS = (1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68)
+#: on 2026-10-26 and re-fitted on 2026-10-30 to the Boss the game now builds (issue #1569). They were health 0.49, 0.76,
+#: 0.91, 1.07, 1.15, 1.15, 1.32, 1.33 and damage 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68. The game's copies are
+#: `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`.
+HEALTH_MULTIPLIERS = (0.49, 0.77, 0.87, 1.01, 1.06, 1.04, 1.19, 1.15)
+DAMAGE_MULTIPLIERS = (0.22, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97)
 
 
 def _defender(hero: Character, tier: int) -> dmg.Defender:
@@ -203,7 +207,7 @@ def fight(tier: int) -> StalkerFight:
     player_defender = _defender(player, tier)
     player_dps = pd.damage_per_second(tier)
 
-    boss = es.stats_on_floor("Boss", tier, *BOSS_DUNGEON[:3], floor=BOSS_DUNGEON[3])
+    boss = es.strength_on_floor("Boss", tier, *BOSS_DUNGEON[:3], floor=BOSS_DUNGEON[3])
     boss_seconds = boss.effective_health / (player_dps * boss.damage_taken_fraction())
     boss_hit = boss.average_damage_per_hit
     boss_dps_on_player = boss_hit * _landed(boss_hit, boss.damage_type, player_defender) / boss.attack_interval

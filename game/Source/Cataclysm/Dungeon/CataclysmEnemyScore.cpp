@@ -246,3 +246,38 @@ FCataclysmScoredFloor UCataclysmEnemyScore::FloorFor(
 
 	return Floor;
 }
+
+double UCataclysmEnemyScore::ContentRelief(int32 Tier)
+{
+	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
+	if (Held < ContentReliefFromTier)
+	{
+		return 0.0;
+	}
+	return ContentReliefTierWidths + ContentReliefPerTierWidths * static_cast<double>(Held - ContentReliefFromTier);
+}
+
+double UCataclysmEnemyScore::DamageScale(int32 Tier)
+{
+	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
+	return DamageScaleAtFirstTier + (1.0 - DamageScaleAtFirstTier)
+		* static_cast<double>(Held - LowestDifficultyTier)
+		/ static_cast<double>(HighestDifficultyTier - LowestDifficultyTier);
+}
+
+double UCataclysmEnemyScore::StrengthScoreFor(const FCataclysmScoredFloor& Floor, int32 RarityStep)
+{
+	// THE RELIEF OF THE FLOOR'S OWN TIER, as `ScoreFor` reads it: clamped into the tiers there are.
+	const double Relief = ContentRelief(Floor.DifficultyTier) * TierWidth(Floor.DifficultyTier);
+	const double Here = static_cast<double>(ScoreFor(Floor, RarityStep)) - Relief;
+
+	// THE SAME CREATURE ON FLOOR 1 OF A 12-FLOOR DUNGEON OF THE SAME KIND, sub-type and modifiers, so only the depth
+	// changes. Below the middle floor depth tension is negative, and without this the first floors of a deep dungeon
+	// scored nothing: a tier 1 Imp on floor 1 of 50 had 1 health and dealt no damage. Ruled 2026-10-30.
+	FCataclysmScoredFloor Reference = Floor;
+	Reference.TotalFloors = MinimumStrengthReferenceFloors;
+	Reference.FloorNumber = 1;
+	const double Least = static_cast<double>(ScoreFor(Reference, RarityStep)) - Relief;
+
+	return FMath::Max(0.0, FMath::Max(Here, Least));
+}

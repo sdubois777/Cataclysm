@@ -973,7 +973,8 @@ namespace CataclysmEnemyModifierTest
 	 * THE FLOOR'S OWN TWO STEPS, IN ITS OWN ORDER.
 	 * `ACataclysmDungeonGameMode::SpawnPlacedCreature` spawns the class for the
 	 * creature's kind and then calls `ApplyDesignedStats`, which sets the
-	 * creature's figures, then its rarity, then draws its modifiers. Only the
+	 * creature's rarity, then its figures (since issue #1569, which builds them
+	 * at that rarity), then draws its modifiers. Only the
 	 * seed is set in between, and a seed changes what is drawn, not when.
 	 *
 	 * Null, with the reason added to the test, when it cannot be arranged.

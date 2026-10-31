@@ -34,7 +34,10 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Data/CataclysmDataRows.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmEnemyScore.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Interface/CataclysmCreaturePanel.h"
@@ -1735,67 +1738,81 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		return;
 	}
 
+	// BUILT FROM THE DESIGN'S ENEMY SCORE ON THIS FLOOR, since issue #1569. The project owner, 2026-09-11: "Creature
+	// health and damage come from the design's enemy score on each floor". `UCataclysmEnemyStrength` turns the score
+	// -- eased by the tier relief, held above a minimum, and with damage scaled by the tier, all ruled 2026-10-30 --
+	// into the creature's Starting figures, and the creature multiplies them by its rarity's ratio itself.
+	//
+	// THE RARITY IS ROLLED FIRST, because the score depends on it: a rarer creature on the same floor scores higher.
+	// The setters below store and recompute, so their order changes nothing else, and no setter draws from a stream,
+	// so the same seed still rolls the same rungs.
+	//
+	// THE KIND'S FIXED FIGURES ARE THE FALLBACK, used only when a table is missing or has no row for the creature:
+	// a creature built from nothing would die to one hit and deal none. They are also what the sandbox, which has no
+	// floors, still places, ruled 2026-10-30.
+	const FCataclysmScoredFloor Floor = UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this));
+	const auto Build = [this, Enemy, &Setting, &Floor](int32 KindsRung, float FixedHealth, float FixedAttackDamage,
+													   const float* FixedArmour)
+	{
+		Enemy->SetRarityStep(RarityStepFor(Setting(KindsRung), Enemy, RarityStreamNow));
+
+		FCataclysmStartingFigures Built;
+		if (UCataclysmEnemyStrength::StartingFiguresFor(UCataclysmEnemyRarity::LoadEnemyRarityTable(),
+														 UCataclysmEnemyStrength::LoadEnemyArchetypeTable(),
+														 Enemy->ArchetypeRow, Floor, Enemy->RarityStep, Built))
+		{
+			Enemy->SetHealth(Built.Health);
+			Enemy->SetAttackDamage(Built.AttackDamage);
+			if (FixedArmour)
+			{
+				Enemy->SetArmour(Built.Armour);
+			}
+		}
+		else
+		{
+			Enemy->SetHealth(FixedHealth);
+			Enemy->SetAttackDamage(FixedAttackDamage);
+			if (FixedArmour)
+			{
+				Enemy->SetArmour(*FixedArmour);
+			}
+		}
+		Enemy->DrawModifiersForRarity();
+	};
+
 	switch (Creature)
 	{
 	case ECataclysmDungeonCreature::Imp:
-		Enemy->SetHealth(ImpHealth);
-		Enemy->SetAttackDamage(ImpAttackDamage);
-		// NO SetArmour CALL. See the header: this creature's designed armour
-		// share is exactly zero and it is the only one in the roster with none.
-		Enemy->SetRarityStep(RarityStepFor(Setting(ImpRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		// NO ARMOUR. See the header: this creature's designed armour share is exactly zero and it is the only one in
+		// the roster with none, so it is built with none either way.
+		Build(ImpRarityStep, ImpHealth, ImpAttackDamage, nullptr);
 		break;
 
 	case ECataclysmDungeonCreature::Hellhound:
-		Enemy->SetHealth(HellhoundHealth);
-		Enemy->SetArmour(HellhoundArmour);
-		Enemy->SetAttackDamage(HellhoundAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(HellhoundRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(HellhoundRarityStep, HellhoundHealth, HellhoundAttackDamage, &HellhoundArmour);
 		break;
 
 	case ECataclysmDungeonCreature::Brute:
-		Enemy->SetHealth(BruteHealth);
-		Enemy->SetArmour(BruteArmour);
-		Enemy->SetAttackDamage(BruteAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(BruteRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(BruteRarityStep, BruteHealth, BruteAttackDamage, &BruteArmour);
 		break;
 
 	case ECataclysmDungeonCreature::AbyssalWarden:
-		Enemy->SetHealth(AbyssalWardenHealth);
-		Enemy->SetArmour(AbyssalWardenArmour);
-		Enemy->SetAttackDamage(AbyssalWardenAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(AbyssalWardenRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(AbyssalWardenRarityStep, AbyssalWardenHealth, AbyssalWardenAttackDamage, &AbyssalWardenArmour);
 		break;
 
 	case ECataclysmDungeonCreature::CorruptedSentinel:
-		Enemy->SetHealth(CorruptedSentinelHealth);
-		Enemy->SetArmour(CorruptedSentinelArmour);
-		Enemy->SetAttackDamage(CorruptedSentinelAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(CorruptedSentinelRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(CorruptedSentinelRarityStep, CorruptedSentinelHealth, CorruptedSentinelAttackDamage,
+			  &CorruptedSentinelArmour);
 		break;
 
 	case ECataclysmDungeonCreature::Succubus:
-		Enemy->SetHealth(SuccubusHealth);
-		Enemy->SetArmour(SuccubusArmour);
-		Enemy->SetAttackDamage(SuccubusAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(SuccubusRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(SuccubusRarityStep, SuccubusHealth, SuccubusAttackDamage, &SuccubusArmour);
 		break;
 
-	// THE BOSS, AND ITS NUMBERS COME FROM THE SAME PLACE THE SANDBOX'S DOES.
-	// `ACataclysmGameMode::GatekeeperHealth` and the two beside it are what
-	// `SpawnGatekeepers` already uses, so a Gatekeeper at the bottom of a
-	// dungeon and one in the sandbox are the same creature. Issue #41.
+	// THE BOSS. Its fixed figures are `ACataclysmGameMode::GatekeeperHealth` and the two beside it, which the
+	// sandbox's `SpawnGatekeepers` uses; on a dungeon floor it is built from the score like every other creature.
 	case ECataclysmDungeonCreature::Gatekeeper:
-		Enemy->SetHealth(GatekeeperHealth);
-		Enemy->SetArmour(GatekeeperArmour);
-		Enemy->SetAttackDamage(GatekeeperAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(Setting(GatekeeperRarityStep), Enemy, RarityStreamNow));
-		Enemy->DrawModifiersForRarity();
+		Build(GatekeeperRarityStep, GatekeeperHealth, GatekeeperAttackDamage, &GatekeeperArmour);
 		break;
 
 	default:
