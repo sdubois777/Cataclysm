@@ -2770,6 +2770,30 @@ public:
 	 */
 	bool ChooseAtFloorObject(class ACataclysmFloorObject* Object, FName ChoiceKey);
 
+	/**
+	 * THE FLOOR OBJECTS THE PLAYER USED ON THIS FLOOR OR WAVE, by rule, placement index and choice, recorded by
+	 * `ChooseAtFloorObject` after a choice that acted; and what else the floor's choices left (the tithe's angels owed,
+	 * the pact offer, the gate opened, the banner's hold, the rifts' gift and chamber). For the save. Issue #753,
+	 * Group 3b, ruled 2026-10-30.
+	 */
+	TArray<struct FCataclysmSavedUsedObject> UsedFloorObjectsNow() const;
+	struct FCataclysmSavedFloorChoices FloorChoicesNow() const;
+
+	/**
+	 * A LOAD'S: once the floor is rebuilt and the walk is back, each saved object is found by its rule and placement
+	 * index and marked used WITHOUT its reward or its cost (`MarkFloorObjectUsed`), and the rest of the choices are
+	 * put back. The pact offer is put back first, so a pact taken empties it as taking one does. Issue #753, Group 3b.
+	 */
+	void RestoreFloorChoices(const struct FCataclysmSavedFloorChoices& Choices,
+							 const TArray<struct FCataclysmSavedUsedObject>& Used);
+
+	/**
+	 * ONE OBJECT MARKED USED WITHOUT ITS REWARD OR ITS COST: what its rule's choice does to the object and to the
+	 * floor's state, and nothing it pays or charges -- no stack, no buff, no creature, no drop, no roll, no burn, no
+	 * wave. False when no object of that rule and index stands, or the rule has no such step. Issue #753, Group 3b.
+	 */
+	bool MarkFloorObjectUsed(FName Rule, int32 Index, FName Choice, bool bDivineGateOpened);
+
 	/** Grim Totems, for the panel and tests: the totems standing, and the Elite creatures embracing brought. */
 	TArray<class ACataclysmFloorObject*> GrimTotemsNow() const;
 
@@ -3116,6 +3140,22 @@ public:
 	 * absent or not, so it is this pass's. Ruled 2026-10-30. Issue #753, Group 3a.
 	 */
 	bool bPlacingTheFloorsObjects = false;
+
+	/** One use `ChooseAtFloorObject` recorded: the rule, the object's placement index, the choice. Issue #753, 3b. */
+	struct FFloorObjectUse
+	{
+		FName Rule;
+		int32 Index = -1;
+		FName Choice;
+	};
+
+	/**
+	 * THE USES ON THIS FLOOR OR WAVE. Emptied where `PopulateFloor` begins to place the floor's objects: all of it for a
+	 * new arena, and only the three rules placed on every wave (the tithe, the pact, the gate) when a Horde arena is
+	 * kept. Not when a rule places its objects, because a rule absent from the next floor places none and its uses
+	 * would stay. Issue #753, Group 3b.
+	 */
+	TArray<FFloorObjectUse> UsedFloorObjects;
 
 	/** How many actors `StoodBeforePlacement` holds: zero outside `PopulateFloor`'s placing. Public for a test. */
 	int32 ActorsHeldOutOfPlacementNow() const { return StoodBeforePlacement.Num(); }

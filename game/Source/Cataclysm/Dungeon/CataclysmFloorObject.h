@@ -54,6 +54,15 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	FName RuleKey;
 
+	/**
+	 * THE ORDER ITS RULE PLACED IT IN, counted when it was placed: `ACataclysmDungeonGameMode::PlaceFloorObjects` gives
+	 * the first it places 0 and each next one the next number, and an object placed alone keeps 0. A save names a used
+	 * object by its rule and this, and a rebuilt floor places them again in the same order. Not its place in its rule's
+	 * list, which moves when an earlier one is used and taken out of it. Issue #753, Group 3b.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	int32 PlacementIndex = 0;
+
 	/** The name on its tag and at the top of its panel. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	FString DisplayName;

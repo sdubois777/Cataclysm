@@ -464,6 +464,73 @@ struct CATACLYSM_API FCataclysmSavedWalk
 };
 
 /**
+ * ONE FLOOR OBJECT THE PLAYER USED: the rule that placed it (`ACataclysmFloorObject::RuleKey`), the order that rule
+ * placed it in (`ACataclysmFloorObject::PlacementIndex`, counted when it was placed, so not moved by an earlier one
+ * being taken out of its rule's list), and the choice made. A load rebuilds the floor, which places every object again
+ * in the same order, and then marks each of these used without its reward or its cost again. Issue #753, Group 3b.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedUsedObject
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Rule;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Index = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Choice;
+};
+
+/**
+ * WHAT A FLOOR'S CHOICES LEFT THAT THE LIST OF USED OBJECTS DOES NOT SAY. Issue #753, Group 3b, ruled 2026-10-30:
+ * - the angels Forced Tithes owes for the last floor's unpaid altar, before the beat that brings them;
+ * - the Pact of Temptation's offer on this floor, which the next floor's draw avoids;
+ * - whether the Divine Gate's channel finished (the gate gone) rather than only began, which restarts from nought;
+ * - the War Banner's hold: whether it was held, and the seconds held toward it, progress and not a duration (Q1);
+ * - Reality Rifts' gift taken and the hidden chamber's reward paid, with its three counts, the gift being a cell the
+ *   player steps on and the chamber's drops being seeded, so either would pay again.
+ * Every default means not saved, which is what an older file reads as.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedFloorChoices
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bTitheAngelsDue = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> PactOffer;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bDivineGateOpened = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bWarBannerHeld = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float WarBannerHeldSeconds = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRealityGiftTaken = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRealityChamberRewardGiven = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardRolls = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardDrops = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardExtraDrops = 0;
+};
+
+/**
  * The floor being fought on, as it stands.
  *
  * `Floor` IS ZERO WHEN NOBODY IS IN A DUNGEON, which is the ordinary case: a
@@ -513,6 +580,13 @@ struct CATACLYSM_API FCataclysmSavedFloor
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedGroundItem> GroundItems;
+
+	/** The floor objects the player used, and what else the floor's choices left. Issue #753, Group 3b. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedUsedObject> UsedObjects;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FCataclysmSavedFloorChoices Choices;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedCharacterPlacement> Characters;

@@ -281,6 +281,10 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::DungeonFloorInto(*DungeonMode, OnlyTheFloor);
 			Report.CreaturesRestored = Floor.Creatures;
 			RelinkTheCreatures(Floor, OnlyTheFloor, Character, DungeonMode);
+
+			// AND THE FLOOR OBJECTS THE PLAYER USED, MARKED USED WITHOUT THEIR REWARD OR COST, once the floor is rebuilt
+			// and the walk is back. Issue #753, Group 3b.
+			DungeonMode->RestoreFloorChoices(OnlyTheFloor.Choices, OnlyTheFloor.UsedObjects);
 		}
 		else if (SavedRun->Floor.IsOccupied())
 		{

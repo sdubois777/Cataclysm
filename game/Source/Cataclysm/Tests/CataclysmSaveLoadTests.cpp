@@ -21,6 +21,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorObject.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
@@ -32,6 +33,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
@@ -2677,6 +2680,600 @@ bool FCataclysmSaveLoadPlacedAroundTest::RunTest(const FString&)
 	TestTrue(TEXT("floor 2 was built again after it"), bBuiltAfterIt);
 	TestEqual(TEXT("after a floor whose pack site was a statue's cell, the same statues in the same order"),
 			  CellsText(StatuesAfterIt), CellsText(Statues));
+	return true;
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/** Every floor object standing, as "rule#placement index", sorted: the world's order is not the placement's. */
+	FString StandingFloorObjects(UWorld& World)
+	{
+		TArray<FString> Each;
+		for (TActorIterator<ACataclysmFloorObject> It(&World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Each.Add(FString::Printf(TEXT("%s#%d"), *It->RuleKey.ToString(), It->PlacementIndex));
+			}
+		}
+		Each.Sort();
+		return FString::Join(Each, TEXT(" "));
+	}
+
+	/** The uses the game mode holds for the save, in the order made, as "rule#index:choice". */
+	FString UsedFloorObjectsLine(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<FString> Each;
+		for (const FCataclysmSavedUsedObject& One : Mode.UsedFloorObjectsNow())
+		{
+			Each.Add(FString::Printf(TEXT("%s#%d:%s"), *One.Rule.ToString(), One.Index, *One.Choice.ToString()));
+		}
+		return FString::Join(Each, TEXT(" "));
+	}
+
+	int32 DropsLying(UWorld& World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(&World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** The game mode's beat, as `Tick` gives it once `SecondsBetweenWaveChecks` have passed. */
+	void BeatOnce(ACataclysmDungeonGameMode& Mode)
+	{
+		Mode.Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	/** The player stood on a cell of the floor, at the height they stand at. */
+	void StandOnCell(ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, FIntPoint Cell)
+	{
+		const FVector At = Mode.CurrentFloor->WorldOfCell(Cell);
+		Player.SetActorLocation(FVector(At.X, At.Y, Player.GetActorLocation().Z));
+	}
+
+	/**
+	 * THE PACT OFFER A FLOOR DRAWS FIRST, before it is drawn again for matching the last floor's: the shuffle
+	 * `ACataclysmDungeonGameMode::PlaceThePactAltar` makes on the floor's own stream, its first three, sorted. The test's
+	 * oracle for whether a floor's offer was drawn again.
+	 */
+	TArray<int32> FirstPactShuffle(int32 PlanSeed, int32 Floor)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		FRandomStream Offers(FCataclysmFloorGenerator::SeedForFloor(
+			FCataclysmFloorGenerator::SeedForFloor(PlanSeed, Effects::PactOfTemptationOfferSalt), Floor));
+		TArray<int32> Pacts = {Effects::PactWrath, Effects::PactHaste, Effects::PactBulwark, Effects::PactGreed,
+							   Effects::PactBlood};
+		for (int32 Index = Pacts.Num() - 1; Index > 0; --Index)
+		{
+			Pacts.Swap(Index, Offers.RandRange(0, Index));
+		}
+		TArray<int32> Offer(Pacts.GetData(), Effects::PactsOffered);
+		Offer.Sort();
+		return Offer;
+	}
+
+	/** `Cataclysm.DungeonSeed` pinned for as long as this stands, and put back after; empire dungeons read it too. */
+	struct FPinnedDungeonSeed
+	{
+		FPinnedDungeonSeed()
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+			}
+		}
+		~FPinnedDungeonSeed()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByConsole);
+			}
+		}
+		void Pin(int32 Seed)
+		{
+			if (Variable)
+			{
+				Variable->Set(*FString::FromInt(Seed), ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
+
+	FString PactsText(const TArray<int32>& Pacts)
+	{
+		TArray<FString> Each;
+		for (const int32 Pact : Pacts)
+		{
+			Each.Add(FString::FromInt(Pact));
+		}
+		return FString::Join(Each, TEXT(","));
+	}
+}
+
+/**
+ * The floor objects a player used come back used after a load, by rule and placement index, and nothing they paid or
+ * charged is paid or charged again: the tithe refused, the pact taken, the gate's channel begun, a relic, a box, the
+ * altar, a beacon, the banner and both totems -- the first and then the one placed second, by then first in its list --
+ * and the rifts' gift and chamber reward. Issue #753, Group 3b, ruled 2026-10-30. On the first floor from 2 with a
+ * hidden chamber. Prints "LOAD USED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadUsedChoicesTest,
+	"Cataclysm.SaveLoad.AFloorsUsedChoicesComeBackUsedAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadUsedChoicesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TArray<FName> Rules = {FName(Effects::ForcedTithesKey), FName(Effects::PactOfTemptationKey),
+								 FName(Effects::SanctionedPassageKey), FName(Effects::BattlefieldRelicsKey),
+								 FName(Effects::PandorasBoxKey), FName(Effects::CarrionFeastKey),
+								 FName(Effects::InfernalBeaconsKey), FName(Effects::WarBannerKey),
+								 FName(Effects::GrimTotemsKey), FName(Effects::RealityRiftsKey)};
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	int32 Floor = 2;
+	FString StandingSaved;
+	FString UsedSaved;
+	int32 DropsSaved = -1;
+	int32 StacksSaved = -1;
+	int32 PactsSaved = -1;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, Rules);
+		if (!TestTrue(TEXT("set-up: a dungeon carrying the ten rules was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+		bool bReached = Mode.GoToFloor(Floor);
+		while (bReached && !Mode.RealityChamberStands() && Floor < 19)
+		{
+			bReached = Mode.GoToFloor(++Floor);
+		}
+		if (!TestTrue(FString::Printf(TEXT("set-up: the walk reached floor %d"), Floor), bReached)
+			|| !TestTrue(TEXT("set-up: a floor from 2 to 19 has a hidden chamber"), Mode.RealityChamberStands()))
+		{
+			return false;
+		}
+
+		// THE RIFTS' GIFT AND THE CHAMBER'S REWARD, taken as their steps take them: the rifts drawn on a beat, the
+		// player stood on the gift and then on the chamber's rift, a beat each, and stood back at the entrance.
+		BeatOnce(Mode);
+		StandOnCell(Mode, Player, Mode.RealityRiftCellsNow()[2 * Effects::RealityRiftPairs]);
+		BeatOnce(Mode);
+		StandOnCell(Mode, Player, Mode.RealityChamberRiftCellNow());
+		BeatOnce(Mode);
+		const FVector Entrance = Mode.CurrentFloor->EntranceWorld();
+		Player.SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.GetActorLocation().Z));
+		if (!TestTrue(TEXT("set-up: the gift was taken"), Mode.RealityGiftTaken())
+			|| !TestTrue(TEXT("set-up: the chamber paid its reward"), Mode.RealityChamberRewardGiven()))
+		{
+			return false;
+		}
+
+		// EACH OBJECT USED AS A PLAYER USES IT, through the choice panel's own call.
+		const auto Choose = [this, &Mode](ACataclysmFloorObject* Object, FName Key, const TCHAR* What)
+		{
+			return TestTrue(FString::Printf(TEXT("set-up: %s acted"), What),
+							Object != nullptr && Mode.ChooseAtFloorObject(Object, Key));
+		};
+		const auto First = [](const TArray<ACataclysmFloorObject*>& Objects)
+		{
+			return Objects.IsEmpty() ? nullptr : Objects[0];
+		};
+		const TArray<int32> Offer = Mode.PactsOfferedNow();
+		bool bAll = Choose(Mode.TitheAltarNow(), FName(Effects::ForcedTithesRefuse), TEXT("refusing the tithe"));
+		bAll &= Choose(Mode.PactAltarNow(), Offer.IsEmpty() ? NAME_None : FName(Effects::PactName(Offer[0])),
+					   TEXT("taking a pact"));
+		bAll &= Choose(Mode.DivineGateNow(), FName(Effects::SanctionedPassageChannel), TEXT("beginning the channel"));
+		bAll &= Choose(First(Mode.BattlefieldRelicsNow()), FName(Effects::BattlefieldRelicsActivate),
+					   TEXT("a relic"));
+		bAll &= Choose(First(Mode.PandorasBoxesNow()), FName(Effects::PandorasBoxOpen), TEXT("a box"));
+		bAll &= Choose(Mode.PurificationAltarNow(), FName(Effects::CarrionFeastConsecrate), TEXT("the altar"));
+		bAll &= Choose(First(Mode.InfernalBeaconsNow()), FName(Effects::InfernalBeaconsActivate), TEXT("a beacon"));
+		bAll &= Choose(Mode.WarBannerNow(), FName(Effects::WarBannerPlant), TEXT("the banner"));
+		bAll &= Choose(First(Mode.GrimTotemsNow()), FName(Effects::GrimTotemsEmbrace), TEXT("the first totem"));
+		bAll &= Choose(First(Mode.GrimTotemsNow()), FName(Effects::GrimTotemsCleanse),
+					   TEXT("the totem placed second, first in its list by then"));
+		if (!bAll || !TestEqual(TEXT("set-up: ten uses are recorded"), Mode.UsedFloorObjectsNow().Num(), 10))
+		{
+			return false;
+		}
+		StandingSaved = StandingFloorObjects(*Scene.Base.World);
+		UsedSaved = UsedFloorObjectsLine(Mode);
+		DropsSaved = DropsLying(*Scene.Base.World);
+		StacksSaved = Mode.InfernalBeaconStacksNow();
+		PactsSaved = Mode.WalkStateNow().PactsTaken;
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+	const FString StandingLoaded = StandingFloorObjects(*Scene.Base.World);
+	const FString UsedLoaded = UsedFloorObjectsLine(Mode);
+	const int32 DropsLoaded = DropsLying(*Scene.Base.World);
+
+	AddInfo(FString::Printf(TEXT("LOAD USED on floor %d: %s (%s); standing saved '%s', loaded '%s'; used saved '%s', "
+								 "loaded '%s'; drops %d/%d; beacon stacks %d/%d; pacts taken %d/%d; gift %s, chamber %s, "
+								 "altar %s, banner %s, channel %s"),
+							Floor, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *StandingSaved,
+							*StandingLoaded, *UsedSaved, *UsedLoaded, DropsSaved, DropsLoaded, StacksSaved,
+							Mode.InfernalBeaconStacksNow(), PactsSaved, Mode.WalkStateNow().PactsTaken,
+							Mode.RealityGiftTaken() ? TEXT("taken") : TEXT("NOT TAKEN"),
+							Mode.RealityChamberRewardGiven() ? TEXT("paid") : TEXT("NOT PAID"),
+							Mode.AltarIsConsecrated() ? TEXT("consecrated") : TEXT("NOT CONSECRATED"),
+							Mode.WarBannerIsPlanted() ? TEXT("planted") : TEXT("NOT PLANTED"),
+							Mode.DivineGateChannelBegun() ? TEXT("begun again") : TEXT("NOT BEGUN")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the same floor objects stand, by rule and placement index"), StandingLoaded, StandingSaved);
+	TestEqual(TEXT("and the uses are held again for the next save"), UsedLoaded, UsedSaved);
+	TestEqual(TEXT("no drop was paid again"), DropsLoaded, DropsSaved);
+	TestEqual(TEXT("no beacon stack was added again"), Mode.InfernalBeaconStacksNow(), StacksSaved);
+	TestEqual(TEXT("no pact was taken again"), Mode.WalkStateNow().PactsTaken, PactsSaved);
+	TestTrue(TEXT("the gift stays taken"), Mode.RealityGiftTaken());
+	TestTrue(TEXT("the chamber's reward stays paid"), Mode.RealityChamberRewardGiven());
+	TestTrue(TEXT("the altar stays consecrated"), Mode.AltarIsConsecrated());
+	TestTrue(TEXT("the banner stays planted"), Mode.WarBannerIsPlanted());
+	TestTrue(TEXT("the gate's channel, begun and not finished, begins again"), Mode.DivineGateChannelBegun());
+	return true;
+}
+
+/**
+ * A pact altar after a load offers the pacts it offered, on a floor whose offer was drawn again because its first draw
+ * matched the last floor's; and the next floor's draw avoids it as the walk's did. Issue #753, Group 3b. Prints "LOAD
+ * PACT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPactOfferTest,
+	"Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+namespace CataclysmSaveLoadTest
+{
+	/** The pact test's body, which pins `Cataclysm.DungeonSeed` in a guard that puts it back on every way out. */
+	bool ThePactOfferRoundTrip(FAutomationTestBase& Test)
+	{
+		using namespace CataclysmSaveLoadTest;
+		using Effects = UCataclysmDungeonModifierEffects;
+
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		// THE DUNGEON'S SEED PINNED FOR THE WHOLE TEST, THE LOAD INCLUDED, so the floor found is the floor loaded.
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		int32 Agreed = 0;
+		int32 Disagreed = 0;
+		int32 Floor = INDEX_NONE;
+		TArray<int32> OfferSaved;
+		TArray<int32> FirstDraw;
+		TArray<int32> NextFloorsOffer;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {FName(Effects::PactOfTemptationKey)});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the Pact of Temptation was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+
+			// THE FIRST FLOOR WHOSE FIRST DRAW MATCHED THE LAST FLOOR'S OFFER, so its offer was drawn again: a load drawing
+			// it with no last offer would offer the first draw instead. Floors 2 to 18 on dungeon seeds 1 to 12 in turn, one
+			// floor in ten or so being drawn again. AND THE ORACLE CHECKED on every other floor: its first draw is what it
+			// offered.
+			TArray<int32> LastOffer = Mode.PactsOfferedNow();
+			for (int32 Pinned = 1; Pinned <= 12 && Floor == INDEX_NONE; ++Pinned)
+			{
+				PinnedSeed.Pin(Pinned);
+				for (int32 Next = 2; Next <= 18 && Floor == INDEX_NONE; ++Next)
+				{
+					if (!Mode.GoToFloor(Next))
+					{
+						break;
+					}
+					const TArray<int32> First = FirstPactShuffle(Mode.CurrentFloor->GetPlan().Seed, Next);
+					if (First == LastOffer)
+					{
+						Floor = Next;
+						Seed = Pinned;
+						FirstDraw = First;
+					}
+					else if (First == Mode.PactsOfferedNow())
+					{
+						++Agreed;
+					}
+					else
+					{
+						++Disagreed;
+					}
+					LastOffer = Mode.PactsOfferedNow();
+				}
+			}
+			if (!Test.TestEqual(TEXT("set-up: the oracle's first draw is what every floor not drawn again offered"), Disagreed, 0)
+				|| !Test.TestTrue(TEXT("set-up: a floor on seeds 1 to 12 drew its offer again"), Floor != INDEX_NONE))
+			{
+				return false;
+			}
+			OfferSaved = Mode.PactsOfferedNow();
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+
+			// AND WHAT THE WALK'S NEXT FLOOR OFFERS, after the save is written.
+			if (!Test.TestTrue(TEXT("set-up: the walk went on to the next floor"), Mode.GoToFloor(Floor + 1)))
+			{
+				return false;
+			}
+			NextFloorsOffer = Mode.PactsOfferedNow();
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																				 Saved.CharacterId);
+		const TArray<int32> OfferLoaded = Scene.Mode->PactsOfferedNow();
+		const bool bNextReached = Scene.Mode->GoToFloor(Floor + 1);
+		const TArray<int32> NextLoaded = Scene.Mode->PactsOfferedNow();
+
+		Test.AddInfo(FString::Printf(TEXT("LOAD PACT on seed %d floor %d (the oracle agreed on %d floors, disagreed on %d): %s (%s); "
+									 "first draw %s; offered %s, after the load %s; the next floor offered %s, after the load %s"),
+								Seed, Floor, Agreed, Disagreed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+								*PactsText(FirstDraw),
+								*PactsText(OfferSaved), *PactsText(OfferLoaded), *PactsText(NextFloorsOffer),
+								*PactsText(NextLoaded)));
+
+		Test.TestNotEqual(TEXT("CONTROL: the floor's first draw is not what it offered"), PactsText(FirstDraw),
+					 PactsText(OfferSaved));
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+				  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("the altar offers the pacts it offered"), PactsText(OfferLoaded), PactsText(OfferSaved));
+		Test.TestTrue(TEXT("the next floor was reached"), bNextReached);
+		Test.TestEqual(TEXT("and the next floor offers what the walk's did"), PactsText(NextLoaded), PactsText(NextFloorsOffer));
+		return true;
+	}
+}
+
+bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// THE DUNGEON'S SEED AS IT WAS, read before the body pins it and compared after the body's guard has put it back,
+	// so a later test never runs on a pinned seed. Asked by the coordinating session, 2026-10-30.
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = ThePactOfferRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
+}
+
+/**
+ * A tithe left unpaid on the last floor is still owed after a load taken before the beat that brings the angels, and
+ * the angels come on the beat after it. Issue #753, Group 3b. Prints "LOAD TITHE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTitheOwedTest,
+	"Cataclysm.SaveLoad.ATitheLeftUnpaidIsStillOwedAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTitheOwedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {FName(Effects::ForcedTithesKey)});
+		if (!TestTrue(TEXT("set-up: a dungeon carrying Forced Tithes was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestNotNull(TEXT("set-up: floor 1 has its altar"), Scene.Mode->TitheAltarNow())
+			|| !TestTrue(TEXT("set-up: the walk left it unpaid for floor 2"), Scene.Mode->GoToFloor(2))
+			|| !TestTrue(TEXT("set-up: the angels are owed"), Scene.Mode->TitheAngelsAreOwed())
+			|| !TestEqual(TEXT("set-up: and none has come yet"), Scene.Mode->TitheAngelsStanding().Num(), 0))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bOwed = Scene.Mode->TitheAngelsAreOwed();
+	BeatOnce(*Scene.Mode);
+	const int32 Came = Scene.Mode->TitheAngelsStanding().Num();
+
+	AddInfo(FString::Printf(TEXT("LOAD TITHE: %s (%s); owed after the load %s; %d angel(s) came on the beat"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bOwed ? TEXT("yes") : TEXT("NO"), Came));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the angels are still owed"), bOwed);
+	TestEqual(TEXT("and they come on the next beat"), Came, Effects::ForcedTithesAngelCount);
+	return true;
+}
+
+/**
+ * A Divine Gate whose channel finished stays open after a load, the stairs unsealed; the rebuilt floor places the gate
+ * again and the load takes it away without a channel. Issue #753, Group 3b. Prints "LOAD GATE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadGateOpenedTest,
+	"Cataclysm.SaveLoad.ADivineGateOpenedStaysOpenAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadGateOpenedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {FName(Effects::SanctionedPassageKey)});
+		if (!TestTrue(TEXT("set-up: a dungeon carrying Sanctioned Passage was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		ACataclysmFloorObject* Gate = Mode.DivineGateNow();
+		if (!TestNotNull(TEXT("set-up: the floor has its gate"), Gate)
+			|| !TestTrue(TEXT("set-up: and it seals the stairs"), Mode.SanctionedPassageSealsTheStairs()))
+		{
+			return false;
+		}
+		// THE CHANNEL TO ITS END, the player at the gate and no creature on the floor to come for them.
+		Mode.ClearFloorEnemies();
+		const FVector At = Gate->GetActorLocation();
+		Scene.Base.Character->SetActorLocation(FVector(At.X, At.Y, Scene.Base.Character->GetActorLocation().Z));
+		if (!TestTrue(TEXT("set-up: the channel began"),
+					  Mode.ChooseAtFloorObject(Gate, FName(Effects::SanctionedPassageChannel))))
+		{
+			return false;
+		}
+		const int32 Beats = FMath::CeilToInt(Effects::SanctionedPassageChannelSeconds
+											  / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks) + 1;
+		for (int32 Index = 0; Index < Beats && Mode.DivineGateNow(); ++Index)
+		{
+			BeatOnce(Mode);
+		}
+		if (!TestNull(TEXT("set-up: the channel finished and the gate is gone"), Mode.DivineGateNow())
+			|| !TestFalse(TEXT("set-up: and the stairs are unsealed"), Mode.SanctionedPassageSealsTheStairs()))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bGateGone = Scene.Mode->DivineGateNow() == nullptr;
+	const bool bSealed = Scene.Mode->SanctionedPassageSealsTheStairs();
+
+	AddInfo(FString::Printf(TEXT("LOAD GATE: %s (%s); the gate %s after the load; the stairs %s; channel %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bGateGone ? TEXT("gone") : TEXT("STANDS"), bSealed ? TEXT("SEALED") : TEXT("unsealed"),
+							Scene.Mode->DivineGateChannelBegun() ? TEXT("BEGUN") : TEXT("not begun")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the gate is gone"), bGateGone);
+	TestFalse(TEXT("and the stairs are unsealed"), bSealed);
+	TestFalse(TEXT("and no channel runs"), Scene.Mode->DivineGateChannelBegun());
 	return true;
 }
 
