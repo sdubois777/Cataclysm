@@ -49,7 +49,18 @@ the stale-exception test has nothing to find.
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+The proofs, run 2026-10-30 in a git-archive copy of `0d96b89c8`, the commit that registered them; each printed
+PROVED with exactly the registered named_failures:
+
+| # | Printed |
+| :-- | :-- |
+| a | "PROVED: 2 failed, 1 passed in 0.17s \| restored: 3 passed in 0.08s" |
+| b | "PROVED: 1 failed, 2 passed in 0.14s \| restored: 3 passed in 0.08s" |
+| c | "PROVED: 1 failed, 2 passed in 0.14s \| restored: 3 passed in 0.07s" |
+
+Python of record at `0d96b89c8`, on `development` `0427b8394`: "7174 passed, 8 skipped in 218.53s"; JUnit tests 7182,
+failures 0, errors 0, skipped 8. That is the base's 7171 plus the 3 new tests. ruff: "All checks passed!" A
+regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
 
 ### NO GENRE SOURCE
 
