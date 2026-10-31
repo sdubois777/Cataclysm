@@ -47,8 +47,12 @@ comment-only C++ applies: the continuous integration "Game compiles" job is the 
 
 ### EVIDENCE
 
-Recorded after Python of record, which waits for the dungeon session's window w109 to end. No guard was added, so no
-proof is registered.
+No guard was added, so no proof is registered. Moved onto `development` `6648d14e5` (#1634 merged) as
+`docs/radii-written-as-widths-in-cpp-comments-and-test-messages-1`, with every file's change identical to the
+original commit. Python of record at `785b119ba`: "7171 passed, 8 skipped in 233.55s"; JUnit tests 7179, failures 0,
+errors 0, skipped 8, the count #1634's own run printed, as this change touches no Python file. ruff: "All checks
+passed!" A
+regenerate run left `game/Data` unchanged. The C++ evidence is the continuous integration "Game compiles" job.
 
 ### NO GENRE SOURCE
 
