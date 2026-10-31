@@ -5526,13 +5526,17 @@ namespace CataclysmSaveLoadTest
 	}
 
 	/**
-	 * ONE ROUND TRIP OF A RAISED KIND: the first pinned seed whose floor 2 lets `Raise` bring some, which is run there;
-	 * those standing taken to half health; saved, loaded, a beat. `Standing` reads the rule's list.
+	 * ONE ROUND TRIP OF A RAISED KIND: the first pinned seed whose floor 2 lets `Raise` bring some, which is run there; a
+	 * beat, which brings any of the rule's creatures owed for the floor; THEN every one standing in the rule's list taken
+	 * to half health, and the counts taken, with no beat before the save. Window w116 stopped on the other order: the
+	 * beat after the halving brought a tithe's owed angels at full health. Saved, loaded, a beat. `Standing` reads the
+	 * rule's list; `AlsoAfter`, when given, asserts more after the load, with the number standing at the save.
 	 */
 	bool ARaisedRoundTrip(FAutomationTestBase& Test, FName Row, const TCHAR* Label,
 						  TFunctionRef<bool(ACataclysmDungeonGameMode&)> Raise,
 						  TFunctionRef<TArray<ACataclysmEnemyCharacter*>(const ACataclysmDungeonGameMode&)> Standing,
-						  TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked)
+						  TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked,
+						  TFunction<void(ACataclysmDungeonGameMode&, int32)> AlsoAfter = nullptr)
 	{
 		int32 Seed = INDEX_NONE;
 		int32 StandingSaved = -1;
@@ -5546,8 +5550,8 @@ namespace CataclysmSaveLoadTest
 					return false;
 				}
 				StandAtTheEntrance(Mode, Player);
-				ToHalfHealth(Standing(Mode));
 				BeatOnce(Mode);
+				ToHalfHealth(Standing(Mode));
 				StandingSaved = Standing(Mode).Num();
 				LivingSaved = Mode.LivingFloorEnemies();
 				return Test.TestTrue(TEXT("set-up: some stand"), StandingSaved > 0) && ThePlayerIsAlive(Test, Player);
@@ -5557,6 +5561,10 @@ namespace CataclysmSaveLoadTest
 				StandAtTheEntrance(Mode, Player);
 				BeatOnce(Mode);
 				TheRaisedCameBack(Test, Label, Seed, Report, Mode, Standing(Mode), StandingSaved, LivingSaved, Marked);
+				if (AlsoAfter)
+				{
+					AlsoAfter(Mode, StandingSaved);
+				}
 			});
 	}
 
@@ -5590,7 +5598,15 @@ bool FCataclysmSaveLoadTitheAngelsTest::RunTest(const FString&)
 				return Altar && Mode.ChooseAtFloorObject(Altar, FName(Effects::ForcedTithesRefuse));
 			},
 			[](const ACataclysmDungeonGameMode& Mode) { return Mode.TitheAngelsStanding(); },
-			[](const ACataclysmEnemyCharacter& One) { return One.bIsATitheAngel; });
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsATitheAngel; },
+			// AND THE TITHE OWED IS NOT BROUGHT A SECOND TIME: 3b saved it as owed or not, and this is the first test to
+			// read it across a load. Brought again, more would stand than were saved.
+			[this](ACataclysmDungeonGameMode& Mode, int32 StandingSaved)
+			{
+				TestFalse(TEXT("no tithe is owed after the load"), Mode.TitheAngelsAreOwed());
+				TestEqual(TEXT("and no angel more stands than at the save"), Mode.TitheAngelsStanding().Num(),
+						  StandingSaved);
+			});
 	});
 }
 
@@ -5705,8 +5721,8 @@ bool FCataclysmSaveLoadChaosSpawnTest::RunTest(const FString&)
 					return false;
 				}
 				StandAtTheEntrance(Mode, Player);
-				ToHalfHealth(Mode.ChaosSpawnStanding());
 				BeatOnce(Mode);
+				ToHalfHealth(Mode.ChaosSpawnStanding());
 				StandingSaved = Mode.ChaosSpawnStanding().Num();
 				LivingSaved = Mode.LivingFloorEnemies();
 				CameSaved = Mode.PandorasBoxWavesCameNow();
