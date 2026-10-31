@@ -4931,4 +4931,455 @@ bool FCataclysmSaveLoadFamishedTest::RunTest(const FString&)
 	});
 }
 
+namespace CataclysmSaveLoadTest
+{
+	/** The player alive, which a save needs to write where it stands (a dead player's placement is not gathered). */
+	bool ThePlayerIsAlive(FAutomationTestBase& Test, ACataclysmPlayerCharacter& Player)
+	{
+		return Test.TestFalse(TEXT("set-up: the player is alive at the save"), UCataclysmSkillEffects::IsDead(&Player));
+	}
+
+	/** The beat run `Seconds` long. */
+	void RunTheBeatFor(ACataclysmDungeonGameMode& Mode, float Seconds)
+	{
+		for (int32 Beat = 0; Beat < BeatsOver(Seconds); ++Beat)
+		{
+			BeatOnce(Mode);
+		}
+	}
+
+	/** The first pinned seed from 1 to 20 whose floor 2 answers `Wanted`; INDEX_NONE when none does. */
+	template <typename FWanted>
+	int32 AFloorTwoWhere(ACataclysmDungeonGameMode& Mode, FPinnedDungeonSeed& PinnedSeed, FWanted&& Wanted)
+	{
+		for (int32 Pinned = 1; Pinned <= 20; ++Pinned)
+		{
+			PinnedSeed.Pin(Pinned);
+			if (Mode.GoToFloor(2) && Wanted())
+			{
+				return Pinned;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/** The living creatures of a Morale Break group. */
+	TArray<ACataclysmEnemyCharacter*> TheGroupOf(const ACataclysmDungeonGameMode& Mode, int32 Group)
+	{
+		TArray<ACataclysmEnemyCharacter*> Members;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PackGroup == Group)
+			{
+				Members.Add(Enemy.Get());
+			}
+		}
+		return Members;
+	}
+
+	/** The floor's living creatures Grim Totems' cleanse has weakened. */
+	int32 WeakenedByACleanse(const ACataclysmDungeonGameMode& Mode)
+	{
+		int32 Count = 0;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			Count += IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+				&& Enemy->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource) < 1.0f - KINDA_SMALL_NUMBER
+				? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+/**
+ * Morale Break's leaders are their groups' leaders again after a load, and nobody panics until one falls. Until this every
+ * leader read dead on the first beat and nobody panicked. Issue #753, Group 3d-2, ruled 2026-10-31. Prints "LOAD MORALE
+ * LEADERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadMoraleLeadersTest,
+	"Cataclysm.SaveLoad.MoraleBreaksLeadersStillLeadAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadMoraleLeadersTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 LeadersSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::MoraleBreakKey)},
+			[this, &Seed, &LeadersSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										 FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return !Mode.MoraleLeadersNow().IsEmpty(); });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a leader"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				LeadersSaved = Mode.MoraleLeadersNow().Num();
+				return ThePlayerIsAlive(*this, Player);
+			},
+			[this, &Seed, &LeadersSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										 const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const TArray<ACataclysmEnemyCharacter*> Leaders = Mode.MoraleLeadersNow();
+				const int32 PanickedBefore = Mode.MoraleBreakPanickedNow();
+				int32 PanickedAfter = -1;
+				if (!Leaders.IsEmpty() && KillOnTheFloor(*this, Player, Leaders[0], TEXT("a leader after the load")))
+				{
+					BeatOnce(Mode);
+					PanickedAfter = Mode.MoraleBreakPanickedNow();
+				}
+				AddInfo(FString::Printf(TEXT("LOAD MORALE LEADERS on seed %d: %s (%s); after a beat %d/%d leaders, %d "
+											 "panicked; a leader killed, %d panicked"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Leaders.Num(),
+										LeadersSaved, PanickedBefore, PanickedAfter));
+				TestEqual(TEXT("the leaders stand as leaders after the load"), Leaders.Num(), LeadersSaved);
+				TestEqual(TEXT("and nobody panics"), PanickedBefore, 0);
+				if (!Leaders.IsEmpty())
+				{
+					TestTrue(TEXT("a leader killed after the load panics its group"), PanickedAfter > 0);
+				}
+			});
+	});
+}
+
+/**
+ * Creatures that escaped Morale Break before a save are still away after the load, the floor not cleared while they are,
+ * and they come back with their reinforcements; the time away restarts (Q3, D1). Until this they were forgotten. Issue
+ * #753, Group 3d-2. Prints "LOAD MORALE ESCAPED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadMoraleEscapedTest,
+	"Cataclysm.SaveLoad.CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadMoraleEscapedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 EscapedSaved = -1;
+		int32 CreaturesSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::MoraleBreakKey)},
+			[this, &Seed, &EscapedSaved, &CreaturesSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
+														  UWorld& World, FPinnedDungeonSeed& PinnedSeed)
+			{
+				// A LEADER WHOSE WHOLE GROUP STANDS FARTHER FROM THE ENTRANCE THAN AN ESCAPE NEEDS, so they escape where
+				// they stand, nothing in a test world moving them.
+				ACataclysmEnemyCharacter* Leader = nullptr;
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode, &Leader]()
+				{
+					const FVector Entrance = Mode.CurrentFloor->EntranceWorld();
+					for (ACataclysmEnemyCharacter* Candidate : Mode.MoraleLeadersNow())
+					{
+						bool bFar = true;
+						for (const ACataclysmEnemyCharacter* Member : TheGroupOf(Mode, Candidate->PackGroup))
+						{
+							bFar = bFar && FVector::Dist2D(Member->GetActorLocation(), Entrance)
+								> Effects::MoraleBreakEscapeBeyondCm + 100.0f;
+						}
+						if (bFar && TheGroupOf(Mode, Candidate->PackGroup).Num() >= 2)
+						{
+							Leader = Candidate;
+							return true;
+						}
+					}
+					return false;
+				});
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a group far from the entrance"), Seed != INDEX_NONE)
+					|| !KillOnTheFloor(*this, Player, Leader, TEXT("the group's leader")))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				RunTheBeatFor(Mode, Effects::MoraleBreakFleeSeconds + 1.0f);
+				EscapedSaved = Mode.MoraleBreakEscapedNow();
+				CreaturesSaved = OrdinaryCreaturesStanding(World);
+				return TestTrue(TEXT("set-up: creatures escaped"), EscapedSaved > 0) && ThePlayerIsAlive(*this, Player);
+			},
+			[this, &Seed, &EscapedSaved, &CreaturesSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
+														  UWorld& World, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 AwayAfterTheLoad = Mode.MoraleBreakEscapedNow();
+				RunTheBeatFor(Mode, Effects::MoraleBreakReturnSeconds + 1.0f);
+				const int32 AwayAfterTheReturn = Mode.MoraleBreakEscapedNow();
+				const int32 Creatures = OrdinaryCreaturesStanding(World);
+				const int32 Expected = CreaturesSaved + EscapedSaved * (1 + Effects::MoraleBreakReinforcementsPerEscapee);
+				AddInfo(FString::Printf(TEXT("LOAD MORALE ESCAPED on seed %d: %s (%s); away after the load %d/%d, after %.0f s "
+											 "%d; creatures standing %d (saved %d, expected %d)"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, AwayAfterTheLoad,
+										EscapedSaved, Effects::MoraleBreakReturnSeconds + 1.0f, AwayAfterTheReturn, Creatures,
+										CreaturesSaved, Expected));
+				TestEqual(TEXT("the escaped are still away after the load"), AwayAfterTheLoad, EscapedSaved);
+				TestEqual(TEXT("and come back"), AwayAfterTheReturn, 0);
+				TestEqual(TEXT("with their reinforcements"), Creatures, Expected);
+			});
+	});
+}
+
+/**
+ * A Plague Harbinger and its trail after a load: the patches it laid burn again at the burn charged (QA), and its death
+ * cleanses them. Until this its trail was gone and its death did nothing. Issue #753, Group 3d-2. Prints "LOAD
+ * HARBINGERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadHarbingersTest,
+	"Cataclysm.SaveLoad.APlagueHarbingersTrailComesBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadHarbingersTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 AliveSaved = -1;
+		int32 PatchesSaved = -1;
+		int32 MovedPatchesSaved = -1;
+		FVector MovedAt = FVector::ZeroVector;
+		return ARoundTripOfRows(*this, {FName(Effects::PlagueHarbingersKey)},
+			[this, &Seed, &AliveSaved, &PatchesSaved, &MovedPatchesSaved, &MovedAt](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return !Mode.PlagueHarbingersAlive().IsEmpty(); });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a Harbinger"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				// ONE HARBINGER MOVED BY HAND, A PATCH'S DISTANCE AND MORE AT A TIME, a beat after each move.
+				ACataclysmEnemyCharacter* Moved = Mode.PlagueHarbingersAlive()[0];
+				for (int32 Step = 0; Step < 2; ++Step)
+				{
+					Moved->SetActorLocation(Moved->GetActorLocation()
+											+ FVector(Effects::PlagueHarbingersPatchEveryCm + 50.0f, 0.0f, 0.0f));
+					BeatOnce(Mode);
+				}
+				MovedAt = Moved->GetActorLocation();
+				AliveSaved = Mode.PlagueHarbingersAlive().Num();
+				PatchesSaved = Mode.PlagueHarbingerTrailPatches();
+				MovedPatchesSaved = Mode.PlagueHarbingerTrailPatches(Moved);
+				return TestTrue(TEXT("set-up: the moved Harbinger laid two patches or more"), MovedPatchesSaved >= 2)
+					&& ThePlayerIsAlive(*this, Player);
+			},
+			[this, &Seed, &AliveSaved, &PatchesSaved, &MovedPatchesSaved, &MovedAt](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const TArray<ACataclysmEnemyCharacter*> Alive = Mode.PlagueHarbingersAlive();
+				const int32 Patches = Mode.PlagueHarbingerTrailPatches();
+				// THE MOVED ONE IS THE HARBINGER NEAREST WHERE IT WAS SAVED.
+				ACataclysmEnemyCharacter* Moved = nullptr;
+				for (ACataclysmEnemyCharacter* One : Alive)
+				{
+					if (!Moved || FVector::Dist2D(One->GetActorLocation(), MovedAt)
+									  < FVector::Dist2D(Moved->GetActorLocation(), MovedAt))
+					{
+						Moved = One;
+					}
+				}
+				const int32 MovedPatches = Moved ? Mode.PlagueHarbingerTrailPatches(Moved) : -1;
+				int32 PatchesAfterItsDeath = -1;
+				if (Moved && KillOnTheFloor(*this, Player, Moved, TEXT("the moved Harbinger after the load")))
+				{
+					PatchesAfterItsDeath = Mode.PlagueHarbingerTrailPatches();
+				}
+				AddInfo(FString::Printf(TEXT("LOAD HARBINGERS on seed %d: %s (%s); after a beat %d/%d alive, %d/%d patches, "
+											 "the moved one's %d/%d; after its death %d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Alive.Num(),
+										AliveSaved, Patches, PatchesSaved, MovedPatches, MovedPatchesSaved,
+										PatchesAfterItsDeath));
+				TestEqual(TEXT("the Harbingers are Harbingers after the load"), Alive.Num(), AliveSaved);
+				TestEqual(TEXT("their patches burn again"), Patches, PatchesSaved);
+				TestEqual(TEXT("the moved one's trail is its own"), MovedPatches, MovedPatchesSaved);
+				TestEqual(TEXT("and its death cleanses it"), PatchesAfterItsDeath, PatchesSaved - MovedPatchesSaved);
+			});
+	});
+}
+
+/**
+ * Grim Totems' cleanse after a load: the creatures it weakened are weakened still, for as long as they live. Until this
+ * they dealt full damage again while the totem stayed used. Issue #753, Group 3d-2. Prints "LOAD GRIM CLEANSE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadGrimCleanseTest,
+	"Cataclysm.SaveLoad.CreaturesAGrimTotemWeakenedStayWeakenedAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadGrimCleanseTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 WeakenedSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::GrimTotemsKey)},
+			[this, &Seed, &WeakenedSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return !Mode.GrimTotemsNow().IsEmpty(); });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a totem"), Seed != INDEX_NONE)
+					|| !TestTrue(TEXT("set-up: the totem was cleansed"),
+								 Mode.ChooseAtFloorObject(Mode.GrimTotemsNow()[0], FName(Effects::GrimTotemsCleanse))))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				WeakenedSaved = WeakenedByACleanse(Mode);
+				return TestTrue(TEXT("set-up: creatures were weakened"), WeakenedSaved > 0) && ThePlayerIsAlive(*this, Player);
+			},
+			[this, &Seed, &WeakenedSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 Weakened = WeakenedByACleanse(Mode);
+				float Multiplier = 1.0f;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+					{
+						Multiplier = FMath::Min(Multiplier,
+												Enemy->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource));
+					}
+				}
+				AddInfo(FString::Printf(TEXT("LOAD GRIM CLEANSE on seed %d: %s (%s); after a beat %d/%d weakened, at %.3f"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Weakened, WeakenedSaved,
+										Multiplier));
+				TestEqual(TEXT("the creatures weakened stay weakened"), Weakened, WeakenedSaved);
+				TestEqual(TEXT("at the cleanse's multiplier"), Multiplier,
+						  1.0f - Effects::GrimTotemsCleanseDamageLessPercent / 100.0f, 0.0001f);
+			});
+	});
+}
+
+/**
+ * A player saved standing on the Reality chamber's end, carried there and not yet stepped off, is not carried out on the
+ * load's first beat, and the chamber pays nothing again. Until this the rift was armed by every load. Issue #753, Group
+ * 3d-2, ruled 2026-10-30 (Q4). Prints "LOAD REALITY CHAMBER".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRealityChamberTest,
+	"Cataclysm.SaveLoad.APlayerSavedOnTheChambersEndIsNotCarriedOutByALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRealityChamberTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		return ARoundTripOfRows(*this, {FName(Effects::RealityRiftsKey)},
+			[this, &Seed](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+						  FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return Mode.RealityChamberStands(); });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a chamber"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				StandOnCell(Mode, Player, Mode.RealityChamberRiftCellNow());
+				BeatOnce(Mode);
+				return TestTrue(TEXT("set-up: carried into the chamber"), Mode.PlayerIsInTheRealityChamber())
+					&& TestEqual(TEXT("set-up: and paid once"), Mode.RealityChamberRewardRollsMade(), 1)
+					&& ThePlayerIsAlive(*this, Player);
+			},
+			[this, &Seed](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter&, UWorld&,
+						  const FCataclysmLoadReport& Report)
+			{
+				const bool bPlaced = Report.Why.Contains(TEXT("placed where it was saved"));
+				const bool bInAtTheLoad = Mode.PlayerIsInTheRealityChamber();
+				BeatOnce(Mode);
+				const bool bInAfterABeat = Mode.PlayerIsInTheRealityChamber();
+				AddInfo(FString::Printf(TEXT("LOAD REALITY CHAMBER on seed %d: %s (%s); in the chamber at the load %s, after "
+											 "a beat %s; rolls %d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										bInAtTheLoad ? TEXT("yes") : TEXT("NO"), bInAfterABeat ? TEXT("yes") : TEXT("NO"),
+										Mode.RealityChamberRewardRollsMade()));
+				if (!TestTrue(TEXT("set-up: the load placed the player where it was saved"), bPlaced)
+					|| !TestTrue(TEXT("set-up: inside the chamber at the load"), bInAtTheLoad))
+				{
+					return;
+				}
+				TestTrue(TEXT("still in the chamber after a beat"), bInAfterABeat);
+				TestEqual(TEXT("and the chamber paid nothing again"), Mode.RealityChamberRewardRollsMade(), 1);
+			});
+	});
+}
+
+/**
+ * Carrion Feast's count of carcasses eaten on the floor comes back after a load, so the feeders after it are as strong as
+ * they would have been. Its carcasses and feeders are 3d-3's. Issue #753, Group 3d-2, ruled 2026-10-31 (#2181). Prints
+ * "LOAD CARRION".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCarrionTest,
+	"Cataclysm.SaveLoad.CarrionFeastsCountComesBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadCarrionTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 StacksSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::CarrionFeastKey)},
+			[this, &StacksSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								 FPinnedDungeonSeed&)
+			{
+				if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode.GoToFloor(2)))
+				{
+					return false;
+				}
+				ACataclysmEnemyCharacter* Victim = nullptr;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (!Victim && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bRaisedByARule
+						&& !Enemy->bCannotBeHurt)
+					{
+						Victim = Enemy.Get();
+					}
+				}
+				if (!KillOnTheFloor(*this, Player, Victim, TEXT("a creature to leave a carcass")))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				RunTheBeatFor(Mode, Effects::CarrionFeastEatenAfterSeconds + 1.0f);
+				StacksSaved = Mode.CarrionFeastStacksNow();
+				return TestEqual(TEXT("set-up: one carcass eaten"), StacksSaved, 1) && ThePlayerIsAlive(*this, Player);
+			},
+			[this, &StacksSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								 const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 Stacks = Mode.CarrionFeastStacksNow();
+				AddInfo(FString::Printf(TEXT("LOAD CARRION: %s (%s); after a beat %d/%d carcass(es) eaten"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Stacks, StacksSaved));
+				TestEqual(TEXT("the carcasses eaten come back"), Stacks, StacksSaved);
+			});
+	});
+}
+
 #endif // WITH_AUTOMATION_TESTS
