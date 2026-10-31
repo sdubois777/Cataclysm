@@ -47,7 +47,7 @@ DT_StatusEffects.uasset`; `tools/tests/test_the_quarry_mark_lasts_as_long_as_its
 
 ### REGISTERED BEFORE THE PROOFS
 
-**The Unreal suite**: @@UNREAL_TOTAL@@ tests performed, all succeeded.
+**The Unreal suite**: 4419 tests performed, all succeeded: the 4418 the editor window `dungeon-w113` measured for the dungeon load's Group 3d-1 (#753), merged as `956c2d827`, plus the one test this change adds.
 
 **A C++ guard**, `tools/unreal_build.py` `prove_cpp_guard`, `test_prefix="Cataclysm.Quarry."`, in the editor window,
 after the asset rebuild. Names are the short names the engine's log prints.
