@@ -14,7 +14,8 @@ five new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issu
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w117, every figure as registered:** the five new tests, the whole suite at 4434 / 0, and
+  P1-P5 each proved on exactly its registered assertions. Window w116 stopped before it on the test's own order (below).
 - **WHAT A LOAD DID BEFORE THIS, read in the code, not run:** the gather skipped every creature a rule raised ("NOR IS A
   CREATURE A FLOOR RULE MADE"), so a refused tithe's angels, an activated relic's spirits, an embraced totem's Elites, a
   planted banner's assailants and a Pandora's Box's standing wave were gone after a load, and with the box's waves list
@@ -113,6 +114,42 @@ brought 8 (`ChooseAtTitheAltar`, "BringTheTitheAngels(At)"; `ForcedTithesAngelCo
 health, and then ran the beat, which brought the 8 owed at full health (`StepForcedTithes`, "THE ANGELS OWED FOR A
 TITHE LEFT UNPAID"). The save held 8 at half and 8 at full, and the load put back exactly that. The test now runs the
 beat first and halves after it, approved 2026-10-31, and the tithe test asserts the owed tithe is not brought again.
+
+Compiled again with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`, the unity file
+holding the tests. Python of record on 27206f4d1: `7177 passed, 8 skipped in 190.73s`, the JUnit file tests 7185,
+failures 0, errors 0, skipped 8; ruff "All checks passed!". (Commit fe1c40682 holds only the test change, though its
+message names this record: the edit script that wrote it refused before writing, and the commit was not gated on it.
+27206f4d1 holds the record.)
+
+Window w117, 2026-10-31, 15:18 to 15:54, on 27206f4d1. Pre-checks measured at 15:18:08, all passing: `development`'s CI
+and Unreal runs succeeded on c4a41a50d, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, no simulation process, 11140 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4434 tests performed, 4434 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4434 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 190.43s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'as many stand in the rule's list as were saved' to be 16, but it was 0" and "'and no angel more stands than at the save' to be 16, but it was 0" only |
+| P2 | PROVED: "'as many stand ...' to be 5, but it was 0" only |
+| P3 | PROVED: "'as many stand ...' to be 3, but it was 0" only |
+| P4 | PROVED: "'as many stand ...' to be 4, but it was 0" only |
+| P5 | PROVED: "'each at the health it was saved at, not full' to be 4, but it was 0", "'the waves come are as saved' to be 1, but it was 2" and "'and the next wave comes when the standing one is killed' to be 2, but it was 3" only; the conditional half, "as many stand ...", passed, the second wave having come whole: "4/4 standing" |
+
+Each proof's restored half: `46 tests performed, 46 succeeded, 0 failed`. Every proof's other tests on the same run printed
+as in the suite, so no break reached another test.
+
+The six printed lines, from the whole suite:
+
+```
+LOAD TITHE ANGELS on seed 1: Loaded (... day 1, 239 creatures, placed where it was saved); after a beat 16/16 standing, 16 at half health, 16 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD RELIC SPIRITS on seed 1: Loaded (... day 1, 228 creatures, placed where it was saved); after a beat 5/5 standing, 5 at half health, 5 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD TOTEM ELITES on seed 1: Loaded (... day 1, 226 creatures, placed where it was saved); after a beat 3/3 standing, 3 at half health, 3 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD BANNER ASSAILANTS on seed 1: Loaded (... day 1, 227 creatures, placed where it was saved); after a beat 4/4 standing, 4 at half health, 4 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD CHAOS SPAWN on seed 2: Loaded (... day 1, 305 creatures, placed where it was saved); after a beat 4/4 standing, 4 at half health, 4 marked, 0 counted as the floor's own; the floor's own standing 301/301
+LOAD PANDORA WAVES on seed 2: waves come 1 at the save, 1 after the load, 2 once the standing wave was killed, 4 of the next standing
+```
 
 ---
 
