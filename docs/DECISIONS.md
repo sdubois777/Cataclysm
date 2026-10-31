@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — The Quarry mark states its own 12 seconds, so the mark now jumps to the nearest living enemy when its quarry dies, which it never did before (#1520)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Quarry's duration, column B, 12) and from it
+`game/Data/StatusEffects.csv` (`Debuff_Quarry`, `DurationSeconds` 0.0 to 12.0) and `game/Content/Data/
+DT_StatusEffects.uasset`; `tools/tests/test_the_quarry_mark_lasts_as_long_as_its_skill_says.py` (new, 2 tests);
+`game/Source/Cataclysm/Tests/CataclysmQuarryTests.cpp` (new, 1 test); this file. No game code changes.
+
+### SAID FIRST
+
+- **THIS CHANGES PLAY.** Before it, the Staff's Quarry mark never jumped. After it, when a marked enemy dies, the
+  mark passes to the nearest living enemy within 8 metres of it, for 12 seconds, and the caster's creatures turn to
+  that enemy. The design states the jump: the Debuffs sheet's "If the marked enemy dies first, the mark jumps to the
+  nearest living enemy", and the skill row's "If the quarry dies before the mark expires, it jumps to the nearest
+  enemy" with `OnDeath=SpreadDebuff; OnDeathRange=8`. So this carries out the design; it adds no behaviour the
+  design does not state.
+- **WHY IT NEVER JUMPED.** The cast mark takes the skill's own `EffectDuration=12`
+  (`UCataclysmSkillTemplate::AppliedEffectSeconds`), so it always lasted 12 seconds. The jump does not: a death runs
+  `UCataclysmCurseSpread::SpreadFromDying`, which copies the mark through `UCataclysmSkillEffects::CopyDebuffsTo`, and
+  that gives each copy "THE EFFECT'S OWN DESIGNED DURATION" from the Status Effects sheet and copies nothing when it
+  is zero. `Debuff_Quarry` stated 0.0. Issue #1520 called the zero a fallback nobody read; this reader was missed.
+- **A MARK THAT HAS JUMPED DOES NOT JUMP AGAIN**, read from the code and not changed here. The jump needs a
+  `UCataclysmCurseSpread` component on the dying enemy. Only a cast puts one there
+  (`UCataclysmSkillTemplate::ApplyNamedEffectsTo` calls `UCataclysmCurseSpread::MarkOn`); `CopyDebuffsTo` does not.
+  So the enemy the mark jumped to dies without passing it on, unless the caster's own cast also marked it. The
+  design's sentence does not say whether a jumped mark jumps again. Reported to the coordinating session.
+- **THE NUMBER IS A RULING, NOT A NEW DECISION:** 12.0, relayed on 2026-09-14 under the project owner's delegation,
+  "matching Demonic_Staff_Support EffectDuration=12 and the GDD".
+
+### THE TESTS
+
+- `tools/tests/test_the_quarry_mark_lasts_as_long_as_its_skill_says.py`:
+  `test_the_quarry_mark_states_its_own_twelve_seconds` pins `Debuff_Quarry`'s 12.0, and
+  `test_the_skill_that_applies_the_mark_states_the_same_twelve_seconds` holds the Staff's Quarry row to
+  `EffectDuration=12` and "for 12 seconds". The other pins on that sheet quote the effect's own Description, and
+  Quarry's states no length ("while the mark holds", true at any length), so the skill row is the second source.
+  Ruled 2026-10-31: no change to that sentence.
+- `game/Source/Cataclysm/Tests/CataclysmQuarryTests.cpp`, group `Cataclysm.Quarry.`:
+  `WhenTheMarkedEnemyDiesTheMarkJumpsToTheNearestLivingEnemyWithinEightMetres`. It grants the shipped Quarry row
+  from the generated weapon skill table, and the mark's duration comes from the generated Status Effects table, so
+  the test writes no figure of its own. A control first: an enemy 10 metres from the marked one, and no other, does
+  not gain the mark when the marked one dies. Then an enemy 5 metres from the marked one gains it, and
+  `UCataclysmCommand::QuarryOf` names it as the caster's quarry.
+
+### REGISTERED BEFORE THE PROOFS
+
+**The Unreal suite**: @@UNREAL_TOTAL@@ tests performed, all succeeded.
+
+**A C++ guard**, `tools/unreal_build.py` `prove_cpp_guard`, `test_prefix="Cataclysm.Quarry."`, in the editor window,
+after the asset rebuild. Names are the short names the engine's log prints.
+
+| # | File | Break | Predicted named_failures |
+| :-- | :-- | :-- | :-- |
+| 1 | `AbilitySystem/CataclysmSkillEffects.cpp` | a copied curse lasts no time: in `CopyDebuffsTo`, `const float Seconds = NumbersForEffectTag(Curse).DurationSeconds;` becomes `const float Seconds = 0.0f * NumbersForEffectTag(Curse).DurationSeconds;` | `WhenTheMarkedEnemyDiesTheMarkJumpsToTheNearestLivingEnemyWithinEightMetres` |
+
+Why, traced: with every copy at zero seconds `CopyDebuffsTo` copies nothing, so the enemy 5 metres away is not
+marked and `QuarryOf` answers nothing, and two assertions fail; the control half still passes, since it expects no
+mark. **THE NARROW PREFIX IS WHAT KEEPS THIS TO ONE NAMED FAILURE.** The same break also stops Anathema's curse
+passing on, so `Cataclysm.Skills.ACurseThatSpreadsOnDeathPassesToTheNearestLivingEnemy` would fail as well under a
+wider prefix; `Cataclysm.Quarry.` selects only the new test.
+
+**A Python guard**, `tools/prove_guard.py` `break_and_run`, run in a detached git worktree copy:
+
+| # | File | Break | Command | Predicted named_failures |
+| :-- | :-- | :-- | :-- | :-- |
+| 2 | `game/Data/StatusEffects.csv` | in the `Debuff_Quarry` row, `.",12.0,0.0,30.0,` becomes `.",0.0,0.0,30.0,` | `python -m pytest tools/tests/test_the_quarry_mark_lasts_as_long_as_its_skill_says.py` | `tools/tests/test_the_quarry_mark_lasts_as_long_as_its_skill_says.py::test_the_quarry_mark_states_its_own_twelve_seconds` |
+
+Why, traced: the first test reads that cell and nothing else; the second reads only `WeaponSkills.csv`.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-10-31 — A load no longer has echoes strike twice, opens no section barrier early, keeps the Plaguebearer and its stacks, and keeps Quarantine's released creatures and Famished eaters as they were (#753, Group 3d-1)
 
 **Affects:** `FloorSection`, `bIsPlaguebearer`, `bQuarantineReleased`, `FamishedDropsEaten` and `FamishedHealthAdded` on
