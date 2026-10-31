@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A load keeps Morale Break's leaders, panicked and escaped, the Plague Harbingers and their trails, Grim Totems' cleanse, the Reality chamber's unarmed rift and Carrion Feast's count (#753, Group 3d-2)
+
+**Affects:** `FCataclysmSavedPatch` (moved before the creature record, which now holds one), `FCataclysmSavedEscapee` and
+`FCataclysmSavedMoraleGroup` (new); `PackGroup`, `PackMiddleCell`, `bIsMoraleLeader`, `bIsPanicked`, `bPlagueHarbinger`,
+`HarbingerPatches`, `HarbingerLastPatchAt`, `bHarbingerHasLaidAPatch` and `GrimTotemsDamageMultiplier` on
+`FCataclysmSavedCreature`; `bRealityChamberRiftDisarmed` on `FCataclysmSavedFloorChoices`; `bMoraleBreakSaved`,
+`PackGroupsPlaced`, `MoraleGroups` and `CarrionFeastStacks` on `FCataclysmSavedFloorRuleState`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); `CreatureRolesInto`, `RestoreCreatureRoles`, `FloorChoicesNow`,
+`RestoreFloorChoices`, `FloorRuleStateNow` and `RestoreFloorRuleState` on `ACataclysmDungeonGameMode`
+(`CataclysmDungeonGameMode.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`; six new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: 3d-3 follows.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WHAT A LOAD DID BEFORE THIS, read in the code on 2026-10-30 and 2026-10-31, not run:**
+  - Morale Break: no creature's group or flags were saved, so every group's leader read dead on the first beat,
+    nobody panicked, and creatures that had escaped before the save were forgotten and never came back.
+  - Plague Harbingers: no Harbinger was marked, so no trail was laid, the patches laid before the save were gone, and
+    a Harbinger's death neither cleansed nor weakened.
+  - Grim Totems: the cleanse's weakening, which exists only as each creature's multiplier, was lost while the totem
+    stayed used.
+  - The Reality chamber: every load armed its rift, so a player saved standing on the chamber's end was carried out on
+    the first beat without stepping off.
+  - Carrion Feast: the count of carcasses eaten went to nought, so the next feeder was weaker than it would have been.
+- **AN EARLIER RULING SUPERSEDED, 2026-10-31.** #2181's comment of 2026-10-30 said: "Carrion Feast's carcasses and
+  feeders are ruled a reset (they are raised by the rule), so only Famished Beasts' records are to be saved". Q5 of
+  3d supersedes it, as it supersedes "re-brought by count" (Q2 of 3b and Q2 of 3c): both came from the rule's state
+  not being saved, and 3d saves it. Carrion Feast's count is saved here; its feeders, with their own maximum health on
+  the record, and its carcasses, their seconds lain restarting (D1), are 3d-3's, as records with a tag.
+- **"WITH NO PLACEMENT SAVED" IN EARLIER RECORDS, AN INFERENCE AND NOT A MEASUREMENT.** The gather skips a dead player
+  ("A DEAD CHARACTER IS NOT GATHERED", `CataclysmSaveGather.cpp`), and the load prints "with no placement saved" when
+  it finds no placement (`CataclysmSaveLoad.cpp`). So in the 3c-1 and 3d-1 runs that printed it the test player was
+  most likely dead at the save, perhaps from damage reflected while the test killed many creatures. Nothing was run to
+  confirm it, and no verdict rested on the placement. Every 3d-2 test asserts the player alive at the save, and the
+  chamber test asserts the load placed it.
+
+### Rulings, 2026-10-31
+
+- **QA. The Harbingers' trail patches are saved at the burn charged:** a standing cost for the floor, as Quarantine's
+  patches (3c-1, Q4).
+- **QB. Morale Break's flight restarts:** the seconds since a leader fell are a timer (D1), so a group panicking at the
+  save flees a full flight again.
+- **Q3 (2026-10-30). Morale Break's escaped are saved by kind and rung, the seconds away restarting (D1).**
+- **QC. The Weaken a Harbinger's death puts on creatures is not saved:** an ailment's remaining duration (D1, section 6).
+- **QD. `bMoraleBreakSaved` guards Morale Break,** so an older file keeps the rebuild's groups.
+- **Q4 (2026-10-30). The Reality chamber's armed flag is saved,** as "disarmed", so an older file reads armed, as today.
+- **Carrion Feast's count is in 3d-2;** its feeders and carcasses are 3d-3's (above).
+
+### What changes
+
+| Rule | Saved | Put back by the load |
+|---|---|---|
+| Morale Break | on each creature: its group, the group's middle, leader, panicking; on the floor: the groups placed, and each group's fallen, flight over, returned and rallying flags and its escaped by kind and rung | the creature's fields; the rebuild's groups forgotten and the saved ones built again, each leader and panicked creature found by group and flag; the groups placed kept at least where they were |
+| Plague Harbingers | on each Harbinger: the mark, its patches at the burn charged, its last patch, whether it has laid one | the rebuild's trails forgotten; the mark, and a trail with its patches drawn again, each burning once a second as the row's |
+| Grim Totems | on each creature: the cleanse's multiplier | the multiplier, when it is not 1.0 |
+| The Reality chamber | the rift not armed | the rift not armed, before the player is put back |
+| Carrion Feast | the carcasses eaten on the floor | the count |
+
+### Tests
+
+Each round trip is `ARoundTripOfRows` (3d-1): one save and one load of a dungeon carrying the row, the seed pinned and put
+back and asserted back. Each set-up asserts the player alive at the save.
+
+- `Cataclysm.SaveLoad.MoraleBreaksLeadersStillLeadAfterALoad`: the first pinned seed whose floor 2 has a leader. After
+  the load and a beat: the leaders standing as saved, nobody panicking; a leader killed after the load panics its group.
+  Prints "LOAD MORALE LEADERS".
+- `Cataclysm.SaveLoad.CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad`: the first pinned seed whose floor 2 has a
+  leader whose whole group stands farther from the entrance than an escape needs; the leader killed, the player at the
+  entrance, the flight run out, creatures escaped. After the load: the escaped still away; after
+  `MoraleBreakReturnSeconds` they are back, the ordinary creatures standing risen by each escaped and its reinforcement.
+  Prints "LOAD MORALE ESCAPED".
+- `Cataclysm.SaveLoad.APlagueHarbingersTrailComesBackAfterALoad`: the first pinned seed whose floor 2 has a Harbinger;
+  one moved by hand twice, a patch's distance and more, a beat after each, laying three. After the load and a beat: the
+  Harbingers and their patches as saved, the moved one's (found as the Harbinger nearest where it was saved) its own;
+  it is killed, and its patches are cleansed. Prints "LOAD HARBINGERS".
+- `Cataclysm.SaveLoad.CreaturesAGrimTotemWeakenedStayWeakenedAfterALoad`: the first pinned seed whose floor 2 has a
+  totem, cleansed. After the load and a beat: as many creatures weakened as saved, at the cleanse's multiplier. Prints
+  "LOAD GRIM CLEANSE".
+- `Cataclysm.SaveLoad.APlayerSavedOnTheChambersEndIsNotCarriedOutByALoad`: the first pinned seed whose floor 2 has a
+  chamber; the player stood on the floor's end of its rift and carried in, paid once, and saved standing on the
+  chamber's end. After the load, set-ups: the load placed the player, and inside the chamber. After a beat: still inside,
+  and paid once. Prints "LOAD REALITY CHAMBER".
+- `Cataclysm.SaveLoad.CarrionFeastsCountComesBackAfterALoad`: seed 1, floor 2; one creature killed, its carcass eaten
+  after `CarrionFeastEatenAfterSeconds`. After the load and a beat: one eaten. Prints "LOAD CARRION".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The six new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | NOT YET SET: the Quarry window's measured total (enchant-quarry-w1, #1520, which adds 1), + 6; set when 3d-2 moves onto the head that merges it |
+| Python | of record, with JUnit, and ruff |
+| P1, a creature's group not put back | the leaders test fails on "the leaders stand as leaders after the load" (0) only: no restored creature is in a group, so no group finds its leader and each reads fallen on the first beat, and its panic finds nobody, so "and nobody panics" passes; with no leader standing nothing is killed. The escaped test passes: its group had fallen and its escaped are the floor record's |
+| P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
+| P3, the escaped not put back | the escaped test fails on "the escaped are still away after the load" (0) and "with their reinforcements" only: nothing returns, and "and come back" (0 away) passes |
+| P4, the saved Harbinger's trail not held by the rule | the Harbingers test fails on "the Harbingers are Harbingers after the load" (0), "their patches burn again" (0), "the moved one's trail is its own" (-1, none found) and "and its death cleanses it" (-1, nothing killed) only: the rule counts both from its trails |
+| P5, a Harbinger's patches not drawn again | the Harbingers test fails on "their patches burn again" (0) and "the moved one's trail is its own" (0), and on "and its death cleanses it" when more than one Harbinger stands (0 against the others' patches), which the printed line shows; the Harbingers are counted, and their last patch is put back, so the beat lays none |
+| P6, the cleanse's multiplier not put back | the Grim test fails on "the creatures weakened stay weakened" (0) and "at the cleanse's multiplier" (1.0) only |
+| P7, the chamber's rift not kept unarmed | the chamber test fails on "still in the chamber after a beat" only: the first beat carries the player out, which pays nothing, so "and the chamber paid nothing again" passes; both set-ups are read before the beat |
+| P8, Carrion Feast's count not put back | the Carrion test fails on "the carcasses eaten come back" (0) only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 73 actions, 63 files compiled`, at
+the first attempt (a new worktree, so everything was compiled). Python of record on that code commit, aa423acc1:
+`7175 passed, 8 skipped in 195.64s`, the JUnit file tests 7183, failures 0, errors 0, skipped 8; ruff "All checks
+passed!". Both ran and ended before the enchantment session's Quarry window took the machine; the lock read free at
+12:49:35.
+
+---
+
 ## 2026-10-31 — A Quarry mark or an Anathema curse that has passed to a new holder passes on again when that holder dies, and a curse whose caster is gone passes to the dying creature's own side, not to the player's characters
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCurseSpread.cpp` (one call added in `SpreadFromDying`, and
