@@ -2,6 +2,61 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A designed wand or staff skill must carry Type.Spell, or be named as not a spell with its ruling (#2012)
+
+**Affects:** `tools/tests/test_a_designed_caster_skill_is_a_spell.py` (new, 3 tests); this file.
+
+### WHAT AND WHY
+
+`UCataclysmSkillEffects::ApplyHit` adds spell damage to a blow only when the skill carries the `Type.Spell` tag, and
+the same tag is what marks a blow as a spell for every condition that asks. 68 authored rows grant `spell_damage`. So a
+caster skill designed without the tag gets none of it, and until now nothing would have said so (#2012).
+
+**Measured on `development` `4aa87ab3e`**: `game/Data/WeaponSkills.csv` has 403 rows, 35 Wand and 35 Staff. 10 of
+the 70 are designed, all Demonic; 9 carry `Type.Spell`; the tenth, `Demonic_Staff_Special` "Summon Imp", is not a
+spell by the project owner's ruling of 2026-09-23 on #2012. The other 60 have no `SkillName` and are placeholders
+for the other six Cataclysms. `Type.Spell` is on 9 rows in the whole file, those nine.
+
+**"Designed" means a row with a `SkillName`**, because that is the game's own test: `UCataclysmWeaponSkills` skips a
+row whose `SkillName` is empty, and the slot gets `UCataclysmUndesignedSkill`.
+
+The coordinating session approved the check on 2026-10-30, scoped to wand and staff rows as the issue asks. A spell on
+another weapon is not covered, because nothing states which melee skills are spells.
+
+### THE TESTS
+
+- `test_every_designed_wand_or_staff_skill_is_a_spell_or_a_named_exception`: every designed wand or staff row carries
+  `Type.Spell` or is in `NOT_SPELLS`, which holds Summon Imp with its ruling.
+- `test_every_named_exception_is_still_a_designed_untagged_wand_or_staff_row`: an entry that excuses nothing fails.
+- `test_designed_means_what_the_game_reads`: `UCataclysmWeaponSkills::SkillsFor`, comments taken out, still returns
+  early on `Row.SkillName.IsEmpty()`; and the positive control, at least 10 designed rows read and at least 9 tagged.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run` in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_a_designed_caster_skill_is_a_spell.py`. Each break text occurs once in its file. All node ids
+are in that file.
+
+| # | Break | Predicted named_failures |
+| :-- | :-- | :-- |
+| a | in `game/Data/WeaponSkills.csv`, Malefice's tags lose the spell tag: `Element.Demonic, Type.Spell, Type.Projectile, Type.Debuff` becomes `Element.Demonic, Type.Projectile, Type.Debuff` | `test_every_designed_wand_or_staff_skill_is_a_spell_or_a_named_exception`, `test_designed_means_what_the_game_reads` |
+| b | the case the issue is about, a placeholder designed without the tag: `Void_Wand_Heavy,Wand,Void,Heavy,,` becomes `Void_Wand_Heavy,Wand,Void,Heavy,Proof Bolt,` | `test_every_designed_wand_or_staff_skill_is_a_spell_or_a_named_exception` |
+| c | the exception removed: in the test file, `NOT_SPELLS = {` becomes `NOT_SPELLS = {} if True else {` | `test_every_designed_wand_or_staff_skill_is_a_spell_or_a_named_exception` |
+
+Why each: **a** leaves 8 tagged rows, under the control's 9, so the control fails as well as the rule. **b** makes 11
+designed rows with 9 tagged, which the control accepts. **c** leaves Summon Imp untagged and unexcused; with no entries
+the stale-exception test has nothing to find.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+### NO GENRE SOURCE
+
+None. This is a check that this project's own data reaches its own mechanism.
+
+---
+
 ## 2026-10-30 — Ten C++ comments and test messages that wrote a radius as a width, or called an example Infernal Lance's line, are corrected
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundEffect.h`,
