@@ -10406,10 +10406,22 @@ void ACataclysmDungeonGameMode::NoteDeathForCarrionFeast(const FCataclysmDeathNo
 		return;
 	}
 
+	if (LayACarcassAt(Slain->GetActorLocation()))
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: %s left a carcass on floor %d"), *Slain->GetName(), FloorNumber);
+	}
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::LayACarcassAt(const FVector& At)
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return nullptr;
+	}
 	// WHERE IT DIED, standing on the floor under it. The Imp's health at Common, paying nothing, not one of the
 	// floor's creatures, and cannot be hurt, as a portal is; fire burns it, and that is the hit rule's.
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmCarcassCharacter::StaticClass();
-	const FVector At = Slain->GetActorLocation();
 	const FVector Where(At.X, At.Y,
 						CurrentFloor->WorldOfCell(CurrentFloor->CellOfWorld(At)).Z
 							+ DungeonGameModeStandingHeightOfClass(Class));
@@ -10419,7 +10431,7 @@ void ACataclysmDungeonGameMode::NoteDeathForCarrionFeast(const FCataclysmDeathNo
 		World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
 	if (!Carcass)
 	{
-		return;
+		return nullptr;
 	}
 	Carcass->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 	Carcass->SetHealth(ImpHealth);
@@ -10430,8 +10442,8 @@ void ACataclysmDungeonGameMode::NoteDeathForCarrionFeast(const FCataclysmDeathNo
 	CreaturesRaisedByARule.Add(Carcass);
 	CarrionCarcasses.Add(Carcass);
 	CarrionCarcassSeconds.Add(0.0f);
-	UE_LOG(LogCataclysm, Log, TEXT("Carrion Feast: %s left a carcass on floor %d"), *Slain->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
+	return Carcass;
 }
 
 void ACataclysmDungeonGameMode::NoteHitForCarrionFeast(const FCataclysmHitNotice& Notice)
@@ -15349,6 +15361,36 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 			}
 			PandorasBoxWaves[Saved.RaisedGroup].Standing.Add(&Creature); // A load's: a chaos spawn.
 		}
+		// 3d-3b: a woken statue's warden, by the statue's place; Warzone's attackers and allies, paying nothing as they
+		// did; a voidling, paying nothing and not on the floor's list, from which the load is taken off again; a Carrion
+		// Feast feeder with its own maximum health, which the carcasses eaten strengthen.
+		else if (Saved.RaisedBy == FName(RaisedAngelicWarden) && AngelicStatues.IsValidIndex(Saved.RaisedGroup))
+		{
+			AngelicStatues[Saved.RaisedGroup].Warden = &Creature; // A load's: a statue's warden.
+		}
+		else if (Saved.RaisedBy == FName(RaisedWarzoneAttacker))
+		{
+			Creature.bDiesUnpaid = true;
+			WarzoneAttackers.Add(&Creature); // A load's: a Warzone attacker.
+		}
+		else if (Saved.RaisedBy == FName(RaisedWarzoneAlly))
+		{
+			Creature.bDiesUnpaid = true;
+			WarzoneAllies.Add(&Creature); // A load's: a Warzone ally.
+		}
+		else if (Saved.RaisedBy == FName(RaisedVoidling))
+		{
+			Creature.bIsAVoidling = true;
+			Creature.bDiesUnpaid = true;
+			Voidlings.Add(&Creature); // A load's: a voidling.
+			FloorEnemies.Remove(&Creature);
+		}
+		else if (Saved.RaisedBy == FName(RaisedCarrionFeeder))
+		{
+			Creature.bIsACarrionFeeder = true;
+			CarrionFeeders.Add(&Creature); // A load's: a feeder.
+			CarrionFeederOwnMaxHealth.Add(Saved.CarrionFeederOwnMaxHealth);
+		}
 	}
 }
 
@@ -15391,6 +15433,36 @@ bool ACataclysmDungeonGameMode::RaisedByOf(const ACataclysmEnemyCharacter& Creat
 			OutGroup = Index;
 			return true;
 		}
+	}
+	// 3d-3b.
+	for (int32 Index = 0; Index < AngelicStatues.Num(); ++Index)
+	{
+		if (AngelicStatues[Index].Warden.Get() == Mutable)
+		{
+			OutTag = FName(RaisedAngelicWarden);
+			OutGroup = Index;
+			return true;
+		}
+	}
+	if (In(WarzoneAttackers))
+	{
+		OutTag = FName(RaisedWarzoneAttacker);
+		return true;
+	}
+	if (In(WarzoneAllies))
+	{
+		OutTag = FName(RaisedWarzoneAlly);
+		return true;
+	}
+	if (Voidlings.Contains(Mutable))
+	{
+		OutTag = FName(RaisedVoidling);
+		return true;
+	}
+	if (In(CarrionFeeders))
+	{
+		OutTag = FName(RaisedCarrionFeeder);
+		return true;
 	}
 	OutTag = NAME_None;
 	return false;
@@ -15435,6 +15507,14 @@ void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter
 		}
 	}
 	Record.GrimTotemsDamageMultiplier = Creature.DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource);
+
+	// 3d-3b: a Carrion Feast feeder's own maximum health.
+	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
+		[Mutable](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Mutable; });
+	if (CarrionFeederOwnMaxHealth.IsValidIndex(AsFeeder))
+	{
+		Record.CarrionFeederOwnMaxHealth = CarrionFeederOwnMaxHealth[AsFeeder];
+	}
 }
 
 FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() const
@@ -15571,6 +15651,16 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 		FCataclysmSavedPandoraWaves& Saved = Out.PandoraWaves.AddDefaulted_GetRef();
 		Saved.At = One.At;
 		Saved.Came = One.Came;
+	}
+
+	// CARRION FEAST: where each carcass not yet burned lies. Not its seconds lain (D1). 3d-3b.
+	for (int32 Index = 0; Index < CarrionCarcasses.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Carcass = CarrionCarcasses[Index].Get();
+		if (IsValid(Carcass) && CarrionCarcassSeconds.IsValidIndex(Index) && CarrionCarcassSeconds[Index] >= 0.0f)
+		{
+			Out.CarrionCarcasses.Add(Carcass->GetActorLocation());
+		}
 	}
 	return Out;
 }
@@ -15712,7 +15802,8 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	}
 
 	// WARZONE CONTROL POINTS: the seconds stood at each point and the points captured, each captured point's shortcut
-	// opened, which is the only way one opens (Q1). NO ALLIED SOLDIERS COME: those standing at the save are 3d's. What
+	// opened, which is the only way one opens (Q1). NO ALLIED SOLDIERS COME of the load's own: those standing at the save
+	// are records, put back by `RestoreCreatureRoles` since 3d-3b. What
 	// was applied stays at nought, as the floor change left it, so the next beat finds the points held and writes their
 	// strength once. The wave clock restarts as the floor change set it (D1). Issue #753, Group 3c-2.
 	{
@@ -15761,12 +15852,13 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	}
 
 	// VOID PARASITE: the voidlings attached. What was applied stays at nought, as the floor change left it, so the next
-	// beat writes the loss once. The voidlings standing at the save are 3d's. Issue #753, Group 3c-2.
+	// beat writes the loss once. The voidlings standing at the save are records, put back since 3d-3b. Issue #753, 3c-2.
 	VoidParasiteStacks = State.VoidParasiteStacks;
 
 	// ECHOES OF THE PAST, STRUCK BEFORE THE SAVE: gone, and none raised again, so the strike is not taken twice (Q1).
 	// The load's floor change set the stage to 0 waiting; a stage before the strike stays so, and the echoes rise again
-	// and strike, the pending strike kept. Echoes standing after their strike are 3d-3's. Issue #753, Group 3d-1.
+	// and strike, the pending strike kept. Echoes standing after their strike are not brought back (QC of 3d-3): they
+	// cannot be hurt and are dismissed a second after striking. Issue #753, Group 3d-1.
 	if (State.bEchoesStruck)
 	{
 		DismissTheEchoes();
@@ -15837,7 +15929,8 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		}
 	}
 
-	// CARRION FEAST: the carcasses eaten on this floor. Its carcasses and feeders are 3d-3's. Issue #753, Group 3d-2.
+	// CARRION FEAST: the carcasses eaten on this floor; its feeders are records and its carcasses positions, below
+	// (3d-3b). Issue #753, Group 3d-2.
 	CarrionFeastStacks = State.CarrionFeastStacks;
 
 	// PANDORA'S BOX: each box's waves under way, where they come from and how many have come; their standing spawn were
@@ -15852,6 +15945,15 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		PandorasBoxWaves[Index].At = State.PandoraWaves[Index].At;
 		PandorasBoxWaves[Index].Came = State.PandoraWaves[Index].Came; // A load's: the waves come so far.
 	}
+
+	// CARRION FEAST: each carcass laid again where it lay, its seconds lain starting again (QA, D1); and the feeders put
+	// back by `RestoreCreatureRoles` strengthened by the carcasses eaten, which writes their damage multiplier, the record
+	// keeping only the starting damage. Issue #753, Group 3d-3b.
+	for (const FVector& At : State.CarrionCarcasses)
+	{
+		LayACarcassAt(At); // A load's: a carcass laid again.
+	}
+	StrengthenTheFeeders(); // A load's: the feeders strengthened again.
 	RefreshFloorModifierPanel();
 }
 

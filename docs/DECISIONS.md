@@ -2,6 +2,128 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A woken statue's warden, Warzone's attackers and allies, voidlings, and Carrion Feast's feeders and carcasses standing at a save come back after a load (#753, Group 3d-3b)
+
+**Affects:** `CarrionFeederOwnMaxHealth` on `FCataclysmSavedCreature` and `CarrionCarcasses` on
+`FCataclysmSavedFloorRuleState` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); five more tags of `RaisedByOf`,
+`LayACarcassAt` (new, the one function a death and a load lay a carcass by), `CreatureRolesInto`, `RestoreCreatureRoles`,
+`FloorRuleStateNow` and `RestoreFloorRuleState` on `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`); the
+fixture `game/Tests/SaveFixtures/Run_v1.json`; five new tests and one changed assertion in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: a 3d-4 proposal follows.
+
+### SAID FIRST
+
+- **PASSED IN UNREAL, window w118, every figure as registered:** the five new tests, the whole suite at 4439 / 0, and
+  P1-P7 each proved on exactly its registered assertions, P3 on both of its readers.
+- **ONE EXISTING ASSERTION CHANGED, ruled 2026-10-31.** 3c-2's `AWarzoneHoldComesBackAfterALoad` asserted
+  `TestEqual(TEXT("and no allied soldiers came with the load"), Allies, 0)`, which recorded the interim while the allies
+  standing at a save were 3d's. Its new line is `TestEqual(TEXT("the allies standing at the save stand again, and no
+  more"), Allies, AlliesSaved)`, under the Q5 ruling of 3d (records, not by count), its control ("the capture brought
+  allied soldiers before the save", `AlliesSaved > 0`) kept. That a load brings none of its own, not calling
+  `BringWarzoneAllies`, is "and no more". The comments that said these creatures were 3d's or 3d-3's are corrected with it.
+- **NO RULE CREATURE WITHOUT A TAG IS NEWLY SAVED:** `RaisedByOf` answers true from five more branches, each a membership
+  test: a statue's `Warden` link, `WarzoneAttackers`, `WarzoneAllies`, `Voidlings` and `CarrionFeeders`; false at its end.
+  A carcass carries no tag and is still skipped as a creature; it is saved as a position (QA).
+- **THE OTHER EXISTING ROUND TRIPS WERE SWEPT FOR READERS OF THESE LISTS:** 3c-1's rule-creatures test wakes a statue, so
+  its warden is now saved, but its assertions read the statues' cells, the woken cell's pillars and the ordinary creatures
+  standing, which exclude raised ones; 3c-2's Void Parasite test attaches both voidlings before its save; 3d-2's Carrion
+  test has a feeder standing at its save, now saved, but asserts only the carcasses eaten.
+
+### Rulings, 2026-10-31
+
+- **Q5 of 3d: records, with a tag and group;** **QA of 3d-3: carcasses as positions,** laid again by the one function a
+  death lays one by, their seconds lain restarting (D1); **the 3c-2 ally assertion changed,** above.
+
+### What changes
+
+| Kind (tag) | Its mark | Its rule's link | On the floor's list | Pays |
+|---|---|---|---|---|
+| A woken statue's warden (`AngelicWarden`, group the statue's place) | none of its own | `AngelicStatues[group].Warden` | yes | yes |
+| A Warzone attacker (`WarzoneAttacker`) | `bDiesUnpaid` | `WarzoneAttackers` | yes | no |
+| A Warzone ally (`WarzoneAlly`) | `bDiesUnpaid`; the player's, by the thrall path (`ThrallInto`) | `WarzoneAllies` | no | no |
+| A voidling (`Voidling`) | `bIsAVoidling`, `bDiesUnpaid` | `Voidlings`; taken off the floor's list, where the load put it | no | no |
+| A Carrion Feast feeder (`CarrionFeeder`) | `bIsACarrionFeeder` | `CarrionFeeders`, with its own maximum health from the record; `StrengthenTheFeeders` after the stacks, writing its damage multiplier | yes | yes |
+| A carcass, not burned (a position, QA) | as laid | `CarrionCarcasses`, laid again by `LayACarcassAt`, its seconds at nought | no | no |
+
+Each tagged creature is marked raised by a rule by both marks, so the stairs' seal and the clear count it as before.
+
+### Tests
+
+Each through `ARaisedRoundTrip` (3d-3a), beat first, then halved, then saved; `TheRaisedCameBack` asserts as there.
+
+- `Cataclysm.SaveLoad.AWokenStatuesWardenStillStandsAfterALoad`: a statue woken by `NoteDivineLawViolated`. Prints "LOAD
+  WARDENS".
+- `Cataclysm.SaveLoad.WarzonesAttackersStillStandAfterALoad`: the player stood in a point, a wave come; then the entrance.
+  Prints "LOAD WARZONE ATTACKERS".
+- `Cataclysm.SaveLoad.WarzonesAlliesStillStandAfterALoad`: a point captured, its allies come. Also: their commander is the
+  player, and none is on the floor's list. Prints "LOAD WARZONE ALLIES".
+- `Cataclysm.SaveLoad.AVoidlingStillStandsAfterALoad`: the voidling roll pinned to rise and put back; a creature at least
+  1000 cm from the entrance killed by the player. Also: no voidling on the floor's list, none attached. Prints "LOAD
+  VOIDLINGS".
+- `Cataclysm.SaveLoad.CarrionFeastsFeedersAndCarcassesComeBackAfterALoad`: one carcass eaten, which brings a feeder, and a
+  second lying. After the load also: the carcass lies again, the feeders' damage multiplier is `CarrionFeastMultiplier`
+  of the stacks, and after `CarrionFeastEatenAfterSeconds` it is eaten, counts and brings a feeder. Prints "LOAD FEEDERS"
+  and "LOAD CARCASSES".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4439 / 0: window w117's 4434 on `development`, + 5 |
+| Python | of record, with JUnit, and ruff |
+| P1, a statue's warden not linked (`AngelicStatues[...].Warden = &Creature;`) | the warden test fails on "as many stand in the rule's list as were saved" (0) only; 3c-1's rule-creatures test reads no warden |
+| P2, an attacker not put back (`WarzoneAttackers.Add`) | the attackers test fails on "as many stand ..." (0) only; no other test reads `WarzoneAttackers` |
+| P3, an ally not put back (`WarzoneAllies.Add`) | TWO READERS: the allies test fails on "as many stand ..." (0), and 3c-2's Warzone test fails on its changed "the allies standing at the save stand again, and no more" (0, not 2); the allies test's "no ally is on the floor's list" passes, none being read |
+| P4, a voidling not put back (`Voidlings.Add`) | the voidling test fails on "as many stand ..." (0) only; "no voidling is on the floor's list" and "and none attached" pass; 3c-2's Void Parasite test has none standing at its save |
+| P5, a feeder not put back (`CarrionFeeders.Add`) | the feeders test fails on "as many stand ..." (0), "the feeders are strengthened by the carcasses eaten" (0.0, no feeder read) and "and brings a feeder" (1, not 2) only: its own-maximum entry is still added, so the next feeder is paired with the restored one's maximum, which no assertion reads; 3d-2's Carrion test reads only the carcasses eaten |
+| P6, a carcass not laid again (`LayACarcassAt(At); // A load's ...`) | the feeders test fails on "the carcass lying at the save lies again" (0), "and, eaten, it counts" (1, not 2) and "and brings a feeder" (1, not 2) only |
+| P7, the feeders not strengthened by the load (`StrengthenTheFeeders(); // A load's ...`) | the feeders test fails on "the feeders are strengthened by the carcasses eaten" (1.0) only: the record keeps the starting damage, and the next strengthening comes only when a carcass is eaten, after that assertion |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
+the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
+compile of the #2652 merge. Python of record on 7ee86cb48: `7177 passed, 8 skipped in 193.59s`, the JUnit file tests
+7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w118, 2026-10-31, 16:11 to 16:55, on 7ee86cb48. Pre-checks measured at 16:11:21, all passing: `development`'s CI
+and Unreal runs succeeded on f674abb1a, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, no simulation process, 11256 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4439 tests performed, 4439 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4439 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 191.97s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'as many stand in the rule's list as were saved' to be 1, but it was 0" only |
+| P2 | PROVED: "'as many stand ...' to be 3, but it was 0" only |
+| P3 | PROVED ON BOTH READERS, as traced: the allies test, "'as many stand ...' to be 2, but it was 0", and 3c-2's Warzone test, "'the allies standing at the save stand again, and no more' to be 2, but it was 0", its line reading "allies 0 (2 before the save)" |
+| P4 | PROVED: "'as many stand ...' to be 1, but it was 0" only |
+| P5 | PROVED: "'as many stand ...' to be 1, but it was 0", "'the feeders are strengthened by the carcasses eaten' to be 1.100000, but it was 0.000000" and "'and brings a feeder' to be 2, but it was 1" only |
+| P6 | PROVED: "'the carcass lying at the save lies again' to be 1, but it was 0", "'and, eaten, it counts' to be 2, but it was 1" and "'and brings a feeder' to be 2, but it was 1" only |
+| P7 | PROVED: "'the feeders are strengthened by the carcasses eaten' to be 1.100000, but it was 1.000000" only |
+
+Each proof's restored half: `51 tests performed, 51 succeeded, 0 failed`.
+
+The printed lines, from the whole suite:
+
+```
+LOAD WARDENS on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD WARZONE ATTACKERS on seed 1: Loaded (... day 1, 227 creatures, placed where it was saved); after a beat 3/3 standing, 3 at half health, 3 marked, 0 counted as the floor's own; the floor's own standing 224/224
+LOAD WARZONE ALLIES on seed 1: Loaded (... day 1, 235 creatures, placed where it was saved); after a beat 2/2 standing, 2 at half health, 2 marked, 0 counted as the floor's own; the floor's own standing 224/224
+LOAD VOIDLINGS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 222/222
+LOAD FEEDERS on seed 1: Loaded (... day 1, 222 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 221/221
+LOAD CARCASSES: 1/1 lying after the load, the feeders' damage 1.100; once it was eaten, 2 eaten (saved 1), 2 feeder(s) (saved 1)
+LOAD WARZONE on seed 1: Loaded (... day 1, 238 creatures, placed where it was saved); after a beat 1 point(s) held, point 0's shortcut open, point 1 at 10.00/10.00 s, attack damage rule 10.00, allies 2 (2 before the save)
+```
+
+The last is 3c-2's Warzone test under the changed assertion: the two allies standing at the save stood again, and no more.
+
+---
+
 ## 2026-10-31 — The creatures a floor object raised and that stand at a save come back after a load, their health and their rule kept: tithe angels, relic spirits, totem Elites, banner assailants and Pandora's waves (#753, Group 3d-3a)
 
 **Affects:** `RaisedBy` and `RaisedGroup` on `FCataclysmSavedCreature`, `FCataclysmSavedPandoraWaves` (new) and

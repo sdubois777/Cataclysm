@@ -2823,6 +2823,11 @@ public:
 	static constexpr const TCHAR* RaisedGrimTotemElite = TEXT("GrimTotemElite");
 	static constexpr const TCHAR* RaisedBannerAssailant = TEXT("BannerAssailant");
 	static constexpr const TCHAR* RaisedChaosSpawn = TEXT("ChaosSpawn");
+	static constexpr const TCHAR* RaisedAngelicWarden = TEXT("AngelicWarden");
+	static constexpr const TCHAR* RaisedWarzoneAttacker = TEXT("WarzoneAttacker");
+	static constexpr const TCHAR* RaisedWarzoneAlly = TEXT("WarzoneAlly");
+	static constexpr const TCHAR* RaisedVoidling = TEXT("Voidling");
+	static constexpr const TCHAR* RaisedCarrionFeeder = TEXT("CarrionFeeder");
 
 	/** Pandora's Box, for tests: how many waves the first box under way has let out, or 0 when none is. */
 	int32 PandorasBoxWavesCameNow() const { return PandorasBoxWaves.IsEmpty() ? 0 : PandorasBoxWaves[0].Came; }
@@ -3970,6 +3975,12 @@ private:
 
 	/** Every voidling, the light zone and the player's stacks forgotten: the floor has ended. */
 	void ForgetTheVoidParasite();
+
+	/**
+	 * Carrion Feast: a carcass laid where a creature fell, or where a saved one lay, standing on the floor under it. The one
+	 * function a death and a load lay one by. Null when it could not be spawned. Issue #753, Group 3d-3b.
+	 */
+	ACataclysmEnemyCharacter* LayACarcassAt(const FVector& At);
 
 	/**
 	 * Void Parasite, on the beat: the light zone kept drawn, each voidling within reach attached, every stack

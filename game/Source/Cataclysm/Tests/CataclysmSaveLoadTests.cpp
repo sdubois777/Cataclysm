@@ -3990,7 +3990,10 @@ namespace CataclysmSaveLoadTest
 		Test.TestEqual(TEXT("the seconds stood at point 1 come back"), HeldAfter, HeldSaved, 0.001f);
 		Test.TestEqual(TEXT("the point's strength is on the player once"), Damage,
 					   Effects::WarzoneDamageMorePercentPerPoint, 0.001f);
-		Test.TestEqual(TEXT("and no allied soldiers came with the load"), Allies, 0);
+		// RULED 2026-10-31: "and no allied soldiers came with the load" (Allies == 0) recorded the interim, while the allies
+		// standing at a save were 3d's; since 3d-3b they are saved as records (Q5 of 3d) and stand again. That a load
+		// brings none of its own, not calling `BringWarzoneAllies`, is "and no more".
+		Test.TestEqual(TEXT("the allies standing at the save stand again, and no more"), Allies, AlliesSaved);
 		return true;
 	}
 
@@ -4235,9 +4238,9 @@ namespace CataclysmSaveLoadTest
 
 /**
  * Warzone Control Points' hold comes back after a load: a captured point stays held with its shortcut open and its
- * strength on the player once, and the seconds stood at a point not yet held come back. No allied soldiers come with the
- * load; those standing at the save are 3d's. The wave clock is a timer and restarts (D1). Issue #753, Group 3c-2, ruled
- * 2026-10-30. Prints "LOAD WARZONE".
+ * strength on the player once, and the seconds stood at a point not yet held come back. The load brings no allied
+ * soldiers of its own; those standing at the save stand again, since 3d-3b. The wave clock is a timer and restarts (D1).
+ * Issue #753, Group 3c-2, ruled 2026-10-30. Prints "LOAD WARZONE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWarzoneTest,
 	"Cataclysm.SaveLoad.AWarzoneHoldComesBackAfterALoad",
@@ -4279,7 +4282,7 @@ bool FCataclysmSaveLoadLabrynthTest::RunTest(const FString&)
 
 /**
  * The voidlings the Void Parasite attached come back after a load, their loss on the player once. Those standing at the
- * save are 3d's. Issue #753, Group 3c-2. Prints "LOAD VOID PARASITE".
+ * save are put back too, since 3d-3b. Issue #753, Group 3c-2. Prints "LOAD VOID PARASITE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadVoidParasiteTest,
 	"Cataclysm.SaveLoad.VoidParasiteStacksComeBackAfterALoad",
@@ -5339,7 +5342,8 @@ bool FCataclysmSaveLoadRealityChamberTest::RunTest(const FString&)
 
 /**
  * Carrion Feast's count of carcasses eaten on the floor comes back after a load, so the feeders after it are as strong as
- * they would have been. Its carcasses and feeders are 3d-3's. Issue #753, Group 3d-2, ruled 2026-10-31 (#2181). Prints
+ * they would have been. Its carcasses and feeders come back too, since 3d-3b. Issue #753, Group 3d-2, ruled 2026-10-31
+ * (#2181). Prints
  * "LOAD CARRION".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCarrionTest,
@@ -5755,6 +5759,259 @@ bool FCataclysmSaveLoadChaosSpawnTest::RunTest(const FString&)
 					TestEqual(TEXT("and the next wave comes when the standing one is killed"), CameAfterTheKills, CameSaved + 1);
 					TestTrue(TEXT("and stands"), Next > 0);
 				}
+			});
+	});
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/** The player of the game mode's world. */
+	ACataclysmPlayerCharacter* ThePlayerOf(const ACataclysmDungeonGameMode& Mode)
+	{
+		const UWorld* World = Mode.GetWorld();
+		const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		return Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	}
+
+	/** One of the floor's own creatures that pays for its death, at least `AwayCm` from the entrance, or null. */
+	ACataclysmEnemyCharacter* AFloorCreatureAwayFromTheEntrance(const ACataclysmDungeonGameMode& Mode, float AwayCm)
+	{
+		const FVector Entrance = Mode.CurrentFloor->EntranceWorld();
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PaysForItsDeath()
+				&& !Enemy->bRaisedByARule && !Enemy->bCannotBeHurt
+				&& FVector::Dist2D(Enemy->GetActorLocation(), Entrance) >= AwayCm)
+			{
+				return Enemy.Get();
+			}
+		}
+		return nullptr;
+	}
+}
+
+/**
+ * A woken statue's warden standing at a save stands after the load, its statue's again. Until this a load removed it.
+ * Issue #753, Group 3d-3b, ruled 2026-10-31. Prints "LOAD WARDENS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWardensTest,
+	"Cataclysm.SaveLoad.AWokenStatuesWardenStillStandsAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWardensTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::AngelicWardensKey), TEXT("LOAD WARDENS"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				const TArray<FIntPoint> Statues = Mode.AngelicStatueCellsStanding();
+				return !Statues.IsEmpty() && Mode.NoteDivineLawViolated(Mode.CurrentFloor->WorldOfCell(Statues[0])) == 1;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.AngelicWardensNow(); },
+			// A WARDEN CARRIES NO MARK OF ITS OWN: its statue's link is its mark, and the raised mark with it.
+			[](const ACataclysmEnemyCharacter&) { return true; });
+	});
+}
+
+/**
+ * Warzone's attackers standing at a save stand after the load, the point's again, paying nothing as they did. Issue #753,
+ * Group 3d-3b. Prints "LOAD WARZONE ATTACKERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWarzoneAttackersTest,
+	"Cataclysm.SaveLoad.WarzonesAttackersStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWarzoneAttackersTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::WarzoneControlPointsKey), TEXT("LOAD WARZONE ATTACKERS"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				// A WAVE COMES ON THE FIRST BEAT IN A POINT NOT HELD, the wave clock starting full.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				if (!Player || Mode.WarzonePointCellsNow().IsEmpty())
+				{
+					return false;
+				}
+				StandOnCell(Mode, *Player, Mode.WarzonePointCellsNow()[0]);
+				for (int32 Beat = 0; Beat < 4 && Mode.WarzoneAttackersStanding().IsEmpty(); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				return true;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.WarzoneAttackersStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bDiesUnpaid; });
+	});
+}
+
+/**
+ * Warzone's allied soldiers standing at a save stand after the load, the player's and the point's again, and not on the
+ * floor's list. Until this a load removed them: a reward lost. Issue #753, Group 3d-3b. Prints "LOAD WARZONE ALLIES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWarzoneAlliesTest,
+	"Cataclysm.SaveLoad.WarzonesAlliesStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWarzoneAlliesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::WarzoneControlPointsKey), TEXT("LOAD WARZONE ALLIES"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				// A POINT CAPTURED BY STANDING IN IT, which brings its allies.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				if (!Player || Mode.WarzonePointCellsNow().IsEmpty())
+				{
+					return false;
+				}
+				StandOnCell(Mode, *Player, Mode.WarzonePointCellsNow()[0]);
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::WarzoneCaptureSeconds) + 1 && Mode.WarzonePointsHeld() == 0;
+					 ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				return Mode.WarzonePointsHeld() == 1;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.WarzoneAlliesStanding(); },
+			[](const ACataclysmEnemyCharacter& One)
+			{
+				return One.bDiesUnpaid
+					&& Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(&One)) != nullptr;
+			},
+			[this](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				int32 OnTheList = 0;
+				for (ACataclysmEnemyCharacter* Ally : Mode.WarzoneAlliesStanding())
+				{
+					OnTheList += Mode.FloorEnemies.Contains(Ally) ? 1 : 0;
+				}
+				TestEqual(TEXT("no ally is on the floor's list"), OnTheList, 0);
+			});
+	});
+}
+
+/**
+ * A voidling standing at a save, not yet attached, stands after the load where it stood, the rule's again, paying nothing
+ * and not on the floor's list. Until this a load removed it: a stack the player escaped. Issue #753, Group 3d-3b. Prints
+ * "LOAD VOIDLINGS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadVoidlingsTest,
+	"Cataclysm.SaveLoad.AVoidlingStillStandsAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadVoidlingsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.VoidParasiteRoll"));
+	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
+	const bool bRan = WithTheSeedPutBack(*this, [this]()
+	{
+		FPinnedConsoleValue Rises(TEXT("Cataclysm.VoidParasiteRoll"), TEXT("0"));
+		return ARaisedRoundTrip(*this, FName(Effects::VoidParasiteKey), TEXT("LOAD VOIDLINGS"),
+			[this](ACataclysmDungeonGameMode& Mode)
+			{
+				// A CREATURE FAR FROM THE ENTRANCE KILLED BY THE PLAYER, its voidling too far to attach once the player
+				// stands there.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				ACataclysmEnemyCharacter* Victim = AFloorCreatureAwayFromTheEntrance(Mode, 1000.0f);
+				return Player && Victim && KillOnTheFloor(*this, *Player, Victim, TEXT("a creature to leave a voidling"));
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.VoidlingsNow(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsAVoidling && One.bDiesUnpaid; },
+			[this](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				int32 OnTheList = 0;
+				for (ACataclysmEnemyCharacter* Voidling : Mode.VoidlingsNow())
+				{
+					OnTheList += Mode.FloorEnemies.Contains(Voidling) ? 1 : 0;
+				}
+				TestEqual(TEXT("no voidling is on the floor's list"), OnTheList, 0);
+				TestEqual(TEXT("and none attached"), Mode.VoidParasiteStacksHeld(), 0);
+			});
+	});
+	TestEqual(TEXT("and the voidling roll is put back"), RollVariable ? RollVariable->GetString() : FString(), RollBefore);
+	return bRan;
+}
+
+/**
+ * Carrion Feast after a load: a feeder standing at the save stands again, its own maximum kept, strengthened by the
+ * carcasses eaten; a carcass lying at the save lies again and, eaten, counts and brings a feeder. Until this both were
+ * gone. Issue #753, Group 3d-3b, ruled 2026-10-31 (QA). Prints "LOAD FEEDERS" and "LOAD CARCASSES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadFeedersTest,
+	"Cataclysm.SaveLoad.CarrionFeastsFeedersAndCarcassesComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadFeedersTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 CarcassesSaved = -1;
+		int32 StacksSaved = -1;
+		return ARaisedRoundTrip(*this, FName(Effects::CarrionFeastKey), TEXT("LOAD FEEDERS"),
+			[this, &CarcassesSaved, &StacksSaved](ACataclysmDungeonGameMode& Mode)
+			{
+				// ONE CARCASS EATEN, WHICH BRINGS A FEEDER, AND A SECOND LYING.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				ACataclysmEnemyCharacter* First = AFloorCreatureAwayFromTheEntrance(Mode, 0.0f);
+				if (!Player || !First || !KillOnTheFloor(*this, *Player, First, TEXT("a creature to leave a carcass")))
+				{
+					return false;
+				}
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::CarrionFeastEatenAfterSeconds + 1.0f); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				ACataclysmEnemyCharacter* Second = AFloorCreatureAwayFromTheEntrance(Mode, 0.0f);
+				if (!Second || !KillOnTheFloor(*this, *Player, Second, TEXT("a creature to leave a second carcass")))
+				{
+					return false;
+				}
+				CarcassesSaved = Mode.CarrionCarcassesNow().Num();
+				StacksSaved = Mode.CarrionFeastStacksNow();
+				return CarcassesSaved == 1 && StacksSaved == 1;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.CarrionFeedersNow(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsACarrionFeeder; },
+			[this, &CarcassesSaved, &StacksSaved](ACataclysmDungeonGameMode& Mode, int32 FeedersSaved)
+			{
+				const int32 CarcassesAfterTheLoad = Mode.CarrionCarcassesNow().Num();
+				float FeederDamage = 0.0f;
+				if (!Mode.CarrionFeedersNow().IsEmpty())
+				{
+					FeederDamage = Mode.CarrionFeedersNow()[0]->DamageMultiplierFrom(ACataclysmEnemyCharacter::CarrionFeastDamageSource);
+				}
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::CarrionFeastEatenAfterSeconds + 1.0f); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				AddInfo(FString::Printf(TEXT("LOAD CARCASSES: %d/%d lying after the load, the feeders' damage %.3f; once it was "
+											 "eaten, %d eaten (saved %d), %d feeder(s) (saved %d)"),
+										CarcassesAfterTheLoad, CarcassesSaved, FeederDamage, Mode.CarrionFeastStacksNow(),
+										StacksSaved, Mode.CarrionFeedersNow().Num(), FeedersSaved));
+				TestEqual(TEXT("the carcass lying at the save lies again"), CarcassesAfterTheLoad, CarcassesSaved);
+				TestEqual(TEXT("the feeders are strengthened by the carcasses eaten"), FeederDamage,
+						  Effects::CarrionFeastMultiplier(StacksSaved), 0.0001f);
+				TestEqual(TEXT("and, eaten, it counts"), Mode.CarrionFeastStacksNow(), StacksSaved + 1);
+				TestEqual(TEXT("and brings a feeder"), Mode.CarrionFeedersNow().Num(), FeedersSaved + 1);
 			});
 	});
 }
