@@ -17,7 +17,8 @@ and `GoToFloor` in place of `FCataclysmFloorBrief::bSameArenaAsLastFloor`; `Stoo
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL IN WINDOW w108, ALL SEVEN PROOFS PROVED; TWO OF THE REGISTERED PREDICTIONS WERE WRONG, BOTH ABOUT
+  THE CHASMS** (the Run section's last table). Windows w106 and w107 stopped first, on faults this entry also names.
 - **THREE FAULTS IN MERGED CODE, IN THE DUNGEON LOAD OF #751 AND #753, ARE CORRECTED HERE FIRST.** Each was found by
   reading, before this branch; listed on #753 before the work.
   1. **F1. A load opened every gate and section barrier and emptied every statue's cell.** `FCataclysmSaveApply::DungeonFloorInto`
