@@ -75,8 +75,9 @@ back and asserted back. Each set-up asserts the player alive at the save.
   entrance, the flight run out, creatures escaped. After the load: the escaped still away; after
   `MoraleBreakReturnSeconds` they are back, the ordinary creatures standing risen by each escaped and its reinforcement.
   Prints "LOAD MORALE ESCAPED".
-- `Cataclysm.SaveLoad.APlagueHarbingersTrailComesBackAfterALoad`: the first pinned seed whose floor 2 has a Harbinger;
-  one moved by hand twice, a patch's distance and more, a beat after each, laying three. After the load and a beat: the
+- `Cataclysm.SaveLoad.APlagueHarbingersTrailComesBackAfterALoad`: the first pinned seed whose floor 2 has two Harbingers
+  or more, asserted in the set-up with the others' patches standing besides the moved one's; one moved by hand twice, a
+  patch's distance and more, a beat after each, laying three. After the load and a beat: the
   Harbingers and their patches as saved, the moved one's (found as the Harbinger nearest where it was saved) its own;
   it is killed, and its patches are cleansed. Prints "LOAD HARBINGERS".
 - `Cataclysm.SaveLoad.CreaturesAGrimTotemWeakenedStayWeakenedAfterALoad`: the first pinned seed whose floor 2 has a
@@ -100,7 +101,7 @@ back and asserted back. Each set-up asserts the player alive at the save.
 | P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
 | P3, the escaped not put back | the escaped test fails on "the escaped are still away after the load" (0) and "with their reinforcements" only: nothing returns, and "and come back" (0 away) passes |
 | P4, the saved Harbinger's trail not held by the rule | the Harbingers test fails on "the Harbingers are Harbingers after the load" (0), "their patches burn again" (0), "the moved one's trail is its own" (-1, none found) and "and its death cleanses it" (-1, nothing killed) only: the rule counts both from its trails |
-| P5, a Harbinger's patches not drawn again | the Harbingers test fails on "their patches burn again" (0) and "the moved one's trail is its own" (0), and on "and its death cleanses it" when more than one Harbinger stands (0 against the others' patches), which the printed line shows; the Harbingers are counted, and their last patch is put back, so the beat lays none |
+| P5, a Harbinger's patches not drawn again | the Harbingers test fails on "their patches burn again" (0), "the moved one's trail is its own" (0) and "and its death cleanses it" (0 against the others' patches, which the set-up asserts stand) only; the Harbingers are counted, and their last patch is put back, so the beat lays none. Made unconditional on 2026-10-31 at the coordinating session's request: the set-up now requires two Harbingers or more and the others' patches, so a floor with one fails its set-up instead of changing the prediction |
 | P6, the cleanse's multiplier not put back | the Grim test fails on "the creatures weakened stay weakened" (0) and "at the cleanse's multiplier" (1.0) only |
 | P7, the chamber's rift not kept unarmed | the chamber test fails on "still in the chamber after a beat" only: the first beat carries the player out, which pays nothing, so "and the chamber paid nothing again" passes; both set-ups are read before the beat |
 | P8, Carrion Feast's count not put back | the Carrion test fails on "the carcasses eaten come back" (0) only |
