@@ -864,7 +864,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChronoTenDrawnTest,
  * What the player sees, K9: a ground zone at its radius for its length, and nothing else. Read through what
  * `UCataclysmGroundEffect::PlayFor` was last asked, since no automation test can see a drawing. THE CONTROL IS READ
  * FIRST: an ordinary zone of the wearer's is drawn once when it is placed and is a persistent area of its owner's.
- * The rift is drawn once as it appears, 5 m wide for its 6 s, where it stands; it deals nothing and is no persistent
+ * The rift is drawn once as it appears, 5 m in radius for its 6 s, where it stands; it deals nothing and is no persistent
  * area. An enemy caught 1 s later ends that drawing and asks for one for the 6 s then left of its 7, and its zone lasts
  * those 6 s.
  */
@@ -915,7 +915,7 @@ bool FCataclysmChronoTenDrawnTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("it is drawn once as it appears"), UCataclysmGroundEffect::TimesAsked - Asked, 1);
-	TestEqual(TEXT("5 m wide"), UCataclysmGroundEffect::LastRadiusCm, ChronoTenRadiusMetres * M, 0.01f);
+	TestEqual(TEXT("5 m in radius"), UCataclysmGroundEffect::LastRadiusCm, ChronoTenRadiusMetres * M, 0.01f);
 	TestEqual(TEXT("for its 6 s"), UCataclysmGroundEffect::LastDuration, ChronoTenBaseSeconds + ChronoTenSecondsPerEnemy,
 			  0.01f);
 	TestTrue(TEXT("where it stands"), UCataclysmGroundEffect::LastStart.Equals(Rift->GetActorLocation(), 1.0f));

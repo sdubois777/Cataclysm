@@ -30516,7 +30516,7 @@ bool FCataclysmParasiteDamageTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// STANDING IN THE LIGHT CLEARS EVERY STACK AND THE LIGHT STAYS; IT STANDS FAR FROM THE ENTRANCE, 300 CM ACROSS.
+// STANDING IN THE LIGHT CLEARS EVERY STACK AND THE LIGHT STAYS; IT STANDS FAR FROM THE ENTRANCE, 300 CM IN RADIUS.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteLightTest,
 	"Cataclysm.DungeonModifierEffects.StandingInTheLightClearsEveryVoidlingAndTheLightStays",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -31917,7 +31917,7 @@ bool FCataclysmLocustsFiguresTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("3% a second"), Effects::SwarmOfLocustsPercentPerSecond, 3.0f, 0.001f);
 	TestEqual(TEXT("two shelters a floor"), Effects::SwarmOfLocustsSheltersPerFloor, 2);
 	TestEqual(TEXT("one on a Horde arena"), Effects::SwarmOfLocustsSheltersPerHordeArena, 1);
-	TestEqual(TEXT("a shelter 300 cm across"), Effects::SwarmOfLocustsShelterRadiusCm, 300.0f, 0.001f);
+	TestEqual(TEXT("a shelter 300 cm in radius"), Effects::SwarmOfLocustsShelterRadiusCm, 300.0f, 0.001f);
 
 	TestFalse(TEXT("44.75 seconds: not yet"), Effects::SwarmOfLocustsIsDue(44.75f));
 	TestTrue(TEXT("45: a swarm"), Effects::SwarmOfLocustsIsDue(45.0f));
@@ -40664,7 +40664,7 @@ bool FCataclysmBannerFiguresTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("one a floor"), Effects::WarBannerPerFloor, 1);
 	TestEqual(TEXT("one on a Horde arena"), Effects::WarBannerPerHordeArena, 1);
-	TestEqual(TEXT("12 m across"), Effects::WarBannerRadiusCm, 1200.0f, 0.001f);
+	TestEqual(TEXT("12 m in radius"), Effects::WarBannerRadiusCm, 1200.0f, 0.001f);
 	TestEqual(TEXT("20% more damage inside"), Effects::WarBannerDamageMorePercent, 20.0f, 0.001f);
 	TestEqual(TEXT("+15 resistance inside"), Effects::WarBannerResistance, 15.0f, 0.001f);
 	TestEqual(TEXT("40% once held"), Effects::WarBannerHeldDamageMorePercent, 40.0f, 0.001f);
