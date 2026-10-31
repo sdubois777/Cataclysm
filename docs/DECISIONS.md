@@ -6,7 +6,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (four sentences: words only, no number);
 `tools/tests/test_enemy_abilities.py` (a registry of 90 phrases and six new tests, after the #468 check, which stays);
-this file.
+`sim/cataclysm_sim/enemy_abilities.py`, `tools/tests/test_warden_matches_the_model.py`,
+`game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h` and
+`game/Source/Cataclysm/Player/CataclysmGameMode.h` (eight comments, docstrings and notes, words only); this file.
 
 ### SAID FIRST
 
@@ -78,6 +80,44 @@ All in `tools/tests/test_enemy_abilities.py`, after the #468 block:
 - `test_the_unit_check_is_reading_something`: the positive control.
 - `test_a_radius_is_not_written_as_a_width` (one per enemy) and its control `test_the_width_rule_has_a_control`, which
   requires the Sentinel's 4.2 to be found and to be twice its 2.1.
+
+### THE SAME WORDING ELSEWHERE, SWEPT
+
+The coordinating session asked for the class to be swept and not only the design document: `sim/`, `tools/` and
+`game/Source` were searched for "metres across", "metres wide", "m across" and "m wide" in `.py`, `.cpp` and `.h`
+files, and each hit was checked against its constant. It ruled on the result the same day.
+
+**Corrected here, eight lines that wrote an enemy ability's radius as a width.** Each now says "in radius", and no
+number changed:
+
+1. `sim/cataclysm_sim/enemy_abilities.py`, the docstring of the one-metre marker floor: "at least a metre across". The
+   floor is a radius; the design document's Brute section calls a 0.9 metre reach "under the one-metre floor".
+2. The same file, Rip and Toss's `note`: "a circle 2.1 metres across" (`Radius=2.1`).
+3. Molten Roar's `note`: "a ring 6.5 metres across".
+4. Soulfall's `note`: "bursts 3 metres wide".
+5. Soul Harvest's `note`: "a ring 6.5 metres across".
+6. `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h`, header comment: Brimstone Mortar "bursting
+   3 m wide".
+7. `game/Source/Cataclysm/Player/CataclysmGameMode.h`, comment: "Molten Roar marks a ring 6.5 metres across".
+8. `tools/tests/test_warden_matches_the_model.py`, the docstring of the spawn-distance test: "its ring is 5.6 metres
+   across", which also stated the radius Molten Roar had until 2026-08-09. It now reads "6.5 metres in radius", which
+   is what the test compares with (`MoltenRoarRadiusCm`).
+
+Nothing reads the `note` strings outside `sim/`, and no file in `game/Data` holds the phrase. Items 6 and 7 are
+comments in C++ headers and change nothing compiled into the game. The project's ruling for comment-only C++ applies:
+the continuous integration "Game compiles" job is their evidence, and no build window was run.
+
+**Left for a separate branch after this one merges**, as ruled: six more lines in C++ comments and test message
+strings that write a rule zone's, a set bonus's or a skill crater's radius as a width (Chrono ten-piece "5 m wide",
+the leap crater "five metres across", the Swarm of Locusts shelter "300 cm across", the War Banner "12 m across", the
+Void Parasite light "300 CM ACROSS", a spore cloud "300 cm wide"), and four lines not yet checked against their
+constants (Infernal Lance's "2 metres wide" line in `CataclysmGroundEffect.h` and its test, and two charge paths in
+`CataclysmSkillTemplateTests.cpp`).
+
+**Left as they are**, as ruled: ten lines in the form "N across the radius" or "N across its radius", which name the
+radius as this file's dated entries do; and every hit that is a true width (the Sentinel's "6 metres across" for its
+3.0 radius, the stairs' "four metres across" for a 200 cm reach, a diagonal gap in the floor, and body, mesh and
+floor sizes).
 
 ### REGISTERED BEFORE THE PROOFS
 
