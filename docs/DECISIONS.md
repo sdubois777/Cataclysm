@@ -99,7 +99,7 @@ guard and asserted back, with one beat or more after the load. A helper (`ARound
 | Figure | Registered |
 |---|---|
 | The seven new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4414 / 0: window w112's 4407 on `development`, + 7 |
+| Whole Unreal suite | 4418 / 0: window enchant-ton-w1's 4411 (Touch of Nothing, #2645, measured on 6e95286f8, now `development` b35112199), + 7 |
 | Python | of record, with JUnit, and ruff |
 | P1, the struck echoes not kept gone (`EchoesStage = 3;` broken) | the struck-echoes test fails on "no echo is raised again after the load" (2, not 0) only: the echoes rise at 5 s, strike at 6 and go at 7, so the stage still reads 3 at 10 s |
 | P2, a creature's section not put back | the sections test fails on "barrier 1 stays closed" and "its section still holds its creatures" (0) only: section 1 reads empty and opens; barrier 0 was open either way |
@@ -116,6 +116,9 @@ guard and asserted back, with one beat or more after the load. A helper (`ARound
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 73 actions, 63 files compiled`, at
 the first attempt (a new worktree, so everything was compiled). Python of record on that code commit: `7175 passed,
 8 skipped in 193.31s`, the JUnit file tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Moved onto `development` b35112199 (Touch of Nothing, #2645) as `feat/load-keeps-costs-and-roles-1`, so the suite is
+registered at 4418 and not 4414.
 
 ---
 
