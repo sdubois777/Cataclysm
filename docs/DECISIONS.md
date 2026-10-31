@@ -244,6 +244,31 @@ what Group 2 saves (`GetStartingMaxHealth`, `GetStartingAttackDamage`, `GetStart
 made by `CreatureInto` from the saved figures without `ApplyDesignedStats`: the save keeps what #1569 builds, and no
 conflict of meaning was found.
 
+**Window w108 (lock `dungeon-w108`, `feat/floor-rebuilds-the-same-by-a-load-3` at `2bd3d9242`, on `f4904e99a`,
+2026-10-30) PASSED EVERY STEP, AND ALL SEVEN PROOFS PROVED; TWO OF THE REGISTERED PREDICTIONS WERE WRONG, BOTH ABOUT
+THE CHASMS, said first in the table.** Before it: `Build: Succeeded - 34 actions, 31 files compiled` with no lock;
+Python of record at `2bd3d9242` 7152 tests, 0 failures, 0 errors, 8 skipped, ruff `All checks passed!`. The pre-checks,
+kept in the run output, measured at 18:18:53: `development` at `f4904e99a`, its CI and Unreal runs a success there; no
+run in progress or queued; the lock free; no build, editor, simulation or pytest process; 11,629 MB free. The lock was
+released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| Eight tests alone | `1 tests performed, 1 succeeded, 0 failed`, each: the four new, and the four Horde-from-the-first-floor tests, which needed no further set-up change |
+| Whole Unreal suite | `4393 tests performed, 4393 succeeded, 0 failed`; declared 4393, gap 0, as registered; memory peak 8,292 MB, final 7,941 MB |
+| Python (JUnit) | 7152 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED, as registered: 17 performed, 1 failed, the rebuild test, on "and every pillar and pit stands where it stood" twice (once for each floor) and nothing else; restored 17 of 17 |
+| P2 | PROVED, as registered: the Horde test, on "the arena is the one saved" and "and its objects stand where they stood"; restored 17 of 17 |
+| P3 | PROVED, as registered: the placed-around test, on "the same statues in the same order" and "the same chasms in the same order", its CONTROL holding. Recorded, not predicted: its second case failed too ("after a floor whose pack site was a statue's cell ..."), and the rebuild test passed; restored 17 of 17 |
+| P4 | PROVED. Every list registered to fail failed -- first floor: relics, boxes, purification altar, infernal beacons, war banner, totems, reality rifts, hoards, statues and the pillars; second floor: chorus sources, bloom flowers, spires, plague beacons, portals, quarantine, infection bloom, abyssal rift, veins, sarcophagi, shadow lights; the Horde test's objects; the placed-around test's statues in both cases -- and none registered not to fail did, **except the chasms: the rebuild test's chasm list and the placed-around test's first-case chasms failed, registered as unable to.** The chasms draw on `ChasmStream`, but with every statue's cell closed, so statues placed elsewhere move every chasm: the dependence window w106 showed, which this registration overlooked; restored 17 of 17 |
+| P5 | PROVED, as registered: the sight test on its one assertion; restored 17 of 17 |
+| P6 | PROVED, as registered: the sight test on its one assertion; restored 17 of 17 |
+| P7 | PROVED: the placed-around test's second case failed on its statues, as registered; the rebuild test, recorded either way, failed on its chasm list. **Registered wrong: "nothing else fails". The placed-around test's first case failed on "the same chasms in the same order" too.** The chasm draw asks `CellsHeldOrWarned`, which holds the five lists, and that case builds floor 2 first from floor 1 and then from floor 2 itself, whose stale pack sites differ; restored 17 of 17 |
+
+Each proof failed only tests it was registered against or recorded either way, and no proof's restored half failed an
+assertion. The two wrong predictions are about which lists move, not about whether the guards fire: every guard fired.
+
 **WHY THE OTHER 38 OF THE FILE'S 42 MID-TEST SWITCHES DID NOT FAIL** (counted by script over every test body holding
 `DungeonSubType = ECataclysmDungeonSubType::Horde;`):
 
