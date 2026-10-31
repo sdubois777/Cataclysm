@@ -72,7 +72,29 @@ Why, traced: the first test reads that cell and nothing else; the second reads o
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The editor window `enchant-quarry-w1`**, 2026-10-31 12:50 to 13:06, on `fix/quarry-mark-lasts-twelve-seconds-1` at
+`a087c922b`, the commit after the one that registered the Unreal total. It waited, before taking the lock, for
+another session's Python run to end.
+
+- **The asset rebuild** changed exactly `DT_StatusEffects.uasset` and `datatable_asset_sources.json`, committed as
+  `7f7635492`, the tested head.
+- **The full Unreal suite** on `7f7635492`: "4419 tests performed, 4419 succeeded, 0 failed" and "Declared: 4419
+  tests in the tree at 7f7635492; 4419 performed, gap 0", as registered. 43 tests reported skipping part of what
+  they check: the Paragon-art halves a worktree does not have.
+- **Proof 1**: "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed:
+  WhenTheMarkedEnemyDiesTheMarkJumpsToTheNearestLivingEnemyWithinEightMetres | restored: 1 tests performed, 1
+  succeeded, 0 failed", exactly the registered named failure, the file's hash the same after. The two failed
+  assertions were the traced ones: "'the nearest living enemy within 8 m gains the mark' to be true" and "'and it
+  is now the caster's quarry' to be true".
+- **Proof 2**, in a detached git worktree copy at `7f7635492`, removed afterwards: "PROVED: 1 failed, 1 passed in
+  0.09s | restored: 2 passed in 0.04s", named failure
+  `tools/tests/test_the_quarry_mark_lasts_as_long_as_its_skill_says.py::test_the_quarry_mark_states_its_own_twelve_seconds`,
+  as registered; `result.proved` true.
+
+**Python of record** at `7f7635492`: "7177 passed, 8 skipped in 192.91s"; JUnit tests 7185, failures 0, errors 0,
+skipped 8. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged, and `CataclysmTags.ini` is
+current (197 tags). Before the asset commit, at `a087c922b`, the suite failed one test,
+`test_datatable_assets_are_current`, naming only `StatusEffects.csv` ("1 failed, 7176 passed, 8 skipped").
 
 ---
 
