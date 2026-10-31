@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -5390,6 +5391,79 @@ bool FCataclysmSaveLoadCarrionTest::RunTest(const FString&)
 				TestEqual(TEXT("the carcasses eaten come back"), Stacks, StacksSaved);
 			});
 	});
+}
+
+/**
+ * A test's kill does nothing to the player who makes it: a creature given Thorns of Glass's retaliation, by the path the
+ * modifier takes at spawn, is killed by `KillOnTheFloor` and the player's health is as it was. The guard for the helper's
+ * no-retaliation mark: without it the hit is dealt half back, which killed the test player in window w114. Issue #753,
+ * Group 3d-2, ruled 2026-10-31. Prints "TEST KILL REFLECTS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTestKillReflectsNothingTest,
+	"Cataclysm.SaveLoad.ATestKillReflectsNothingOntoThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTestKillReflectsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+	if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+	// ONE OF THE FLOOR'S CREATURES GIVEN THORNS OF GLASS, ITS ATTRIBUTES WRITTEN AGAIN AS AT SPAWN.
+	ACataclysmEnemyCharacter* Thorned = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Scene.Mode->FloorEnemies)
+	{
+		if (!Thorned && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bRaisedByARule
+			&& !Enemy->bCannotBeHurt)
+		{
+			Thorned = Enemy.Get();
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: a creature to give the thorns"), Thorned))
+	{
+		return false;
+	}
+	Thorned->ModifierRows.AddUnique(FName(UCataclysmEnemyModifiers::ThornsOfGlassRow));
+	Thorned->ApplyModifierAttributes();
+	const float WouldReflect = UCataclysmRetaliation::AmountFor(Thorned->GetAbilitySystemComponent(), 100000.0f);
+	if (!TestTrue(FString::Printf(TEXT("set-up: it would deal back a share of a hit (%.1f of 100000)"), WouldReflect),
+				  WouldReflect > 0.0f))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* Abilities = Player.GetAbilitySystemComponent();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Before = Abilities ? Abilities->GetNumericAttribute(Health) : -1.0f;
+	if (!KillOnTheFloor(*this, Player, Thorned, TEXT("the creature with the thorns")))
+	{
+		return false;
+	}
+	const float After = Abilities ? Abilities->GetNumericAttribute(Health) : -1.0f;
+	AddInfo(FString::Printf(TEXT("TEST KILL REFLECTS: it would deal back %.1f of a 100000 hit; the player's health %.1f "
+								 "before the kill, %.1f after, %s"),
+							WouldReflect, Before, After,
+							UCataclysmSkillEffects::IsDead(&Player) ? TEXT("DEAD") : TEXT("alive")));
+	TestEqual(TEXT("the player's health is as it was"), After, Before, 0.01f);
+	TestFalse(TEXT("and the player is alive"), UCataclysmSkillEffects::IsDead(&Player));
+	return true;
 }
 
 #endif // WITH_AUTOMATION_TESTS

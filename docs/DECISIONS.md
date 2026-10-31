@@ -92,6 +92,10 @@ back and asserted back. Each set-up asserts the player alive at the save.
   chamber; the player stood on the floor's end of its rift and carried in, paid once, and saved standing on the
   chamber's end. After the load, set-ups: the load placed the player, and inside the chamber. After a beat: still inside,
   and paid once. Prints "LOAD REALITY CHAMBER".
+- `Cataclysm.SaveLoad.ATestKillReflectsNothingOntoThePlayer`: no round trip. A dungeon with no rows; one of floor 1's
+  creatures given `Generic_Thorns_of_Glass` and its attributes written again by `ApplyModifierAttributes`, as at spawn;
+  set-up: `UCataclysmRetaliation::AmountFor` of a 100000 hit is above nought. Killed with `KillOnTheFloor`: the player's
+  health as before, and the player alive. Prints "TEST KILL REFLECTS".
 - `Cataclysm.SaveLoad.CarrionFeastsCountComesBackAfterALoad`: seed 1, floor 2; one creature killed, its carcass eaten
   after `CarrionFeastEatenAfterSeconds`. After the load and a beat: one eaten. Prints "LOAD CARRION".
 
@@ -99,8 +103,8 @@ back and asserted back. Each set-up asserts the player alive at the save.
 
 | Figure | Registered |
 |---|---|
-| The six new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | NOT YET SET for window w115: the curse chain window's measured total (the enchantment session's, which adds 3), + 6; set when 3d-2 moves onto the head that merges it. Window w114 was registered at 4425 on b5add4116 and stopped before the suite |
+| The seven new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | NOT YET SET for window w115: the curse chain window's measured total (the enchantment session's, which adds 3), + 7 (the six round trips and the guard); set when 3d-2 moves onto the head that merges it. Window w114 was registered at 4425 on b5add4116 and stopped before the suite |
 | Python | of record, with JUnit, and ruff |
 | P1, a creature's group not put back | the leaders test fails on "the leaders stand as leaders after the load" (0) only: no restored creature is in a group, so no group finds its leader and each reads fallen on the first beat, and its panic finds nobody, so "and nobody panics" passes; with no leader standing nothing is killed. The escaped test passes: its group had fallen and its escaped are the floor record's |
 | P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
@@ -110,6 +114,7 @@ back and asserted back. Each set-up asserts the player alive at the save.
 | P6, the cleanse's multiplier not put back | the Grim test fails on "the creatures weakened stay weakened" (0) and "at the cleanse's multiplier" (1.0) only |
 | P7, the chamber's rift not kept unarmed | the chamber test fails on "still in the chamber after a beat" only: the first beat carries the player out, which pays nothing, so "and the chamber paid nothing again" passes; both set-ups are read before the beat |
 | P8, Carrion Feast's count not put back | the Carrion test fails on "the carcasses eaten come back" (0) only |
+| P9, a test's kill not marked (`NoRetaliation.bCannotBeRetaliatedAgainst = false;`), run with the guard's full name as its prefix | the guard fails on "the player's health is as it was" and, predicted, "and the player is alive" only: half of the hit comes back. The second rests on w114, where a 510-health player died at one such kill, which says the share is of the hit and not of the creature's 100 health; that w114's leader carried the thorns is itself the inference above, so this half is recorded either way. The prefix selects that one test, so no round trip runs under the break; those whose kill might meet Thorns of Glass would fail only by chance in any case, the thorns being rolled |
 
 ### Run
 
@@ -144,8 +149,10 @@ the log cannot say which creature led group 116.
 approval named the creature's Retaliation attribute set to nought; the mark is used instead, because the amount is read
 through the stat pipeline (`UCataclysmRetaliation::AmountFor` asks `StatForSkill` with the attribute only as the fallback),
 and both places that answer a hit read the mark. No assertion of any test changes; the 3c-1 and 3d-1 round trips' kills
-now cannot kill their player either. No guard proof is registered for it: which creature draws Thorns of Glass is rolled,
-not seeded, so no test can be made to fail without it every time.
+now cannot kill their player either. ITS GUARD, asked for by the coordinating session the same day: which creature draws
+Thorns of Glass is rolled, so the guard gives one creature its retaliation by the path the modifier takes at spawn
+(`ApplyModifierAttributes`) and asserts in its set-up that it would deal a share back, then kills it with the helper
+(`ATestKillReflectsNothingOntoThePlayer`, below, and P9).
 
 **THE SWEEP, every way a 100000 hit from the player could hurt the player, 2026-10-31:**
 
@@ -159,6 +166,7 @@ not seeded, so no test can be made to fail without it every time.
 | Beguiling, Unholy Sigils | the first charms the player when hit, so the player's next direct hit lands nothing; the second keeps allies in its sigil from dying | do not hurt the player; a kill they stop fails the helper's own "set-up: ... died" assertion, loudly |
 | The floors' dungeon rules (Morale Break, Plague Harbingers, Grim Totems, Reality Rifts, Carrion Feast; 3c-1's and 3d-1's) | none damages the player on a kill; a Harbinger's death weakens creatures, and its patches burn only where they lie | cannot hurt the player at the entrance |
 | Rows worn by the test player | the round trips' player is spawned bare (`MakeScene`) and nothing equips it | none worn |
+| Floor rules that answer the player's hit: Contagious Touch (its own "retaliation", from the floor's hazard source), Brand of the Aggressor, Holy Repercussions, Wasting Sickness, the Reaper, Plague Convergence, Mind-Shattering Illusions, Shadowy Enemies, Carrion Feast (`NoteHitFor...`) | each acts only on a floor carrying its row; Contagious Touch's charge is nought without stacks, which only creatures' touches give | the round trips' dungeons carry exactly the rows each test names (`PlaceADungeonCarrying` sets `Dungeon.Modifiers`), and none of them names these |
 
 ---
 
