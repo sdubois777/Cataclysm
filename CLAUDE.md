@@ -15,7 +15,7 @@ cheaper than re-tuning in the editor.
 | `game/Source/Cataclysm/` | Primary game module: player, combat, abilities, items, dungeons, interface. |
 | `game/Source/CataclysmEmpire/` | Empire and strategy layer: day clock, cities, surges, dungeon timers. Must not depend on the `Cataclysm` module. |
 | `game/Source/CataclysmEditor/` | Editor-only tooling: data import and validation. Never in a packaged build. |
-| `sim/cataclysm_sim/` | The simulation package. `config.py` holds every tunable number, `world.py` the empire graph, `engine.py` the day loop, `policies.py` seven ways to play, `scoring.py` the power model. |
+| `sim/cataclysm_sim/` | The simulation package. `config.py` holds every tunable number, `world.py` the empire graph, `engine.py` the day loop, `policies.py` nine ways to play, `scoring.py` the power model. |
 | `sim/experiments.py` | The tuning sweeps and the report. Slow. See below. |
 | `sim/tests/` | Fast tests for the simulation. |
 | `sim/verify_scoring_port.py` | Proves `scoring.py` still matches its source. |
