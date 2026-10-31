@@ -326,8 +326,8 @@ bool FCataclysmGroundZoneCoversItsWholeLength::RunTest(const FString& Parameters
 		UCataclysmGroundEffect::HowManyAlong(100.0f * M, 0.1f * M),
 		UCataclysmGroundEffect::MostCopies);
 
-	// AND NO DESIGNED ZONE REACHES IT. The longest is a twelve metre line two
-	// metres wide, which is Infernal Lance's reach.
+	// AND NO DESIGNED ZONE REACHES IT. The example is a twelve metre line one
+	// metre in radius. It is an example, not any one skill's figure.
 	TestTrue(TEXT("the longest designed zone is drawn without gaps"),
 		UCataclysmGroundEffect::HowManyAlong(12.0f * M, 1.0f * M)
 			< UCataclysmGroundEffect::MostCopies);

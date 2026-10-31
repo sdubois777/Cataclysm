@@ -6144,7 +6144,7 @@ bool FCataclysmTravelsToTheBurningEnemyTest::RunTest(const FString&)
 
 	// AND THE ONE THAT WAS NEVER ALIGHT WAS NEITHER REACHED NOR PASSED. A charge
 	// hits everything in its path, so this only means anything because that
-	// enemy stands five metres from the line and the path is three metres wide.
+	// enemy stands five metres from the line and the path is three metres in radius.
 	TestEqual(TEXT("The enemy that was never alight was left alone"),
 		Nearer.Health(), NearerBefore);
 
@@ -6215,7 +6215,7 @@ bool FCataclysmHeldBuffWidensSpreadTest::RunTest(const FString&)
 
 	// THE CONTROL FIRST AND ON ITS OWN CASTER, because a strike cannot be cast
 	// twice: the first use commits its cooldown. Without it this test would pass
-	// against a spread that was four metres wide all along.
+	// against a spread that was four metres in radius all along.
 	{
 		FScopedFighter Unbuffed(World, FVector(0, 40 * M, 0));
 		FScopedFighter ItsFire(World, FVector(4 * M, 40 * M, 0));
@@ -8249,7 +8249,7 @@ bool FCataclysmMovementLeavesAPitTest::RunTest(const FString&)
 	TestEqual(TEXT("and it is where the leap arrived"),
 		Hole->GetActorLocation(), Crater->ArrivedAt);
 
-	TestEqual(TEXT("five metres across, as the row states"),
+	TestEqual(TEXT("five metres in radius, as the row states"),
 		Hole->RadiusCm, 5 * M, 1.0f);
 
 	return true;

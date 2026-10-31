@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Ten C++ comments and test messages that wrote a radius as a width, or called an example Infernal Lance's line, are corrected
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundEffect.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and four test files under
+`game/Source/Cataclysm/Tests/` (comments and `TestEqual` message strings only); this file.
+
+### WHAT AND WHY
+
+The sweep recorded in #1634's entry found lines in C++ comments and automation-test messages that wrote a radius as
+a width. The coordinating session ruled them onto this branch, to follow #1634, with two lines it had not yet checked
+looked at against their constants first. **No value, assertion or compiled behaviour changes**: each line is a
+comment or the label a `TestEqual` prints, and no assertion compares against a label.
+
+Each line, with the constant it describes:
+
+| # | File | Was | Now | The constant |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | `CataclysmSetBonusChronoTenTests.cpp`, comment | the rift is drawn "5 m wide" | "5 m in radius" | `ChronoTenRadiusMetres = 5`, compared with `LastRadiusCm` |
+| 2 | the same file, `TestEqual` label | "5 m wide" | "5 m in radius" | the same |
+| 3 | `CataclysmSkillTemplateTests.cpp`, `TestEqual` label | "five metres across, as the row states" | "five metres in radius, ..." | `Hole->RadiusCm`, against 5 m; the row is `Radius=5; ... TerrainSize=5` |
+| 4 | the same file, comment in `Cataclysm.Skills.FlashpointArrivesAtABurningEnemyRatherThanTheCursor` | "the path is three metres wide" | "three metres in radius" | the charge's `Radius=3` |
+| 5 | the same file, comment in `Cataclysm.Skills.AHeldSelfBuffWidensWhatConsumingSpreads` | "a spread that was four metres wide" | "four metres in radius" | the held buff's `ConsumeRadius=4` |
+| 6 | `CataclysmDungeonModifierEffectsTests.cpp`, comment | the Void Parasite light "300 CM ACROSS" | "300 CM IN RADIUS" | `VoidParasiteLightRadiusCm = 300` |
+| 7 | the same file, `TestEqual` label | "a shelter 300 cm across" | "a shelter 300 cm in radius" | `SwarmOfLocustsShelterRadiusCm = 300` |
+| 8 | the same file, `TestEqual` label | "12 m across" | "12 m in radius" | `WarBannerRadiusCm = 1200` |
+| 9 | `CataclysmDungeonModifierEffects.h`, comment | a spore cloud "is 300 cm wide" | "300 cm in radius" | `WitheredGroundPatchRadiusCm = 300` |
+| 10 | `CataclysmGroundEffect.h` and `CataclysmGroundEffectTests.cpp`, comments | "Infernal Lance's twelve metre line at 2 metres wide" | "a twelve metre line one metre in radius", stated as an example and not any one skill's figure | `HowManyAlong(12 m, 1 m)` in `Cataclysm.Effects.GroundZoneCoversItsWholeLengthWithoutGaps` |
+
+**Line 10 is a different finding, and its value is deliberately not changed.** "2 metres wide" was right for the 1
+metre radius the test computes with, so it was not a radius written as a width. But Infernal Lance is `Range=12;
+Radius=1.5` (`CataclysmSkillTemplateTests.cpp`, the Infernal Lance row), so the line it named is 3 metres wide. The
+coordinating session ruled: correct the words, not the value. Changing the test's 1 m to 1.5 m would change what a
+C++ test computes and need a build window to prove; and the test's point -- a wider radius needs fewer copies, so the
+copy cap is further away -- holds for any radius. The test's name does not mention Infernal Lance, so the registered
+test list is unchanged.
+
+### WHY NO BUILD WINDOW
+
+A fixed-string search of `tools/`, `sim/`, `game/Source` and `docs/` found each changed label and comment only in
+its own file, and in `docs/DECISIONS.md`, where the mentions are dated records and #1634's list. No test or tool reads
+any of them. A `TestEqual` label is printed with a failure and compared with nothing, so the project's ruling for
+comment-only C++ applies: the continuous integration "Game compiles" job is the evidence.
+
+### EVIDENCE
+
+No guard was added, so no proof is registered. Moved onto `development` `6648d14e5` (#1634 merged) as
+`docs/radii-written-as-widths-in-cpp-comments-and-test-messages-1`, with every file's change identical to the
+original commit. Python of record at `785b119ba`: "7171 passed, 8 skipped in 233.55s"; JUnit tests 7179, failures 0,
+errors 0, skipped 8, the count #1634's own run printed, as this change touches no Python file. ruff: "All checks
+passed!" A
+regenerate run left `game/Data` unchanged. The C++ evidence is the continuous integration "Game compiles" job.
+
+Moved again onto `development` `4aa87ab3e` (#753 Group 3b merged; it changes no Python file) as
+`docs/radii-written-as-widths-in-cpp-comments-and-test-messages-2`, every file's change identical to the original.
+Python of record at `cb70f6d2e`: "7171 passed, 8 skipped in 193.36s"; JUnit tests 7179, failures 0, errors 0,
+skipped 8. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged.
+
+### NO GENRE SOURCE
+
+None. This is a repair to comments.
+
+---
+
 ## 2026-10-30 — A floor object a player used stays used after a load, without its reward or its cost again, and Pandora's Box rolls the same for the same box (#753, Group 3b)
 
 **Affects:** `PlacementIndex` (new) on `ACataclysmFloorObject` (`game/Source/Cataclysm/Dungeon/CataclysmFloorObject.h`),

@@ -1387,7 +1387,7 @@ public:
 	 * ONE READING IN THAT RECORD IS SUPERSEDED FOR THIS ROW. It grouped Leech
 	 * Spores with hazards acting on "creatures standing in the same patch". The
 	 * row's own words are "any enemies within a 10-meter radius", and a cloud is
-	 * 300 cm wide, so the two name different creatures. The row's words win;
+	 * 300 cm in radius, so the two name different creatures. The row's words win;
 	 * the grouping was a summary of a family of rows, not a reading of this one.
 	 *
 	 * A DRAIN AND NOT A BLOW. The player's health is taken through

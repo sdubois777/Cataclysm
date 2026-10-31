@@ -95,8 +95,8 @@ public:
 	 * they cost -- issue #547. `MostCopies` is what stops a very long, very
 	 * narrow zone from asking for dozens. A zone that hits the cap is drawn with
 	 * gaps, which is why the cap is high enough that no designed zone reaches
-	 * it: the longest is Infernal Lance's twelve metre line at 2 metres wide,
-	 * which asks for four.
+	 * it. The test's example is a twelve metre line one metre in radius, which
+	 * asks for four; it is an example and not any one skill's figure.
 	 */
 	static int32 HowManyAlong(float LengthCm, float RadiusCm);
 
