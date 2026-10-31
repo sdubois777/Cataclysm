@@ -143,7 +143,38 @@ different function.
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The editor window `enchant-ton-w1`**, 2026-10-31 00:04 to 00:24, on `feat/touch-of-nothing-refuses-the-next-buff` at
+`4f8b3e27e`, the commit that registered the proofs. It waited, before taking the lock, for a Python run of another
+session to end, because the proofs break C++ source files that Python tests read.
+
+- **The asset rebuild** changed exactly `DT_StatusEffects.uasset` and `datatable_asset_sources.json`, committed as
+  `6e95286f8`, the tested head.
+- **The full Unreal suite** on `6e95286f8`: "4411 tests performed, 4411 succeeded, 0 failed" and "Declared: 4411
+  tests in the tree at 6e95286f8; 4411 performed, gap 0", as registered (3c-2's measured 4407, plus 4). 43 tests
+  reported skipping part of what they check: the Paragon-art halves a worktree does not have.
+- **The proofs**, each "PROVED" with exactly the registered named failure, each file's hash the same after, and
+  "restored: 4 tests performed, 4 succeeded, 0 failed" every time; with the break in, "4 tests performed, 3
+  succeeded, 1 failed" every time:
+
+| # | The first failed assertion |
+| :-- | :-- |
+| 1 | "'the draw is refused' to be false" |
+| 2 | "'with a stack held the self buff does not run' to be false" |
+| 3 | "'with a stack held the benefit's next stack is refused' to be 1, but it was 2" |
+| 4 | "'a drawback's stack arrives while one is held' to be 1, but it was 0" |
+| 5 | the seven count texts read ", , , , , , " |
+
+**ONE PART OF PROOF 3'S REGISTERED TRACE WAS WRONG.** It said the drawback and Masochist halves of that test
+"still pass (the stack is kept either way)". They failed too: with nothing refused, the first stack was never
+spent, so the held count was 2 where 1 was expected ("'and the held stack is not spent on it' to be 1, but it was
+2", and the same for "still kept"). The named failure was the one predicted; the reasoning about which assertions
+inside it fail was not.
+
+**Python of record** at `6e95286f8`: "7175 passed, 8 skipped in 193.70s"; JUnit tests 7183, failures 0, errors 0,
+skipped 8, the same count as the base, because this change adds no Python test. ruff: "All checks passed!" A
+regenerate run left `game/Data` unchanged, and `CataclysmTags.ini` is current (197 tags). Before the asset commit
+the suite failed one test, `test_datatable_assets_are_current`, naming only `StatusEffects.csv`. An earlier run at
+`41c1a1acd` was stopped by its process ID and not used, because `docs/DECISIONS.md` was edited while it ran.
 
 ---
 
