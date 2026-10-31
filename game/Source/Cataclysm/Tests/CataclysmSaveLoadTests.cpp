@@ -33,6 +33,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
@@ -2754,6 +2755,35 @@ namespace CataclysmSaveLoadTest
 		return Offer;
 	}
 
+	/** `Cataclysm.DungeonSeed` pinned for as long as this stands, and put back after; empire dungeons read it too. */
+	struct FPinnedDungeonSeed
+	{
+		FPinnedDungeonSeed()
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+			}
+		}
+		~FPinnedDungeonSeed()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByConsole);
+			}
+		}
+		void Pin(int32 Seed)
+		{
+			if (Variable)
+			{
+				Variable->Set(*FString::FromInt(Seed), ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
+
 	FString PactsText(const TArray<int32>& Pacts)
 	{
 		TArray<FString> Each;
@@ -2941,6 +2971,15 @@ bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
 
 	FSaved Saved;
 	ON_SCOPE_EXIT { Saved.Forget(); };
+	// THE DUNGEON'S SEED PINNED FOR THE WHOLE TEST, THE LOAD INCLUDED, so the floor found is the floor loaded.
+	FPinnedDungeonSeed PinnedSeed;
+	if (!TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+	{
+		return false;
+	}
+	int32 Seed = INDEX_NONE;
+	int32 Agreed = 0;
+	int32 Disagreed = 0;
 	int32 Floor = INDEX_NONE;
 	TArray<int32> OfferSaved;
 	TArray<int32> FirstDraw;
@@ -2968,24 +3007,40 @@ bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
 		}
 		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
 
-		// THE FIRST FLOOR FROM 2 WHOSE FIRST DRAW MATCHED THE LAST FLOOR'S OFFER, so its offer was drawn again: a load
-		// drawing it with no last offer would offer the first draw instead.
+		// THE FIRST FLOOR WHOSE FIRST DRAW MATCHED THE LAST FLOOR'S OFFER, so its offer was drawn again: a load drawing
+		// it with no last offer would offer the first draw instead. Floors 2 to 18 on dungeon seeds 1 to 12 in turn, one
+		// floor in ten or so being drawn again. AND THE ORACLE CHECKED on every other floor: its first draw is what it
+		// offered.
 		TArray<int32> LastOffer = Mode.PactsOfferedNow();
-		for (int32 Next = 2; Next <= 18 && Floor == INDEX_NONE; ++Next)
+		for (int32 Pinned = 1; Pinned <= 12 && Floor == INDEX_NONE; ++Pinned)
 		{
-			if (!Mode.GoToFloor(Next))
+			PinnedSeed.Pin(Pinned);
+			for (int32 Next = 2; Next <= 18 && Floor == INDEX_NONE; ++Next)
 			{
-				break;
+				if (!Mode.GoToFloor(Next))
+				{
+					break;
+				}
+				const TArray<int32> First = FirstPactShuffle(Mode.CurrentFloor->GetPlan().Seed, Next);
+				if (First == LastOffer)
+				{
+					Floor = Next;
+					Seed = Pinned;
+					FirstDraw = First;
+				}
+				else if (First == Mode.PactsOfferedNow())
+				{
+					++Agreed;
+				}
+				else
+				{
+					++Disagreed;
+				}
+				LastOffer = Mode.PactsOfferedNow();
 			}
-			const TArray<int32> First = FirstPactShuffle(Mode.CurrentFloor->GetPlan().Seed, Next);
-			if (First == LastOffer)
-			{
-				Floor = Next;
-				FirstDraw = First;
-			}
-			LastOffer = Mode.PactsOfferedNow();
 		}
-		if (!TestTrue(TEXT("set-up: a floor from 2 to 18 drew its offer again"), Floor != INDEX_NONE))
+		if (!TestEqual(TEXT("set-up: the oracle's first draw is what every floor not drawn again offered"), Disagreed, 0)
+			|| !TestTrue(TEXT("set-up: a floor on seeds 1 to 12 drew its offer again"), Floor != INDEX_NONE))
 		{
 			return false;
 		}
@@ -3018,9 +3073,10 @@ bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
 	const bool bNextReached = Scene.Mode->GoToFloor(Floor + 1);
 	const TArray<int32> NextLoaded = Scene.Mode->PactsOfferedNow();
 
-	AddInfo(FString::Printf(TEXT("LOAD PACT on floor %d: %s (%s); first draw %s; offered %s, after the load %s; the next "
-								 "floor offered %s, after the load %s"),
-							Floor, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *PactsText(FirstDraw),
+	AddInfo(FString::Printf(TEXT("LOAD PACT on seed %d floor %d (the oracle agreed on %d floors, disagreed on %d): %s (%s); "
+								 "first draw %s; offered %s, after the load %s; the next floor offered %s, after the load %s"),
+							Seed, Floor, Agreed, Disagreed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							*PactsText(FirstDraw),
 							*PactsText(OfferSaved), *PactsText(OfferLoaded), *PactsText(NextFloorsOffer),
 							*PactsText(NextLoaded)));
 

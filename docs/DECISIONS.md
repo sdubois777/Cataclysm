@@ -83,10 +83,14 @@ same floor objects stand, by rule and placement index; the uses are held again; 
 again; the gift stays taken, the chamber paid, the altar consecrated, the banner planted, and the gate's channel begins
 again. SET-UP: ten uses are recorded. Prints "LOAD USED".
 
-`Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered`: the first floor from 2 whose first draw matched the last
+`Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered`: the first floor whose first draw matched the last
 floor's offer, found with the draw reproduced from the plan's seed and the salt (`FirstPactShuffle`, the test's
-oracle); after the load the altar offers what it offered, and the next floor offers what the walk's did. CONTROL: the
-floor's first draw is not what it offered. Prints "LOAD PACT".
+oracle), walking floors 2 to 18 on `Cataclysm.DungeonSeed` pinned to 1, 2, ... 12 in turn and the pin held through the
+load; after the load the altar offers what it offered, and the next floor offers what the walk's did. SET-UP: the
+oracle's first draw is what every floor not drawn again offered, so a wrong oracle and an unlucky dungeon are told
+apart; and such a floor is found. CONTROL: the floor's first draw is not what it offered. Prints "LOAD PACT", with the
+seed, the floor and the oracle's count. **Rewritten after window w109**, below: it searched one dungeon's floors 2 to 18
+and found none drawn again.
 
 `Cataclysm.SaveLoad.ATitheLeftUnpaidIsStillOwedAfterALoad`: floor 1's altar left unpaid, saved on floor 2 before the beat
 that brings the angels; after the load they are owed, and the beat after it brings `ForcedTithesAngelCount` (8). Prints
@@ -121,6 +125,26 @@ Before the window the branch was compiled with `python tools/unreal_build.py bui
 uncommitted: `Build: Succeeded - 79 actions, 69 files compiled`, no warning in a changed file. Unreal's adaptive build
 compiles an uncommitted file outside the unity file (window w104's failed build printed it doing so), but this build
 printed only its result line, so that it did here is not shown.
+
+Moved onto `901ed0fac` (#2636: the decisions log and one Python test): only this log's first entry conflicted,
+resolved by `resolve_top_from_commit.py`; compiled again, `Build: Succeeded - 35 actions, 32 files compiled`. Python of
+record at `22f0ae950`: 7155 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`.
+
+**Window w109 (lock `dungeon-w109`, `feat/used-floor-choices-survive-a-load-2` at `22f0ae950`, on `901ed0fac`,
+2026-10-30) STOPPED AT THE SECOND TEST ALONE; nothing after it ran.** The pre-checks, kept in the run output, measured at
+19:16:25: `development` at `901ed0fac` with its CI run a success there and its last Unreal run (at `6a7cbaef0`, the
+documents-only #2636 after it) a success; no run in progress or queued; the lock free; no build, editor, simulation or
+pytest process; 11,417 MB free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The used-choices test alone | `1 tests performed, 1 succeeded, 0 failed`: "LOAD USED on floor 3: ... standing saved 'Celestial_Sanctioned_Passage#0 Chaos_Pandora_s_Box#1 Chaos_Pandora_s_Box#2 War_Battlefield_Relics#1', loaded 'Celestial_Sanctioned_Passage#0 Chaos_Pan..." (the runner cuts a line at 400 characters) |
+| The pact test alone | `1 tests performed, 0 succeeded, 1 failed`: "Expected 'set-up: a floor from 2 to 18 drew its offer again' to be true" |
+
+**THE PACT TEST'S SET-UP FOUND NO FLOOR DRAWN AGAIN, and the run cannot say whether the dungeon was unlucky (a floor is
+drawn again about one time in ten, so seventeen floors without one is about one time in six) or the oracle is wrong.**
+The test now walks twelve pinned seeds and checks the oracle on every floor not drawn again, which tells the two apart.
 
 ---
 
