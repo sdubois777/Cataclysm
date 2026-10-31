@@ -708,6 +708,19 @@ public:
 	 */
 	FCataclysmFloorBrief FloorBrief;
 
+	/**
+	 * TRUE WHEN `BuildFloor` KEPT THE HORDE ARENA STANDING RATHER THAN CARVING ONE: the brief said the floor is the
+	 * same arena as the last (`FCataclysmFloorBrief::bSameArenaAsLastFloor`) AND the floor standing is that arena,
+	 * carved from the same seed, floor number and layout (`BuiltArena`). The brief's flag alone is true on wave 5
+	 * whether or not anything is standing, and a load builds a floor at `StartPlay` before it resumes the dungeon,
+	 * so the flag alone kept the start's floor and placed none of the arena's objects. Read in place of the brief's
+	 * flag by `PopulateFloor` and `GoToFloor`. Issue #753, Group 3a.
+	 */
+	bool bKeptTheArena = false;
+
+	/** The seed, carved-as floor number and layout of the floor `BuildFloor` last carved; unset before any. */
+	TOptional<FIntVector> BuiltArena;
+
 	// ----------------------------------------------------------------------
 	// What the floor's modifiers do to the player. Issue #41
 	// ----------------------------------------------------------------------
@@ -3081,6 +3094,31 @@ public:
 	 * An obstacle still in its warning is NOT here: see `ChooseObstacleCells`.
 	 */
 	TSet<FIntPoint> CellsTheFloorHolds() const;
+
+	/**
+	 * WHAT STOOD WHEN `PopulateFloor` BEGAN TO PLACE THE FLOOR'S OBJECTS, which `CellsTheFloorHolds` does not count
+	 * while they are placed: the player, the player's followers, the last floor's stairs, and any pawn, floor object or
+	 * ground zone left from before. None of it is the new floor's -- the stairs are placed after the objects, and the
+	 * player and followers are moved to the entrance after -- and counting it made a rule's cells depend on where those
+	 * happened to stand, which differs between walking down to a floor and loading a save on it, and so every later
+	 * index of that rule. Filled at the start of the placing and emptied at its end; empty at every other time, so
+	 * placement during play still holds the player's cell. Ruled 2026-10-30. Issue #753, Group 3a.
+	 */
+	TSet<TWeakObjectPtr<AActor>> StoodBeforePlacement;
+
+	/**
+	 * TRUE WHILE `PopulateFloor` PLACES THE FLOOR'S OBJECTS, set and cleared with `StoodBeforePlacement`. While it is
+	 * set `CellsTheFloorHolds` does not count the five lists the population or play fills -- `ArrivingPackSites`,
+	 * `WaveStillToArrive`, `MoraleBreakGroups`, `InfernalRainFalls` and `DivineResurgenceGraves` -- because at that
+	 * moment they are still the last floor's: `PopulateFloor` sets the pack sites after the objects, and the per-floor
+	 * reset clears the rest after it. Counting them made a statue avoid the last floor's pack site, which is a different
+	 * cell after a walk and after a load. Every other list it counts is cleared by its own rule's placing, the rule
+	 * absent or not, so it is this pass's. Ruled 2026-10-30. Issue #753, Group 3a.
+	 */
+	bool bPlacingTheFloorsObjects = false;
+
+	/** How many actors `StoodBeforePlacement` holds: zero outside `PopulateFloor`'s placing. Public for a test. */
+	int32 ActorsHeldOutOfPlacementNow() const { return StoodBeforePlacement.Num(); }
 
 	/**
 	 * Put the warning for an obstacle on these cells now, as the rule does on its cadence. Null when the placement

@@ -2,6 +2,285 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A loaded dungeon floor is the floor that was saved: its pillars stand, a Horde arena past its first wave is carved with its objects, its objects are placed without regard to what stood before them, and a restored creature keeps its sight and its floor's reality (#753, Group 3a)
+
+**Affects:** `UCataclysmFloorContents::ClearTheFloor`'s restore branch (`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.h`,
+`.cpp`); `bKeptTheArena` and `BuiltArena` (new) on `ACataclysmDungeonGameMode`, read by `BuildFloor`, `PopulateFloor`
+and `GoToFloor` in place of `FCataclysmFloorBrief::bSameArenaAsLastFloor`; `StoodBeforePlacement`,
+`bPlacingTheFloorsObjects` and `ActorsHeldOutOfPlacementNow` (new), set by `PopulateFloor` and read by
+`CellsTheFloorHolds`
+(`CataclysmDungeonGameMode.h`, `.cpp`); `SightRadiusMultiplier` and `FloorRealityRow` on `FCataclysmSavedCreature`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), read by `FCataclysmSaveGather::CreatureFrom` and written by
+`FCataclysmSaveApply::CreatureInto`; the fixture `game/Tests/SaveFixtures/Run_v1.json`; four new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: Groups 3b, 3c and 3d follow.
+
+### SAID FIRST
+
+- **PASSED IN UNREAL IN WINDOW w108, ALL SEVEN PROOFS PROVED; TWO OF THE REGISTERED PREDICTIONS WERE WRONG, BOTH ABOUT
+  THE CHASMS** (the Run section's last table). Windows w106 and w107 stopped first, on faults this entry also names.
+- **THREE FAULTS IN MERGED CODE, IN THE DUNGEON LOAD OF #751 AND #753, ARE CORRECTED HERE FIRST.** Each was found by
+  reading, before this branch; listed on #753 before the work.
+  1. **F1. A load opened every gate and section barrier and emptied every statue's cell.** `FCataclysmSaveApply::DungeonFloorInto`
+     clears the floor AFTER `GoToFloor` has rebuilt it, and the clear destroyed every `ACataclysmFloorObstacle` -- the
+     shortcut gates' pillars (`PlaceTheShortcutGates`), the section barriers' (`CloseTheSectionBarriers`) and the
+     Angelic Wardens' statues' (`PlaceAnAngelicStatueOn`) -- and every ground zone, which nothing in `Save/` put back.
+     Now the restore branch keeps the rebuilt floor's pillars and pits, its hazard source and its zones, and destroys
+     only the zones the creatures it removes had left. The floor change and the level load clear as before.
+  2. **F2. A Horde load past the first wave came back on the wrong floor, with none of the arena's objects.** The
+     same-arena flag (`FCataclysmDungeonFloorRules::SameArenaAsLastFloor`) is true for every Horde floor above 1
+     whether or not an arena stands, and a load's world has already built a floor at `StartPlay`. So `BuildFloor`
+     kept the start's floor and its geometry, and `PopulateFloor` placed none of the arena's objects. The existing
+     test `AHordeArenaBuiltStraightOntoWaveFiveIsTheSameArenaAsWaveOne` builds wave 5 on a game mode with no floor
+     standing and did not reach this. Now `BuildFloor` keeps a floor only when it is the arena the request would carve
+     -- the same seed, carved-as floor number and layout (`BuiltArena`) -- and says so in `bKeptTheArena`, which the
+     other four readers use: the objects, the wave count, the floor change's clear and the player's move to the
+     entrance.
+  3. **F4. A restored creature lost its sight and its floor's reality row.** Placement sets
+     `ACataclysmCharacterBase::SightRadiusMultiplier` (thirty on a Horde floor, the Corrupted Stalker's and the Vengeful
+     Wraith's own) and `ACataclysmEnemyCharacter::FloorRealityRow` (Unstable Dimensions' row), and nothing set either
+     again: a Horde creature saw at its class's radius after a load, and a creature raised a rung later counted the
+     floor's row as its own and drew one modifier too few. Both are on the record now, with defaults (one, none) that
+     mean not saved.
+- **THE REBUILD DEPENDED ON WHAT STOOD WHEN THE OBJECTS WERE PLACED (ruled 2026-10-30, Q1).** `CellsTheFloorHolds`
+  counts every living pawn, floor object, ground zone and flight of stairs, and the statues and the chasms are placed
+  only where it allows. While a floor is placed, the player and the followers have not been moved to the entrance yet
+  and the stairs still stand on the last floor's exit, so walking down placed around floor N-1's stairs and loading
+  placed around the `StartPlay` floor's: one refused cell moved every later statue or chasm of the floor, and so every
+  later index a save would key by. Now, while `PopulateFloor` places the floor's objects (the tithe altar to the
+  chasms), `CellsTheFloorHolds` leaves out every actor that stood when placement began, and counts the entrance, the
+  exit and what this pass has put down. Placement during play still holds the player's cell. Ruled to the wider form
+  after the reading found the stairs; the first ruling named the player and the followers.
+- **AND FIVE LISTS STILL HELD THE LAST FLOOR'S CELLS WHILE THE OBJECTS WERE PLACED (found by window w106 and two
+  probes, ruled 2026-10-30).** `CellsTheFloorHolds` counts `ArrivingPackSites`, `WaveStillToArrive`,
+  `MoraleBreakGroups`, `InfernalRainFalls` and `DivineResurgenceGraves`, and none is filled by placing: `PopulateFloor`
+  sets the pack sites after the objects (`ArrivingPackSites = Population.PackSites`), and the per-floor reset clears the
+  rest after it. So a floor's statue avoided the LAST floor's pack site, which after a walk was floor 1's (25,21) and
+  after a load the `StartPlay` floor's (26,20): the statue on (26,20) stood after the walk and was refused after the
+  load. Now, while the objects are placed (`bPlacingTheFloorsObjects`, set and cleared with `StoodBeforePlacement`),
+  those five are not counted. Every other list it counts is cleared by its own rule's placing, the rule absent or not.
+  **THIS CHANGES PLACEMENT ON AN ORDINARY WALK TOO**: until now a floor's objects avoided the previous floor's pack
+  sites and the other stale cells, which is the same fault seen without a load. A rounding of world positions to cells
+  would not have caught it: the two cells were two different previous floors' sites, not one position read two ways.
+- **NOT A FAULT: `WavesArrived` IS NOT SAVED.** A Horde wave loaded counts as wave 1, and only log lines (the
+  population's and the wave end's) read it. Accepted as not a fault.
+
+### Group 3: the sort, as ruled 2026-10-30
+
+The test D2 rules by: a floor's object or state is saved when using it paid a reward or charged a cost; otherwise the
+floor rebuilds it fresh. A save keys an object by its rule and its placement index, which this part makes stable.
+
+| Part | Rules | What is saved |
+|---|---|---|
+| 3b, used by a choice | Forced Tithes (paid, refused, angels owed, angels standing), Pact of Temptation (spent; `PactLastOffered`), Sanctioned Passage (opened, seconds), Battlefield Relics, Pandora's Box, Carrion Feast's altar (consecrated), Infernal Beacons, War Banner (planted, held, seconds held), Grim Totems, Reality Rifts (gift taken, chamber paid) | which were used, by placement index. **Pandora's Box's outcome roll is to be seeded from the floor's seed and the box's index, so reloading before opening cannot re-roll it; the odds stay** |
+| 3c, rule creatures and counters | Heavenly Core (destroyed), Quarantine Breach (broken, patch points), Infection Bloom (destroyed), Abyssal Rift (state), Infested Veins (destroyed, guardians came), Obsidian Sarcophagi (deaths, lord came), Angelic statues (woken), Warzone (captured, seconds held; allies not brought again), Soul Chains and Warzone gates (open), Pestilent beacons (destroyed, U1) | per object by placement index |
+| 3d, roles on the floor's creatures | Plague Harbingers, Plaguebearer and Morale Break (roles on the record; each group's escaped, seconds away and flags, U4), the section a creature stands in, Soul Chains' bearers, the Void Parasite's stacks, the echoes' stage, the tithe angels standing; Famished Beasts' `FamishedBeastsHealthAdded` and each creature's `DropsEaten` (issue [#2181](https://github.com/sdubois777/Cataclysm/issues/2181)), with a round trip of a creature that ate drops and holds souls, raised a rung after the load | on the creature record or the walk |
+| rebuilt fresh | Eternal Chorus, Golden Spires, Portal Unleashing, Shadowy Enemies' lights, Those In The Dark's chasms, Swarm of Locusts' shelters, Raw Sewage's rivers, the Void Parasite's light, Luxury Hoarders (its pile and guards are saved as items and creatures), Mind-Shattering Illusions, The Labrynth's gates; Necrotic Bloom's waves and Infection Bloom's spread (U5: they grow with time on the floor, so they are timers under D1 and section 6's remaining durations; if either grows per player action it moves to saved) | nothing |
+
+- **U2. A rift open at the save loads closed and failed, no success counted.** Losing the rift is the cost of quitting
+  mid-fight; a quit must not turn an open fight into an unearned success.
+- **U3. Carrion Feast's carcasses, feeders and stacks reset; only its altar is saved.**
+
+### What changes
+
+- **The restore's clear** (`ClearTheFloor` with `bKeepTheRulesCreatures`, which only `DungeonFloorInto` passes):
+  creatures not raised by a rule, drops, Souls, projectiles, terrain and telegraph markers, and the ground zones those
+  creatures left, gathered before any creature goes; the pillars and pits, the hazard source and every other zone are
+  the rebuilt floor's and stay.
+- **`bKeptTheArena` and `BuiltArena`.** `BuildFloor` asks for the seed once (a negative `Cataclysm.DungeonSeed` reads
+  the clock), keeps the standing floor only when the brief says same arena AND `BuiltArena` holds that seed, carved-as
+  floor number and layout, and sets `BuiltArena` after each successful carve.
+- **`StoodBeforePlacement`.** Filled at the start of `PopulateFloor`'s placing with every pawn, floor object, ground
+  zone and flight of stairs in the world; emptied after the arena's last object, and by a scope guard on any way out.
+  `CellsTheFloorHolds` skips any actor in it. `ActorsHeldOutOfPlacementNow` reads its size for a test.
+- **The creature record** gains `SightRadiusMultiplier` (1) and `FloorRealityRow` (none). The fixture's first creature
+  holds 30 and `Demonic_Hellfire_Aura`, its one modifier row: the fixture's rows are not changed, because
+  `CataclysmSaveRecordTests.cpp` asserts that creature has exactly one.
+
+### Tests
+
+`Cataclysm.SaveLoad.AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad`: two empire Halls floors, each saved and loaded
+into a fresh world -- the first on the first floor from 2 with a closed section barrier, which the line names (floor 2
+of this dungeon's plan has no section boundary, found by window w106's probe), the second on floor 2. The first carries the rules a choice is made at and the rules that close cells
+(Forced Tithes, Pact of Temptation, Sanctioned Passage, Battlefield Relics, Pandora's Box, Carrion Feast, Infernal
+Beacons, War Banner, Grim Totems, Reality Rifts, Luxury Hoarders, Angelic Wardens, Those In The Dark, Lightforged Walls,
+Soul Chains); the second the rules' creatures and zones (Eternal Chorus, Necrotic Bloom, Golden Spires, Pestilent
+Empowerment, Portal Unleashing, Quarantine Breach, Infection Bloom, Abyssal Rifts, Infested Veins, Obsidian Sarcophagi,
+Warzone Control Points, Shadowy Enemies), because Shadowy Enemies cannot stand with Lightforged Walls. For each rule,
+the cells it placed in order, read through the game mode's public lists, and every pillar's and pit's cells: equal
+after the load. SET-UP: each rule placed at least one. CONTROL: the same floor on another seed places at least one rule
+elsewhere. Not read: the Locust shelters, Raw Sewage's rivers and the Void Parasite's light, drawn as zones on the first
+beat from cells no public list gives; each is rebuilt fresh. Prints "LOAD REBUILD" for each floor.
+
+`Cataclysm.SaveLoad.AHordeArenaLoadedPastItsFirstWaveIsTheArenaWithItsObjects`: an empire Horde dungeon carrying four
+arena rules (Eternal Chorus, Necrotic Bloom, Golden Spires, Portal Unleashing), saved on wave 3; the load gives the
+arena's width, height and entrance and the four rules' objects. SET-UP: the start's floor is another shape. Prints
+"LOAD HORDE".
+
+`Cataclysm.SaveLoad.ARestoredCreatureKeepsItsSightAndTheFloorsReality`: floor 2 carrying Unstable Dimensions, every
+creature's sight set by hand to thirty, the Horde figure (a Horde floor's reality needs a wave past the first); each
+restored creature's sight and reality row equal the saved. SET-UP: a creature carries the reality. Prints "LOAD SIGHT".
+
+`Cataclysm.SaveLoad.AFloorsObjectsDoNotDependOnWhatStoodBeforeThem`: floor 2 carrying Angelic Wardens and Those In The
+Dark is built, then the player is stood on the first statue's cell, a thrall on the first chasm's and a second flight
+of stairs on the second statue's, and the same floor is built again: the same statues and chasms in the same order,
+and nothing held out once the floor is populated (`ActorsHeldOutOfPlacementNow` 0, so a leak shows). CONTROL: the
+player stood on the first statue's cell. Prints "PLACED AROUND". THE SECOND CASE, the last floor's pack sites: floors 3
+to 19 are walked until two or more creatures share a pack middle on one of the statues' cells (a pack site; a creature's
+own cell is held by no other), and floor 2 is built again from that floor: the same statues in the same order. SET-UP:
+such a floor is found, and the line names it. Prints "PLACED AFTER".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4393 / 0 since the move onto `f4904e99a`: `development`'s 4389, measured by #1569's window at `3d29e5b3f` with #1569 ("4389 tests performed, 4389 succeeded, 0 failed"), + 4. It was 4387 (4383 + 4) for w106 and w107. Any seed-searching statue or chasm test whose expected values move under the exclusion is updated to the new values and listed here with the reason; none is deleted |
+| Python | of record, with JUnit, and ruff |
+| P1, the restore branch destroys `ACataclysmFloorObstacle` again (the line moved out of its `if`) | the rebuild test fails on "and every pillar and pit stands where it stood" only, once for each of its two floors; nothing else fails |
+| P2, `BuildFloor` keeps the standing floor on the brief's flag alone again (`bThatArenaStands || true`), so `PopulateFloor` and the rest follow it | the Horde test fails on the arena and its objects; nothing else fails |
+| P3, `PopulateFloor` puts nothing in `StoodBeforePlacement`, so `CellsTheFloorHolds` counts what stood before again | the placed-around test's first case fails on the statues and the chasms, its CONTROL holding; its second case and the rebuild test are not predicted, recorded either way. PROVED when the placed-around test fails as predicted and nothing fails restored |
+| P4, `FloorSourceCells` draws on a stream seeded from `FMath::Rand()` | each list whose rule draws its cells through `FloorSourceCells` (through `EternalChorusCells`, `InfestedVeinsCells` or `PlaceFloorObjects`) fails, and no other. The rebuild test, first floor: relics, boxes, purification altar, infernal beacons, war banner, totems, reality rifts, hoards, statues, and the pillars (the statues'); not the tithe, pact and gate altars (`ExitAltarWorld`, no draw), the chasms (`ChasmStream`), the Soul Chains gates (`GatedShortcutStream`) or the barriers (the plan's sections). Second floor: chorus sources, bloom flowers, spires, plague beacons, portals, quarantine, infection bloom, abyssal rift, veins, sarcophagi, shadow lights; not the Warzone points (on a Halls floor `WarzonePlannedPoints`, drawn on `GatedShortcutStream`), the Warzone gates or the pillars. The Horde test: all four rules. The placed-around test: the statues in both its cases, not the chasms. The sight test passes. A list of one object may land on the same cell by chance; recorded if it does |
+| P7, `CellsTheFloorHolds` counts the five lists while the objects are placed (`bCountTheLastPopulationsCells` true) | the placed-around test's second case fails on its statues; the rebuild test is not predicted, recorded either way; nothing else fails |
+| P5, `CreatureFrom` does not read `SightRadiusMultiplier` | the sight test fails on its one assertion; nothing else fails |
+| P6, `CreatureFrom` does not read `FloorRealityRow` | the sight test fails on its one assertion; nothing else fails |
+
+### Run
+
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock. The first compile
+failed: `Build: Failed - 78 actions, 68 files compiled`, 65 errors, every one in `CataclysmSaveLoadTests.cpp` and every
+one tracing to "use of undefined type 'ACataclysmEnemyCharacter'". Changed, that file was compiled outside the unity
+file, and alone it had never included the enemy's header, which the unity file had brought in from another file -- the
+existing tests at its line 800 and after failed with the new ones. It includes `Character/CataclysmEnemyCharacter.h`
+now. The second: `Build: Succeeded - 5 actions, 1 file compiled: CataclysmSaveLoadTests.cpp`. No warning in a changed
+file in either. Every other changed file was compiled alone in the first, without error.
+
+Rebased onto `3d29e5b3f` (#2633, the simulation and `CataclysmEnemyScore.h`; no Unreal test): `Build: Succeeded - 36
+actions, 33 files compiled`. Python of record there: 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks
+passed!`. Then `BuildFloor`'s condition was put on one line of its own (`bThatArenaStands`), so P2's break is one line:
+`Build: Succeeded - 9 actions, 6 files compiled`, `CataclysmDungeonGameMode.cpp` among them. No behaviour changed.
+
+**Window w106 (lock `dungeon-w106`, `feat/floor-rebuilds-the-same-by-a-load-2` at `3e91b31e8`, on `3d29e5b3f`,
+2026-10-30) STOPPED AT THE FIRST TEST ALONE; nothing after it ran.** Python of record at `3e91b31e8` before the
+pre-checks: 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`. The pre-checks, kept in the run
+output, measured at 16:47:41: `development` at `3d29e5b3f` with its CI and Unreal runs a success there; no run in
+progress or queued; the lock free; no build, editor, simulation or pytest process; 11,668 MB of physical memory free.
+The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The rebuild test alone | `1 tests performed, 0 succeeded, 1 failed` |
+
+The second floor (the rules' creatures and zones) came back whole: "chorus sources 2/2; bloom flowers 2/2; spires 2/2;
+plague beacons 2/2; portals 2/2; quarantine 1/1; infection bloom 1/1; abyssal rift 1/1; veins 3/3; sarcophagi 2/2;
+warzone points 2/2; warzone gates 4/4; shadow lights 3/3; pillar cells 4/4", and its CONTROL held. The first floor
+came back whole but for the statues and what follows them: "tithe altar 1/1; pact altar 1/1; divine gate 1/1; relics
+2/2; boxes 3/3; purification altar 1/1; infernal beacons 1/1; war banner 1/1; totems 2/2; reality rifts 5/5; hoards
+2/2; statues 3/2 DIFFER; chasms 37/37 DIFFER; soul chains gates 4/4; closed barriers 0/0; pillar cells 7/6 DIFFER".
+
+- **THE FIRST STATUE WAS REFUSED IN THE LOADING WORLD.** Saved "(26,20)(15,14)(40,26)", loaded "(15,14)(40,26)"; the
+  pillars differ by that statue's cell alone, so the gates' pillars and the other two statues' stood after the load
+  (F1). Every one of the 37 chasms moved, which one missing statue explains: the chasms are drawn with every statue's
+  cell closed. What refused (26,20) is not known: `AnObstacleMayClose` refuses a held cell, a closing that strands a
+  walkable cell, or one that splits a section while a barrier is closed, and reading has not found which input differs
+  between the walk and the load. The `StartPlay` floor carries no modifiers, so no list it kept is the cause.
+- **THE SET-UP FOUND NO CLOSED BARRIER** on the first floor, after the walk: either the plan found no boundary or every
+  barrier opened once the creatures stood. A test design fault either way; not yet known which.
+- **NEXT: A PROBE**, asked of the coordinating session, before any change: the reason `AnObstacleMayClose` gave for
+  each statue candidate in each world, the held set it was given, and the floor's boundaries and closed barriers.
+
+**Two probes (locks `dungeon-probe-w106` and `dungeon-probe2-w106`, 2026-10-30, at `6b9bccd95`), each one press:
+temporary log lines in `CataclysmDungeonGameMode.cpp`, the rebuild test alone, the file restored with git and built
+again, and the tree checked clean at `6b9bccd95` before and after; nothing committed.** Each pre-check passed before its
+lock; the first attempt for the second probe was refused at 6,505 MB free while another session compiled, and passed
+at 11,643 MB once it had finished.
+
+- The first: the candidate (26,20) "may close yes; held here no; held 100" after the walk and "may close NO; held here
+  yes; held 97" after the load, the held cell beside it moving one diagonal step, (25,21) after the walk. Every statue
+  placed got its pillar. And floor 2's plan has no section boundary ("boundaries 0, closed barrier cells 0"), where
+  floor 1's has one (9 closed cells): the barrier set-up had asked a floor that cannot have one.
+- The second named the holder in both worlds: "holders [(25,21): ArrivingPackSites; ]" after the walk and "holders
+  [(26,20): ArrivingPackSites; ]" after the load -- the last floor's pack sites, said first above.
+
+**Window w107 (lock `dungeon-w107`, `8ab793dce`, on `3d29e5b3f`, 2026-10-30) FAILED FOUR EXISTING TESTS IN THE WHOLE
+SUITE; no proof ran.** Before it: `Build: Succeeded - 26 actions, 23 files compiled` with no lock; Python of record at
+`8ab793dce` 7141 tests, 0 failures, 0 errors, 8 skipped, ruff `All checks passed!`. The pre-checks, kept in the run
+output, measured at 17:20:31: `development` at `3d29e5b3f`, its CI and Unreal runs a success there; no run in progress
+or queued; the lock free; no build, editor, simulation or pytest process; 11,625 MB free. The lock was released before
+anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | `1 tests performed, 1 succeeded, 0 failed`, each. "LOAD REBUILD choices and cells on floor 3" and "... creatures and zones on floor 2", every list equal; "LOAD HORDE: ... the start's floor 35 x 41 entrance X=31 Y=35; saved on wave 3 the arena 36 x 46 entrance X=11 Y=37, loaded 36 x 46 entrance X=11 Y=37"; "LOAD SIGHT: ... 219 of the saved carry a reality"; "PLACED AROUND: statues (26,20)(15,14)(40,26), again (26,20)(15,14)(40,26)"; "PLACED AFTER: floor 4 left a pack site on the statue's cell (40,26); statues (26,20)(15,14)(40,26), built again after it (26,20)(15,14)(40,26)" |
+| Whole Unreal suite | `4387 tests performed, 4383 succeeded, 4 failed: AFloorChangeClearsTheCountAndKeepsTheWraith, AFloorChangeClearsTheFloorCountsAndKeepsTheRung, AFloorChangePutsEveryCreaturesDamageBack, ARisenCreatureDoesNotCountTowardTheNextFloor`; declared 4387, gap 0; memory peak 8,412 MB, final 8,059 MB |
+| Python (JUnit) | 7141 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+
+**THE FOUR ARE F2'S CHECK REFUSING A FLOOR THAT IS NOT THE ARENA, WHICH EACH TEST USES AS ONE.** Each, in
+`CataclysmDungeonModifierEffectsTests.cpp`, builds an ordinary floor 1, then sets `Mode->DungeonSubType` to Horde and
+calls `GoToFloor(2)` (the switch at lines 17166, 17934, 19414 and 20985), and asserts the creatures live through "the
+change of wave": "the wraith lived through the change of wave", "the champion lived through the change of wave",
+"both risen creatures lived into the next wave ... 2, but it was 0", and the survivor's damage 160 where 100 (its
+damage was not put back because it is a new creature). The brief's flag alone kept the ordinary floor as the arena;
+`bThatArenaStands` compares the layout too, which differs, so the arena is carved and the creatures are cleared, as on
+a load. In play a dungeon's sub-type does not change between its floors.
+
+**RULED 2026-10-30: THE CHECK STAYS STRICT (seed, carved-as floor and layout), AND THE FOUR TESTS ARE HORDE FROM THEIR
+FIRST FLOOR,** the order play uses. Taking the layout out of the check would have passed them unchanged and given up a
+load at Horde wave 2 or later under a pinned `Cataclysm.DungeonSeed`, the setting a playtest saving and loading would
+use. **No assertion changed.** The set-up changed only so: each of the four floor helpers
+(`AFloorCarryingTheChampionsRow`, `AFloorCarryingTheWraithsRow`, `AFloorCarryingTheMarchRow`,
+`AFloorCarryingTheResurgenceRow`) takes a sub-type as a last parameter, defaulting to none, and sets it before
+`StartPlay` builds the first floor when it is not none, so the helpers' other 39 calls (43 in all, counted) are as they were; the four tests
+pass Horde, and their mid-test switch line is removed. No further set-up change was needed to compile; whether one is
+needed to pass is the next window's.
+
+**MOVED ONTO `f4904e99a` (#1569, merged as #2634) before window w108**, as the coordinating session ordered: #1569
+builds every dungeon-floor creature's health, attack damage and armour from the enemy score in `ApplyDesignedStats`,
+and this part places and restores those creatures. Only `docs/DECISIONS.md` conflicted, at its first entry, resolved by
+`resolve_top_from_commit.py`; every C++ file merged by itself, `CataclysmDungeonModifierEffectsTests.cpp` (which #1569
+also changed) among them. #1569 sets the built figures through `SetHealth`, `SetAttackDamage` and `SetArmour`, which are
+what Group 2 saves (`GetStartingMaxHealth`, `GetStartingAttackDamage`, `GetStartingArmour`), and a restored creature is
+made by `CreatureInto` from the saved figures without `ApplyDesignedStats`: the save keeps what #1569 builds, and no
+conflict of meaning was found.
+
+**Window w108 (lock `dungeon-w108`, `feat/floor-rebuilds-the-same-by-a-load-3` at `2bd3d9242`, on `f4904e99a`,
+2026-10-30) PASSED EVERY STEP, AND ALL SEVEN PROOFS PROVED; TWO OF THE REGISTERED PREDICTIONS WERE WRONG, BOTH ABOUT
+THE CHASMS, said first in the table.** Before it: `Build: Succeeded - 34 actions, 31 files compiled` with no lock;
+Python of record at `2bd3d9242` 7152 tests, 0 failures, 0 errors, 8 skipped, ruff `All checks passed!`. The pre-checks,
+kept in the run output, measured at 18:18:53: `development` at `f4904e99a`, its CI and Unreal runs a success there; no
+run in progress or queued; the lock free; no build, editor, simulation or pytest process; 11,629 MB free. The lock was
+released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| Eight tests alone | `1 tests performed, 1 succeeded, 0 failed`, each: the four new, and the four Horde-from-the-first-floor tests, which needed no further set-up change |
+| Whole Unreal suite | `4393 tests performed, 4393 succeeded, 0 failed`; declared 4393, gap 0, as registered; memory peak 8,292 MB, final 7,941 MB |
+| Python (JUnit) | 7152 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED, as registered: 17 performed, 1 failed, the rebuild test, on "and every pillar and pit stands where it stood" twice (once for each floor) and nothing else; restored 17 of 17 |
+| P2 | PROVED, as registered: the Horde test, on "the arena is the one saved" and "and its objects stand where they stood"; restored 17 of 17 |
+| P3 | PROVED, as registered: the placed-around test, on "the same statues in the same order" and "the same chasms in the same order", its CONTROL holding. Recorded, not predicted: its second case failed too ("after a floor whose pack site was a statue's cell ..."), and the rebuild test passed; restored 17 of 17 |
+| P4 | PROVED. Every list registered to fail failed -- first floor: relics, boxes, purification altar, infernal beacons, war banner, totems, reality rifts, hoards, statues and the pillars; second floor: chorus sources, bloom flowers, spires, plague beacons, portals, quarantine, infection bloom, abyssal rift, veins, sarcophagi, shadow lights; the Horde test's objects; the placed-around test's statues in both cases -- and none registered not to fail did, **except the chasms: the rebuild test's chasm list and the placed-around test's first-case chasms failed, registered as unable to.** The chasms draw on `ChasmStream`, but with every statue's cell closed, so statues placed elsewhere move every chasm: the dependence window w106 showed, which this registration overlooked; restored 17 of 17 |
+| P5 | PROVED, as registered: the sight test on its one assertion; restored 17 of 17 |
+| P6 | PROVED, as registered: the sight test on its one assertion; restored 17 of 17 |
+| P7 | PROVED: the placed-around test's second case failed on its statues, as registered; the rebuild test, recorded either way, failed on its chasm list. **Registered wrong: "nothing else fails". The placed-around test's first case failed on "the same chasms in the same order" too.** The chasm draw asks `CellsHeldOrWarned`, which holds the five lists, and that case builds floor 2 first from floor 1 and then from floor 2 itself, whose stale pack sites differ; restored 17 of 17 |
+
+Each proof failed only tests it was registered against or recorded either way, and no proof's restored half failed an
+assertion. The two wrong predictions are about which lists move, not about whether the guards fire: every guard fired.
+
+**WHY THE OTHER 38 OF THE FILE'S 42 MID-TEST SWITCHES DID NOT FAIL** (counted by script over every test body holding
+`DungeonSubType = ECataclysmDungeonSubType::Horde;`):
+
+| Switches | What the test does after the switch | Why the check passes or does not matter |
+|---|---|---|
+| 26 | goes to floor 1 first | floor 1 of a Horde dungeon is never the same arena, so the arena is carved there and every later wave keeps it |
+| 3 | builds no floor before the switch | no floor stands, so the first build carves the arena |
+| 9 | builds an ordinary floor, switches, and goes straight to a later wave, as the four did | these reach the check and now get a carved arena; what each asserts is what a floor change clears or forgets, or what the next floor holds, which a carved arena gives as well (`AFloorChangeClearsTheChainAndTheLord`, `AFloorChangeClearsTheTriggersAndTheZones`, `EachCommanderAddsItsTenAndTheyDoNotCompound`, `AFloorChangeForgetsHowManyCommanded`, `AFloorChangeForgetsTheAntiMagicZonesAndItsLock`, `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`, `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`, `PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre`, `ThoseInTheDarkAHordeArenaHasNoChasm`); all nine passed in w107 |
+
+---
+
 ## 2026-10-30 — A creature placed on a dungeon floor is built from the enemy score: eased by the tier's relief, never below floor 1 of a 12-floor dungeon, and with its damage scaled by the tier (#1569)
 
 **Affects:** `sim/cataclysm_sim/enemy_stats.py` (new `strength_score`, `strength_on_floor`, `damage_scale` and their

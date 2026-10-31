@@ -13,11 +13,16 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
+#include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorObject.h"
+#include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireMap.h"
@@ -2034,6 +2039,644 @@ bool FCataclysmSaveLoadCreatureDamageTest::RunTest(const FString&)
 	TestEqual(TEXT("and on a dungeon floor"), DungeonLoaded, DungeonSaved);
 	TestFalse(TEXT("an illusion is not saved as a creature"), bIllusionSaved);
 	TestTrue(TEXT("CONTROL: the creature beside it is"), bBesideItSaved);
+	return true;
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/** Each rule's placed cells, named, in the order the rule placed them. */
+	using FRuleCells = TArray<TPair<FString, TArray<FIntPoint>>>;
+
+	/** The cells some actors stand on, in the order given, leaving out any not standing. */
+	template <typename TActor>
+	TArray<FIntPoint> CellsOfActors(const ACataclysmDungeonGameMode& Mode, const TArray<TActor*>& Actors)
+	{
+		TArray<FIntPoint> Cells;
+		for (const TActor* Actor : Actors)
+		{
+			if (IsValid(Actor) && Mode.CurrentFloor)
+			{
+				Cells.Add(Mode.CurrentFloor->CellOfWorld(Actor->GetActorLocation()));
+			}
+		}
+		return Cells;
+	}
+
+	TArray<FIntPoint> CellsOfPoints(const ACataclysmDungeonGameMode& Mode, const TArray<FVector>& Points)
+	{
+		TArray<FIntPoint> Cells;
+		for (const FVector& Point : Points)
+		{
+			if (Mode.CurrentFloor)
+			{
+				Cells.Add(Mode.CurrentFloor->CellOfWorld(Point));
+			}
+		}
+		return Cells;
+	}
+
+	TArray<FIntPoint> GateCellsOf(const ACataclysmDungeonGameMode& Mode, const TCHAR* RowKey)
+	{
+		TArray<FIntPoint> Cells;
+		for (const FCataclysmFloorShortcut& Shortcut : Mode.GatedShortcutsOf(FName(RowKey)))
+		{
+			Cells.Append(Shortcut.Gate);
+		}
+		return Cells;
+	}
+
+	/** Every cell a standing pillar or pit covers, sorted: the world's order is not the placement's. */
+	TArray<FIntPoint> ObstacleCells(UWorld& World)
+	{
+		TArray<FIntPoint> Cells;
+		for (TActorIterator<ACataclysmFloorObstacle> It(&World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Cells.Append(It->CoveredCells());
+			}
+		}
+		Cells.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.X != B.X ? A.X < B.X : A.Y < B.Y; });
+		return Cells;
+	}
+
+	FString CellsText(const TArray<FIntPoint>& Cells)
+	{
+		FString Text;
+		for (const FIntPoint& Cell : Cells)
+		{
+			Text += FString::Printf(TEXT("(%d,%d)"), Cell.X, Cell.Y);
+		}
+		return Text;
+	}
+
+	/**
+	 * THE FIRST FLOOR'S RULES: the objects a choice is made at, and the rules that close cells -- the statues, the
+	 * chasms, the Soul Chains gates and the section barriers. Shadowy Enemies cannot stand with Lightforged Walls, so it
+	 * is on the second floor. Issue #753, Group 3a.
+	 */
+	TArray<FName> ChoiceAndCellRules()
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		return {FName(Effects::ForcedTithesKey), FName(Effects::PactOfTemptationKey),
+				FName(Effects::SanctionedPassageKey), FName(Effects::BattlefieldRelicsKey),
+				FName(Effects::PandorasBoxKey), FName(Effects::CarrionFeastKey), FName(Effects::InfernalBeaconsKey),
+				FName(Effects::WarBannerKey), FName(Effects::GrimTotemsKey), FName(Effects::RealityRiftsKey),
+				FName(Effects::LuxuryHoardersKey), FName(Effects::AngelicWardensKey), FName(Effects::ThoseInTheDarkKey),
+				FName(Effects::LightforgedWallsKey), FName(Effects::SoulChainsKey)};
+	}
+
+	/** THE SECOND FLOOR'S RULES: the creatures and the cells a rule places, and Warzone's points and gates. */
+	TArray<FName> CreatureAndZoneRules()
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		return {FName(Effects::EternalChorusKey), FName(Effects::NecroticBloomKey), FName(Effects::GoldenSpiresKey),
+				FName(Effects::PestilentEmpowermentKey), FName(Effects::PortalUnleashingKey),
+				FName(Effects::QuarantineBreachKey), FName(Effects::InfectionBloomKey), FName(Effects::AbyssalRiftsKey),
+				FName(Effects::InfestedVeinsKey), FName(Effects::ObsidianSarcophagiKey),
+				FName(Effects::WarzoneControlPointsKey), FName(Effects::ShadowyEnemiesKey)};
+	}
+
+	/**
+	 * What the given floor's rules placed, read through the game mode's public lists. The Locust shelters, Raw Sewage's
+	 * rivers and the Void Parasite's light are drawn as zones on the first beat from cells no public list gives, so they
+	 * are not here; each is rebuilt fresh, as ruled.
+	 */
+	FRuleCells RuleCellsNow(const ACataclysmDungeonGameMode& Mode, bool bChoiceAndCellRules)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		FRuleCells Rules;
+		const auto One = [&Mode](ACataclysmFloorObject* Object)
+		{
+			return CellsOfActors(Mode, TArray<ACataclysmFloorObject*>{Object});
+		};
+		const auto OneCreature = [&Mode](ACataclysmEnemyCharacter* Creature)
+		{
+			return CellsOfActors(Mode, TArray<ACataclysmEnemyCharacter*>{Creature});
+		};
+		if (bChoiceAndCellRules)
+		{
+			Rules.Emplace(TEXT("tithe altar"), One(Mode.TitheAltarNow()));
+			Rules.Emplace(TEXT("pact altar"), One(Mode.PactAltarNow()));
+			Rules.Emplace(TEXT("divine gate"), One(Mode.DivineGateNow()));
+			Rules.Emplace(TEXT("relics"), CellsOfActors(Mode, Mode.BattlefieldRelicsNow()));
+			Rules.Emplace(TEXT("boxes"), CellsOfActors(Mode, Mode.PandorasBoxesNow()));
+			Rules.Emplace(TEXT("purification altar"), One(Mode.PurificationAltarNow()));
+			Rules.Emplace(TEXT("infernal beacons"), CellsOfActors(Mode, Mode.InfernalBeaconsNow()));
+			Rules.Emplace(TEXT("war banner"), One(Mode.WarBannerNow()));
+			Rules.Emplace(TEXT("totems"), CellsOfActors(Mode, Mode.GrimTotemsNow()));
+			Rules.Emplace(TEXT("reality rifts"), Mode.RealityRiftCellsNow());
+			Rules.Emplace(TEXT("hoards"), CellsOfPoints(Mode, Mode.LuxuryHoardsNow()));
+			Rules.Emplace(TEXT("statues"), Mode.AngelicStatueCellsStanding());
+			Rules.Emplace(TEXT("chasms"), Mode.ThoseInTheDarkChasmCellsNow());
+			Rules.Emplace(TEXT("soul chains gates"), GateCellsOf(Mode, Effects::SoulChainsKey));
+			Rules.Emplace(TEXT("closed barriers"), Mode.ClosedSectionBarrierCells());
+		}
+		else
+		{
+			Rules.Emplace(TEXT("chorus sources"), CellsOfActors(Mode, Mode.EternalChorusSourcesNow()));
+			Rules.Emplace(TEXT("bloom flowers"), CellsOfActors(Mode, Mode.NecroticBloomFlowersNow()));
+			Rules.Emplace(TEXT("spires"), CellsOfActors(Mode, Mode.GoldenSpiresStanding()));
+			Rules.Emplace(TEXT("plague beacons"), CellsOfActors(Mode, Mode.PlagueBeaconsStanding()));
+			Rules.Emplace(TEXT("portals"), CellsOfActors(Mode, Mode.VoidPortalsNow()));
+			Rules.Emplace(TEXT("quarantine"), OneCreature(Mode.QuarantineNow()));
+			Rules.Emplace(TEXT("infection bloom"), OneCreature(Mode.InfectionBloomNow()));
+			Rules.Emplace(TEXT("abyssal rift"), OneCreature(Mode.AbyssalRiftNow()));
+			Rules.Emplace(TEXT("veins"), CellsOfActors(Mode, Mode.InfestedVeinsStanding()));
+			Rules.Emplace(TEXT("sarcophagi"), CellsOfActors(Mode, Mode.SarcophagiNow()));
+			Rules.Emplace(TEXT("warzone points"), Mode.WarzonePointCellsNow());
+			Rules.Emplace(TEXT("warzone gates"), GateCellsOf(Mode, Effects::WarzoneControlPointsKey));
+			Rules.Emplace(TEXT("shadow lights"), CellsOfPoints(Mode, Mode.ShadowyEnemiesLightsNow()));
+		}
+		return Rules;
+	}
+
+	/** A dungeon placed by hand as `PlaceADungeonCarrying` places one, of the given sub-type. */
+	int32 PlaceADungeonOfSubType(FAutomationTestBase& Test, const FDungeonScene& Scene, const TArray<FName>& Modifiers,
+								 ECataclysmDungeonSubType SubType)
+	{
+		const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, Modifiers);
+		if (UCataclysmEmpireRun* Run = Scene.Base.Instance->GetOrBeginEmpireRun())
+		{
+			for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == DungeonId)
+				{
+					Dungeon.SubType = SubType;
+				}
+			}
+		}
+		return DungeonId;
+	}
+
+	/**
+	 * One floor carrying the given rules, saved on floor 2 and loaded into a fresh world: every rule's cells and every
+	 * pillar's, before and after. Then the CONTROL, a build of the same floor on another seed. Issue #753, Group 3a.
+	 */
+	void RoundTripTheRulesOfOneFloor(FAutomationTestBase& Test, const TCHAR* Which, const TArray<FName>& Modifiers,
+									 bool bChoiceAndCellRules, bool bToAFloorWithAClosedBarrier)
+	{
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		int32 Floor = 2;
+		FRuleCells Before;
+		TArray<FIntPoint> PillarsBefore;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, Modifiers);
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the rules was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return;
+			}
+			// FLOOR 2, OR FOR THE BARRIERS THE FIRST FLOOR FROM 2 WITH A CLOSED SECTION BARRIER, so the barriers' list is
+			// not compared empty with empty. Not the last of the dungeon's twenty, which places no altar and no chasm.
+			bool bReached = Scene.Mode->GoToFloor(Floor);
+			while (bReached && bToAFloorWithAClosedBarrier && Scene.Mode->ClosedSectionBarrierCells().IsEmpty()
+				   && Floor < 19)
+			{
+				bReached = Scene.Mode->GoToFloor(++Floor);
+			}
+			if (!Test.TestTrue(FString::Printf(TEXT("set-up: the walk reached floor %d"), Floor), bReached)
+				|| (bToAFloorWithAClosedBarrier
+					&& !Test.TestTrue(TEXT("set-up: a floor from 2 to 19 has a closed section barrier"),
+									  !Scene.Mode->ClosedSectionBarrierCells().IsEmpty())))
+			{
+				return;
+			}
+			Before = RuleCellsNow(*Scene.Mode, bChoiceAndCellRules);
+			PillarsBefore = ObstacleCells(*Scene.Base.World);
+			for (const TPair<FString, TArray<FIntPoint>>& Rule : Before)
+			{
+				Test.TestTrue(FString::Printf(TEXT("set-up: %s placed at least one, so equal is not empty and empty"),
+											  *Rule.Key),
+							  Rule.Value.Num() > 0);
+			}
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		const FRuleCells After = RuleCellsNow(*Scene.Mode, bChoiceAndCellRules);
+		const TArray<FIntPoint> PillarsAfter = ObstacleCells(*Scene.Base.World);
+
+		FString Counts;
+		for (int32 Index = 0; Index < Before.Num(); ++Index)
+		{
+			const int32 Loaded = After.IsValidIndex(Index) ? After[Index].Value.Num() : -1;
+			const bool bSame = After.IsValidIndex(Index) && CellsText(After[Index].Value) == CellsText(Before[Index].Value);
+			Counts += FString::Printf(TEXT("%s %d/%d%s; "), *Before[Index].Key, Before[Index].Value.Num(), Loaded,
+									  bSame ? TEXT("") : TEXT(" DIFFER"));
+		}
+		Test.AddInfo(FString::Printf(TEXT("LOAD REBUILD %s on floor %d: %s (%s); %spillar cells %d/%d%s"), Which, Floor,
+									 FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *Counts,
+									 PillarsBefore.Num(), PillarsAfter.Num(),
+									 CellsText(PillarsAfter) == CellsText(PillarsBefore) ? TEXT("") : TEXT(" DIFFER")));
+
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("set-up: the same rules were read after the load"), After.Num(), Before.Num());
+		for (int32 Index = 0; Index < Before.Num() && Index < After.Num(); ++Index)
+		{
+			Test.TestEqual(FString::Printf(TEXT("%s: the same cells in the same order"), *Before[Index].Key),
+						   CellsText(After[Index].Value), CellsText(Before[Index].Value));
+		}
+		Test.TestEqual(TEXT("and every pillar and pit stands where it stood"), CellsText(PillarsAfter),
+					   CellsText(PillarsBefore));
+
+		// THE CONTROL: the same floor built on another seed places at least one rule's objects elsewhere, so the lists
+		// above are the seed's and not the same for any floor.
+		Scene.Mode->DungeonSeed += 7919;
+		bool bAnotherSeedDiffers = false;
+		if (Scene.Mode->GoToFloor(Floor))
+		{
+			const FRuleCells Other = RuleCellsNow(*Scene.Mode, bChoiceAndCellRules);
+			for (int32 Index = 0; Index < Before.Num() && Index < Other.Num(); ++Index)
+			{
+				bAnotherSeedDiffers |= CellsText(Other[Index].Value) != CellsText(Before[Index].Value);
+			}
+		}
+		Test.TestTrue(TEXT("CONTROL: another seed places at least one rule's objects elsewhere"), bAnotherSeedDiffers);
+	}
+}
+
+/**
+ * A rebuilt floor places every rule's objects, and the pillars and pits, on the cells and in the order it placed them
+ * before the save, which is what a save keyed by rule and placement index rests on. Issue #753, Group 3a, ruled
+ * 2026-10-30. Two floors, because Shadowy Enemies cannot stand with Lightforged Walls. Each prints "LOAD REBUILD".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRebuildOrderTest,
+	"Cataclysm.SaveLoad.AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRebuildOrderTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	RoundTripTheRulesOfOneFloor(*this, TEXT("choices and cells"), ChoiceAndCellRules(), /*bChoiceAndCellRules=*/true,
+								/*bToAFloorWithAClosedBarrier=*/true);
+	RoundTripTheRulesOfOneFloor(*this, TEXT("creatures and zones"), CreatureAndZoneRules(),
+								/*bChoiceAndCellRules=*/false, /*bToAFloorWithAClosedBarrier=*/false);
+	return true;
+}
+
+/**
+ * A Horde arena saved on its third wave comes back as that arena with its objects. The load builds a floor at
+ * `StartPlay` first, and the same-arena flag alone kept that floor's geometry and placed none of the arena's objects.
+ * Issue #753, Group 3a. Prints "LOAD HORDE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadHordeArenaTest,
+	"Cataclysm.SaveLoad.AHordeArenaLoadedPastItsFirstWaveIsTheArenaWithItsObjects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadHordeArenaTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TArray<FName> ArenaRules = {FName(Effects::EternalChorusKey), FName(Effects::NecroticBloomKey),
+									  FName(Effects::GoldenSpiresKey), FName(Effects::PortalUnleashingKey)};
+	const auto ArenaText = [](const ACataclysmDungeonGameMode& Mode)
+	{
+		const FCataclysmFloorPlan& Plan = Mode.CurrentFloor->GetPlan();
+		return FString::Printf(TEXT("%d x %d entrance %s"), Plan.Width, Plan.Height, *Plan.Entrance.ToString());
+	};
+	const auto ObjectsText = [](const ACataclysmDungeonGameMode& Mode)
+	{
+		return FString::Printf(TEXT("chorus %s bloom %s spires %s portals %s"),
+							   *CellsText(CellsOfActors(Mode, Mode.EternalChorusSourcesNow())),
+							   *CellsText(CellsOfActors(Mode, Mode.NecroticBloomFlowersNow())),
+							   *CellsText(CellsOfActors(Mode, Mode.GoldenSpiresStanding())),
+							   *CellsText(CellsOfActors(Mode, Mode.VoidPortalsNow())));
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString ArenaSaved;
+	FString ObjectsSaved;
+	int32 EachSaved = 0;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonOfSubType(*this, Scene, ArenaRules, ECataclysmDungeonSubType::Horde);
+		if (!TestTrue(TEXT("set-up: a Horde dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the second wave walked in"), Scene.Mode->GoToFloor(2))
+			|| !TestTrue(TEXT("set-up: and the third"), Scene.Mode->GoToFloor(3))
+			|| !TestTrue(TEXT("set-up: it is a wave in the same arena"), Scene.Mode->FloorBrief.bSameArenaAsLastFloor))
+		{
+			return false;
+		}
+		ArenaSaved = ArenaText(*Scene.Mode);
+		ObjectsSaved = ObjectsText(*Scene.Mode);
+		EachSaved = FMath::Min(FMath::Min(Scene.Mode->EternalChorusSourcesNow().Num(),
+										  Scene.Mode->NecroticBloomFlowersNow().Num()),
+							   FMath::Min(Scene.Mode->GoldenSpiresStanding().Num(), Scene.Mode->VoidPortalsNow().Num()));
+		if (!TestTrue(TEXT("set-up: each of the four rules placed an object in the arena"), EachSaved > 0))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE START'S FLOOR IS ANOTHER SHAPE, so keeping it cannot pass for the arena.
+	const FString ArenaAtTheStart = ArenaText(*Scene.Mode);
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const FString ArenaLoaded = ArenaText(*Scene.Mode);
+	const FString ObjectsLoaded = ObjectsText(*Scene.Mode);
+
+	AddInfo(FString::Printf(TEXT("LOAD HORDE: %s (%s); the start's floor %s; saved on wave 3 the arena %s, loaded %s; "
+								 "saved %s; loaded %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *ArenaAtTheStart, *ArenaSaved,
+							*ArenaLoaded, *ObjectsSaved, *ObjectsLoaded));
+
+	TestNotEqual(TEXT("set-up: the floor the start built is not the arena's shape"), ArenaAtTheStart, ArenaSaved);
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the arena is the one saved"), ArenaLoaded, ArenaSaved);
+	TestEqual(TEXT("and its objects stand where they stood"), ObjectsLoaded, ObjectsSaved);
+	return true;
+}
+
+/**
+ * A restored creature sees as far as it did and keeps the row of its modifiers the floor gave it. Placement sets both
+ * and nothing set either again. Issue #753, Group 3a. THE SIGHT IS SET BY HAND to thirty, the Horde figure, because a
+ * Horde floor's reality needs a wave past the first; the reality row comes from Unstable Dimensions on floor 2. Prints
+ * "LOAD SIGHT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSightAndRealityTest,
+	"Cataclysm.SaveLoad.ARestoredCreatureKeepsItsSightAndTheFloorsReality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSightAndRealityTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const auto CreaturesText = [](const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<FString> Each;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode.FloorEnemies)
+		{
+			if (IsValid(Creature))
+			{
+				Each.Add(FString::Printf(TEXT("[%.1f %s]"), Creature->SightRadiusMultiplier,
+										 *Creature->FloorRealityRow.ToString()));
+			}
+		}
+		Each.Sort();
+		return FString::Join(Each, TEXT(""));
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString CreaturesSaved;
+	int32 WithAReality = 0;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(
+			*this, Scene, {FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)});
+		if (!TestTrue(TEXT("set-up: a dungeon carrying Unstable Dimensions was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Scene.Mode->FloorEnemies)
+		{
+			if (IsValid(Creature))
+			{
+				Creature->SightRadiusMultiplier = 30.0f;
+				WithAReality += Creature->FloorRealityRow.IsNone() ? 0 : 1;
+			}
+		}
+		CreaturesSaved = CreaturesText(*Scene.Mode);
+		if (!TestTrue(TEXT("set-up: a creature carries the floor's reality"), WithAReality > 0))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const FString CreaturesLoaded = CreaturesText(*Scene.Mode);
+
+	AddInfo(FString::Printf(TEXT("LOAD SIGHT: %s (%s); %d of the saved carry a reality; the sight and reality of each, "
+								 "saved %s, loaded %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, WithAReality,
+							*CreaturesSaved.Left(300), *CreaturesLoaded.Left(300)));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("each restored creature sees as far as it did and keeps the floor's row"), CreaturesLoaded,
+			  CreaturesSaved);
+	return true;
+}
+
+/**
+ * The floor's objects do not depend on what stood when they were placed: the player on the first statue's cell, a
+ * thrall on the first chasm's and a second flight of stairs on the second statue's give the same statues and chasms,
+ * in the same order. Walking down and loading leave different things standing, and every later index of a rule moved
+ * with one refused cell. Ruled 2026-10-30. Issue #753, Group 3a. Prints "PLACED AROUND".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPlacedAroundTest,
+	"Cataclysm.SaveLoad.AFloorsObjectsDoNotDependOnWhatStoodBeforeThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadPlacedAroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 DungeonId = PlaceADungeonCarrying(
+		*this, Scene, {FName(Effects::AngelicWardensKey), FName(Effects::ThoseInTheDarkKey)});
+	if (!TestTrue(TEXT("set-up: a dungeon carrying statues and chasms was placed"), DungeonId != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+		|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Statues = Scene.Mode->AngelicStatueCellsStanding();
+	const TArray<FIntPoint> Chasms = Scene.Mode->ThoseInTheDarkChasmCellsNow();
+	if (!TestTrue(TEXT("set-up: two statues were placed"), Statues.Num() >= 2)
+		|| !TestTrue(TEXT("set-up: a chasm was placed"), Chasms.Num() >= 1))
+	{
+		return false;
+	}
+
+	// WHAT STANDS ON THE CELLS THE RULES CHOSE, BEFORE THE SAME FLOOR IS BUILT AGAIN.
+	const ACataclysmDungeonFloor& Floor = *Scene.Mode->CurrentFloor;
+	const FVector Up(0.0f, 0.0f, 100.0f);
+	Scene.Base.Character->SetActorLocation(Floor.WorldOfCell(Statues[0]) + Up);
+	FCataclysmSavedCreature ThrallRecord;
+	ThrallRecord.ArchetypeRow = FName(TEXT("Brute"));
+	ThrallRecord.Location = Floor.WorldOfCell(Chasms[0]) + Up;
+	ThrallRecord.Health = 100.0f;
+	ThrallRecord.MaxHealth = 100.0f;
+	ACataclysmEnemyCharacter* Thrall = FCataclysmSaveApply::CreatureInto(*Scene.Base.World, ThrallRecord);
+	ACataclysmDungeonStairs* SecondStairs = Scene.Base.World->SpawnActor<ACataclysmDungeonStairs>(
+		ACataclysmDungeonStairs::StaticClass(), Floor.WorldOfCell(Statues[1]), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: the thrall stands"), Thrall)
+		|| !TestTrue(TEXT("set-up: the player took it"), UCataclysmCommand::Subjugate(Scene.Base.Character, Thrall))
+		|| !TestNotNull(TEXT("set-up: the second stairs stand"), SecondStairs))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the player stands on the first statue's cell as the floor is built again.
+	const bool bThePlayerHeldItsCell = Floor.CellOfWorld(Scene.Base.Character->GetActorLocation()) == Statues[0];
+
+	const bool bBuiltAgain = Scene.Mode->GoToFloor(2);
+	const int32 LeftHeldOut = Scene.Mode->ActorsHeldOutOfPlacementNow();
+	const TArray<FIntPoint> StatuesAgain = Scene.Mode->AngelicStatueCellsStanding();
+	const TArray<FIntPoint> ChasmsAgain = Scene.Mode->ThoseInTheDarkChasmCellsNow();
+
+	AddInfo(FString::Printf(TEXT("PLACED AROUND: statues %s, again %s; chasms %s, again %s; the player stood on the "
+								 "first statue's cell %s; %d actors still held out after the floor was populated"),
+							*CellsText(Statues), *CellsText(StatuesAgain), *CellsText(Chasms), *CellsText(ChasmsAgain),
+							bThePlayerHeldItsCell ? TEXT("yes") : TEXT("NO"), LeftHeldOut));
+
+	TestTrue(TEXT("CONTROL: the player stood on the first statue's cell"), bThePlayerHeldItsCell);
+	TestTrue(TEXT("the same floor was built again"), bBuiltAgain);
+	TestEqual(TEXT("the same statues in the same order"), CellsText(StatuesAgain), CellsText(Statues));
+	TestEqual(TEXT("the same chasms in the same order"), CellsText(ChasmsAgain), CellsText(Chasms));
+	TestEqual(TEXT("nothing is held out of the cells once the floor is populated"), LeftHeldOut, 0);
+
+	// THE SECOND CASE: THE LAST FLOOR'S PACK SITES. `PopulateFloor` sets them after the objects are placed, so while the
+	// statues are placed they are the last floor's, and a statue that avoided one stood elsewhere after a walk than
+	// after a load (window w106). A floor from 3 to 19 is walked until two or more of its creatures share a pack middle
+	// on one of the statues' cells -- a pack site, a creature's own cell being held by no other -- and floor 2 is built
+	// again from it. Ruled 2026-10-30.
+	int32 PackSiteFloor = INDEX_NONE;
+	FIntPoint OnTheStatue(-1, -1);
+	for (int32 Next = 3; Next <= 19 && PackSiteFloor == INDEX_NONE; ++Next)
+	{
+		if (!Scene.Mode->GoToFloor(Next))
+		{
+			break;
+		}
+		TMap<FIntPoint, int32> Middles;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Scene.Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && Creature->PackMiddleCell != FIntPoint(-1, -1))
+			{
+				++Middles.FindOrAdd(Creature->PackMiddleCell);
+			}
+		}
+		for (const FIntPoint& Statue : Statues)
+		{
+			if (Middles.FindRef(Statue) >= 2)
+			{
+				PackSiteFloor = Next;
+				OnTheStatue = Statue;
+				break;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a floor from 3 to 19 left a pack site on one of the statues' cells"),
+				  PackSiteFloor != INDEX_NONE))
+	{
+		return false;
+	}
+	const bool bBuiltAfterIt = Scene.Mode->GoToFloor(2);
+	const TArray<FIntPoint> StatuesAfterIt = Scene.Mode->AngelicStatueCellsStanding();
+
+	AddInfo(FString::Printf(TEXT("PLACED AFTER: floor %d left a pack site on the statue's cell (%d,%d); statues %s, "
+								 "built again after it %s"),
+							PackSiteFloor, OnTheStatue.X, OnTheStatue.Y, *CellsText(Statues),
+							*CellsText(StatuesAfterIt)));
+
+	TestTrue(TEXT("floor 2 was built again after it"), bBuiltAfterIt);
+	TestEqual(TEXT("after a floor whose pack site was a statue's cell, the same statues in the same order"),
+			  CellsText(StatuesAfterIt), CellsText(Statues));
 	return true;
 }
 

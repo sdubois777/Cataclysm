@@ -868,7 +868,8 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * it; the Demon Prince tests record what that cost to learn.
 	 */
 	ACataclysmDungeonGameMode* AFloorCarryingTheChampionsRow(
-		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+		ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None)
 	{
 		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
@@ -876,6 +877,13 @@ namespace CataclysmDungeonModifierEffectsTest
 							  Player.IsUsable()))
 		{
 			return nullptr;
+		}
+
+		// A HORDE DUNGEON FROM ITS FIRST FLOOR WHEN ASKED, the order play uses: the sub-type is set before `StartPlay`
+		// builds the first floor, so a later wave keeps that arena (`bThatArenaStands`). Issue #753, Group 3a.
+		if (SubType != ECataclysmDungeonSubType::None)
+		{
+			Mode->DungeonSubType = SubType;
 		}
 
 		Mode->StartPlay();
@@ -994,7 +1002,7 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	ACataclysmDungeonGameMode* AFloorCarryingTheMarchRow(
 		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
-		int32 Floor = 1)
+		int32 Floor = 1, ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None)
 	{
 		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
@@ -1002,6 +1010,13 @@ namespace CataclysmDungeonModifierEffectsTest
 							  Player.IsUsable()))
 		{
 			return nullptr;
+		}
+
+		// A HORDE DUNGEON FROM ITS FIRST FLOOR WHEN ASKED, the order play uses: the sub-type is set before `StartPlay`
+		// builds the first floor, so a later wave keeps that arena (`bThatArenaStands`). Issue #753, Group 3a.
+		if (SubType != ECataclysmDungeonSubType::None)
+		{
+			Mode->DungeonSubType = SubType;
 		}
 
 		Mode->StartPlay();
@@ -1338,7 +1353,7 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	ACataclysmDungeonGameMode* AFloorCarryingTheWraithsRow(
 		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
-		const TArray<FName>& AlsoCarrying = {})
+		const TArray<FName>& AlsoCarrying = {}, ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None)
 	{
 		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
@@ -1346,6 +1361,13 @@ namespace CataclysmDungeonModifierEffectsTest
 							  Player.IsUsable()))
 		{
 			return nullptr;
+		}
+
+		// A HORDE DUNGEON FROM ITS FIRST FLOOR WHEN ASKED, the order play uses: the sub-type is set before `StartPlay`
+		// builds the first floor, so a later wave keeps that arena (`bThatArenaStands`). Issue #753, Group 3a.
+		if (SubType != ECataclysmDungeonSubType::None)
+		{
+			Mode->DungeonSubType = SubType;
 		}
 
 		Mode->StartPlay();
@@ -17134,7 +17156,7 @@ bool FCataclysmChampionsFloorChangeTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player, ECataclysmDungeonSubType::Horde);
 	if (!Mode)
 	{
 		return false;
@@ -17163,7 +17185,6 @@ bool FCataclysmChampionsFloorChangeTest::RunTest(const FString& Parameters)
 
 	// A HORDE DUNGEON'S CHANGE OF WAVE, which is the case the record above
 	// `VolatileEvolutionMutated` is written for: the creatures live through it.
-	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
 	{
 		return false;
@@ -17898,7 +17919,7 @@ bool FCataclysmWraithFloorChangeTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player, {}, ECataclysmDungeonSubType::Horde);
 	if (!Mode)
 	{
 		return false;
@@ -17931,7 +17952,6 @@ bool FCataclysmWraithFloorChangeTest::RunTest(const FString& Parameters)
 
 	// A HORDE DUNGEON'S CHANGE OF WAVE, which is the case the record of which creatures are
 	// wraiths is written for: the creatures live through it.
-	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
 	{
 		return false;
@@ -19388,7 +19408,7 @@ bool FCataclysmMarchFloorChangeTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 6);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 6, ECataclysmDungeonSubType::Horde);
 	if (!Mode)
 	{
 		return false;
@@ -19411,7 +19431,6 @@ bool FCataclysmMarchFloorChangeTest::RunTest(const FString& Parameters)
 
 	// A HORDE DUNGEON'S NEXT WAVE SHARES THE ARENA, so this creature is still standing
 	// after the floor changes -- and the next floor does not carry the row at all.
-	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	Mode->DungeonModifiers = {};
 	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(7)))
 	{
@@ -20637,7 +20656,8 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * every assertion about a rung.
 	 */
 	ACataclysmDungeonGameMode* AFloorCarryingTheResurgenceRow(
-		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+		ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None)
 	{
 		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
@@ -20645,6 +20665,13 @@ namespace CataclysmDungeonModifierEffectsTest
 							  Player.IsUsable()))
 		{
 			return nullptr;
+		}
+
+		// A HORDE DUNGEON FROM ITS FIRST FLOOR WHEN ASKED, the order play uses: the sub-type is set before `StartPlay`
+		// builds the first floor, so a later wave keeps that arena (`bThatArenaStands`). Issue #753, Group 3a.
+		if (SubType != ECataclysmDungeonSubType::None)
+		{
+			Mode->DungeonSubType = SubType;
 		}
 
 		Mode->StartPlay();
@@ -20957,7 +20984,7 @@ bool FCataclysmResurgenceNextFloorTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player, ECataclysmDungeonSubType::Horde);
 	if (!Mode)
 	{
 		return false;
@@ -20982,7 +21009,6 @@ bool FCataclysmResurgenceNextFloorTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
 	{
 		return false;

@@ -294,6 +294,9 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	{
 		Creature->SetPlacedDamageMultiplier(Saved.PlacedDamageMultiplier);
 	}
+	// AND HOW FAR IT SEES AND WHICH OF ITS ROWS THE FLOOR GAVE, each its own default when not saved. Issue #753, Group 3a.
+	Creature->SightRadiusMultiplier = Saved.SightRadiusMultiplier;
+	Creature->FloorRealityRow = Saved.FloorRealityRow;
 
 	// AND THE VITALS LAST, AFTER THE CREATURE HAS APPLIED ITS OWN STAT BLOCK.
 	// `ApplyStartingAttributes` runs from BeginPlay and writes the archetype's
