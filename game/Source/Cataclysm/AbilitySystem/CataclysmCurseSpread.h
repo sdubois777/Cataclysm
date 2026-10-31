@@ -11,7 +11,9 @@
  *
  * WHAT ASKS FOR IT. The Wand's Anathema: "anything that dies while damned
  * passes the curse to the nearest living enemy." Its row states
- * `OnDeath=SpreadDebuff` and `OnDeathRange=8`, and nothing read either.
+ * `OnDeath=SpreadDebuff` and `OnDeathRange=8`, and nothing read either. The
+ * Staff's Quarry states the same two, for "if the quarry dies before the mark
+ * expires, it jumps to the nearest enemy".
  *
  * A COMPONENT RATHER THAN STATE KEPT SOMEWHERE ELSE, for one reason that
  * settles it: the instruction outlives the skill that gave it. Anathema is a
@@ -66,6 +68,10 @@ public:
 	 * IT RUNS BEFORE THE CORPSE IS COUNTED AS DEAD, so `FindEnemiesInSphere`
 	 * does not have to be asked to skip it: the dying creature is excluded by
 	 * name instead.
+	 *
+	 * THE NEW HOLDER IS MARKED IN TURN, with the same caster and range, so its
+	 * own death passes the curse on again. Ruled 2026-10-31 for Anathema and the
+	 * Staff's Quarry alike.
 	 */
 	static int32 SpreadFromDying(AActor* Dying);
 

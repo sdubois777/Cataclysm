@@ -6858,6 +6858,53 @@ bool FCataclysmCurseDoesNotSpreadUnaskedTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassedCursePassesAgainTest,
+	"Cataclysm.Skills.ACursePassedOnDeathPassesAgainWhenItsNewHolderDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassedCursePassesAgainTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THREE ENEMIES IN A LINE, FIVE METRES APART. Only the first is inside the five metre ring; the third is ten metres
+	// from the first, outside the eight the row states, so only a second pass, from the second enemy, can reach it.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Damned(World, FVector(4 * M, 0, 0));
+	FScopedFighter Second(World, FVector(4 * M, 5 * M, 0));
+	FScopedFighter Third(World, FVector(4 * M, 10 * M, 0));
+
+	// "ANYTHING THAT DIES WHILE DAMNED passes the curse to the nearest living enemy", and a creature the curse passed
+	// to is damned. Ruled 2026-10-31, the same rule as the Staff's Quarry.
+	Caster.GiveFervourForUltimates(1);
+	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=5; Angle=360; EffectDuration=10; Effect=Madness; "
+			 "OnDeath=SpreadDebuff; OnDeathRange=8"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.PointBlank"));
+	if (!Damn)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Damn));
+	TestTrue(TEXT("The enemy in the ring is damned"), Carries(Damned, TEXT("Madness")));
+	TestFalse(TEXT("The second is not"), Carries(Second, TEXT("Madness")));
+
+	TestTrue(TEXT("The damned enemy dies"), UCataclysmSkillEffects::MarkDead(Damned.Actor));
+	TestTrue(TEXT("The curse passes to the second enemy"), Carries(Second, TEXT("Madness")));
+	TestFalse(TEXT("And not yet to the third, ten metres from the first"), Carries(Third, TEXT("Madness")));
+
+	TestTrue(TEXT("The second enemy dies"), UCataclysmSkillEffects::MarkDead(Second.Actor));
+	TestTrue(TEXT("The curse passes again, to the third"), Carries(Third, TEXT("Madness")));
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // The Axe's set: a returned cooldown, a buried axe that moves on, a throw that
 // glances onward, a rack emptied over time, and a buff fed by kills. Issue #37.
