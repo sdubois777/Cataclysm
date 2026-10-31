@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — Plague Convergence keeps its stacks, its creatures and its start across a load; a standing Infection Bloom keeps its waves, spread and health; a trick's pair, an Unstable Portal's Warden and a raised creature's drop mark come back (#753, Group 3d-4a)
+
+**Affects:** `bDroppedByARaisedCreature` on `FCataclysmSavedGroundItem`, and `bPlagueConvergenceBegun`,
+`PlagueConvergenceStacks`, `InfectionBloomPatchPoints` and `InfectionBloomHealthLeft` on `FCataclysmSavedFloorRuleState`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); `FCataclysmSaveGather::GroundItemFrom` and
+`FCataclysmSaveApply::GroundItemInto`; four more tags of `RaisedByOf`, the lists `TrickOrTreatPair` and
+`UnstablePortalWardens` (new, filled by `RaiseTheTrickOrTreatPair` and `RaiseTheUnstablePortalsWarden`, emptied where the
+floor change empties `CreaturesRaisedByARule`) and their getters, `RestoreCreatureRoles`, `FloorRuleStateNow` and
+`RestoreFloorRuleState` on `ACataclysmDungeonGameMode`; the fixture `game/Tests/SaveFixtures/Run_v1.json`; five new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: 3d-4b follows.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **A COST EVERY LOAD RESET, read in the code and checked by hand: Plague Convergence's disease stacks.** Nothing under
+  `Save/` named `PlagueConvergenceStacks`, and `ApplyFloorRulesToPlayer` sets it to nought on every floor change, a load's
+  included. Up to 6 stacks, burning up to 16% of maximum health a second, went with a quit and a reload, with up to 30 of
+  its creatures and 120 s of quiet.
+- **WHAT ELSE A LOAD DID, read in the code (two read-only agents' traces, the main claims checked by hand):** a standing
+  Infection Bloom's waves were gone, uncapped as they are, its spread went back to one patch and the bloom to full health;
+  a trick's pair was gone for good, so a pickup, a quit and a reload kept the treat and escaped the trick; an Unstable
+  Portal's Warden was gone for good, its fight escaped and its reward lost; and a drop a raised creature left lost its
+  mark, so Trick or Treat could roll for it after a load, a reward gained by loading.
+- **NO RULE CREATURE WITHOUT A TAG IS NEWLY SAVED:** `RaisedByOf` answers from four more membership tests,
+  `PlagueConvergenceCreatures`, `InfectionBloomWaveCreatures`, `TrickOrTreatPair` and `UnstablePortalWardens`.
+- **OTHER READERS SWEPT:** 3c-1's rule-creatures test destroys its bloom before the save, so no spread or health is saved
+  for it; no other existing test reads these lists, the convergence's stacks or a drop's mark across a load.
+
+### Rulings, 2026-10-31
+
+- **Q1. Plague Convergence's start survives a load:** begun is progress, like the War Banner's seconds held; the 120 s is
+  the wait before it begins. Only the 10 s wave clock restarts (D1). The stacks are saved, a cost built up, as Group 1's.
+- **Q3 (a). A standing Infection Bloom's spread and lost health are saved. (b) A drop's raised-creature mark is saved:**
+  without it a reload re-rolled a raised creature's drop. **(c) The stairs' wait for the player to step off is not
+  saved:** stepping off and on gives the same re-roll in play.
+- **The order:** 3d-4a here; 3d-4b the Reaper (with its being unable to be hurt), the Corrupted Stalker (standing and
+  where, raised at once there; mana and cooldowns restart under D1, and none of the owner's Stalker decisions of
+  2026-10-25 and 2026-10-26 changes) and Portal Unleashing.
+
+### What changes
+
+| Kind | Saved | Put back |
+|---|---|---|
+| Plague Convergence's creatures (`PlagueConvergence`) | as records | into `PlagueConvergenceCreatures`, paying nothing, on the floor's list |
+| Its start and stacks | begun; the stacks | the floor's seconds set where it begins; the stacks |
+| Infection Bloom's waves (`BloomWave`) | as records | into `InfectionBloomWaveCreatures`, paying nothing, off the floor's list |
+| A standing bloom's spread and health | the points; the health left | the points, whose patches the beat draws; the health |
+| A trick's pair (`TrickOrTreat`) | as records | into `TrickOrTreatPair`, paying |
+| An Unstable Portal's Warden (`UnstablePortalWarden`) | as a record | into `UnstablePortalWardens`, paying, at its rung |
+| A drop's raised-creature mark | on the ground item | on the drop put back |
+
+### Tests
+
+The first four through `ARaisedRoundTrip`, beat first, then halved, then saved; the last a round trip of its own.
+
+- `Cataclysm.SaveLoad.APlagueConvergenceGoesOnAfterALoad`: 121 s from the entrance, the first wave come whole (3, asserted),
+  two of its blows on the player, which stack. After the load also: the stacks carried still, and after 11 s a wave has
+  come. Prints "LOAD CONVERGENCE" and "LOAD CONVERGENCE STACKS".
+- `Cataclysm.SaveLoad.AnInfectionBloomsWavesAndSpreadComeBackAfterALoad`: 46 s, a wave sent and the spread grown, the bloom
+  at half health. After the load also: no wave on the floor's list, the bloom at half health, its patches as saved.
+  Prints "LOAD BLOOM WAVES" and "LOAD BLOOM".
+- `Cataclysm.SaveLoad.ATricksPairStillStandsAfterALoad`: `Cataclysm.TrickOrTreatRoll` pinned to a trick and put back; a
+  drop taken by hand. Prints "LOAD TRICK OR TREAT".
+- `Cataclysm.SaveLoad.AnUnstablePortalsWardenStillStandsAfterALoad`: `Cataclysm.UnstablePortalRoll` pinned to 90 and put
+  back; the stairs reached. The mark asserted is the mini-boss rung. Prints "LOAD PORTAL WARDEN".
+- `Cataclysm.SaveLoad.ARaisedCreaturesDropKeepsItsMarkAfterALoad`: a dungeon with no rows, a marked drop and a plain one.
+  After the load: the marked drop marked and the plain one not. Prints "LOAD RAISED DROP".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4444 / 0: window w118's 4439 on `development` (9b225263a), + 5 |
+| Python | of record, with JUnit, and ruff |
+| P1, the stacks not put back (`PlagueConvergenceStacks = State.PlagueConvergenceStacks;`) | the convergence test fails on "the disease stacks are carried still" (0) only; no other test reads the stacks |
+| P2, the start not put back (`... = UCataclysmDungeonModifierEffects::PlagueConvergenceBeginsAfterSeconds; // A load's: begun.`) | the convergence test fails on "and, begun, a wave comes on its cadence" only: no wave comes before 120 s |
+| P3, a convergence creature not put back (`PlagueConvergenceCreatures.Add(&Creature); ...`) | the convergence test fails on "each at the health it was saved at, not full" (0) only: with the rule's list empty and the start put back, the first beat after the load brings a fresh wave at full health, which the list then holds; "as many stand ..." passes when that wave also comes whole (3), which its line shows, a spawn being able to fall short; a wave after 11 s still comes |
+| P4, a bloom's wave not put back (`InfectionBloomWaveCreatures.Add(&Creature); ...`) | the bloom test fails on "as many stand ..." (0) only; "no wave is on the floor's list" passes, the list being empty |
+| P5, the spread not put back (`InfectionBloomPatchPoints = State.InfectionBloomPatchPoints; ...`) | the bloom test fails on "and its spread" (1) only |
+| P6, the bloom's health not put back (`Abilities && State.InfectionBloomHealthLeft > 0.0f)` broken) | the bloom test fails on "the bloom keeps the health it had left" (1.0) only |
+| P7, a trick's pair not put back (`TrickOrTreatPair.Add(&Creature); ...`) | the trick test fails on "as many stand ..." (0) only; no other test reads `TrickOrTreatPair` |
+| P8, a portal's Warden not put back (`UnstablePortalWardens.Add(&Creature); ...`) | the portal test fails on "as many stand ..." (0) only; no other test reads `UnstablePortalWardens` |
+| P9, a drop's mark not put back (in `CataclysmSaveApply.cpp`, `Drop->bDroppedByARaisedCreature = Saved.bDroppedByARaisedCreature; ...`) | the drop test fails on "the raised creature's drop keeps its mark" only; no other test reads the mark across a load |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
+the first attempt (a new worktree, so everything was compiled).
+
+---
+
 ## 2026-10-31 — A woken statue's warden, Warzone's attackers and allies, voidlings, and Carrion Feast's feeders and carcasses standing at a save come back after a load (#753, Group 3d-3b)
 
 **Affects:** `CarrionFeederOwnMaxHealth` on `FCataclysmSavedCreature` and `CarrionCarcasses` on
