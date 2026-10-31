@@ -479,6 +479,30 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Data.EffectSpec.GetAllGrantedTags(Granted);
 				Hit.bIsBleed = Granted.HasTag(UCataclysmDebuffs::BleedTag());
 
+				// A BLEED TICKS ONLY WHILE ITS TARGET MOVES, AND STOPS AFTER 4 SECONDS OF MOVEMENT. Issue #918, ruled
+				// 2026-10-31. "Moving" is the movement sampler's answer, the one every movement condition reads, so a
+				// knockback or a pull counts. A tick on a carrier last seen standing still deals nothing and uses none
+				// of the four seconds; the bleed's own window runs on either way, so a carrier that stands still for
+				// all of it takes nothing. Seconds are moving ticks times the period, so a faster tick rate still
+				// fits more ticks into the four seconds.
+				if (Hit.bIsBleed)
+				{
+					if (UCataclysmAbilitySystemComponent* Carrier =
+							Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+					{
+						if (!Carrier->IsMoving()
+							|| Carrier->BleedMovingSeconds
+								>= UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER)
+						{
+							Hit.Damage = 0.0f;
+						}
+						else
+						{
+							Carrier->BleedMovingSeconds += Data.EffectSpec.GetPeriod();
+						}
+					}
+				}
+
 				// AND WHICH AILMENT IT IS, for a defender's row that names one.
 				// Ruled 2026-10-06. Every granted tag under the damage over time
 				// parent; a tick with no ailment grants none and carries none.

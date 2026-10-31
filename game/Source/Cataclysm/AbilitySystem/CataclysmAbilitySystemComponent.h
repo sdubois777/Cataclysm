@@ -2733,6 +2733,15 @@ public:
 	bool IsMoving() const { return bMovedInLastSample; }
 
 	/**
+	 * The seconds of movement the bleed this character carries has ticked through. Issue #918, ruled 2026-10-31: a
+	 * bleed ticks only while its target moves and stops after `UCataclysmDebuffs::BleedMovingSecondsCap` seconds of
+	 * movement, counted as moving ticks times the tick's period, so the tick-frequency stat still works. Added to by
+	 * `UCataclysmVitalAttributeSet` at each moving tick; restarted by `UCataclysmSkillEffects::ApplyDamageOverTime`
+	 * whenever a bleed is applied, since a character carries one bleed at a time.
+	 */
+	float BleedMovingSeconds = 0.0f;
+
+	/**
 	 * Whether a movement sample has looked at this character yet.
 	 * Issue #41, slice 2.
 	 */
