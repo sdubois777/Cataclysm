@@ -54,6 +54,11 @@ errors 0, skipped 8, the count #1634's own run printed, as this change touches n
 passed!" A
 regenerate run left `game/Data` unchanged. The C++ evidence is the continuous integration "Game compiles" job.
 
+Moved again onto `development` `4aa87ab3e` (#753 Group 3b merged; it changes no Python file) as
+`docs/radii-written-as-widths-in-cpp-comments-and-test-messages-2`, every file's change identical to the original.
+Python of record at `cb70f6d2e`: "7171 passed, 8 skipped in 193.36s"; JUnit tests 7179, failures 0, errors 0,
+skipped 8. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged.
+
 ### NO GENRE SOURCE
 
 None. This is a repair to comments.
