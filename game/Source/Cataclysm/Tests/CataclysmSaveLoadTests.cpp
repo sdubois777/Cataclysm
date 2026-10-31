@@ -3300,7 +3300,14 @@ namespace CataclysmSaveLoadTest
 			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
 			Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		}
-		UCataclysmSkillEffects::ApplyHit(&Player, Victim, 100000.0f);
+		// A TEST'S KILL DOES NOTHING TO THE KILLER: the hit carries the game's own no-retaliation mark, which Thorns of
+		// Glass's retaliation and a reflected melee hit both read and answer nothing to. Without it a 100000 hit on a
+		// creature carrying Thorns of Glass dealt half of it back and killed the test player, and its placement was not
+		// saved (window w114, 2026-10-31). The mark and not the creature's Retaliation attribute at nought, because the
+		// amount is read through the stat pipeline with the attribute only as its fallback. Issue #753, Group 3d-2.
+		FCataclysmHitDelivery NoRetaliation;
+		NoRetaliation.bCannotBeRetaliatedAgainst = true;
+		UCataclysmSkillEffects::ApplyHit(&Player, Victim, 100000.0f, FGameplayTagContainer(), NoRetaliation);
 		return Test.TestTrue(FString::Printf(TEXT("set-up: %s died"), What), UCataclysmSkillEffects::IsDead(Victim));
 	}
 

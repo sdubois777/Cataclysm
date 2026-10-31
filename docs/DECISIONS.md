@@ -18,6 +18,11 @@ stays open: 3d-3 follows.
 ### SAID FIRST
 
 - **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WINDOW w114 STOPPED AT THE SECOND TEST ALONE, ON ITS NEW SET-UP ASSERTION: THE TEST PLAYER WAS KILLED BY THE TEST'S OWN
+  KILL.** `KillOnTheFloor`, the 3c-1 helper every round trip kills with, hit for 100000; a creature carrying Thorns of Glass
+  deals half of a hit back, which killed the 510-health player. The helper's hit now carries the game's no-retaliation
+  mark. Below, under Run, with the sweep of every other way that hit could hurt the player. The assertion that caught it
+  was added for exactly this (the inference about "with no placement saved", above).
 - **WHAT A LOAD DID BEFORE THIS, read in the code on 2026-10-30 and 2026-10-31, not run:**
   - Morale Break: no creature's group or flags were saved, so every group's leader read dead on the first beat,
     nobody panicked, and creatures that had escaped before the save were forgotten and never came back.
@@ -95,7 +100,7 @@ back and asserted back. Each set-up asserts the player alive at the save.
 | Figure | Registered |
 |---|---|
 | The six new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4425 / 0: window enchant-quarry-w1's 4419 (the Quarry fix, #2648, now in `development` b5add4116), + 6 |
+| Whole Unreal suite | NOT YET SET for window w115: the curse chain window's measured total (the enchantment session's, which adds 3), + 6; set when 3d-2 moves onto the head that merges it. Window w114 was registered at 4425 on b5add4116 and stopped before the suite |
 | Python | of record, with JUnit, and ruff |
 | P1, a creature's group not put back | the leaders test fails on "the leaders stand as leaders after the load" (0) only: no restored creature is in a group, so no group finds its leader and each reads fallen on the first beat, and its panic finds nobody, so "and nobody panics" passes; with no leader standing nothing is killed. The escaped test passes: its group had fallen and its escaped are the floor record's |
 | P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
@@ -118,6 +123,42 @@ Moved onto `development` b5add4116 (#2648, the Quarry fix, and #2649, one line o
 `feat/load-keeps-groups-and-trails-1`, the suite registered at 4425. 3d-2's own change is the same before and after the
 move: 956c2d827 to 700bd90d5 and b5add4116 to the moved head before this paragraph, each 6 files, 902 insertions, 13
 deletions.
+
+**Window w114, 2026-10-31, 13:31, on 4e59518b1: STOPPED.** Pre-checks at 13:30:45 all passing. The build was up to date
+(`0 actions, nothing compiled`). `MoraleBreaksLeadersStillLeadAfterALoad` alone: `1 tests performed, 1 succeeded, 0
+failed`, printing "after a beat 30/30 leaders, 0 panicked; a leader killed, 9 panicked".
+`CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad` alone: `1 tests performed, 0 succeeded, 1 failed`, its only error
+"Expected 'set-up: the player is alive at the save' to be false"; the runner printed "STOPPED: a new test alone did not
+pass", and nothing after it ran. Nothing was re-run.
+
+**THE CAUSE, read from the engine log and the code.** The log's lines in order, after floor 2 was built: "CataclysmPlayerCharacter_0
+died at 0 of 510 health", then "Morale Break: group 116's leader died; 9 panic", then "group 116's flight is over; 9
+escaped": the player died at the leader's kill, and the rest of the set-up worked. `KillOnTheFloor` hit for 100000;
+`Generic_Thorns_of_Glass` gives a creature retaliation of `ThornsOfGlassRetaliationPercent` (50), "DEALS BACK HALF OF WHAT
+IT TAKES". THAT THIS LEADER CARRIED THORNS OF GLASS IS AN INFERENCE: the log lists each creature's modifiers by its actor
+name, and many floor-2 creatures drew Thorns of Glass, but the Morale Break lines name the group and not the leader, so
+the log cannot say which creature led group 116.
+
+**THE HELPER'S CHANGE, approved 2026-10-31: a test's kill must not act on the killer.** `KillOnTheFloor` passes an
+`FCataclysmHitDelivery` with `bCannotBeRetaliatedAgainst`, which tags the hit with the game's no-retaliation mark. The
+approval named the creature's Retaliation attribute set to nought; the mark is used instead, because the amount is read
+through the stat pipeline (`UCataclysmRetaliation::AmountFor` asks `StatForSkill` with the attribute only as the fallback),
+and both places that answer a hit read the mark. No assertion of any test changes; the 3c-1 and 3d-1 round trips' kills
+now cannot kill their player either. No guard proof is registered for it: which creature draws Thorns of Glass is rolled,
+not seeded, so no test can be made to fail without it every time.
+
+**THE SWEEP, every way a 100000 hit from the player could hurt the player, 2026-10-31:**
+
+| Path | What it does | In the helper |
+|---|---|---|
+| Thorns of Glass's retaliation (`UCataclysmVitalAttributeSet`, the retaliation branch) | deals a share of the hit taken back to the attacker | answers nothing to the no-retaliation mark |
+| A reflected melee hit (`MeleeIsReflected`, `UCataclysmRetaliation::PayReflected`) | an item's chance to reflect a melee hit, worn by players; the reflection is asked only of a hit without the mark | answers nothing to the no-retaliation mark |
+| Creature modifiers on death: Horde Leader (`RallyAlliesOnDeath`) | buffs nearby allies; no damage | cannot hurt the player |
+| Infernal Brand (`BrandOnHit`) | explodes on what the creature hits, at five brands | fires on the creature's hits, not on hits it takes |
+| Hellfire Aura, Abyssal Aura, Inferno Charge, Starving Aura | damage or slow the player over time or by the creature's own action | not a hit taken. NOT TRACED IN FULL: the auras step on each creature's own per-character step (`PhaseStep`'s comment: "the same per-character step the auras use"), which a test's `BeatOnce` does not run, being the game mode's beat alone |
+| Beguiling, Unholy Sigils | the first charms the player when hit, so the player's next direct hit lands nothing; the second keeps allies in its sigil from dying | do not hurt the player; a kill they stop fails the helper's own "set-up: ... died" assertion, loudly |
+| The floors' dungeon rules (Morale Break, Plague Harbingers, Grim Totems, Reality Rifts, Carrion Feast; 3c-1's and 3d-1's) | none damages the player on a kill; a Harbinger's death weakens creatures, and its patches burn only where they lie | cannot hurt the player at the entrance |
+| Rows worn by the test player | the round trips' player is spawned bare (`MakeScene`) and nothing equips it | none worn |
 
 ---
 
