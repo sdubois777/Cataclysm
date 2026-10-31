@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — The creatures a floor object raised and that stand at a save come back after a load, their health and their rule kept: tithe angels, relic spirits, totem Elites, banner assailants and Pandora's waves (#753, Group 3d-3a)
+
+**Affects:** `RaisedBy` and `RaisedGroup` on `FCataclysmSavedCreature`, `FCataclysmSavedPandoraWaves` (new) and
+`PandoraWaves` on `FCataclysmSavedFloorRuleState` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); the skip in
+`FCataclysmSaveGather::FloorFrom` (`CataclysmSaveGather.cpp`); `RaisedByOf`, its five tags and
+`PandorasBoxWavesCameNow` (new), `RestoreCreatureRoles`, `FloorRuleStateNow` and `RestoreFloorRuleState` on
+`ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`;
+five new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: 3d-3b and a 3d-4 proposal follow.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WHAT A LOAD DID BEFORE THIS, read in the code, not run:** the gather skipped every creature a rule raised ("NOR IS A
+  CREATURE A FLOOR RULE MADE"), so a refused tithe's angels, an activated relic's spirits, an embraced totem's Elites, a
+  planted banner's assailants and a Pandora's Box's standing wave were gone after a load, and with the box's waves list
+  emptied by the rebuild its waves not yet come never came: a cost the player escaped by loading.
+- **NO RULE CREATURE WITHOUT A TAG IS NEWLY SAVED, AND THE CODE SHOWS IT:** the gather's skip is now
+  `Creature->bRaisedByARule && !(DungeonMode && DungeonMode->RaisedByOf(*Creature, RaisedBy, RaisedGroup))`, and
+  `RaisedByOf` returns true only from five branches, each a membership test of one list: `TitheAngels`, `RelicSpirits`,
+  `GrimTotemElites`, `BannerAssailants`, and each of `PandorasBoxWaves`' `Standing`; it returns false at its end for any
+  other creature. Those five lists are filled only by `BringTheTitheAngels`, `ChooseAtBattlefieldRelic`,
+  `ChooseAtGrimTotem`'s embrace, `BringABannerWave`, and `ChooseAtPandorasBox` and `StepPandorasBox`, each from
+  `BringCreaturesNear`, and by the load's own restore.
+- **THE RAISED KINDS NOT IN 3d-3, ruled 2026-10-31 (QB of 3d-3):** Mind-Shattering Illusions' illusions stay unsaved,
+  under Group 2's ruling that an illusion is not saved ("NOR AN ILLUSION", `CataclysmSaveGather.cpp`). The Reaper, the
+  Corrupted Stalker, Plague Convergence's waves, Infection Bloom's sent waves, Portal Unleashing's creatures, the Trick or
+  Treat pair and the Unstable Portal's Warden go to a 3d-4 PROPOSAL, which names for each the rule state it needs and
+  proposes save or skip with a reason: a standing hostile creature a load removes is a cost the player escapes.
+- **ECHOES STANDING AFTER THEIR STRIKE ARE NOT BROUGHT BACK, ruled 2026-10-31 (QC):** they cannot be hurt and are
+  dismissed a second after striking, and 3d-1 loads their stage 2 as struck.
+
+### Rulings, 2026-10-31
+
+- **Q5 of 3d (2026-10-30): records, with a tag naming the rule that raised the creature and its group,** superseding
+  "re-brought by count"; counts stay only for Pandora's waves not yet come.
+- **QD of 3d-3: two parts,** this one first: the creatures floor objects bring. 3d-3b: the Angelic wardens, Warzone's
+  attackers and allies, the voidlings, and Carrion Feast's feeders and carcasses (QA: carcasses as positions).
+
+### What changes
+
+Each tagged creature is saved through the ordinary path, its health, rung, modifiers, sight and place kept, and the load
+spawns it from its record onto the floor's list, as every creature is spawned. `RestoreCreatureRoles` then marks it raised
+by a rule by both marks (`bRaisedByARule` and `CreaturesRaisedByARule`), as `BringCreaturesNear` marks it, so the stairs'
+seal and the clear, which count only the floor's own (`IsOneOfTheFloorsOwnStanding`), count it as before the save; it
+pays for its death, as it did.
+
+| Kind (tag) | Its mark | Its rule's list | Group |
+|---|---|---|---|
+| A tithe's angel (`TitheAngel`) | `bIsATitheAngel` | `TitheAngels` | none |
+| A relic's spirit (`RelicSpirit`) | `bIsARelicSpirit` | `RelicSpirits` | none |
+| A totem's Elite (`GrimTotemElite`) | none of its own | `GrimTotemElites` | none |
+| A banner's assailant (`BannerAssailant`) | `bIsABannerAssailant` | `BannerAssailants` | none |
+| A Pandora's Box spawn (`ChaosSpawn`) | `bIsAChaosSpawn` | `PandorasBoxWaves[group].Standing` | the place of its box's waves; the floor record keeps each box's waves' place and how many have come, and a wave with none standing brings the next on the beat |
+
+### Tests
+
+`ARaisedRoundTrip` drives each of the first four, and the Pandora test drives the same round trip by hand: the first
+pinned seed whose floor 2 lets the floor object raise some, the player at the entrance and alive at the save, those
+standing taken to half health. After the load and a beat, `TheRaisedCameBack` asserts: as many standing in the rule's list
+as saved; each at half health, not full; each carrying the rule's mark and the raised mark; none counted by
+`IsOneOfTheFloorsOwnStanding`, which the stairs' seal reads; and `LivingFloorEnemies()`, which the clear reads, as saved.
+
+- `Cataclysm.SaveLoad.ATithesAngelsStillStandAfterALoad`: the tithe refused. Prints "LOAD TITHE ANGELS".
+- `Cataclysm.SaveLoad.ARelicsSpiritsStillStandAfterALoad`: a relic activated. Prints "LOAD RELIC SPIRITS".
+- `Cataclysm.SaveLoad.AnEmbracedTotemsElitesStillStandAfterALoad`: a totem embraced. Prints "LOAD TOTEM ELITES".
+- `Cataclysm.SaveLoad.ABannersAssailantsStillStandAfterALoad`: the banner planted. Prints "LOAD BANNER ASSAILANTS".
+- `Cataclysm.SaveLoad.APandorasBoxsWavesGoOnAfterALoad`: the first pinned seed whose floor 2's first box lets out its
+  waves (the outcome is seeded, 3b); the first wave standing, whole (4), asserted. After the load: as above, and the waves come as saved (1);
+  the standing wave killed, a beat, and the next comes (2) and stands. Prints "LOAD CHAOS SPAWN" and "LOAD PANDORA
+  WAVES".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4434 / 0: window w115's 4429 on `development` (c4a41a50d), + 5 |
+| Python | of record, with JUnit, and ruff |
+| P1, a tithe angel not put back in its list (`TitheAngels.Add(&Creature); // A load's: a tithe angel.` broken) | the tithe test fails on "as many stand in the rule's list as were saved" (0) only: the restored angels stand, raised and marked, outside the list; the other assertions read the list's members, of which there are none, and the floor's own count, which they never were. No other test on any floor reads `TitheAngels` |
+| P2, a relic spirit not put back (`RelicSpirits.Add`) | the relic test fails on "as many stand ..." (0) only, for the same reason; no other test reads `RelicSpirits` |
+| P3, a totem Elite not put back (`GrimTotemElites.Add`) | the totem test fails on "as many stand ..." (0) only; the 3d-2 Grim cleanse test reads the cleanse's multiplier on `FloorEnemies` and not this list, and cleanses rather than embraces, so it raises no Elite |
+| P4, a banner assailant not put back (`BannerAssailants.Add`) | the banner test fails on "as many stand ..." (0) only; no other test reads `BannerAssailants` |
+| P5, a chaos spawn not put back in its wave (`PandorasBoxWaves[...].Standing.Add`) | the Pandora test fails on "each at the health it was saved at, not full", "the waves come are as saved" (2, not 1) and "and the next wave comes when the standing one is killed" (3, not 2), and passes "as many stand ..." when the second wave also comes whole (the set-up asserts the first did, `PandorasBoxWaveSize`, 4), which its line shows: the wave's place and count are put back with none standing, so the first beat after the load brings the second wave at full health, and killing it brings the third. No other test reads `PandorasBoxWaves` |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
+the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
+compile of the #2651 merge.
+
+---
+
 ## 2026-10-31 — A load keeps Morale Break's leaders, panicked and escaped, the Plague Harbingers and their trails, Grim Totems' cleanse, the Reality chamber's unarmed rift and Carrion Feast's count (#753, Group 3d-2)
 
 **Affects:** `FCataclysmSavedPatch` (moved before the creature record, which now holds one), `FCataclysmSavedEscapee` and
