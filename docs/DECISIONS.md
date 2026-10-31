@@ -95,7 +95,7 @@ back and asserted back. Each set-up asserts the player alive at the save.
 | Figure | Registered |
 |---|---|
 | The six new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | NOT YET SET: the Quarry window's measured total (enchant-quarry-w1, #1520, which adds 1), + 6; set when 3d-2 moves onto the head that merges it |
+| Whole Unreal suite | 4425 / 0: window enchant-quarry-w1's 4419 (the Quarry fix, #2648, now in `development` b5add4116), + 6 |
 | Python | of record, with JUnit, and ruff |
 | P1, a creature's group not put back | the leaders test fails on "the leaders stand as leaders after the load" (0) only: no restored creature is in a group, so no group finds its leader and each reads fallen on the first beat, and its panic finds nobody, so "and nobody panics" passes; with no leader standing nothing is killed. The escaped test passes: its group had fallen and its escaped are the floor record's |
 | P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
@@ -113,6 +113,11 @@ the first attempt (a new worktree, so everything was compiled). Python of record
 `7175 passed, 8 skipped in 195.64s`, the JUnit file tests 7183, failures 0, errors 0, skipped 8; ruff "All checks
 passed!". Both ran and ended before the enchantment session's Quarry window took the machine; the lock read free at
 12:49:35.
+
+Moved onto `development` b5add4116 (#2648, the Quarry fix, and #2649, one line of CLAUDE.md) as
+`feat/load-keeps-groups-and-trails-1`, the suite registered at 4425. 3d-2's own change is the same before and after the
+move: 956c2d827 to 700bd90d5 and b5add4116 to the moved head before this paragraph, each 6 files, 902 insertions, 13
+deletions.
 
 ---
 
