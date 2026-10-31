@@ -2810,6 +2810,24 @@ public:
 	void CreatureRolesInto(const ACataclysmEnemyCharacter& Creature, struct FCataclysmSavedCreature& Record) const;
 
 	/**
+	 * THE RULE THAT RAISED THIS CREATURE IN PLAY AND WOULD KNOW IT AGAIN, by a plain tag, and its group: true only for a
+	 * creature in one of these rules' lists -- the tithe's angels, the relics' spirits, the totems' Elites, the banner's
+	 * assailants, and a Pandora's Box's standing wave, its group the wave's index. Any other creature answers false, and
+	 * the save skips it if a rule raised it. Issue #753, Group 3d-3a, ruled 2026-10-31.
+	 */
+	bool RaisedByOf(const ACataclysmEnemyCharacter& Creature, FName& OutTag, int32& OutGroup) const;
+
+	/** The tags `RaisedByOf` answers. */
+	static constexpr const TCHAR* RaisedTitheAngel = TEXT("TitheAngel");
+	static constexpr const TCHAR* RaisedRelicSpirit = TEXT("RelicSpirit");
+	static constexpr const TCHAR* RaisedGrimTotemElite = TEXT("GrimTotemElite");
+	static constexpr const TCHAR* RaisedBannerAssailant = TEXT("BannerAssailant");
+	static constexpr const TCHAR* RaisedChaosSpawn = TEXT("ChaosSpawn");
+
+	/** Pandora's Box, for tests: how many waves the first box under way has let out, or 0 when none is. */
+	int32 PandorasBoxWavesCameNow() const { return PandorasBoxWaves.IsEmpty() ? 0 : PandorasBoxWaves[0].Came; }
+
+	/**
 	 * A LOAD'S, BEFORE ITS CREATURES ARE RE-LINKED: every Soul Chains gate forgets its bearers, which are the rebuilt
 	 * floor's fresh creatures the load has destroyed, and that it had any, so the next beat neither counts them dead nor
 	 * opens the gate and pays. `RestoreCreatureRoles` gives each closed gate its saved bearers back. Issue #753, 3c-1.

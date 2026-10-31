@@ -15310,6 +15310,90 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 	{
 		Creature.SetGrimTotemsDamageMultiplier(Saved.GrimTotemsDamageMultiplier);
 	}
+
+	// AND A CREATURE A RULE RAISED IN PLAY, BACK IN THAT RULE, since Group 3d-3a (Q5 of 3d, ruled 2026-10-31). Raised by
+	// a rule by both marks, as `BringCreaturesNear` raises it, so the stairs' seal and the clear do not count it, as they
+	// did not before the save; on the floor's list, where the load put it and `BringCreaturesNear` puts one; paying for
+	// its death, as it did; and its kind's mark and its place in its rule's list.
+	if (Saved.RaisedBy != NAME_None)
+	{
+		Creature.bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(&Creature);
+		if (Saved.RaisedBy == FName(RaisedTitheAngel))
+		{
+			Creature.bIsATitheAngel = true;
+			TitheAngels.Add(&Creature); // A load's: a tithe angel.
+		}
+		else if (Saved.RaisedBy == FName(RaisedRelicSpirit))
+		{
+			Creature.bIsARelicSpirit = true;
+			RelicSpirits.Add(&Creature); // A load's: a relic spirit.
+		}
+		else if (Saved.RaisedBy == FName(RaisedGrimTotemElite))
+		{
+			GrimTotemElites.Add(&Creature); // A load's: a totem Elite.
+		}
+		else if (Saved.RaisedBy == FName(RaisedBannerAssailant))
+		{
+			Creature.bIsABannerAssailant = true;
+			BannerAssailants.Add(&Creature); // A load's: a banner assailant.
+		}
+		else if (Saved.RaisedBy == FName(RaisedChaosSpawn) && Saved.RaisedGroup != INDEX_NONE)
+		{
+			// THE WAVE ITS BOX LET OUT, made here if this is the first of it put back; where it comes from and how many
+			// have come are the floor record's, put back by `RestoreFloorRuleState`.
+			Creature.bIsAChaosSpawn = true;
+			if (PandorasBoxWaves.Num() <= Saved.RaisedGroup)
+			{
+				PandorasBoxWaves.SetNum(Saved.RaisedGroup + 1);
+			}
+			PandorasBoxWaves[Saved.RaisedGroup].Standing.Add(&Creature); // A load's: a chaos spawn.
+		}
+	}
+}
+
+bool ACataclysmDungeonGameMode::RaisedByOf(const ACataclysmEnemyCharacter& Creature, FName& OutTag, int32& OutGroup) const
+{
+	ACataclysmEnemyCharacter* Mutable = const_cast<ACataclysmEnemyCharacter*>(&Creature);
+	const auto In = [Mutable](const TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>>& List)
+	{
+		return List.ContainsByPredicate([Mutable](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+		{
+			return One.Get() == Mutable;
+		});
+	};
+	OutGroup = INDEX_NONE;
+	if (In(TitheAngels))
+	{
+		OutTag = FName(RaisedTitheAngel);
+		return true;
+	}
+	if (In(RelicSpirits))
+	{
+		OutTag = FName(RaisedRelicSpirit);
+		return true;
+	}
+	if (In(GrimTotemElites))
+	{
+		OutTag = FName(RaisedGrimTotemElite);
+		return true;
+	}
+	if (In(BannerAssailants))
+	{
+		OutTag = FName(RaisedBannerAssailant);
+		return true;
+	}
+	for (int32 Index = 0; Index < PandorasBoxWaves.Num(); ++Index)
+	{
+		if (In(PandorasBoxWaves[Index].Standing))
+		{
+			OutTag = FName(RaisedChaosSpawn);
+			OutGroup = Index;
+			return true;
+		}
+	}
+	OutTag = NAME_None;
+	return false;
 }
 
 void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter& Creature,
@@ -15479,6 +15563,15 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 
 	// CARRION FEAST: the carcasses eaten on this floor. 3d-2.
 	Out.CarrionFeastStacks = CarrionFeastStacks;
+
+	// PANDORA'S BOX: each box's waves under way, where they come from and how many have come. Their standing spawn are
+	// records with the index as their group. 3d-3a.
+	for (const FPandorasBoxWaves& One : PandorasBoxWaves)
+	{
+		FCataclysmSavedPandoraWaves& Saved = Out.PandoraWaves.AddDefaulted_GetRef();
+		Saved.At = One.At;
+		Saved.Came = One.Came;
+	}
 	return Out;
 }
 
@@ -15746,6 +15839,19 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 
 	// CARRION FEAST: the carcasses eaten on this floor. Its carcasses and feeders are 3d-3's. Issue #753, Group 3d-2.
 	CarrionFeastStacks = State.CarrionFeastStacks;
+
+	// PANDORA'S BOX: each box's waves under way, where they come from and how many have come; their standing spawn were
+	// put back into them by `RestoreCreatureRoles`. A wave with none standing brings the next on the beat, as it would
+	// have, until all have come (the count kept, as ruled). Issue #753, Group 3d-3a.
+	if (PandorasBoxWaves.Num() < State.PandoraWaves.Num())
+	{
+		PandorasBoxWaves.SetNum(State.PandoraWaves.Num());
+	}
+	for (int32 Index = 0; Index < State.PandoraWaves.Num(); ++Index)
+	{
+		PandorasBoxWaves[Index].At = State.PandoraWaves[Index].At;
+		PandorasBoxWaves[Index].Came = State.PandoraWaves[Index].Came; // A load's: the waves come so far.
+	}
 	RefreshFloorModifierPanel();
 }
 

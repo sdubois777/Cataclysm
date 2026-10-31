@@ -199,7 +199,14 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		// Written back it would be an ordinary creature of its kind, with a brain, that could be hurt
 		// and paid for. `Cataclysm.LoadCharacter` restores a floor since 2026-10-30 (#753); until then
 		// this said no path in play did. Issues #1820 and #41.
-		if (Creature->bRaisedByARule)
+		//
+		// EXCEPT ONE A RULE RAISED IN PLAY AND KNOWS AGAIN, since Group 3d-3a (Q5 of 3d, ruled 2026-10-31): the rule's
+		// state is saved now, so the creature is saved as a record with a tag naming the rule, and the load puts it back
+		// into the rule's list. `RaisedByOf` answers a tag only for a creature in one of the lists it names; a creature
+		// in none of them is skipped here as before.
+		FName RaisedBy = NAME_None;
+		int32 RaisedGroup = INDEX_NONE;
+		if (Creature->bRaisedByARule && !(DungeonMode && DungeonMode->RaisedByOf(*Creature, RaisedBy, RaisedGroup)))
 		{
 			continue;
 		}
@@ -230,6 +237,8 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			Record.bFedByNothingIsForgotten = DungeonMode->IsTheVoidsBoss(Creature);
 			Record.SoulChainsGate = DungeonMode->SoulChainsGateBorneBy(Creature);
 			DungeonMode->CreatureRolesInto(*Creature, Record);
+			Record.RaisedBy = RaisedBy;
+			Record.RaisedGroup = RaisedGroup;
 		}
 		Saved.Creatures.Add(Record);
 	}
