@@ -15,7 +15,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w111, every figure as registered:** the three new tests, the whole suite at 4401 / 0,
+  and P1-P9 each proved on its registered assertions (P6 also failed the unpredicted drop check, recorded below).
 - **A FAULT IN MERGED CODE, CORRECTED HERE FIRST: EVERY DUNGEON LOAD OPENED EVERY CLOSED SOUL CHAINS GATE AND PAID ITS
   DROPS.** `ChooseTheSoulChainBearers`, which `PopulateFloor` calls, chose the gate's bearers from the rebuilt floor's
   fresh creatures; `FCataclysmSaveApply::DungeonFloorInto` then destroyed them, and `StepGatedShortcuts` counts a bearer
@@ -106,6 +107,47 @@ Before the window the branch was compiled with `python tools/unreal_build.py bui
 `Build: Failed - 77 actions, 67 files compiled`, three errors, all in `CataclysmSaveLoadTests.cpp` and all from "use of
 undefined type 'ACataclysmGroundZone'" (the rule-creatures test reads a patch's burn): the test file did not include
 the zone's header. It does now; the second: `Build: Succeeded - 5 actions, 1 file compiled: CataclysmSaveLoadTests.cpp`.
+
+Moved onto `development` 0427b8394 (#2639, comments and labels only) as `feat/rule-creatures-survive-a-load-2` at
+73c6349e3 and compiled again with no lock: `Build: Succeeded - 35 actions, 32 files compiled`. Python of record on that
+head: `7171 passed, 8 skipped in 210.26s`, the JUnit file tests 7179, failures 0, errors 0, skipped 8; ruff "All checks
+passed!".
+
+Window w111, 2026-10-30, 20:43 to 21:23, on 73c6349e3. Pre-checks measured at 20:43:36, all passing: `development`'s
+CI and Unreal runs succeeded on 0427b8394, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 12071 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The rule-creatures test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| The core test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| The Soul Chains test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4401 tests performed, 4401 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4401 performed, gap 0" |
+| Python | `7171 passed, 8 skipped in 190.17s`; JUnit tests 7179, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "Expected 'the bloom stays destroyed' to be null" only; restored 24 / 24 |
+| P2 | PROVED: "Expected 'the vein destroyed is counted once, after a beat' to be 1, but it was 2" only; restored 24 / 24 |
+| P3 | PROVED: "Expected 'and failed: no success counted' to be 0, but it was 1" only; restored 24 / 24 |
+| P4 | PROVED: "Expected 'and the woken statue's cell holds no pillar' to be false" only; restored 24 / 24 |
+| P5 | PROVED: "Expected 'the first coffin holds its two deaths' to be 2, but it was 0" only; restored 24 / 24 |
+| P6 | PROVED: "the closed gate stays closed after a beat", "with its two bearers" (0) and "and no gate rolled its reward again" (1), as registered; and "nor dropped anything" (33 expected, 35), which was not predicted and is recorded as the registration said; restored 24 / 24 |
+| P7 | PROVED: "Expected 'the gate opened before the save stays open' to be true" only; the line printed "rolls ... after the load 0", as traced; restored 24 / 24 |
+| P8 | PROVED: "the core stays destroyed" and "and the stairs stay unsealed"; restored 24 / 24 |
+| P9 | PROVED: "Expected 'its patch burns again' to be 1, but it was 0" and "'at the burn it was charged at' to be 5.100000, but it was -1.000000" only; restored 24 / 24 |
+
+The three printed lines, from the whole suite:
+
+```
+LOAD RULE CREATURES on seed 1: Loaded (... day 1, 235 creatures, placed where it was saved); containment broken, patches 1/1 burn 5.10/5.10; bloom destroyed; rift state 2, successes 0/0; veins standing 2/2 destroyed 1/1 guardians none; beacons standing 1/1; coffin deaths 2/2 lord none; statues (23,26)(2,11)/(23,26)(2,11), woken cell pillared no; creatures 235/235; drops 0/0
+LOAD CORE: Loaded (... day 1, 304 creatures, placed where it was saved); the core gone after the load; the stairs unsealed
+LOAD SOUL CHAINS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the first gate open, the second closed with 2 bearer(s); rolls before the save 1, after the load 0; drops 25/25
+```
+
+NOT EXPLAINED, recorded as seen: the drops lying on the floor differ from run to run of the same test (the Soul Chains
+test printed 23/23 alone, 25/25 in the suite and 33 in P6 and P7's runs; the rule-creatures test 0/0 and 1/1), and the
+Soul Chains test alone printed "with no placement saved" where the suite printed "placed where it was saved". Each test
+compares the count after the load with its own count before the save, so neither changes a verdict here; why they
+vary was not looked into.
 
 ---
 
