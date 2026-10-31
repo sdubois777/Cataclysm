@@ -17,7 +17,8 @@ stays open: 3d-3 follows.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w115:** the seven new tests, the whole suite at 4429 / 0, and P1-P9 each proved. ONE
+  PREDICTION WAS WRONG: P2 also failed the escaped test, which its trace said would pass (below, under Run).
 - **WINDOW w114 STOPPED AT THE SECOND TEST ALONE, ON ITS NEW SET-UP ASSERTION: THE TEST PLAYER WAS KILLED BY THE TEST'S OWN
   KILL.** `KillOnTheFloor`, the 3c-1 helper every round trip kills with, hit for 100000; a creature carrying Thorns of Glass
   deals half of a hit back, which killed the 510-health player. The helper's hit now carries the game's no-retaliation
@@ -171,6 +172,49 @@ Thorns of Glass is rolled, so the guard gives one creature its retaliation by th
 | The floors' dungeon rules (Morale Break, Plague Harbingers, Grim Totems, Reality Rifts, Carrion Feast; 3c-1's and 3d-1's) | none damages the player on a kill; a Harbinger's death weakens creatures, and its patches burn only where they lie | cannot hurt the player at the entrance |
 | Rows worn by the test player | the round trips' player is spawned bare (`MakeScene`) and nothing equips it | none worn |
 | Floor rules that answer the player's hit: Contagious Touch (its own "retaliation", from the floor's hazard source), Brand of the Aggressor, Holy Repercussions, Wasting Sickness, the Reaper, Plague Convergence, Mind-Shattering Illusions, Shadowy Enemies, Carrion Feast (`NoteHitFor...`) | each acts only on a floor carrying its row; Contagious Touch's charge is nought without stacks, which only creatures' touches give | the round trips' dungeons carry exactly the rows each test names (`PlaceADungeonCarrying` sets `Dungeon.Modifiers`), and none of them names these |
+
+Python of record on the moved head 9e48b1a6e: `7177 passed, 8 skipped in 196.82s`, the JUnit file tests 7185, failures 0,
+errors 0, skipped 8; ruff "All checks passed!". Compiled with no lock: `Build: Succeeded - 22 actions, 19 files
+compiled`, after one wait for the continuous integration runner's compile of the #2650 merge; the unity object holding
+`CataclysmSaveLoadTests.cpp` was written during that build.
+
+Window w115, 2026-10-31, 14:05 to 14:50, on 9e48b1a6e. Pre-checks measured at 14:05:22, all passing: `development`'s
+CI and Unreal runs succeeded on 193f459f2, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 11199 MB free (needs 10240). Every figure as registered but one prediction:
+P2 failed one test more than traced, below.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The seven new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4429 tests performed, 4429 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4429 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 191.30s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'the leaders stand as leaders after the load' to be 30, but it was 0" only, as traced |
+| P2 | PROVED, BUT ITS PREDICTION WAS WRONG IN ONE PART. The leaders test failed as traced: "... leaders ... to be 30, but it was 0" and "'and nobody panics' to be 0, but it was 135". THE ESCAPED TEST ALSO FAILED, which the trace said would pass: "'and come back' to be 0, but it was 125" and "'with their reinforcements' to be 231, but it was 106". The trace looked only at the group the test set up, whose leader had fallen; that floor holds about thirty other groups whose leaders stood at the save, and with none linked each read fallen on the first beat, panicked, fled and escaped, 125 still away at the 31 s the test reads |
+| P3 | PROVED: "'the escaped are still away after the load' to be 9, but it was 0" and "'with their reinforcements' to be 231, but it was 213" only, as traced |
+| P4 | PROVED: "... Harbingers ... to be 23, but it was 0", "'their patches burn again' to be 25, but it was 0", "'the moved one's trail is its own' to be 3, but it was -1" and "'and its death cleanses it' to be 22, but it was -1" only, as traced |
+| P5 | PROVED: "'their patches burn again' to be 25, but it was 0", "'the moved one's trail is its own' to be 3, but it was 0" and "'and its death cleanses it' to be 22, but it was 0" only, as traced, unconditionally |
+| P6 | PROVED: "'the creatures weakened stay weakened' to be 13, but it was 0" and "'at the cleanse's multiplier' to be 0.750000, but it was 1.000000" only, as traced |
+| P7 | PROVED: "Expected 'still in the chamber after a beat' to be true" only, its line reading "rolls 1", as traced |
+| P8 | PROVED: "'the carcasses eaten come back' to be 1, but it was 0" only, as traced |
+| P9 | PROVED, by its full name: "'the player's health is as it was' to be 510.000000, but it was 0.000000" and "Expected 'and the player is alive' to be false", both as predicted; its line "it would deal back 50000.0 of a 100000 hit; the player's health 510.0 before the kill, 0.0 after, DEAD" measures what w114's death was inferred from |
+
+Each proof's restored half: P1 to P8 `41 tests performed, 41 succeeded, 0 failed`; P9, by its full name, `1 tests
+performed, 1 succeeded, 0 failed`.
+
+The seven printed lines, from the whole suite:
+
+```
+LOAD MORALE LEADERS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 30/30 leaders, 0 panicked; a leader killed, 9 panicked
+LOAD MORALE ESCAPED on seed 1: Loaded (... day 1, 213 creatures, placed where it was saved); away after the load 9/9, after 31 s 0; creatures standing 231 (saved 213, expected 231)
+LOAD HARBINGERS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 23/23 alive, 25/25 patches, the moved one's 3/3; after its death 22
+LOAD GRIM CLEANSE on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 13/13 weakened, at 0.750
+LOAD REALITY CHAMBER on seed 5: Loaded (... day 1, 167 creatures, placed where it was saved); in the chamber at the load yes, after a beat yes; rolls 1
+LOAD CARRION: Loaded (... day 1, 222 creatures, placed where it was saved); after a beat 1/1 carcass(es) eaten
+TEST KILL REFLECTS: it would deal back 50000.0 of a 100000 hit; the player's health 510.0 before the kill, 510.0 after, alive
+```
+
+Every round trip printed "placed where it was saved".
 
 ---
 
