@@ -14,7 +14,8 @@ stays open: a 3d-4 proposal follows.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w118, every figure as registered:** the five new tests, the whole suite at 4439 / 0, and
+  P1-P7 each proved on exactly its registered assertions, P3 on both of its readers.
 - **ONE EXISTING ASSERTION CHANGED, ruled 2026-10-31.** 3c-2's `AWarzoneHoldComesBackAfterALoad` asserted
   `TestEqual(TEXT("and no allied soldiers came with the load"), Allies, 0)`, which recorded the interim while the allies
   standing at a save were 3d's. Its new line is `TestEqual(TEXT("the allies standing at the save stand again, and no
@@ -84,7 +85,42 @@ Each through `ARaisedRoundTrip` (3d-3a), beat first, then halved, then saved; `T
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
 the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
-compile of the #2652 merge.
+compile of the #2652 merge. Python of record on 7ee86cb48: `7177 passed, 8 skipped in 193.59s`, the JUnit file tests
+7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w118, 2026-10-31, 16:11 to 16:55, on 7ee86cb48. Pre-checks measured at 16:11:21, all passing: `development`'s CI
+and Unreal runs succeeded on f674abb1a, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, no simulation process, 11256 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4439 tests performed, 4439 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4439 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 191.97s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'as many stand in the rule's list as were saved' to be 1, but it was 0" only |
+| P2 | PROVED: "'as many stand ...' to be 3, but it was 0" only |
+| P3 | PROVED ON BOTH READERS, as traced: the allies test, "'as many stand ...' to be 2, but it was 0", and 3c-2's Warzone test, "'the allies standing at the save stand again, and no more' to be 2, but it was 0", its line reading "allies 0 (2 before the save)" |
+| P4 | PROVED: "'as many stand ...' to be 1, but it was 0" only |
+| P5 | PROVED: "'as many stand ...' to be 1, but it was 0", "'the feeders are strengthened by the carcasses eaten' to be 1.100000, but it was 0.000000" and "'and brings a feeder' to be 2, but it was 1" only |
+| P6 | PROVED: "'the carcass lying at the save lies again' to be 1, but it was 0", "'and, eaten, it counts' to be 2, but it was 1" and "'and brings a feeder' to be 2, but it was 1" only |
+| P7 | PROVED: "'the feeders are strengthened by the carcasses eaten' to be 1.100000, but it was 1.000000" only |
+
+Each proof's restored half: `51 tests performed, 51 succeeded, 0 failed`.
+
+The printed lines, from the whole suite:
+
+```
+LOAD WARDENS on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD WARZONE ATTACKERS on seed 1: Loaded (... day 1, 227 creatures, placed where it was saved); after a beat 3/3 standing, 3 at half health, 3 marked, 0 counted as the floor's own; the floor's own standing 224/224
+LOAD WARZONE ALLIES on seed 1: Loaded (... day 1, 235 creatures, placed where it was saved); after a beat 2/2 standing, 2 at half health, 2 marked, 0 counted as the floor's own; the floor's own standing 224/224
+LOAD VOIDLINGS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 222/222
+LOAD FEEDERS on seed 1: Loaded (... day 1, 222 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 221/221
+LOAD CARCASSES: 1/1 lying after the load, the feeders' damage 1.100; once it was eaten, 2 eaten (saved 1), 2 feeder(s) (saved 1)
+LOAD WARZONE on seed 1: Loaded (... day 1, 238 creatures, placed where it was saved); after a beat 1 point(s) held, point 0's shortcut open, point 1 at 10.00/10.00 s, attack damage rule 10.00, allies 2 (2 before the save)
+```
+
+The last is 3c-2's Warzone test under the changed assertion: the two allies standing at the save stood again, and no more.
 
 ---
 
