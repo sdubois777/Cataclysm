@@ -1138,8 +1138,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	// A LIST OF ROWS GRANTED AT ONE ROLL. `Grant` below hands it one enchantment's
 	// rows, and the rows a held random buff wears come to it at the end. Issue
 	// #2538, batch 2.
+	// A DRAWBACK'S ACTIONS ARE MARKED AS ONE, so Touch of Nothing, which refuses a buff the wearer would gain,
+	// does not refuse a curse's timed stack. Issue #1722's Touch of Nothing, ruled 2026-10-30.
 	auto GrantRows = [&Totals, &Added, Actions](
-		const TArray<const FCataclysmEnchantmentEffectRow*>& Effects, float Roll, int32 ItemKills)
+		const TArray<const FCataclysmEnchantmentEffectRow*>& Effects, float Roll, int32 ItemKills,
+		bool bFromADrawback)
 	{
 		for (const FCataclysmEnchantmentEffectRow* Effect : Effects)
 		{
@@ -1196,6 +1199,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						}
 					}
 				}
+				Stack.bFromADrawback = bFromADrawback;
 				Actions->Add(Stack);
 			}
 
@@ -1674,6 +1678,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						continue;
 					}
 					Action.ConditionValue = Effect->ConditionValue;
+					Action.bFromADrawback = bFromADrawback;
 					Actions->Add(Action);
 				}
 				continue;
@@ -1716,7 +1721,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			++Added;
 		}
 	};
-	auto Grant = [&EffectsFor, &GrantRows](FName Enchantment, float Roll, int32 ItemKills)
+	auto Grant = [&EffectsFor, &GrantRows](FName Enchantment, float Roll, int32 ItemKills,
+										  bool bFromADrawback)
 	{
 		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
 			EffectsFor.Find(Enchantment);
@@ -1726,7 +1732,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			// for an enchantment once the game has what its sentence needs.
 			return;
 		}
-		GrantRows(*Effects, Roll, ItemKills);
+		GrantRows(*Effects, Roll, ItemKills, bFromADrawback);
 	};
 
 	// A BENEFIT ONCE HOWEVER MANY PIECES CARRY IT, AT THE HIGHER OF THEIR
@@ -1789,7 +1795,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			if (!Rolled.Negative.IsNone()
 				&& !IsSetEnchantmentRow(NegativeTable, Rolled.Negative))
 			{
-				Grant(Rolled.Negative, Rolled.NegativeRoll, Item.Kills);
+				Grant(Rolled.Negative, Rolled.NegativeRoll, Item.Kills, /*bFromADrawback=*/true);
 			}
 		}
 
@@ -1801,7 +1807,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 
 	for (const FName& Benefit : BenefitOrder)
 	{
-		Grant(Benefit, HighestBenefitRoll[Benefit], BenefitKills.FindRef(Benefit));
+		Grant(Benefit, HighestBenefitRoll[Benefit], BenefitKills.FindRef(Benefit), /*bFromADrawback=*/false);
 	}
 
 	// A SET'S ROWS, ONCE ITS WORN PIECES ARE COUNTED. Issue #45, on the owner's
@@ -1833,10 +1839,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			{
 				if (*Pieces >= Set.Thresholds[Index])
 				{
-					Grant(Set.Positives[Index], SetRowRoll, /*ItemKills=*/0);
+					Grant(Set.Positives[Index], SetRowRoll, /*ItemKills=*/0, /*bFromADrawback=*/false);
 				}
 			}
-			Grant(Set.Negative, SetRowRoll, /*ItemKills=*/0);
+			Grant(Set.Negative, SetRowRoll, /*ItemKills=*/0, /*bFromADrawback=*/true);
 		}
 	}
 
@@ -1851,7 +1857,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 		{
 			Extra.Add(&Row);
 		}
-		GrantRows(Extra, SetRowRoll, /*ItemKills=*/0);
+		GrantRows(Extra, SetRowRoll, /*ItemKills=*/0, /*bFromADrawback=*/false);
 	}
 
 	return Added;

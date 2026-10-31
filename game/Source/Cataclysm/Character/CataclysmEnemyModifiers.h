@@ -149,6 +149,7 @@ public:
 	static const TCHAR* PhasewalkerRow;
 	static const TCHAR* InfernalBrandRow;
 	static const TCHAR* WitheringBlowsRow;
+	static const TCHAR* TouchOfNothingRow;
 	static const TCHAR* BeguilingRow;
 	static const TCHAR* InfernalSacrificeRow;
 	static const TCHAR* UnholySigilsRow;
@@ -510,6 +511,15 @@ public:
 	 * @return whether this hit slowed the target
 	 */
 	static bool WitherOnHit(AActor* Attacker, AActor* Target);
+
+	/**
+	 * One more Touch of Nothing on whatever this creature just hit, if it carries Void's Touch of Nothing, up to
+	 * five, with `Status.Debuff.TouchofNothing` put on for the stacks' window so the count can be shown. Each
+	 * stack refuses one buff the target would gain: `UCataclysmStacks::NegatesTheNextBuff`. Issue #1722.
+	 *
+	 * @return whether a stack was granted
+	 */
+	static bool TouchOfNothingOnHit(AActor* Attacker, AActor* Target);
 
 	/**
 	 * Charms whoever just damaged this creature, if it carries Beguiling and

@@ -2268,7 +2268,13 @@ void UCataclysmAbilitySystemComponent::NoteLethalHitReprieved()
 
 	// THE SAME WINDOW NOTHING STOPS IT AND ARCHON'S AEGIS OPEN, and never cut short by this.
 	const float Seconds = LethalHitReprieveFigure(LethalHitReprieveSecondsStat);
-	GrantDamageImmunity(Seconds);
+	// TOUCH OF NOTHING REFUSES THE IMMUNITY WINDOW, a set row's (Demon King's Regalia, 10-piece). The lethal blow
+	// is still cut to one point above, so the player lives through it, but takes the next blow with no window.
+	// Issue #1722, the project owner's "immunity windows".
+	if (!UCataclysmStacks::NegatesTheNextBuff(this))
+	{
+		GrantDamageImmunity(Seconds);
+	}
 
 	// AND THE SENTENCE, ONLY WHEN A ROW ASKS FOR ONE AND THERE ARE SECONDS TO MAKE THE KILL IN. Ruled 2026-10-17: the
 	// window to make the kill is the window of immunity.
@@ -2392,6 +2398,11 @@ bool UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit(FName DamageT
 		}
 	}
 
+	// TOUCH OF NOTHING REFUSES THE WINDOW, a set row's (Shard of Anarchy, 6-piece). Issue #1722.
+	if (UCataclysmStacks::NegatesTheNextBuff(this))
+	{
+		return false;
+	}
 	GrantDamageTypeImmunity(DamageType, Seconds);
 	return true;
 }
@@ -2621,6 +2632,26 @@ void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 	// AND THE WHOLE LOT'S EXPIRY MOVES WITH IT. See the header for why this is
 	// one timestamp per kind rather than one per stack.
 	StackGrantedAtSeconds[Index] = World->GetTimeSeconds();
+}
+
+void UCataclysmAbilitySystemComponent::NoteBuffNegated()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		BuffNegatedAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::RefusedByTouchOfNothing(const FCataclysmPoolAction& Action)
+{
+	// A DRAWBACK IS NO BUFF, so a curse's timed stack arrives whatever is held. Ruled 2026-10-30 (#1722).
+	return !Action.bFromADrawback && UCataclysmStacks::NegatesTheNextBuff(this);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceBuffNegated() const
+{
+	const UWorld* World = GetWorld();
+	return World && BuffNegatedAtSeconds >= 0.0f ? World->GetTimeSeconds() - BuffNegatedAtSeconds : -1.0f;
 }
 
 void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
@@ -5300,7 +5331,8 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			++Given;
 			if (!Action.NextUseKey.IsNone())
 			{
-				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
+				if (!RefusedByTouchOfNothing(Action))
+					GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
 								   Action.bNextUseIsEffectiveness,
 								   Action.bNextUseIsSpellCooldown);
@@ -5310,11 +5342,17 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 				// AND A ROW WITH NO CAP, WHOSE STACKS LAPSE ALONE (traps layer 3, M4).
 				if (Action.bOwnStacksLapseAlone)
 				{
-					GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+					if (!RefusedByTouchOfNothing(Action))
+					{
+						GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+					}
 				}
 				else
 				{
-					GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+					if (!RefusedByTouchOfNothing(Action))
+					{
+						GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+					}
 				}
 			}
 			// A CLEANSE ON A CLOCK: "You are cleansed every 5 seconds". Ruled 2026-09-26. Its wearer is the
@@ -5403,7 +5441,10 @@ void UCataclysmAbilitySystemComponent::StepKeptStackClocks(float InCombat)
 		while (Clock.Seconds >= Action.EverySeconds)
 		{
 			Clock.Seconds -= Action.EverySeconds;
-			GainKeptStack(Key, Action.KeptStackCap);
+			if (!RefusedByTouchOfNothing(Action))
+			{
+				GainKeptStack(Key, Action.KeptStackCap);
+			}
 		}
 	}
 }
@@ -6365,7 +6406,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// "next skill at 300% effectiveness" was held as +300% increased
 				// damage. Only the timed grant passed it, and the one authored
 				// effectiveness row is timed, so no worn row was affected.
-				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
+				if (!RefusedByTouchOfNothing(Action))
+					GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
 								   Action.bNextUseIsEffectiveness,
 								   Action.bNextUseIsSpellCooldown);
@@ -6425,11 +6467,17 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// AND A ROW WITH NO CAP, WHOSE STACKS LAPSE ALONE (traps layer 3, M4).
 				if (Action.bOwnStacksLapseAlone)
 				{
-					GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+					if (!RefusedByTouchOfNothing(Action))
+					{
+						GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+					}
 				}
 				else
 				{
-					GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+					if (!RefusedByTouchOfNothing(Action))
+					{
+						GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+					}
 				}
 				NoteTriggerFired(Action);
 			}
@@ -6726,7 +6774,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			if (bLanded && !Action.KeptStackKey.IsNone() && !StackedThisEvent.Contains(Action.KeptStackKey))
 			{
 				StackedThisEvent.Add(Action.KeptStackKey);
-				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+				if (!RefusedByTouchOfNothing(Action))
+				{
+					GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+				}
 			}
 			continue;
 		}
@@ -6739,7 +6790,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			if (bLanded && !Action.KeptStackKey.IsNone() && !StackedThisEvent.Contains(Action.KeptStackKey))
 			{
 				StackedThisEvent.Add(Action.KeptStackKey);
-				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+				if (!RefusedByTouchOfNothing(Action))
+				{
+					GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+				}
 			}
 			continue;
 		}
@@ -6854,7 +6908,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
-				GrantDamageImmunity(Action.Percent);
+				if (!RefusedByTouchOfNothing(Action))
+				{
+					GrantDamageImmunity(Action.Percent);
+				}
 				NoteTriggerFired(Action);
 			}
 			continue;
@@ -7840,6 +7897,12 @@ bool UCataclysmAbilitySystemComponent::ApplyRandomBuffOrDebuff()
 
 bool UCataclysmAbilitySystemComponent::HoldARandomBuff(FName Excluded)
 {
+	// TOUCH OF NOTHING REFUSES THE DRAW, before anything is drawn. Issue #1722, "Buffs + gear procs".
+	if (UCataclysmStacks::NegatesTheNextBuff(this))
+	{
+		return false;
+	}
+
 	const UWorld* World = GetWorld();
 	const TArray<FRandomBuff>& Table = RandomBuffTable();
 
@@ -8289,6 +8352,8 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	// one. See `GrantTemporaryAbsorb`.
 	if (Action.bTemporaryAbsorb)
 	{
+		// TOUCH OF NOTHING REFUSES THE ABSORB, unless a drawback granted it. Issue #1722.
+		if (!RefusedByTouchOfNothing(Action))
 		GrantTemporaryAbsorb(
 			GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
 				* Action.Percent / 100.0f);

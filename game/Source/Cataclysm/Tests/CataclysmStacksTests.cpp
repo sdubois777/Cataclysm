@@ -766,13 +766,14 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 	// one a table would be likeliest to drop, because no design document states
 	// it.
 	// AND WITHERING, APPENDED FOR ISSUE #1722: a window of 8, Infernal Brand's, which the project owner chose on
-	// 2026-10-30, and a cap of 10, the `Debuff_Wither` row's "At 10 stacks".
+	// 2026-10-30, and a cap of 10, the `Debuff_Wither` row's "At 10 stacks". AND TOUCH OF NOTHING, #1722: 8 and 5,
+	// approved by the project owner the same day.
 	TestEqual(TEXT("every kind's window in seconds, in enum order"),
 			  FString::Join(Windows, TEXT(" ")),
-			  FString(TEXT("3.00 5.00 8.00 8.00 5.00 8.00")));
+			  FString(TEXT("3.00 5.00 8.00 8.00 5.00 8.00 8.00")));
 
 	TestEqual(TEXT("every kind's cap, in enum order"),
-			  FString::Join(Caps, TEXT(" ")), FString(TEXT("5 5 10 5 5 10")));
+			  FString::Join(Caps, TEXT(" ")), FString(TEXT("5 5 10 5 5 10 5")));
 
 	// THE NAMES ARE ASSERTED BY NOTHING ELSE IN THE PROJECT. `NameOf` has one
 	// caller, the `Cataclysm.ShowStacks` console command, and a console command
@@ -784,7 +785,7 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 			  FString::Join(Names, TEXT(", ")),
 			  FString(TEXT(
 				  "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand, "
-				  "Feasting, Withering")));
+				  "Feasting, Withering, Touch of Nothing")));
 
 	// AND THE ARM THAT NO TEST REACHED, WHICH IS THE ONE A TABLE CHANGES. Both
 	// switches answer nothing for a kind they do not know and both say why in

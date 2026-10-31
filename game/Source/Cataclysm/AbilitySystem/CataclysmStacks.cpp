@@ -46,6 +46,10 @@ float UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind Kind)
 	// which is not what it does.)
 	case ECataclysmStackKind::Withering:			return 8.0f;
 
+	// EIGHT, WITHERING'S AND INFERNAL BRAND'S, approved by the project owner on 2026-10-30 (#1722) so the three
+	// stacking debuffs a creature's hits lay are lost the same way: eight seconds with no such hit.
+	case ECataclysmStackKind::TouchOfNothing:	return 8.0f;
+
 	default:									break;
 	}
 
@@ -76,6 +80,9 @@ int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
 	// TEN, WHICH THE ROW STATES: "at 10 stacks". The cap and the trigger are the
 	// same number, as Infernal Brand's are.
 	case ECataclysmStackKind::Withering:			return 10;
+
+	// FIVE, approved by the project owner on 2026-10-30 (#1722): Infernal Brand's cap. The row states none.
+	case ECataclysmStackKind::TouchOfNothing:	return 5;
 	default:									break;
 	}
 
@@ -154,6 +161,7 @@ const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
 	case ECataclysmStackKind::Feast:			return TEXT("Feasting");
 	case ECataclysmStackKind::Withering:			return TEXT("Withering");
+	case ECataclysmStackKind::TouchOfNothing:	return TEXT("Touch of Nothing");
 	default:									return TEXT("(unknown)");
 	}
 }
@@ -272,6 +280,39 @@ bool UCataclysmStacks::NoteWithering(UCataclysmAbilitySystemComponent* AbilitySy
 	// gives: the row says every stack is spent at ten, and a grant cannot clear.
 	AbilitySystem->ClearStacks(Kind);
 
+	return true;
+}
+
+void UCataclysmStacks::NoteTouchOfNothing(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (AbilitySystem)
+	{
+		const ECataclysmStackKind Kind = ECataclysmStackKind::TouchOfNothing;
+		AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+	}
+}
+
+bool UCataclysmStacks::NegatesTheNextBuff(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// ONE STACK, ONE BUFF. `Spend` answers false for no character, for none held and for a count that has
+	// lapsed, and each of those lets the buff through.
+	if (!AbilitySystem || !Spend(AbilitySystem, ECataclysmStackKind::TouchOfNothing))
+	{
+		return false;
+	}
+
+	AbilitySystem->NoteBuffNegated();
+
+	// AND THE STATUS GOES WITH THE LAST STACK, so a player holding none is not shown as touched.
+	if (Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing) <= 0)
+	{
+		UCataclysmSkillEffects::RemoveEffectsGranting(
+			AbilitySystem->GetAvatarActor(), UCataclysmSkillShapes::StatusTagFor(TEXT("Touch of Nothing")));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s's Touch of Nothing negated a buff; %d left."),
+		   *GetNameSafe(AbilitySystem->GetAvatarActor()),
+		   Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing));
 	return true;
 }
 

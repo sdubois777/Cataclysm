@@ -717,7 +717,9 @@ void ACataclysmHUD::DrawPlayerVitals()
 		 {UCataclysmCombatOverlay::CrippledTextFor(Pawn), UCataclysmCombatOverlay::WeakenedTextFor(Pawn),
 		  UCataclysmCombatOverlay::ShreddedTextFor(Pawn), UCataclysmCombatOverlay::StunnedTextFor(Pawn),
 		  // AND FAMINE'S WITHERING COUNT, THEN ITS SLOW. Issue #1722: the count shows so the slow can be seen coming.
-		  UCataclysmCombatOverlay::WitheringTextFor(Pawn), UCataclysmCombatOverlay::WitheredTextFor(Pawn)})
+		  UCataclysmCombatOverlay::WitheringTextFor(Pawn), UCataclysmCombatOverlay::WitheredTextFor(Pawn),
+		  // AND VOID'S TOUCH OF NOTHING, THEN "Negated" WHEN A STACK REFUSED A BUFF. Issue #1722.
+		  UCataclysmCombatOverlay::TouchOfNothingTextFor(Pawn), UCataclysmCombatOverlay::NegatedTextFor(Pawn)})
 	{
 		if (!Debuff.IsEmpty())
 		{

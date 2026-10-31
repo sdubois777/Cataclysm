@@ -584,6 +584,21 @@ public:
 	static FString WitheredTextFor(const AActor* Actor);
 
 	/**
+	 * "Touch of Nothing 3" while a living actor carries `Status.Debuff.TouchofNothing` and holds that many stacks, or
+	 * empty. Each stack refuses one buff the actor would gain. Issue #1722's Touch of Nothing.
+	 */
+	static FString TouchOfNothingTextFor(const AActor* Actor);
+
+	/**
+	 * "Negated" for `NegatedShownSeconds` after Touch of Nothing refused a buff the actor would have gained, or empty,
+	 * so a player whose buff did not arrive is told why. Issue #1722.
+	 */
+	static FString NegatedTextFor(const AActor* Actor);
+
+	/** How long "Negated" stays up after a refusal. A judgement of the writing session. */
+	static constexpr float NegatedShownSeconds = 2.0f;
+
+	/**
 	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
 	 * while it holds none. Read from `UCataclysmAbilitySystemComponent::HeldRandomBuff` and
 	 * `HeldRandomBuffSecondsLeft`.

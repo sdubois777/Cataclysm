@@ -3489,6 +3489,19 @@ public:
 	 */
 	bool SpendStack(ECataclysmStackKind Kind, float WindowSeconds);
 
+	/** Notes that Touch of Nothing refused a buff just now, for the "Negated" line. Issue #1722. */
+	void NoteBuffNegated();
+
+	/**
+	 * Whether Touch of Nothing refuses this worn or set row's timed grant: never for a drawback's
+	 * (`FCataclysmPoolAction::bFromADrawback`), and otherwise when a stack is held, which is then spent.
+	 * Asked just before each grant the project owner's "Buffs + gear procs" names. Issue #1722.
+	 */
+	bool RefusedByTouchOfNothing(const FCataclysmPoolAction& Action);
+
+	/** Seconds since Touch of Nothing last refused a buff here, or negative if it never has. Issue #1722. */
+	float SecondsSinceBuffNegated() const;
+
 
 	/**
 	 * Clear everything temporary on this character, because it died and is
@@ -5987,6 +6000,9 @@ protected:
 	 */
 	int32 StackCounts[UCataclysmStacks::KindCount] = {};
 	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
+
+	/** When Touch of Nothing last refused a buff, in world seconds; negative for never. Issue #1722. */
+	float BuffNegatedAtSeconds = -1.0f;
 
 	/**
 	 * The last blow resolved against this character, and how many there have
