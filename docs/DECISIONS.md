@@ -134,7 +134,7 @@ such a floor is found, and the line names it. Prints "PLACED AFTER".
 | Figure | Registered |
 |---|---|
 | The four new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4387 / 0: `development`'s 4383, measured by window w105, + 4. Any seed-searching statue or chasm test whose expected values move under the exclusion is updated to the new values and listed here with the reason; none is deleted |
+| Whole Unreal suite | 4393 / 0 since the move onto `f4904e99a`: `development`'s 4389, measured by #1569's window at `3d29e5b3f` with #1569 ("4389 tests performed, 4389 succeeded, 0 failed"), + 4. It was 4387 (4383 + 4) for w106 and w107. Any seed-searching statue or chasm test whose expected values move under the exclusion is updated to the new values and listed here with the reason; none is deleted |
 | Python | of record, with JUnit, and ruff |
 | P1, the restore branch destroys `ACataclysmFloorObstacle` again (the line moved out of its `if`) | the rebuild test fails on "and every pillar and pit stands where it stood" only, once for each of its two floors; nothing else fails |
 | P2, `BuildFloor` keeps the standing floor on the brief's flag alone again (`bThatArenaStands || true`), so `PopulateFloor` and the rest follow it | the Horde test fails on the arena and its objects; nothing else fails |
@@ -234,6 +234,15 @@ use. **No assertion changed.** The set-up changed only so: each of the four floo
 `StartPlay` builds the first floor when it is not none, so the helpers' other 39 calls (43 in all, counted) are as they were; the four tests
 pass Horde, and their mid-test switch line is removed. No further set-up change was needed to compile; whether one is
 needed to pass is the next window's.
+
+**MOVED ONTO `f4904e99a` (#1569, merged as #2634) before window w108**, as the coordinating session ordered: #1569
+builds every dungeon-floor creature's health, attack damage and armour from the enemy score in `ApplyDesignedStats`,
+and this part places and restores those creatures. Only `docs/DECISIONS.md` conflicted, at its first entry, resolved by
+`resolve_top_from_commit.py`; every C++ file merged by itself, `CataclysmDungeonModifierEffectsTests.cpp` (which #1569
+also changed) among them. #1569 sets the built figures through `SetHealth`, `SetAttackDamage` and `SetArmour`, which are
+what Group 2 saves (`GetStartingMaxHealth`, `GetStartingAttackDamage`, `GetStartingArmour`), and a restored creature is
+made by `CreatureInto` from the saved figures without `ApplyDesignedStats`: the save keeps what #1569 builds, and no
+conflict of meaning was found.
 
 **WHY THE OTHER 38 OF THE FILE'S 42 MID-TEST SWITCHES DID NOT FAIL** (counted by script over every test body holding
 `DungeonSubType = ECataclysmDungeonSubType::Horde;`):
