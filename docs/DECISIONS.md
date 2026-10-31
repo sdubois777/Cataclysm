@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A Quarry mark or an Anathema curse that has passed to a new holder passes on again when that holder dies, and a curse whose caster is gone passes to the dying creature's own side, not to the player's characters
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCurseSpread.cpp` (one call added in `SpreadFromDying`, and
+a stale comment, and the search for the next holder when the caster is gone) and `CataclysmCurseSpread.h`
+(comments); `game/Source/Cataclysm/Tests/CataclysmQuarryTests.cpp` (2 tests added, one of them in the
+`Cataclysm.Skills.` group, and a side parameter on its test enemy); `game/Source/Cataclysm/Tests/
+CataclysmSkillTemplateTests.cpp` (1 test added); this file. No data changes.
+
+### SAID FIRST
+
+- **THIS CHANGES PLAY.** Before it, a Quarry mark or an Anathema curse passed on once at most: from the enemy the
+  skill put it on to the nearest living enemy within 8 metres, and no further. After it, every holder's death passes
+  it on again, to the nearest living enemy within 8 metres of that holder, until no living enemy is within reach.
+- **THE RULING, 2026-10-31, by the coordinating session, one rule for both skills:** Anathema's "Anything that dies
+  while damned passes the curse to the nearest living enemy" covers a creature damned by a pass; the Staff's Quarry's
+  "If the marked enemy dies first, the mark jumps to the nearest living enemy" (the Debuffs sheet) covers the mark
+  wherever it is. Each copy lasts the effect's own designed duration, as the curse-spread rule already gives it
+  (Quarry 12 seconds, Madness 3, Shred 6), so no new number is needed.
+- **WHY IT PASSED ONCE.** The pass needs a `UCataclysmCurseSpread` component on the dying enemy, and only a cast put
+  one there: `UCataclysmSkillTemplate::ApplyNamedEffectsTo` calls `UCataclysmCurseSpread::MarkOn`. The pass itself,
+  `UCataclysmSkillEffects::CopyDebuffsTo`, copies the tags and adds no component. Now `SpreadFromDying` calls `MarkOn`
+  on the new holder, with the same caster and the same reach, whenever the copy applied something.
+- **IT CANNOT LOOP.** The search for the next holder (`UCataclysmTargeting::Gather`, through `MatchesAttitude`)
+  refuses the dead; the dying creature is also dropped by name; and `UCataclysmSkillEffects::MarkDead` returns false
+  for a creature already dead, so nothing dies twice. A dies and the curse goes to B; B dies and it goes to the
+  nearest LIVING enemy, never back to A. A chain is at most as long as the number of living enemies.
+
+### A CURSE WHOSE CASTER IS GONE: A FAULT THIS BRANCH WOULD HAVE MADE WORSE, FIXED HERE
+
+- **THE FAULT, FOUND WHILE BUILDING THE CHAIN.** With the caster gone, `SpreadFromDying` credits the dying creature
+  ("the dying creature stands in for it") and asked `UCataclysmTargeting::FindEnemiesInSphere` with it, which answers
+  what is hostile TO the dying creature: the player's side. So a curse whose caster had gone passed to the nearest of
+  the player's own characters. That was one wrong pass before this branch; with passed curses passing again, it would
+  have run from one of the player's characters to the next.
+- **THE RULING, 2026-10-31, in this branch as its own commit:** "the nearest living enemy" is an enemy of the
+  caster's side. With the caster gone, that side is the dying creature's own allies. So the search is now
+  `UCataclysmTargeting::FindAlliesInSphere` with the dying creature
+  (`game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.cpp` line 263, declared in `CataclysmTargeting.h` line
+  168). It leaves the dying creature out twice over: `UCataclysmTargeting::Gather` adds it to the collision query's
+  ignored actors, and `UCataclysmTargeting::MatchesAttitude` (line 111) refuses `Actor == Instigator` (line 114) and
+  the dead. With the caster here, the search is unchanged.
+- **NO SIDE CHECK STOPS THE COPY.** `UCataclysmSkillEffects::ApplyNamedEffect` refuses only by the Madness redirection
+  rules and a worn row refusing debuffs, so a dying monster's curse lands on its ally.
+- **WHEN A CASTER IS GONE IN PLAY**, not measured: a player who dies is still a valid actor, so it takes the caster
+  actor destroyed, as a gadget or trap that cast a copy and then expired is.
+
+### EVERY CALLER THE CHANGE TOUCHES
+
+- **`UCataclysmCurseSpread::SpreadFromDying`** has one caller, `UCataclysmSkillEffects::MarkDead`, the one place a
+  death is recorded for the player and for every creature. Unchanged.
+- **`UCataclysmCurseSpread::MarkOn`** had one caller, `UCataclysmSkillTemplate::ApplyNamedEffectsTo`, and now has
+  two. `ApplyNamedEffectsTo` marks only for a row stating `OnDeath=SpreadDebuff` with an `OnDeathRange`. It is called
+  by `UCataclysmStrikeSkill::SwingOnce`, `UCataclysmAuraSkill::Pulse` and `UCataclysmDebuffSkill::ActivateAbility`.
+- **The rows stating `OnDeath=SpreadDebuff`: exactly two**, in `game/Data/WeaponSkills.csv`: `Demonic_Wand_Ultimate`
+  (Anathema, a Strike) and `Demonic_Staff_Support` (Quarry, a Debuff). No row of `EnchantmentEffects.csv`,
+  `PassiveEffects.csv`, `EnemyModifiers.csv` or `DungeonModifiers.csv` names it. So these two skills are the whole
+  of what starts chaining, a deliberate consequence of the ruling.
+- **A gadget's or trap's copy of either skill** casts through the same templates, so it marks as the player's own
+  cast does and its curse now chains too. Also deliberate: the copy is the skill.
+- **WHAT PASSES IS EVERY `Status.Debuff.` TAG THE DYING CREATURE CARRIES**, as before, and that is not narrowed here.
+  A creature holding a passed curse and a curse from another skill passes both, and now its new holder does too.
+
+### THE TESTS
+
+- `Cataclysm.Quarry.AMarkThatHasJumpedJumpsAgainWhenItsNewHolderDies`, in `CataclysmQuarryTests.cpp`: three enemies
+  in a line five metres apart, the shipped Quarry cast on the first. The first dies and the second is marked, and the
+  third (ten metres from the first) is not; the second dies and the third is marked and is the caster's quarry. The
+  control, with its own caster a hundred metres away: a mark put on an enemy by hand, with no instruction to pass on,
+  reaches nobody when that enemy dies.
+- `Cataclysm.Skills.ACursePassedOnDeathPassesAgainWhenItsNewHolderDies`, in `CataclysmSkillTemplateTests.cpp`: the
+  same three-in-a-line shape with Anathema's on-death parameters, the same as the existing
+  `ACurseThatSpreadsOnDeathPassesToTheNearestLivingEnemy`. The first death passes Madness to the second and not the
+  third; the second death passes it to the third.
+- `Cataclysm.Skills.ACurseWhoseCasterIsGonePassesToTheDyingCreaturesSideNotThePlayers`, in `CataclysmQuarryTests.cpp`
+  (it needs real characters on two sides, which that file's helpers make): a Debuff-shaped curse written in the test,
+  `Effect=Shred` with the on-death parameters, cast on a monster. Then a character of the player's side two metres
+  from it and a monster five metres from it are placed, the caster is destroyed, and the holder dies. The monster
+  gains Shred; the player's character, the nearer of the two, does not. Shred and not Madness, because a maddened
+  creature is hostile to everything, which would decide the sides under test.
+
+### REGISTERED BEFORE THE PROOFS
+
+**The Unreal suite**: @@UNREAL_TOTAL@@ tests performed, all succeeded.
+
+**Three C++ guards**, `tools/unreal_build.py` `prove_cpp_guard`, in the editor window, each with the full name of
+one test as its prefix, all in `AbilitySystem/CataclysmCurseSpread.cpp`. Proofs 1 and 2 share a break: the new holder
+is marked with no reach, so `MarkOn` refuses it (`RangeCm <= 0`). Proof 3 puts the old search back for a gone caster.
+Each break text occurs once. Names are the short names the engine's log prints.
+
+| # | Break | Prefix | Predicted named_failures |
+| :-- | :-- | :-- | :-- |
+| 1 | `UCataclysmCurseSpread::MarkOn(Next[0], Mark->Caster.Get(), Mark->RangeCm);` becomes `UCataclysmCurseSpread::MarkOn(Next[0], Mark->Caster.Get(), 0.0f);` | `Cataclysm.Quarry.AMarkThatHasJumpedJumpsAgainWhenItsNewHolderDies` | `AMarkThatHasJumpedJumpsAgainWhenItsNewHolderDies` |
+| 2 | the same | `Cataclysm.Skills.ACursePassedOnDeathPassesAgainWhenItsNewHolderDies` | `ACursePassedOnDeathPassesAgainWhenItsNewHolderDies` |
+| 3 | `: UCataclysmTargeting::FindAlliesInSphere(` becomes `: UCataclysmTargeting::FindEnemiesInSphere(`, which with the dying creature as the instigator is the search before this change | `Cataclysm.Skills.ACurseWhoseCasterIsGonePassesToTheDyingCreaturesSideNotThePlayers` | `ACurseWhoseCasterIsGonePassesToTheDyingCreaturesSideNotThePlayers` |
+
+Why, traced: with the new holder unmarked, the second death passes nothing, so "the mark jumps again, to the third
+enemy" and "and it is now the caster's quarry" fail in 1, and "The curse passes again, to the third" in 2. The first
+pass and the controls still hold. **The other curse-spread tests the break would touch, and why they are outside both
+prefixes:** `Cataclysm.Skills.ACurseThatSpreadsOnDeathPassesToTheNearestLivingEnemy` and
+`Cataclysm.Quarry.WhenTheMarkedEnemyDiesTheMarkJumpsToTheNearestLivingEnemyWithinEightMetres` each kill one holder
+and read only the first pass, which the break leaves alone, so neither would fail; and
+`Cataclysm.Skills.ACurseWithNoOnDeathDoesNotPassOnWhenItsHolderDies` passes nothing either way. The full-name
+prefixes keep each proof to its own test regardless. In 3 the search answers the player's character, the nearer,
+so "a monster near it, of its own side, gains the curse" and "and the player's character, standing nearer, does not"
+both fail. Every other spread test keeps its caster, and the break leaves that branch alone.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-10-31 — The Quarry mark states its own 12 seconds, so the mark now jumps to the nearest living enemy when its quarry dies, which it never did before (#1520)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Quarry's duration, column B, 12) and from it
