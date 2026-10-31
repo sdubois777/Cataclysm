@@ -6289,7 +6289,7 @@ Two things bound it from below. It has to beat the fastest class at 4.6 metres p
 
   
 
-A ring 6.5 metres across at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
+A ring 6.5 metres in radius at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
 
   
 
@@ -6391,11 +6391,11 @@ A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, 
 
   
 
-The Gatekeeper moves at 3.0 metres per second against classes at 3.5, 4.0 and 4.6: like the Abyssal Warden it can never catch anybody on foot. The Warden's answer is a charge. Giving the boss the same answer would make it a bigger Warden, so its answer is the Corrupted Sentinel's instead: a lobbed mortar, `Range=14` and `Arc=0.25` exactly as the Sentinel's, bursting 3 metres wide where it lands, marked at the landing circle for 1.26 seconds.
+The Gatekeeper moves at 3.0 metres per second against classes at 3.5, 4.0 and 4.6: like the Abyssal Warden it can never catch anybody on foot. The Warden's answer is a charge. Giving the boss the same answer would make it a bigger Warden, so its answer is the Corrupted Sentinel's instead: a lobbed mortar, `Range=14` and `Arc=0.25` exactly as the Sentinel's, bursting 3 metres in radius where it lands, marked at the landing circle for 1.26 seconds.
 
   
 
-**What it leaves behind is the arena changing.** The burst leaves burning ground the same 3 metres wide for 10 seconds — equal to its cooldown, so in steady state one patch is always on the floor and standing ground is lost one circle at a time. That is the persistence lever the genre research found real bosses use, and it is the Hellhound's existing riders (`Burn`, `GroundRadius`, `GroundDuration`) rather than a new mechanic. **It burns the player and nobody on the Gatekeeper's own side.** It carried `GroundHitsAllies=1` until 2026-08-20, so the summons of phase 2 burned in it and kiting them through the fire was intended counterplay; the project owner's rule that a creature does not burn itself or its own side removes that. **Phase 2 is cheaper for the boss than it was**, because its summons no longer have a cost attached. If phase 2 turns out too strong, the first lever is the summon's own cap of 6 or its 10 second cooldown rather than the burning ground.
+**What it leaves behind is the arena changing.** The burst leaves burning ground the same 3 metres in radius for 10 seconds — equal to its cooldown, so in steady state one patch is always on the floor and standing ground is lost one circle at a time. That is the persistence lever the genre research found real bosses use, and it is the Hellhound's existing riders (`Burn`, `GroundRadius`, `GroundDuration`) rather than a new mechanic. **It burns the player and nobody on the Gatekeeper's own side.** It carried `GroundHitsAllies=1` until 2026-08-20, so the summons of phase 2 burned in it and kiting them through the fire was intended counterplay; the project owner's rule that a creature does not burn itself or its own side removes that. **Phase 2 is cheaper for the boss than it was**, because its summons no longer have a cost attached. If phase 2 turns out too strong, the first lever is the summon's own cap of 6 or its 10 second cooldown rather than the burning ground.
 
   
 
@@ -6411,7 +6411,7 @@ From phase 2, it drives its hammer down and 3 Imps claw out of the ground within
 
   
 
-From phase 3, the ground erupts in a ring 6.5 metres across at its feet, marked for 2.0 seconds, every 20 seconds. The radius is the cap — the largest marker the rules permit, identical to Molten Roar and for the same reason: a boss finale should be the hardest legal telegraph, and the cap is what hardest-legal means. **At the Ultimate slot's 400% it kills from full health**: four of this creature's ordinary hits against a character who survives two. That is designed, not incidental — the genre's rule for a long-telegraph boss ultimate is that standing in it is death and the 2 second warning is the answer. The 20 second cooldown sits inside the Ultimate slot's 12-to-40 band, above the Warden's 12, because this creature kills in 6 seconds and a shorter cooldown would put a second ring inside almost every fight the player is already losing.
+From phase 3, the ground erupts in a ring 6.5 metres in radius at its feet, marked for 2.0 seconds, every 20 seconds. The radius is the cap — the largest marker the rules permit, identical to Molten Roar and for the same reason: a boss finale should be the hardest legal telegraph, and the cap is what hardest-legal means. **At the Ultimate slot's 400% it kills from full health**: four of this creature's ordinary hits against a character who survives two. That is designed, not incidental — the genre's rule for a long-telegraph boss ultimate is that standing in it is death and the 2 second warning is the answer. The 20 second cooldown sits inside the Ultimate slot's 12-to-40 band, above the Warden's 12, because this creature kills in 6 seconds and a shorter cooldown would put a second ring inside almost every fight the player is already losing.
 
   
 
