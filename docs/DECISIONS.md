@@ -15,7 +15,8 @@ stays open: 3d-2 and 3d-3 follow.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w113, every figure as registered:** the seven new tests, the whole suite at 4418 / 0,
+  and P1-P9 each proved on exactly its registered assertions.
 - **A COST EVERY LOAD CHARGED TWICE, FOUND BY READING ON 2026-10-30 AND FIXED HERE FIRST: ECHOES OF THE PAST STRUCK AGAIN.**
   The echoes' stage and clock were not saved, and the load's floor change sets both to nought
   (`ApplyFloorRulesToPlayer`: "EchoesStage = 0;"), while `RestoreWalkState` puts back the last floor's dead. So a save
@@ -118,7 +119,54 @@ the first attempt (a new worktree, so everything was compiled). Python of record
 8 skipped in 193.31s`, the JUnit file tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
 
 Moved onto `development` b35112199 (Touch of Nothing, #2645) as `feat/load-keeps-costs-and-roles-1`, so the suite is
-registered at 4418 and not 4414.
+registered at 4418 and not 4414. 3d-1's own change, measured by the coordinating session: 1be88643c to ff709cff6, 8
+files, 921 insertions, 4 deletions; b35112199 to 93c1aed3c, 8 files, 924 insertions, 4 deletions; the 3 lines more are
+this paragraph, the registration row being changed in place (d7783affc to 93c1aed3c: 1 file, 4 insertions, 1 deletion).
+The check this session made at the move compared another pair: the old head to the new one before that commit
+(ff709cff6 to d7783affc) against `development`'s movement (1be88643c to b35112199), both 20 files, 770 insertions, 35
+deletions, which says the move brought `development`'s change and nothing else; it does not measure 3d-1. Compiled
+again with no lock: `Build: Succeeded - 41 actions, 38 files compiled`, after one wait for the continuous integration
+runner's compile of the #2645 merge. Python of record on 93c1aed3c: `7175 passed, 8 skipped in 192.21s`, the JUnit file
+tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w113, 2026-10-31, 00:41 to 01:25, on 93c1aed3c. Pre-checks measured at 00:40:48, all passing: `development`'s
+CI and Unreal runs succeeded on b35112199, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 11829 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The seven new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4418 tests performed, 4418 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4418 performed, gap 0" |
+| Python | `7175 passed, 8 skipped in 191.94s`; JUnit tests 7183, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'no echo is raised again after the load' to be 0, but it was 2" only |
+| P2 | PROVED: "'barrier 1 stays closed' to be true" and "'its section still holds its creatures' to be 60, but it was 0" only |
+| P3 | PROVED: "'the saved bearer is the rule's bearer again' to be not null", "'its stacks come back' to be 3, but it was 0", "'and it has not fallen' to be false" and "'another creature carries the stacks' to be 1.150000, but it was 1.000000" only |
+| P4 | PROVED: "'its stacks come back' to be 3, but it was 0" and "'another creature carries the stacks' to be 1.150000, but it was 1.000000" only |
+| P5 | PROVED: "'it is fallen straight after the load, before any beat' to be true" only; its line read "fallen at the load NO, after a beat yes, stacks 0, 0 marked standing; drops 3/3, creatures 222/222": the beat's death branch ran and paid nothing |
+| P6 | PROVED: "'the released creatures come back as released' to be 5, but it was 0" only |
+| P7 | PROVED: "'its maximum after another replaces the share, not adds to it' to be 6.142499, but it was 7.371000" only |
+| P8 | PROVED: "'it ate two before the save' to be 2, but it was 0", "'three after another' to be 3, but it was 1", "'its damage after another' to be 1.300000, but it was 1.100000" and the maximum (5.197500) only |
+| P9 | PROVED: "'the floor still counts two' to be 2, but it was 0" only |
+
+Each proof's restored half: `34 tests performed, 34 succeeded, 0 failed`.
+
+The seven printed lines, from the whole suite:
+
+```
+LOAD ECHOES STRUCK: Loaded (... day 1, 223 creatures, placed where it was saved); saved at stage 2; after the load 2 of the last floor's dead recorded, at most 0 echo(es) standing over 10 s, stage 3
+LOAD ECHOES PENDING: Loaded (... day 1, 223 creatures, placed where it was saved); saved at stage 1; after the load at most 2 echo(es) standing over 10 s, stage 3
+LOAD SECTIONS on seed 1: Loaded (... day 1, 132 creatures, with no placement saved); after a beat barrier 0 open, barrier 1 closed, section 1 holds 60/60
+LOAD PLAGUEBEARER on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the bearer is back, 1 marked standing, stacks 3/3, not fallen, another creature's multiplier 1.150
+LOAD PLAGUEBEARER FALLEN on seed 1: Loaded (... day 1, 222 creatures, placed where it was saved); fallen at the load yes, after a beat yes, stacks 0, 0 marked standing; drops 0/0, creatures 222/222
+LOAD QUARANTINE on seed 1: Loaded (... day 1, 228 creatures, placed where it was saved); released standing 5/5; patches after one released death 1
+LOAD FAMISHED: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the eater 2 eaten, damage 1.200, the floor 2; after another drop 3 eaten, damage 1.300, maximum 6.14 (saved 5.67, expected 6.14)
+```
+
+NOT EXPLAINED, recorded as seen, as in 3c-1's window: the fallen test's drops lying differ between runs of it (1/1
+alone, 0/0 in the suite, 3/3 in the proofs), and the sections test printed "with no placement saved" where the others
+printed "placed where it was saved". Each test compares after the load with its own count before the save, so neither
+changes a verdict.
 
 ---
 
