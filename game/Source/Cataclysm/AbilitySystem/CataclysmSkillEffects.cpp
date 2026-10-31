@@ -2704,6 +2704,16 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 
 	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
 
+	// A NEW BLEED STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN. Issue #918, ruled 2026-10-31. One bleed at a time, so the
+	// one this replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to the count at each tick.
+	if (EffectTag == UCataclysmDebuffs::BleedTag())
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
+	}
+
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
 	// AND WHAT DEALT IT, for the reason `ApplyDirectDamage` gives: a minion's

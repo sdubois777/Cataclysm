@@ -250,6 +250,12 @@ public:
 	static FGameplayTag BleedTag();
 
 	/**
+	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
+	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
+	 */
+	static constexpr float BleedMovingSecondsCap = 4.0f;
+
+	/**
 	 * The parent of every damage over time, `Keyword.DoT`. Issue #1815, for
 	 * "enemies affected by a DoT". The same branch `DebuffRootNames` counts.
 	 */
