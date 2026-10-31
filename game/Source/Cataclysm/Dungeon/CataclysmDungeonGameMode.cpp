@@ -1055,10 +1055,11 @@ namespace
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
-	float DungeonGameModePandorasBoxRoll()
+	// ON THE BOX'S OWN STREAM, from the floor's seed and its placement index (`PandorasBoxRollSalt`). Issue #753, 3b.
+	float DungeonGameModePandorasBoxRoll(int32 Seed)
 	{
 		const float Pinned = CVarPandorasBoxRoll.GetValueOnAnyThread();
-		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		return Pinned >= 0.0f ? Pinned : FRandomStream(Seed).FRandRange(0.0f, 100.0f);
 	}
 
 	float DungeonGameModeTrickOrTreatRoll()
@@ -1995,6 +1996,22 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// 2026-10-30. Issue #753, Group 3a.
 	StoodBeforePlacement.Reset();
 	bPlacingTheFloorsObjects = true;
+
+	// AND THE USES OF THE OBJECTS ABOUT TO BE PLACED ARE FORGOTTEN: every one for a new arena, and the three rules placed
+	// on every wave when a Horde arena is kept. Issue #753, Group 3b.
+	if (!bKeptTheArena)
+	{
+		UsedFloorObjects.Reset();
+	}
+	else
+	{
+		UsedFloorObjects.RemoveAll([](const FFloorObjectUse& One)
+		{
+			return One.Rule == FName(UCataclysmDungeonModifierEffects::ForcedTithesKey)
+				|| One.Rule == FName(UCataclysmDungeonModifierEffects::PactOfTemptationKey)
+				|| One.Rule == FName(UCataclysmDungeonModifierEffects::SanctionedPassageKey);
+		});
+	}
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
 		if (IsValid(*It) && (It->IsA<APawn>() || It->IsA<ACataclysmFloorObject>() || It->IsA<ACataclysmGroundZone>()
@@ -11561,6 +11578,8 @@ TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FNam
 		if (ACataclysmFloorObject* Object = PlaceFloorObjectAt(RuleKey, CurrentFloor->WorldOfCell(Cell), DisplayName,
 															   Prompt))
 		{
+			// THE ORDER THIS RULE PLACED IT IN, which a save names a used object by. Issue #753, Group 3b.
+			Object->PlacementIndex = Placed.Num();
 			Placed.Add(Object);
 		}
 	}
@@ -11924,7 +11943,9 @@ bool ACataclysmDungeonGameMode::ChooseAtPandorasBox(ACataclysmFloorObject* Box, 
 	const FVector At = Box->GetActorLocation();
 
 	// ONE ROLL, ONE OUTCOME.
-	if (Effects::PandorasBoxUnleashes(DungeonGameModePandorasBoxRoll()))
+	if (Effects::PandorasBoxUnleashes(DungeonGameModePandorasBoxRoll(FCataclysmFloorGenerator::SeedForFloor(
+			FCataclysmFloorGenerator::SeedForFloor(CurrentFloor->GetPlan().Seed, Effects::PandorasBoxRollSalt),
+			Box->PlacementIndex))))
 	{
 		// THE FIRST WAVE AT ONCE; THE REST ON THE BEAT, EACH ONCE THE LAST IS ALL DEAD.
 		FPandorasBoxWaves& Waves = PandorasBoxWaves.AddDefaulted_GetRef();
@@ -12998,12 +13019,263 @@ bool ACataclysmDungeonGameMode::ChooseAtFloorObject(ACataclysmFloorObject* Objec
 		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
 	const float HealthBefore = AbilitySystem ? AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()) : 0.0f;
 
+	// THE OBJECT'S RULE AND PLACEMENT INDEX READ BEFORE THE CHOICE ACTS, which may destroy it. Issue #753, Group 3b.
+	const FName UsedRule = IsValid(Object) ? Object->RuleKey : NAME_None;
+	const int32 UsedIndex = IsValid(Object) ? Object->PlacementIndex : INDEX_NONE;
+
 	const bool bActed = ChooseAtFloorObjectForItsRule(Object, ChoiceKey);
 	if (bActed && bPriced && AbilitySystem)
 	{
 		PayTheBloodPrice(Player, AbilitySystem, HealthBefore);
 	}
+	// AND A CHOICE THAT ACTED IS RECORDED FOR THE SAVE. Issue #753, Group 3b.
+	if (bActed && UsedIndex != INDEX_NONE)
+	{
+		UsedFloorObjects.Add({UsedRule, UsedIndex, ChoiceKey});
+	}
 	return bActed;
+}
+
+TArray<FCataclysmSavedUsedObject> ACataclysmDungeonGameMode::UsedFloorObjectsNow() const
+{
+	TArray<FCataclysmSavedUsedObject> Out;
+	for (const FFloorObjectUse& One : UsedFloorObjects)
+	{
+		FCataclysmSavedUsedObject& Saved = Out.AddDefaulted_GetRef();
+		Saved.Rule = One.Rule;
+		Saved.Index = One.Index;
+		Saved.Choice = One.Choice;
+	}
+	return Out;
+}
+
+FCataclysmSavedFloorChoices ACataclysmDungeonGameMode::FloorChoicesNow() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FCataclysmSavedFloorChoices Out;
+	Out.bTitheAngelsDue = bTitheAngelsDue;
+	// THIS FLOOR'S OFFER, WHICH THE NEXT FLOOR'S DRAW AVOIDS: `PactLastOffered`, which taking a pact does not empty.
+	Out.PactOffer = PactLastOffered;
+	// THE GATE OPENED: used, and gone, which only the channel's end does.
+	Out.bDivineGateOpened = !DivineGate.IsValid()
+		&& UsedFloorObjects.ContainsByPredicate([](const FFloorObjectUse& One)
+		{
+			return One.Rule == FName(Effects::SanctionedPassageKey);
+		});
+	Out.bWarBannerHeld = bWarBannerHeld;
+	Out.WarBannerHeldSeconds = WarBannerHeldSeconds;
+	Out.bRealityGiftTaken = bRealityGiftTaken;
+	Out.bRealityChamberRewardGiven = bRealityChamberRewardGiven;
+	Out.RealityChamberRewardRolls = RealityChamberRewardRolls;
+	Out.RealityChamberRewardDrops = RealityChamberRewardDrops;
+	Out.RealityChamberRewardExtraDrops = RealityChamberRewardExtraDrops;
+	return Out;
+}
+
+void ACataclysmDungeonGameMode::RestoreFloorChoices(const FCataclysmSavedFloorChoices& Choices,
+													const TArray<FCataclysmSavedUsedObject>& Used)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE PACT OFFER FIRST, so the altar still standing offers what it offered, and a pact taken empties it below as
+	// taking one does. The last offer always, which the next floor's draw avoids, as the walk would have it.
+	if (!Choices.PactOffer.IsEmpty())
+	{
+		PactLastOffered = Choices.PactOffer;
+		if (ACataclysmFloorObject* Altar = PactAltar.Get())
+		{
+			PactOffered = Choices.PactOffer;
+			Altar->Choices.Reset();
+			for (const int32 Pact : PactOffered)
+			{
+				FCataclysmFloorObjectChoice Choice;
+				Choice.Key = FName(Effects::PactName(Pact));
+				Choice.Label = Effects::PactButtonLabel(Pact);
+				Altar->Choices.Add(Choice);
+			}
+		}
+	}
+	bTitheAngelsDue = Choices.bTitheAngelsDue;
+
+	// EACH USED OBJECT, AND THE LIST AS IT WAS, so a second save keeps it.
+	UsedFloorObjects.Reset();
+	for (const FCataclysmSavedUsedObject& One : Used)
+	{
+		if (MarkFloorObjectUsed(One.Rule, One.Index, One.Choice, Choices.bDivineGateOpened))
+		{
+			UsedFloorObjects.Add({One.Rule, One.Index, One.Choice});
+		}
+		else
+		{
+			UE_LOG(LogCataclysm, Warning, TEXT("A load could not mark %s's object %d used on floor %d."),
+				   *One.Rule.ToString(), One.Index, FloorNumber);
+		}
+	}
+
+	// THE BANNER'S HOLD, ONLY ON A BANNER PLANTED; the rifts' gift and chamber.
+	if (bWarBannerPlanted)
+	{
+		bWarBannerHeld = Choices.bWarBannerHeld;
+		WarBannerHeldSeconds = Choices.WarBannerHeldSeconds;
+	}
+	bRealityGiftTaken = Choices.bRealityGiftTaken;
+	bRealityChamberRewardGiven = Choices.bRealityChamberRewardGiven;
+	RealityChamberRewardRolls = Choices.RealityChamberRewardRolls;
+	RealityChamberRewardDrops = Choices.RealityChamberRewardDrops;
+	RealityChamberRewardExtraDrops = Choices.RealityChamberRewardExtraDrops;
+	RefreshFloorModifierPanel();
+}
+
+bool ACataclysmDungeonGameMode::MarkFloorObjectUsed(FName Rule, int32 Index, FName Choice, bool bDivineGateOpened)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	ACataclysmFloorObject* Object = nullptr;
+	for (TActorIterator<ACataclysmFloorObject> It(World); It; ++It)
+	{
+		if (IsValid(*It) && It->RuleKey == Rule && It->PlacementIndex == Index)
+		{
+			Object = *It;
+			break;
+		}
+	}
+	if (!Object)
+	{
+		return false;
+	}
+	const auto PlaceIn = [Object](const TArray<TWeakObjectPtr<ACataclysmFloorObject>>& List)
+	{
+		return List.IndexOfByPredicate([Object](const TWeakObjectPtr<ACataclysmFloorObject>& One)
+		{
+			return One.Get() == Object;
+		});
+	};
+
+	// WHAT EACH RULE'S CHOICE DOES TO THE OBJECT AND THE FLOOR'S STATE, AND NOTHING IT PAYS OR CHARGES.
+	if (Rule == FName(Effects::ForcedTithesKey))
+	{
+		if (Object != TitheAltar.Get())
+		{
+			return false;
+		}
+		if (Choice == FName(Effects::ForcedTithesRefuse))
+		{
+			bTitheRefused = true;
+		}
+		else
+		{
+			bTithePaid = true;
+		}
+		TitheAltar = nullptr;
+	}
+	else if (Rule == FName(Effects::PactOfTemptationKey))
+	{
+		if (Object != PactAltar.Get())
+		{
+			return false;
+		}
+		PactAltar = nullptr;
+		PactOffered.Reset();
+	}
+	else if (Rule == FName(Effects::SanctionedPassageKey))
+	{
+		if (Object != DivineGate.Get())
+		{
+			return false;
+		}
+		// A CHANNEL BEGUN AND NOT FINISHED BEGINS AGAIN FROM NOUGHT, its seconds a duration (ruled 2026-10-30, Q5):
+		// what the choice does, which pays and charges nothing; the Blood Price is `ChooseAtFloorObject`'s.
+		if (!bDivineGateOpened)
+		{
+			return ChooseAtDivineGate(Object, Choice);
+		}
+		DivineGate = nullptr;
+		bDivineGateChannelling = false;
+	}
+	else if (Rule == FName(Effects::BattlefieldRelicsKey))
+	{
+		const int32 At = PlaceIn(BattlefieldRelics);
+		if (At == INDEX_NONE)
+		{
+			return false;
+		}
+		BattlefieldRelics.RemoveAt(At);
+		if (BattlefieldRelicKinds.IsValidIndex(At))
+		{
+			BattlefieldRelicKinds.RemoveAt(At);
+		}
+	}
+	else if (Rule == FName(Effects::PandorasBoxKey))
+	{
+		const int32 At = PlaceIn(PandorasBoxes);
+		if (At == INDEX_NONE)
+		{
+			return false;
+		}
+		PandorasBoxes.RemoveAt(At);
+		if (PandorasBoxSeeds.IsValidIndex(At))
+		{
+			PandorasBoxSeeds.RemoveAt(At);
+		}
+	}
+	else if (Rule == FName(Effects::CarrionFeastKey))
+	{
+		if (Object != PurificationAltar.Get())
+		{
+			return false;
+		}
+		AltarAt = Object->GetActorLocation();
+		bAltarConsecrated = true;
+		PurificationAltar = nullptr;
+	}
+	else if (Rule == FName(Effects::InfernalBeaconsKey))
+	{
+		const int32 At = PlaceIn(InfernalBeacons);
+		if (At == INDEX_NONE)
+		{
+			return false;
+		}
+		InfernalBeacons.RemoveAt(At);
+	}
+	else if (Rule == FName(Effects::WarBannerKey))
+	{
+		if (Object != WarBanner.Get())
+		{
+			return false;
+		}
+		WarBannerAt = Object->GetActorLocation();
+		bWarBannerPlanted = true;
+		WarBanner = nullptr;
+	}
+	else if (Rule == FName(Effects::GrimTotemsKey))
+	{
+		const int32 At = PlaceIn(GrimTotems);
+		if (At == INDEX_NONE)
+		{
+			return false;
+		}
+		if (GrimTotemZones.IsValidIndex(At))
+		{
+			if (ACataclysmGroundZone* Zone = GrimTotemZones[At].Get())
+			{
+				Zone->Destroy();
+			}
+			GrimTotemZones.RemoveAt(At);
+		}
+		GrimTotems.RemoveAt(At);
+	}
+	else
+	{
+		return false;
+	}
+	Object->Destroy();
+	return true;
 }
 
 void ACataclysmDungeonGameMode::PayTheBloodPrice(ACataclysmPlayerCharacter* Player,

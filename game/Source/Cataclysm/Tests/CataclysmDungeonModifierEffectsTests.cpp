@@ -40040,6 +40040,79 @@ bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
 }
 
 // BELOW 50: NO REWARD; A WAVE OF FOUR "CHAOS SPAWN" AT ONCE, THE NEXT ONLY ONCE THE LAST IS ALL DEAD, THREE IN ALL.
+// PANDORA'S BOX ROLLS THE SAME OUTCOME FOR THE SAME BOX OF THE SAME FLOOR, from the floor's seed and the box's placement
+// index, so reloading before a box is opened cannot roll it again. Issue #753, Group 3b, ruled 2026-10-30. Five dungeon
+// seeds, each floor built and its three boxes opened, then the same floor built again and its boxes opened again: the
+// fifteen outcomes the same both times. THE CONTROL: both outcomes occur among them, so the odds were not pinned. Two
+// unseeded rolls agree half the time (`PandorasBoxUnleashBelow` is 50), so fifteen agreeing by chance is 1 in 32,768.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesSeededRollTest,
+	"Cataclysm.DungeonModifierEffects.APandorasBoxRollsTheSameOutcomeOnTheSameFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBoxesSeededRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// EACH OPENING'S OUTCOME, "U" FOR UNLEASHED (chaos spawn came) AND "R" FOR A REWARD, the boxes taken in the order
+	// placed: the first standing each time.
+	const auto OpenEvery = [this](ACataclysmDungeonGameMode* Mode)
+	{
+		FString Outcomes;
+		while (!Mode->PandorasBoxesNow().IsEmpty())
+		{
+			const int32 SpawnBefore = Mode->ChaosSpawnStanding().Num();
+			if (!Mode->ChooseAtFloorObject(Mode->PandorasBoxesNow()[0], OpenKey))
+			{
+				Outcomes += TEXT("?");
+				break;
+			}
+			Outcomes += Mode->ChaosSpawnStanding().Num() > SpawnBefore ? TEXT("U") : TEXT("R");
+		}
+		return Outcomes;
+	};
+
+	FString First;
+	FString Again;
+	for (int32 Seed = 1; Seed <= 5; ++Seed)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedConsoleString PinnedSeed(TEXT("Cataclysm.DungeonSeed"), *FString::FromInt(Seed));
+		if (!TestNotNull(TEXT("the dungeon can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		const FPossessedPlayer Player(World);
+		ACataclysmDungeonGameMode* Mode = ABoxFloor(*this, World, Player);
+		if (!Mode)
+		{
+			return false;
+		}
+		First += OpenEvery(Mode) + TEXT(" ");
+		if (!TestTrue(TEXT("the same floor was built again"), Mode->GoToFloor(2))
+			|| !TestEqual(TEXT("with its three boxes"), Mode->PandorasBoxesNow().Num(),
+						  UCataclysmDungeonModifierEffects::PandorasBoxPerFloor))
+		{
+			return false;
+		}
+		Again += OpenEvery(Mode) + TEXT(" ");
+	}
+
+	AddInfo(FString::Printf(TEXT("PANDORA SEEDED: seeds 1 to 5, opened '%s', on the same floors again '%s'"), *First,
+							*Again));
+
+	TestTrue(TEXT("CONTROL: a box unleashed"), First.Contains(TEXT("U")));
+	TestTrue(TEXT("CONTROL: and a box rewarded"), First.Contains(TEXT("R")));
+	TestFalse(TEXT("every opening acted"), First.Contains(TEXT("?")) || Again.Contains(TEXT("?")));
+	TestEqual(TEXT("the same box of the same floor rolls the same outcome"), Again, First);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoxesWavesTest,
 	"Cataclysm.DungeonModifierEffects.PandorasBoxAWaveRollBringsThreeWavesOfFourOneAfterAnother",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

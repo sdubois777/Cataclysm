@@ -241,6 +241,13 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		Saved.GroundItems.Add(GroundItemFrom(**It));
 	}
 
+	// AND THE FLOOR OBJECTS THE PLAYER USED, with what else the floor's choices left. Issue #753, Group 3b.
+	if (DungeonMode)
+	{
+		Saved.UsedObjects = DungeonMode->UsedFloorObjectsNow();
+		Saved.Choices = DungeonMode->FloorChoicesNow();
+	}
+
 	for (TActorIterator<ACataclysmPlayerCharacter> It(Mutable); It; ++It)
 	{
 		ACataclysmPlayerCharacter* Character = *It;

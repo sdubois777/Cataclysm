@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A floor object a player used stays used after a load, without its reward or its cost again, and Pandora's Box rolls the same for the same box (#753, Group 3b)
+
+**Affects:** `PlacementIndex` (new) on `ACataclysmFloorObject` (`game/Source/Cataclysm/Dungeon/CataclysmFloorObject.h`),
+set by `ACataclysmDungeonGameMode::PlaceFloorObjects`; `UsedFloorObjects`, `UsedFloorObjectsNow`, `FloorChoicesNow`,
+`RestoreFloorChoices` and `MarkFloorObjectUsed` (new), the use recorded in `ChooseAtFloorObject`, the list emptied in
+`PopulateFloor`, and Pandora's Box's roll (`CataclysmDungeonGameMode.h`, `.cpp`); `PandorasBoxRollSalt` (new) in
+`CataclysmDungeonModifierEffects.h`; `FCataclysmSavedUsedObject` and `FCataclysmSavedFloorChoices` (new) and
+`UsedObjects` and `Choices` on `FCataclysmSavedFloor` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), gathered
+in `FCataclysmSaveGather::FloorFrom` and put back by the loader (`CataclysmSaveLoad.cpp`); the fixture
+`game/Tests/SaveFixtures/Run_v1.json`; four new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and one
+in `CataclysmDungeonModifierEffectsTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: Groups 3c and 3d follow.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WHAT THE READING FOUND, BEFORE ANY CODE.** None of the ten rules had a step that marks its object used without its
+  reward or cost, so 3b writes one for each. `ACataclysmFloorObject` carried no index, and the relics, boxes, beacons and
+  totems take a used one out of their lists (`RemoveAt`), so a used object's place in its list moves. A load could offer
+  a different pact than the floor had offered: the draw avoids the last floor's offer (`PactLastOffered`), which a load
+  did not have. Grim Totems' Cleanse weakens creatures through `SetGrimTotemsDamageMultiplier`, which the creature record
+  does not hold, so a load loses it (Q3, to 3d). The Blood Price a choice charges is already in the walk.
+- **ONE REGISTRATION DEPARTS FROM THE PROPOSAL: P2.** Proposed as "the relic step destroys the relic and does not take
+  it out of its lists"; traced through what the test reads, that changes nothing it asserts (it compares the objects
+  standing, and the lists' accessors skip a destroyed one), so it could not fail. P2 is now the relic step returning
+  before it destroys anything. And a fifth test is added, for the Divine Gate whose channel finished, which the proposal
+  had folded into T1 and which needs ten seconds of beats with the player at the gate: the registration is 4393 + 5.
+
+### Rulings, 2026-10-30
+
+- **Q1. The War Banner's seconds held are saved,** as progress toward holding it, a reward, and not a buff's duration.
+- **Q2. The creatures a use brought (tithe angels, relic spirits, totem Elites, banner assailants, Pandora's spawn and
+  its waves still to come) go to 3d**, re-brought by count at their rule's spot. 3b keeps the angels owed, a flag.
+- **Q3. Grim Totems' Cleanse weakening goes to 3d,** as a field of the creature record.
+- **Q4. A save inside the Reality chamber is out of 3b;** the coordinating session noted it on #753.
+- **Q5. A Divine Gate channel begun and not finished begins again from nought** (D1); the finished state is saved.
+- **Pandora's Box's roll is seeded** from the floor's seed, `PandorasBoxRollSalt` and the box's placement index: the
+  same draw from 0 to 100, so the odds are unchanged, and `Cataclysm.PandorasBoxRoll` still pins it.
+
+### What changes
+
+- **THE KEY.** `PlaceFloorObjects` gives each object its rule places the next `PlacementIndex` (0, 1, ...); an object
+  placed alone (each altar, the gate, the banner) keeps 0. `ChooseAtFloorObject`, the one call every choice passes
+  through, reads the object's rule and index before the choice acts (it may destroy the object) and records
+  (rule, index, choice) once the choice has acted. `PopulateFloor` empties the list where it begins to place: all of it
+  for a new arena, and the tithe's, the pact's and the gate's on a kept Horde wave, those three being placed every wave.
+  Not when a rule places its objects, because a rule absent from the next floor places none and its uses would stay.
+- **THE RECORD.** `FCataclysmSavedFloor` gains the list (`UsedObjects`, each {Rule, Index, Choice}) and
+  `FCataclysmSavedFloorChoices`: the angels owed, this floor's pact offer (`PactLastOffered`, which taking a pact does not
+  empty), the gate opened (used and gone), the banner held and its seconds held, and the rifts' gift taken and chamber
+  reward paid with its three counts. Every default means not saved; no version bump.
+- **THE RESTORE.** The loader calls `RestoreFloorChoices` after the floor is rebuilt, the walk is back and the creatures
+  are re-linked. It puts the pact offer back first (the altar standing offers it again; the last offer always), then
+  marks each saved object used, then the banner's hold and the rifts' flags. `MarkFloorObjectUsed` finds the standing
+  object by rule and placement index and does what that rule's choice does to the object and the floor's state and
+  nothing it pays or charges:
+
+| Rule | What the step does | What it does not |
+|---|---|---|
+| Forced Tithes | the altar gone; paid or refused, by the saved choice | no price taken, no angels brought |
+| Pact of Temptation | the altar gone, the offer emptied | no pact taken again (the walk holds the buff and curses) |
+| Sanctioned Passage | finished: the gate gone and the stairs unsealed; begun only: the channel begun again (its choice, which charges nothing) | no Blood Price |
+| Battlefield Relics, Pandora's Box, Infernal Beacons, Grim Totems | the object gone and out of its lists, found by pointer in them | no buff, no spirits, no roll, no drops, no stack, no Elites, no cleanse |
+| Carrion Feast's altar | consecrated where it stood, the altar gone; its zone is drawn again on the beat | no burn |
+| War Banner | planted where it stood, the banner gone; held and seconds held put back | no wave |
+| Reality Rifts | the gift taken, the chamber paid, its counts | no gift, no drops |
+
+  The list is held again as it was, so a second save keeps it. A saved use whose object is not found is logged and
+  skipped.
+
+### Tests
+
+`Cataclysm.SaveLoad.AFloorsUsedChoicesComeBackUsedAfterALoad`: a dungeon carrying the ten rules, saved on the first floor
+from 2 with a hidden chamber. The rifts' gift and the chamber's reward are taken as their steps take them (a beat to draw
+the rifts, the player stood on the gift and then on the chamber's rift, a beat each); then, through
+`ChooseAtFloorObject`: the tithe refused, a pact taken, the gate's channel begun, a relic, a box, the altar, a beacon, the
+banner, and both totems -- the first, and then the one placed second, by then first in its list. After the load: the
+same floor objects stand, by rule and placement index; the uses are held again; no drop, beacon stack or pact is paid
+again; the gift stays taken, the chamber paid, the altar consecrated, the banner planted, and the gate's channel begins
+again. SET-UP: ten uses are recorded. Prints "LOAD USED".
+
+`Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered`: the first floor from 2 whose first draw matched the last
+floor's offer, found with the draw reproduced from the plan's seed and the salt (`FirstPactShuffle`, the test's
+oracle); after the load the altar offers what it offered, and the next floor offers what the walk's did. CONTROL: the
+floor's first draw is not what it offered. Prints "LOAD PACT".
+
+`Cataclysm.SaveLoad.ATitheLeftUnpaidIsStillOwedAfterALoad`: floor 1's altar left unpaid, saved on floor 2 before the beat
+that brings the angels; after the load they are owed, and the beat after it brings `ForcedTithesAngelCount` (8). Prints
+"LOAD TITHE".
+
+`Cataclysm.SaveLoad.ADivineGateOpenedStaysOpenAfterALoad`: floor 2's creatures cleared, the player at the gate, the
+channel run to its end on beats; after the load the gate is gone, the stairs unsealed, and no channel runs. Prints
+"LOAD GATE".
+
+`Cataclysm.DungeonModifierEffects.APandorasBoxRollsTheSameOutcomeOnTheSameFloor`: five pinned dungeon seeds, each floor's
+three boxes opened, the same floor built again and its boxes opened again: the fifteen outcomes the same both times.
+CONTROL: both outcomes occur. Prints "PANDORA SEEDED".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4398 / 0: `development`'s 4393, measured by window w108, + 5 |
+| Python | of record, with JUnit, and ruff |
+| P1, `ChooseAtFloorObject` records no use | the used-choices test fails at its set-up, "ten uses are recorded" (0); the gate test fails on "the gate is gone" and "and the stairs are unsealed", the rebuilt gate standing and nothing saved to take it away, and passes "and no channel runs"; nothing else fails |
+| P2, the relic step returns before it destroys anything | the used-choices test fails on "the same floor objects stand" (the relic stands) and "and the uses are held again" (its use not held); nothing else fails |
+| P3, the totem step takes its list position from the saved index instead of finding the object | the used-choices test fails on "the same floor objects stand" (the totem placed second stands: by then its list has one entry, and position 1 is past it) and "and the uses are held again"; nothing else fails |
+| P4, the box roll unseeded again (prefix `Cataclysm.DungeonModifierEffects.APandorasBox`) | the seeded-roll test fails on "the same box of the same floor rolls the same outcome", unless fifteen unseeded pairs agree by chance (1 in 32,768, recorded if so); its CONTROL may fail too and is recorded either way |
+| P5, the pact offer not put back | the pact test fails on "the altar offers the pacts it offered" (the first draw); "and the next floor offers what the walk's did" is not predicted, recorded either way; nothing else fails |
+| P6, the angels owed not gathered | the tithe test fails on "the angels are still owed" and "and they come on the next beat" (0, not 8); nothing else fails |
+| P7, the rifts' gift and chamber flags not put back | the used-choices test fails on "the gift stays taken" and "the chamber's reward stays paid"; nothing else fails |
+
+### Run
+
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, every changed file
+uncommitted and so compiled outside the unity file: `Build: Succeeded - 79 actions, 69 files compiled`, no warning in a
+changed file.
+
+---
+
 ## 2026-10-30 — The numbers the enemy ability prose states with their units are held to the ability table, and four sentences that wrote a radius as a width are corrected (#1634)
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (four sentences: words only, no number);

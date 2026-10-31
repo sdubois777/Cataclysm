@@ -196,6 +196,34 @@
 				}
 			}
 		],
+		"UsedObjects": [
+			{
+				"Rule": "War_Battlefield_Relics",
+				"Index": 1,
+				"Choice": "Activate"
+			},
+			{
+				"Rule": "Celestial_Forced_Tithes",
+				"Index": 0,
+				"Choice": "Refuse"
+			}
+		],
+		"Choices": {
+			"bTitheAngelsDue": true,
+			"PactOffer": [
+				0,
+				2,
+				4
+			],
+			"bDivineGateOpened": false,
+			"bWarBannerHeld": true,
+			"WarBannerHeldSeconds": 42.5,
+			"bRealityGiftTaken": true,
+			"bRealityChamberRewardGiven": true,
+			"RealityChamberRewardRolls": 3,
+			"RealityChamberRewardDrops": 2,
+			"RealityChamberRewardExtraDrops": 1
+		},
 		"Characters": [
 			{
 				"CharacterId": "5C0B1A4E5B7F4D2E9A3C6F81D24E7B03",

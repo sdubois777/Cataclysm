@@ -6416,6 +6416,14 @@ public:
 	 */
 	static constexpr int32 IllusoryEnemiesSalt = 0x5D08;
 
+	/**
+	 * And the ninth: Pandora's Box's roll, unleash or reward, drawn from the floor's seed mixed with this salt and the
+	 * box's placement index, so reloading before a box is opened cannot roll it again. The same draw from 0 to 100 as
+	 * before, so the odds are unchanged; `Cataclysm.PandorasBoxRoll` still pins it. Issue #753, Group 3b, ruled
+	 * 2026-10-30.
+	 */
+	static constexpr int32 PandorasBoxRollSalt = 0x5D09;
+
 	/** Whether a floor of this seed that carries Reality Rifts has a hidden chamber. The same seed, the same answer. */
 	static bool RealityChamberOnFloor(int32 FloorSeed);
 
