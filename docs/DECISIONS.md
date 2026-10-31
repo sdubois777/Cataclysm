@@ -84,7 +84,7 @@ CataclysmSkillTemplateTests.cpp` (1 test added); this file. No data changes.
 
 ### REGISTERED BEFORE THE PROOFS
 
-**The Unreal suite**: @@UNREAL_TOTAL@@ tests performed, all succeeded.
+**The Unreal suite**: 4422 tests performed, all succeeded: the 4419 the editor window `enchant-quarry-w1` measured on `7f7635492` (#1520), whose tree development `b5add4116` changes only by one line of `CLAUDE.md`, plus the three tests this change adds.
 
 **Three C++ guards**, `tools/unreal_build.py` `prove_cpp_guard`, in the editor window, each with the full name of
 one test as its prefix, all in `AbilitySystem/CataclysmCurseSpread.cpp`. Proofs 1 and 2 share a break: the new holder
