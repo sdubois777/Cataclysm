@@ -494,7 +494,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							|| Carrier->BleedMovingSeconds
 								>= UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER)
 						{
-							Hit.Damage = 0.0f;
+							// NO TICK AT ALL, NOT A TICK OF NOUGHT. Ruled 2026-10-31: a gated tick raises no damage
+							// or hit event, counts toward no counter, leeches and heals nothing, lays no rider and
+							// shows no number. So it returns here, after `SetDamage(0.0f)` above has cleared the
+							// incoming figure, rather than carrying a zero through everything below.
+							return;
 						}
 						else
 						{
