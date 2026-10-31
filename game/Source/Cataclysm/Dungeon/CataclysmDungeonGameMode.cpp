@@ -14249,6 +14249,7 @@ void ACataclysmDungeonGameMode::RaiseTheTrickOrTreatPair(const FVector& Where)
 		FloorEnemies.Add(Raised);
 		Raised->bRaisedByARule = true;
 		CreaturesRaisedByARule.Add(Raised);
+		TrickOrTreatPair.Add(Raised);
 		++TrickOrTreatRaised;
 	}
 }
@@ -14440,6 +14441,33 @@ void ACataclysmDungeonGameMode::RaiseTheUnstablePortalsWarden()
 	FloorEnemies.Add(Warden);
 	Warden->bRaisedByARule = true;
 	CreaturesRaisedByARule.Add(Warden);
+	UnstablePortalWardens.Add(Warden);
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::UnstablePortalWardensStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : UnstablePortalWardens)
+	{
+		if (ACataclysmEnemyCharacter* Warden = One.Get(); IsValid(Warden) && !UCataclysmSkillEffects::IsDead(Warden))
+		{
+			Standing.Add(Warden);
+		}
+	}
+	return Standing;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::TrickOrTreatPairStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : TrickOrTreatPair)
+	{
+		if (ACataclysmEnemyCharacter* Raised = One.Get(); IsValid(Raised) && !UCataclysmSkillEffects::IsDead(Raised))
+		{
+			Standing.Add(Raised);
+		}
+	}
+	return Standing;
 }
 
 int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
@@ -15391,6 +15419,28 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 			CarrionFeeders.Add(&Creature); // A load's: a feeder.
 			CarrionFeederOwnMaxHealth.Add(Saved.CarrionFeederOwnMaxHealth);
 		}
+		// 3d-4a: Plague Convergence's creatures, paying nothing, on the floor's list; Infection Bloom's waves, paying
+		// nothing and not on the floor's list, from which the load is taken off again; a trick's pair, paying, on the
+		// list; an Unstable Portal's Warden, paying, on the list.
+		else if (Saved.RaisedBy == FName(RaisedPlagueConvergence))
+		{
+			Creature.bDiesUnpaid = true;
+			PlagueConvergenceCreatures.Add(&Creature); // A load's: a convergence creature.
+		}
+		else if (Saved.RaisedBy == FName(RaisedBloomWave))
+		{
+			Creature.bDiesUnpaid = true;
+			InfectionBloomWaveCreatures.Add(&Creature); // A load's: a bloom's wave.
+			FloorEnemies.Remove(&Creature);
+		}
+		else if (Saved.RaisedBy == FName(RaisedTrickOrTreat))
+		{
+			TrickOrTreatPair.Add(&Creature); // A load's: a trick's pair.
+		}
+		else if (Saved.RaisedBy == FName(RaisedUnstablePortalWarden))
+		{
+			UnstablePortalWardens.Add(&Creature); // A load's: a portal's Warden.
+		}
 	}
 }
 
@@ -15462,6 +15512,27 @@ bool ACataclysmDungeonGameMode::RaisedByOf(const ACataclysmEnemyCharacter& Creat
 	if (In(CarrionFeeders))
 	{
 		OutTag = FName(RaisedCarrionFeeder);
+		return true;
+	}
+	// 3d-4a.
+	if (In(PlagueConvergenceCreatures))
+	{
+		OutTag = FName(RaisedPlagueConvergence);
+		return true;
+	}
+	if (In(InfectionBloomWaveCreatures))
+	{
+		OutTag = FName(RaisedBloomWave);
+		return true;
+	}
+	if (In(TrickOrTreatPair))
+	{
+		OutTag = FName(RaisedTrickOrTreat);
+		return true;
+	}
+	if (In(UnstablePortalWardens))
+	{
+		OutTag = FName(RaisedUnstablePortalWarden);
 		return true;
 	}
 	OutTag = NAME_None;
@@ -15660,6 +15731,21 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 		if (IsValid(Carcass) && CarrionCarcassSeconds.IsValidIndex(Index) && CarrionCarcassSeconds[Index] >= 0.0f)
 		{
 			Out.CarrionCarcasses.Add(Carcass->GetActorLocation());
+		}
+	}
+
+	// PLAGUE CONVERGENCE: begun, and the disease stacks. Not the seconds to the next wave (D1). 3d-4a.
+	Out.bPlagueConvergenceBegun = Effects::PlagueConvergenceHasBegun(PlagueConvergenceSecondsOnFloor);
+	Out.PlagueConvergenceStacks = PlagueConvergenceStacks;
+
+	// A STANDING INFECTION BLOOM: its spread and the health it has left. 3d-4a.
+	if (const ACataclysmEnemyCharacter* Bloom = InfectionBloomNow())
+	{
+		Out.InfectionBloomPatchPoints = InfectionBloomPatchPoints;
+		if (const UAbilitySystemComponent* Abilities = Bloom->GetAbilitySystemComponent())
+		{
+			Out.InfectionBloomHealthLeft =
+				Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
 		}
 	}
 	return Out;
@@ -15954,6 +16040,31 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		LayACarcassAt(At); // A load's: a carcass laid again.
 	}
 	StrengthenTheFeeders(); // A load's: the feeders strengthened again.
+
+	// PLAGUE CONVERGENCE: BEGUN, so its waves come on their cadence and not after the floor's wait again (Q1); the clock
+	// is set where it begins, and the seconds to the next wave restart (D1). And the disease stacks, a cost built up.
+	// Issue #753, Group 3d-4a.
+	if (State.bPlagueConvergenceBegun)
+	{
+		PlagueConvergenceSecondsOnFloor = UCataclysmDungeonModifierEffects::PlagueConvergenceBeginsAfterSeconds; // A load's: begun.
+	}
+	PlagueConvergenceStacks = State.PlagueConvergenceStacks;
+
+	// A STANDING INFECTION BLOOM: its spread, whose patches the beat draws, and the health it had left (Q3 a). The
+	// rebuilt bloom stood at full health with one point. Issue #753, Group 3d-4a.
+	if (ACataclysmEnemyCharacter* Bloom = InfectionBloomNow())
+	{
+		if (!State.InfectionBloomPatchPoints.IsEmpty())
+		{
+			InfectionBloomPatchPoints = State.InfectionBloomPatchPoints; // A load's: the bloom's spread.
+		}
+		if (UAbilitySystemComponent* Abilities = Bloom->GetAbilitySystemComponent();
+			Abilities && State.InfectionBloomHealthLeft > 0.0f)
+		{
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+											   State.InfectionBloomHealthLeft); // A load's: the bloom's health.
+		}
+	}
 	RefreshFloorModifierPanel();
 }
 
@@ -23719,6 +23830,9 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		UnstablePortalRolls = 0;
 		UnstablePortalLast = -1;
 		CreaturesRaisedByARule.Reset();
+		// AND THE LISTS A SAVE KNOWS THE PORTAL'S WARDENS AND THE TRICK'S PAIRS BY, for the same reason. 3d-4a.
+		UnstablePortalWardens.Reset();
+		TrickOrTreatPair.Reset();
 
 		// AND THE REAPER'S CLOCK STARTS AGAIN: it went with the last floor's creatures, and
 		// a floor carrying the row raises a new one ten seconds in. Issues #1820 and #41.

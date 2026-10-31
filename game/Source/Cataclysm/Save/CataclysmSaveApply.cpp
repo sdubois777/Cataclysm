@@ -324,9 +324,16 @@ ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto(
 	// to the save system where no other caller could reach it, is what issues
 	// #1176 and #1190 both ran into. UCataclysmDropSpawner::PutOnTheFloor is the
 	// one copy; what is left here is unpacking the record.
-	return UCataclysmDropSpawner::PutOnTheFloor(
+	ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
 		&World, Saved.Location, Saved.Item, Saved.Material,
 		Saved.MaterialQuantity);
+	// AND WHETHER A RAISED CREATURE DROPPED IT, so Trick or Treat rolls for it no more after a load than before.
+	// Issue #753, Group 3d-4a.
+	if (Drop)
+	{
+		Drop->bDroppedByARaisedCreature = Saved.bDroppedByARaisedCreature; // A load's: the raised creature's mark.
+	}
+	return Drop;
 }
 
 bool FCataclysmSaveApply::PlacementInto(
