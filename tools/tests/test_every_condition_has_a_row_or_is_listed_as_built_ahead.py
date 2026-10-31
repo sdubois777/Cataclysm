@@ -67,9 +67,11 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
 #: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
-    # Landed with the movement conditions for the dungeon-modifier work; the
-    # enchantment rows that want it are among the 388 counted in issue #1815
-    # and wait on the workbook.
+    # Landed with the movement conditions for the dungeon-modifier work. The
+    # row that wants it is a passive node, not an enchantment: Iron Aegis, an
+    # option of the Bulwark tree's Second Oath, "Your Block Chance is doubled
+    # while you have not attacked in the last 3 seconds". Bulwark is a War
+    # class tree, so it waits on the rule that no War work is done yet.
     "not_attacked_for_seconds",
     # TWO JOINED ON 2026-10-07, ruled that day and built ahead of their rows
     # while the design workbook is with another session: "Gain 50%-100%
