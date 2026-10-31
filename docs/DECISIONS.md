@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — The design documents hold no control characters, and a check now says so
+
+**Affects:** `docs/DECISIONS.md` (one character in the Chronomancer's Time-Lock 10-piece entry, and this entry);
+`tools/tests/test_the_design_documents_hold_no_control_characters.py` (new, 3 tests).
+
+### WHAT WAS WRONG
+
+The entry for the Chronomancer's Time-Lock 10-piece (commit `6a9a43f1b`) quoted the stun test's pattern as
+`` `\bstun` `` -- `tools/tests/test_stun_durations_are_stated.py` has `re.search(r"\bstun", ...)` -- but the file held a
+backspace character (0x08) in place of the `\b`. A `\b` written through a shell here-document becomes that character.
+It is invisible in most viewers, and no check read the file for it. Found while #1569's entry was being written; the
+coordinating session asked for it to be fixed on its own branch, with a check if the format tests could catch it.
+
+### WHAT CHANGED
+
+- The backspace is replaced by the two characters `\b`, so the sentence names the pattern as the test writes it.
+- Every `.md`, `.json` and `.txt` file under `docs/` was read on `development` `f4904e99a` for C0 control characters
+  and DEL, other than tab, line feed and carriage return: 16 text files, and this backspace was the only one. The
+  design workbook is a zip archive and was not read.
+- The new check refuses any such character in those files. It has a positive control (it must find `DECISIONS.md`
+  and `Cataclysm_GDD_v2.md`) and a test that its pattern sees a backspace and passes tab, CRLF and LF.
+
+### REGISTERED BEFORE THE PROOF
+
+`tools/prove_guard.py` `break_and_run`, in a git-archive copy of the commit that registers this, command `python -m
+pytest tools/tests/test_the_design_documents_hold_no_control_characters.py`. The break puts the backspace back:
+in `docs/DECISIONS.md`, the text from "`stun_near_the_dying` row)" to the end of "`\bstun`" on that line (counted
+once) has its `\b` replaced by the character 0x08.
+
+Predicted named_failures:
+`tools/tests/test_the_design_documents_hold_no_control_characters.py::test_no_design_document_holds_a_control_character`,
+and nothing else.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+### NO GENRE SOURCE
+
+None. This is a repair to a document.
+
+---
+
 ## 2026-10-30 — A loaded dungeon floor is the floor that was saved: its pillars stand, a Horde arena past its first wave is carved with its objects, its objects are placed without regard to what stood before them, and a restored creature keeps its sight and its floor's reality (#753, Group 3a)
 
 **Affects:** `UCataclysmFloorContents::ClearTheFloor`'s restore branch (`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.h`,
@@ -31070,7 +31113,7 @@ are numbers under the owner's delegation, and the check accepts them only becaus
 freeze) holds a 5.
 
 **`test_stun_durations_are_stated.py` IS MEANT TO READ ENCHANTMENT ROWS** ("every row in every generated table that
-applies a stun states a duration", and it already excuses the six-piece's `stun_near_the_dying` row), and its `stun`
+applies a stun states a duration", and it already excuses the six-piece's `stun_near_the_dying` row), and its `\bstun`
 pattern does not match after an underscore, so it does not see `time_lock_rift_stun_seconds` or
 `ground_pound_stun_seconds`. Measured, not changed: widened to match after an underscore, it would see 2 rows more (13
 against 11) and flag 1, this layer's `#6`, whose sentence says "frozen" and not "stun", as the six-piece's does.
