@@ -146,7 +146,24 @@ Why each:
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+Run 2026-10-30 after the branch was moved onto `development` `901ed0fac` (the control-character fix merged) as
+`feat/ability-prose-numbers-checked-against-the-table-1`. The two commits' changes are identical to the originals
+file by file; the commit that registered the proofs is `2f118ae2f` there (`0c93e245f` before the move).
+
+**The proofs**, in a git-archive copy of `9c3856652`, the branch head, each with exactly the registered
+named_failures:
+
+| # | Printed |
+| :-- | :-- |
+| 1 | "PROVED: 1 failed, 23 passed, 96 deselected in 0.43s \| restored: 24 passed, 96 deselected in 0.26s" |
+| 2 | "PROVED: 2 failed, 22 passed, 96 deselected in 0.37s \| restored: 24 passed, 96 deselected in 0.27s" |
+| 3 | "PROVED: 3 failed, 21 passed, 96 deselected in 0.43s \| restored: 24 passed, 96 deselected in 0.26s" |
+
+**Python of record** at `9c3856652`: "7171 passed, 8 skipped in 210.81s"; JUnit tests 7179, failures 0, errors 0,
+skipped 8. That is the base's 7147 plus 24: three new tests run once for each of the seven enemies, and three run
+once. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). The
+two C++ header changes are comments; the continuous integration "Game compiles" job is their evidence, and no build
+window was run.
 
 ### SOURCES
 
