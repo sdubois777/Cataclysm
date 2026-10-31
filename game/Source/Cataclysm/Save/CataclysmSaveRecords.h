@@ -292,6 +292,19 @@ struct CATACLYSM_API FCataclysmSavedCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float GrimTotemsDamageMultiplier = 1.0f;
+
+	/**
+	 * THE RULE THAT RAISED THIS CREATURE IN PLAY, by a plain tag, and its group in that rule (for Pandora's spawn, the
+	 * place of its box's waves in the floor record), or none and -1 for a creature no rule raised. Since Group 3d-3a,
+	 * ruled 2026-10-31 (Q5 of 3d): a creature a rule raised and that stands at the save is saved as a record, its health
+	 * and place kept, and put back into its rule's list; one with no tag is still not saved. See
+	 * `ACataclysmDungeonGameMode::RaisedByOf`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName RaisedBy = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RaisedGroup = -1;
 };
 
 /**
@@ -635,6 +648,19 @@ struct CATACLYSM_API FCataclysmSavedCoffin
 	bool bLordCame = false;
 };
 
+/** One opened Pandora's Box's waves under way: where they come from and how many have come. Issue #753, 3d-3a. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedPandoraWaves
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector At = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Came = 0;
+};
+
 /** One creature Morale Break counts as escaped from a group: its kind and its rung. Issue #753, Group 3d-2. */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmSavedEscapee
@@ -810,6 +836,13 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	/** Carrion Feast: the carcasses eaten on this floor, which strengthen its feeders. Issue #753, Group 3d-2. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 CarrionFeastStacks = 0;
+
+	/**
+	 * Pandora's Box: each opened box's waves under way, in the rule's order. A chaos spawn standing is a record with
+	 * this index as its group; the waves not yet come are kept by how many have come, as ruled. Issue #753, 3d-3a.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPandoraWaves> PandoraWaves;
 };
 
 /**

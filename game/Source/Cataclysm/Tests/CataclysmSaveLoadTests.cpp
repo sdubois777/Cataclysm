@@ -5466,4 +5466,281 @@ bool FCataclysmSaveLoadTestKillReflectsNothingTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmSaveLoadTest
+{
+	/** A creature's health as a share of its maximum. */
+	float HealthShareOf(const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = Creature.GetAbilitySystemComponent();
+		if (!Abilities)
+		{
+			return -1.0f;
+		}
+		const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		return Maximum > 0.0f ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum
+							  : -1.0f;
+	}
+
+	/** Every creature here taken to half its health, as a fight would leave it. */
+	void ToHalfHealth(const TArray<ACataclysmEnemyCharacter*>& Creatures)
+	{
+		for (ACataclysmEnemyCharacter* Creature : Creatures)
+		{
+			if (UAbilitySystemComponent* Abilities = Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+			{
+				Abilities->SetNumericAttributeBase(
+					UCataclysmVitalAttributeSet::GetHealthAttribute(),
+					0.5f * Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+			}
+		}
+	}
+
+	/**
+	 * WHAT A RAISED CREATURE'S ROUND TRIP ASSERTS, the same for each kind: as many standing in its rule's list as saved, each
+	 * at half its health and carrying the rule's mark, the floor's own standing count as saved, and not one of the floor's
+	 * own, which is what the stairs' seal reads. Prints one line, `Label` first.
+	 */
+	void TheRaisedCameBack(FAutomationTestBase& Test, const TCHAR* Label, int32 Seed, const FCataclysmLoadReport& Report,
+						   ACataclysmDungeonGameMode& Mode, const TArray<ACataclysmEnemyCharacter*>& Standing,
+						   int32 StandingSaved, int32 LivingSaved, TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked)
+	{
+		int32 AtHalf = 0;
+		int32 WithMark = 0;
+		int32 FloorsOwn = 0;
+		for (ACataclysmEnemyCharacter* One : Standing)
+		{
+			AtHalf += FMath::IsNearlyEqual(HealthShareOf(*One), 0.5f, 0.01f) ? 1 : 0;
+			WithMark += Marked(*One) && One->bRaisedByARule ? 1 : 0;
+			FloorsOwn += Mode.IsOneOfTheFloorsOwnStanding(One) ? 1 : 0;
+		}
+		const int32 Living = Mode.LivingFloorEnemies();
+		Test.AddInfo(FString::Printf(TEXT("%s on seed %d: %s (%s); after a beat %d/%d standing, %d at half health, %d marked, %d "
+										  "counted as the floor's own; the floor's own standing %d/%d"),
+									 Label, Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Standing.Num(),
+									 StandingSaved, AtHalf, WithMark, FloorsOwn, Living, LivingSaved));
+		Test.TestEqual(TEXT("as many stand in the rule's list as were saved"), Standing.Num(), StandingSaved);
+		Test.TestEqual(TEXT("each at the health it was saved at, not full"), AtHalf, Standing.Num());
+		Test.TestEqual(TEXT("each carrying the rule's mark"), WithMark, Standing.Num());
+		Test.TestEqual(TEXT("none counted as the floor's own, which the stairs' seal reads"), FloorsOwn, 0);
+		Test.TestEqual(TEXT("and the floor's own standing as saved, which the clear reads"), Living, LivingSaved);
+	}
+
+	/**
+	 * ONE ROUND TRIP OF A RAISED KIND: the first pinned seed whose floor 2 lets `Raise` bring some, which is run there;
+	 * those standing taken to half health; saved, loaded, a beat. `Standing` reads the rule's list.
+	 */
+	bool ARaisedRoundTrip(FAutomationTestBase& Test, FName Row, const TCHAR* Label,
+						  TFunctionRef<bool(ACataclysmDungeonGameMode&)> Raise,
+						  TFunctionRef<TArray<ACataclysmEnemyCharacter*>(const ACataclysmDungeonGameMode&)> Standing,
+						  TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked)
+	{
+		int32 Seed = INDEX_NONE;
+		int32 StandingSaved = -1;
+		int32 LivingSaved = -1;
+		return ARoundTripOfRows(Test, {Row},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&]() { return Raise(Mode) && !Standing(Mode).IsEmpty(); });
+				if (!Test.TestTrue(TEXT("set-up: a seed from 1 to 20 raises some"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				ToHalfHealth(Standing(Mode));
+				BeatOnce(Mode);
+				StandingSaved = Standing(Mode).Num();
+				LivingSaved = Mode.LivingFloorEnemies();
+				return Test.TestTrue(TEXT("set-up: some stand"), StandingSaved > 0) && ThePlayerIsAlive(Test, Player);
+			},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				TheRaisedCameBack(Test, Label, Seed, Report, Mode, Standing(Mode), StandingSaved, LivingSaved, Marked);
+			});
+	}
+
+	/** The floor's first object of a rule, chosen. */
+	bool ChooseAtTheFirst(ACataclysmDungeonGameMode& Mode, const TArray<ACataclysmFloorObject*>& Objects, const TCHAR* Choice)
+	{
+		return !Objects.IsEmpty() && Mode.ChooseAtFloorObject(Objects[0], FName(Choice));
+	}
+}
+
+/**
+ * A refused tithe's angels standing at a save stand after the load, at the health they had, the tithe's again, and counted
+ * by the stairs and the clear as before. Until this a load removed them. Issue #753, Group 3d-3a, ruled 2026-10-31. Prints
+ * "LOAD TITHE ANGELS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTitheAngelsTest,
+	"Cataclysm.SaveLoad.ATithesAngelsStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTitheAngelsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::ForcedTithesKey), TEXT("LOAD TITHE ANGELS"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				ACataclysmFloorObject* Altar = Mode.TitheAltarNow();
+				return Altar && Mode.ChooseAtFloorObject(Altar, FName(Effects::ForcedTithesRefuse));
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.TitheAngelsStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsATitheAngel; });
+	});
+}
+
+/**
+ * An activated relic's spirits standing at a save stand after the load, the relic's again. Issue #753, Group 3d-3a.
+ * Prints "LOAD RELIC SPIRITS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRelicSpiritsTest,
+	"Cataclysm.SaveLoad.ARelicsSpiritsStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRelicSpiritsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::BattlefieldRelicsKey), TEXT("LOAD RELIC SPIRITS"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				return ChooseAtTheFirst(Mode, Mode.BattlefieldRelicsNow(), Effects::BattlefieldRelicsActivate);
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.RelicSpiritsStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsARelicSpirit; });
+	});
+}
+
+/**
+ * An embraced totem's Elites standing at a save stand after the load, the totems' again. Issue #753, Group 3d-3a. Prints
+ * "LOAD TOTEM ELITES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTotemElitesTest,
+	"Cataclysm.SaveLoad.AnEmbracedTotemsElitesStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTotemElitesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::GrimTotemsKey), TEXT("LOAD TOTEM ELITES"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				return ChooseAtTheFirst(Mode, Mode.GrimTotemsNow(), Effects::GrimTotemsEmbrace);
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.GrimTotemElitesStanding(); },
+			// THE TOTEMS' ELITES CARRY NO MARK OF THEIR OWN: the rule's list is the mark, and the raised mark with it.
+			[](const ACataclysmEnemyCharacter&) { return true; });
+	});
+}
+
+/**
+ * A planted banner's assailants standing at a save stand after the load, the banner's again. Issue #753, Group 3d-3a.
+ * Prints "LOAD BANNER ASSAILANTS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadBannerAssailantsTest,
+	"Cataclysm.SaveLoad.ABannersAssailantsStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadBannerAssailantsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::WarBannerKey), TEXT("LOAD BANNER ASSAILANTS"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				ACataclysmFloorObject* Banner = Mode.WarBannerNow();
+				return Banner && Mode.ChooseAtFloorObject(Banner, FName(Effects::WarBannerPlant));
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.BannerAssailantsStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsABannerAssailant; });
+	});
+}
+
+/**
+ * A Pandora's Box's standing wave at a save stands after the load, the box's again, and when it is killed the next wave
+ * comes, the count of waves come kept (Q5 of 3d). Issue #753, Group 3d-3a. Prints "LOAD CHAOS SPAWN" and "LOAD PANDORA
+ * WAVES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadChaosSpawnTest,
+	"Cataclysm.SaveLoad.APandorasBoxsWavesGoOnAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadChaosSpawnTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 StandingSaved = -1;
+		int32 LivingSaved = -1;
+		int32 CameSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::PandorasBoxKey)},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
+			{
+				// A BOX THAT LETS OUT ITS WAVES, its outcome being seeded: the first pinned seed whose floor 2's first box does.
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]()
+				{
+					return ChooseAtTheFirst(Mode, Mode.PandorasBoxesNow(), Effects::PandorasBoxOpen)
+						&& !Mode.ChaosSpawnStanding().IsEmpty();
+				});
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a box that lets out its waves"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				ToHalfHealth(Mode.ChaosSpawnStanding());
+				BeatOnce(Mode);
+				StandingSaved = Mode.ChaosSpawnStanding().Num();
+				LivingSaved = Mode.LivingFloorEnemies();
+				CameSaved = Mode.PandorasBoxWavesCameNow();
+				return TestEqual(TEXT("set-up: the first wave has come"), CameSaved, 1)
+					&& TestEqual(TEXT("set-up: and stands whole"), StandingSaved, Effects::PandorasBoxWaveSize)
+					&& ThePlayerIsAlive(*this, Player);
+			},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const TArray<ACataclysmEnemyCharacter*> Standing = Mode.ChaosSpawnStanding();
+				TheRaisedCameBack(*this, TEXT("LOAD CHAOS SPAWN"), Seed, Report, Mode, Standing, StandingSaved, LivingSaved,
+								  [](const ACataclysmEnemyCharacter& One) { return One.bIsAChaosSpawn; });
+				const int32 CameAfterTheLoad = Mode.PandorasBoxWavesCameNow();
+				bool bAll = true;
+				for (ACataclysmEnemyCharacter* One : Standing)
+				{
+					bAll = bAll && KillOnTheFloor(*this, Player, One, TEXT("a chaos spawn after the load"));
+				}
+				BeatOnce(Mode);
+				const int32 CameAfterTheKills = Mode.PandorasBoxWavesCameNow();
+				const int32 Next = Mode.ChaosSpawnStanding().Num();
+				AddInfo(FString::Printf(TEXT("LOAD PANDORA WAVES on seed %d: waves come %d at the save, %d after the load, %d "
+											 "once the standing wave was killed, %d of the next standing"),
+										Seed, CameSaved, CameAfterTheLoad, CameAfterTheKills, Next));
+				TestEqual(TEXT("the waves come are as saved"), CameAfterTheLoad, CameSaved);
+				if (bAll)
+				{
+					TestEqual(TEXT("and the next wave comes when the standing one is killed"), CameAfterTheKills, CameSaved + 1);
+					TestTrue(TEXT("and stands"), Next > 0);
+				}
+			});
+	});
+}
+
 #endif // WITH_AUTOMATION_TESTS

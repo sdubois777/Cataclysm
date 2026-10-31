@@ -165,7 +165,9 @@
 					"Z": 96
 				},
 				"bHarbingerHasLaidAPatch": true,
-				"GrimTotemsDamageMultiplier": 0.75
+				"GrimTotemsDamageMultiplier": 0.75,
+				"RaisedBy": "ChaosSpawn",
+				"RaisedGroup": 0
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -216,7 +218,9 @@
 					"Z": 0
 				},
 				"bHarbingerHasLaidAPatch": false,
-				"GrimTotemsDamageMultiplier": 1
+				"GrimTotemsDamageMultiplier": 1,
+				"RaisedBy": "None",
+				"RaisedGroup": -1
 			}
 		],
 		"GroundItems": [
@@ -361,7 +365,17 @@
 					]
 				}
 			],
-			"CarrionFeastStacks": 2
+			"CarrionFeastStacks": 2,
+			"PandoraWaves": [
+				{
+					"At": {
+						"X": 640.5,
+						"Y": 320.25,
+						"Z": 96
+					},
+					"Came": 2
+				}
+			]
 		},
 		"Characters": [
 			{
