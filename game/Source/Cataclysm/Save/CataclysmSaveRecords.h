@@ -42,6 +42,22 @@
  */
 
 /**
+ * One burning patch a floor rule left, where it lies and the burn it was charged at: Quarantine Breach's (Issue #753,
+ * Group 3c-1) and a Plague Harbinger's trail (3d-2). Here, before the creature record, which holds a Harbinger's trail.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedPatch
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Burn = 0.0f;
+};
+
+/**
  * One creature on the floor, as it stood when the game last wrote itself.
  *
  * THIS IS THE LEFT-HAND COLUMN OF THE TABLE IN SECTION 6 and nothing else. The
@@ -241,6 +257,41 @@ struct CATACLYSM_API FCataclysmSavedCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float FamishedHealthAdded = 0.0f;
+
+	/**
+	 * AND THE REST OF THE ROLES, since Group 3d-2, ruled 2026-10-31:
+	 * - Morale Break: the group it was placed in and that group's middle cell (-1 for none), and whether it leads the
+	 *   group or is panicking. Without them every leader read dead on the first beat and nobody panicked;
+	 * - a Plague Harbinger, and its trail: the patches it laid, at the burn charged (QA), where it laid the last, and
+	 *   whether it has laid one. Without them no trail was laid and its death neither cleansed nor weakened;
+	 * - Grim Totems' cleanse: its damage multiplier, 1.0 for none, which lasts as long as it lives.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PackGroup = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FIntPoint PackMiddleCell = FIntPoint(-1, -1);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsMoraleLeader = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsPanicked = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlagueHarbinger = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPatch> HarbingerPatches;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector HarbingerLastPatchAt = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bHarbingerHasLaidAPatch = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float GrimTotemsDamageMultiplier = 1.0f;
 };
 
 /**
@@ -562,19 +613,13 @@ struct CATACLYSM_API FCataclysmSavedFloorChoices
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 RealityChamberRewardExtraDrops = 0;
-};
 
-/** One burning patch Quarantine Breach left, where it lies and the burn it was charged at. Issue #753, Group 3c-1. */
-USTRUCT(BlueprintType)
-struct CATACLYSM_API FCataclysmSavedPatch
-{
-	GENERATED_BODY()
-
+	/**
+	 * The Reality chamber's rift is not armed: the player was carried and has not yet stepped off both ends, so standing
+	 * on an end carries nobody. False, armed, is what an older file reads as, which is today's. Issue #753, 3d-2, Q4.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
-	FVector Location = FVector::ZeroVector;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
-	float Burn = 0.0f;
+	bool bRealityChamberRiftDisarmed = false;
 };
 
 /** One coffin of Obsidian Sarcophagi, by its place in the rule's list: the paid deaths beside it and the lord. */
@@ -588,6 +633,51 @@ struct CATACLYSM_API FCataclysmSavedCoffin
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bLordCame = false;
+};
+
+/** One creature Morale Break counts as escaped from a group: its kind and its rung. Issue #753, Group 3d-2. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedEscapee
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Kind = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Rung = 0;
+};
+
+/**
+ * One group Morale Break gave a leader, and what has happened to it. Its leader and its panicked creatures are found
+ * again by their records' group and flags. The seconds since the leader fell and the seconds away are timers and are
+ * not saved: the flight and the absence restart (3d-2, QB and Q3, D1). Issue #753, Group 3d-2.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedMoraleGroup
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Group = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FIntPoint Middle = FIntPoint(-1, -1);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLeaderRallies = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFallen = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFlightOver = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bReturned = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEscapee> Escaped;
 };
 
 /**
@@ -703,6 +793,23 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	/** Famished Beasts: the drops eaten on this floor, for the panel. Each eater's own is on its record. 3d-1. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 FamishedBeastsDropsEaten = 0;
+
+	/**
+	 * Morale Break: whether the three below were saved, so an older file keeps the rebuild's groups (QD); the groups
+	 * placed so far, so a later wave never reuses a number; and each group with a leader. Issue #753, Group 3d-2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bMoraleBreakSaved = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PackGroupsPlaced = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedMoraleGroup> MoraleGroups;
+
+	/** Carrion Feast: the carcasses eaten on this floor, which strengthen its feeders. Issue #753, Group 3d-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 CarrionFeastStacks = 0;
 };
 
 /**
