@@ -305,6 +305,10 @@ struct CATACLYSM_API FCataclysmSavedCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 RaisedGroup = -1;
+
+	/** A Carrion Feast feeder's own maximum health, before the carcasses eaten strengthened it. Issue #753, 3d-3b. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CarrionFeederOwnMaxHealth = 0.0f;
 };
 
 /**
@@ -843,6 +847,13 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedPandoraWaves> PandoraWaves;
+
+	/**
+	 * Carrion Feast: where each carcass not yet burned lies. A carcass is no creature of the floor's kinds, so no record
+	 * can spawn it; it is laid again where it lay, its seconds lain starting again (QA of 3d-3, D1). Issue #753, 3d-3b.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FVector> CarrionCarcasses;
 };
 
 /**

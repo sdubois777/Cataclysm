@@ -167,7 +167,8 @@
 				"bHarbingerHasLaidAPatch": true,
 				"GrimTotemsDamageMultiplier": 0.75,
 				"RaisedBy": "ChaosSpawn",
-				"RaisedGroup": 0
+				"RaisedGroup": 0,
+				"CarrionFeederOwnMaxHealth": 0
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -220,7 +221,8 @@
 				"bHarbingerHasLaidAPatch": false,
 				"GrimTotemsDamageMultiplier": 1,
 				"RaisedBy": "None",
-				"RaisedGroup": -1
+				"RaisedGroup": -1,
+				"CarrionFeederOwnMaxHealth": 412.5
 			}
 		],
 		"GroundItems": [
@@ -374,6 +376,13 @@
 						"Z": 96
 					},
 					"Came": 2
+				}
+			],
+			"CarrionCarcasses": [
+				{
+					"X": 820.5,
+					"Y": -140.25,
+					"Z": 96
 				}
 			]
 		},
