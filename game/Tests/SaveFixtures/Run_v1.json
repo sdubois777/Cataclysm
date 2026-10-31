@@ -140,7 +140,32 @@
 				"bIsPlaguebearer": true,
 				"bQuarantineReleased": false,
 				"FamishedDropsEaten": 2,
-				"FamishedHealthAdded": 37.5
+				"FamishedHealthAdded": 37.5,
+				"PackGroup": 3,
+				"PackMiddleCell": {
+					"X": 12,
+					"Y": 7
+				},
+				"bIsMoraleLeader": true,
+				"bIsPanicked": false,
+				"bPlagueHarbinger": true,
+				"HarbingerPatches": [
+					{
+						"Location": {
+							"X": 400.5,
+							"Y": -250.25,
+							"Z": 96
+						},
+						"Burn": 7.5
+					}
+				],
+				"HarbingerLastPatchAt": {
+					"X": 400.5,
+					"Y": -250.25,
+					"Z": 96
+				},
+				"bHarbingerHasLaidAPatch": true,
+				"GrimTotemsDamageMultiplier": 0.75
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -175,7 +200,23 @@
 				"bIsPlaguebearer": false,
 				"bQuarantineReleased": true,
 				"FamishedDropsEaten": 0,
-				"FamishedHealthAdded": 0
+				"FamishedHealthAdded": 0,
+				"PackGroup": -1,
+				"PackMiddleCell": {
+					"X": -1,
+					"Y": -1
+				},
+				"bIsMoraleLeader": false,
+				"bIsPanicked": true,
+				"bPlagueHarbinger": false,
+				"HarbingerPatches": [],
+				"HarbingerLastPatchAt": {
+					"X": 0,
+					"Y": 0,
+					"Z": 0
+				},
+				"bHarbingerHasLaidAPatch": false,
+				"GrimTotemsDamageMultiplier": 1
 			}
 		],
 		"GroundItems": [
@@ -234,7 +275,8 @@
 			"bRealityChamberRewardGiven": true,
 			"RealityChamberRewardRolls": 3,
 			"RealityChamberRewardDrops": 2,
-			"RealityChamberRewardExtraDrops": 1
+			"RealityChamberRewardExtraDrops": 1,
+			"bRealityChamberRiftDisarmed": true
 		},
 		"RuleState": {
 			"bHeavenlyCoreDestroyed": true,
@@ -297,7 +339,29 @@
 			"PlaguebearerStacks": 4,
 			"bPlaguebearerChosen": true,
 			"bPlaguebearerFallen": false,
-			"FamishedBeastsDropsEaten": 5
+			"FamishedBeastsDropsEaten": 5,
+			"bMoraleBreakSaved": true,
+			"PackGroupsPlaced": 6,
+			"MoraleGroups": [
+				{
+					"Group": 3,
+					"Middle": {
+						"X": 12,
+						"Y": 7
+					},
+					"bLeaderRallies": false,
+					"bFallen": true,
+					"bFlightOver": true,
+					"bReturned": false,
+					"Escaped": [
+						{
+							"Kind": "Imp",
+							"Rung": 1
+						}
+					]
+				}
+			],
+			"CarrionFeastStacks": 2
 		},
 		"Characters": [
 			{

@@ -13070,6 +13070,7 @@ FCataclysmSavedFloorChoices ACataclysmDungeonGameMode::FloorChoicesNow() const
 	Out.RealityChamberRewardRolls = RealityChamberRewardRolls;
 	Out.RealityChamberRewardDrops = RealityChamberRewardDrops;
 	Out.RealityChamberRewardExtraDrops = RealityChamberRewardExtraDrops;
+	Out.bRealityChamberRiftDisarmed = !bRealityChamberRiftArmed;
 	return Out;
 }
 
@@ -13124,6 +13125,9 @@ void ACataclysmDungeonGameMode::RestoreFloorChoices(const FCataclysmSavedFloorCh
 	RealityChamberRewardRolls = Choices.RealityChamberRewardRolls;
 	RealityChamberRewardDrops = Choices.RealityChamberRewardDrops;
 	RealityChamberRewardExtraDrops = Choices.RealityChamberRewardExtraDrops;
+	// AND THE CHAMBER'S RIFT NOT ARMED while the player has not stepped off both ends since a carry, so a player saved
+	// standing on an end is not carried on the load's first beat. Issue #753, Group 3d-2, Q4.
+	bRealityChamberRiftArmed = !Choices.bRealityChamberRiftDisarmed;
 	RefreshFloorModifierPanel();
 }
 
@@ -15265,6 +15269,47 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		Creature.SetFamishedBeastsDamageMultiplier(
 			UCataclysmDungeonModifierEffects::FamishedBeastsMultiplier(Saved.FamishedDropsEaten));
 	}
+
+	// AND THE REST OF THE ROLES, since Group 3d-2, ruled 2026-10-31.
+	// - MORALE BREAK: its group, the group's middle, and whether it leads or panics. The groups themselves are the floor
+	//   record's, and `RestoreFloorRuleState` finds each group's leader and panicked creatures again by these.
+	Creature.PackGroup = Saved.PackGroup;
+	Creature.PackMiddleCell = Saved.PackMiddleCell;
+	Creature.bIsMoraleLeader = Saved.bIsMoraleLeader;
+	Creature.bIsPanicked = Saved.bIsPanicked;
+	// - A PLAGUE HARBINGER AND ITS TRAIL: the rebuild's trails, whose Harbingers the load destroyed, forgotten first; then
+	//   this one's patches drawn again at the burn charged (QA), each burning once a second as the row's.
+	PlagueHarbingerTrails.RemoveAll([](const FPlagueHarbingerTrail& Trail) { return !IsValid(Trail.Harbinger.Get()); });
+	if (Saved.bPlagueHarbinger)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		Creature.bPlagueHarbinger = true;
+		FPlagueHarbingerTrail Trail;
+		Trail.Harbinger = &Creature;
+		Trail.LastPatchAt = Saved.HarbingerLastPatchAt;
+		Trail.bHasLaidAPatch = Saved.bHarbingerHasLaidAPatch;
+		if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(GetWorld()))
+		{
+			const FName Type = DungeonGameModeTypeOfRow(Effects::PlagueHarbingersKey);
+			for (const FCataclysmSavedPatch& One : Saved.HarbingerPatches)
+			{
+				ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, One.Location, One.Location, Effects::PlagueHarbingersPatchRadiusCm, One.Burn,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type, /*InDamageType=*/Type);
+				if (Patch)
+				{
+					Patch->BurnsOnceASecondAs = FName(Effects::PlagueHarbingersKey);
+					Trail.Patches.Add(Patch);
+				}
+			}
+		}
+		PlagueHarbingerTrails.Add(Trail); // A load's: the saved Harbinger's trail.
+	}
+	// - GRIM TOTEMS' CLEANSE, for as long as it lives.
+	if (!FMath::IsNearlyEqual(Saved.GrimTotemsDamageMultiplier, 1.0f))
+	{
+		Creature.SetGrimTotemsDamageMultiplier(Saved.GrimTotemsDamageMultiplier);
+	}
 }
 
 void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter& Creature,
@@ -15280,6 +15325,32 @@ void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter
 	{
 		Record.FamishedHealthAdded = *Added;
 	}
+
+	// 3d-2: Morale Break's group and flags, a Harbinger and its trail, Grim Totems' cleanse.
+	Record.PackGroup = Creature.PackGroup;
+	Record.PackMiddleCell = Creature.PackMiddleCell;
+	Record.bIsMoraleLeader = Creature.bIsMoraleLeader;
+	Record.bIsPanicked = Creature.bIsPanicked;
+	for (const FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+	{
+		if (Trail.Harbinger.Get() != Mutable || !Creature.bPlagueHarbinger)
+		{
+			continue;
+		}
+		Record.bPlagueHarbinger = true;
+		Record.HarbingerLastPatchAt = Trail.LastPatchAt;
+		Record.bHarbingerHasLaidAPatch = Trail.bHasLaidAPatch;
+		for (const TWeakObjectPtr<ACataclysmGroundZone>& Weak : Trail.Patches)
+		{
+			if (const ACataclysmGroundZone* Patch = Weak.Get())
+			{
+				FCataclysmSavedPatch& Saved = Record.HarbingerPatches.AddDefaulted_GetRef();
+				Saved.Location = Patch->GetActorLocation();
+				Saved.Burn = Patch->DamagePerTick;
+			}
+		}
+	}
+	Record.GrimTotemsDamageMultiplier = Creature.DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource);
 }
 
 FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() const
@@ -15381,6 +15452,33 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 
 	// FAMISHED BEASTS: the drops eaten on this floor. 3d-1.
 	Out.FamishedBeastsDropsEaten = FamishedBeastsDropsEatenNow();
+
+	// MORALE BREAK: the groups placed and each group with a leader. Not the seconds since its leader fell nor the seconds
+	// away (D1). 3d-2.
+	if (FloorBrief.Modifiers.Contains(FName(Effects::MoraleBreakKey)) && MoraleBreakFloor == FloorNumber)
+	{
+		Out.bMoraleBreakSaved = true;
+		Out.PackGroupsPlaced = PackGroupsPlaced;
+		for (const FMoraleBreakGroup& One : MoraleBreakGroups)
+		{
+			FCataclysmSavedMoraleGroup& Saved = Out.MoraleGroups.AddDefaulted_GetRef();
+			Saved.Group = One.Group;
+			Saved.Middle = One.Middle;
+			Saved.bLeaderRallies = One.bLeaderRallies;
+			Saved.bFallen = One.bFallen;
+			Saved.bFlightOver = One.bFlightOver;
+			Saved.bReturned = One.bReturned;
+			for (const TPair<ECataclysmDungeonCreature, int32>& Away : One.Escaped)
+			{
+				FCataclysmSavedEscapee& Escapee = Saved.Escaped.AddDefaulted_GetRef();
+				Escapee.Kind = FName(CataclysmDungeonCreatureName(Away.Key));
+				Escapee.Rung = Away.Value;
+			}
+		}
+	}
+
+	// CARRION FEAST: the carcasses eaten on this floor. 3d-2.
+	Out.CarrionFeastStacks = CarrionFeastStacks;
 	return Out;
 }
 
@@ -15596,6 +15694,58 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	// FAMISHED BEASTS: this floor's count, which the beat keeps now that it is started for this floor. Issue #753, 3d-1.
 	FamishedBeastsFloor = FloorNumber;
 	FamishedBeastsDropsEaten = State.FamishedBeastsDropsEaten;
+
+	// MORALE BREAK: THE SAVED GROUPS IN PLACE OF THE REBUILD'S, whose leaders the load destroyed. Each group's leader and
+	// panicked creatures are the restored creatures of its number carrying those flags; its escaped come back when due.
+	// The flight and the time away restart (QB, Q3, D1). The groups placed are kept at least where they were, so a later
+	// wave never reuses a number. An older file keeps the rebuild's (QD). Issue #753, Group 3d-2.
+	if (State.bMoraleBreakSaved)
+	{
+		ForgetMoraleBreak();
+		MoraleBreakFloor = FloorNumber;
+		PackGroupsPlaced = FMath::Max(PackGroupsPlaced, State.PackGroupsPlaced);
+		for (const FCataclysmSavedMoraleGroup& Saved : State.MoraleGroups)
+		{
+			FMoraleBreakGroup& One = MoraleBreakGroups.AddDefaulted_GetRef();
+			One.Group = Saved.Group;
+			One.Middle = Saved.Middle;
+			One.bLeaderRallies = Saved.bLeaderRallies;
+			One.bFallen = Saved.bFallen;
+			One.bFlightOver = Saved.bFlightOver;
+			One.bReturned = Saved.bReturned;
+			for (const FCataclysmSavedEscapee& Escapee : Saved.Escaped)
+			{
+				for (int32 Kind = 0; Kind < static_cast<int32>(ECataclysmDungeonCreature::Count); ++Kind)
+				{
+					const ECataclysmDungeonCreature AsKind = static_cast<ECataclysmDungeonCreature>(Kind);
+					if (Escapee.Kind == FName(CataclysmDungeonCreatureName(AsKind)))
+					{
+						One.Escaped.Emplace(AsKind, Escapee.Rung); // A load's: escaped, still to come back.
+						break;
+					}
+				}
+			}
+			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+			{
+				ACataclysmEnemyCharacter* Creature = Enemy.Get();
+				if (!IsValid(Creature) || Creature->PackGroup != One.Group)
+				{
+					continue;
+				}
+				if (Creature->bIsMoraleLeader)
+				{
+					One.Leader = Creature; // A load's: the group's saved leader.
+				}
+				if (Creature->bIsPanicked)
+				{
+					One.Panicked.Add(Creature);
+				}
+			}
+		}
+	}
+
+	// CARRION FEAST: the carcasses eaten on this floor. Its carcasses and feeders are 3d-3's. Issue #753, Group 3d-2.
+	CarrionFeastStacks = State.CarrionFeastStacks;
 	RefreshFloorModifierPanel();
 }
 
