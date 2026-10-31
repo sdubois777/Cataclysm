@@ -3754,4 +3754,542 @@ bool FCataclysmSaveLoadSoulChainsTest::RunTest(const FString&)
 	return bRan;
 }
 
+namespace CataclysmSaveLoadTest
+{
+	/** A console variable held at a value for as long as this stands, and put back after. */
+	struct FPinnedConsoleValue
+	{
+		FPinnedConsoleValue(const TCHAR* Name, const TCHAR* Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedConsoleValue()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
+
+	/** What the one dungeon rule on a stat of the player's is worth, in percent or points, or 0 when none is there. */
+	float PlayersDungeonRuleOn(ACataclysmPlayerCharacter& Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(Player.GetAbilitySystemComponent());
+		const FCataclysmStatInputs* Inputs = Abilities ? Abilities->GetStatInputs(FName(Stat)) : nullptr;
+		if (!Inputs)
+		{
+			return 0.0f;
+		}
+		for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+		{
+			if (Modifier.Source == ECataclysmModifierSource::DungeonRule)
+			{
+				return Modifier.Value;
+			}
+		}
+		return 0.0f;
+	}
+
+	/** How many beats a stretch of seconds takes, rounded up. */
+	int32 BeatsOver(float Seconds)
+	{
+		return FMath::CeilToInt(Seconds / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	/** The player stood at the floor's entrance. */
+	void StandAtTheEntrance(ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player)
+	{
+		const FVector At = Mode.CurrentFloor->EntranceWorld();
+		Player.SetActorLocation(FVector(At.X, At.Y, Player.GetActorLocation().Z));
+	}
+
+	/** The Labrynth's gates as a row of 1 for open and 0 for closed, by index. */
+	FString LabrynthGatesText(const ACataclysmDungeonGameMode& Mode)
+	{
+		const FName Row(UCataclysmDungeonModifierEffects::LabrynthKey);
+		FString Text;
+		for (int32 Index = 0; Index < Mode.GatedShortcutsOf(Row).Num(); ++Index)
+		{
+			Text += Mode.GatedShortcutIsOpen(Row, Index) ? TEXT("1") : TEXT("0");
+		}
+		return Text;
+	}
+
+	/**
+	 * THE NEXT `Count` SWAPS THE LABRYNTH MAKES, as the open gates after each, beating until they have happened or
+	 * twice their time and two swaps more has passed. A swap the placement rule refuses changes nothing and is not one
+	 * of them.
+	 */
+	TArray<FString> TheNextSwaps(ACataclysmDungeonGameMode& Mode, int32 Count)
+	{
+		TArray<FString> Swaps;
+		FString Last = LabrynthGatesText(Mode);
+		const int32 Most = (2 * Count + 2) * BeatsOver(UCataclysmDungeonModifierEffects::LabrynthSecondsBetweenSwaps);
+		for (int32 Beat = 0; Beat < Most && Swaps.Num() < Count; ++Beat)
+		{
+			BeatOnce(Mode);
+			const FString Now = LabrynthGatesText(Mode);
+			if (Now != Last)
+			{
+				Swaps.Add(Now);
+				Last = Now;
+			}
+		}
+		return Swaps;
+	}
+
+	/** The test body of the Warzone hold's round trip; its seed pin is put back by its guard. */
+	bool TheWarzoneRoundTrip(FAutomationTestBase& Test)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		const FName Row(Effects::WarzoneControlPointsKey);
+
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		float HeldSaved = -1.0f;
+		int32 AlliesSaved = -1;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {Row});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying Warzone Control Points was placed"),
+							   DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+			ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+			// A FLOOR OF TWO POINTS OR MORE WHOSE FIRST HAS A SHORTCUT, AND NONE WITHIN REACH OF THE ENTRANCE, on the
+			// first pinned seed that gives one.
+			for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+			{
+				PinnedSeed.Pin(Pinned);
+				if (!Mode.GoToFloor(2) || Mode.WarzonePointCellsNow().Num() < 2
+					|| Mode.GatedShortcutLeadsTo(Row, 0).IsEmpty())
+				{
+					continue;
+				}
+				bool bClear = true;
+				for (const FIntPoint& Cell : Mode.WarzonePointCellsNow())
+				{
+					bClear = bClear && FVector::Dist2D(Mode.CurrentFloor->WorldOfCell(Cell),
+													   Mode.CurrentFloor->EntranceWorld())
+						> 2.0f * Effects::WarzoneControlPointRadiusCm;
+				}
+				Seed = bClear ? Pinned : INDEX_NONE;
+			}
+			if (!Test.TestTrue(TEXT("set-up: a seed from 1 to 20 gives two points, the first with a shortcut"),
+							   Seed != INDEX_NONE))
+			{
+				return false;
+			}
+
+			// POINT 0 CAPTURED, THEN TEN SECONDS IN POINT 1, THEN THE ENTRANCE.
+			StandOnCell(Mode, Player, Mode.WarzonePointCellsNow()[0]);
+			for (int32 Beat = 0; Beat < BeatsOver(Effects::WarzoneCaptureSeconds); ++Beat)
+			{
+				BeatOnce(Mode);
+			}
+			if (!Test.TestEqual(TEXT("set-up: point 0 held"), Mode.WarzonePointsHeld(), 1)
+				|| !Test.TestTrue(TEXT("set-up: and its shortcut open"), Mode.GatedShortcutIsOpen(Row, 0)))
+			{
+				return false;
+			}
+			StandOnCell(Mode, Player, Mode.WarzonePointCellsNow()[1]);
+			for (int32 Beat = 0; Beat < BeatsOver(10.0f); ++Beat)
+			{
+				BeatOnce(Mode);
+			}
+			StandAtTheEntrance(Mode, Player);
+			BeatOnce(Mode);
+			HeldSaved = Mode.WarzoneSecondsHeldNow().IsValidIndex(1) ? Mode.WarzoneSecondsHeldNow()[1] : -1.0f;
+			AlliesSaved = Mode.WarzoneAlliesStanding().Num();
+			if (!Test.TestEqual(TEXT("set-up: ten seconds in point 1"), HeldSaved, 10.0f, 0.001f))
+			{
+				return false;
+			}
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+		StandAtTheEntrance(Mode, Player);
+		BeatOnce(Mode);
+		const int32 Held = Mode.WarzonePointsHeld();
+		const bool bShortcutOpen = Mode.GatedShortcutIsOpen(Row, 0);
+		const float HeldAfter =
+			Mode.WarzoneSecondsHeldNow().IsValidIndex(1) ? Mode.WarzoneSecondsHeldNow()[1] : -1.0f;
+		const float Damage = PlayersDungeonRuleOn(Player, TEXT("attack_damage"));
+		const int32 Allies = Mode.WarzoneAlliesStanding().Num();
+
+		Test.AddInfo(FString::Printf(TEXT("LOAD WARZONE on seed %d: %s (%s); after a beat %d point(s) held, point 0's "
+										  "shortcut %s, point 1 at %.2f/%.2f s, attack damage rule %.2f, allies %d "
+										  "(%d before the save)"),
+									 Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Held,
+									 bShortcutOpen ? TEXT("open") : TEXT("CLOSED"), HeldAfter, HeldSaved, Damage, Allies,
+									 AlliesSaved));
+
+		Test.TestTrue(TEXT("CONTROL: the capture brought allied soldiers before the save"), AlliesSaved > 0);
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("the captured point stays held"), Held, 1);
+		Test.TestTrue(TEXT("and its shortcut open"), bShortcutOpen);
+		Test.TestEqual(TEXT("the seconds stood at point 1 come back"), HeldAfter, HeldSaved, 0.001f);
+		Test.TestEqual(TEXT("the point's strength is on the player once"), Damage,
+					   Effects::WarzoneDamageMorePercentPerPoint, 0.001f);
+		Test.TestEqual(TEXT("and no allied soldiers came with the load"), Allies, 0);
+		return true;
+	}
+
+	/** The test body of the Labrynth's round trip; its seed pin is put back by its guard. */
+	bool TheLabrynthRoundTrip(FAutomationTestBase& Test)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		const FName Row(Effects::LabrynthKey);
+		const int32 Swaps = 8;
+
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		int32 Gates = 0;
+		FString GatesSaved;
+		TArray<FString> Unloaded;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {Row});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying The Labrynth was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+			ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+			// FOUR GATES, ON THE FIRST PINNED SEED THAT GIVES THEM; THREE IF NONE DOES (Q4), and the count is printed.
+			for (const int32 Wanted : {4, 3})
+			{
+				for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+				{
+					PinnedSeed.Pin(Pinned);
+					if (Mode.GoToFloor(2) && Mode.GatedShortcutsOf(Row).Num() == Wanted)
+					{
+						Seed = Pinned;
+						Gates = Wanted;
+					}
+				}
+			}
+			if (!Test.TestTrue(TEXT("set-up: a seed from 1 to 20 gives four or three Labrynth gates"), Seed != INDEX_NONE))
+			{
+				return false;
+			}
+
+			// NO CREATURE HOLDS A CELL AND THE PLAYER STANDS AT THE ENTRANCE, so a close the placement rule refuses is
+			// refused in both runs alike. One swap, then seven seconds into the next twenty.
+			Mode.ClearFloorEnemies();
+			StandAtTheEntrance(Mode, Player);
+			if (!Test.TestEqual(TEXT("set-up: a first swap"), TheNextSwaps(Mode, 1).Num(), 1))
+			{
+				return false;
+			}
+			for (int32 Beat = 0; Beat < BeatsOver(7.0f); ++Beat)
+			{
+				BeatOnce(Mode);
+			}
+			GatesSaved = LabrynthGatesText(Mode);
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+
+			// THE SWAPS THE SAME GAME MAKES WITHOUT A LOAD.
+			Unloaded = TheNextSwaps(Mode, Swaps);
+		}
+		if (!Test.TestEqual(TEXT("set-up: eight swaps without a load"), Unloaded.Num(), Swaps))
+		{
+			return false;
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		StandAtTheEntrance(Mode, *Scene.Base.Character);
+		const FString GatesLoaded = LabrynthGatesText(Mode);
+		const TArray<FString> Loaded = TheNextSwaps(Mode, Swaps);
+
+		Test.AddInfo(FString::Printf(TEXT("LOAD LABRYNTH on seed %d, %d gates: %s (%s); gates %s/%s; swaps without a "
+										  "load %s, after it %s"),
+									 Seed, Gates, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+									 *GatesLoaded, *GatesSaved, *FString::Join(Unloaded, TEXT(" ")),
+									 *FString::Join(Loaded, TEXT(" "))));
+
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("the gates come back open and closed as saved"), GatesLoaded, GatesSaved);
+		Test.TestEqual(TEXT("and the next eight swaps are the ones made without a load"),
+					   FString::Join(Loaded, TEXT(" ")), FString::Join(Unloaded, TEXT(" ")));
+		return true;
+	}
+
+	/** The test body of the Void Parasite's round trip; its seed pin and roll pin are put back by their guards. */
+	bool TheVoidParasiteRoundTrip(FAutomationTestBase& Test)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		const FName Row(Effects::VoidParasiteKey);
+
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		FPinnedConsoleValue Rises(TEXT("Cataclysm.VoidParasiteRoll"), TEXT("0"));
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable)
+			|| !Test.TestNotNull(TEXT("set-up: the voidling roll can be pinned"), Rises.Variable))
+		{
+			return false;
+		}
+		PinnedSeed.Pin(1);
+		int32 StacksSaved = -1;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {Row});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying Void Parasite was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+				|| !Test.TestTrue(TEXT("set-up: floor 2 was reached"), Scene.Mode->GoToFloor(2)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+			ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+			StandAtTheEntrance(Mode, Player);
+			BeatOnce(Mode);
+			const ACataclysmGroundZone* Light = Mode.VoidParasiteLightNow();
+			if (!Test.TestNotNull(TEXT("set-up: the light is drawn"), Light))
+			{
+				return false;
+			}
+
+			// TWO OF THE FLOOR'S OWN CREATURES OUT OF THE LIGHT KILLED BY THE PLAYER, EACH LEAVING A VOIDLING, AND THE
+			// PLAYER WALKED TO EACH, which attaches it.
+			TArray<ACataclysmEnemyCharacter*> Victims;
+			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+			{
+				if (Victims.Num() < 2 && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+					&& Enemy->PaysForItsDeath() && !Light->Covers(Enemy->GetActorLocation()))
+				{
+					Victims.Add(Enemy.Get());
+				}
+			}
+			if (!Test.TestEqual(TEXT("set-up: two creatures out of the light"), Victims.Num(), 2))
+			{
+				return false;
+			}
+			for (ACataclysmEnemyCharacter* Victim : Victims)
+			{
+				const FIntPoint Cell = Mode.CurrentFloor->CellOfWorld(Victim->GetActorLocation());
+				if (!KillOnTheFloor(Test, Player, Victim, TEXT("a creature out of the light")))
+				{
+					return false;
+				}
+				StandOnCell(Mode, Player, Cell);
+				BeatOnce(Mode);
+			}
+			StandAtTheEntrance(Mode, Player);
+			BeatOnce(Mode);
+			StacksSaved = Mode.VoidParasiteStacksHeld();
+			if (!Test.TestEqual(TEXT("set-up: two voidlings attached"), StacksSaved, 2))
+			{
+				return false;
+			}
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+		StandAtTheEntrance(Mode, Player);
+		BeatOnce(Mode);
+		const int32 Stacks = Mode.VoidParasiteStacksHeld();
+		const float Loss = -PlayersDungeonRuleOn(Player, TEXT("attack_damage"));
+
+		Test.AddInfo(FString::Printf(TEXT("LOAD VOID PARASITE: %s (%s); after a beat %d/%d attached, %.2f%% off attack "
+										  "damage"),
+									 FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Stacks, StacksSaved,
+									 Loss));
+
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("the voidlings attached come back"), Stacks, 2);
+		Test.TestEqual(TEXT("and their loss is on the player once"), Loss,
+					   Effects::VoidParasiteLessPercent(2), 0.001f);
+		return true;
+	}
+}
+
+/**
+ * Warzone Control Points' hold comes back after a load: a captured point stays held with its shortcut open and its
+ * strength on the player once, and the seconds stood at a point not yet held come back. No allied soldiers come with the
+ * load; those standing at the save are 3d's. The wave clock is a timer and restarts (D1). Issue #753, Group 3c-2, ruled
+ * 2026-10-30. Prints "LOAD WARZONE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWarzoneTest,
+	"Cataclysm.SaveLoad.AWarzoneHoldComesBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWarzoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = TheWarzoneRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
+}
+
+/**
+ * The Labrynth's gates come back open and closed as saved, and the swaps after the load are the swaps the same game
+ * makes without it, in the same order: the stream they are drawn on is saved (Q2). The seconds to the next swap are a
+ * timer and restart (D1), so the swaps are compared in order and not by when they come. Issue #753, Group 3c-2. Prints
+ * "LOAD LABRYNTH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadLabrynthTest,
+	"Cataclysm.SaveLoad.TheLabrynthSwapsTheSameAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadLabrynthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = TheLabrynthRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
+}
+
+/**
+ * The voidlings the Void Parasite attached come back after a load, their loss on the player once. Those standing at the
+ * save are 3d's. Issue #753, Group 3c-2. Prints "LOAD VOID PARASITE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadVoidParasiteTest,
+	"Cataclysm.SaveLoad.VoidParasiteStacksComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadVoidParasiteTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.VoidParasiteRoll"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
+	const bool bRan = TheVoidParasiteRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	TestEqual(TEXT("and the voidling roll"), RollVariable ? RollVariable->GetString() : FString(), RollBefore);
+	return bRan;
+}
+
 #endif // WITH_AUTOMATION_TESTS

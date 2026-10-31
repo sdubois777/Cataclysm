@@ -3099,6 +3099,9 @@ public:
 	/** Warzone Control Points, for tests and the panel: how many of this floor's points the player holds. */
 	int32 WarzonePointsHeld() const;
 
+	/** Warzone Control Points, for tests: the seconds stood in each point not yet held, by the point's index. */
+	const TArray<float>& WarzoneSecondsHeldNow() const { return WarzoneSecondsHeld; }
+
 	/** Warzone Control Points, for tests: the creatures its waves sent that still stand. */
 	TArray<ACataclysmEnemyCharacter*> WarzoneAttackersStanding() const;
 

@@ -268,7 +268,21 @@
 			],
 			"SoulChainsGatesOpen": [
 				0
-			]
+			],
+			"WarzoneSecondsHeld": [
+				0,
+				12.5
+			],
+			"WarzoneCaptured": [
+				0
+			],
+			"bLabrynthSaved": true,
+			"LabrynthGatesOpen": [
+				1,
+				2
+			],
+			"GatedShortcutStreamSeed": 123456789,
+			"VoidParasiteStacks": 3
 		},
 		"Characters": [
 			{
