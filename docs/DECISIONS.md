@@ -13,7 +13,8 @@ Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: 3d 
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w112, every figure as registered:** the three new tests, the whole suite at 4407 / 0,
+  and P1-P6 each proved on its registered assertions (P4's unpredicted swaps assertion also failed, recorded below).
 - **THE TWO CLOCKS ARE NOT SAVED, ruled 2026-10-30 under D1:** Warzone's wave clock and the seconds to the Labrynth's
   next swap are durations until the next event, not progress toward a reward, and restart as a floor start sets them
   (section 6's "remaining durations" row). The seconds stood at a Warzone point are progress, as the War Banner's
@@ -85,6 +86,48 @@ damage exactly `VoidParasiteLessPercent(2)` off. Prints "LOAD VOID PARASITE".
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 73 actions, 63 files compiled`, at
 the first attempt (a new worktree, so everything was compiled). Python of record on that head: `7171 passed, 8 skipped
 in 192.39s`, the JUnit file tests 7179, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Moved onto `development` ede70803a (#2012 and #1722; #1722's window measured 4404, so 4407 is registered, as the table
+says for that case) as `feat/gates-and-holds-survive-a-load-2` at 9ec87ed85, the eight-swap commit included. Compiled
+again with no lock: `Build: Succeeded - 41 actions, 38 files compiled`, after one wait for the continuous integration
+runner's compile of the #1722 merge. Python of record on that head: `7175 passed, 8 skipped in 192.47s`, the JUnit file
+tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w112, 2026-10-30, 22:27 to 23:00, on 9ec87ed85. Pre-checks measured at 22:27:12, all passing: `development`'s
+CI and Unreal runs succeeded on ede70803a, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 11812 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The Warzone test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| The Labrynth test alone | `1 tests performed, 1 succeeded, 0 failed`; four gates found on seed 1 |
+| The Void Parasite test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4407 tests performed, 4407 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4407 performed, gap 0" |
+| Python | `7175 passed, 8 skipped in 191.10s`; JUnit tests 7183, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "Expected 'the seconds stood at point 1 come back' to be 10.000000, but it was 0.000000" only; restored 27 / 27 |
+| P2 | PROVED: "'the captured point stays held' to be 1, but it was 0" and "'the point's strength is on the player once' to be 10.000000, but it was 0.000000" only; the shortcut was open, as traced; restored 27 / 27 |
+| P3 | PROVED: "Expected 'and its shortcut open' to be true" only; restored 27 / 27 |
+| P4 | PROVED: "'the gates come back open and closed as saved' to be "0110", but it was "0101""; and the unpredicted swaps assertion failed too, recorded as registered; restored 27 / 27 |
+| P5 | PROVED: "'and the next eight swaps are the ones made without a load'" only; restored 27 / 27 |
+| P6 | PROVED: "'the voidlings attached come back' to be 2, but it was 0" and "'and their loss is on the player once' to be 12.000000, but it was -0.000000" only; restored 27 / 27 |
+
+The three printed lines, from the whole suite:
+
+```
+LOAD WARZONE on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1 point(s) held, point 0's shortcut open, point 1 at 10.00/10.00 s, attack damage rule 10.00, allies 0 (2 before the save)
+LOAD LABRYNTH on seed 1, 4 gates: Loaded (... day 1, 0 creatures, placed where it was saved); gates 0110/0110; swaps without a load 0101 0011 0101 1100 0110 1010 0011 1010, after it 0101 0011 0101 1100 0110 1010 0011 1010
+LOAD VOID PARASITE: Loaded (... day 1, 221 creatures, placed where it was saved); after a beat 2/2 attached, 12.00% off attack damage
+```
+
+WHAT THE TWO LABRYNTH PROOFS SHOWED, read from their printed lines:
+
+- **P4, nothing put back:** the gates loaded as the floor starts them, 0101, and the stream at the floor's start, so the
+  load played the original game again from its first swap: "0110 0101 0011 0101 1100 0110 1010 0011", which is the
+  saved state followed by the reference sequence, one swap behind.
+- **P5, the gates put back and not the stream:** "0101 0110 0011 ...". THE FIRST SWAP MATCHED THE REFERENCE BY CHANCE,
+  and the sequences parted at the second. A test comparing one swap would not have caught this break; the four first
+  registered would have. The chance estimate in the table is still an estimate: one run gives one draw, not a rate.
 
 ---
 
