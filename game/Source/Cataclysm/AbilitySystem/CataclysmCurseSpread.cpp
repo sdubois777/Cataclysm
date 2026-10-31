@@ -45,7 +45,8 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 		Dying->FindComponentByClass<UCataclysmCurseSpread>();
 	if (!Mark || Mark->RangeCm <= 0.0f)
 	{
-		// The ordinary case. Nothing but Anathema marks a creature this way.
+		// The ordinary case. Only Anathema and the Staff's Quarry, and the
+		// holders their curses passed to, are marked this way.
 		return 0;
 	}
 
@@ -75,8 +76,17 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 		Credited, Dying, Next,
 		UCataclysmSkillEffects::DamageTypeOf(Credited));
 
+	// AND THE NEW HOLDER PASSES IT ON IN TURN. Anathema: "anything that dies while damned passes the curse to the
+	// nearest living enemy", and a creature the curse passed to is damned. Quarry: "if the marked enemy dies first, the
+	// mark jumps to the nearest living enemy", and the mark on its new holder is still the mark. Ruled 2026-10-31, one
+	// rule for both. The same caster and the same reach go with it; each copy lasts the effect's own designed duration.
+	//
+	// IT CANNOT RETURN TO A HOLDER IT LEFT. The search finds only the living, and this dying creature is dropped by
+	// name above, so a chain ends when no living enemy is within reach.
 	if (Applied > 0)
 	{
+		UCataclysmCurseSpread::MarkOn(Next[0], Mark->Caster.Get(), Mark->RangeCm);
+
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("%s died carrying a spreading curse; %d applications passed to "
 				 "%s."),

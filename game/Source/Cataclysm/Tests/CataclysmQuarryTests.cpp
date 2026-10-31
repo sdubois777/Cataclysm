@@ -221,4 +221,71 @@ bool FCataclysmQuarryMarkJumpsWhenItsQuarryDiesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarryMarkJumpsAgainTest,
+	"Cataclysm.Quarry.AMarkThatHasJumpedJumpsAgainWhenItsNewHolderDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarryMarkJumpsAgainTest::RunTest(const FString&)
+{
+	// "If the marked enemy dies first, the mark jumps to the nearest living enemy." The mark on its new holder is still
+	// the mark, so that holder's death passes it on again. Ruled 2026-10-31.
+	using namespace CataclysmQuarryJumpTest;
+
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!TestNotNull(TEXT("the weapon skill table loads"), Table))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py tools/generate_datatable_assets.py"));
+		return false;
+	}
+	const TArray<FCataclysmWeaponSkill> Staff = UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Staff"), TEXT("Demonic"));
+	const FCataclysmWeaponSkill* Row = ShippedQuarry(Staff);
+	if (!TestNotNull(TEXT("set-up: the Demonic Staff has Quarry"), Row)
+		|| !TestEqual(TEXT("set-up: Quarry's jump reaches 8 m"), Row->Params.OnDeathRangeCm, 8.0f * M))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL FIRST: A MARK PUT ON THE SECOND ENEMY BY HAND, which carries the tag and not the instruction to pass
+	// it on. Its death passes nothing, so what passes the mark in the case below is the instruction going with it.
+	{
+		FQuarryJumpCaster Caster(World, FVector::ZeroVector);
+		FQuarryJumpEnemy Second(World, FVector(3 * M, 5 * M, 0));
+		FQuarryJumpEnemy Third(World, FVector(3 * M, 10 * M, 0));
+
+		TestTrue(TEXT("set-up: control: the mark lands by hand"),
+			UCataclysmSkillEffects::ApplyNamedEffect(Caster.Actor, Second.Actor, UCataclysmCommand::QuarryTag(),
+				/*DurationSeconds=*/12.0f, /*Magnitude=*/0.0f, NAME_None));
+		TestTrue(TEXT("control: the holder dies"), UCataclysmSkillEffects::MarkDead(Second.Actor));
+		TestFalse(TEXT("control: a mark with no instruction to pass on reaches nobody"), Third.IsMarked());
+	}
+
+	// THREE ENEMIES IN A LINE, FIVE METRES APART. The third is ten metres from the first, outside the 8 m reach, so only
+	// a second jump, from the second enemy, can reach it. A hundred metres from the control.
+	FQuarryJumpCaster Caster(World, FVector(100 * M, 0, 0));
+	FQuarryJumpEnemy First(World, FVector(103 * M, 0, 0));
+	FQuarryJumpEnemy Second(World, FVector(103 * M, 5 * M, 0));
+	FQuarryJumpEnemy Third(World, FVector(103 * M, 10 * M, 0));
+
+	UCataclysmSkillTemplate* Skill = Caster.Grant(*Row);
+	if (!TestNotNull(TEXT("set-up: Quarry is granted"), Skill))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: Quarry is cast"), Caster.UseSkill(Skill));
+	TestTrue(TEXT("set-up: the first enemy is marked"), First.IsMarked());
+
+	TestTrue(TEXT("the first holder dies"), UCataclysmSkillEffects::MarkDead(First.Actor));
+	TestTrue(TEXT("the mark jumps to the second enemy"), Second.IsMarked());
+	TestFalse(TEXT("and not yet to the third, ten metres from the first"), Third.IsMarked());
+
+	TestTrue(TEXT("the second holder dies"), UCataclysmSkillEffects::MarkDead(Second.Actor));
+	TestTrue(TEXT("the mark jumps again, to the third enemy"), Third.IsMarked());
+	TestTrue(TEXT("and it is now the caster's quarry"), UCataclysmCommand::QuarryOf(Caster.Actor) == Third.Actor);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
