@@ -90,7 +90,9 @@ load; after the load the altar offers what it offered, and the next floor offers
 oracle's first draw is what every floor not drawn again offered, so a wrong oracle and an unlucky dungeon are told
 apart; and such a floor is found. CONTROL: the floor's first draw is not what it offered. Prints "LOAD PACT", with the
 seed, the floor and the oracle's count. **Rewritten after window w109**, below: it searched one dungeon's floors 2 to 18
-and found none drawn again.
+and found none drawn again. THE PIN IS PUT BACK ON EVERY WAY OUT, by the guard that sets it (`FPinnedDungeonSeed`,
+whose destructor restores the value), and the test asserts after its body has returned that `Cataclysm.DungeonSeed` is
+what it was, so no later test runs on a pinned seed (asked by the coordinating session).
 
 `Cataclysm.SaveLoad.ATitheLeftUnpaidIsStillOwedAfterALoad`: floor 1's altar left unpaid, saved on floor 2 before the beat
 that brings the angels; after the load they are owed, and the beat after it brings `ForcedTithesAngelCount` (8). Prints

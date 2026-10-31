@@ -2964,29 +2964,103 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPactOfferTest,
 	"Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
+namespace CataclysmSaveLoadTest
 {
-	using namespace CataclysmSaveLoadTest;
-	using Effects = UCataclysmDungeonModifierEffects;
+	/** The pact test's body, which pins `Cataclysm.DungeonSeed` in a guard that puts it back on every way out. */
+	bool ThePactOfferRoundTrip(FAutomationTestBase& Test)
+	{
+		using namespace CataclysmSaveLoadTest;
+		using Effects = UCataclysmDungeonModifierEffects;
 
-	FSaved Saved;
-	ON_SCOPE_EXIT { Saved.Forget(); };
-	// THE DUNGEON'S SEED PINNED FOR THE WHOLE TEST, THE LOAD INCLUDED, so the floor found is the floor loaded.
-	FPinnedDungeonSeed PinnedSeed;
-	if (!TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
-	{
-		return false;
-	}
-	int32 Seed = INDEX_NONE;
-	int32 Agreed = 0;
-	int32 Disagreed = 0;
-	int32 Floor = INDEX_NONE;
-	TArray<int32> OfferSaved;
-	TArray<int32> FirstDraw;
-	TArray<int32> NextFloorsOffer;
-	{
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		// THE DUNGEON'S SEED PINNED FOR THE WHOLE TEST, THE LOAD INCLUDED, so the floor found is the floor loaded.
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		int32 Agreed = 0;
+		int32 Disagreed = 0;
+		int32 Floor = INDEX_NONE;
+		TArray<int32> OfferSaved;
+		TArray<int32> FirstDraw;
+		TArray<int32> NextFloorsOffer;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {FName(Effects::PactOfTemptationKey)});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the Pact of Temptation was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+
+			// THE FIRST FLOOR WHOSE FIRST DRAW MATCHED THE LAST FLOOR'S OFFER, so its offer was drawn again: a load drawing
+			// it with no last offer would offer the first draw instead. Floors 2 to 18 on dungeon seeds 1 to 12 in turn, one
+			// floor in ten or so being drawn again. AND THE ORACLE CHECKED on every other floor: its first draw is what it
+			// offered.
+			TArray<int32> LastOffer = Mode.PactsOfferedNow();
+			for (int32 Pinned = 1; Pinned <= 12 && Floor == INDEX_NONE; ++Pinned)
+			{
+				PinnedSeed.Pin(Pinned);
+				for (int32 Next = 2; Next <= 18 && Floor == INDEX_NONE; ++Next)
+				{
+					if (!Mode.GoToFloor(Next))
+					{
+						break;
+					}
+					const TArray<int32> First = FirstPactShuffle(Mode.CurrentFloor->GetPlan().Seed, Next);
+					if (First == LastOffer)
+					{
+						Floor = Next;
+						Seed = Pinned;
+						FirstDraw = First;
+					}
+					else if (First == Mode.PactsOfferedNow())
+					{
+						++Agreed;
+					}
+					else
+					{
+						++Disagreed;
+					}
+					LastOffer = Mode.PactsOfferedNow();
+				}
+			}
+			if (!Test.TestEqual(TEXT("set-up: the oracle's first draw is what every floor not drawn again offered"), Disagreed, 0)
+				|| !Test.TestTrue(TEXT("set-up: a floor on seeds 1 to 12 drew its offer again"), Floor != INDEX_NONE))
+			{
+				return false;
+			}
+			OfferSaved = Mode.PactsOfferedNow();
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+
+			// AND WHAT THE WALK'S NEXT FLOOR OFFERS, after the save is written.
+			if (!Test.TestTrue(TEXT("set-up: the walk went on to the next floor"), Mode.GoToFloor(Floor + 1)))
+			{
+				return false;
+			}
+			NextFloorsOffer = Mode.PactsOfferedNow();
+		}
+
 		FDungeonScene Scene = MakeDungeonScene();
-		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
 		{
 			if (Scene.Base.World)
 			{
@@ -2996,98 +3070,42 @@ bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-		Saved.RunId = FGuid::NewGuid();
-		Saved.CharacterId = FGuid::NewGuid();
-		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
-		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {FName(Effects::PactOfTemptationKey)});
-		if (!TestTrue(TEXT("set-up: a dungeon carrying the Pact of Temptation was placed"), DungeonId != INDEX_NONE)
-			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
-		{
-			return false;
-		}
-		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																				 Saved.CharacterId);
+		const TArray<int32> OfferLoaded = Scene.Mode->PactsOfferedNow();
+		const bool bNextReached = Scene.Mode->GoToFloor(Floor + 1);
+		const TArray<int32> NextLoaded = Scene.Mode->PactsOfferedNow();
 
-		// THE FIRST FLOOR WHOSE FIRST DRAW MATCHED THE LAST FLOOR'S OFFER, so its offer was drawn again: a load drawing
-		// it with no last offer would offer the first draw instead. Floors 2 to 18 on dungeon seeds 1 to 12 in turn, one
-		// floor in ten or so being drawn again. AND THE ORACLE CHECKED on every other floor: its first draw is what it
-		// offered.
-		TArray<int32> LastOffer = Mode.PactsOfferedNow();
-		for (int32 Pinned = 1; Pinned <= 12 && Floor == INDEX_NONE; ++Pinned)
-		{
-			PinnedSeed.Pin(Pinned);
-			for (int32 Next = 2; Next <= 18 && Floor == INDEX_NONE; ++Next)
-			{
-				if (!Mode.GoToFloor(Next))
-				{
-					break;
-				}
-				const TArray<int32> First = FirstPactShuffle(Mode.CurrentFloor->GetPlan().Seed, Next);
-				if (First == LastOffer)
-				{
-					Floor = Next;
-					Seed = Pinned;
-					FirstDraw = First;
-				}
-				else if (First == Mode.PactsOfferedNow())
-				{
-					++Agreed;
-				}
-				else
-				{
-					++Disagreed;
-				}
-				LastOffer = Mode.PactsOfferedNow();
-			}
-		}
-		if (!TestEqual(TEXT("set-up: the oracle's first draw is what every floor not drawn again offered"), Disagreed, 0)
-			|| !TestTrue(TEXT("set-up: a floor on seeds 1 to 12 drew its offer again"), Floor != INDEX_NONE))
-		{
-			return false;
-		}
-		OfferSaved = Mode.PactsOfferedNow();
-		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
-		WaitForSlot(Saved.RunSlot());
+		Test.AddInfo(FString::Printf(TEXT("LOAD PACT on seed %d floor %d (the oracle agreed on %d floors, disagreed on %d): %s (%s); "
+									 "first draw %s; offered %s, after the load %s; the next floor offered %s, after the load %s"),
+								Seed, Floor, Agreed, Disagreed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+								*PactsText(FirstDraw),
+								*PactsText(OfferSaved), *PactsText(OfferLoaded), *PactsText(NextFloorsOffer),
+								*PactsText(NextLoaded)));
 
-		// AND WHAT THE WALK'S NEXT FLOOR OFFERS, after the save is written.
-		if (!TestTrue(TEXT("set-up: the walk went on to the next floor"), Mode.GoToFloor(Floor + 1)))
-		{
-			return false;
-		}
-		NextFloorsOffer = Mode.PactsOfferedNow();
+		Test.TestNotEqual(TEXT("CONTROL: the floor's first draw is not what it offered"), PactsText(FirstDraw),
+					 PactsText(OfferSaved));
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+				  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestEqual(TEXT("the altar offers the pacts it offered"), PactsText(OfferLoaded), PactsText(OfferSaved));
+		Test.TestTrue(TEXT("the next floor was reached"), bNextReached);
+		Test.TestEqual(TEXT("and the next floor offers what the walk's did"), PactsText(NextLoaded), PactsText(NextFloorsOffer));
+		return true;
 	}
+}
 
-	FDungeonScene Scene = MakeDungeonScene();
-	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
-	{
-		if (Scene.Base.World)
-		{
-			Scene.Base.World->DestroyWorld(false);
-		}
-		return false;
-	}
-	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+bool FCataclysmSaveLoadPactOfferTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
 
-	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
-																			 Saved.CharacterId);
-	const TArray<int32> OfferLoaded = Scene.Mode->PactsOfferedNow();
-	const bool bNextReached = Scene.Mode->GoToFloor(Floor + 1);
-	const TArray<int32> NextLoaded = Scene.Mode->PactsOfferedNow();
-
-	AddInfo(FString::Printf(TEXT("LOAD PACT on seed %d floor %d (the oracle agreed on %d floors, disagreed on %d): %s (%s); "
-								 "first draw %s; offered %s, after the load %s; the next floor offered %s, after the load %s"),
-							Seed, Floor, Agreed, Disagreed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
-							*PactsText(FirstDraw),
-							*PactsText(OfferSaved), *PactsText(OfferLoaded), *PactsText(NextFloorsOffer),
-							*PactsText(NextLoaded)));
-
-	TestNotEqual(TEXT("CONTROL: the floor's first draw is not what it offered"), PactsText(FirstDraw),
-				 PactsText(OfferSaved));
-	TestEqual(TEXT("the load put the character and its run back"),
-			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
-	TestEqual(TEXT("the altar offers the pacts it offered"), PactsText(OfferLoaded), PactsText(OfferSaved));
-	TestTrue(TEXT("the next floor was reached"), bNextReached);
-	TestEqual(TEXT("and the next floor offers what the walk's did"), PactsText(NextLoaded), PactsText(NextFloorsOffer));
-	return true;
+	// THE DUNGEON'S SEED AS IT WAS, read before the body pins it and compared after the body's guard has put it back,
+	// so a later test never runs on a pinned seed. Asked by the coordinating session, 2026-10-30.
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = ThePactOfferRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
 }
 
 /**
