@@ -124,11 +124,14 @@ text occurs once in its file. Names are the short names the engine's log prints.
 
 | # | File | Break | Predicted named_failures |
 | :-- | :-- | :-- | :-- |
-| 1 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a draw is not refused: in `HoldARandomBuff`, the end of the comment `"Buffs + gear procs".` followed by `if (UCataclysmStacks::NegatesTheNextBuff(this))` -- a two-line anchor, because the same `if` also guards the damage-type roll -- has the `if` become `if (false)` | `AHeldStackRefusesOneRandomBuffDrawAndIsSpent` |
-| 2 | `AbilitySystem/CataclysmSkillTemplates.cpp` | a cast is not refused: `if (UCataclysmStacks::NegatesTheNextBuff(` becomes `if (false && UCataclysmStacks::NegatesTheNextBuff(` | `AHeldStackRefusesASelfBuffCastWhichIsStillPaidFor` |
-| 3 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a gear proc is not refused: `return !Action.bFromADrawback && UCataclysmStacks::NegatesTheNextBuff(this);` becomes `return false && UCataclysmStacks::NegatesTheNextBuff(this);` | `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` |
+| 1 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a draw is not refused: in `HoldARandomBuff`, the end of the comment `"Buffs + gear procs".` followed by `if (UCataclysmStacks::NegatesTheNextBuff(this))` -- a two-line anchor, because the same `if` also guards the damage-type roll -- has the `if` ask `UCataclysmStacks::NegatesTheNextBuff(nullptr)`, which answers false at run time | `AHeldStackRefusesOneRandomBuffDrawAndIsSpent` |
+| 2 | `AbilitySystem/CataclysmSkillTemplates.cpp` | a cast is not refused: `if (UCataclysmStacks::NegatesTheNextBuff(` becomes `if (UCataclysmStacks::NegatesTheNextBuff(nullptr) && UCataclysmStacks::NegatesTheNextBuff(` | `AHeldStackRefusesASelfBuffCastWhichIsStillPaidFor` |
+| 3 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a gear proc is not refused: `return !Action.bFromADrawback && UCataclysmStacks::NegatesTheNextBuff(this);` becomes `return UCataclysmStacks::NegatesTheNextBuff(nullptr);` | `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` |
 | 4 | the same | a drawback is refused too: the same line becomes `return UCataclysmStacks::NegatesTheNextBuff(this);` | `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` |
 | 5 | `Interface/CataclysmCombatOverlay.cpp` | the count is never shown: `return Held > 0 ? FString::Printf(TEXT("Touch of Nothing %d"), Held)` becomes `return Held > 99 ? FString::Printf(TEXT("Touch of Nothing %d"), Held)` | `ACarriersHitsLayUpToFiveStacksAndTheCountIsShown` |
+
+Breaks 1 to 3 ask `NegatesTheNextBuff(nullptr)`, which answers false at run time, rather than writing `false`, so the
+compiler sees no constant condition or unreachable code to warn about in the broken build.
 
 Why each, traced: **1** leaves the draw held and the stack unspent, which the draw test asserts; no other test draws.
 **2** lets the buff run, which the cast test asserts against; the others cast nothing. **3** lets the benefit's second
