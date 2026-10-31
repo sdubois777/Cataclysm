@@ -134,7 +134,8 @@
 				"Armour": 120,
 				"PlacedDamageMultiplier": 0.75,
 				"SightRadiusMultiplier": 30,
-				"FloorRealityRow": "Demonic_Hellfire_Aura"
+				"FloorRealityRow": "Demonic_Hellfire_Aura",
+				"SoulChainsGate": 1
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -163,7 +164,8 @@
 				"Armour": 0,
 				"PlacedDamageMultiplier": 1,
 				"SightRadiusMultiplier": 1,
-				"FloorRealityRow": "None"
+				"FloorRealityRow": "None",
+				"SoulChainsGate": -1
 			}
 		],
 		"GroundItems": [
@@ -223,6 +225,50 @@
 			"RealityChamberRewardRolls": 3,
 			"RealityChamberRewardDrops": 2,
 			"RealityChamberRewardExtraDrops": 1
+		},
+		"RuleState": {
+			"bHeavenlyCoreDestroyed": true,
+			"bQuarantineBroken": true,
+			"QuarantinePatches": [
+				{
+					"Location": {
+						"X": 1200.5,
+						"Y": -700.25,
+						"Z": 96
+					},
+					"Burn": 12.5
+				}
+			],
+			"bInfectionBloomDestroyed": true,
+			"AbyssalRiftState": 2,
+			"VeinsDestroyed": [
+				0,
+				2
+			],
+			"InfestedVeinsDestroyed": 2,
+			"bInfestedVeinsGuardiansCame": false,
+			"BeaconsDestroyed": [
+				1
+			],
+			"BeaconsCounted": [
+				0
+			],
+			"Coffins": [
+				{
+					"Deaths": 3,
+					"bLordCame": false
+				},
+				{
+					"Deaths": 8,
+					"bLordCame": true
+				}
+			],
+			"StatuesWoken": [
+				0
+			],
+			"SoulChainsGatesOpen": [
+				0
+			]
 		},
 		"Characters": [
 			{

@@ -8,12 +8,14 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
@@ -3275,6 +3277,481 @@ bool FCataclysmSaveLoadGateOpenedTest::RunTest(const FString&)
 	TestFalse(TEXT("and the stairs are unsealed"), bSealed);
 	TestFalse(TEXT("and no channel runs"), Scene.Mode->DivineGateChannelBegun());
 	return true;
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/**
+	 * A creature killed by one blow from the player, as the floor rules' tests kill one: its sacrificial bond taken off,
+	 * its health, shield and evasion set so the blow is the kill, and the blow through the game's own hit, so its death
+	 * notice reaches the floor's rules. Copied from `CataclysmDungeonModifierEffectsTests.cpp`'s `KillIt`.
+	 */
+	bool KillOnTheFloor(FAutomationTestBase& Test, ACataclysmPlayerCharacter& Player, ACataclysmEnemyCharacter* Victim,
+						const TCHAR* What)
+	{
+		if (!Test.TestNotNull(FString::Printf(TEXT("set-up: %s stands"), What), Victim))
+		{
+			return false;
+		}
+		Victim->ModifierRows.Remove(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+		if (UAbilitySystemComponent* Abilities = Victim->GetAbilitySystemComponent())
+		{
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		UCataclysmSkillEffects::ApplyHit(&Player, Victim, 100000.0f);
+		return Test.TestTrue(FString::Printf(TEXT("set-up: %s died"), What), UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	/** The living creatures the floor's rules did not raise: what a save keeps and a load puts back. */
+	int32 OrdinaryCreaturesStanding(UWorld& World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			Count += IsValid(*It) && !It->bRaisedByARule && !UCataclysmSkillEffects::IsDead(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** The test body of the rule creatures' round trip; its seed pin is put back by its guard. */
+	bool TheRuleCreaturesRoundTrip(FAutomationTestBase& Test)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+
+		const TArray<FName> Rules = {FName(Effects::QuarantineBreachKey), FName(Effects::InfectionBloomKey),
+									 FName(Effects::AbyssalRiftsKey), FName(Effects::InfestedVeinsKey),
+									 FName(Effects::PestilentEmpowermentKey), FName(Effects::ObsidianSarcophagiKey),
+									 FName(Effects::AngelicWardensKey)};
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		int32 PatchesSaved = -1;
+		float BurnSaved = -1.0f;
+		int32 VeinsStandingSaved = -1;
+		int32 VeinsDestroyedSaved = -1;
+		int32 BeaconsStandingSaved = -1;
+		int32 SuccessesSaved = -1;
+		FString StatuesSaved;
+		FIntPoint WokenCell(-1, -1);
+		int32 CreaturesSaved = -1;
+		int32 DropsSaved = -1;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, Rules);
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the seven rules was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+			ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+			// FLOOR 2 ON THE FIRST PINNED SEED WHOSE FLOOR HOLDS EVERY RULE'S CREATURE, statues placing fewer on some.
+			for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+			{
+				PinnedSeed.Pin(Pinned);
+				if (Mode.GoToFloor(2) && Mode.QuarantineNow() && Mode.InfectionBloomNow() && Mode.AbyssalRiftNow()
+					&& !Mode.InfestedVeinsStanding().IsEmpty() && !Mode.PlagueBeaconsStanding().IsEmpty()
+					&& !Mode.SarcophagiNow().IsEmpty() && !Mode.AngelicStatueCellsStanding().IsEmpty())
+				{
+					Seed = Pinned;
+				}
+			}
+			if (!Test.TestTrue(TEXT("set-up: a seed from 1 to 20 places every rule's creature on floor 2"),
+							   Seed != INDEX_NONE))
+			{
+				return false;
+			}
+
+			// EACH EVENT THROUGH THE GAME'S OWN CALLS.
+			bool bAll = KillOnTheFloor(Test, Player, Mode.QuarantineNow(), TEXT("the containment"));
+			const TArray<ACataclysmEnemyCharacter*> Released = Mode.QuarantineReleasedStanding();
+			bAll = bAll && KillOnTheFloor(Test, Player, Released.IsEmpty() ? nullptr : Released[0],
+										  TEXT("a released creature"));
+			bAll = bAll && KillOnTheFloor(Test, Player, Mode.InfectionBloomNow(), TEXT("the bloom"));
+			bAll = bAll && KillOnTheFloor(Test, Player, Mode.InfestedVeinsStanding()[0], TEXT("a vein"));
+			bAll = bAll && KillOnTheFloor(Test, Player, Mode.PlagueBeaconsStanding()[0], TEXT("a beacon"));
+			ACataclysmEnemyCharacter* Coffin = Mode.SarcophagiNow()[0];
+			for (int32 Death = 0; bAll && Death < 2; ++Death)
+			{
+				FCataclysmSavedCreature Record;
+				Record.ArchetypeRow = FName(TEXT("Brute"));
+				Record.Location = Coffin->GetActorLocation() + FVector(300.0f, 100.0f * Death, 0.0f);
+				Record.Health = 100.0f;
+				Record.MaxHealth = 100.0f;
+				ACataclysmEnemyCharacter* Beside = FCataclysmSaveApply::CreatureInto(*Scene.Base.World, Record);
+				if (Beside)
+				{
+					Beside->bDiesUnpaid = false;
+					Mode.FloorEnemies.Add(Beside);
+				}
+				bAll = KillOnTheFloor(Test, Player, Beside, TEXT("a creature beside the first coffin"));
+			}
+			WokenCell = Mode.AngelicStatueCellsStanding()[0];
+			bAll = bAll && Test.TestEqual(TEXT("set-up: a divine law broken at a statue woke one"),
+										  Mode.NoteDivineLawViolated(Mode.CurrentFloor->WorldOfCell(WokenCell)), 1);
+			// THE RIFT OPENED AS THE PLAYER OPENS IT, and the beat also counts the vein destroyed.
+			const FVector RiftAt = Mode.AbyssalRiftNow()->GetActorLocation();
+			Player.SetActorLocation(FVector(RiftAt.X + 300.0f, RiftAt.Y, Player.GetActorLocation().Z));
+			BeatOnce(Mode);
+			const FVector Entrance = Mode.CurrentFloor->EntranceWorld();
+			Player.SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.GetActorLocation().Z));
+			if (!bAll
+				|| !Test.TestEqual(TEXT("set-up: the rift opened"), static_cast<int32>(Mode.AbyssalRiftStateNow()),
+								   static_cast<int32>(ACataclysmDungeonGameMode::ERiftState::Open))
+				|| !Test.TestEqual(TEXT("set-up: one vein counted destroyed"), Mode.InfestedVeinsDestroyedHere(), 1)
+				|| !Test.TestEqual(TEXT("set-up: two paid deaths beside the first coffin"),
+								   Mode.SarcophagusDeathsBeside(Coffin), 2)
+				|| !Test.TestEqual(TEXT("set-up: one patch burns"), Mode.QuarantinePatchesNow().Num(), 1))
+			{
+				return false;
+			}
+			PatchesSaved = Mode.QuarantinePatchesNow().Num();
+			BurnSaved = Mode.QuarantinePatchesNow()[0]->DamagePerTick;
+			VeinsStandingSaved = Mode.InfestedVeinsStanding().Num();
+			VeinsDestroyedSaved = Mode.InfestedVeinsDestroyedHere();
+			BeaconsStandingSaved = Mode.PlagueBeaconsStanding().Num();
+			SuccessesSaved = Mode.AbyssalRiftSuccessesHeld();
+			StatuesSaved = CellsText(Mode.AngelicStatueCellsStanding());
+			CreaturesSaved = OrdinaryCreaturesStanding(*Scene.Base.World);
+			DropsSaved = DropsLying(*Scene.Base.World);
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		// ONE BEAT FIRST, so a vein counted destroyed again, guardians brought or a gate opened would show.
+		BeatOnce(Mode);
+		const TArray<ACataclysmGroundZone*> Patches = Mode.QuarantinePatchesNow();
+		const float BurnLoaded = Patches.IsEmpty() ? -1.0f : Patches[0]->DamagePerTick;
+		TArray<FIntPoint> Pillars;
+		for (TActorIterator<ACataclysmFloorObstacle> It(Scene.Base.World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Pillars.Append(It->CoveredCells());
+			}
+		}
+		const TArray<ACataclysmEnemyCharacter*> Coffins = Mode.SarcophagiNow();
+		const int32 DeathsLoaded = Coffins.IsEmpty() ? -1 : Mode.SarcophagusDeathsBeside(Coffins[0]);
+		const bool bLordLoaded = !Coffins.IsEmpty() && Mode.SarcophagusLordCame(Coffins[0]);
+
+		Test.AddInfo(FString::Printf(
+			TEXT("LOAD RULE CREATURES on seed %d: %s (%s); containment %s, patches %d/%d burn %.2f/%.2f; bloom %s; rift "
+				 "state %d, successes %d/%d; veins standing %d/%d destroyed %d/%d guardians %s; beacons standing %d/%d; "
+				 "coffin deaths 2/%d lord %s; statues %s/%s, woken cell pillared %s; creatures %d/%d; drops %d/%d"),
+			Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+			Mode.QuarantineNow() ? TEXT("STANDS") : TEXT("broken"), PatchesSaved, Patches.Num(), BurnSaved, BurnLoaded,
+			Mode.InfectionBloomNow() ? TEXT("STANDS") : TEXT("destroyed"),
+			static_cast<int32>(Mode.AbyssalRiftStateNow()), SuccessesSaved, Mode.AbyssalRiftSuccessesHeld(),
+			VeinsStandingSaved, Mode.InfestedVeinsStanding().Num(), VeinsDestroyedSaved,
+			Mode.InfestedVeinsDestroyedHere(), Mode.InfestedVeinsGuardiansCame() ? TEXT("CAME") : TEXT("none"),
+			BeaconsStandingSaved, Mode.PlagueBeaconsStanding().Num(), DeathsLoaded, bLordLoaded ? TEXT("CAME") : TEXT("none"),
+			*StatuesSaved, *CellsText(Mode.AngelicStatueCellsStanding()),
+			Pillars.Contains(WokenCell) ? TEXT("YES") : TEXT("no"), CreaturesSaved,
+			OrdinaryCreaturesStanding(*Scene.Base.World), DropsSaved, DropsLying(*Scene.Base.World)));
+
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestNull(TEXT("the containment stays broken"), Mode.QuarantineNow());
+		Test.TestEqual(TEXT("its patch burns again"), Patches.Num(), PatchesSaved);
+		Test.TestEqual(TEXT("at the burn it was charged at"), BurnLoaded, BurnSaved, 0.001f);
+		Test.TestNull(TEXT("the bloom stays destroyed"), Mode.InfectionBloomNow());
+		Test.TestEqual(TEXT("the rift, opened, is closed"), static_cast<int32>(Mode.AbyssalRiftStateNow()),
+					   static_cast<int32>(ACataclysmDungeonGameMode::ERiftState::Closed));
+		Test.TestEqual(TEXT("and failed: no success counted"), Mode.AbyssalRiftSuccessesHeld(), SuccessesSaved);
+		Test.TestEqual(TEXT("the veins standing are as saved"), Mode.InfestedVeinsStanding().Num(), VeinsStandingSaved);
+		Test.TestEqual(TEXT("the vein destroyed is counted once, after a beat"), Mode.InfestedVeinsDestroyedHere(),
+					   VeinsDestroyedSaved);
+		Test.TestFalse(TEXT("and no guardians came"), Mode.InfestedVeinsGuardiansCame());
+		Test.TestEqual(TEXT("the beacons standing are as saved"), Mode.PlagueBeaconsStanding().Num(),
+					   BeaconsStandingSaved);
+		Test.TestEqual(TEXT("the first coffin holds its two deaths"), DeathsLoaded, 2);
+		Test.TestFalse(TEXT("and no lord came"), bLordLoaded);
+		Test.TestEqual(TEXT("the statues standing are as saved"), CellsText(Mode.AngelicStatueCellsStanding()),
+					   StatuesSaved);
+		Test.TestFalse(TEXT("and the woken statue's cell holds no pillar"), Pillars.Contains(WokenCell));
+		Test.TestEqual(TEXT("nothing was released, raised or brought again"), OrdinaryCreaturesStanding(*Scene.Base.World),
+					   CreaturesSaved);
+		Test.TestEqual(TEXT("and nothing was paid again"), DropsLying(*Scene.Base.World), DropsSaved);
+		return true;
+	}
+
+	/** The test body of the Soul Chains round trip; its seed pin is put back by its guard. */
+	bool TheSoulChainsRoundTrip(FAutomationTestBase& Test)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		const FName Row(Effects::SoulChainsKey);
+
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		int32 DropsSaved = -1;
+		int32 RollsSaved = -1;
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, {Row});
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying Soul Chains was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+			{
+				return false;
+			}
+			ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+
+			// A HALLS FLOOR WITH TWO GATES, EACH WITH TWO BEARERS, on the first pinned seed that gives one.
+			for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+			{
+				PinnedSeed.Pin(Pinned);
+				if (Mode.GoToFloor(2) && Mode.GatedShortcutsOf(Row).Num() == 2
+					&& Mode.SoulChainBearersNow(0).Num() == 2 && Mode.SoulChainBearersNow(1).Num() == 2)
+				{
+					Seed = Pinned;
+				}
+			}
+			if (!Test.TestTrue(TEXT("set-up: a seed from 1 to 20 gives two gates of two bearers"), Seed != INDEX_NONE))
+			{
+				return false;
+			}
+			bool bAll = true;
+			for (ACataclysmEnemyCharacter* Bearer : Mode.SoulChainBearersNow(0))
+			{
+				bAll = bAll && KillOnTheFloor(Test, *Scene.Base.Character, Bearer, TEXT("a bearer of the first gate"));
+			}
+			BeatOnce(Mode);
+			if (!bAll || !Test.TestTrue(TEXT("set-up: the first gate opened"), Mode.GatedShortcutIsOpen(Row, 0))
+				|| !Test.TestFalse(TEXT("set-up: the second stays closed"), Mode.GatedShortcutIsOpen(Row, 1)))
+			{
+				return false;
+			}
+			RollsSaved = Mode.SoulChainsRewardRollsMade();
+			DropsSaved = DropsLying(*Scene.Base.World);
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		ACataclysmDungeonGameMode& Mode = *Scene.Mode;
+		BeatOnce(Mode);
+		const bool bFirstOpen = Mode.GatedShortcutIsOpen(Row, 0);
+		const bool bSecondOpen = Mode.GatedShortcutIsOpen(Row, 1);
+		const int32 Bearers = Mode.SoulChainBearersNow(1).Num();
+		const int32 Drops = DropsLying(*Scene.Base.World);
+		const int32 RollsAfter = Mode.SoulChainsRewardRollsMade();
+
+		Test.AddInfo(FString::Printf(TEXT("LOAD SOUL CHAINS on seed %d: %s (%s); after a beat the first gate %s, the "
+										  "second %s with %d bearer(s); rolls before the save %d, after the load %d; "
+										  "drops %d/%d"),
+									 Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+									 bFirstOpen ? TEXT("open") : TEXT("CLOSED"), bSecondOpen ? TEXT("OPEN") : TEXT("closed"),
+									 Bearers, RollsSaved, RollsAfter, DropsSaved, Drops));
+
+		Test.TestEqual(TEXT("CONTROL: the first gate paid once before the save"), RollsSaved, 1);
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		Test.TestTrue(TEXT("the gate opened before the save stays open"), bFirstOpen);
+		Test.TestFalse(TEXT("the closed gate stays closed after a beat"), bSecondOpen);
+		Test.TestEqual(TEXT("with its two bearers"), Bearers, 2);
+		Test.TestEqual(TEXT("and no gate rolled its reward again"), RollsAfter, 0);
+		Test.TestEqual(TEXT("nor dropped anything"), Drops, DropsSaved);
+		return true;
+	}
+}
+
+/**
+ * The floor's rule creatures and their counters come back after a load as they were, and nothing their deaths paid or
+ * charged is paid or charged again: the containment broken and its patch at the burn charged, the bloom destroyed, an
+ * opened rift closed and failed (U2), a vein destroyed and counted once, a beacon destroyed, a coffin's two deaths, a
+ * statue woken. One beat runs after the load first. Issue #753, Group 3c-1, ruled 2026-10-30. Prints "LOAD RULE
+ * CREATURES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRuleCreaturesTest,
+	"Cataclysm.SaveLoad.ARulesCreaturesAndCountersComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRuleCreaturesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = TheRuleCreaturesRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
+}
+
+/**
+ * An Ascendant's Heavenly Core destroyed stays destroyed after a load, the stairs unsealed. Issue #753, Group 3c-1.
+ * Prints "LOAD CORE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadCoreTest,
+	"Cataclysm.SaveLoad.AHeavenlyCoreDestroyedStaysDestroyedAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadCoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	const int32 Floors = 3;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		// AN ASCENDANT, AS THE CORE'S OWN TEST MAKES ONE: a Celestial quest of three floors.
+		if (UCataclysmEmpireRun* Run = Scene.Base.Instance->GetOrBeginEmpireRun())
+		{
+			for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == DungeonId)
+				{
+					Dungeon.Floors = Floors;
+					Dungeon.Type = ECataclysmDungeonType::Quest;
+					Dungeon.SubType = ECataclysmDungeonSubType::Ascendant;
+					Dungeon.Cataclysm = ECataclysmType::Celestial;
+				}
+			}
+		}
+		if (!TestTrue(TEXT("set-up: an Ascendant was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: its last floor was reached"), Scene.Mode->GoToFloor(Floors))
+			|| !TestTrue(TEXT("set-up: the core seals the stairs"), Scene.Mode->HeavenlyCoreSealsTheStairs())
+			|| !KillOnTheFloor(*this, *Scene.Base.Character, Scene.Mode->HeavenlyCoreNow(), TEXT("the core"))
+			|| !TestFalse(TEXT("set-up: and no longer seals them"), Scene.Mode->HeavenlyCoreSealsTheStairs()))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bCoreGone = Scene.Mode->HeavenlyCoreNow() == nullptr;
+	const bool bSealed = Scene.Mode->HeavenlyCoreSealsTheStairs();
+
+	AddInfo(FString::Printf(TEXT("LOAD CORE: %s (%s); the core %s after the load; the stairs %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bCoreGone ? TEXT("gone") : TEXT("STANDS"), bSealed ? TEXT("SEALED") : TEXT("unsealed")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the core stays destroyed"), bCoreGone);
+	TestFalse(TEXT("and the stairs stay unsealed"), bSealed);
+	return true;
+}
+
+/**
+ * A Soul Chains gate neither opens nor pays on a load: a gate opened before the save stays open without paying again,
+ * and a closed gate keeps its bearers, which the load re-links instead of choosing. Until this a load destroyed the
+ * rebuilt floor's bearers and every closed gate opened and paid on the next beat. Issue #753, Group 3c-1, ruled
+ * 2026-10-30. Prints "LOAD SOUL CHAINS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSoulChainsTest,
+	"Cataclysm.SaveLoad.ASoulChainsGateNeitherOpensNorPaysOnALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSoulChainsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+	const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+	const bool bRan = TheSoulChainsRoundTrip(*this);
+	TestEqual(TEXT("the dungeon's seed is put back as it was"), SeedVariable ? SeedVariable->GetString() : FString(),
+			  SeedBefore);
+	return bRan;
 }
 
 #endif // WITH_AUTOMATION_TESTS

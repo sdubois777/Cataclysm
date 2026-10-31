@@ -58,6 +58,12 @@ namespace CataclysmSaveLoad
 	void RelinkTheCreatures(const FCataclysmFloorRestored& Floor, const FCataclysmSavedFloor& Saved,
 							ACataclysmPlayerCharacter& Player, ACataclysmDungeonGameMode* Dungeon)
 	{
+		// THE REBUILT FLOOR'S SOUL CHAINS BEARERS FORGOTTEN FIRST: the load has destroyed them, and the saved bearers
+		// are given back below. Never chosen again after a load. Issue #753, Group 3c-1, ruled 2026-10-30.
+		if (Dungeon)
+		{
+			Dungeon->ForgetTheSoulChainBearersForALoad();
+		}
 		for (const TPair<ACataclysmEnemyCharacter*, int32>& One : Floor.Spawned)
 		{
 			if (!IsValid(One.Key) || !Saved.Creatures.IsValidIndex(One.Value))
@@ -285,6 +291,9 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			// AND THE FLOOR OBJECTS THE PLAYER USED, MARKED USED WITHOUT THEIR REWARD OR COST, once the floor is rebuilt
 			// and the walk is back. Issue #753, Group 3b.
 			DungeonMode->RestoreFloorChoices(OnlyTheFloor.Choices, OnlyTheFloor.UsedObjects);
+
+			// AND WHAT THE FLOOR'S RULE CREATURES LEFT, without any death's reward or cost again. Issue #753, 3c-1.
+			DungeonMode->RestoreFloorRuleState(OnlyTheFloor.RuleState);
 		}
 		else if (SavedRun->Floor.IsOccupied())
 		{
