@@ -5153,8 +5153,9 @@ bool FCataclysmSaveLoadHarbingersTest::RunTest(const FString&)
 			[this, &Seed, &AliveSaved, &PatchesSaved, &MovedPatchesSaved, &MovedAt](
 				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
 			{
-				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return !Mode.PlagueHarbingersAlive().IsEmpty(); });
-				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a Harbinger"), Seed != INDEX_NONE))
+				// TWO HARBINGERS OR MORE, so a death cleanses one trail and leaves the others' patches standing.
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return Mode.PlagueHarbingersAlive().Num() >= 2; });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives two Harbingers or more"), Seed != INDEX_NONE))
 				{
 					return false;
 				}
@@ -5173,6 +5174,8 @@ bool FCataclysmSaveLoadHarbingersTest::RunTest(const FString&)
 				PatchesSaved = Mode.PlagueHarbingerTrailPatches();
 				MovedPatchesSaved = Mode.PlagueHarbingerTrailPatches(Moved);
 				return TestTrue(TEXT("set-up: the moved Harbinger laid two patches or more"), MovedPatchesSaved >= 2)
+					&& TestTrue(TEXT("set-up: two Harbingers or more stand"), AliveSaved >= 2)
+					&& TestTrue(TEXT("set-up: and the others laid patches of their own"), PatchesSaved > MovedPatchesSaved)
 					&& ThePlayerIsAlive(*this, Player);
 			},
 			[this, &Seed, &AliveSaved, &PatchesSaved, &MovedPatchesSaved, &MovedAt](
