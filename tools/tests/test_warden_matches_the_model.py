@@ -643,7 +643,7 @@ def test_the_sandbox_damage_is_the_dummys_times_the_designed_share():
 
 
 def test_it_is_spawned_further_out_than_the_brutes():
-    """Because its ring is 5.6 metres across and the two should not start inside
+    """Because its ring is 6.5 metres in radius and the two should not start inside
     each other's telegraphs."""
     brute = property_default("BruteDistanceCm", GAME_MODE_HEADER)
     warden_distance = property_default("AbyssalWardenDistanceCm",

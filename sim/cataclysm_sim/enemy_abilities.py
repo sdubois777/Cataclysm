@@ -313,7 +313,7 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
     the other three has no marker to draw at all and is read off the caster
     instead.
 
-    The ability's OWN marker has to be at least a metre across. "A marker
+    The ability's OWN marker has to be at least a metre in radius. "A marker
     smaller than 1 metre is not a telegraph. It is smaller than the creature
     standing in it, so there is nowhere to walk." That applies to the marker an
     ability actually draws, not only to the largest one its cycle would allow.
@@ -946,7 +946,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # one that answers the common case comes round more often.
             cooldown=12.0,
             note="It tears a rock out of the ground and lobs it, marked as a "
-                 "circle 2.1 metres across where it will land, for 1 second "
+                 "circle 2.1 metres in radius where it will land, for 1 second "
                  "first. At the Special slot's 150% it is worth half a Stomp. "
                  "Added 2026-08-07 when the project owner settled the Brute at "
                  "three abilities -- this, the Slam and the Stomp -- on the "
@@ -1210,7 +1210,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # survives. That is the right weight for something that warns for
             # two seconds and is avoided completely by walking out.
             cooldown=12.0,
-            note="It roars and the ground erupts in a ring 6.5 metres across, "
+            note="It roars and the ground erupts in a ring 6.5 metres in radius, "
                  "marked for 2 seconds first. The largest telegraph in the "
                  "game and the first thing in it to use the Ultimate slot. "
                  "Ultimate_Roar is 1.4000 seconds, measured 2026-08-09, so the "
@@ -1316,7 +1316,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # game/Data/SkillSlots.csv, because the burning ground it leaves
             # must not accumulate faster than one patch per expiry.
             cooldown=10.0,
-            note="A lobbed gout of soulfire that bursts 3 metres wide where it "
+            note="A lobbed gout of soulfire that bursts 3 metres in radius where it "
                  "lands and leaves burning ground the same size for 10 "
                  "seconds, which burns the player and nobody on the "
                  "Gatekeeper's own side. "
@@ -1376,7 +1376,7 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # fight the player is already losing.
             cooldown=20.0,
             note="It plants the hammer and the ground erupts in a ring 6.5 "
-                 "metres across, marked for 2 seconds first. The same largest-"
+                 "metres in radius, marked for 2 seconds first. The same largest-"
                  "legal ring as the Abyssal Warden's, at 400%: standing in it "
                  "is death from full health, and the warning is the answer. "
                  "Sevarog's ultimate is authored as targeting (0.87 s), a hold "

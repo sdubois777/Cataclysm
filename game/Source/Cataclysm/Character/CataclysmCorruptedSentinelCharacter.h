@@ -13,7 +13,7 @@
  * `sim/cataclysm_sim/enemy_abilities.py`:
  *
  *   Siege Bolt        Projectile  Basic    a flat bolt down a 14 metre lane
- *   Brimstone Mortar  Projectile  Special  a lobbed shell bursting 3 m wide
+ *   Brimstone Mortar  Projectile  Special  a lobbed shell bursting 3 m in radius
  *
  * **IT IS THE ONLY CREATURE IN THE ROSTER THAT CANNOT MOVE.** `move_speed` is
  * 0.0 and so is `chase_speed`. The design's one line about it is "Stationary

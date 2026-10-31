@@ -586,7 +586,7 @@ protected:
 	 * How far from the player start each one is put.
 	 *
 	 * FURTHER OUT THAN THE BRUTES AT 1200 BY MORE THAN ITS OWN RING, because
-	 * this creature's Molten Roar marks a ring 6.5 metres across and the two
+	 * this creature's Molten Roar marks a ring 6.5 metres in radius and the two
 	 * should not be standing inside each other's telegraphs before the player
 	 * has done anything.
 	 *

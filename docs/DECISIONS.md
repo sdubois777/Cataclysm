@@ -2,6 +2,177 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — The numbers the enemy ability prose states with their units are held to the ability table, and four sentences that wrote a radius as a width are corrected (#1634)
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (four sentences: words only, no number);
+`tools/tests/test_enemy_abilities.py` (a registry of 90 phrases and six new tests, after the #468 check, which stays);
+`sim/cataclysm_sim/enemy_abilities.py`, `tools/tests/test_warden_matches_the_model.py`,
+`game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h` and
+`game/Source/Cataclysm/Player/CataclysmGameMode.h` (eight comments, docstrings and notes, words only); this file.
+
+### SAID FIRST
+
+- **NO NUMBER IN THE PROSE DISAGREED WITH `ABILITIES`.** Measured on `development` `f4904e99a`: every figure the
+  seven enemy sections restate, and every cooldown they state, equals the model's value.
+- **FOUR SENTENCES WROTE A RADIUS AS A WIDTH**, and are corrected. Molten Roar (the Abyssal Warden) and Soul Harvest
+  (the Gatekeeper) were "a ring 6.5 metres across", and the Gatekeeper's Soulfall burst and burning ground "3 metres
+  wide", against `Radius=6.5`, `Radius=3.0` and `GroundRadius=3.0`. Each now reads "in radius". **The numbers do not
+  change**: the table, the model, the game and each section's own later sentence ("the radius", "The radius is the
+  cap") all hold a radius, so the four sentences were the error. The Corrupted Sentinel's "4.2 metre wide lane", for
+  `Radius=2.1`, was already right.
+- **THE RESTATEMENTS ARE NOW HELD.** A sentence that restates an ability's value is registered with the words around
+  its number, and a test fails when the number stops being the model's value or the sentence is reworded.
+
+### THE RULINGS
+
+The coordinating session, 2026-10-30:
+
+1. **The four sentences: "FIX THE WORDS, KEEP THE NUMBERS"**, in the design document only. This changes no number,
+   so it was the coordinating session's call and not the owner's. The entries in this file that say "N metres across
+   its radius" are dated records, not the design, and are left alone.
+2. **Explicit mapping, approved**: the registry with its number slots and number words; a test that every
+   registered phrase is found and holds the value; a test that every same-unit match is registered or a listed
+   coincidence; a positive control; the radius rule, with the Sentinel's lane as its control; three proofs. The check
+   that landed for #468 stays.
+3. **The Abyssal Warden's 5 second Stampede cooldown is not stated in its section, and that is not a fault**: the
+   section quotes Path of Exile's 4 second charge cooldown instead. The prose is not changed.
+
+### MEASURED
+
+On `development` `f4904e99a`, before the four sentences changed. `ABILITIES` holds 64 numeric parameter values across
+18 abilities, the same count as #1634's 2026-09-12 measurement, and 9 non-zero cooldowns.
+
+- **Restated with a unit in their own enemy's section**: 32 of the 64 by value and unit, and 2 more in words only
+  (Hellrush's "Ten metres long", Wither the Living's "Five seconds"). At least 2 of the 32 matched by coincidence.
+- **Cooldowns stated**: 8 of the 9; the Stampede's is the one that is not.
+- **The forms**: "N metres", "N metre <noun>", "N m" (twice), "N centimetres per second" ("cm/s" occurs 0 times), "N
+  degree cone", "N seconds", "N second <noun>", "N%", number words ("Eight metres", "Fourteen metres"), bold
+  ("**14 metres**"), and other enemies' figures quoted in a section (the Warden's quotes the Brute's 3.5).
+
+**Why a registry and not a pattern**, measured on that same document, whose figures all agree:
+
+| Check shape | Alarms on the correct document | Real faults it would catch there |
+| :-- | --: | --: |
+| Every number with a unit must be one of its own enemy's values | 134 of 199 | 0 |
+| The same, against any enemy's values | 117 | 0 |
+| Flag a number equal to a superseded value (38 commits of `enemy_abilities.py`) | 10 | 0 |
+
+The superseded values are Molten Roar's `Radius` 5.6, the Brute's toss `Speed` 600 and 1200 and `Flight` 1.4, and the
+old cooldowns of 5. The 10 alarms were "It was 5.6 metres until 2026-08-09" and three more 5.6s, "the Stomp's 1.4
+seconds" three times, "the 5 second immunity window" twice, and the Brute quoting Soulfire's 1200.
+
+### THE TESTS
+
+All in `tools/tests/test_enemy_abilities.py`, after the #468 block:
+
+- `PROSE_RESTATEMENTS`: 49 entries, each a section, the enemy and ability that own the value, the parameter (or
+  `cooldown`), and the phrases that restate it with `{n}` for the number. 90 phrases, 91 matches on this change's
+  document. Nine entries restate another enemy's figure, such as the Warden's "The Brute's stomp is {n} metres".
+- `COINCIDENCES`: 3 numbers that equal an own value and are not restatements, each with its reason: the Warden's
+  "is 12.0 seconds" (the kill time its 12 second cooldown is derived from), its "5 second stun immunity window", and
+  the Brute's "0.78 at 3 metres" (a flight time, not the Stomp's `Knockback` 3).
+- `test_a_registered_phrase_states_the_designed_value` (one per enemy): every phrase is found, and each number in it
+  is the model's value.
+- `test_every_restated_figure_is_registered_or_a_listed_coincidence` (one per enemy): every number with a unit that
+  equals one of its own enemy's values lies inside a registered phrase or a coincidence. 78 such numbers on this
+  change's document, 78 covered.
+- `test_every_listed_coincidence_is_still_in_its_section`, so a stale excuse is deleted.
+- `test_the_unit_check_is_reading_something`: the positive control.
+- `test_a_radius_is_not_written_as_a_width` (one per enemy) and its control `test_the_width_rule_has_a_control`, which
+  requires the Sentinel's 4.2 to be found and to be twice its 2.1.
+
+### THE SAME WORDING ELSEWHERE, SWEPT
+
+The coordinating session asked for the class to be swept and not only the design document: `sim/`, `tools/` and
+`game/Source` were searched for "metres across", "metres wide", "m across" and "m wide" in `.py`, `.cpp` and `.h`
+files, and each hit was checked against its constant. It ruled on the result the same day.
+
+**Corrected here, eight lines that wrote an enemy ability's radius as a width.** Each now says "in radius", and no
+number changed:
+
+1. `sim/cataclysm_sim/enemy_abilities.py`, the docstring of the one-metre marker floor: "at least a metre across". The
+   floor is a radius; the design document's Brute section calls a 0.9 metre reach "under the one-metre floor".
+2. The same file, Rip and Toss's `note`: "a circle 2.1 metres across" (`Radius=2.1`).
+3. Molten Roar's `note`: "a ring 6.5 metres across".
+4. Soulfall's `note`: "bursts 3 metres wide".
+5. Soul Harvest's `note`: "a ring 6.5 metres across".
+6. `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h`, header comment: Brimstone Mortar "bursting
+   3 m wide".
+7. `game/Source/Cataclysm/Player/CataclysmGameMode.h`, comment: "Molten Roar marks a ring 6.5 metres across".
+8. `tools/tests/test_warden_matches_the_model.py`, the docstring of the spawn-distance test: "its ring is 5.6 metres
+   across", which also stated the radius Molten Roar had until 2026-08-09. It now reads "6.5 metres in radius", which
+   is what the test compares with (`MoltenRoarRadiusCm`).
+
+Nothing reads the `note` strings outside `sim/`, and no file in `game/Data` holds the phrase. Items 6 and 7 are
+comments in C++ headers and change nothing compiled into the game. The project's ruling for comment-only C++ applies:
+the continuous integration "Game compiles" job is their evidence, and no build window was run.
+
+**Left for a separate branch after this one merges**, as ruled: six more lines in C++ comments and test message
+strings that write a rule zone's, a set bonus's or a skill crater's radius as a width (Chrono ten-piece "5 m wide",
+the leap crater "five metres across", the Swarm of Locusts shelter "300 cm across", the War Banner "12 m across", the
+Void Parasite light "300 CM ACROSS", a spore cloud "300 cm wide"), and four lines not yet checked against their
+constants (Infernal Lance's "2 metres wide" line in `CataclysmGroundEffect.h` and its test, and two charge paths in
+`CataclysmSkillTemplateTests.cpp`).
+
+**Left as they are**, as ruled: ten lines in the form "N across the radius" or "N across its radius", which name the
+radius as this file's dated entries do; and every hit that is a true width (the Sentinel's "6 metres across" for its
+3.0 radius, the stairs' "four metres across" for a 200 cm reach, a diagonal gap in the floor, and body, mesh and
+floor sizes).
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/prove_guard.py` `break_and_run`, in a git-archive copy of the commit that registers this. Each proof runs the new
+tests only:
+`python -m pytest tools/tests/test_enemy_abilities.py -k "registered_phrase or restated_figure or listed_coincidence or
+unit_check or radius_is_not or width_rule"`. That keeps the predictions exact: break 2 also fails older tests in the
+file, such as the Succubus's table row, which are not what this proves. Each break text occurs once in its file. All
+node ids are in `tools/tests/test_enemy_abilities.py`.
+
+| # | Break | Predicted named_failures |
+| :-- | :-- | :-- |
+| 1 | the issue's own: in `docs/Cataclysm_GDD_v2.md`, "It stuns for 1.5 seconds" becomes "It stuns for 1.9 seconds" (the Brute's `StunSeconds=1.5` unchanged) | `test_a_registered_phrase_states_the_designed_value[Brute]` |
+| 2 | #463's shape, the model moved and the prose left: in `sim/cataclysm_sim/enemy_abilities.py`, Soulfire's `params={"Range": 8, "Radius": 3.15, "Speed": 1200},` becomes `"Speed": 600` | `test_a_registered_phrase_states_the_designed_value[Brute]`, `test_a_registered_phrase_states_the_designed_value[Succubus]` |
+| 3 | one of the four sentences put back: "A ring 6.5 metres in radius at its feet, marked for 2 seconds" becomes "A ring 6.5 metres across at its feet, marked for 2 seconds" | `test_a_radius_is_not_written_as_a_width[Abyssal Warden]`, `test_a_registered_phrase_states_the_designed_value[Abyssal Warden]`, `test_every_restated_figure_is_registered_or_a_listed_coincidence[Abyssal Warden]` |
+
+Why each:
+
+- **1.** "1.9" is not in the Brute's phrase any more as the model's value. The coverage test does not ask about 1.9,
+  which equals no Brute value.
+- **2.** The Brute's section quotes "Soulfire at 1200 centimetres per second" and the Succubus's says "Its speed of
+  1200", both registered against Soulfire's `Speed`. No section holds a number with a unit equal to 600, so the
+  coverage test stays quiet.
+- **3.** The width rule sees "6.5 metres across" against `Radius=6.5`. The registered phrase "A ring {n} metres in
+  radius" is no longer found. The 6.5 it held is then outside every registered phrase, so the coverage test names it.
+
+### EVIDENCE
+
+Run 2026-10-30 after the branch was moved onto `development` `901ed0fac` (the control-character fix merged) as
+`feat/ability-prose-numbers-checked-against-the-table-1`. The two commits' changes are identical to the originals
+file by file; the commit that registered the proofs is `2f118ae2f` there (`0c93e245f` before the move).
+
+**The proofs**, in a git-archive copy of `9c3856652`, the branch head, each with exactly the registered
+named_failures:
+
+| # | Printed |
+| :-- | :-- |
+| 1 | "PROVED: 1 failed, 23 passed, 96 deselected in 0.43s \| restored: 24 passed, 96 deselected in 0.26s" |
+| 2 | "PROVED: 2 failed, 22 passed, 96 deselected in 0.37s \| restored: 24 passed, 96 deselected in 0.27s" |
+| 3 | "PROVED: 3 failed, 21 passed, 96 deselected in 0.43s \| restored: 24 passed, 96 deselected in 0.26s" |
+
+**Python of record** at `9c3856652`: "7171 passed, 8 skipped in 210.81s"; JUnit tests 7179, failures 0, errors 0,
+skipped 8. That is the base's 7147 plus 24: three new tests run once for each of the seven enemies, and three run
+once. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0). The
+two C++ header changes are comments; the continuous integration "Game compiles" job is their evidence, and no build
+window was run.
+
+### SOURCES
+
+None from the genre: this is a check on this project's own document. The shape follows
+`tools/tests/test_passive_effects_match_the_node_text.py`, whose `VALUE_FORMS` registry solved the same problem for
+passive nodes, and the issue's own first suggestion.
+
+---
+
 ## 2026-10-30 — The design documents hold no control characters, and a check now says so
 
 **Affects:** `docs/DECISIONS.md` (one character in the Chronomancer's Time-Lock 10-piece entry, and this entry);

@@ -2734,3 +2734,427 @@ def test_the_prose_check_is_reading_something():
     assert any(prose_of(enemy) for enemy in enemies_with_abilities()), (
         "every enemy subsection is empty once tables and backticked spans are "
         "removed, so `prose_of` is stripping more than it should")
+
+
+# --------------------------------------------------------------------------
+# Numbers the prose states WITH THEIR UNITS, checked against the designed
+# values. Issue #1634.
+# --------------------------------------------------------------------------
+#
+# WHY A REGISTRY OF PHRASES AND NOT A PATTERN. The check above reads only
+# "<Parameter> <number>", and the prose mostly writes "2.1 metres", "a 12 second
+# cooldown", "Eight metres". Reading every number with a unit and asking whether
+# it is a designed value was measured on 2026-10-30 against a document whose
+# figures all agree with ABILITIES: of 199 numbers carrying a unit in the seven
+# sections, 134 are not one of their own enemy's values -- wind-ups, margins,
+# body radii, player speeds, dates -- so that shape raises 134 false alarms on a
+# correct document. Flagging only numbers equal to a SUPERSEDED value (from the
+# history of `enemy_abilities.py`) raised 10, all legitimate history or other
+# enemies' figures, and caught nothing. The coordinating session approved this
+# shape the same day: each restatement is registered with the words around its
+# number, as `test_passive_effects_match_the_node_text.py` registers its
+# `VALUE_FORMS`, so a match cannot be a coincidence.
+#
+# WHAT HOLDS WHAT.
+#   * `test_a_registered_phrase_states_the_designed_value`: every phrase is
+#     still in its section, and every number it holds is the model's value now.
+#   * `test_every_restated_figure_is_registered_or_a_listed_coincidence`: a
+#     number with a unit that equals one of its own enemy's values must be inside
+#     a registered phrase or a listed coincidence, so a restatement written
+#     tomorrow is registered when it is written, and held from then on.
+#   * `test_the_unit_check_is_reading_something`: the positive control.
+#   * `test_a_radius_is_not_written_as_a_width`: four sentences wrote a radius as
+#     "N metres across" or "N metres wide" until 2026-10-30.
+
+#: Number words the prose uses for a parameter's value: "Eight metres".
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+                "fifteen": 15, "twenty": 20}
+
+#: A number as the prose writes one: "1400", "1,200", "2.1", or a word.
+NUMBER_SLOT = (r"(?P<n>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?|(?i:"
+               + "|".join(NUMBER_WORDS) + r"))")
+
+#: How each unit is written after a number. Metres and degrees exclude "per
+#: second", which is a speed or a turn rate and not a length or an angle.
+UNIT_FORMS = {
+    "cm/s": r"\s*(?:cm/s|centimetres? per second)",
+    "metres": r"[\s-]*(?:m|metres?)\b(?!\s*(?:per|a)\s+second)",
+    "seconds": r"[\s-]*seconds?\b",
+    "degrees": r"[\s-]*degrees?\b(?!\s*per\s+second)",
+    "percent": r"\s*(?:%|per ?cent\b)",
+}
+
+#: The unit each parameter's value is stated in. `cooldown` is the ability's
+#: own field and not one of its params. Counts (`MaxTargets`, `Count`, `Pierce`)
+#: have no unit, so the unit scan cannot tell one from any other number; a
+#: registered phrase can still hold one.
+PARAMETER_UNITS = {
+    "Radius": "metres", "Range": "metres", "GroundRadius": "metres",
+    "Knockback": "metres", "StunSeconds": "seconds",
+    "GroundDuration": "seconds", "Duration": "seconds", "cooldown": "seconds",
+    "Speed": "cm/s", "Angle": "degrees", "GroundPercent": "percent",
+}
+
+#: A number followed by a unit, anywhere in a section.
+UNIT_FIGURE = re.compile(
+    r"(?<![\w.,])" + NUMBER_SLOT + r"(?![\w])(?:"
+    + "|".join(f"(?P<{name.replace('/', '_')}>{form})"
+               for name, form in UNIT_FORMS.items()) + ")")
+
+#: (the section it is written in, the enemy and ability that own the value,
+#: the parameter or "cooldown") -> the phrases that restate it, each with one
+#: `{n}` where the number stands. A phrase may match more than once; every
+#: match must hold the value.
+PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
+    # The Abyssal Warden.
+    ("Abyssal Warden", "Abyssal Warden", "Stampede", "Range"): (
+        "it reaches {n} metres",
+        "{n} metres**, the shortest Movement",
+        "and {n} metres is more than three times",
+        "{n} metres in the 0.700 second clip",
+        "those {n} metres would take",
+        "runs the full {n} metres",
+        "up to {n} metres away"),
+    ("Abyssal Warden", "Abyssal Warden", "Stampede", "Radius"): (
+        "A {n} metre corridor",),
+    ("Abyssal Warden", "Abyssal Warden", "Sunder", "Radius"): (
+        "a {n} metre reach is under that floor",),
+    ("Abyssal Warden", "Abyssal Warden", "Molten Roar", "Radius"): (
+        "A ring {n} metres in radius",
+        "{n} metres is the largest marker",
+        "Molten Roar at {n} metres",
+        "Molten Roar's {n} metre radius"),
+    ("Abyssal Warden", "Abyssal Warden", "Molten Roar", "cooldown"): (
+        "marked for 2 seconds, every {n} seconds",
+        "The {n} second cooldown is derived"),
+    ("Abyssal Warden", "Brute", "Stomp", "Radius"): (
+        "The Brute's stomp is {n} metres",
+        "The Brute's stomp at {n} metres"),
+    ("Abyssal Warden", "Succubus", "Soulfire", "Radius"): (
+        "the Succubus's bolt {n}",),
+    # The Brute.
+    ("Brute", "Brute", "Rip and Toss", "Range"): (
+        "Range {n} metres is its notice radius",
+        "at the full {n} metres",
+        "at the full {n} metre throw",
+        "its own {n} metre throwing range"),
+    ("Brute", "Brute", "Rip and Toss", "Radius"): (
+        "the marked circle's {n} metre radius",
+        "Radius {n} metres is set by the animation"),
+    ("Brute", "Brute", "Rip and Toss", "cooldown"): (
+        "its own {n} second cooldown would allow",
+        "A {n} second cooldown means one throw",
+        "floor; {n} seconds was settled by play"),
+    ("Brute", "Brute", "Slam", "Radius"): (
+        "the creature's {n} metre melee reach",
+        "Its ordinary slam reaches {n} metres",
+        "the Brute's reach is {n} metres from its centre",
+        "at the Brute's {n} metre reach"),
+    ("Brute", "Brute", "Stomp", "Radius"): (
+        "largest telegraphed radius as {n} metres",
+        "what that allows** {n} metres"),
+    ("Brute", "Brute", "Stomp", "cooldown"): (
+        "Its cooldown is {n} seconds",
+        "The {n} seconds was settled by play",
+        "runs on its {n} second cooldown"),
+    ("Brute", "Brute", "Stomp", "StunSeconds"): (
+        "It stuns for {n} seconds",),
+    ("Brute", "Succubus", "Soulfire", "Speed"): (
+        "Soulfire at {n} centimetres per second",),
+    # The Corrupted Sentinel.
+    ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Range"): (
+        "**{n} metres**, which is the longest range",
+        "at least {n} metres**",
+        "{n} metres in one second"),
+    ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Radius"): (
+        "is **{n} metres**. The Sentinel takes all of it",
+        "against the bolt's {n}**"),
+    ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Speed"): (
+        "**{n} centimetres per second**",),
+    ("Corrupted Sentinel", "Corrupted Sentinel", "Brimstone Mortar", "Radius"): (
+        "Its marker is {n} metres",
+        "The mortar's {n} metre radius"),
+    ("Corrupted Sentinel", "Corrupted Sentinel", "Brimstone Mortar", "cooldown"): (
+        "its {n} second cooldown would allow",
+        "The {n} second cooldown.**"),
+    # The Gatekeeper.
+    ("Gatekeeper", "Gatekeeper", "Dread Cleave", "Angle"): (
+        "across a {n} degree cone",),
+    ("Gatekeeper", "Gatekeeper", "Dread Cleave", "Radius"): (
+        "degree cone, {n} metres out",
+        "Its {n} metre radius is a judgement",
+        "Dread Cleave's {n} metre radius"),
+    ("Gatekeeper", "Gatekeeper", "Soulfall", "Radius"): (
+        "bursting {n} metres in radius",),
+    ("Gatekeeper", "Gatekeeper", "Soulfall", "GroundRadius"): (
+        "burning ground the same {n} metres in radius",),
+    ("Gatekeeper", "Gatekeeper", "Soulfall", "GroundDuration"): (
+        "metres in radius for {n} seconds",),
+    ("Gatekeeper", "Gatekeeper", "Call the Damned", "Range"): (
+        "out of the ground within {n} metres",),
+    ("Gatekeeper", "Gatekeeper", "Call the Damned", "Count"): (
+        "hammer down and {n} Imps claw out",),
+    ("Gatekeeper", "Gatekeeper", "Call the Damned", "MaxActive"): (
+        "to a cap of {n} alive",
+        "the summon's own cap of {n}"),
+    ("Gatekeeper", "Gatekeeper", "Call the Damned", "cooldown"): (
+        "or its {n} second cooldown",
+        "on the next cast, {n} seconds later"),
+    ("Gatekeeper", "Gatekeeper", "Soul Harvest", "Radius"): (
+        "erupts in a ring {n} metres in radius",),
+    ("Gatekeeper", "Gatekeeper", "Soul Harvest", "cooldown"): (
+        "marked for 2.0 seconds, every {n} seconds",
+        "The {n} second cooldown sits inside",
+        "Soul Harvest's {n} second cooldown"),
+    ("Gatekeeper", "Abyssal Warden", "Molten Roar", "cooldown"): (
+        "above the Warden's {n}",),
+    ("Gatekeeper", "Abyssal Warden", "Sunder", "Radius"): (
+        "the Hellhound's Maul all reach {n} metres",),
+    ("Gatekeeper", "Brute", "Slam", "Radius"): (
+        "the Hellhound's Maul all reach {n} metres",),
+    ("Gatekeeper", "Hellhound", "Maul", "Radius"): (
+        "the Hellhound's Maul all reach {n} metres",),
+    ("Gatekeeper", "Imp", "Rend", "Radius"): (
+        "the Imp's Rend reaches {n} metres",),
+    # The Hellhound.
+    ("Hellhound", "Hellhound", "Maul", "Radius"): (
+        "{n} metres is 0.42 for the player's body",),
+    ("Hellhound", "Hellhound", "Hellrush", "cooldown"): (
+        "A {n} second cooldown**",),
+    ("Hellhound", "Hellhound", "Hellrush", "Radius"): (
+        "A corridor {n} metres to either side",
+        "so the {n} metres in the wind-up formula"),
+    ("Hellhound", "Hellhound", "Hellrush", "Range"): (
+        "{n} metres long, and that length",
+        "runs the full {n} metres",
+        "ends up {n} metres past the player"),
+    ("Hellhound", "Hellhound", "Hellrush", "GroundDuration"): (
+        "for the rest of its {n} seconds",),
+    # The Imp.
+    ("Imp", "Imp", "Rend", "Radius"): (
+        "The Imp's reach is {n} metres",),
+    # The Succubus.
+    ("Succubus", "Succubus", "Soulfire", "Radius"): (
+        "that is {n} metres",
+        "and the {n} metres is how far sideways"),
+    ("Succubus", "Succubus", "Soulfire", "Speed"): (
+        "Its speed of {n} is the slowest",),
+    ("Succubus", "Succubus", "Soulfire", "Range"): (
+        "The Succubus stands {n} metres from the player",
+        "at most {n} metres from the Succubus",
+        "The Succubus walks to {n} metres and stops",
+        "**{n} metres because that is the shortest"),
+    ("Succubus", "Succubus", "Wither the Living", "Duration"): (
+        "**{n} seconds, because that is the duration",),
+    ("Succubus", "Succubus", "Wither the Living", "cooldown"): (
+        "**{n} seconds of cooldown",),
+    ("Succubus", "Succubus", "Dominion", "Radius"): (
+        "every allied enemy within {n} metres",),
+    ("Succubus", "Brute", "Stomp", "Radius"): (
+        "except the Brute's {n} metres",),
+}
+
+#: Numbers with a unit that equal one of their own enemy's values and do NOT
+#: restate it: (section, the exact words, holding the number) -> why.
+#: The Abyssal Warden's 5 second Stampede cooldown is not stated anywhere in its
+#: section, which quotes Path of Exile's 4 second charge instead; that is ruled
+#: not a fault, so there is nothing to register for it.
+COINCIDENCES: dict[tuple[str, str], str] = {
+    ("Abyssal Warden", "is 12.0 seconds"):
+        "the time it takes to kill the reference character, 5 hits at a 2.4 "
+        "second interval, which Molten Roar's 12 second cooldown is derived "
+        "from; it does not move when the cooldown does",
+    ("Abyssal Warden", "the 5 second stun immunity window"):
+        "the stun immunity window, not the Stampede's 5 second cooldown",
+    ("Brute", "0.78 at 3 metres"):
+        "a thrown rock's flight time at a distance of 3 metres, not the "
+        "Stomp's Knockback of 3",
+}
+
+
+def phrase_pattern(phrase: str) -> re.Pattern[str]:
+    """A registered phrase as a pattern: its words literally, spaces as any
+    whitespace (`prose_of` joins wrapped lines), and `{n}` as a number."""
+    before, after = phrase.split("{n}")
+    literal = lambda text: r"\s+".join(re.escape(word) for word in text.split(" "))  # noqa: E731
+    return re.compile(literal(before) + NUMBER_SLOT + literal(after))
+
+
+def number_of(text: str) -> float:
+    text = text.lower()
+    if text in NUMBER_WORDS:
+        return float(NUMBER_WORDS[text])
+    return float(text.replace(",", ""))
+
+
+def designed_value(enemy: str, ability_name: str, key: str) -> float:
+    from cataclysm_sim.enemy_abilities import abilities
+
+    ability = next((a for a in abilities(enemy) if a.name == ability_name), None)
+    assert ability is not None, (
+        f"PROSE_RESTATEMENTS names {enemy}'s {ability_name!r}, which is not in "
+        "ABILITIES any more. Correct the registry entry.")
+    if key == "cooldown":
+        return float(ability.cooldown)
+    assert key in ability.params, (
+        f"PROSE_RESTATEMENTS names {enemy}'s {ability_name} {key}, which that "
+        "ability no longer carries. Correct the registry entry.")
+    return float(ability.params[key])
+
+
+def registered_spans(section: str) -> list[tuple[int, int]]:
+    """Where in a section's prose the registered phrases' numbers stand."""
+    prose = prose_of(section)
+    spans = []
+    for (where, _, _, _), phrases in PROSE_RESTATEMENTS.items():
+        if where != section:
+            continue
+        for phrase in phrases:
+            spans += [m.span("n") for m in phrase_pattern(phrase).finditer(prose)]
+    for (where, words), _ in COINCIDENCES.items():
+        if where != section:
+            continue
+        start = prose.find(words)
+        if start != -1:
+            spans.append((start, start + len(words)))
+    return spans
+
+
+def own_unit_values(enemy: str) -> dict[str, set[float]]:
+    from cataclysm_sim.enemy_abilities import abilities
+
+    out: dict[str, set[float]] = {}
+    for ability in abilities(enemy):
+        items = dict(ability.params)
+        if ability.cooldown:
+            items["cooldown"] = ability.cooldown
+        for key, value in items.items():
+            if key in PARAMETER_UNITS and isinstance(value, (int, float)) \
+                    and not isinstance(value, bool):
+                out.setdefault(PARAMETER_UNITS[key], set()).add(float(value))
+    return out
+
+
+def unit_of(match: re.Match[str]) -> str:
+    return next(name for name in UNIT_FORMS
+                if match.group(name.replace("/", "_")) is not None)
+
+
+@pytest.mark.parametrize("section", enemies_with_abilities())
+def test_a_registered_phrase_states_the_designed_value(section):
+    """Every phrase registered for this section is in it, and each number it
+    holds is the value ABILITIES gives that parameter now.
+
+    A REWORDED SENTENCE FAILS HERE TOO, with "not found". That is deliberate:
+    a registry that silently stops matching guards nothing. Update the phrase
+    to the new wording."""
+    prose = prose_of(section)
+    faults = []
+    for (where, owner, ability, key), phrases in sorted(PROSE_RESTATEMENTS.items()):
+        if where != section:
+            continue
+        value = designed_value(owner, ability, key)
+        for phrase in phrases:
+            matches = list(phrase_pattern(phrase).finditer(prose))
+            if not matches:
+                faults.append(f"{phrase!r} (for {owner}'s {ability} {key}) is not "
+                              "found; if the sentence was reworded, update the phrase")
+            for match in matches:
+                stated = number_of(match.group("n"))
+                if stated != value:
+                    faults.append(f"{match.group(0)!r} states {stated:g}, and "
+                                  f"{owner}'s {ability} has {key}={value:g}")
+    assert not faults, (
+        f"the {section}'s prose and its ability table disagree, or a registered "
+        "sentence has gone. Issues #1634 and #463. -- " + "; ".join(faults))
+
+
+@pytest.mark.parametrize("section", enemies_with_abilities())
+def test_every_restated_figure_is_registered_or_a_listed_coincidence(section):
+    """A number with a unit that equals one of this enemy's values is either a
+    registered restatement or a listed coincidence.
+
+    THIS IS WHAT KEEPS THE REGISTRY WHOLE. A restatement written correctly
+    tomorrow fails here until it is added to PROSE_RESTATEMENTS, and from then
+    on the test above holds it. A number that equals nothing designed is not
+    asked about: most numbers with a unit are derived figures, which is why
+    this does not read every one (see the measurement above)."""
+    prose = prose_of(section)
+    own = own_unit_values(section)
+    covered = registered_spans(section)
+    loose = []
+    for match in UNIT_FIGURE.finditer(prose):
+        if number_of(match.group("n")) not in own.get(unit_of(match), set()):
+            continue
+        start, end = match.span("n")
+        if any(low <= start and end <= high for low, high in covered):
+            continue
+        loose.append(repr(prose[max(0, start - 50):match.end() + 30]))
+    assert not loose, (
+        f"the {section}'s prose states one of its own ability values with a "
+        "unit, and no registered phrase holds it. Add the sentence's words to "
+        "PROSE_RESTATEMENTS, or to COINCIDENCES with the reason it is not a "
+        "restatement. Issue #1634. -- " + "; ".join(loose))
+
+
+def test_every_listed_coincidence_is_still_in_its_section():
+    gone = [f"{section}: {words!r}" for section, words in COINCIDENCES
+            if words not in prose_of(section)]
+    assert not gone, (
+        "a listed coincidence is no longer in its section, so its entry "
+        "excuses nothing; delete it. -- " + "; ".join(gone))
+
+
+def test_the_unit_check_is_reading_something():
+    """The positive control: the unit pattern finds numbers in every section,
+    and every enemy with an ability has a registered phrase that matched."""
+    for section in enemies_with_abilities():
+        prose = prose_of(section)
+        assert any(UNIT_FIGURE.finditer(prose)), (
+            f"no number with a unit is found in the {section}'s prose, so the "
+            "unit checks read nothing there")
+    owners = {owner for (_, owner, _, _) in PROSE_RESTATEMENTS}
+    assert owners == set(enemies_with_abilities()), (
+        f"PROSE_RESTATEMENTS holds no restatement of {sorted(set(enemies_with_abilities()) - owners)}")
+    assert phrase_pattern("It stuns for {n} seconds").search("It stuns for 1.5 seconds")
+    assert number_of("Eight") == 8.0 and number_of("1,200") == 1200.0
+
+
+#: "N metre(s) wide" or "N metre(s) across".
+WIDTH = re.compile(NUMBER_SLOT + r"[\s-]*metres?\s+(?:wide|across)\b")
+
+
+@pytest.mark.parametrize("section", enemies_with_abilities())
+def test_a_radius_is_not_written_as_a_width(section):
+    """A radius is not written "N metres across" or "N metres wide".
+
+    Until 2026-10-30 four sentences did: Molten Roar and Soul Harvest were "a
+    ring 6.5 metres across" and Soulfall's burst and ground "3 metres wide", all
+    against a Radius of 6.5 or 3.0, and each section's own later sentence
+    called the figure the radius. A width that is TWICE a radius is right, and
+    the Corrupted Sentinel's "4.2 metre wide lane" for its Radius=2.1 is the
+    case `test_the_width_rule_has_a_control` holds."""
+    radii = set()
+    from cataclysm_sim.enemy_abilities import abilities
+
+    for ability in abilities(section):
+        for key in ("Radius", "GroundRadius"):
+            if isinstance(ability.params.get(key), (int, float)):
+                radii.add(float(ability.params[key]))
+    wrong = [match.group(0) for match in WIDTH.finditer(prose_of(section))
+             if number_of(match.group("n")) in radii
+             and number_of(match.group("n")) not in {2 * r for r in radii}]
+    assert not wrong, (
+        f"the {section}'s prose writes a radius as a width: {wrong}. Its "
+        "ability table and the model hold a radius; write \"N metres in radius\", "
+        "or state the width as twice the radius. Issue #1634.")
+
+
+def test_the_width_rule_has_a_control():
+    """The rule must accept a width that is twice the radius."""
+    widths = [number_of(m.group("n"))
+              for m in WIDTH.finditer(prose_of("Corrupted Sentinel"))]
+    assert widths == [4.2], widths
+    assert designed_value("Corrupted Sentinel", "Siege Bolt", "Radius") * 2 == 4.2
