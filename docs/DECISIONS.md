@@ -60,12 +60,16 @@ pays for its death, as it did.
 ### Tests
 
 `ARaisedRoundTrip` drives each of the first four, and the Pandora test drives the same round trip by hand: the first
-pinned seed whose floor 2 lets the floor object raise some, the player at the entrance and alive at the save, those
-standing taken to half health. After the load and a beat, `TheRaisedCameBack` asserts: as many standing in the rule's list
+pinned seed whose floor 2 lets the floor object raise some, the player at the entrance and alive at the save, a beat,
+THEN every creature standing in the rule's list taken to half health and the counts taken, no beat before the save
+(the order w116 stopped on, below). After the load and a beat, `TheRaisedCameBack` asserts: as many standing in the rule's list
 as saved; each at half health, not full; each carrying the rule's mark and the raised mark; none counted by
 `IsOneOfTheFloorsOwnStanding`, which the stairs' seal reads; and `LivingFloorEnemies()`, which the clear reads, as saved.
 
-- `Cataclysm.SaveLoad.ATithesAngelsStillStandAfterALoad`: the tithe refused. Prints "LOAD TITHE ANGELS".
+- `Cataclysm.SaveLoad.ATithesAngelsStillStandAfterALoad`: the tithe refused, and the tithe floor 1 left unpaid owed on
+  floor 2, so its angels come on the first beat. After the load, also: no tithe owed, and no angel more standing than at
+  the save, so the tithe owed is not brought a second time (3b saved it; this is the first test to read it across a
+  load). Prints "LOAD TITHE ANGELS".
 - `Cataclysm.SaveLoad.ARelicsSpiritsStillStandAfterALoad`: a relic activated. Prints "LOAD RELIC SPIRITS".
 - `Cataclysm.SaveLoad.AnEmbracedTotemsElitesStillStandAfterALoad`: a totem embraced. Prints "LOAD TOTEM ELITES".
 - `Cataclysm.SaveLoad.ABannersAssailantsStillStandAfterALoad`: the banner planted. Prints "LOAD BANNER ASSAILANTS".
@@ -81,17 +85,34 @@ as saved; each at half health, not full; each carrying the rule's mark and the r
 | The five new tests alone | 1 / 1 each, their lines quoted |
 | Whole Unreal suite | 4434 / 0: window w115's 4429 on `development` (c4a41a50d), + 5 |
 | Python | of record, with JUnit, and ruff |
-| P1, a tithe angel not put back in its list (`TitheAngels.Add(&Creature); // A load's: a tithe angel.` broken) | the tithe test fails on "as many stand in the rule's list as were saved" (0) only: the restored angels stand, raised and marked, outside the list; the other assertions read the list's members, of which there are none, and the floor's own count, which they never were. No other test on any floor reads `TitheAngels` |
+| P1, a tithe angel not put back in its list (`TitheAngels.Add(&Creature); // A load's: a tithe angel.` broken) | the tithe test fails on "as many stand in the rule's list as were saved" (0) and "and no angel more stands than at the save" (0) only; "no tithe is owed after the load" passes, nothing being owed: the restored angels stand, raised and marked, outside the list; the other assertions read the list's members, of which there are none, and the floor's own count, which they never were. No other test on any floor reads `TitheAngels` |
 | P2, a relic spirit not put back (`RelicSpirits.Add`) | the relic test fails on "as many stand ..." (0) only, for the same reason; no other test reads `RelicSpirits` |
 | P3, a totem Elite not put back (`GrimTotemElites.Add`) | the totem test fails on "as many stand ..." (0) only; the 3d-2 Grim cleanse test reads the cleanse's multiplier on `FloorEnemies` and not this list, and cleanses rather than embraces, so it raises no Elite |
 | P4, a banner assailant not put back (`BannerAssailants.Add`) | the banner test fails on "as many stand ..." (0) only; no other test reads `BannerAssailants` |
-| P5, a chaos spawn not put back in its wave (`PandorasBoxWaves[...].Standing.Add`) | the Pandora test fails on "each at the health it was saved at, not full", "the waves come are as saved" (2, not 1) and "and the next wave comes when the standing one is killed" (3, not 2), and passes "as many stand ..." when the second wave also comes whole (the set-up asserts the first did, `PandorasBoxWaveSize`, 4), which its line shows: the wave's place and count are put back with none standing, so the first beat after the load brings the second wave at full health, and killing it brings the third. No other test reads `PandorasBoxWaves` |
+| P5, a chaos spawn not put back in its wave (`PandorasBoxWaves[...].Standing.Add`) | the Pandora test fails on "each at the health it was saved at, not full", "the waves come are as saved" (2, not 1) and "and the next wave comes when the standing one is killed" (3, not 2), and passes "as many stand ..." when the second wave also comes whole (the set-up asserts the first did, `PandorasBoxWaveSize`, 4), which its line shows. THAT HALF IS CONDITIONAL, NOT ONLY IN PRINCIPLE: the count asked for is the constant
+`PandorasBoxWaveSize`, but `BringCreaturesNear` loops "for (int32 Which = 0; Which < Count && !Population.Enemies.IsEmpty()
+&& !Cells.IsEmpty(); ++Which)" and keeps a creature only "if (ACataclysmEnemyCharacter* Creature =
+SpawnPlacedCreature(Placement, SightMultiplier, FixedRung))", so a wave can come short. The rest: the wave's place and count are put back with none standing, so the first beat after the load brings the second wave at full health, and killing it brings the third. No other test reads `PandorasBoxWaves` |
 
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
 the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
-compile of the #2651 merge.
+compile of the #2651 merge. Python of record on 30b7baaf5: `7177 passed, 8 skipped in 194.04s`, the JUnit file tests
+7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+**Window w116, 2026-10-31, 15:10, on 30b7baaf5: STOPPED at the first test alone.** Pre-checks at 15:10:21 all passing; the
+build up to date. `ATithesAngelsStillStandAfterALoad`: `1 tests performed, 0 succeeded, 1 failed`, printing "LOAD TITHE
+ANGELS on seed 1: ... after a beat 16/16 standing, 8 at half health, 16 marked, 0 counted as the floor's own; the
+floor's own standing 223/223", its only error "Expected 'each at the health it was saved at, not full' to be 16, but it
+was 8"; the runner printed "STOPPED: a new test alone did not pass". Nothing was re-run.
+
+**THE CAUSE WAS THE TEST'S ORDER, NOT THE SAVE, read from the code and fitting the line.** The seed search goes from
+floor 1 to floor 2, leaving floor 1's tithe unpaid, so floor 2 owes its angels. The test refused floor 2's tithe, which
+brought 8 (`ChooseAtTitheAltar`, "BringTheTitheAngels(At)"; `ForcedTithesAngelCount` is 8), took those to half
+health, and then ran the beat, which brought the 8 owed at full health (`StepForcedTithes`, "THE ANGELS OWED FOR A
+TITHE LEFT UNPAID"). The save held 8 at half and 8 at full, and the load put back exactly that. The test now runs the
+beat first and halves after it, approved 2026-10-31, and the tithe test asserts the owed tithe is not brought again.
 
 ---
 
