@@ -15220,6 +15220,256 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 											   Abilities->GetNumericAttribute(Damage) + NothingIsForgottenDamageGiven);
 		}
 	}
+	// AND A CLOSED SOUL CHAINS GATE'S BEARER, back on its gate, which then has bearers again. Issue #753, Group 3c-1.
+	if (Saved.SoulChainsGate != INDEX_NONE)
+	{
+		for (FGatedShortcut& One : GatedShortcuts)
+		{
+			if (One.RowKey == FName(UCataclysmDungeonModifierEffects::SoulChainsKey) && One.Index == Saved.SoulChainsGate
+				&& !One.bOpen)
+			{
+				One.Bearers.Add(&Creature);
+				One.bHadBearers = true;
+			}
+		}
+	}
+}
+
+FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FCataclysmSavedFloorRuleState Out;
+	// THE CORE DESTROYED: on the floor that places one, and standing no more.
+	Out.bHeavenlyCoreDestroyed = ChooseSubType() == ECataclysmDungeonSubType::Ascendant && IsOnTheLastFloor()
+		&& !HeavenlyCoreStands();
+	Out.bQuarantineBroken = bQuarantineBroken;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : QuarantinePatches)
+	{
+		if (const ACataclysmGroundZone* Patch = One.Get())
+		{
+			FCataclysmSavedPatch& Saved = Out.QuarantinePatches.AddDefaulted_GetRef();
+			Saved.Location = Patch->GetActorLocation();
+			Saved.Burn = Patch->DamagePerTick;
+		}
+	}
+	Out.bInfectionBloomDestroyed = bInfectionBloomDestroyed;
+	Out.AbyssalRiftState = static_cast<int32>(AbyssalRiftState);
+	for (int32 Index = 0; Index < InfestedVeins.Num(); ++Index)
+	{
+		if (InfestedVeins[Index].SecondsSinceDestroyed >= 0.0f)
+		{
+			Out.VeinsDestroyed.Add(Index);
+		}
+	}
+	Out.InfestedVeinsDestroyed = InfestedVeinsDestroyed;
+	Out.bInfestedVeinsGuardiansCame = bInfestedVeinsGuardiansCame;
+	for (int32 Index = 0; Index < PlagueBeacons.Num(); ++Index)
+	{
+		const ACataclysmEnemyCharacter* Beacon = PlagueBeacons[Index].Beacon.Get();
+		if (!IsValid(Beacon) || UCataclysmSkillEffects::IsDead(Beacon))
+		{
+			Out.BeaconsDestroyed.Add(Index);
+		}
+		if (PlagueBeacons[Index].bCounted)
+		{
+			Out.BeaconsCounted.Add(Index);
+		}
+	}
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		FCataclysmSavedCoffin& Saved = Out.Coffins.AddDefaulted_GetRef();
+		Saved.Deaths = One.Deaths;
+		Saved.bLordCame = One.bLordCame;
+	}
+	for (int32 Index = 0; Index < AngelicStatues.Num(); ++Index)
+	{
+		if (AngelicStatues[Index].bWoken)
+		{
+			Out.StatuesWoken.Add(Index);
+		}
+	}
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == FName(Effects::SoulChainsKey) && One.bOpen)
+		{
+			Out.SoulChainsGatesOpen.Add(One.Index);
+		}
+	}
+	return Out;
+}
+
+void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloorRuleState& State)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE HEAVENLY CORE DESTROYED, which unseals the stairs and lowers the edict's strength.
+	if (State.bHeavenlyCoreDestroyed)
+	{
+		if (ACataclysmEnemyCharacter* Core = HeavenlyCore.Get())
+		{
+			Core->Destroy();
+		}
+	}
+
+	// QUARANTINE BREACH BROKEN, and each patch drawn again at the burn it was charged at (Q4). The released creatures
+	// are the floor's and came back with it.
+	if (State.bQuarantineBroken)
+	{
+		bQuarantineBroken = true;
+		if (ACataclysmEnemyCharacter* Containment = Quarantine.Get())
+		{
+			Containment->Destroy();
+		}
+		if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World))
+		{
+			const FName Type = DungeonGameModeTypeOfRow(Effects::QuarantineBreachKey);
+			for (const FCataclysmSavedPatch& Saved : State.QuarantinePatches)
+			{
+				ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Saved.Location, Saved.Location, Effects::QuarantineBreachPatchRadiusCm, Saved.Burn,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type, /*InDamageType=*/Type);
+				if (Patch)
+				{
+					Patch->BurnsOnceASecondAs = FName(Effects::QuarantineBreachKey);
+					QuarantinePatches.Add(Patch);
+				}
+			}
+		}
+	}
+
+	// THE INFECTION BLOOM DESTROYED: its spread with it, which is rebuilt fresh (U5).
+	if (State.bInfectionBloomDestroyed)
+	{
+		bInfectionBloomDestroyed = true;
+		for (const TWeakObjectPtr<ACataclysmGroundZone>& One : InfectionBloomPatches)
+		{
+			if (ACataclysmGroundZone* Patch = One.Get())
+			{
+				Patch->Destroy();
+			}
+		}
+		InfectionBloomPatches.Reset();
+		InfectionBloomPatchPoints.Reset();
+		if (ACataclysmEnemyCharacter* Bloom = InfectionBloom.Get())
+		{
+			Bloom->Destroy();
+		}
+	}
+
+	// AN ABYSSAL RIFT OPEN OR CLOSED LOADS CLOSED AND FAILED (U2): no success counted; the walk holds the successes.
+	if (State.AbyssalRiftState != static_cast<int32>(ERiftState::Waiting) && AbyssalRiftState != ERiftState::Closed)
+	{
+		CloseTheRift(/*bInTime=*/false); // A load's: closed and failed.
+	}
+
+	// EACH VEIN DESTROYED: ITS TIMER SET BEFORE IT GOES, or the next beat counts it destroyed again and may bring the
+	// guardians. The regrowth begins again from nought (D1).
+	for (const int32 Index : State.VeinsDestroyed)
+	{
+		if (!InfestedVeins.IsValidIndex(Index) || InfestedVeins[Index].SecondsSinceDestroyed >= 0.0f)
+		{
+			continue;
+		}
+		InfestedVeins[Index].SecondsSinceDestroyed = 0.0f;
+		FInfestedVein& One = InfestedVeins[Index];
+		if (ACataclysmGroundZone* Zone = One.Zone.Get())
+		{
+			Zone->Destroy();
+		}
+		One.Zone = nullptr;
+		if (ACataclysmEnemyCharacter* Vein = One.Vein.Get())
+		{
+			Vein->Destroy();
+		}
+	}
+	InfestedVeinsDestroyed = State.InfestedVeinsDestroyed;
+	bInfestedVeinsGuardiansCame = State.bInfestedVeinsGuardiansCame;
+
+	// THE PESTILENT BEACONS DESTROYED (U1), and those already counted, so a kept arena's beacon is not counted twice.
+	for (const int32 Index : State.BeaconsDestroyed)
+	{
+		if (PlagueBeacons.IsValidIndex(Index))
+		{
+			if (ACataclysmEnemyCharacter* Beacon = PlagueBeacons[Index].Beacon.Get())
+			{
+				Beacon->Destroy();
+			}
+		}
+	}
+	for (const int32 Index : State.BeaconsCounted)
+	{
+		if (PlagueBeacons.IsValidIndex(Index))
+		{
+			PlagueBeacons[Index].bCounted = true;
+		}
+	}
+
+	// EACH COFFIN'S PAID DEATHS AND ITS LORD; nothing spawned, the lord having come back as a saved creature.
+	for (int32 Index = 0; Index < State.Coffins.Num() && Index < Sarcophagi.Num(); ++Index)
+	{
+		Sarcophagi[Index].Deaths = State.Coffins[Index].Deaths;
+		Sarcophagi[Index].bLordCame = State.Coffins[Index].bLordCame;
+	}
+
+	// EACH STATUE WOKEN: its cell given back and its pillars gone, and no warden.
+	for (const int32 Index : State.StatuesWoken)
+	{
+		if (AngelicStatues.IsValidIndex(Index) && !AngelicStatues[Index].bWoken)
+		{
+			FAngelicStatue& One = AngelicStatues[Index];
+			One.bWoken = true;
+			UnblockCellsAndDestroyPillars({One.Cell}, One.Pillars);
+		}
+	}
+
+	// EACH SOUL CHAINS GATE OPEN, opened without its drops.
+	for (const int32 Index : State.SoulChainsGatesOpen)
+	{
+		OpenTheShortcutOf(FName(Effects::SoulChainsKey), Index);
+	}
+	RefreshFloorModifierPanel();
+}
+
+int32 ACataclysmDungeonGameMode::SoulChainsGateBorneBy(const ACataclysmEnemyCharacter* Creature) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (const FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey != FName(Effects::SoulChainsKey) || One.bOpen)
+		{
+			continue;
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Bearer : One.Bearers)
+		{
+			if (Bearer.Get() == Creature)
+			{
+				return One.Index;
+			}
+		}
+	}
+	return INDEX_NONE;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheSoulChainBearersForALoad()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (FGatedShortcut& One : GatedShortcuts)
+	{
+		if (One.RowKey == FName(Effects::SoulChainsKey))
+		{
+			One.Bearers.Reset();
+			One.bHadBearers = false;
+		}
+	}
 }
 
 void ACataclysmDungeonGameMode::ApplyRestoredWalkEffects()

@@ -228,6 +228,7 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		{
 			DungeonMode->SoulHarvestHeldBy(Creature, Record.SoulHarvestSouls, Record.SoulHarvestHealthAdded);
 			Record.bFedByNothingIsForgotten = DungeonMode->IsTheVoidsBoss(Creature);
+			Record.SoulChainsGate = DungeonMode->SoulChainsGateBorneBy(Creature);
 		}
 		Saved.Creatures.Add(Record);
 	}
@@ -246,6 +247,7 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 	{
 		Saved.UsedObjects = DungeonMode->UsedFloorObjectsNow();
 		Saved.Choices = DungeonMode->FloorChoicesNow();
+		Saved.RuleState = DungeonMode->FloorRuleStateNow();
 	}
 
 	for (TActorIterator<ACataclysmPlayerCharacter> It(Mutable); It; ++It)

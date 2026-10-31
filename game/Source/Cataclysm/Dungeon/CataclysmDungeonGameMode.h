@@ -2784,6 +2784,25 @@ public:
 	 * index and marked used WITHOUT its reward or its cost (`MarkFloorObjectUsed`), and the rest of the choices are
 	 * put back. The pact offer is put back first, so a pact taken empties it as taking one does. Issue #753, Group 3b.
 	 */
+	/**
+	 * WHAT THE FLOOR'S RULE CREATURES LEFT, for the save, and a load's putting it back once the floor is rebuilt, each
+	 * entry by its place in its rule's list (filled in the floor's seeded order and never shrunk). A creature recorded
+	 * destroyed is destroyed with `Destroy`, which raises no death notice, so no death's reward or cost runs again.
+	 * See `FCataclysmSavedFloorRuleState`. Issue #753, Group 3c-1, ruled 2026-10-30.
+	 */
+	struct FCataclysmSavedFloorRuleState FloorRuleStateNow() const;
+	void RestoreFloorRuleState(const struct FCataclysmSavedFloorRuleState& State);
+
+	/** The index of the closed Soul Chains gate whose chain this creature bears, or -1. For the save. Issue #753, 3c-1. */
+	int32 SoulChainsGateBorneBy(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * A LOAD'S, BEFORE ITS CREATURES ARE RE-LINKED: every Soul Chains gate forgets its bearers, which are the rebuilt
+	 * floor's fresh creatures the load has destroyed, and that it had any, so the next beat neither counts them dead nor
+	 * opens the gate and pays. `RestoreCreatureRoles` gives each closed gate its saved bearers back. Issue #753, 3c-1.
+	 */
+	void ForgetTheSoulChainBearersForALoad();
+
 	void RestoreFloorChoices(const struct FCataclysmSavedFloorChoices& Choices,
 							 const TArray<struct FCataclysmSavedUsedObject>& Used);
 

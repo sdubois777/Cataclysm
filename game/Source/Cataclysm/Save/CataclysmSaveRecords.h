@@ -207,6 +207,15 @@ struct CATACLYSM_API FCataclysmSavedCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FName FloorRealityRow = NAME_None;
+
+	/**
+	 * THE SOUL CHAINS GATE THIS CREATURE BEARS THE CHAIN OF, by the gate's index, or -1 for none: a closed gate's
+	 * bearer. A load destroys the floor's fresh creatures, the rebuilt floor's bearers among them, and without this a
+	 * closed gate counted its bearers dead on the next beat and opened and paid its drops. Put back by
+	 * `ACataclysmDungeonGameMode::RestoreCreatureRoles`. Issue #753, Group 3c-1, ruled 2026-10-30.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulChainsGate = -1;
 };
 
 /**
@@ -530,6 +539,94 @@ struct CATACLYSM_API FCataclysmSavedFloorChoices
 	int32 RealityChamberRewardExtraDrops = 0;
 };
 
+/** One burning patch Quarantine Breach left, where it lies and the burn it was charged at. Issue #753, Group 3c-1. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedPatch
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Burn = 0.0f;
+};
+
+/** One coffin of Obsidian Sarcophagi, by its place in the rule's list: the paid deaths beside it and the lord. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedCoffin
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Deaths = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLordCame = false;
+};
+
+/**
+ * WHAT THE FLOOR'S RULE CREATURES LEFT. Issue #753, Group 3c-1, ruled 2026-10-30. Each list is by the creature's place
+ * in its rule's list, which the rule fills in the floor's seeded order and never shrinks, so a rebuilt floor puts the
+ * same creature at the same place. A load rebuilds the floor, and then puts each of these back without the death's
+ * reward or cost: a creature recorded destroyed is destroyed with `Destroy`, which raises no death notice.
+ * - the Heavenly Core destroyed, which unseals the stairs;
+ * - Quarantine Breach's containment broken, and each burning patch its released creatures left, at the burn charged;
+ * - the Infection Bloom destroyed (its spread is rebuilt fresh, U5);
+ * - the Abyssal Rift's state: 0 waiting, 1 open, 2 closed; an open or closed rift loads closed and failed (U2), its
+ *   successes being the walk's;
+ * - the Infested Veins destroyed, by place, with the floor's count and whether the guardians came;
+ * - the Pestilent beacons destroyed and counted, by place (U1);
+ * - each Obsidian Sarcophagus's paid deaths and its lord;
+ * - the Angelic statues woken, by place;
+ * - the Soul Chains gates open, by the gate's index, so an opened gate does not open and pay again.
+ * Every default means not saved, which is what an older file reads as.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedFloorRuleState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bHeavenlyCoreDestroyed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bQuarantineBroken = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPatch> QuarantinePatches;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bInfectionBloomDestroyed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 AbyssalRiftState = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> VeinsDestroyed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 InfestedVeinsDestroyed = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bInfestedVeinsGuardiansCame = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> BeaconsDestroyed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> BeaconsCounted;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedCoffin> Coffins;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> StatuesWoken;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> SoulChainsGatesOpen;
+};
+
 /**
  * The floor being fought on, as it stands.
  *
@@ -587,6 +684,10 @@ struct CATACLYSM_API FCataclysmSavedFloor
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FCataclysmSavedFloorChoices Choices;
+
+	/** What the floor's rule creatures left. Issue #753, Group 3c-1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FCataclysmSavedFloorRuleState RuleState;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedCharacterPlacement> Characters;

@@ -2,6 +2,155 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — A floor's rule creatures and their counters come back after a load without their deaths paying or charging again, and a Soul Chains gate no longer opens and pays on every load (#753, Group 3c-1)
+
+**Affects:** `SoulChainsGate` on `FCataclysmSavedCreature`, `FCataclysmSavedPatch`, `FCataclysmSavedCoffin` and
+`FCataclysmSavedFloorRuleState` (new) and `RuleState` on `FCataclysmSavedFloor`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), gathered in `FCataclysmSaveGather::FloorFrom`; `FloorRuleStateNow`,
+`RestoreFloorRuleState`, `SoulChainsGateBorneBy` and `ForgetTheSoulChainBearersForALoad` (new) and a bearer's branch in
+`RestoreCreatureRoles` on `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`); the loader
+(`CataclysmSaveLoad.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`; three new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: 3c-2 and 3d follow.
+
+### SAID FIRST
+
+- **PASSED IN UNREAL, window w111, every figure as registered:** the three new tests, the whole suite at 4401 / 0,
+  and P1-P9 each proved on its registered assertions (P6 also failed the unpredicted drop check, recorded below).
+- **A FAULT IN MERGED CODE, CORRECTED HERE FIRST: EVERY DUNGEON LOAD OPENED EVERY CLOSED SOUL CHAINS GATE AND PAID ITS
+  DROPS.** `ChooseTheSoulChainBearers`, which `PopulateFloor` calls, chose the gate's bearers from the rebuilt floor's
+  fresh creatures; `FCataclysmSaveApply::DungeonFloorInto` then destroyed them, and `StepGatedShortcuts` counts a bearer
+  no longer valid as dead, so the first beat after the load opened the gate and rolled its reward. And a gate opened
+  before the save was closed again by the rebuild and would have done the same. Found by reading, before this branch
+  (the Soul Chains case of F3); recorded on #753. Now a closed gate's bearer carries its gate's index on the creature
+  record and is given back to the gate by `RestoreCreatureRoles`, after the load forgets the fresh bearers
+  (`ForgetTheSoulChainBearersForALoad`, which also clears `bHadBearers`, so the beat skips a gate left without); and an
+  open gate is opened again by `OpenTheShortcutOf`, which pays nothing. Bearers are never chosen again after a load.
+  The open state of the Soul Chains gates was moved here from 3c-2 for this (ruled 2026-10-30, Q-A).
+- **THE RESTORE NEVER RUNS A DEATH'S REWARD OR COST: `Destroy` RAISES NO DEATH NOTICE,** only `HandleDeath` does, which
+  every rule's Forget already relies on. Each rule creature recorded destroyed is destroyed so.
+- **THE VEINS' TRAP.** A vein the step finds gone with its timer below nought is counted destroyed and may bring the
+  guardians, so the restore sets the timer to nought BEFORE it destroys the vein; the regrowth then begins again (D1).
+
+### Rulings, 2026-10-30
+
+- **Q1. The Soul Chains bearers are in 3c-1,** by a gate index on the creature record, though it is a creature-record
+  field: a fault that pays a reward on every load comes before the part's pattern. **Q-A. And the gates' open state.**
+- **Q2. Creatures these rules raised that stand at the save (woken wardens, Warzone allies and attackers, voidlings,
+  Quarantine's link to its released creatures) go to 3d,** re-brought by count with the creature-record links.
+- **Q3. The echoes go to 3d, all of them:** stage 1 loading as gone would forgive a pending strike, a reset of a cost.
+- **Q4. Quarantine's patches are saved at the burn charged,** not recomputed.
+- **Q5. 3c is split:** 3c-1 the Heavenly Core, Quarantine Breach, Infection Bloom, the Abyssal Rift, Infested Veins,
+  the Pestilent beacons, Obsidian Sarcophagi, the Angelic statues and the Soul Chains bearers and gates; 3c-2 Warzone,
+  the other gates' open state and the Void Parasite.
+- **U1** (Pestilent beacons destroyed are saved) and **U2** (a rift open at the save loads closed and failed) apply.
+
+### What changes
+
+Each entry is keyed by its place in its rule's list, which the rule fills in the floor's seeded order and never shrinks
+(each is only added to and emptied by its Forget), so a rebuilt floor puts the same creature at the same place.
+
+| Rule | Saved | Put back by the load |
+|---|---|---|
+| Heavenly Core | destroyed (on an Ascendant's last floor, standing no more) | the rebuilt core destroyed: the stairs unsealed, the edict's strength lowered |
+| Quarantine Breach | broken; each patch's place and burn | broken; the containment destroyed; each patch drawn again at its burn. The released creatures are the floor's and come back with it |
+| Infection Bloom | destroyed | destroyed, its patches and points gone; the spread is rebuilt fresh (U5) |
+| Abyssal Rift | its state | open or closed: `CloseTheRift(false)`, no success counted; the successes are the walk's |
+| Infested Veins | the destroyed, by place; the count; the guardians came | the timer set, then the vein and its zone destroyed; the count and the flag |
+| Pestilent beacons | the destroyed and the counted, by place | destroyed; counted, so a kept arena's beacon is not counted twice on leaving |
+| Obsidian Sarcophagi | each coffin's paid deaths and its lord | both set; nothing spawned, the lord being a saved creature |
+| Angelic statues | the woken, by place | woken; the cell given back and its pillars destroyed; no warden |
+| Soul Chains | a closed gate's bearers (on the creature); the open gates | the fresh bearers forgotten, the saved ones given back; the open gates opened, no drops |
+
+### Tests
+
+`Cataclysm.SaveLoad.ARulesCreaturesAndCountersComeBackAfterALoad`: one floor carrying Quarantine Breach, Infection Bloom,
+Abyssal Rifts, Infested Veins, Pestilent Empowerment, Obsidian Sarcophagi and Angelic Wardens, on the first of the pinned
+seeds 1 to 20 whose floor 2 holds every rule's creature (the pin put back by its guard and asserted back). Through the
+game's own calls: the containment killed and one released creature killed, which leaves a patch; the bloom killed; a vein
+and a beacon killed; two paid deaths beside the first coffin; a divine law broken at the first statue, which wakes it;
+the player stood beside the rift and a beat, which opens it and counts the vein. After the load, ONE BEAT, then: the
+containment broken and its one patch at the burn charged; the bloom destroyed; the rift closed with its successes as
+saved; the veins standing and destroyed as saved, counted once, no guardians; the beacons standing as saved; the first
+coffin's two deaths and no lord; the statues standing as saved and the woken cell holding no pillar; the floor's own
+creatures standing and the drops lying as saved. Prints "LOAD RULE CREATURES".
+
+`Cataclysm.SaveLoad.AHeavenlyCoreDestroyedStaysDestroyedAfterALoad`: a Celestial Ascendant quest of three floors, the
+core killed on the last; after the load it is gone and the stairs unsealed. Prints "LOAD CORE".
+
+`Cataclysm.SaveLoad.ASoulChainsGateNeitherOpensNorPaysOnALoad`: the first pinned seed whose Halls floor 2 has two Soul
+Chains gates of two bearers (the pin put back and asserted back); the first gate's bearers killed and a beat, which opens
+it and rolls its reward. After the load and one beat: the first gate open, the second closed with its two bearers, no
+reward rolled since the load (the count, which is not saved, still 0) and no drop added. CONTROL: the first gate rolled
+once before the save. Prints "LOAD SOUL CHAINS".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4401 / 0: `development`'s 4398, measured by window w110, + 3 |
+| Python | of record, with JUnit, and ruff |
+| P1, the bloom not destroyed by the restore (`if (false && State.bInfectionBloomDestroyed)`) | the rule-creatures test fails on "the bloom stays destroyed" only: the standing bloom's waves are raised by the rule and not counted among the floor's creatures, and it pays no drop |
+| P2, the vein's timer not set before it is destroyed | the rule-creatures test fails on "the vein destroyed is counted once, after a beat" (2, not 1) only; the guardians are due at three |
+| P3, the rift closed in time by the restore | the rule-creatures test fails on "and failed: no success counted" only; the state is closed either way |
+| P4, a woken statue's pillars not destroyed | the rule-creatures test fails on "and the woken statue's cell holds no pillar" only; the statues standing read the woken flag, which is set |
+| P5, the coffins' deaths not put back | the rule-creatures test fails on "the first coffin holds its two deaths" only |
+| P6, a bearer not given back to its gate | the Soul Chains test fails on "the closed gate stays closed after a beat", "with its two bearers" (0) and "and no gate rolled its reward again" (1): the gate has bearers by its flag and none standing, so the beat opens it and rolls; "nor dropped anything" is not predicted (a roll may drop nothing), recorded either way |
+| P7, the open gate not opened again | the Soul Chains test fails on "the gate opened before the save stays open" only: the forgotten bearers leave it with none and its flag cleared, so the beat skips it and nothing rolls |
+| P8, the core not destroyed by the restore | the core test fails on "the core stays destroyed" and "and the stairs stay unsealed" |
+| P9, the Quarantine patches not drawn again | the rule-creatures test fails on "its patch burns again" (0, not 1) and "at the burn it was charged at" (-1) only |
+
+### Run
+
+Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock. The first compile failed:
+`Build: Failed - 77 actions, 67 files compiled`, three errors, all in `CataclysmSaveLoadTests.cpp` and all from "use of
+undefined type 'ACataclysmGroundZone'" (the rule-creatures test reads a patch's burn): the test file did not include
+the zone's header. It does now; the second: `Build: Succeeded - 5 actions, 1 file compiled: CataclysmSaveLoadTests.cpp`.
+
+Moved onto `development` 0427b8394 (#2639, comments and labels only) as `feat/rule-creatures-survive-a-load-2` at
+73c6349e3 and compiled again with no lock: `Build: Succeeded - 35 actions, 32 files compiled`. Python of record on that
+head: `7171 passed, 8 skipped in 210.26s`, the JUnit file tests 7179, failures 0, errors 0, skipped 8; ruff "All checks
+passed!".
+
+Window w111, 2026-10-30, 20:43 to 21:23, on 73c6349e3. Pre-checks measured at 20:43:36, all passing: `development`'s
+CI and Unreal runs succeeded on 0427b8394, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 12071 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The rule-creatures test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| The core test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| The Soul Chains test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4401 tests performed, 4401 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4401 performed, gap 0" |
+| Python | `7171 passed, 8 skipped in 190.17s`; JUnit tests 7179, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "Expected 'the bloom stays destroyed' to be null" only; restored 24 / 24 |
+| P2 | PROVED: "Expected 'the vein destroyed is counted once, after a beat' to be 1, but it was 2" only; restored 24 / 24 |
+| P3 | PROVED: "Expected 'and failed: no success counted' to be 0, but it was 1" only; restored 24 / 24 |
+| P4 | PROVED: "Expected 'and the woken statue's cell holds no pillar' to be false" only; restored 24 / 24 |
+| P5 | PROVED: "Expected 'the first coffin holds its two deaths' to be 2, but it was 0" only; restored 24 / 24 |
+| P6 | PROVED: "the closed gate stays closed after a beat", "with its two bearers" (0) and "and no gate rolled its reward again" (1), as registered; and "nor dropped anything" (33 expected, 35), which was not predicted and is recorded as the registration said; restored 24 / 24 |
+| P7 | PROVED: "Expected 'the gate opened before the save stays open' to be true" only; the line printed "rolls ... after the load 0", as traced; restored 24 / 24 |
+| P8 | PROVED: "the core stays destroyed" and "and the stairs stay unsealed"; restored 24 / 24 |
+| P9 | PROVED: "Expected 'its patch burns again' to be 1, but it was 0" and "'at the burn it was charged at' to be 5.100000, but it was -1.000000" only; restored 24 / 24 |
+
+The three printed lines, from the whole suite:
+
+```
+LOAD RULE CREATURES on seed 1: Loaded (... day 1, 235 creatures, placed where it was saved); containment broken, patches 1/1 burn 5.10/5.10; bloom destroyed; rift state 2, successes 0/0; veins standing 2/2 destroyed 1/1 guardians none; beacons standing 1/1; coffin deaths 2/2 lord none; statues (23,26)(2,11)/(23,26)(2,11), woken cell pillared no; creatures 235/235; drops 0/0
+LOAD CORE: Loaded (... day 1, 304 creatures, placed where it was saved); the core gone after the load; the stairs unsealed
+LOAD SOUL CHAINS on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the first gate open, the second closed with 2 bearer(s); rolls before the save 1, after the load 0; drops 25/25
+```
+
+NOT EXPLAINED, recorded as seen: the drops lying on the floor differ from run to run of the same test (the Soul Chains
+test printed 23/23 alone, 25/25 in the suite and 33 in P6 and P7's runs; the rule-creatures test 0/0 and 1/1), and the
+Soul Chains test alone printed "with no placement saved" where the suite printed "placed where it was saved". Each test
+compares the count after the load with its own count before the save, so neither changes a verdict here; why they
+vary was not looked into.
+
+---
+
 ## 2026-10-30 — Ten C++ comments and test messages that wrote a radius as a width, or called an example Infernal Lance's line, are corrected
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundEffect.h`,
