@@ -37,7 +37,12 @@ and nothing else.
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+The proof, run 2026-10-30 in a git-archive copy of `91e50c5e5`, the commit that registered it: "PROVED: 1 failed, 2
+passed in 0.37s | restored: 3 passed in 0.21s"; named_failures exactly the one registered.
+
+Python of record at `91e50c5e5`, on `development` `f4904e99a`: "7147 passed, 8 skipped in 239.52s"; JUnit tests 7155,
+failures 0, errors 0, skipped 8. That is the base's 7144 plus the 3 new tests. ruff: "All checks passed!" A regenerate
+run left `game/Data` unchanged (`git diff --exit-code` exited 0).
 
 ### NO GENRE SOURCE
 
