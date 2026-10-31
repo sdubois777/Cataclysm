@@ -13,9 +13,9 @@ struct FCataclysmEnemyModifierRow;
  * Which modifiers a spawned enemy carries.
  *
  * WHAT THIS ANSWERS, AND WHY IT DID NOT EXIST BEFORE. Nothing gave any creature
- * a modifier. `game/Data/EnemyModifiers.csv` has held 79 rows since the design
- * workbook was imported, `ACataclysmEnemyCharacter::ModifierRows` has held a
- * list since issue #740 and `UCataclysmCreaturePanel` has printed it before a
+ * a modifier. `game/Data/EnemyModifiers.csv` held 79 rows from the design
+ * workbook's import until Famine's Withering Blows made 80 (#1722),
+ * `ACataclysmEnemyCharacter::ModifierRows` has held a list since issue #740 and `UCataclysmCreaturePanel` has printed it before a
  * fight, and the list was empty on every creature the game ever spawned unless
  * somebody typed one in by hand. So the design's rule had never run. Issue #742.
  *
@@ -106,7 +106,7 @@ public:
 	 * @param Count    how many to draw. Zero or fewer draws none
 	 * @param Already  what the creature carries. Never drawn again
 	 * @return up to `Count` distinct keys. Fewer when the pool runs out, which
-	 *         cannot happen today: the smallest pool is Famine's 7 plus the 10
+	 *         cannot happen today: the smallest pool is 8 (four Cataclysms have 8) plus the 10
 	 *         Generic ones, and the most anything draws is 5
 	 */
 	static TArray<FName> Draw(const UDataTable* EnemyModifierTable,
@@ -131,7 +131,7 @@ public:
 	 * rather than by a creature quietly losing an effect.
 	 *
 	 * THIS LIST IS SHORT AND THAT IS THE STATE OF THE WORK, not an oversight.
-	 * There are 79 modifiers and these are the ones built so far. A creature
+	 * There are 80 modifiers and these are the ones built so far. A creature
 	 * carrying any other name behaves exactly as it did before, and the hover
 	 * panel shows the name either way, which is what keeps the gap visible.
 	 */
@@ -148,6 +148,7 @@ public:
 	static const TCHAR* HordeLeaderRow;
 	static const TCHAR* PhasewalkerRow;
 	static const TCHAR* InfernalBrandRow;
+	static const TCHAR* WitheringBlowsRow;
 	static const TCHAR* BeguilingRow;
 	static const TCHAR* InfernalSacrificeRow;
 	static const TCHAR* UnholySigilsRow;
@@ -495,6 +496,20 @@ public:
 	 * @return the damage the explosion dealt, or zero when it did not fire
 	 */
 	static float BrandOnHit(AActor* Attacker, AActor* Target);
+
+	/**
+	 * One more Withering on whatever this creature just hit, if it carries
+	 * Withering Blows; at ten, the target is slowed by the `Debuff_Wither` row's
+	 * figure for the row's duration, and every stack is spent. Issue #1722.
+	 *
+	 * TWO STATUSES. From one stack to nine the target carries
+	 * `Status.Debuff.Withering`, which does nothing and is what the count is
+	 * shown beside; at ten it is taken off and `Status.Debuff.Wither`, the slow,
+	 * is put on. The project owner's choice, 2026-10-30.
+	 *
+	 * @return whether this hit slowed the target
+	 */
+	static bool WitherOnHit(AActor* Attacker, AActor* Target);
 
 	/**
 	 * Charms whoever just damaged this creature, if it carries Beguiling and

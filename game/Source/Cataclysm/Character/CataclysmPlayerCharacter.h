@@ -867,6 +867,9 @@ private:
 	/** The binding of `OnCrippleChanged`, kept so a second set-up does not leave two. */
 	FDelegateHandle CrippleChangedHandle;
 
+	/** The same handler bound to the Wither tag, which slows the walk too. Issue #1722. */
+	FDelegateHandle WitherChangedHandle;
+
 	/** Refreshes the walking speed when the character begins channelling and when it stops. Ruled 2026-10-08: a
 	 *  speed row under `while_channelling` moves no attribute. No row of that day's needs it; one may be written.
 	 *  Bound in InitAbilityActorInfo to `UCataclysmAbilitySystemComponent::OnChannellingChanged`. */

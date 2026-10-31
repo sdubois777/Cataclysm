@@ -2248,6 +2248,18 @@ public:
 	static float CrippleMultiplierOn(const AActor* Carrier);
 
 	/**
+	 * The share of its speed a character keeps while it carries Wither: 1 with no Wither, otherwise 1 less the
+	 * figure the application stated, or the `Debuff_Wither` row's when it stated none. Issue #1722.
+	 *
+	 * A SEPARATE SLOW FROM CRIPPLE, MULTIPLIED WITH IT and not merged into it, because the design names them as two
+	 * effects ("Cripple is the player's equivalent of Wither") and the project's rule since 2026-09-24 is that
+	 * separate slows multiply. A player carrying both keeps 0.7 x 0.7 of a speed, not 0.4. Read in the same three
+	 * places as Cripple's: the walking speed, the seconds between swings and the seconds between throws.
+	 * DEFINED IN CataclysmEnemyCharacter.cpp, beside Cripple's.
+	 */
+	static float WitherMultiplierOn(const AActor* Carrier);
+
+	/**
 	 * The name the share of current health one tick of Void Splinter takes
 	 * travels under, on the effect itself. Issue #915.
 	 *

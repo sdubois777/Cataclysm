@@ -82,8 +82,8 @@
     {
       "asset": "DT_EnemyModifiers",
       "csv": "EnemyModifiers.csv",
-      "rows": 79,
-      "csv_sha256": "820bf4f6c3bc99d785fcfd5ed9b04ed5d9089598533f95fbed2abad2b9f38eaa"
+      "rows": 80,
+      "csv_sha256": "32dfe33dd21973458d05fa9558bff5ed6fb36d8f47e4966ffee662593e551157"
     },
     {
       "asset": "DT_EnemyRarities",
@@ -161,7 +161,7 @@
       "asset": "DT_StatusEffects",
       "csv": "StatusEffects.csv",
       "rows": 52,
-      "csv_sha256": "4c8d8893f788638bbd175d5cbad2a53a9af64460a27e917a47ff5ee6241cac44"
+      "csv_sha256": "407d8f45bd5a75b918536dfb2559e336f2ad293973fc7020d411a352adc11c54"
     },
     {
       "asset": "DT_WeaponMeshes",

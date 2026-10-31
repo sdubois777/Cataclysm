@@ -91,8 +91,10 @@ float UCataclysmBasicAttack::SecondsBetweenSwingsFor(
 	// divided by the same share in `ACataclysmEnemyCharacter::SecondsBetweenAttacks`, and a creature does not come
 	// through here: the two callers are the player character and the player controller. The cast keeps it so.
 	const AActor* Swinger = AbilitySystem->GetAvatarActor();
+	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
 	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Swinger)
-		? UCataclysmSkillEffects::CrippleMultiplierOn(Swinger) : 1.0f;
+		? UCataclysmSkillEffects::CrippleMultiplierOn(Swinger) * UCataclysmSkillEffects::WitherMultiplierOn(Swinger)
+		: 1.0f;
 
 	return SecondsBetweenSwings(Crippled * AbilitySystem->StatForSkill(
 		FName(TEXT("attack_speed")), FGameplayTagContainer(),

@@ -35,6 +35,17 @@ float UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind Kind)
 	// blows without letting a count survive a creature being left alone.
 	case ECataclysmStackKind::Feast:			return 5.0f;
 
+	// EIGHT, INFERNAL BRAND'S, FOR ITS STATED REASON, chosen by the project
+	// owner on 2026-10-30 (#1722). The row states no window. Every grant moves
+	// the whole count's expiry, so this is the longest gap between two landed
+	// hits before the count is lost: a player who avoids every Withering Blows
+	// carrier's hits for eight seconds starts again from nought. Every creature
+	// attacks more often than that, so any carrier that keeps landing hits
+	// reaches ten on its own. (The owner first approved twelve, on a
+	// description of this window as a time within which all ten must land,
+	// which is not what it does.)
+	case ECataclysmStackKind::Withering:			return 8.0f;
+
 	default:									break;
 	}
 
@@ -61,6 +72,10 @@ int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
 	// 4% is 20%, which is exactly what Commander gives a creature -- so a
 	// fully fed creature attacks as fast as an inspired one and no faster.
 	case ECataclysmStackKind::Feast:			return 5;
+
+	// TEN, WHICH THE ROW STATES: "at 10 stacks". The cap and the trigger are the
+	// same number, as Infernal Brand's are.
+	case ECataclysmStackKind::Withering:			return 10;
 	default:									break;
 	}
 
@@ -138,6 +153,7 @@ const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::Carnage:			return TEXT("Carnage");
 	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
 	case ECataclysmStackKind::Feast:			return TEXT("Feasting");
+	case ECataclysmStackKind::Withering:			return TEXT("Withering");
 	default:									return TEXT("(unknown)");
 	}
 }
@@ -231,6 +247,29 @@ bool UCataclysmStacks::NoteInfernalBrand(
 	// zero before it looks at anything else, so the call did nothing and the
 	// count stayed at five. On 2026-09-10 that killed the project owner's
 	// character ten times in 57 seconds.
+	AbilitySystem->ClearStacks(Kind);
+
+	return true;
+}
+
+bool UCataclysmStacks::NoteWithering(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const ECataclysmStackKind Kind = ECataclysmStackKind::Withering;
+
+	AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+
+	if (Held(AbilitySystem, Kind) < CapFor(Kind))
+	{
+		return false;
+	}
+
+	// SPENT HERE AND BY `ClearStacks`, for the reasons `NoteInfernalBrand` above
+	// gives: the row says every stack is spent at ten, and a grant cannot clear.
 	AbilitySystem->ClearStacks(Kind);
 
 	return true;

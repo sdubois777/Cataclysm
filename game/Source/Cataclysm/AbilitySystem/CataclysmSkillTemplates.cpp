@@ -1830,8 +1830,10 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 
 	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
 	const AActor* Thrower = Avatar();
+	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
 	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
-		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) : 1.0f;
+		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) * UCataclysmSkillEffects::WitherMultiplierOn(Thrower)
+		: 1.0f;
 
 	return Stated / (PerSecond * Crippled);
 }

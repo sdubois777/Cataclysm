@@ -56,6 +56,8 @@ const TCHAR* UCataclysmEnemyModifiers::PhasewalkerRow =
 	TEXT("Generic_Phasewalker");
 const TCHAR* UCataclysmEnemyModifiers::InfernalBrandRow =
 	TEXT("Demonic_Infernal_Brand");
+const TCHAR* UCataclysmEnemyModifiers::WitheringBlowsRow =
+	TEXT("Famine_Withering_Blows");
 const TCHAR* UCataclysmEnemyModifiers::BeguilingRow =
 	TEXT("Demonic_Beguiling");
 const TCHAR* UCataclysmEnemyModifiers::InfernalSacrificeRow =
@@ -750,6 +752,62 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 		   *Enemy->GetName(), *GetNameSafe(Target), Damage);
 
 	return Damage;
+}
+
+bool UCataclysmEnemyModifiers::WitherOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, WitheringBlowsRow))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Withered =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Withered == nullptr)
+	{
+		return false;
+	}
+
+	// THE COUNT'S OWN STATUS, FOR THE COUNT'S OWN WINDOW, as Infernal Brand's
+	// tag is: put on, or refreshed, by every hit that adds a stack, so it lasts
+	// exactly as long as the count does and goes when the count lapses.
+	const FGameplayTag Withering =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Withering"));
+	if (Withering.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Withering,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Withering));
+	}
+
+	if (!UCataclysmStacks::NoteWithering(Withered))
+	{
+		return false;
+	}
+
+	// AT TEN THE BUILDING STATUS GOES, as the brand's tag goes with its stacks
+	// (issue #1537), and the slow comes. Its figure and its seconds are the
+	// `Debuff_Wither` row's, read here and stated on the application, so a
+	// re-tune is a data change and the reader finds what was applied.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Target, Withering);
+
+	const FGameplayTag Wither = UCataclysmSkillShapes::StatusTagFor(TEXT("Wither"));
+	if (!Wither.IsValid())
+	{
+		return false;
+	}
+	const FCataclysmStatusEffectNumbers Numbers =
+		UCataclysmSkillEffects::NumbersForEffectTag(Wither);
+	UCataclysmSkillEffects::ApplyTagForDuration(Attacker, Target, Wither,
+												Numbers.DurationSeconds, Numbers.Strength);
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s's Withering Blows reached ten stacks on %s: %.0f%% slower for %.1f s."),
+		   *Enemy->GetName(), *GetNameSafe(Target), Numbers.Strength, Numbers.DurationSeconds);
+
+	return true;
 }
 
 bool UCataclysmEnemyModifiers::CharmWhoeverStruck(AActor* Struck,

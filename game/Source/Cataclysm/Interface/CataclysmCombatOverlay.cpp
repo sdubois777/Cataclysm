@@ -3,6 +3,7 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmHUD.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -591,6 +592,29 @@ FString UCataclysmCombatOverlay::StunnedTextFor(const AActor* Actor)
 	return WordWhileHeld(Actor, TEXT("State.Stunned"), TEXT("Stunned"));
 }
 
+FString UCataclysmCombatOverlay::WitheringTextFor(const AActor* Actor)
+{
+	// THE STATUS AND THE COUNT, BOTH. The status lasts exactly as long as the count does, but a count with no
+	// status (cleared some other way) or a status with no count shows nothing rather than a misleading figure.
+	if (WordWhileHeld(Actor, TEXT("Status.Debuff.Withering"), TEXT("Withering")).IsEmpty())
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const int32 Held = AbilitySystem
+		? UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::Withering) : 0;
+	return Held > 0
+		? FString::Printf(TEXT("Withering %d/%d"), Held, UCataclysmStacks::CapFor(ECataclysmStackKind::Withering))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::WitheredTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Wither"), TEXT("Withered"));
+}
+
 FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -939,6 +963,9 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
 		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),
+		  // AND FAMINE'S WITHERING COUNT AND ITS SLOW. Issue #1722. Empty for every creature: only a player is hit
+		  // by Withering Blows.
+		  WitheringTextFor(Actor), WitheredTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.

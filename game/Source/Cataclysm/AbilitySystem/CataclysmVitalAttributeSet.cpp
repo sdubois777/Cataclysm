@@ -2581,6 +2581,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
 				UCataclysmEnemyModifiers::CharmWhoeverStruck(GetOwningActor(),
 															 Striker);
+
+				// AND FAMINE'S WITHERING BLOWS, ON A HIT AND NOT ON A TICK. Issue #1722: the owner's rule is one stack
+				// per hit that takes health, and a damage-over-time tick caused by the same creature is not a hit.
+				if (!Hit.bIsDamageOverTime)
+				{
+					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
+				}
 			}
 
 			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,

@@ -857,6 +857,23 @@ float UCataclysmSkillEffects::CrippleMultiplierOn(const AActor* Carrier)
 	return FMath::Max(1.0f - Reduction / 100.0f, KINDA_SMALL_NUMBER);
 }
 
+float UCataclysmSkillEffects::WitherMultiplierOn(const AActor* Carrier)
+{
+	// CRIPPLE'S READER WITH WITHER'S TAG AND ROW, and for its reasons: the tag is the single source of truth, the
+	// application's stated figure wins and the row's is the answer when none was stated, and the result never
+	// reaches nought because an interval divides by it. Issue #1722.
+	const FGameplayTag Wither = UCataclysmSkillShapes::StatusTagFor(TEXT("Wither"));
+	if (!Carrier || !Wither.IsValid() || !UCataclysmSkillEffects::HasTag(Carrier, Wither))
+	{
+		return 1.0f;
+	}
+
+	const float Stated = UCataclysmSkillEffects::StatedStrengthOn(Carrier, Wither);
+	const float Designed = UCataclysmSkillEffects::NumbersForEffectTag(Wither).Strength;
+	const float Reduction = FMath::Clamp(Stated >= 0.0f ? Stated : Designed, 0.0f, 100.0f);
+	return FMath::Max(1.0f - Reduction / 100.0f, KINDA_SMALL_NUMBER);
+}
+
 float ACataclysmEnemyCharacter::FeastingMultiplier() const
 {
 	// THE TAG IS THE SINGLE SOURCE OF TRUTH, exactly as it is for Commander and

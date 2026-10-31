@@ -43,6 +43,7 @@ Famine_Leeching_Curse,Famine,Leeching Curse,Steal player buffs and gain their ef
 Famine_Withering_Curse,Famine,Withering Curse,Apply a stacking debuff that temporarily reduces the player’s total damage output.
 Famine_Sapping_Presence,Famine,Sapping Presence,"Nearby players' mana regen, health regen, and shield regen become yours while they remain in range."
 Famine_Pickpocket,Famine,Pickpocket,Steals a random item from the player's inventory when dealing damage. Run away after stealing 2 or 3 items. Drop all stolen loot on death.
+Famine_Withering_Blows,Famine,Withering Blows,"Hitting a player applies a stack of Withering. At 10 stacks the player is given Wither, which reduces their movement and attack speed by 30% for 4 seconds, and every stack is spent."
 Celestial_Divine_Aegis,Celestial,Divine Aegis,"Enemy gains a divine shield when below 50% HP, reducing all damage taken by 75%."
 Celestial_When_reduced_to_30_HP_summon_celestial,Celestial,"When reduced to 30% HP, summon celestial","When reduced to 30% HP, summon celestial spirits that provide healing over time and immunity to crowd control"
 Celestial_Lawbringer,Celestial,Lawbringer,Suppress one of the player's active abilities for 10 seconds.
