@@ -104,7 +104,7 @@ back and asserted back. Each set-up asserts the player alive at the save.
 | Figure | Registered |
 |---|---|
 | The seven new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | NOT YET SET for window w115: the curse chain window's measured total (the enchantment session's, which adds 3), + 7 (the six round trips and the guard); set when 3d-2 moves onto the head that merges it. Window w114 was registered at 4425 on b5add4116 and stopped before the suite |
+| Whole Unreal suite | 4429 / 0 for window w115: window enchant-chain-w1's 4422 (#2650, now `development` 193f459f2), + 7 (the six round trips and the guard). Window w114 was registered at 4425 on b5add4116 and stopped before the suite |
 | Python | of record, with JUnit, and ruff |
 | P1, a creature's group not put back | the leaders test fails on "the leaders stand as leaders after the load" (0) only: no restored creature is in a group, so no group finds its leader and each reads fallen on the first beat, and its panic finds nobody, so "and nobody panics" passes; with no leader standing nothing is killed. The escaped test passes: its group had fallen and its escaped are the floor record's |
 | P2, a group's leader not linked | the leaders test fails on "the leaders stand as leaders after the load" (0) and "and nobody panics" only: each group reads fallen on the first beat and its restored creatures, which carry its number, panic |
@@ -128,6 +128,10 @@ Moved onto `development` b5add4116 (#2648, the Quarry fix, and #2649, one line o
 `feat/load-keeps-groups-and-trails-1`, the suite registered at 4425. 3d-2's own change is the same before and after the
 move: 956c2d827 to 700bd90d5 and b5add4116 to the moved head before this paragraph, each 6 files, 902 insertions, 13
 deletions.
+
+Moved again, onto `development` 193f459f2 (#2650, the curse chain), as `feat/load-keeps-groups-and-trails-2`. 3d-2's own
+change, the guard and the helper's mark included, is the same before and after: b5add4116 to 14570ddd9 and 193f459f2
+to the moved head before the registration commit, each 6 files, 1038 insertions, 14 deletions.
 
 **Window w114, 2026-10-31, 13:31, on 4e59518b1: STOPPED.** Pre-checks at 13:30:45 all passing. The build was up to date
 (`0 actions, nothing compiled`). `MoraleBreaksLeadersStillLeadAfterALoad` alone: `1 tests performed, 1 succeeded, 0
