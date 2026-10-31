@@ -17,7 +17,8 @@ in `CataclysmDungeonModifierEffectsTests.cpp`; section 6 of `docs/Save_System_De
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL IN WINDOW w110, ALL SEVEN PROOFS PROVED AS REGISTERED.** Window w109 stopped first, on the pact
+  test's set-up, which was rewritten (the Run section).
 - **WHAT THE READING FOUND, BEFORE ANY CODE.** None of the ten rules had a step that marks its object used without its
   reward or cost, so 3b writes one for each. `ACataclysmFloorObject` carried no index, and the relics, boxes, beacons and
   totems take a used one out of their lists (`RemoveAt`), so a used object's place in its list moves. A load could offer
@@ -147,6 +148,34 @@ pytest process; 11,417 MB free. The lock was released before anything was writte
 **THE PACT TEST'S SET-UP FOUND NO FLOOR DRAWN AGAIN, and the run cannot say whether the dungeon was unlucky (a floor is
 drawn again about one time in ten, so seventeen floors without one is about one time in six) or the oracle is wrong.**
 The test now walks twelve pinned seeds and checks the oracle on every floor not drawn again, which tells the two apart.
+
+Moved onto `6648d14e5` (#2637: documents, Python tests, and two comment lines in C++ headers) as
+`feat/used-floor-choices-survive-a-load-3`: only this log's first entry conflicted, resolved by
+`resolve_top_from_commit.py`. The pact test's pin is put back by its guard and asserted back (asked by the coordinating
+session). `Build: Succeeded - 37 actions, 34 files compiled`, after waiting once on the CI runner's build mutex. Python of
+record at `574d2a9f2`: 7179 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!`.
+
+**Window w110 (lock `dungeon-w110`, `574d2a9f2`, on `6648d14e5`, 2026-10-30) PASSED EVERY STEP, AND ALL SEVEN PROOFS
+PROVED AS REGISTERED.** The pre-checks, kept in the run output, measured at 19:29:48: `development` at `6648d14e5`, its
+CI and Unreal runs a success there; no run in progress or queued; the lock free; no build, editor, simulation or pytest
+process; 12,001 MB free. The lock was released before anything was written here.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed`, each. "LOAD PACT on seed 2 floor 15 (the oracle agreed on 30 floors, disagreed on 0): ... first draw 1,2,4; offered 0,1,2, after the load 0,1,2; the next floor offered 0,2,4, after the load 0,2,4"; "LOAD TITHE: ... owed after the load yes; 8 angel(s) came on the beat"; "LOAD GATE: ... the gate gone after the load; the stairs unsealed; channel not begun"; "PANDORA SEEDED: seeds 1 to 5, opened 'RRR UUU RRU UUR RRR ', on the same floors again 'RRR UUU RRU UUR RRR '" |
+| Whole Unreal suite | `4398 tests performed, 4398 succeeded, 0 failed`; declared 4398, gap 0, as registered; memory peak 8,748 MB, final 8,283 MB |
+| Python (JUnit) | 7179 tests, 0 failures, 0 errors, 8 skipped; ruff `All checks passed!` |
+| P1 | PROVED: the used-choices test at its set-up, "ten uses are recorded"; the gate test on "the gate is gone" and "and the stairs are unsealed", passing "and no channel runs"; restored 21 of 21 |
+| P2 | PROVED: the used-choices test on "the same floor objects stand, by rule and placement index" and "and the uses are held again for the next save"; restored 21 of 21 |
+| P3 | PROVED: the same two assertions of the used-choices test; restored 21 of 21 |
+| P4 | PROVED: the seeded-roll test on "the same box of the same floor rolls the same outcome" only, printing "opened 'RUR RRR RRR UUU UUU ', on the same floors again 'RRU RRR URR UUR URU '"; its CONTROL held; restored 1 of 1 |
+| P5 | PROVED: the pact test on "the altar offers the pacts it offered" only ("offered 0,1,2, after the load 1,2,4", the first draw); "and the next floor offers what the walk's did", recorded either way, passed; restored 21 of 21 |
+| P6 | PROVED: the tithe test on "the angels are still owed" and "and they come on the next beat"; restored 21 of 21 |
+| P7 | PROVED: the used-choices test on "the gift stays taken" and "the chamber's reward stays paid"; restored 21 of 21 |
+
+The pact test's search found the oracle right on every floor it was not drawn again (30 of 30): window w109's dungeon
+was the unlucky one in six, not a wrong oracle.
 
 ---
 
