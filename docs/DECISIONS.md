@@ -62,6 +62,11 @@ Python of record at `0d96b89c8`, on `development` `0427b8394`: "7174 passed, 8 s
 failures 0, errors 0, skipped 8. That is the base's 7171 plus the 3 new tests. ruff: "All checks passed!" A
 regenerate run left `game/Data` unchanged (`git diff --exit-code` exited 0).
 
+Moved onto `development` `5aa622a56` (#753 Group 3c-1 merged; it changes no Python file) as
+`feat/a-designed-caster-skill-is-a-spell-1`, both commits' changes identical to the originals file by file. Python
+of record there, at `b4d6df934`: "7174 passed, 8 skipped in 196.38s"; JUnit tests 7182, failures 0, errors 0,
+skipped 8. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged.
+
 ### NO GENRE SOURCE
 
 None. This is a check that this project's own data reaches its own mechanism.
