@@ -281,7 +281,28 @@ Why each prediction, so a different result can be read:
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The proofs**, run 2026-10-30 from 18:00 to 18:04 in the second build window (`enchant-1569-w2`), on `0d9eee54d`, the
+commit that registered the fourth; the first three were registered at `218c63896`. Each printed "PROVED", its
+`named_failures` were exactly the ones registered, and each broken file's hash was the same afterwards:
+
+| # | Printed | Failed assertions in the broken run |
+| :-- | :-- | :-- |
+| 1 | "PROVED: with the break in: 6 tests performed, 4 succeeded, 2 failed: EveryFigureIsTheModels, TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth \| restored: 6 tests performed, 6 succeeded, 0 failed" | 210 of 840 fixture rows right; at tier 4 the strength was 1,846 where 1,523.35 was expected |
+| 2 | "PROVED: ... 6 tests performed, 3 succeeded, 3 failed: ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon, EveryFigureIsTheModels, TheReliefComesOffTheScoreACreatureIsBuiltFromAndNotOffWhatItIsWorth \| restored: 6 ... 0 failed" | 168 of 840 rows right; floor 10 built at 24 where 57 was expected; tier 4 at 1,216.35 where 1,523.35; tier 1's control at 24 where 188 |
+| 3 | "PROVED: ... 6 tests performed, 4 succeeded, 2 failed: EveryFigureIsTheModels, TheRarityRaisesTheScoreAndTheCreatureScalesItOnce \| restored: 6 ... 0 failed" | 140 of 840 rows right (the Common rows); a Legendary Imp's Starting health 341.02 where 99.64 was expected |
+| 4 | "PROVED: ... 6 tests performed, 5 succeeded, 1 failed: ADeepDungeonsFirstFloorIsBuiltAsFloorOneOfATwelveFloorDungeon \| restored: 6 ... 0 failed" | one: floor 1 of 50 built at 0 where 24 was expected |
+
+**The full Unreal suite**, in the same window before the proofs, 17:46 to 18:00, on `0d9eee54d`: "Build: Succeeded - 4
+actions, 1 file compiled: Module.Cataclysm.34.cpp" (the unity file holding the moved Stalker test), then "4389 tests
+performed, 4389 succeeded, 0 failed", and "Declared: 4389 tests in the tree at 0d9eee54d; 4389 performed, gap 0". 43
+tests reported skipping part of what they check, as in the first run; they are the Paragon-art halves a worktree does
+not have.
+
+**Python of record** at `0d9eee54d`, on `development` `3d29e5b3f`: "7144 passed, 8 skipped in 198.16s"; JUnit tests
+7152, failures 0, errors 0, skipped 8. That is the base's 7133 plus 11: 7 in `sim/tests/test_creature_strength.py`, 2 in
+`tools/tests/test_enemy_strength_fixture_is_current.py`, 1 in the pack test, and 1 from `test_content_relief_port.py`
+going from 4 tests to 5. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged (`git diff --exit-code`
+exited 0).
 
 ### NO GENRE SOURCE
 
