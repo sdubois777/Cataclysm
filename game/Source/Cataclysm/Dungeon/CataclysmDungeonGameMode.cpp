@@ -15233,6 +15233,53 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 			}
 		}
 	}
+
+	// AND THE ROLES THE FLOOR'S RULES GAVE IT, which the rebuild gave its fresh creatures and the load destroyed with
+	// them. Issue #753, Group 3d-1, ruled 2026-10-30.
+	// - ITS LIGHTFORGED WALLS SECTION, so a barrier opens on the beat only when its section's creatures are slain.
+	Creature.FloorSection = Saved.FloorSection;
+	// - THE PLAGUEBEARER: the rule's bearer again, fleeing and not attacking; its stacks are the floor record's.
+	if (Saved.bIsPlaguebearer)
+	{
+		Creature.bIsPlaguebearer = true;
+		Plaguebearer = &Creature; // A load's: the saved bearer.
+	}
+	// - ONE OF QUARANTINE BREACH'S RELEASED CREATURES, so its death spreads a patch.
+	if (Saved.bQuarantineReleased)
+	{
+		QuarantineReleased.Add(&Creature);
+	}
+	// - FAMISHED BEASTS' DROPS EATEN AND THE HEALTH IT ADDED: the damage bonus written again, and the share the saved
+	//   maximum already holds known, so a drop eaten after the load replaces it and does not go on top of it. The count
+	//   is started for this floor first, as the beat starts it, so the beat does not empty what is put back here.
+	if (Saved.FamishedDropsEaten > 0)
+	{
+		if (FamishedBeastsFloor != FloorNumber)
+		{
+			FamishedBeastsFloor = FloorNumber;
+			FamishedBeastsDropsEaten = 0;
+			FamishedBeastsHealthAdded.Reset();
+		}
+		Creature.DropsEaten = Saved.FamishedDropsEaten;
+		FamishedBeastsHealthAdded.Add(&Creature, Saved.FamishedHealthAdded);
+		Creature.SetFamishedBeastsDamageMultiplier(
+			UCataclysmDungeonModifierEffects::FamishedBeastsMultiplier(Saved.FamishedDropsEaten));
+	}
+}
+
+void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter& Creature,
+												  FCataclysmSavedCreature& Record) const
+{
+	ACataclysmEnemyCharacter* Mutable = const_cast<ACataclysmEnemyCharacter*>(&Creature);
+	Record.FloorSection = Creature.FloorSection;
+	Record.bIsPlaguebearer = Creature.bIsPlaguebearer && Plaguebearer.Get() == Mutable;
+	Record.bQuarantineReleased = QuarantineReleased.ContainsByPredicate(
+		[Mutable](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One) { return One.Get() == Mutable; });
+	Record.FamishedDropsEaten = FamishedBeastsFloor == FloorNumber ? Creature.DropsEaten : 0;
+	if (const float* Added = FamishedBeastsHealthAdded.Find(Mutable); Added && Record.FamishedDropsEaten > 0)
+	{
+		Record.FamishedHealthAdded = *Added;
+	}
 }
 
 FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() const
@@ -15323,6 +15370,17 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 
 	// VOID PARASITE: the voidlings attached. 3c-2.
 	Out.VoidParasiteStacks = VoidParasiteStacks;
+
+	// ECHOES OF THE PAST: STRUCK, at stage 2 (struck) or 3 (gone). Not the stage before it, nor the clock (D1). 3d-1.
+	Out.bEchoesStruck = EchoesStage >= 2;
+
+	// THE PLAGUEBEARER: its stacks, chosen and fallen. Not the seconds since the last stack (D1). 3d-1.
+	Out.PlaguebearerStacks = PlaguebearerStacks;
+	Out.bPlaguebearerChosen = bPlaguebearerChosen && PlaguebearerFloor == FloorNumber;
+	Out.bPlaguebearerFallen = bPlaguebearerFallen && PlaguebearerFloor == FloorNumber;
+
+	// FAMISHED BEASTS: the drops eaten on this floor. 3d-1.
+	Out.FamishedBeastsDropsEaten = FamishedBeastsDropsEatenNow();
 	return Out;
 }
 
@@ -15514,6 +15572,30 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	// VOID PARASITE: the voidlings attached. What was applied stays at nought, as the floor change left it, so the next
 	// beat writes the loss once. The voidlings standing at the save are 3d's. Issue #753, Group 3c-2.
 	VoidParasiteStacks = State.VoidParasiteStacks;
+
+	// ECHOES OF THE PAST, STRUCK BEFORE THE SAVE: gone, and none raised again, so the strike is not taken twice (Q1).
+	// The load's floor change set the stage to 0 waiting; a stage before the strike stays so, and the echoes rise again
+	// and strike, the pending strike kept. Echoes standing after their strike are 3d-3's. Issue #753, Group 3d-1.
+	if (State.bEchoesStruck)
+	{
+		DismissTheEchoes();
+		EchoesStage = 3; // A load's: struck, nothing raised again.
+	}
+
+	// THE PLAGUEBEARER: chosen, fallen and its stacks, the bearer having been given back from its record. A bearer that
+	// fell before the save is fallen at once, so the first beat runs nothing of its death; a living one keeps its stacks,
+	// which every other creature carries from the first beat. Not chosen at the save, none is held. Issue #753, 3d-1.
+	bPlaguebearerChosen = State.bPlaguebearerChosen;
+	bPlaguebearerFallen = State.bPlaguebearerFallen;
+	PlaguebearerStacks = State.PlaguebearerStacks;
+	if (!bPlaguebearerChosen)
+	{
+		Plaguebearer = nullptr;
+	}
+
+	// FAMISHED BEASTS: this floor's count, which the beat keeps now that it is started for this floor. Issue #753, 3d-1.
+	FamishedBeastsFloor = FloorNumber;
+	FamishedBeastsDropsEaten = State.FamishedBeastsDropsEaten;
 	RefreshFloorModifierPanel();
 }
 

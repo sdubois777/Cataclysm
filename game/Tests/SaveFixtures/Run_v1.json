@@ -135,7 +135,12 @@
 				"PlacedDamageMultiplier": 0.75,
 				"SightRadiusMultiplier": 30,
 				"FloorRealityRow": "Demonic_Hellfire_Aura",
-				"SoulChainsGate": 1
+				"SoulChainsGate": 1,
+				"FloorSection": 1,
+				"bIsPlaguebearer": true,
+				"bQuarantineReleased": false,
+				"FamishedDropsEaten": 2,
+				"FamishedHealthAdded": 37.5
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -165,7 +170,12 @@
 				"PlacedDamageMultiplier": 1,
 				"SightRadiusMultiplier": 1,
 				"FloorRealityRow": "None",
-				"SoulChainsGate": -1
+				"SoulChainsGate": -1,
+				"FloorSection": -1,
+				"bIsPlaguebearer": false,
+				"bQuarantineReleased": true,
+				"FamishedDropsEaten": 0,
+				"FamishedHealthAdded": 0
 			}
 		],
 		"GroundItems": [
@@ -282,7 +292,12 @@
 				2
 			],
 			"GatedShortcutStreamSeed": 123456789,
-			"VoidParasiteStacks": 3
+			"VoidParasiteStacks": 3,
+			"bEchoesStruck": true,
+			"PlaguebearerStacks": 4,
+			"bPlaguebearerChosen": true,
+			"bPlaguebearerFallen": false,
+			"FamishedBeastsDropsEaten": 5
 		},
 		"Characters": [
 			{

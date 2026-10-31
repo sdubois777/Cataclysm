@@ -4292,4 +4292,643 @@ bool FCataclysmSaveLoadVoidParasiteTest::RunTest(const FString&)
 	return bRan;
 }
 
+namespace CataclysmSaveLoadTest
+{
+	/**
+	 * ONE SAVE AND ONE LOAD OF A DUNGEON CARRYING `Rows`, the dungeon's seed pinned for the round trip and put back by its
+	 * guard. `Before` is given the entered dungeon on its first floor and leaves it as it is to be saved, answering false
+	 * when its set-up failed; the save is then written and the world destroyed. `After` is given the loaded world. Issue
+	 * #753, Group 3d-1.
+	 */
+	template <typename FBefore, typename FAfter>
+	bool ARoundTripOfRows(FAutomationTestBase& Test, const TArray<FName>& Rows, FBefore&& Before, FAfter&& After)
+	{
+		FSaved Saved;
+		ON_SCOPE_EXIT { Saved.Forget(); };
+		FPinnedDungeonSeed PinnedSeed;
+		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
+		{
+			return false;
+		}
+		PinnedSeed.Pin(1);
+		{
+			FDungeonScene Scene = MakeDungeonScene();
+			if (!Test.TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+			{
+				if (Scene.Base.World)
+				{
+					Scene.Base.World->DestroyWorld(false);
+				}
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			Saved.RunId = FGuid::NewGuid();
+			Saved.CharacterId = FGuid::NewGuid();
+			Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName,
+										Scene.Mode->FloorNumber);
+			const int32 DungeonId = PlaceADungeonCarrying(Test, Scene, Rows);
+			if (!Test.TestTrue(TEXT("set-up: a dungeon carrying the rows was placed"), DungeonId != INDEX_NONE)
+				|| !Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+				|| !Before(*Scene.Mode, *Scene.Base.Character, *Scene.Base.World, PinnedSeed))
+			{
+				return false;
+			}
+			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+			WaitForSlot(Saved.RunSlot());
+		}
+
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World,
+																				 *Scene.Base.Character,
+																				 Saved.CharacterId);
+		Test.TestEqual(TEXT("the load put the character and its run back"),
+					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		After(*Scene.Mode, *Scene.Base.Character, *Scene.Base.World, Report);
+		return true;
+	}
+
+	/** The seed put back as it was around a round trip, and the test's answer. */
+	template <typename FBody>
+	bool WithTheSeedPutBack(FAutomationTestBase& Test, FBody&& Body)
+	{
+		IConsoleVariable* SeedVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DungeonSeed"));
+		const FString SeedBefore = SeedVariable ? SeedVariable->GetString() : FString();
+		const bool bRan = Body();
+		Test.TestEqual(TEXT("the dungeon's seed is put back as it was"),
+					   SeedVariable ? SeedVariable->GetString() : FString(), SeedBefore);
+		return bRan;
+	}
+
+	/**
+	 * ECHOES OF THE PAST BROUGHT TO A STAGE: two of floor 1's creatures killed by the player, floor 2 reached, and the
+	 * floor's beat run from the entrance for `Seconds`. Answers false when the set-up failed.
+	 */
+	bool EchoesToSeconds(FAutomationTestBase& Test, ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
+						 float Seconds)
+	{
+		TArray<ACataclysmEnemyCharacter*> Victims;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			if (Victims.Num() < 2 && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PaysForItsDeath()
+				&& !Enemy->bRaisedByARule && !Enemy->bCannotBeHurt)
+			{
+				Victims.Add(Enemy.Get());
+			}
+		}
+		bool bAll = Test.TestEqual(TEXT("set-up: two of floor 1's creatures to kill"), Victims.Num(), 2);
+		for (ACataclysmEnemyCharacter* Victim : Victims)
+		{
+			bAll = bAll && KillOnTheFloor(Test, Player, Victim, TEXT("a creature of floor 1"));
+		}
+		if (!bAll || !Test.TestTrue(TEXT("set-up: floor 2 was reached"), Mode.GoToFloor(2))
+			|| !Test.TestEqual(TEXT("set-up: two of the last floor's dead are coming"), Mode.EchoesComingThisFloor(), 2))
+		{
+			return false;
+		}
+		StandAtTheEntrance(Mode, Player);
+		for (int32 Beat = 0; Beat < BeatsOver(Seconds); ++Beat)
+		{
+			BeatOnce(Mode);
+		}
+		return true;
+	}
+
+	/** The most echoes standing at once over `Seconds` of the floor's beat, and the stage reached. */
+	int32 MostEchoesOver(ACataclysmDungeonGameMode& Mode, float Seconds)
+	{
+		int32 Most = Mode.EchoesStandingNow().Num();
+		for (int32 Beat = 0; Beat < BeatsOver(Seconds); ++Beat)
+		{
+			BeatOnce(Mode);
+			Most = FMath::Max(Most, Mode.EchoesStandingNow().Num());
+		}
+		return Most;
+	}
+
+	/** The living creatures in the world the Plaguebearer rule has marked. */
+	int32 MarkedPlaguebearersStanding(UWorld& World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			Count += IsValid(*It) && It->bIsPlaguebearer && !UCataclysmSkillEffects::IsDead(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** The first pinned seed from 1 to 20 whose floor 2 has a Plaguebearer; INDEX_NONE when none does. */
+	int32 AFloorWithAPlaguebearer(ACataclysmDungeonGameMode& Mode, FPinnedDungeonSeed& PinnedSeed)
+	{
+		for (int32 Pinned = 1; Pinned <= 20; ++Pinned)
+		{
+			PinnedSeed.Pin(Pinned);
+			if (Mode.GoToFloor(2) && Mode.PlaguebearerOnTheFloor())
+			{
+				return Pinned;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/** A drop at `At`, of a piece of gear, as Famished Beasts' own tests place one. */
+	ACataclysmDroppedItem* AGearDropAt(UWorld& World, const FVector& At)
+	{
+		ACataclysmDroppedItem* Drop = World.SpawnActor<ACataclysmDroppedItem>(At, FRotator::ZeroRotator);
+		if (Drop)
+		{
+			Drop->Item.Base = FName(TEXT("Greataxe"));
+		}
+		return Drop;
+	}
+
+	/** A creature's maximum health. */
+	float MaximumHealthOf(const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = Creature.GetAbilitySystemComponent();
+		return Abilities ? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	}
+}
+
+/**
+ * Echoes that struck before the save are not raised again by the load, so their strike is not taken twice. Until this
+ * the load's floor change set their stage back to 0 and they rose 5 s after the load and struck again. Issue #753, Group
+ * 3d-1, ruled 2026-10-30 (Q1). Prints "LOAD ECHOES STRUCK".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadEchoesStruckTest,
+	"Cataclysm.SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadEchoesStruckTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 StageSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::EchoesOfThePastKey)},
+			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								FPinnedDungeonSeed&)
+			{
+				if (!EchoesToSeconds(*this, Mode, Player, Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds))
+				{
+					return false;
+				}
+				StageSaved = Mode.EchoesStageNow();
+				return TestEqual(TEXT("set-up: the echoes have struck and stand"), StageSaved, 2);
+			},
+			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				const int32 Coming = Mode.EchoesComingThisFloor();
+				const int32 Most = MostEchoesOver(Mode, 10.0f);
+				const int32 Stage = Mode.EchoesStageNow();
+				AddInfo(FString::Printf(TEXT("LOAD ECHOES STRUCK: %s (%s); saved at stage %d; after the load %d of the "
+											 "last floor's dead recorded, at most %d echo(es) standing over 10 s, stage %d"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StageSaved, Coming, Most,
+										Stage));
+				TestEqual(TEXT("CONTROL: the last floor's dead are still recorded after the load"), Coming, 2);
+				TestEqual(TEXT("no echo is raised again after the load"), Most, 0);
+				TestEqual(TEXT("and the echoes stay gone"), Stage, 3);
+			});
+	});
+}
+
+/**
+ * Echoes that had appeared and not yet struck at the save rise again after the load and strike: the pending strike is
+ * kept, its clock restarted (D1). Issue #753, Group 3d-1, ruled 2026-10-30 (Q1). Prints "LOAD ECHOES PENDING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadEchoesPendingTest,
+	"Cataclysm.SaveLoad.EchoesThatHadNotStruckAtASaveStillStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadEchoesPendingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 StageSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::EchoesOfThePastKey)},
+			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								FPinnedDungeonSeed&)
+			{
+				if (!EchoesToSeconds(*this, Mode, Player, Effects::EchoesAppearAfterSeconds))
+				{
+					return false;
+				}
+				StageSaved = Mode.EchoesStageNow();
+				return TestEqual(TEXT("set-up: the echoes have appeared and not struck"), StageSaved, 1);
+			},
+			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				const int32 Most = MostEchoesOver(Mode, 10.0f);
+				const int32 Stage = Mode.EchoesStageNow();
+				AddInfo(FString::Printf(TEXT("LOAD ECHOES PENDING: %s (%s); saved at stage %d; after the load at most %d "
+											 "echo(es) standing over 10 s, stage %d"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StageSaved, Most, Stage));
+				TestEqual(TEXT("both echoes rise again after the load"), Most, 2);
+				TestEqual(TEXT("and strike and go"), Stage, 3);
+			});
+	});
+}
+
+/**
+ * Lightforged Walls' barriers after a load: a barrier opened before the save is open, and one whose section still holds
+ * creatures stays closed. Until this every barrier opened on the first beat, the restored creatures having no section.
+ * Issue #753, Group 3d-1. Prints "LOAD SECTIONS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSectionsTest,
+	"Cataclysm.SaveLoad.ASectionBarrierStaysClosedAfterALoadWhileItsCreaturesStand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSectionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 StandingSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::LightforgedWallsKey)},
+			[this, &Seed, &StandingSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  FPinnedDungeonSeed& PinnedSeed)
+			{
+				// TWO BARRIERS OR MORE, SECTIONS 0 AND 1 EACH HOLDING CREATURES, on the first pinned seed that gives them.
+				for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+				{
+					PinnedSeed.Pin(Pinned);
+					if (Mode.GoToFloor(2) && Mode.FloorSectionsNow().Boundaries.Num() >= 2 && Mode.StandingInSection(0) > 0
+						&& Mode.StandingInSection(1) > 0)
+					{
+						Seed = Pinned;
+					}
+				}
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives two barriers and two held sections"),
+							  Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				// SECTION 0'S CREATURES SLAIN, which opens its barrier on the beat.
+				TArray<ACataclysmEnemyCharacter*> InSectionZero;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (IsValid(Enemy) && Enemy->FloorSection == 0 && !UCataclysmSkillEffects::IsDead(Enemy)
+						&& !Enemy->bRaisedByARule && !Enemy->bCannotBeHurt)
+					{
+						InSectionZero.Add(Enemy.Get());
+					}
+				}
+				bool bAll = true;
+				for (ACataclysmEnemyCharacter* Victim : InSectionZero)
+				{
+					bAll = bAll && KillOnTheFloor(*this, Player, Victim, TEXT("a creature of section 0"));
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				StandingSaved = Mode.StandingInSection(1);
+				return bAll && TestEqual(TEXT("set-up: section 0 is empty"), Mode.StandingInSection(0), 0)
+					&& TestFalse(TEXT("set-up: and its barrier open"), Mode.SectionBarrierIsClosed(0))
+					&& TestTrue(TEXT("set-up: barrier 1 is closed"), Mode.SectionBarrierIsClosed(1));
+			},
+			[this, &Seed, &StandingSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const bool bZeroClosed = Mode.SectionBarrierIsClosed(0);
+				const bool bOneClosed = Mode.SectionBarrierIsClosed(1);
+				const int32 Standing = Mode.StandingInSection(1);
+				AddInfo(FString::Printf(TEXT("LOAD SECTIONS on seed %d: %s (%s); after a beat barrier 0 %s, barrier 1 %s, "
+											 "section 1 holds %d/%d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										bZeroClosed ? TEXT("CLOSED") : TEXT("open"), bOneClosed ? TEXT("closed") : TEXT("OPEN"),
+										Standing, StandingSaved));
+				TestFalse(TEXT("the barrier opened before the save is open"), bZeroClosed);
+				TestTrue(TEXT("barrier 1 stays closed"), bOneClosed);
+				TestEqual(TEXT("its section still holds its creatures"), Standing, StandingSaved);
+			});
+	});
+}
+
+/**
+ * The Plaguebearer after a load: the saved bearer is the rule's bearer again and its stacks come back, every other
+ * creature carrying them. Until this its stacks cleared on the first beat, as at its death, and it came back an ordinary
+ * hostile creature. Issue #753, Group 3d-1, ruled 2026-10-30 (Q2). Prints "LOAD PLAGUEBEARER".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPlaguebearerTest,
+	"Cataclysm.SaveLoad.ThePlaguebearerAndItsStacksComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadPlaguebearerTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 StacksSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::PlaguebearerKey)},
+			[this, &Seed, &StacksSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorWithAPlaguebearer(Mode, PinnedSeed);
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a Plaguebearer"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				for (int32 Beat = 0; Beat < BeatsOver(3.0f * Effects::PlaguebearerSecondsBetweenStacks); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				StacksSaved = Mode.PlaguebearerStacksNow();
+				return TestEqual(TEXT("set-up: three stacks"), StacksSaved, 3);
+			},
+			[this, &Seed, &StacksSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+										const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				ACataclysmEnemyCharacter* Bearer = Mode.PlaguebearerOnTheFloor();
+				const int32 Stacks = Mode.PlaguebearerStacksNow();
+				float Carried = 0.0f;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (IsValid(Enemy) && Enemy.Get() != Bearer && !UCataclysmSkillEffects::IsDead(Enemy))
+					{
+						Carried = Enemy->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource);
+						break;
+					}
+				}
+				const int32 Marked = MarkedPlaguebearersStanding(World);
+				AddInfo(FString::Printf(TEXT("LOAD PLAGUEBEARER on seed %d: %s (%s); after a beat the bearer %s, %d marked "
+											 "standing, stacks %d/%d, %s, another creature's multiplier %.3f"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										Bearer ? TEXT("is back") : TEXT("is NONE"), Marked, Stacks, StacksSaved,
+										Mode.PlaguebearerHasFallen() ? TEXT("FALLEN") : TEXT("not fallen"), Carried));
+				TestNotNull(TEXT("the saved bearer is the rule's bearer again"), Bearer);
+				TestEqual(TEXT("one creature standing marked as the bearer"), Marked, 1);
+				TestEqual(TEXT("its stacks come back"), Stacks, StacksSaved);
+				TestFalse(TEXT("and it has not fallen"), Mode.PlaguebearerHasFallen());
+				TestEqual(TEXT("another creature carries the stacks"), Carried,
+						  Effects::PlaguebearerMultiplier(StacksSaved), 0.0001f);
+			});
+	});
+}
+
+/**
+ * A Plaguebearer killed before the save stays fallen after the load, and the load's first beat pays or counts nothing of
+ * its death again: no drop is added and no creature comes. Issue #753, Group 3d-1, ruled 2026-10-30 (Q2). Prints "LOAD
+ * PLAGUEBEARER FALLEN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPlaguebearerFallenTest,
+	"Cataclysm.SaveLoad.APlaguebearerKilledBeforeASaveStaysFallenAndPaysNothingAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadPlaguebearerFallenTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 DropsSaved = -1;
+		int32 CreaturesSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::PlaguebearerKey)},
+			[this, &Seed, &DropsSaved, &CreaturesSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
+														UWorld& World, FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorWithAPlaguebearer(Mode, PinnedSeed);
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a Plaguebearer"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				for (int32 Beat = 0; Beat < BeatsOver(3.0f * Effects::PlaguebearerSecondsBetweenStacks); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				if (!KillOnTheFloor(*this, Player, Mode.PlaguebearerOnTheFloor(), TEXT("the Plaguebearer")))
+				{
+					return false;
+				}
+				BeatOnce(Mode);
+				DropsSaved = DropsLying(World);
+				CreaturesSaved = OrdinaryCreaturesStanding(World);
+				return TestTrue(TEXT("set-up: it has fallen"), Mode.PlaguebearerHasFallen())
+					&& TestEqual(TEXT("set-up: and its stacks are cleared"), Mode.PlaguebearerStacksNow(), 0);
+			},
+			[this, &Seed, &DropsSaved, &CreaturesSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
+														UWorld& World, const FCataclysmLoadReport& Report)
+			{
+				const bool bFallenAtTheLoad = Mode.PlaguebearerHasFallen();
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 Drops = DropsLying(World);
+				const int32 Creatures = OrdinaryCreaturesStanding(World);
+				AddInfo(FString::Printf(TEXT("LOAD PLAGUEBEARER FALLEN on seed %d: %s (%s); fallen at the load %s, after a "
+											 "beat %s, stacks %d, %d marked standing; drops %d/%d, creatures %d/%d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										bFallenAtTheLoad ? TEXT("yes") : TEXT("NO"),
+										Mode.PlaguebearerHasFallen() ? TEXT("yes") : TEXT("NO"), Mode.PlaguebearerStacksNow(),
+										MarkedPlaguebearersStanding(World), DropsSaved, Drops, CreaturesSaved, Creatures));
+				TestTrue(TEXT("it is fallen straight after the load, before any beat"), bFallenAtTheLoad);
+				TestTrue(TEXT("and after a beat"), Mode.PlaguebearerHasFallen());
+				TestEqual(TEXT("its stacks stay cleared"), Mode.PlaguebearerStacksNow(), 0);
+				TestEqual(TEXT("no creature stands marked as the bearer"), MarkedPlaguebearersStanding(World), 0);
+				TestEqual(TEXT("its death paid no drop again"), Drops, DropsSaved);
+				TestEqual(TEXT("and brought no creature"), Creatures, CreaturesSaved);
+			});
+	});
+}
+
+/**
+ * Quarantine Breach's released creatures are its released creatures again after a load, so a death spreads a patch.
+ * Until this they came back as ordinary creatures and their deaths spread nothing. Issue #753, Group 3d-1. Prints "LOAD
+ * QUARANTINE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadQuarantineReleasedTest,
+	"Cataclysm.SaveLoad.AReleasedCreatureStillSpreadsTheInfectionAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadQuarantineReleasedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 ReleasedSaved = -1;
+		return ARoundTripOfRows(*this, {FName(Effects::QuarantineBreachKey)},
+			[this, &Seed, &ReleasedSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  FPinnedDungeonSeed& PinnedSeed)
+			{
+				for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
+				{
+					PinnedSeed.Pin(Pinned);
+					if (Mode.GoToFloor(2) && Mode.QuarantineNow())
+					{
+						Seed = Pinned;
+					}
+				}
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a containment"), Seed != INDEX_NONE)
+					|| !KillOnTheFloor(*this, Player, Mode.QuarantineNow(), TEXT("the containment")))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				ReleasedSaved = Mode.QuarantineReleasedStanding().Num();
+				return TestTrue(TEXT("set-up: creatures were released"), ReleasedSaved > 0)
+					&& TestEqual(TEXT("set-up: and no patch burns"), Mode.QuarantinePatchesNow().Num(), 0);
+			},
+			[this, &Seed, &ReleasedSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+										  const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const TArray<ACataclysmEnemyCharacter*> Released = Mode.QuarantineReleasedStanding();
+				int32 Patches = -1;
+				if (!Released.IsEmpty() && KillOnTheFloor(*this, Player, Released[0], TEXT("a released creature")))
+				{
+					Patches = Mode.QuarantinePatchesNow().Num();
+				}
+				AddInfo(FString::Printf(TEXT("LOAD QUARANTINE on seed %d: %s (%s); released standing %d/%d; patches after "
+											 "one released death %d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Released.Num(),
+										ReleasedSaved, Patches));
+				TestEqual(TEXT("the released creatures come back as released"), Released.Num(), ReleasedSaved);
+				if (!Released.IsEmpty())
+				{
+					TestEqual(TEXT("and a released creature's death spreads a patch"), Patches, 1);
+				}
+			});
+	});
+}
+
+/**
+ * Famished Beasts after a load: an eater keeps its drops eaten and its damage bonus, the floor its count, and a drop eaten
+ * after the load replaces the health share already in the saved maximum instead of going on top of it (#2181). Issue #753,
+ * Group 3d-1. Prints "LOAD FAMISHED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadFamishedTest,
+	"Cataclysm.SaveLoad.AFamishedEaterKeepsItsDropsAndShareAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadFamishedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		float MaximumSaved = -1.0f;
+		return ARoundTripOfRows(*this, {FName(Effects::FamishedBeastsKey)},
+			[this, &MaximumSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+								  FPinnedDungeonSeed&)
+			{
+				if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode.GoToFloor(2)))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				// AN EATER WITH NO OTHER CREATURE WITHIN TWICE THE EATING REACH, so the drops under it are its own.
+				ACataclysmEnemyCharacter* Eater = nullptr;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (Eater || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || !Enemy->bSeeksDropsForTheFloorRule)
+					{
+						continue;
+					}
+					bool bAlone = true;
+					for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+					{
+						bAlone = bAlone && (*It == Enemy.Get()
+											|| FVector::Dist2D(It->GetActorLocation(), Enemy->GetActorLocation())
+												> 2.0f * Effects::FamishedBeastsEatWithinCm);
+					}
+					Eater = bAlone ? Enemy.Get() : nullptr;
+				}
+				if (!TestNotNull(TEXT("set-up: a creature that eats, alone"), Eater))
+				{
+					return false;
+				}
+				for (int32 Drop = 0; Drop < 2; ++Drop)
+				{
+					AGearDropAt(World, Eater->GetActorLocation());
+					BeatOnce(Mode);
+				}
+				MaximumSaved = MaximumHealthOf(*Eater);
+				return TestEqual(TEXT("set-up: it ate two"), Eater->DropsEaten, 2)
+					&& TestEqual(TEXT("set-up: the floor counts two"), Mode.FamishedBeastsDropsEatenNow(), 2);
+			},
+			[this, &MaximumSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+								  const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 CountAfter = Mode.FamishedBeastsDropsEatenNow();
+				// THE EATER IS THE CREATURE STANDING WHERE IT STOOD, its record having put it there.
+				ACataclysmEnemyCharacter* Eater = nullptr;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+						&& FMath::IsNearlyEqual(MaximumHealthOf(*Enemy), MaximumSaved, 0.01f)
+						&& (!Eater || Enemy->DropsEaten > Eater->DropsEaten))
+					{
+						Eater = Enemy.Get();
+					}
+				}
+				if (!TestNotNull(TEXT("set-up: the eater stands after the load"), Eater))
+				{
+					return;
+				}
+				const int32 EatenAfterLoad = Eater->DropsEaten;
+				const float DamageAfterLoad =
+					Eater->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource);
+				AGearDropAt(World, Eater->GetActorLocation());
+				BeatOnce(Mode);
+				const float MaximumAfterAnother = MaximumHealthOf(*Eater);
+				const float Expected = MaximumSaved / Effects::FamishedBeastsMultiplier(2) * Effects::FamishedBeastsMultiplier(3);
+				AddInfo(FString::Printf(TEXT("LOAD FAMISHED: %s (%s); after a beat the eater %d eaten, damage %.3f, the floor "
+											 "%d; after another drop %d eaten, damage %.3f, maximum %.2f (saved %.2f, "
+											 "expected %.2f)"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, EatenAfterLoad,
+										DamageAfterLoad, CountAfter, Eater->DropsEaten,
+										Eater->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource),
+										MaximumAfterAnother, MaximumSaved, Expected));
+				TestEqual(TEXT("it ate two before the save"), EatenAfterLoad, 2);
+				TestEqual(TEXT("and keeps its damage bonus"), DamageAfterLoad, Effects::FamishedBeastsMultiplier(2), 0.0001f);
+				TestEqual(TEXT("the floor still counts two"), CountAfter, 2);
+				TestEqual(TEXT("three after another"), Eater->DropsEaten, 3);
+				TestEqual(TEXT("its damage after another"),
+						  Eater->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource),
+						  Effects::FamishedBeastsMultiplier(3), 0.0001f);
+				TestEqual(TEXT("its maximum after another replaces the share, not adds to it"), MaximumAfterAnother, Expected,
+						  0.5f);
+			});
+	});
+}
+
 #endif // WITH_AUTOMATION_TESTS

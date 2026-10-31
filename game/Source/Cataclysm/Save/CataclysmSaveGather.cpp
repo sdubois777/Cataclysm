@@ -229,6 +229,7 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			DungeonMode->SoulHarvestHeldBy(Creature, Record.SoulHarvestSouls, Record.SoulHarvestHealthAdded);
 			Record.bFedByNothingIsForgotten = DungeonMode->IsTheVoidsBoss(Creature);
 			Record.SoulChainsGate = DungeonMode->SoulChainsGateBorneBy(Creature);
+			DungeonMode->CreatureRolesInto(*Creature, Record);
 		}
 		Saved.Creatures.Add(Record);
 	}
