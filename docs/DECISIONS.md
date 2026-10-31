@@ -118,8 +118,9 @@ CONTROL: both outcomes occur. Prints "PANDORA SEEDED".
 ### Run
 
 Before the window the branch was compiled with `python tools/unreal_build.py build` and no lock, every changed file
-uncommitted and so compiled outside the unity file: `Build: Succeeded - 79 actions, 69 files compiled`, no warning in a
-changed file.
+uncommitted: `Build: Succeeded - 79 actions, 69 files compiled`, no warning in a changed file. Unreal's adaptive build
+compiles an uncommitted file outside the unity file (window w104's failed build printed it doing so), but this build
+printed only its result line, so that it did here is not shown.
 
 ---
 
