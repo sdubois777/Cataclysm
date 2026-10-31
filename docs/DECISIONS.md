@@ -56,9 +56,10 @@ twice); no allied soldier standing. CONTROL: allies stood before the save. Print
 
 `Cataclysm.SaveLoad.TheLabrynthSwapsTheSameAfterALoad`: the first pinned seed whose floor 2 has four Labrynth gates,
 else three; the floor's creatures cleared and the player at the entrance, so a close the placement rule refuses is
-refused in both runs alike. One swap, then 7 s; saved; then the next four swaps without a load, recorded as the open
-gates after each. After the load: the gates as saved, and the next four swaps the same, in order, beating until they
-have come. Prints "LOAD LABRYNTH".
+refused in both runs alike. One swap, then 7 s; saved; then the next eight swaps without a load, recorded as the open
+gates after each. After the load: the gates as saved, and the next eight swaps the same, in order, beating until they
+have come. EIGHT AND NOT FOUR, suggested by the coordinating session on 2026-10-30 for P5, because it costs only
+beats. Prints "LOAD LABRYNTH".
 
 `Cataclysm.SaveLoad.VoidParasiteStacksComeBackAfterALoad`: seed 1, the voidling roll pinned to rise (both put back and
 asserted back). Two of floor 2's creatures out of the light killed by the player and each voidling walked to, which
@@ -75,8 +76,8 @@ damage exactly `VoidParasiteLessPercent(2)` off. Prints "LOAD VOID PARASITE".
 | P1, the seconds at a point not put back | the Warzone test fails on "the seconds stood at point 1 come back" (0, not 10) only |
 | P2, the captured points not put back | the Warzone test fails on "the captured point stays held" (0) and "the point's strength is on the player once" (0) only: the shortcut is still opened by the next line |
 | P3, a captured point's shortcut not opened | the Warzone test fails on "and its shortcut open" only: only a capture opens it, and the beat captures nothing |
-| P4, the Labrynth not put back | the Labrynth test fails on "the gates come back open and closed as saved": the rebuild's pattern opens the odd gates and the saved one is a swap past it. "and the next four swaps ..." is not predicted, since four swaps from another start could match by chance; recorded either way |
-| P5, the Labrynth's stream not put back | the Labrynth test fails on "and the next four swaps are the ones made without a load" only. NOT TRACED BY HAND: the loaded stream is the floor-start one, behind the saved one by the first swap's draws, and four swaps drawn from it match by chance with a probability estimated (not measured) at about one in 256 with four gates; a match would leave the proof not proved, recorded as such |
+| P4, the Labrynth not put back | the Labrynth test fails on "the gates come back open and closed as saved": the rebuild's pattern opens the odd gates and the saved one is a swap past it. "and the next eight swaps ..." is not predicted, since eight swaps from another start could match by chance; recorded either way |
+| P5, the Labrynth's stream not put back | the Labrynth test fails on "and the next eight swaps are the ones made without a load" only. NOT TRACED BY HAND: the loaded stream is the floor-start one, behind the saved one by the first swap's draws, and eight swaps drawn from it match by chance with a probability ESTIMATED, NOT MEASURED, by treating each swap as an independent draw: with four gates, two open and two closed, about one in four a swap, so one in 65,536; with three, two open and one closed, the closed one is fixed and only the open one matters, about one in two a swap, so one in 256. A match would leave the proof not proved, recorded as such |
 | P6, the voidlings attached not put back | the Void Parasite test fails on "the voidlings attached come back" (0) and "and their loss is on the player once" (0) only |
 
 ### Run

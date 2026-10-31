@@ -3826,13 +3826,14 @@ namespace CataclysmSaveLoadTest
 
 	/**
 	 * THE NEXT `Count` SWAPS THE LABRYNTH MAKES, as the open gates after each, beating until they have happened or
-	 * ten swaps' time has passed. A swap the placement rule refuses changes nothing and is not one of them.
+	 * twice their time and two swaps more has passed. A swap the placement rule refuses changes nothing and is not one
+	 * of them.
 	 */
 	TArray<FString> TheNextSwaps(ACataclysmDungeonGameMode& Mode, int32 Count)
 	{
 		TArray<FString> Swaps;
 		FString Last = LabrynthGatesText(Mode);
-		const int32 Most = 10 * BeatsOver(UCataclysmDungeonModifierEffects::LabrynthSecondsBetweenSwaps);
+		const int32 Most = (2 * Count + 2) * BeatsOver(UCataclysmDungeonModifierEffects::LabrynthSecondsBetweenSwaps);
 		for (int32 Beat = 0; Beat < Most && Swaps.Num() < Count; ++Beat)
 		{
 			BeatOnce(Mode);
@@ -3990,7 +3991,7 @@ namespace CataclysmSaveLoadTest
 	{
 		using Effects = UCataclysmDungeonModifierEffects;
 		const FName Row(Effects::LabrynthKey);
-		const int32 Swaps = 4;
+		const int32 Swaps = 8;
 
 		FSaved Saved;
 		ON_SCOPE_EXIT { Saved.Forget(); };
@@ -4065,7 +4066,7 @@ namespace CataclysmSaveLoadTest
 			// THE SWAPS THE SAME GAME MAKES WITHOUT A LOAD.
 			Unloaded = TheNextSwaps(Mode, Swaps);
 		}
-		if (!Test.TestEqual(TEXT("set-up: four swaps without a load"), Unloaded.Num(), Swaps))
+		if (!Test.TestEqual(TEXT("set-up: eight swaps without a load"), Unloaded.Num(), Swaps))
 		{
 			return false;
 		}
@@ -4098,7 +4099,7 @@ namespace CataclysmSaveLoadTest
 		Test.TestEqual(TEXT("the load put the character and its run back"),
 					   static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
 		Test.TestEqual(TEXT("the gates come back open and closed as saved"), GatesLoaded, GatesSaved);
-		Test.TestEqual(TEXT("and the next four swaps are the ones made without a load"),
+		Test.TestEqual(TEXT("and the next eight swaps are the ones made without a load"),
 					   FString::Join(Loaded, TEXT(" ")), FString::Join(Unloaded, TEXT(" ")));
 		return true;
 	}
