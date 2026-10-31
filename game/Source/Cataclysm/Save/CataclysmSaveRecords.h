@@ -579,7 +579,14 @@ struct CATACLYSM_API FCataclysmSavedCoffin
  * - the Pestilent beacons destroyed and counted, by place (U1);
  * - each Obsidian Sarcophagus's paid deaths and its lord;
  * - the Angelic statues woken, by place;
- * - the Soul Chains gates open, by the gate's index, so an opened gate does not open and pay again.
+ * - the Soul Chains gates open, by the gate's index, so an opened gate does not open and pay again;
+ * - Warzone Control Points' seconds held at each point and the points captured, by the point's index; a captured
+ *   point's shortcut is open, which is the only way one opens (3c-2, Q1). The wave clock is a timer and is not saved:
+ *   it restarts as a floor start sets it (D1);
+ * - The Labrynth's gates open, by the gate's index, and the stream its swaps are drawn on, as it stands, so the swaps
+ *   after a load come in the order they would have without it (3c-2, Q2). The seconds to the next swap are a timer and
+ *   are not saved (D1). Read only when `bLabrynthSaved`, so an older file keeps the rebuild's gates and stream (Q3);
+ * - the voidlings the Void Parasite has attached to the player.
  * Every default means not saved, which is what an older file reads as.
  */
 USTRUCT(BlueprintType)
@@ -625,6 +632,27 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<int32> SoulChainsGatesOpen;
+
+	/** Warzone Control Points: the seconds stood in each point, by its index, and the points captured. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> WarzoneSecondsHeld;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> WarzoneCaptured;
+
+	/** The Labrynth: whether the three below were saved; its gates open, by index; its stream's current seed. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLabrynthSaved = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> LabrynthGatesOpen;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 GatedShortcutStreamSeed = 0;
+
+	/** Void Parasite: the voidlings attached to the player. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 VoidParasiteStacks = 0;
 };
 
 /**

@@ -15296,6 +15296,33 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 			Out.SoulChainsGatesOpen.Add(One.Index);
 		}
 	}
+
+	// WARZONE CONTROL POINTS: the seconds stood at each point and the points captured. Not the wave clock (D1). 3c-2.
+	Out.WarzoneSecondsHeld = WarzoneSecondsHeld;
+	for (int32 Index = 0; Index < WarzoneCaptured.Num(); ++Index)
+	{
+		if (WarzoneCaptured[Index])
+		{
+			Out.WarzoneCaptured.Add(Index);
+		}
+	}
+
+	// THE LABRYNTH: its gates open and its stream as it stands. Not the seconds to the next swap (D1). 3c-2.
+	if (FloorBrief.Modifiers.Contains(FName(Effects::LabrynthKey)))
+	{
+		Out.bLabrynthSaved = true;
+		for (const FGatedShortcut& One : GatedShortcuts)
+		{
+			if (One.RowKey == FName(Effects::LabrynthKey) && One.bOpen)
+			{
+				Out.LabrynthGatesOpen.Add(One.Index);
+			}
+		}
+		Out.GatedShortcutStreamSeed = GatedShortcutStream.GetCurrentSeed();
+	}
+
+	// VOID PARASITE: the voidlings attached. 3c-2.
+	Out.VoidParasiteStacks = VoidParasiteStacks;
 	return Out;
 }
 
@@ -15434,6 +15461,59 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	{
 		OpenTheShortcutOf(FName(Effects::SoulChainsKey), Index);
 	}
+
+	// WARZONE CONTROL POINTS: the seconds stood at each point and the points captured, each captured point's shortcut
+	// opened, which is the only way one opens (Q1). NO ALLIED SOLDIERS COME: those standing at the save are 3d's. What
+	// was applied stays at nought, as the floor change left it, so the next beat finds the points held and writes their
+	// strength once. The wave clock restarts as the floor change set it (D1). Issue #753, Group 3c-2.
+	{
+		const FName WarzoneRow(Effects::WarzoneControlPointsKey);
+		const int32 Points = WarzonePointCells.Num();
+		WarzoneSecondsHeld.SetNumZeroed(Points);
+		WarzoneCaptured.SetNumZeroed(Points);
+		for (int32 Index = 0; Index < Points && Index < State.WarzoneSecondsHeld.Num(); ++Index)
+		{
+			WarzoneSecondsHeld[Index] = State.WarzoneSecondsHeld[Index];
+		}
+		for (const int32 Index : State.WarzoneCaptured)
+		{
+			if (WarzoneCaptured.IsValidIndex(Index))
+			{
+				WarzoneCaptured[Index] = true; // A load's: captured, without its allies.
+				OpenTheShortcutOf(WarzoneRow, Index);
+			}
+		}
+	}
+
+	// THE LABRYNTH'S GATES AS SAVED, AND ITS STREAM AS IT STOOD, so its next swaps are drawn as they would have been
+	// without the load (Q2). A gate saved closed is closed without asking: its cells were blocked at the save, so no
+	// saved creature nor the player stood on them. The seconds to the next swap restart (D1). An older file keeps the
+	// rebuild's gates and stream (Q3). Issue #753, Group 3c-2.
+	if (State.bLabrynthSaved)
+	{
+		const FName Labrynth(Effects::LabrynthKey);
+		for (FGatedShortcut& One : GatedShortcuts)
+		{
+			if (One.RowKey != Labrynth)
+			{
+				continue;
+			}
+			const bool bSavedOpen = State.LabrynthGatesOpen.Contains(One.Index);
+			if (bSavedOpen && !One.bOpen)
+			{
+				OpenTheGate(One);
+			}
+			else if (!bSavedOpen && One.bOpen)
+			{
+				CloseTheGate(One, /*bAsk=*/false);
+			}
+		}
+		GatedShortcutStream.Initialize(State.GatedShortcutStreamSeed);
+	}
+
+	// VOID PARASITE: the voidlings attached. What was applied stays at nought, as the floor change left it, so the next
+	// beat writes the loss once. The voidlings standing at the save are 3d's. Issue #753, Group 3c-2.
+	VoidParasiteStacks = State.VoidParasiteStacks;
 	RefreshFloorModifierPanel();
 }
 
