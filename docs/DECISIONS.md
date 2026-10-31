@@ -2,6 +2,91 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Warzone's hold, the Labrynth's gates and the order of its swaps, and the voidlings attached come back after a load; the clocks restart (#753, Group 3c-2)
+
+**Affects:** `WarzoneSecondsHeld`, `WarzoneCaptured`, `bLabrynthSaved`, `LabrynthGatesOpen`, `GatedShortcutStreamSeed`
+and `VoidParasiteStacks` on `FCataclysmSavedFloorRuleState` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`);
+`FloorRuleStateNow`, `RestoreFloorRuleState` and `WarzoneSecondsHeldNow` (new, for tests) on
+`ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`;
+three new tests in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`; section 6 of `docs/Save_System_Design.md`.
+Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: 3d follows.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **THE TWO CLOCKS ARE NOT SAVED, ruled 2026-10-30 under D1:** Warzone's wave clock and the seconds to the Labrynth's
+  next swap are durations until the next event, not progress toward a reward, and restart as a floor start sets them
+  (section 6's "remaining durations" row). The seconds stood at a Warzone point are progress, as the War Banner's
+  hold was, and are saved.
+- **THE LABRYNTH'S STREAM IS SAVED, SO THE ORDER OF ITS SWAPS IS THE ORDER WITHOUT A LOAD (Q2).** Without it a load
+  rebuilt the floor, which seeds the stream again at the floor's start, and every swap after the load was drawn from a
+  different place in it. The swaps' timing restarts with the clock; their sequence does not change.
+- **WITH TWO LABRYNTH GATES THE STREAM DECIDES NOTHING:** one open and one closed, the shuffle of one gate draws nothing
+  and the pick of one closed gate is fixed. The test therefore takes four gates, or three (Q4), and prints which.
+- **THE STRENGTHS ARE WRITTEN ONCE, BY THE NEXT BEAT.** The load's `GoToFloor` runs `ApplyFloorRulesToPlayer`, which
+  sets `WarzonePointsApplied` and `VoidParasiteStacksApplied` to nought; the restore then sets what is held, so the
+  next beat finds the two differ and writes each once. Traced by reading; T1 and T3 assert once and not twice.
+
+### Rulings, 2026-10-30
+
+- **D1 applies to both clocks:** neither is saved.
+- **Q1. A Warzone gate is open when its point is captured;** capture is the only way one opens, so no list of its own.
+- **Q2. The Labrynth's stream is saved as it stands,** for the reason Pandora's roll is seeded (3b).
+- **Q3. `bLabrynthSaved` guards the Labrynth,** so an older file keeps the rebuild's gates and stream. The other new
+  fields read as a fresh floor when absent.
+- **Q4. Three gates if no seed from 1 to 20 gives four,** the count recorded.
+- **No `BringWarzoneAllies` on a load.** The Warzone attackers and allies, and the voidlings, standing at the save are
+  3d's (ruled 2026-10-30, Q2 of 3c).
+
+### What changes
+
+| Rule | Saved | Put back by the load |
+|---|---|---|
+| Warzone Control Points | the seconds stood at each point, by index; the points captured | the seconds; each captured point captured and its shortcut opened by `OpenTheShortcutOf`, no allies; the next beat writes the strength |
+| The Labrynth | its gates open, by index; its stream's current seed; only on a floor carrying it | a gate saved open and closed by the rebuild opened; one saved closed and open by the rebuild closed without asking, its cells having been blocked at the save; the stream initialised to the seed |
+| Void Parasite | the voidlings attached | the stacks; the next beat writes the loss |
+
+### Tests
+
+`Cataclysm.SaveLoad.AWarzoneHoldComesBackAfterALoad`: the first pinned seed from 1 to 20 whose floor 2 has two points
+or more, the first with a shortcut, and none within twice a point's radius of the entrance. Point 0 captured by
+standing in it 30 s, then 10 s in point 1, then the entrance. After the load, at the entrance, one beat: point 0 held
+and its shortcut open; point 1 at the seconds saved; the dungeon rule on attack damage exactly 10 (20 if written
+twice); no allied soldier standing. CONTROL: allies stood before the save. Prints "LOAD WARZONE".
+
+`Cataclysm.SaveLoad.TheLabrynthSwapsTheSameAfterALoad`: the first pinned seed whose floor 2 has four Labrynth gates,
+else three; the floor's creatures cleared and the player at the entrance, so a close the placement rule refuses is
+refused in both runs alike. One swap, then 7 s; saved; then the next four swaps without a load, recorded as the open
+gates after each. After the load: the gates as saved, and the next four swaps the same, in order, beating until they
+have come. Prints "LOAD LABRYNTH".
+
+`Cataclysm.SaveLoad.VoidParasiteStacksComeBackAfterALoad`: seed 1, the voidling roll pinned to rise (both put back and
+asserted back). Two of floor 2's creatures out of the light killed by the player and each voidling walked to, which
+attaches it; then the entrance. After the load, at the entrance, one beat: two attached, and the dungeon rule on attack
+damage exactly `VoidParasiteLessPercent(2)` off. Prints "LOAD VOID PARASITE".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4404 / 0: window w111's 4401 on `development`, + 3; 4407 if #1722, which adds 3, merges first, read from its window |
+| Python | of record, with JUnit, and ruff |
+| P1, the seconds at a point not put back | the Warzone test fails on "the seconds stood at point 1 come back" (0, not 10) only |
+| P2, the captured points not put back | the Warzone test fails on "the captured point stays held" (0) and "the point's strength is on the player once" (0) only: the shortcut is still opened by the next line |
+| P3, a captured point's shortcut not opened | the Warzone test fails on "and its shortcut open" only: only a capture opens it, and the beat captures nothing |
+| P4, the Labrynth not put back | the Labrynth test fails on "the gates come back open and closed as saved": the rebuild's pattern opens the odd gates and the saved one is a swap past it. "and the next four swaps ..." is not predicted, since four swaps from another start could match by chance; recorded either way |
+| P5, the Labrynth's stream not put back | the Labrynth test fails on "and the next four swaps are the ones made without a load" only. NOT TRACED BY HAND: the loaded stream is the floor-start one, behind the saved one by the first swap's draws, and four swaps drawn from it match by chance with a probability estimated (not measured) at about one in 256 with four gates; a match would leave the proof not proved, recorded as such |
+| P6, the voidlings attached not put back | the Void Parasite test fails on "the voidlings attached come back" (0) and "and their loss is on the player once" (0) only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 73 actions, 63 files compiled`, at
+the first attempt (a new worktree, so everything was compiled). Python of record on that head: `7171 passed, 8 skipped
+in 192.39s`, the JUnit file tests 7179, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+---
+
 ## 2026-10-30 — Famine's Withering Blows: ten hits that take health show a Withering count, then slow the player's walk and attacks by 30% for 4 seconds; Temporal Debt is removed (#1722)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Temporal Debt removed, Wither given its numbers and sentence,
