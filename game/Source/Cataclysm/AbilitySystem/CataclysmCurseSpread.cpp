@@ -52,12 +52,21 @@ int32 UCataclysmCurseSpread::SpreadFromDying(AActor* Dying)
 
 	// THE CASTER IS CREDITED, AND THE DYING CREATURE STANDS IN FOR IT WHEN IT IS
 	// GONE. A player who cursed a pack and then left, or died, should not stop
-	// the curse it already paid for from passing on. `FindEnemiesInSphere` needs
-	// somebody to decide sides from, and the dying creature knows its own.
+	// the curse it already paid for from passing on.
 	AActor* Credited = Mark->Caster.IsValid() ? Mark->Caster.Get() : Dying;
 
-	TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
-		Dying->GetWorld(), Credited, Dying->GetActorLocation(), Mark->RangeCm);
+	// "THE NEAREST LIVING ENEMY" IS AN ENEMY OF THE CASTER'S SIDE, which is the
+	// dying creature's own side. With the caster here, that is the caster's
+	// enemies. With the caster gone, it is the dying creature's ALLIES: its
+	// enemies are the player's side, and asking for them passed a curse whose
+	// caster had gone to the nearest of the player's own characters. Ruled
+	// 2026-10-31, when passed curses began to pass again and that fault would
+	// have run from one of the player's characters to the next.
+	TArray<AActor*> Nearby = Mark->Caster.IsValid()
+		? UCataclysmTargeting::FindEnemiesInSphere(
+			Dying->GetWorld(), Credited, Dying->GetActorLocation(), Mark->RangeCm)
+		: UCataclysmTargeting::FindAlliesInSphere(
+			Dying->GetWorld(), Dying, Dying->GetActorLocation(), Mark->RangeCm);
 
 	// NOT BACK ONTO THE CORPSE. This runs before the death is recorded, so the
 	// dying creature is still found by the search and has to be dropped by name.

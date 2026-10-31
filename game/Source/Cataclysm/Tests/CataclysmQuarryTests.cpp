@@ -9,8 +9,10 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -102,6 +104,21 @@ namespace CataclysmQuarryJumpTest
 			return Skill;
 		}
 
+		/** A Debuff-shaped skill written here, in the Support slot, or null. */
+		UCataclysmSkillTemplate* GrantDebuff(const FString& ParamText, const FString& Name)
+		{
+			const FGameplayAbilitySpecHandle Handle = AbilitySystem->GiveAbilityInSlot(
+				UCataclysmDebuffSkill::StaticClass(), ECataclysmAbilitySlot::Support, /*Level=*/100, Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid() ? AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmSkillTemplate* Skill = Spec ? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->SkillName = Name;
+				Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			}
+			return Skill;
+		}
+
 		bool UseSkill(UCataclysmSkillTemplate* Skill)
 		{
 			return Skill && AbilitySystem->TryActivateAbility(Skill->GetCurrentAbilitySpecHandle(),
@@ -115,11 +132,11 @@ namespace CataclysmQuarryJumpTest
 	/** An enemy: a real character on the monsters' side, so a search finds it and a mark can order onto it. */
 	struct FQuarryJumpEnemy
 	{
-		FQuarryJumpEnemy(UWorld* World, const FVector& Where)
+		FQuarryJumpEnemy(UWorld* World, const FVector& Where, ECataclysmTeam Team = ECataclysmTeam::Monsters)
 		{
 			Actor = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
 			check(Actor);
-			Actor->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Actor->SetGenericTeamId(UCataclysmTeams::IdFor(Team));
 			Actor->SetHealth(1000.0f);
 			Actor->SetAttackDamage(50.0f);
 		}
@@ -284,6 +301,63 @@ bool FCataclysmQuarryMarkJumpsAgainTest::RunTest(const FString&)
 	TestTrue(TEXT("the second holder dies"), UCataclysmSkillEffects::MarkDead(Second.Actor));
 	TestTrue(TEXT("the mark jumps again, to the third enemy"), Third.IsMarked());
 	TestTrue(TEXT("and it is now the caster's quarry"), UCataclysmCommand::QuarryOf(Caster.Actor) == Third.Actor);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseWithItsCasterGoneTest,
+	"Cataclysm.Skills.ACurseWhoseCasterIsGonePassesToTheDyingCreaturesSideNotThePlayers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseWithItsCasterGoneTest::RunTest(const FString&)
+{
+	// "THE NEAREST LIVING ENEMY" IS AN ENEMY OF THE CASTER'S SIDE. With the caster gone the dying creature stands in for
+	// it, and the search asked for ITS enemies, which are the player's side: a curse whose caster had gone passed to the
+	// nearest of the player's own characters. Ruled 2026-10-31: with the caster gone, the dying creature's own allies.
+	//
+	// SHRED, AND NOT MADNESS, because a maddened creature is hostile to everything, which would decide the sides this
+	// test is about. Written here rather than read from a shipped row: what is under test is the search, not a skill.
+	using namespace CataclysmQuarryJumpTest;
+
+	const FGameplayTag Shred = FGameplayTag::RequestGameplayTag(FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: the Shred tag exists"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FQuarryJumpCaster Caster(World, FVector::ZeroVector);
+	FQuarryJumpEnemy Holder(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSkillTemplate* Skill = Caster.GrantDebuff(
+		TEXT("Range=15; MaxTargets=1; EffectDuration=10; Effect=Shred; OnDeath=SpreadDebuff; OnDeathRange=8"),
+		TEXT("A curse that passes on death"));
+	if (!TestNotNull(TEXT("set-up: the curse is granted"), Skill))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the curse is cast"), Caster.UseSkill(Skill));
+	TestTrue(TEXT("set-up: the holder is cursed"), UCataclysmSkillEffects::HasTag(Holder.Actor, Shred));
+
+	// PLACED AFTER THE CAST, so the cast cannot choose either of them. The player's character is the NEARER of the two,
+	// two metres from the holder against the monster's five, so the old search's answer is the one tested against.
+	FQuarryJumpEnemy PlayersOwn(World, FVector(3 * M, 2 * M, 0), ECataclysmTeam::Players);
+	FQuarryJumpEnemy Ally(World, FVector(3 * M, -5 * M, 0));
+
+	// THE CASTER GOES. A gadget or trap that cast a copy and has expired is the case in play.
+	const TWeakObjectPtr<AActor> CasterWatch(Caster.Actor);
+	Caster.Actor->Destroy();
+	if (!TestFalse(TEXT("set-up: the caster is gone"), CasterWatch.IsValid()))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the holder dies"), UCataclysmSkillEffects::MarkDead(Holder.Actor));
+	TestTrue(TEXT("a monster near it, of its own side, gains the curse"), UCataclysmSkillEffects::HasTag(Ally.Actor, Shred));
+	TestFalse(TEXT("and the player's character, standing nearer, does not"),
+		UCataclysmSkillEffects::HasTag(PlayersOwn.Actor, Shred));
 
 	return true;
 }
