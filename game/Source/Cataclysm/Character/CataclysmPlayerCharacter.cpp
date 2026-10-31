@@ -25,6 +25,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -1491,8 +1492,10 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
-	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273.
-	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this);
+	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273. AND WHAT WITHER LEAVES, multiplied
+	// with it as a separate slow. Issue #1722.
+	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this)
+		* UCataclysmSkillEffects::WitherMultiplierOn(this);
 
 	if (!Cataclysm)
 	{
@@ -2641,6 +2644,17 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 			ASC->RegisterGameplayTagEvent(CrippleTag, EGameplayTagEventType::NewOrRemoved);
 		CrippleChanged.Remove(CrippleChangedHandle);
 		CrippleChangedHandle = CrippleChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnCrippleChanged);
+	}
+
+	// AND WHEN WITHER IS GAINED OR LOST, for the same reason. Issue #1722. The handler is Cripple's: both only ask
+	// for the walking speed to be worked out again.
+	const FGameplayTag WitherTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Wither"));
+	if (WitherTag.IsValid())
+	{
+		FOnGameplayEffectTagCountChanged& WitherChanged =
+			ASC->RegisterGameplayTagEvent(WitherTag, EGameplayTagEventType::NewOrRemoved);
+		WitherChanged.Remove(WitherChangedHandle);
+		WitherChangedHandle = WitherChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnCrippleChanged);
 	}
 
 	// AND WHEN THE CHARACTER BEGINS OR STOPS CHANNELLING, WHICH MOVES NO ATTRIBUTE EITHER. Ruled 2026-10-08. A

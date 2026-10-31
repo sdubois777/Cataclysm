@@ -573,6 +573,17 @@ public:
 	static FString StunnedTextFor(const AActor* Actor);
 
 	/**
+	 * "Withering 3/10" while a living actor carries `Status.Debuff.Withering`, which is the count of Famine's
+	 * Withering Blows building towards its slow, or empty. Issue #1722: the project owner chose, on 2026-10-30, that
+	 * the count is shown from one to nine so the slow can be seen coming. The count and its cap are the stack
+	 * kind's (`UCataclysmStacks`); the form is the kept stacks' ("Temporal Flux 3/5").
+	 */
+	static FString WitheringTextFor(const AActor* Actor);
+
+	/** "Withered" while a living actor carries `Status.Debuff.Wither`, the slow at ten, or empty. Issue #1722. */
+	static FString WitheredTextFor(const AActor* Actor);
+
+	/**
 	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
 	 * while it holds none. Read from `UCataclysmAbilitySystemComponent::HeldRandomBuff` and
 	 * `HeldRandomBuffSecondsLeft`.

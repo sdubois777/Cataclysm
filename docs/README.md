@@ -100,7 +100,7 @@ which group it is in:
   `game/Data/EnchantmentsNegative.csv` hold the two counts, and
   `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins them.
 - **Enemy Modifiers** is a matrix, one column per Cataclysm and each cell holding
-  `Name: Description`. Its 11 rows across 8 columns hold 79 modifiers.
+  `Name: Description`. Its 11 rows across 8 columns hold 80 modifiers.
 - **Crafting** is three tables stacked: 27 materials, a heading row whose first
   cell is the word "Action", and 18 Forge operations. Rows 5 to 11 also carry an
   unrelated six-row table in columns 7 to 9.

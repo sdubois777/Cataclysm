@@ -77,6 +77,12 @@ CLAIMS: dict[str, list[tuple[str, float, str]]] = {
     "Debuff_Madness": [
         ("DurationSeconds", 3.0, "friend or foe, for 3 seconds"),
     ],
+    # Wither, the slow at ten stacks of Famine's Withering Blows. Issue #1722; the project owner approved the
+    # figures on 2026-10-30. Its count and its eight-second window are the stack kind's, in CataclysmStacks.cpp.
+    "Debuff_Wither": [
+        ("DurationSeconds", 4.0, "attack speed by 30% for 4 seconds"),
+        ("Strength", 30.0, "movement and attack speed by 30%"),
+    ],
     "Debuff_Cripple": [
         ("DurationSeconds", 4.0, "attack speed by 30% for 4 seconds"),
         ("Strength", 30.0, "movement and attack speed by 30%"),

@@ -711,11 +711,13 @@ void ACataclysmHUD::DrawPlayerVitals()
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
 
-	// AND THE FOUR TAGGED DEBUFFS, one line each, as Madness above: a worn row can put any of them on the player
-	// every 15 seconds, and until issue #2379 nothing named them.
+	// AND THE TAGGED DEBUFFS, one line each, as Madness above. The first four because a worn row can put any of them
+	// on the player every 15 seconds, and until issue #2379 nothing named them; Withering and Withered since #1722.
 	for (const FString& Debuff :
 		 {UCataclysmCombatOverlay::CrippledTextFor(Pawn), UCataclysmCombatOverlay::WeakenedTextFor(Pawn),
-		  UCataclysmCombatOverlay::ShreddedTextFor(Pawn), UCataclysmCombatOverlay::StunnedTextFor(Pawn)})
+		  UCataclysmCombatOverlay::ShreddedTextFor(Pawn), UCataclysmCombatOverlay::StunnedTextFor(Pawn),
+		  // AND FAMINE'S WITHERING COUNT, THEN ITS SLOW. Issue #1722: the count shows so the slow can be seen coming.
+		  UCataclysmCombatOverlay::WitheringTextFor(Pawn), UCataclysmCombatOverlay::WitheredTextFor(Pawn)})
 	{
 		if (!Debuff.IsEmpty())
 		{

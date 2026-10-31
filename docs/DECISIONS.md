@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Famine's Withering Blows: ten hits that take health show a Withering count, then slow the player's walk and attacks by 30% for 4 seconds; Temporal Debt is removed (#1722)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Temporal Debt removed, Wither given its numbers and sentence,
+Withering added; Enemy Modifiers: Famine's Withering Blows), and from it `game/Data/StatusEffects.csv`,
+`game/Data/EnemyModifiers.csv` and `game/Config/Tags/CataclysmTags.ini`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmStacks.h` and `.cpp` (the `Withering` stack kind and `NoteWithering`);
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` (`WitheringBlowsRow`, `WitherOnHit`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the call on a hit that took health);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (`WitherMultiplierOn`);
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (the walk, the swing and the throw read it);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` ("Withering N/10" and "Withered");
+`game/Source/Cataclysm/Tests/CataclysmWitheringTests.cpp` (new, 3 tests); `CataclysmStacksTests.cpp`,
+`CataclysmDataTableTests.cpp` and `CataclysmEnemyModifierTests.cpp` (moved, none deleted);
+`tools/tests/test_status_effect_numbers_match_their_prose.py` (Wither's two figures); `docs/README.md` (80
+modifiers); this file.
+
+### SAID FIRST
+
+- **A FAMINE CREATURE CARRYING WITHERING BLOWS ADDS ONE STACK OF WITHERING TO THE PLAYER FOR EACH HIT THAT TAKES
+  HEALTH.** From one to nine the player sees "Withering N/10" above their bars and is not slowed. At ten, Withering is
+  taken off, every stack is spent, and the player is given **Wither: 30% less movement speed and 30% less attack speed
+  for 4 seconds**, shown as "Withered".
+- **THE COUNT IS LOST WHEN EIGHT SECONDS PASS BETWEEN TWO SUCH HITS.** Every creature attacks more often than that, so
+  any carrier that keeps landing hits reaches ten on its own, from 8.1 seconds for an Imp to 27 for the Gatekeeper.
+- **THE PROJECT OWNER FIRST APPROVED A 12-SECOND WINDOW ON A MISDESCRIBED MECHANISM, then chose 8 seconds once it was
+  described correctly.** The enchantment session had described the window as a time within which all ten hits must
+  land, and gave a table of which creatures could do that alone. The stack system does not work that way: one expiry
+  is kept per kind and every grant moves it, so the window is the longest gap allowed between hits. Corrected the same
+  day, before anything was built; the owner then chose Infernal Brand's 8 seconds, for its stated reason.
+- **TEMPORAL DEBT IS REMOVED**, from the design workbook, the generated table, the tag list and, at the next asset
+  rebuild, `DT_StatusEffects`. Nothing in the game referred to it.
+- **TOUCH OF NOTHING IS NOT IN THIS CHANGE.** Its missing half is a way to cancel a buff, which the game does not have.
+
+### THE OWNER'S ANSWERS AND THE RULINGS
+
+The project owner, 2026-10-30, on #1722's question:
+
+1. **Wither: "Enemy modifier stacks".** An enemy modifier for one Cataclysm, where hitting a player applies a stack,
+   the shape of Void's Touch of Nothing.
+2. **Temporal Debt: "Remove it".**
+3. **The numbers, approved:** one stack per hit that takes health; at 10 stacks, 30% less movement and attack speed for
+   4 seconds, and the stacks are spent; a 12-second window. **Then, on the corrected description: "8 seconds"**, the
+   same as Infernal Brand, for the same reason.
+4. **"Show the count"**: a separate status, Withering, with no effect, shown with the count while it builds, so the
+   player can see the slow coming and disengage; at the tenth stack Withering clears and Wither applies.
+
+The coordinating session ruled the rest: Famine as the Cataclysm, the row "Withering Blows", built on Infernal Brand's
+path; the removal list, leaving the dated record of 2026-10-27 in this file as it is; Touch of Nothing kept separate.
+**The 2026-10-27 entry's list of "(planned)" cells still names Temporal Debt and Wither, and is left as written: it is
+a record of that day.**
+
+### GENRE RESEARCH: A SLOW THAT BUILDS ON HIT
+
+How shipped games apply a stacking slow to the player from a monster's hits. Fetched 2026-10-30.
+
+- **Path of Exile 2, "Gruelling Madness"** (`poe2db.tw/us/Slow`, game text): a monster effect. The first stack slows
+  movement by 15%; "Each additional Gruelling Madness instead increases the Slowing Potency of Debuffs on the targets
+  by 10%"; at most 10 per target; "Targets will lose 1 Gruelling Madness every 2 seconds that passes without more being
+  inflicted."
+- **Last Epoch, Chill and Slow** (`maxroll.gg/last-epoch/resources/ailments-explained`, a guide site): Chill "Reduces
+  movement, attack and cast speed by 12% per stack", "Can stack up to 3 times"; Slow "Reduces movement speed by 20%",
+  up to 3 stacks. **Last Epoch's own wiki (`lastepoch.fandom.com`) answered HTTP 402 and could not be read**, so these
+  are a guide's words. **Search results quoted Slow at 10% against players; that figure is UNCONFIRMED**: no readable
+  page stated it.
+- **Diablo IV**: repeated Chill freezes at a threshold (the Frozen and Chilling Wind elite affixes); PC Gamer reported
+  that patch 1.1.3 toned monsters' slows and chills down because they took control from the player.
+
+**What the research settles: the shape.** A monster's hits add stacks; the stacks are capped (Path of Exile 2's 10,
+Last Epoch's 3); they are lost unless refreshed; the slow covers movement and attack speed together (Last Epoch's
+Chill); and a threshold that turns a count into a stronger state is a shipped pattern (Diablo IV's freeze).
+**What it does not settle: the numbers.** The 30% and 4 seconds are Cripple's, which the design calls the player's
+equivalent of Wither; Last Epoch's full Chill is 36%. They are the owner's approved judgement, not derived.
+
+### HOW IT IS BUILT
+
+- **Infernal Brand's path.** `UCataclysmEnemyModifiers::WitherOnHit` is called beside `BrandOnHit` on a resolved blow
+  that took health, and is refused for a damage-over-time tick, because the owner's rule is one stack per hit. It
+  grants a stack of the new kind `ECataclysmStackKind::Withering` (window 8 s, cap 10), and at ten
+  `UCataclysmStacks::NoteWithering` spends every stack by `ClearStacks`, as the brand's are.
+- **Two statuses.** `Status.Debuff.Withering` is put on, or refreshed, by every hit that adds a stack, for the window's
+  8 seconds, so it lasts exactly as long as the count; it moves nothing. At ten it is taken off and
+  `Status.Debuff.Wither` is put on for the `Debuff_Wither` row's 4 seconds, stating the row's 30.
+- **A slow of its own, multiplied with Cripple's.** `UCataclysmSkillEffects::WitherMultiplierOn` is Cripple's reader
+  for Wither's tag and row. The walk, the seconds between swings and the seconds between throws multiply Cripple's
+  share by Wither's, because the design names them as two effects and the project's rule since 2026-09-24 is that
+  separate slows multiply. A player carrying both keeps 0.7 x 0.7 of a speed. Reusing Cripple's tag was considered and
+  not taken: the player would read "Crippled", and the stronger of the two would replace the other.
+- **On screen.** "Withering N/10" in the kept stacks' form ("Temporal Flux 3/5"), shown while the status and the count
+  are both held, and "Withered" while the slow is, on the line above the player's bars and on a creature's status line
+  (where both are always empty: only a player is hit by the modifier). Infernal Brand shows no count anywhere; nothing
+  else displayed a count on a status with no effect, so the kept stacks' text is the pattern copied.
+- **The key is `Famine_Withering_Blows`**, which the generator makes from the modifier's name; the coordinating
+  session's working name `Famine_Wither` is not a key.
+
+### THE COUNTS THAT MOVED
+
+`game/Data/EnemyModifiers.csv` 79 to 80 rows, pinned in `CataclysmDataTableTests.cpp` and stated in `docs/README.md`
+and two comments; Famine's pool 7 to 8, so the smallest pool is now 8 (Demonic, Famine, Celestial and Chaos).
+`game/Data/StatusEffects.csv` stays at 52 (Temporal Debt out, Withering in), and the Debuffs sheet at 27 rows.
+`Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers` gains the sixth kind: window 8.00, cap 10, name
+"Withering".
+
+### THE TESTS
+
+New, `game/Source/Cataclysm/Tests/CataclysmWitheringTests.cpp`, group `Cataclysm.Withering.`:
+
+- `TheCountFiresAtTenSpendsEveryStackAndLapsesAfterEightSeconds`: twenty notes fire on the tenth and the twentieth,
+  with the count "1 ... 9 0 1 ... 9 0"; nine stacks held at 7.9 seconds and none at 8.1, and the next starts at one.
+- `ACarriersHitsShowTheCountThenTheTenthSlowsWalkAndSwingForFourSeconds`: a control first (a creature without the
+  modifier adds nothing); then "Withering 1/10" to "Withering 9/10" with no Wither; at the tenth, Withering off, the
+  count spent, Wither on and named "Withered", 0.7 of the walk and ten sevenths of the swing interval; Wither still
+  held at 3.9 seconds and gone at 4.1, with the walk whole again.
+- `TheCountIsNoLongerShownOnceItLapsesAndABlowThatTookNoHealthAddsNone`: five hits show "Withering 5/10"; 8.1 seconds
+  later the count, its text and its status are gone and nothing slowed; the next hit shows "Withering 1/10"; and a
+  blow an energy shield takes whole adds no stack.
+
+Python: `tools/tests/test_status_effect_numbers_match_their_prose.py` holds Wither's 4 seconds and 30% to its
+sentence.
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, `test_prefix="Cataclysm.Withering."`, in the editor window that follows the
+asset rebuild. Each break text occurs once in its file. Names are the short names the engine's log prints.
+
+| # | File | Break | Predicted named_failures |
+| :-- | :-- | :-- | :-- |
+| 1 | `Character/CataclysmEnemyModifiers.cpp` | Withering is not taken off at ten: `UCataclysmSkillEffects::RemoveEffectsGranting(Target, Withering);` becomes `(void)Withering;` | `ACarriersHitsShowTheCountThenTheTenthSlowsWalkAndSwingForFourSeconds` |
+| 2 | `Interface/CataclysmCombatOverlay.cpp` | the count is never shown: `return Held > 0` becomes `return Held > 99` | `ACarriersHitsShowTheCountThenTheTenthSlowsWalkAndSwingForFourSeconds`, `TheCountIsNoLongerShownOnceItLapsesAndABlowThatTookNoHealthAddsNone` |
+| 3 | `Character/CataclysmPlayerCharacter.cpp` | the walk does not read Wither: `* UCataclysmSkillEffects::WitherMultiplierOn(this);` becomes `* 1.0f;` | `ACarriersHitsShowTheCountThenTheTenthSlowsWalkAndSwingForFourSeconds` |
+| 4 | `AbilitySystem/CataclysmStacks.cpp` | the count is not spent at ten: `gives: the row says every stack is spent at ten, and a grant cannot clear.` followed by `AbilitySystem->ClearStacks(Kind);` loses that call (a two-line anchor, the call replaced by `(void)0;`) | `TheCountFiresAtTenSpendsEveryStackAndLapsesAfterEightSeconds`, `ACarriersHitsShowTheCountThenTheTenthSlowsWalkAndSwingForFourSeconds` |
+
+Why: **1** leaves the status on at ten, which the second test asserts is off; the third test's lapse is unaffected,
+because the status expires with its own 8 seconds. **2** blanks every count text, which the second and third tests
+read; the controls that expect no text still pass. **3** leaves the walk whole under Wither; the swing still slows, and
+the second test reads both. **4** leaves the count at ten, so every later note fires (the first test) and the count
+after the tenth hit is not nought (the second).
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-10-30 — A designed wand or staff skill must carry Type.Spell, or be named as not a spell with its ruling (#2012)
 
 **Affects:** `tools/tests/test_a_designed_caster_skill_is_a_spell.py` (new, 3 tests); this file.

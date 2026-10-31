@@ -43,7 +43,7 @@
 /**
  * Tests for which modifiers a creature is given, issue #742.
  *
- * WHAT WAS WRONG. Nothing gave any creature a modifier. The 79 rows have been in
+ * WHAT WAS WRONG. Nothing gave any creature a modifier. The 79 rows of that time had been in
  * `game/Data/EnemyModifiers.csv` since the workbook was imported, the list on
  * the creature has existed since issue #740 and the hover panel has printed it,
  * and the list was empty on every creature the game ever spawned unless somebody
@@ -315,7 +315,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierDrawTest,
 
 	// ASKING FOR MORE THAN THE POOL HOLDS ANSWERS THE POOL, rather than looping
 	// for ever. It cannot happen with the shipped data -- the smallest pool is
-	// Famine's 7 plus 10 Generic and the most anything draws is 5 -- so this is
+	// 8 (four Cataclysms have 8) plus 10 Generic and the most anything draws is 5 -- so this is
 	// the guard rather than a case in play.
 	FRandomStream Greedy(11);
 	const TArray<FName> TooMany = UCataclysmEnemyModifiers::Draw(

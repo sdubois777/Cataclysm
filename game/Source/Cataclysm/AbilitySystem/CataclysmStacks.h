@@ -43,7 +43,9 @@ class UCataclysmAbilitySystemComponent;
  * by passing numbers in rather than by building a character, a world and an
  * effect spec for every case.
  *
- * FOUR PLACES GRANT AND NO MORE:
+ * FIVE PLACES GRANT AND NO MORE. This said four, and left Feasting out, until
+ * Withering was added (#1722): Feasting is granted inside `NoteDamageTaken`, on
+ * the same resolved hit as Blood Offering.
  *
  *   Sanguine Momentum  `UCataclysmSkillTemplate::PayHealthCost`, the one place
  *                      a health cost is worked out
@@ -54,6 +56,9 @@ class UCataclysmAbilitySystemComponent;
  *                      reaches the player to grant experience for the kill
  *   Infernal Brand     `UCataclysmEnemyModifiers::BrandOnHit`, for a blow that
  *                      took health, from a creature carrying that modifier
+ *   Withering          `UCataclysmEnemyModifiers::WitherOnHit`, the same, from
+ *                      a creature carrying Withering Blows, for a blow that is
+ *                      not a damage-over-time tick
  *
  * AND TWO PLACES EMPTY A COUNT, both through
  * `UCataclysmAbilitySystemComponent::ClearStacks`. `NoteInfernalBrand` empties
@@ -119,6 +124,24 @@ enum class ECataclysmStackKind : uint8
 	 * inheriting a count from blows it took before.
 	 */
 	Feast				UMETA(DisplayName = "Feasting"),
+
+	/**
+	 * Granted to a PLAYER by a creature carrying the Famine enemy modifier
+	 * Withering Blows, one for each of its hits that took health. At ten the
+	 * player is slowed and every stack is spent. Issue #1722.
+	 *
+	 * INFERNAL BRAND'S PATH WITH A DIFFERENT ACT AT THE THRESHOLD. The count is
+	 * kept the same way; what ten stacks do is `Status.Debuff.Wither`, read by
+	 * `UCataclysmSkillEffects::WitherMultiplierOn`. The window and the cap are
+	 * this file's; the slow's strength and duration are the `Debuff_Wither` row's.
+	 *
+	 * TWO STATUSES, BY THE PROJECT OWNER'S CHOICE OF 2026-10-30. While the count
+	 * builds, from one to nine, the player carries `Status.Debuff.Withering`,
+	 * which does nothing and is shown with the count ("Withering 3/10"), so the
+	 * slow can be seen coming and walked away from. At ten Withering is taken
+	 * off and Wither, the slow, is put on.
+	 */
+	Withering			UMETA(DisplayName = "Withering"),
 
 	/** How many kinds there are. Not a kind. */
 	Count				UMETA(Hidden)
@@ -274,6 +297,17 @@ public:
 	 *         it.
 	 */
 	static bool NoteInfernalBrand(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * One more Withering on whatever was just hit. Issue #1722.
+	 *
+	 * THE STACKS ARE SPENT BEFORE THIS RETURNS TRUE, as `NoteInfernalBrand`
+	 * spends the brand's, so the next ten start from nought.
+	 *
+	 * @return true when this stack was the tenth, so the caller should slow
+	 *         the target.
+	 */
+	static bool NoteWithering(UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How many stacks of a kind this character is holding right now.
