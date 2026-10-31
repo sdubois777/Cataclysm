@@ -2276,6 +2276,9 @@ public:
 	ACataclysmEnemyCharacter* PlaguebearerOnTheFloor() const { return Plaguebearer.Get(); }
 	int32 PlaguebearerStacksNow() const { return PlaguebearerStacks; }
 
+	/** The Plaguebearer, for tests: it was chosen on this floor and has fallen, which clears its stacks for good. */
+	bool PlaguebearerHasFallen() const { return bPlaguebearerFallen; }
+
 	/**
 	 * The Plaguebearer is chosen from this floor's own creatures once they are placed: a random one at the Elite rung, or
 	 * a Common raised to it. Public so a test can choose again after changing the creatures' rungs. Issues #1820 and #41.
@@ -2661,6 +2664,9 @@ public:
 	/** The echoes standing now. */
 	TArray<ACataclysmEnemyCharacter*> EchoesStandingNow() const;
 
+	/** Echoes of the Past, for tests: 0 waiting, 1 appeared, 2 struck, 3 gone. */
+	int32 EchoesStageNow() const { return EchoesStage; }
+
 	/** Plague Harbingers, for the panel and tests: the Harbingers alive now. */
 	TArray<ACataclysmEnemyCharacter*> PlagueHarbingersAlive() const;
 
@@ -2795,6 +2801,13 @@ public:
 
 	/** The index of the closed Soul Chains gate whose chain this creature bears, or -1. For the save. Issue #753, 3c-1. */
 	int32 SoulChainsGateBorneBy(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * The roles the floor's rules gave this creature, written onto its record for the save: its Lightforged Walls
+	 * section, the Plaguebearer, a Quarantine Breach release, and Famished Beasts' drops eaten and health added.
+	 * `RestoreCreatureRoles` puts them back. Issue #753, Group 3d-1, ruled 2026-10-30.
+	 */
+	void CreatureRolesInto(const ACataclysmEnemyCharacter& Creature, struct FCataclysmSavedCreature& Record) const;
 
 	/**
 	 * A LOAD'S, BEFORE ITS CREATURES ARE RE-LINKED: every Soul Chains gate forgets its bearers, which are the rebuilt

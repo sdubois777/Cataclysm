@@ -216,6 +216,31 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 SoulChainsGate = -1;
+
+	/**
+	 * THE ROLES THE FLOOR'S RULES GAVE THIS CREATURE, put back by `ACataclysmDungeonGameMode::RestoreCreatureRoles`.
+	 * Issue #753, Group 3d-1, ruled 2026-10-30. Without them a load gave the rebuilt floor's fresh creatures each role,
+	 * destroyed them, and the rule read its role-holder dead on the next beat:
+	 * - the section Lightforged Walls placed it in, or -1: every barrier opened on the first beat, sections full or not;
+	 * - the Plaguebearer: its stacks cleared on the first beat, as at its death, and it came back hostile;
+	 * - one of Quarantine Breach's released creatures: its death spread no patch;
+	 * - the drops it ate under Famished Beasts and the health that rule added: its damage bonus was lost, and a drop
+	 *   eaten after the load put a share on top of the share already in the saved maximum.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FloorSection = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsPlaguebearer = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bQuarantineReleased = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FamishedDropsEaten = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float FamishedHealthAdded = 0.0f;
 };
 
 /**
@@ -653,6 +678,31 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	/** Void Parasite: the voidlings attached to the player. 3c-2. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 VoidParasiteStacks = 0;
+
+	/**
+	 * Echoes of the Past: the echoes have struck on this floor (their stage 2, struck, or 3, gone), so a load raises none
+	 * again (3d-1, Q1). A stage before the strike is not saved: the echoes rise again 5 s after the load and strike, the
+	 * pending strike kept and its clock restarted (D1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bEchoesStruck = false;
+
+	/**
+	 * The Plaguebearer: its stacks, a cost built up (3d-1, Q2), whether one was chosen, and whether it has fallen. The
+	 * seconds since the last stack are a timer and restart (D1). The bearer itself is marked on its creature record.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PlaguebearerStacks = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlaguebearerChosen = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlaguebearerFallen = false;
+
+	/** Famished Beasts: the drops eaten on this floor, for the panel. Each eater's own is on its record. 3d-1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FamishedBeastsDropsEaten = 0;
 };
 
 /**

@@ -2,6 +2,174 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A load no longer has echoes strike twice, opens no section barrier early, keeps the Plaguebearer and its stacks, and keeps Quarantine's released creatures and Famished eaters as they were (#753, Group 3d-1)
+
+**Affects:** `FloorSection`, `bIsPlaguebearer`, `bQuarantineReleased`, `FamishedDropsEaten` and `FamishedHealthAdded` on
+`FCataclysmSavedCreature`, and `bEchoesStruck`, `PlaguebearerStacks`, `bPlaguebearerChosen`, `bPlaguebearerFallen` and
+`FamishedBeastsDropsEaten` on `FCataclysmSavedFloorRuleState` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`),
+gathered in `FCataclysmSaveGather::FloorFrom`; `CreatureRolesInto` (new), `RestoreCreatureRoles`, `FloorRuleStateNow`,
+`RestoreFloorRuleState`, and `PlaguebearerHasFallen` and `EchoesStageNow` (new, for tests) on `ACataclysmDungeonGameMode`
+(`CataclysmDungeonGameMode.h`, `.cpp`); the fixture `game/Tests/SaveFixtures/Run_v1.json`; seven new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: 3d-2 and 3d-3 follow.
+
+### SAID FIRST
+
+- **PASSED IN UNREAL, window w113, every figure as registered:** the seven new tests, the whole suite at 4418 / 0,
+  and P1-P9 each proved on exactly its registered assertions.
+- **A COST EVERY LOAD CHARGED TWICE, FOUND BY READING ON 2026-10-30 AND FIXED HERE FIRST: ECHOES OF THE PAST STRUCK AGAIN.**
+  The echoes' stage and clock were not saved, and the load's floor change sets both to nought
+  (`ApplyFloorRulesToPlayer`: "EchoesStage = 0;"), while `RestoreWalkState` puts back the last floor's dead. So a save
+  taken after the echoes struck raised them again 5 s after the load, and they struck again at 6 s; the player's health
+  had been saved after the first strike. A strike still pending at the save was not forgiven, as Q3 of 3c supposed: it
+  was replayed from the start.
+- **FOUR RULES' ROLES WERE GIVEN TO THE REBUILT FLOOR'S FRESH CREATURES, WHICH THE LOAD DESTROYS (F3), with these effects
+  on the first beat:**
+  - every Lightforged Walls barrier opened, sections full or not, because no restored creature had a section;
+  - the Plaguebearer read dead, so its stacks cleared as at its death, and its saved body came back a hostile Elite;
+  - Quarantine Breach's released creatures came back as ordinary creatures, so their deaths spread no patch;
+  - a Famished Beasts eater lost its drops eaten and its damage bonus, and a drop eaten after the load put a health
+    share on top of the share already in its saved maximum (#2181).
+- **FOUND BY READING AND NOT RUN BEFORE THIS BRANCH:** read by three read-only agents and checked by hand at the lines
+  quoted above, 2026-10-30.
+
+### Rulings, 2026-10-30
+
+- **Q1. The echoes' stage is saved as "struck".** A stage of 2 or more loads as 3: struck, nothing raised again. Stages
+  0 and 1 keep today's behaviour: the echoes rise again 5 s after the load and strike, the pending strike kept and its
+  clock restarted (D1). The stages in the code (`StepEchoesOfThePast`):
+  - **0, waiting:** the floor's clock is under `EchoesAppearAfterSeconds` (5 s); nothing stands.
+  - **1, appeared:** the echoes stand, raised by the rule, unable to be hurt and paying nothing; their strike is due at
+    6 s.
+  - **2, struck:** each echo has used its recorded attack on the player once; they still stand until 7 s.
+  - **3, gone:** `DismissTheEchoes` has destroyed them; the rule does nothing more on the floor.
+  Echoes standing at stage 2 are not brought back: creatures standing after their strike are 3d-3's, as ruled.
+- **Q2. The Plaguebearer's stacks are saved:** stacks built are a cost built up, as Blood Price's in Group 1. The seconds
+  since the last stack are a timer and restart. **A Plaguebearer killed before the save pays and counts nothing again on
+  the load's first beat:** its fallen flag is put back, so the beat's death branch (`StepPlaguebearer`, "ITS DEATH CLEARS
+  EVERY STACK AT ONCE") does not run; and that branch holds no payout in any case, only the flag, the stacks set to
+  nought and a log line: the kill's drops and experience are the ordinary death's, paid through `HandleDeath` before the
+  save, and the load's `Destroy` raises no death notice. Tested by
+  `APlaguebearerKilledBeforeASaveStaysFallenAndPaysNothingAgain`.
+- **Q3 to Q5 are 3d-2's and 3d-3's:** Morale Break's escaped creatures saved by kind and rung, the seconds away
+  restarting; the Reality chamber's armed flag saved; the creatures raised in play saved as records with a tag naming
+  the rule that raised them and their group, superseding the earlier "re-brought by count" rulings (Q2 of 3b and Q2 of
+  3c), counts staying only for Pandora's waves not yet come.
+- **Q6. The order is 3d-1, 3d-2, 3d-3.**
+
+### What changes
+
+| Rule | Saved | Put back by the load |
+|---|---|---|
+| Echoes of the Past | struck (stage 2 or 3) | the echoes dismissed and the stage set to 3; before the strike nothing, and they rise again |
+| Lightforged Walls | each creature's section | the section; the first beat opens a barrier only when its section is empty, so one opened before the save opens again and the others stay closed |
+| The Plaguebearer | the bearer, on its record; the stacks, chosen and fallen | the bearer re-marked and held by the rule; the stacks, chosen and fallen; every other creature carries the stacks from the first beat |
+| Quarantine Breach | a released creature, on its record | added to the rule's released creatures, so its death spreads a patch |
+| Famished Beasts | each eater's drops eaten and the health the rule added; the floor's count | the drops, the damage bonus and the health added, the floor's count started first so the beat keeps them; the count |
+
+### Tests
+
+Each round trip is one save and one load of a dungeon carrying the rule, the dungeon's seed pinned and put back by its
+guard and asserted back, with one beat or more after the load. A helper (`ARoundTripOfRows`) drives the two worlds.
+
+- `Cataclysm.SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain`: two of floor 1's creatures killed, floor 2 reached,
+  6 s from the entrance, saved at stage 2. After the load, 10 s: no echo raised, stage 3. CONTROL: the last floor's dead
+  are still recorded after the load. Prints "LOAD ECHOES STRUCK".
+- `Cataclysm.SaveLoad.EchoesThatHadNotStruckAtASaveStillStrike`: the same, saved at 5 s, stage 1. After the load, 10 s:
+  both echoes rise again, and the stage reaches 3. Prints "LOAD ECHOES PENDING".
+- `Cataclysm.SaveLoad.ASectionBarrierStaysClosedAfterALoadWhileItsCreaturesStand`: the first pinned seed whose floor 2
+  has two barriers and creatures in sections 0 and 1; section 0's creatures killed, its barrier opened. After the load
+  and a beat: barrier 0 open, barrier 1 closed, section 1 holding what it held. Prints "LOAD SECTIONS".
+- `Cataclysm.SaveLoad.ThePlaguebearerAndItsStacksComeBackAfterALoad`: the first pinned seed whose floor 2 has a
+  Plaguebearer; 9 s, three stacks. After the load and a beat: the rule holds a bearer, one creature standing is marked,
+  three stacks, not fallen, and another creature carries `PlaguebearerMultiplier(3)`. Prints "LOAD PLAGUEBEARER".
+- `Cataclysm.SaveLoad.APlaguebearerKilledBeforeASaveStaysFallenAndPaysNothingAgain`: the same, the bearer then killed
+  and a beat run. After the load: fallen before any beat; after a beat fallen, no stacks, none marked, the drops lying and
+  the ordinary creatures standing as saved. Prints "LOAD PLAGUEBEARER FALLEN".
+- `Cataclysm.SaveLoad.AReleasedCreatureStillSpreadsTheInfectionAfterALoad`: the first pinned seed whose floor 2 has a
+  containment, which is killed. After the load and a beat: the released creatures standing as saved, and one killed
+  spreads a patch. Prints "LOAD QUARANTINE".
+- `Cataclysm.SaveLoad.AFamishedEaterKeepsItsDropsAndShareAfterALoad`: seed 1, floor 2; a creature that eats with no other
+  within twice the eating reach eats two drops. After the load and a beat: two eaten, damage `FamishedBeastsMultiplier(2)`,
+  the floor counting two; another drop: three eaten, damage `FamishedBeastsMultiplier(3)`, and the maximum the saved one
+  divided by `FamishedBeastsMultiplier(2)` and multiplied by `FamishedBeastsMultiplier(3)`, within 0.5. The eater is found
+  after the load by its saved maximum. Prints "LOAD FAMISHED".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The seven new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4418 / 0: window enchant-ton-w1's 4411 (Touch of Nothing, #2645, measured on 6e95286f8, now `development` b35112199), + 7 |
+| Python | of record, with JUnit, and ruff |
+| P1, the struck echoes not kept gone (`EchoesStage = 3;` broken) | the struck-echoes test fails on "no echo is raised again after the load" (2, not 0) only: the echoes rise at 5 s, strike at 6 and go at 7, so the stage still reads 3 at 10 s |
+| P2, a creature's section not put back | the sections test fails on "barrier 1 stays closed" and "its section still holds its creatures" (0) only: section 1 reads empty and opens; barrier 0 was open either way |
+| P3, the saved bearer not held by the rule | the Plaguebearer test fails on "the saved bearer is the rule's bearer again" (null), "its stacks come back" (0), "and it has not fallen" and "another creature carries the stacks" (1.0) only: the rule holds the destroyed fresh bearer, and the first beat runs its death. "one creature standing marked" passes, the record's mark having been put on |
+| P4, the stacks not put back | the Plaguebearer test fails on "its stacks come back" (0) and "another creature carries the stacks" (1.0) only: the rebuild's choice set them to nought, and one beat of 0.25 s adds none |
+| P5, the fallen flag not put back | the fallen test fails on "it is fallen straight after the load, before any beat" only: the beat's death branch then sets it, clears nothing that is not already nought, and pays nothing, which is the ruling's point measured |
+| P6, a released creature not re-linked | the Quarantine test fails on "the released creatures come back as released" (0) only; with none standing in the rule's list, nothing is killed and the patch is not asserted |
+| P7, the health the rule added not put back | the Famished test fails on "its maximum after another replaces the share, not adds to it" only: the share goes on the whole saved maximum |
+| P8, the drops eaten not put back | the Famished test fails on "it ate two before the save" (0), "three after another" (1), "its damage after another" (`FamishedBeastsMultiplier(1)`) and "its maximum after another ..." only; its damage after the load is written from the record and reads `FamishedBeastsMultiplier(2)` either way |
+| P9, the floor's count not put back | the Famished test fails on "the floor still counts two" (0) only: the restore started the count for this floor at nought |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 73 actions, 63 files compiled`, at
+the first attempt (a new worktree, so everything was compiled). Python of record on that code commit: `7175 passed,
+8 skipped in 193.31s`, the JUnit file tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Moved onto `development` b35112199 (Touch of Nothing, #2645) as `feat/load-keeps-costs-and-roles-1`, so the suite is
+registered at 4418 and not 4414. 3d-1's own change, measured by the coordinating session: 1be88643c to ff709cff6, 8
+files, 921 insertions, 4 deletions; b35112199 to 93c1aed3c, 8 files, 924 insertions, 4 deletions; the 3 lines more are
+this paragraph, the registration row being changed in place (d7783affc to 93c1aed3c: 1 file, 4 insertions, 1 deletion).
+The check this session made at the move compared another pair: the old head to the new one before that commit
+(ff709cff6 to d7783affc) against `development`'s movement (1be88643c to b35112199), both 20 files, 770 insertions, 35
+deletions, which says the move brought `development`'s change and nothing else; it does not measure 3d-1. Compiled
+again with no lock: `Build: Succeeded - 41 actions, 38 files compiled`, after one wait for the continuous integration
+runner's compile of the #2645 merge. Python of record on 93c1aed3c: `7175 passed, 8 skipped in 192.21s`, the JUnit file
+tests 7183, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w113, 2026-10-31, 00:41 to 01:25, on 93c1aed3c. Pre-checks measured at 00:40:48, all passing: `development`'s
+CI and Unreal runs succeeded on b35112199, no run in progress or queued, the lock free, no build or editor process, no
+pull request open, no simulation process, 11829 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (the compile above was of this head) |
+| The seven new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4418 tests performed, 4418 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4418 performed, gap 0" |
+| Python | `7175 passed, 8 skipped in 191.94s`; JUnit tests 7183, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'no echo is raised again after the load' to be 0, but it was 2" only |
+| P2 | PROVED: "'barrier 1 stays closed' to be true" and "'its section still holds its creatures' to be 60, but it was 0" only |
+| P3 | PROVED: "'the saved bearer is the rule's bearer again' to be not null", "'its stacks come back' to be 3, but it was 0", "'and it has not fallen' to be false" and "'another creature carries the stacks' to be 1.150000, but it was 1.000000" only |
+| P4 | PROVED: "'its stacks come back' to be 3, but it was 0" and "'another creature carries the stacks' to be 1.150000, but it was 1.000000" only |
+| P5 | PROVED: "'it is fallen straight after the load, before any beat' to be true" only; its line read "fallen at the load NO, after a beat yes, stacks 0, 0 marked standing; drops 3/3, creatures 222/222": the beat's death branch ran and paid nothing |
+| P6 | PROVED: "'the released creatures come back as released' to be 5, but it was 0" only |
+| P7 | PROVED: "'its maximum after another replaces the share, not adds to it' to be 6.142499, but it was 7.371000" only |
+| P8 | PROVED: "'it ate two before the save' to be 2, but it was 0", "'three after another' to be 3, but it was 1", "'its damage after another' to be 1.300000, but it was 1.100000" and the maximum (5.197500) only |
+| P9 | PROVED: "'the floor still counts two' to be 2, but it was 0" only |
+
+Each proof's restored half: `34 tests performed, 34 succeeded, 0 failed`.
+
+The seven printed lines, from the whole suite:
+
+```
+LOAD ECHOES STRUCK: Loaded (... day 1, 223 creatures, placed where it was saved); saved at stage 2; after the load 2 of the last floor's dead recorded, at most 0 echo(es) standing over 10 s, stage 3
+LOAD ECHOES PENDING: Loaded (... day 1, 223 creatures, placed where it was saved); saved at stage 1; after the load at most 2 echo(es) standing over 10 s, stage 3
+LOAD SECTIONS on seed 1: Loaded (... day 1, 132 creatures, with no placement saved); after a beat barrier 0 open, barrier 1 closed, section 1 holds 60/60
+LOAD PLAGUEBEARER on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the bearer is back, 1 marked standing, stacks 3/3, not fallen, another creature's multiplier 1.150
+LOAD PLAGUEBEARER FALLEN on seed 1: Loaded (... day 1, 222 creatures, placed where it was saved); fallen at the load yes, after a beat yes, stacks 0, 0 marked standing; drops 0/0, creatures 222/222
+LOAD QUARANTINE on seed 1: Loaded (... day 1, 228 creatures, placed where it was saved); released standing 5/5; patches after one released death 1
+LOAD FAMISHED: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat the eater 2 eaten, damage 1.200, the floor 2; after another drop 3 eaten, damage 1.300, maximum 6.14 (saved 5.67, expected 6.14)
+```
+
+NOT EXPLAINED, recorded as seen, as in 3c-1's window: the fallen test's drops lying differ between runs of it (1/1
+alone, 0/0 in the suite, 3/3 in the proofs), and the sections test printed "with no placement saved" where the others
+printed "placed where it was saved". Each test compares after the load with its own count before the save, so neither
+changes a verdict.
+
+---
+
 ## 2026-10-30 — Void's Touch of Nothing: each stack a creature's hits lay refuses the next buff the player would gain, from a draw, a self-buff cast or a gear proc, and never a drawback (#1722)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Touch of Nothing loses "(planned)" and states its stacks) and
