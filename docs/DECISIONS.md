@@ -44,6 +44,11 @@ Python of record at `91e50c5e5`, on `development` `f4904e99a`: "7147 passed, 8 s
 failures 0, errors 0, skipped 8. That is the base's 7144 plus the 3 new tests. ruff: "All checks passed!" A regenerate
 run left `game/Data` unchanged (`git diff --exit-code` exited 0).
 
+Moved onto `development` `6a7cbaef0` (#753 Group 3a merged; it changes no Python) as `docs/a-stray-control-character-in-the-decisions-log-1`,
+with the two commits' changes identical to the originals file by file. Python of record there, at `ca9c56698`:
+"7147 passed, 8 skipped in 198.08s"; JUnit tests 7155, failures 0, errors 0, skipped 8. ruff: "All checks passed!"
+The regenerate run left `game/Data` unchanged.
+
 ### NO GENRE SOURCE
 
 None. This is a repair to a document.
