@@ -58,6 +58,8 @@ const TCHAR* UCataclysmEnemyModifiers::InfernalBrandRow =
 	TEXT("Demonic_Infernal_Brand");
 const TCHAR* UCataclysmEnemyModifiers::WitheringBlowsRow =
 	TEXT("Famine_Withering_Blows");
+const TCHAR* UCataclysmEnemyModifiers::TouchOfNothingRow =
+	TEXT("Void_Touch_of_Nothing");
 const TCHAR* UCataclysmEnemyModifiers::BeguilingRow =
 	TEXT("Demonic_Beguiling");
 const TCHAR* UCataclysmEnemyModifiers::InfernalSacrificeRow =
@@ -807,6 +809,35 @@ bool UCataclysmEnemyModifiers::WitherOnHit(AActor* Attacker, AActor* Target)
 		   TEXT("%s's Withering Blows reached ten stacks on %s: %.0f%% slower for %.1f s."),
 		   *Enemy->GetName(), *GetNameSafe(Target), Numbers.Strength, Numbers.DurationSeconds);
 
+	return true;
+}
+
+bool UCataclysmEnemyModifiers::TouchOfNothingOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, TouchOfNothingRow))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Touched =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Touched == nullptr)
+	{
+		return false;
+	}
+
+	// THE STATUS FOR THE STACKS' WINDOW, put on or refreshed by every hit that adds one, as Withering's is: it
+	// lasts as long as the count and is what the count is shown beside. `NegatesTheNextBuff` takes it off with
+	// the last stack. It does nothing by itself.
+	const FGameplayTag Status = UCataclysmSkillShapes::StatusTagFor(TEXT("Touch of Nothing"));
+	if (Status.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Status,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::TouchOfNothing));
+	}
+	UCataclysmStacks::NoteTouchOfNothing(Touched);
 	return true;
 }
 

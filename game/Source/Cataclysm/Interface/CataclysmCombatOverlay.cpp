@@ -615,6 +615,34 @@ FString UCataclysmCombatOverlay::WitheredTextFor(const AActor* Actor)
 	return WordWhileHeld(Actor, TEXT("Status.Debuff.Wither"), TEXT("Withered"));
 }
 
+FString UCataclysmCombatOverlay::TouchOfNothingTextFor(const AActor* Actor)
+{
+	// THE STATUS AND THE COUNT, BOTH, as Withering's text asks.
+	if (WordWhileHeld(Actor, TEXT("Status.Debuff.TouchofNothing"), TEXT("Touch of Nothing")).IsEmpty())
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const int32 Held = AbilitySystem
+		? UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing) : 0;
+	return Held > 0 ? FString::Printf(TEXT("Touch of Nothing %d"), Held) : FString();
+}
+
+FString UCataclysmCombatOverlay::NegatedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	const float Since = AbilitySystem->SecondsSinceBuffNegated();
+	return Since >= 0.0f && Since <= NegatedShownSeconds ? FString(TEXT("Negated")) : FString();
+}
+
 FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -966,6 +994,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  // AND FAMINE'S WITHERING COUNT AND ITS SLOW. Issue #1722. Empty for every creature: only a player is hit
 		  // by Withering Blows.
 		  WitheringTextFor(Actor), WitheredTextFor(Actor),
+		  // AND VOID'S TOUCH OF NOTHING AND ITS REFUSALS. Issue #1722. Empty for every creature, for the same reason.
+		  TouchOfNothingTextFor(Actor), NegatedTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.

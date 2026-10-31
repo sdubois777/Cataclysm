@@ -4412,6 +4412,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bDamageImmunity = false;
 
 	/**
+	 * Set when this action was granted by a NEGATIVE enchantment or a set's negative row: a drawback, not a
+	 * benefit. Touch of Nothing refuses a buff the wearer would gain, and a drawback's timed stack is no buff, so
+	 * it asks this before refusing. Without it a held stack would shield the wearer from their own curse.
+	 * Set by `UCataclysmItem`'s grant of each row; issue #1722's Touch of Nothing, ruled 2026-10-30.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFromADrawback = false;
+
+	/**
 	 * Set, this action MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY instead of moving a pool. `Percent` is the
 	 * furthest the wearer may be moved, IN METRES and not a percentage. Ruled 2026-10-12 by the coordinating session
 	 * under the owner's delegation, for "Teleport to a random location within 4 meters when hit". On the event

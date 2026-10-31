@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmMovement.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
@@ -2334,6 +2335,15 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	if (!Self || Params.Duration <= 0.0f)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// TOUCH OF NOTHING REFUSES THE BUFF, AFTER THE CAST IS PAID FOR. Issue #1722: the project owner ruled that a
+	// negated self-buff cast still spends its mana and its cooldown, which `CommitAndBegin` above has done.
+	if (UCataclysmStacks::NegatesTheNextBuff(
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self))))
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
 

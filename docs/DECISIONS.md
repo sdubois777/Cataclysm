@@ -2,6 +2,148 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-30 — Void's Touch of Nothing: each stack a creature's hits lay refuses the next buff the player would gain, from a draw, a self-buff cast or a gear proc, and never a drawback (#1722)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (Debuffs: Touch of Nothing loses "(planned)" and states its stacks) and
+from it `game/Data/StatusEffects.csv`; `game/Source/Cataclysm/AbilitySystem/CataclysmStacks.h` and `.cpp` (the
+`TouchOfNothing` kind, `NoteTouchOfNothing`, `NegatesTheNextBuff`); `game/Source/Cataclysm/AbilitySystem/
+CataclysmAbilitySystemComponent.h` and `.cpp` (the refusal at each entry point, `RefusedByTouchOfNothing`,
+`NoteBuffNegated`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::
+bFromADrawback`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the flag set on a drawback's actions);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (the self-buff cast);
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and `.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the stack laid on a hit);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` ("Touch of Nothing N", "Negated");
+`game/Source/Cataclysm/Tests/CataclysmTouchOfNothingTests.cpp` (new, 4 tests); `CataclysmStacksTests.cpp` (moved);
+this file.
+
+### SAID FIRST
+
+- **THE ROW REFUSES THE NEXT BUFF GAINED; IT DOES NOT REMOVE ONE HELD.** Its words: "Anytime the player would gain any
+  kind of buff, instead a stack is consumed to negate that buff completely." So no choice between the newest, the
+  strongest or a random held buff arises: one stack refuses the one buff arriving, at the moment it arrives.
+- **A STACK REFUSES**, by the project owner's "Buffs + gear procs" of 2026-10-30: the random buff a worn row draws, a
+  self-buff skill's cast, and a worn or set row's timed grant -- a stack for N seconds, a next-use charge, a kept
+  stack, an absorb, an immunity window. **It does not refuse** a Masochist stack, an ally's aura, a floor's blessing,
+  a consecutive-hit counter, or anything a drawback grants.
+- **A HELD STACK REFUSES DEMON KING'S REGALIA'S LETHAL-HIT IMMUNITY.** That set's 10-piece cuts a lethal blow to one
+  point and then opens a no-damage window. Touch of Nothing refuses the window, as an immunity window from a set row:
+  the player still lives through the lethal blow, at one point, but takes the next blow with no immunity, so a player
+  can die where the set would have kept them alive. It follows from the owner's "immunity windows" and is the sharpest
+  effect of the ruling.
+- **A DRAWBACK IS NEVER REFUSED.** Negative enchantments use the same timed grants as the benefits ("Each kill reduces
+  your damage by 2%-4% for 5 seconds, stacking up to 5 times"); refusing them would shield the player from their own
+  curse. Each granted action now carries `bFromADrawback`, set where the item code grants a negative enchantment's or
+  a set's negative row's actions, and Touch of Nothing refuses only actions without it.
+
+### THE OWNER'S ANSWERS AND THE RULINGS
+
+The project owner, 2026-10-30: **"Buffs + gear procs"**, the proposal's option B; **"Approve"** for one stack per hit
+that takes health, a cap of 5 and an 8-second window; a negated self-buff cast still spends its mana and cooldown.
+The coordinating session ruled the display ("Touch of Nothing N" and "Negated") under the owner's rule that every
+system has a basic display, required `bFromADrawback`, accepted the call sites and the exclusions below, and asked
+for the lethal-hit consequence to be stated as above.
+
+### GENRE RESEARCH: A MONSTER THAT STRIPS OR REFUSES THE PLAYER'S BUFFS
+
+Searched 2026-10-30. **Readability stated for each, because the primary sources mostly could not be read:**
+
+- **Path of Exile 1, the Nemesis modifier "Nullifier"**: "Removes all Charges, Flasks and timed buffs (Fortify/Blood
+  Rage/Molten Shell etc.) on hit." The source is a 2017 official-forum post, quoted in search results. **Not confirmed
+  by game text**: the wikis (`pathofexile.fandom.com` HTTP 402, `poewiki.net` bot-blocked) and `poedb.tw` (HTTP 404 for
+  the page) could not be read. Search results also report the wiki listing it among the modifiers "removed or merged
+  into Archnemesis Mods"; that page was not read here.
+- **Grim Dawn**: some enemies (players name "Arcane" heroes and Grava'thul's Nullification) dispel the player's
+  active buffs, which must then be switched on again. Source: a Crate Entertainment forum thread of player complaints
+  (read), with no developer reply in it.
+- **Path of Exile 2**: "Being immune to an effect means that the Buff or Debuff cannot be applied to you" (Mobalytics
+  guide, from search results). The refuse-on-arrival model, for immunity rather than a monster.
+
+**What it settles:** stripping buffs on hit is a shipped pattern, and the versions that strip everything at once
+(Nullifier, Grim Dawn's) drew complaints; the row's one stack for one buff is the narrower shape. **What it does not
+settle:** which gains are buffs in this game, and the numbers; those are the owner's answers above.
+
+### HOW IT IS BUILT
+
+- **The stacks.** `UCataclysmEnemyModifiers::TouchOfNothingOnHit`, called beside `WitherOnHit` on a blow that took
+  health and is not a damage-over-time tick, puts `Status.Debuff.TouchofNothing` on for the window and grants a stack
+  of the new kind `ECataclysmStackKind::TouchOfNothing` (window 8 s, cap 5).
+- **The refusal.** `UCataclysmStacks::NegatesTheNextBuff` spends one stack through `UCataclysmStacks::Spend` -- its
+  first caller, which `CataclysmStacks.h` had said it was waiting for -- notes the time for "Negated", takes the
+  status off with the last stack, and answers true; the caller then grants nothing.
+- **The entry points, each asked at the moment of gaining and before anything is granted:**
+
+| Route | Where |
+| :-- | :-- |
+| the random buff a worn row draws | `UCataclysmAbilitySystemComponent::HoldARandomBuff`, at its top |
+| a self-buff skill's cast | `UCataclysmSelfBuffSkill::ActivateAbility`, after `CommitAndBegin`, which has paid the mana and cooldown |
+| a next-use charge | `StepTimedGrants` and `ActOnEvent`, before `GrantNextUseCharge` |
+| a stack for N seconds | `StepTimedGrants` and `ActOnEvent`, before `GrantOwnStack` and `GrantOwnStackLastingAlone` |
+| a kept stack | `StepKeptStackClocks`' period loop and `ActOnEvent`'s two kept-stack actions, before `GainKeptStack` |
+| a row's immunity window | `ActOnEvent`, before `GrantDamageImmunity` |
+| a temporary absorb | `ApplyPoolAction`, before `GrantTemporaryAbsorb` |
+| Demon King's Regalia's lethal-hit immunity | `NoteLethalHitReprieved`, before `GrantDamageImmunity` (a set row's stat, not a pool action) |
+| Shard of Anarchy's damage-type immunity | the roll that ends in `GrantDamageTypeImmunity` (a set row's stat) |
+
+  The pool-action sites ask `RefusedByTouchOfNothing(Action)`, which is false for an action whose `bFromADrawback` is
+  set. **Not asked**: the kept stacks a random draw lays (`HoldARandomBuff` already asked once for that buff),
+  consecutive-hit counters, `UCataclysmStacks`' Masochist kinds, `UCataclysmAuraSkill`'s and `UCataclysmSharedBuffs`'
+  grants to allies, and `SetDungeonStatModifiers`.
+- **The two immunities were traced to their rows before the build.** The lethal-hit stats
+  (`lethal_hit_reprieve_*`) are granted only by Demon King's Regalia's 10-piece in `EnchantmentEffects.csv` (none in
+  `PassiveEffects.csv`); the damage-type roll is Shard of Anarchy's 6-piece. Both are set rows, so both are refused.
+- **No positive row costs its own wearer.** All 379 rows of `game/Data/EnchantmentsPositive.csv` were searched for a
+  cost phrase ("you take", "lose", "costs", "sacrifice", "pay", "but", "damage taken", "reduces your", "to yourself")
+  beside a timed or stacking effect; every match was a buff. **The search was by wording**, so a cost phrased in other
+  words would be missed.
+- **On screen.** "Touch of Nothing N" while the status and stacks are held, and "Negated" for 2 seconds after a
+  refusal (the 2 seconds a judgement of this session), on the line above the player's bars.
+
+### THE TESTS
+
+New, `game/Source/Cataclysm/Tests/CataclysmTouchOfNothingTests.cpp`, group `Cataclysm.TouchOfNothing.`:
+
+- `ACarriersHitsLayUpToFiveStacksAndTheCountIsShown`: a control creature lays none; seven carrier hits show
+  "Touch of Nothing 1" to "5" and stop at five; none held 8.1 seconds after the last hit.
+- `AHeldStackRefusesOneRandomBuffDrawAndIsSpent` (a draw): the draw is refused, no buff is held, the stack is spent,
+  "Negated" is shown; the next draw arrives.
+- `AHeldStackRefusesASelfBuffCastWhichIsStillPaidFor` (a cast): a control player's cast runs and goes on cooldown; a
+  player holding a stack goes on cooldown and the buff does not run; the stack is spent; "Negated".
+- `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` (a timed proc, and both controls): with no stack a
+  benefit's timed stack arrives; with one the next is refused and the stack spent; a drawback's timed stack arrives
+  while one is held and the held stack is kept; a Masochist stack (Bloodlust) arrives and the held stack is kept.
+
+`Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers` gains the seventh kind: 8.00, 5, "Touch of
+Nothing".
+
+### REGISTERED BEFORE THE PROOFS
+
+`tools/unreal_build.py` `prove_cpp_guard`, `test_prefix="Cataclysm.TouchOfNothing."`, in the editor window. Each break
+text occurs once in its file. Names are the short names the engine's log prints.
+
+| # | File | Break | Predicted named_failures |
+| :-- | :-- | :-- | :-- |
+| 1 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a draw is not refused: in `HoldARandomBuff`, the end of the comment `"Buffs + gear procs".` followed by `if (UCataclysmStacks::NegatesTheNextBuff(this))` -- a two-line anchor, because the same `if` also guards the damage-type roll -- has the `if` become `if (false)` | `AHeldStackRefusesOneRandomBuffDrawAndIsSpent` |
+| 2 | `AbilitySystem/CataclysmSkillTemplates.cpp` | a cast is not refused: `if (UCataclysmStacks::NegatesTheNextBuff(` becomes `if (false && UCataclysmStacks::NegatesTheNextBuff(` | `AHeldStackRefusesASelfBuffCastWhichIsStillPaidFor` |
+| 3 | `AbilitySystem/CataclysmAbilitySystemComponent.cpp` | a gear proc is not refused: `return !Action.bFromADrawback && UCataclysmStacks::NegatesTheNextBuff(this);` becomes `return false && UCataclysmStacks::NegatesTheNextBuff(this);` | `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` |
+| 4 | the same | a drawback is refused too: the same line becomes `return UCataclysmStacks::NegatesTheNextBuff(this);` | `AHeldStackRefusesAGearProcButNotADrawbackOrAMasochistStack` |
+| 5 | `Interface/CataclysmCombatOverlay.cpp` | the count is never shown: `return Held > 0 ? FString::Printf(TEXT("Touch of Nothing %d"), Held)` becomes `return Held > 99 ? FString::Printf(TEXT("Touch of Nothing %d"), Held)` | `ACarriersHitsLayUpToFiveStacksAndTheCountIsShown` |
+
+Why each, traced: **1** leaves the draw held and the stack unspent, which the draw test asserts; no other test draws.
+**2** lets the buff run, which the cast test asserts against; the others cast nothing. **3** lets the benefit's second
+stack arrive (2, not 1) and leaves the stack unspent; the drawback and Masochist halves of that test still pass (the
+stack is kept either way), and the draw and cast routes do not ask `RefusedByTouchOfNothing`. **4** spends the held
+stack on the drawback, so "and the held stack is not spent on it" and "the held stack is still kept" fail; the
+benefit half is refused as before. **5** blanks the count text the first test reads; the "Negated" texts are a
+different function.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-10-30 — Warzone's hold, the Labrynth's gates and the order of its swaps, and the voidlings attached come back after a load; the clocks restart (#753, Group 3c-2)
 
 **Affects:** `WarzoneSecondsHeld`, `WarzoneCaptured`, `bLabrynthSaved`, `LabrynthGatesOpen`, `GatedShortcutStreamSeed`

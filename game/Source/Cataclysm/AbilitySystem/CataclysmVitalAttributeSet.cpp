@@ -2587,6 +2587,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (!Hit.bIsDamageOverTime)
 				{
 					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
+					// AND VOID'S TOUCH OF NOTHING, by the same rule: a hit that took health. Issue #1722.
+					UCataclysmEnemyModifiers::TouchOfNothingOnHit(Striker, GetOwningActor());
 				}
 			}
 

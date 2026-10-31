@@ -43,7 +43,7 @@ class UCataclysmAbilitySystemComponent;
  * by passing numbers in rather than by building a character, a world and an
  * effect spec for every case.
  *
- * FIVE PLACES GRANT AND NO MORE. This said four, and left Feasting out, until
+ * SIX PLACES GRANT AND NO MORE (Touch of Nothing is the sixth, #1722). This said four, and left Feasting out, until
  * Withering was added (#1722): Feasting is granted inside `NoteDamageTaken`, on
  * the same resolved hit as Blood Offering.
  *
@@ -59,6 +59,8 @@ class UCataclysmAbilitySystemComponent;
  *   Withering          `UCataclysmEnemyModifiers::WitherOnHit`, the same, from
  *                      a creature carrying Withering Blows, for a blow that is
  *                      not a damage-over-time tick
+ *   Touch of Nothing   `UCataclysmEnemyModifiers::TouchOfNothingOnHit`, the
+ *                      same, from a creature carrying Touch of Nothing
  *
  * AND TWO PLACES EMPTY A COUNT, both through
  * `UCataclysmAbilitySystemComponent::ClearStacks`. `NoteInfernalBrand` empties
@@ -142,6 +144,16 @@ enum class ECataclysmStackKind : uint8
 	 * off and Wither, the slow, is put on.
 	 */
 	Withering			UMETA(DisplayName = "Withering"),
+
+	/**
+	 * Granted to a PLAYER by a creature carrying the Void enemy modifier Touch of Nothing, one for each of its
+	 * hits that took health. Each stack refuses ONE buff the player would gain, and is spent doing so, through
+	 * `NegatesTheNextBuff`. Issue #1722's Touch of Nothing; the project owner ruled on 2026-10-30 which gains
+	 * count ("Buffs + gear procs") and approved a cap of 5 and Withering's and Infernal Brand's 8 seconds.
+	 *
+	 * THE FIRST KIND SPENT ONE AT A TIME IN PLAY, through `Spend`, which waited for it.
+	 */
+	TouchOfNothing		UMETA(DisplayName = "Touch of Nothing"),
 
 	/** How many kinds there are. Not a kind. */
 	Count				UMETA(Hidden)
@@ -309,6 +321,25 @@ public:
 	 */
 	static bool NoteWithering(UCataclysmAbilitySystemComponent* AbilitySystem);
 
+	/** One more Touch of Nothing on whatever was just hit, up to five. Issue #1722. */
+	static void NoteTouchOfNothing(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Whether Touch of Nothing refuses the buff this character is about to gain. When it holds a stack, ONE is
+	 * spent, the time is noted for the "Negated" line, the status goes with the last stack, and this answers
+	 * true: the caller then grants nothing. Issue #1722's Touch of Nothing.
+	 *
+	 * ASKED AT THE MOMENT OF GAINING AND BEFORE ANYTHING IS GRANTED, by every route the project owner's "Buffs
+	 * + gear procs" names: the random buff a worn row draws (`HoldARandomBuff`), a self-buff skill's cast
+	 * (`UCataclysmSelfBuffSkill::ActivateAbility`, after the cast's cost is paid), and a worn or set row's
+	 * timed grant -- a stack for N seconds, a next-use charge, a kept stack, an absorb, an immunity window -- that
+	 * is not a drawback's (`FCataclysmPoolAction::bFromADrawback`). Nothing else asks: not a Masochist stack, not
+	 * an ally's aura, not a floor's blessing.
+	 *
+	 * @return true when the buff is refused and a stack was spent
+	 */
+	static bool NegatesTheNextBuff(UCataclysmAbilitySystemComponent* AbilitySystem);
+
 	/**
 	 * How many stacks of a kind this character is holding right now.
 	 *
@@ -333,12 +364,11 @@ public:
 	 * takes one; between them they are the whole of removal. See that
 	 * component's `SpendStack` for why spending does not move the expiry.
 	 *
-	 * NO CALLER TODAY, AND THAT IS WORTH SAYING RATHER THAN HIDING. It exists
-	 * for `Debuff_Touch_of_Nothing` in `game/Data/StatusEffects.csv` -- "a
-	 * stack of this debuff is consumed to negate that buff completely" -- and
-	 * that row needs a second thing this game does not have, a route to remove
-	 * a buff from a character. So this closes one of that row's two blockers
-	 * and the row stays unbuilt. Issue #1673 records the other.
+	 * ITS CALLER IS `NegatesTheNextBuff`, since issue #1722's Touch of Nothing:
+	 * `Debuff_Touch_of_Nothing` in `game/Data/StatusEffects.csv` -- "a stack
+	 * of this debuff is consumed to negate that buff completely". The second
+	 * blocker this used to name, a way to take a buff away, turned out not to
+	 * be needed: the row refuses the next buff gained, not one already held.
 	 *
 	 * @return whether a stack was actually taken. False for no character, for
 	 *         a character holding none, and for a count that has lapsed.
