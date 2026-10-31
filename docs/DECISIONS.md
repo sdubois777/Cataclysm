@@ -110,7 +110,29 @@ both fail. Every other spread test keeps its caster, and the break leaves that b
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The editor window `enchant-chain-w1`**, 2026-10-31 13:34 to 13:51, on `feat/a-passed-curse-passes-again` at
+`1b154a807`, the commit that registered the Unreal total. It ran before the dungeon session's 3d-2 window, which had
+stopped and gave the machine up.
+
+- **The build**: "target already up to date, 0 actions"; the change had been compiled at 13:25 ("9 actions, 6
+  files compiled", among them the unity files holding `CataclysmCurseSpread.cpp`, `CataclysmQuarryTests.cpp` and
+  `CataclysmSkillTemplateTests.cpp`).
+- **The full Unreal suite** on `1b154a807`: "4422 tests performed, 4422 succeeded, 0 failed" and "Declared: 4422
+  tests in the tree at 1b154a807; 4422 performed, gap 0", as registered. 43 tests reported skipping part of what
+  they check: the Paragon-art halves a worktree does not have.
+- **The proofs**, each "PROVED" with exactly the registered named failure, the file's hash the same after, and
+  "restored: 1 tests performed, 1 succeeded, 0 failed" every time; with the break in, "1 tests performed, 0
+  succeeded, 1 failed" every time. The failed assertions were the traced ones:
+
+| # | Failed assertions with the break in |
+| :-- | :-- |
+| 1 | "'the mark jumps again, to the third enemy' to be true", "'and it is now the caster's quarry' to be true" |
+| 2 | "'The curse passes again, to the third' to be true" |
+| 3 | "'a monster near it, of its own side, gains the curse' to be true", "'and the player's character, standing nearer, does not' to be false" |
+
+**Python of record** at `1b0d4f649`, the commit before the registration, which changes only this file: "7177
+passed, 8 skipped in 225.06s"; JUnit tests 7185, failures 0, errors 0, skipped 8, the base's count, since this
+change adds no Python test. ruff: "All checks passed!"
 
 ---
 
