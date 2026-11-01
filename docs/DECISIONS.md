@@ -12,9 +12,12 @@ ailment section of `docs/Cataclysm_GDD_v2.md`. Issue [#2664](https://github.com/
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session's window was about to take the build machine. Every figure
-  below is registered before its run, traced by hand from the code. The Unreal total and the Python figure are
-  placeholders until the window is booked.
+- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
+  code. Rebased with no force push onto `development` at `bef3362ca` (#2667, select-screen step 4b, which touches
+  nothing in damage, leech or combat events) as `fix/converted-damage-is-not-dealt-1`. Compiled there with no lock,
+  after one wait on the continuous integration runner's lock: `Build: Succeeded - 13 actions, 10 files compiled`.
+  Python of record on the same head: `7190 passed, 8 skipped in 209.81s`; JUnit tests 7198, failures 0, errors 0,
+  skipped 8; ruff "All checks passed!".
 - **NO NODE'S OWN WORDS SAY CONVERTED DAMAGE IS DEALT**, so nothing here needed the owner. "Bleed damage you deal also
   leeches 10%-20% of its value as HP" says "you deal", and Feeding Wound's "Your life leech applies to your
   retaliation damage as well as to your attacks" names attacks and retaliation. The GDD's leech paragraph opens with
@@ -107,8 +110,8 @@ leech tests (none converts a blow).
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each, the two full names above |
-| Whole Unreal suite | **PLACEHOLDER**: the base's last measured total plus the two tests above, registered when the window is booked. Every existing test passes as before, none having been changed |
-| Python | **PLACEHOLDER**: `development`'s figure of record, unchanged (no Python test added), with JUnit, and ruff clean |
+| Whole Unreal suite | 4488 / 0: window w127B's 4486 measured on `bef3362ca`, this branch's base, + 2. Every existing test passes as before, none having been changed |
+| Python | 7198 of record, with JUnit: 7190 passed, 8 skipped, failures 0, errors 0 (no Python test added), and ruff clean |
 | P1, the leech: `if (!Hit.bIsConvertedDamage && !AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))` broken to `if ((!Hit.bIsConvertedDamage \|\| Hit.bIsDamageOverTime) && !AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))` (every converted tick is damage over time, so it is leeched from again), prefix `Cataclysm.ConvertedDamageDealt.AMasochistLeechesNothingFromItsOwnConvertedDamage` | that one test fails on one assertion only: "the Masochist's own converted tick made no leech payment" (to be 0, but it was 1: 10% of 20). The set-up lines and the control (1) pass |
 | P2, the attacker: `const bool bNobodyDealtIt = Hit.bIsConvertedDamage;` broken to `const bool bNobodyDealtIt = Hit.bIsConvertedDamage && !Hit.bIsDamageOverTime;`, prefix `Cataclysm.ConvertedDamageDealt.ItsOwnConvertedDamageIsNobodysBlow` | that one test fails on two assertions only: "the converted tick names no attacker, so a death by it is credited to nobody" and "and no dealer" (each names the Masochist). "the Masochist is not recorded as struck by itself" passes, the struck-by skip being in the vital set; the controls and the set-up lines pass |
 | P3, the struck-by record: `\|\| bAreaSkillShareOnAnAlly \|\| Hit.bIsConvertedDamage` broken to `\|\| bAreaSkillShareOnAnAlly \|\| (Hit.bIsConvertedDamage && !Hit.bIsDamageOverTime)`, prefix `Cataclysm.ConvertedDamageDealt.ItsOwnConvertedDamageIsNobodysBlow` | that one test fails on one assertion only: "and the Masochist is not recorded as struck by itself" (it is). The attacker and dealer lines pass, `NoteBlow` naming nobody either way; the controls pass |
