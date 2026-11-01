@@ -14,7 +14,8 @@ preview-only sphere route of `ACataclysmEnemyController::ChooseTarget`; the `Thr
 
 ### SAID FIRST
 
-- **COMPILED, AND NO UNREAL TEST HAS RUN YET.** Rebased with no force push onto `development` at `09323b971` (#2670,
+- **PASSED IN WINDOW threat-zero-w1, ON `fc1b1a9a4`, EVERY PREDICTION HELD AT THE ASSERTION** (the run is recorded
+  under "Window threat-zero-w1" below). Rebased with no force push onto `development` at `09323b971` (#2670,
   select-screen step 5, which touches nothing in target choice or minions) as
   `fix/a-minion-with-no-threat-is-never-sought-1`, the only conflict being this file's top. Compiled there with no
   lock: `Build: Succeeded - 42 actions, 39 files compiled`. Python of record is under "Compiled, and Python of record".
@@ -180,11 +181,28 @@ Neither runs while a Python suite runs (issue #1630).
   tests 7200, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". The window runs both
   again on the head that adds this paragraph, which changes only this file.
 
+### Window threat-zero-w1, run 2026-11-01 by the coordinating session
+
+On `fc1b1a9a4`, branch `fix/a-minion-with-no-threat-is-never-sought-1`, on `development` at `09323b971`. Pre-checks at
+10:22:47 all passed, 11,303 MB of physical memory free; the runner took the lock as `threat-zero-w1` and released it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| Each new test alone | 1 / 1 | `AMonsterDoesNotSeekATrapWhoseRowDrawsNobody` and `EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone`: "1 tests performed, 1 succeeded, 0 failed" each |
+| Whole Unreal suite | 4495 / 0 | "4495 tests performed, 4495 succeeded, 0 failed"; "Declared: 4495 tests in the tree at fc1b1a9a4; 4495 performed, gap 0" |
+| Python | 7192 passed, 8 skipped | "7192 passed, 8 skipped in 194.22s"; JUnit tests 7200, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | 2 performed, 1 failed, on three named assertions | PROVED: "2 tests performed, 1 succeeded, 1 failed: AMonsterDoesNotSeekATrapWhoseRowDrawsNobody"; restored 2 of 2. The kept broken-half log shows exactly the three registered assertions failing (`CataclysmGadgetBehaviourTests.cpp` lines 2032, 2034 and 2035) and no other |
+| P2 | 2 performed, 1 failed, on six named assertions | PROVED: "2 tests performed, 1 succeeded, 1 failed: EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone"; restored 2 of 2. The kept broken-half log shows exactly the six registered assertions failing (lines 2094, 2095, 2096, 2101, 2102 and 2103) and no other |
+
+The only other "Error:" lines in either broken-half log are the engine's two start-up lines about `GameFeatureData`,
+which every run prints. The suite's run also confirms that `DT_MinionTypes.uasset` holds the SkillTrap row, which the
+Skill Trap station's assertions depend on.
+
 ### Not verified
 
-- **No Unreal test has run.** In particular, that `Place` yields a minion of the SkillTrap type depends on
-  `DT_MinionTypes.uasset` holding that row, which `Cataclysm.Traps.TheSkillTrapRowIs…` asserts and this session did not
-  run.
+- **Settled by window threat-zero-w1 (above):** that `Place` yields a minion of the SkillTrap type, which depends on
+  `DT_MinionTypes.uasset` holding that row.
 - The engine's own headers were searched for a type named `FStation` under `Engine/Source/Runtime` only, not its
   plugins.
 - Whether a player can field a Spike Trap in the Demonic slice.
