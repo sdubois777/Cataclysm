@@ -15,8 +15,9 @@ this step in the code; a player's launch has not yet confirmed it (below).
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** The two assets were made by window A, the generator run alone (below); the tests are
-  registered for window B.
+- **PASSED IN UNREAL, window w125B, every figure as registered:** the two new tests, the whole suite at 4469 / 0, and
+  Q1 and Q2 each proved on exactly its registered assertions; PY1 and PY2 proved before it. The two assets were made
+  by window A, the generator run alone (below).
 - **THE GAME NOW OPENS ON `L_FrontEnd`, AND THE EDITOR STILL ON `L_Sandbox`.** `GameDefaultMap` changes;
   `EditorStartupMap` does not (ruled). Every reader of the start map was searched for, in `game/Source`, `tools` and
   `tools/tests`, and each keeps working:
@@ -94,6 +95,36 @@ RESTORED.** Both are committed with the start map, the readme row and the Python
 Compiled with `python tools/unreal_build.py build` and no lock: first `Build: Failed - 2 actions, no file compiled`, the
 link fault above; then `Build: Succeeded - 5 actions, 2 files compiled: CataclysmCharacterSelectTests.cpp,
 Module.Cataclysm.14.cpp`. Python on c0bd43755, before the assets: `7180 passed, 8 skipped`; ruff "All checks passed!".
+After window A, on 30b7c71ee with the assets: `Build: Succeeded - 4 actions, 1 file compiled`; `7184 passed, 8 skipped`,
+JUnit tests 7192. PY1 AND PY2 RUN THEN, by `tools/prove_guard.py` over the new file alone in this worktree, both PROVED:
+PY1 named only `test_the_game_starts_on_the_front_end_and_the_editor_on_the_sandbox`, PY2 only
+`test_main_makes_the_screen_after_the_button_and_the_level_after_both`, each restored to `4 passed`; the tree clean
+after. MOVED onto 114a60f05 (#2661 merged) as `feat/select-screen-front-end-map-1`; the Python check's file is unchanged
+by the move, so PY1 and PY2 stand. Compile of record on 03e555910, no lock: `Build: Succeeded - 42 actions, 39 files
+compiled`, after one wait for the continuous integration runner's lock; Python of record: `7187 passed, 8 skipped in
+193.80s`, JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w125B, 2026-11-01 00:24 to 00:47 local, on 03e555910. Pre-checks measured at 00:24:33, all passing:
+`development`'s CI and Unreal runs succeeded on 114a60f05, no run in progress or queued, the lock free, no build or editor
+process, no pull request open, no simulation process, 11289 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The two new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4469 tests performed, 4469 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4469 performed, gap 0" |
+| Python | `7187 passed, 8 skipped in 190.32s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff exit 0 |
+| Q1 | PROVED: "'the select screen's asset loads' to be not null" only; its line reading "/Game/Interface/WBP_CharacterSelect_X.WBP_CharacterSelect_X_C DOES NOT LOAD" |
+| Q2 | PROVED: "'the game's start map is the front end' to be "/Game/Maps/L_Sandbox.L_Sandbox", but it was "/Game/Maps/L_FrontEnd.L_FrontEnd"" and "'its game mode is the front end's' to be true" only; its line reading "'/Game/Maps/L_Sandbox.L_Sandbox' loads, its game mode NONE" |
+
+Each proof's restored half: `5 tests performed, 5 succeeded, 0 failed`.
+
+The new tests' lines, from the runs alone:
+
+```
+SELECT ASSET: /Game/Interface/WBP_CharacterSelect.WBP_CharacterSelect_C loads
+SELECT START MAP: the game starts on '/Game/Maps/L_FrontEnd.L_FrontEnd'; '/Game/Maps/L_FrontEnd.L_FrontEnd' loads, its game mode CataclysmFrontEndGameMode
+```
 
 ---
 
