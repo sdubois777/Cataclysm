@@ -18,9 +18,9 @@ around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lay
 
 ### SAID FIRST
 
-- **COMPILED AND PYTHON RUN; NO UNREAL TEST RUN YET.** Written while another session held the build machine, and
-  compiled and run in Python afterwards, when the coordinating session cleared it (under Run). Every Unreal figure
-  below is registered before its run.
+- **RUN IN TWO WINDOWS, necrosis-w1 AND necrosis-w2 (under Run): every registered figure as registered, the suite at
+  4467 / 0, and all seven proofs PROVED with every assertion-level prediction holding.** P5's first run ended without
+  reporting and was proved in the second window; the cause of that first ending is not known (under Run).
 - **NO EXISTING TEST WAS CHANGED.** None heals a character carrying a Necrosis (searched, below), and a Necrosis that
   ends having denied nothing lays nothing, so no existing figure moves.
 - **SIX FOLLOW-UP RULINGS, MADE BY THE COORDINATING SESSION THE SAME DAY** on questions the first draft raised, are
@@ -325,6 +325,80 @@ hunks), so it was rebuilt by script as `development`'s log with this entry, byte
 checked: `development`'s text unchanged around it, no conflict marker at a line start, no 0x08. This entry is first
 because its first commit (22:50 -0600) is later than the first commit writing #2660's entry (21:48 -0600). Compiled
 there at `97b193844`: `Build: Succeeded - 42 actions, 39 files compiled`.
+
+**Window necrosis-w1, 2026-10-31 23:33 to 23:58 local, on `4eb828c98`.** Pre-checks (`prechecks_n920.py`, window
+w124's): `development` at `17c95a8d1` with its CI and Unreal runs green, no run in progress or queued, the lock free,
+no build or editor process, no pull request open, no simulation process, 11119 MB free (needs 10240): "PRECHECKS: ALL
+PASS". The runner, `run_n920.py`, started detached (PID 319608). Lock `necrosis-w1` acquired at 05:33:38 UTC and
+released at 05:58:27 UTC by the runner's `finally`.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The seven new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4467 tests performed, 4467 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4467 tests in the tree at 4eb828c98; 4467 performed, gap 0"; memory summary peak 8968 MB |
+| Python | `7183 passed, 8 skipped in 191.85s`; JUnit tests 7191, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: NecrosisDeniesHealingWhileItHolds`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P2 | PROVED: with the break in, `1 failed: NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds`; restored, 1 succeeded |
+| P3 | PROVED: with the break in, `1 failed: ANecrosisEndedByACleanseStillDealsTheHealingItDenied`; restored, 1 succeeded |
+| P4 | PROVED: with the break in, `1 failed: ANecrosisReplacedByAStrongerOneKeepsTheHealingItDenied`; restored, 1 succeeded |
+| P5 | **NO MEASUREMENT**: "the test run never reported how many tests it performed". Named failure `ANecrosisOnACarrierThatDiedFirstDealsNothingMore`; the restored half was not run, so not proved, and the runner stopped. P6 and P7 did not run |
+
+Each proof's `named_failures` was exactly its registered test, and the source hash was the same before and after each.
+
+**P5'S UNFINISHED RUN, AND ITS CAUSE AS FAR AS IT IS KNOWN.** Its broken half's engine log (kept by the tester hook)
+shows the test run to its end: the world cleaned up, a collection, "Test Completed. Result={Fail}", and the one
+predicted failure, "and nothing was laid to deal it: no damage over time runs on the body" (to be 0, but it was 1).
+Then it stops at `EndEvents`. Every finished run writes `Sending StopTestSession`, "Automation Test Queue Empty 1 tests
+performed", `TestExit` and "Log file closed" in the same millisecond; none of these was written, so the editor process
+ended without closing its log, about a second after the test. Nothing records a crash: no `game/Saved/Crashes`, nothing
+new in the engine's or Windows' crash folders, no Windows Application event between 23:55 and 00:05, and the crash
+reporter watching that editor logged an ordinary shutdown, differing from the previous normal exit's only in times,
+identifiers and memory. **The cause is not known.** Nothing points at the break: under it, one more payout is applied,
+and never ticks, on a creature carrying the Dead tag, after which the world is cleaned up and collected before the test
+reports. **The rerun below finished normally**, so the break does not cause it every time. The binaries left behind
+were the restored source: `prove_cpp_guard`'s restore rebuilt, and the library was linked at 23:58:26 from the unity
+object compiled at 23:58:25 after the source came back at 23:58:16, not from the stand-alone object the break made.
+
+**The broken halves' assertions, against what was registered. Every prediction held.** Read from each
+`n920_P<n>_run1.log`; each restored half (`run2`) performed one test and failed none.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| P1 | "the carrier of a Necrosis is healed nothing" (500 expected, 600); "and the 100 it would have been healed is its denied total" (100, 0) | exactly the two predicted |
+| P2 | "three seconds in, the carrier has lost what the control lost (0.000 against 66.000)"; "so the total was dealt over time and not at once (0.000 of 0.000 by then)"; "the carrier lost the whole denied 100 as the control lost its 100 (0.000 against 110.000)"; "in five ticks, one a second" (5, 0) | exactly the four predicted |
+| P3 | "the cleansed Necrosis's denied total has been taken to be dealt" (0, 100); "the carrier lost the denied 100 as the control lost its 100 (0.000 against 110.000)"; "in five ticks" (5, 0) | exactly the three predicted |
+| P4 | "the replaced Necrosis has not ended, so its total of 100 is still owed" (100, 0); "and nothing was laid to deal it: one damage over time, the second Necrosis" (1, 2); "and its total grows to 150" (150, 50); "in five ticks: one payout, not one per Necrosis" (5, 10) | exactly the four predicted after R2; "the carrier lost the whole 150 ..." passed, as retraced |
+| P5 | "and nothing was laid to deal it: no damage over time runs on the body" (0, 1) | the one predicted, but the run did not finish |
+
+The controls lost 66 and 110 where the nominal figures are 60 and 100: these creatures take a tenth more than stated.
+No prediction depended on that, since each compares the carrier with the control.
+
+**Window necrosis-w2, 2026-11-01 00:06 to 00:09 local, on `4eb828c98`: P6, P7 and P5 only, in that order**, so that a
+second unfinished P5 could not cost P6 and P7. Pre-checks (`prechecks_n920b.py`): the same seven, 11282 MB free, "ALL
+PASS". The runner, `run_n920b.py`, started detached (PID 328868). Lock `necrosis-w2` acquired at 06:06:31 UTC and
+released at 06:09:10 UTC by the runner's `finally`. Its first step checked, before the build and again after it, that
+the binaries were the restored source: the library's link response file names the unity object holding
+`CataclysmSkillEffects.cpp` and not the stand-alone object, and the unity object is newer than the source and the
+library newer than it. All five held both times.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, as expected after P5's restore had rebuilt |
+| P6 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: ARefreshOfTheAppliersOtherDamageOverTimeDoesNotLengthenTheDeniedHealing`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P7 | PROVED: with the break in, `1 failed: ACleanseWhileTheDeniedHealingIsDealtLeavesItRunning`; restored, 1 succeeded |
+| P5, again | PROVED: with the break in, `1 failed: ANecrosisOnACarrierThatDiedFirstDealsNothingMore`; restored, 1 succeeded. Both halves finished normally |
+
+| Proof | Failed assertions in the broken half (`n920b_P<n>_run1.log`) | Against the registration |
+|---|---|---|
+| P6 | "the payout landed five ticks and no more" (5, 7); "so its total is five of its ticks, as it was (154.000, a tick 22.000)" (110, 154) | exactly the two predicted, seven ticks as traced |
+| P7 | "the cleanse removes one effect, the plain damage over time" (1, 2); "and the payout still runs: one damage over time on the carrier" (1, 0); "the carrier lost the denied 100 as the control lost its 100 (0.000 against 110.000)"; "in five ticks of the payout" (5, 0) | exactly the four predicted |
+| P5 | "and nothing was laid to deal it: no damage over time runs on the body" (0, 1) | exactly the one predicted |
+
+Each proof's `named_failures` was exactly its registered test, the source hash was the same before and after each, and
+the worktree was clean after the window. **All seven registered proofs are PROVED, and every assertion-level
+prediction held**: P1 to P4 in necrosis-w1, and P5 to P7 in necrosis-w2. **P5's unfinished first run is unexplained.** It
+did not recur in the rerun, and nothing found ties it to this change.
 
 ### Ruled, and nothing left open
 
