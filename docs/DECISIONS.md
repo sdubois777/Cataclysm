@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — An Unreal test run fails when its tests leave save slots behind, or log no line saying whether they did (#2673)
+
+**Affects:** `tools/unreal_build.py` (`TEST_SAVES_PARTS` and `saves_failure`, new; `exit_code_for`, which now takes the
+run's "Test saves:" line as a required second argument; `main`); `tools/tests/test_the_test_run_reports_its_save_slots.py`
+(extended); `tools/tests/test_unreal_build.py` (its seven `exit_code_for` calls pass a line with nothing left behind);
+`CLAUDE.md` (the paragraph on what makes the wrapper exit non-zero). **No C++ changed, and no slot is deleted.** Issue
+[#2673](https://github.com/sdubois777/Cataclysm/issues/2673).
+
+### SAID FIRST
+
+- **`python tools/unreal_build.py tests` now exits non-zero when the run's "Test saves: N written and deleted, M left
+  behind" line has M above 0**, and prints "FAILED: the tests left M save slots behind in game/Saved/SaveGames: <the
+  names the line gives>". Until this change the line was printed and never changed the exit code (#2658, ruled
+  2026-11-01: report only until a window had shown M = 0).
+- **No Unreal run was made for this change.** It changes Python only; every figure below is from the Python suite and a
+  `tools/prove_guard.py` proof.
+
+### Rulings, made 2026-11-01 by the coordinating session from the #2658 evidence
+
+Window w129 showed that a missing line can hide a clean-up whose summary did not log (its hook never fired on the
+`-testexit` forced exit); window w129B showed M = 0 over the whole suite ("Test saves: 708 written and deleted, 0 left
+behind", 4496 / 0), and w129's narrow run of `Cataclysm.SaveLoad.` showed "113 written and deleted, 0 left behind".
+
+1. **M > 0 fails the `tests` command**, with a message naming the slots the line names (the first ten, then "and K
+   more", as `FCataclysmTestSaves::SummaryLine` writes them).
+2. **A missing line fails a run that performed at least one test**: the clean-up's summary was not logged, so the run
+   has not shown its tests' saves were deleted. A run that performed no tests or crashed already fails for its own
+   reason, and that reason is printed first; the missing line adds nothing to it (with no test started, nothing takes
+   the folder and nothing can log the line).
+3. **A narrow run (`--prefix`) fails on M > 0 too**, and on a missing line, by the same rule.
+4. **Guard proofs are unaffected.** `prove_cpp_guard` and everything returning `TestOutcome` or `CppGuardResult` report
+   exactly what they reported before.
+
+### What changes
+
+- **`saves_failure(tests, saves_line)`** returns the failure message, or None. It reads the line with
+  `TEST_SAVES_PARTS`. No match (the line `test_saves_line` writes for a log without one) is a failure only when the run
+  performed tests; M above 0 is a failure whatever else the run did, so slots left on disk are named even after a
+  crash's own reason.
+- **`exit_code_for(tests, saves_line)`** keeps its reasons in their order -- nothing read or zero performed, a refused
+  registration, a failed test -- and then returns 1 when `saves_failure` gives a message. The line is a required
+  argument, so no caller can leave the check out.
+- **`main`** passes the line it already printed, prints "No test results were read" first when the run crashed, and
+  then prints the save failure, if any.
+- **Why guard proofs cannot see it.** `prove_cpp_guard` gets its two halves from `tester(test_prefix)`, which is
+  `run_automation_tests`, which returns `parse_test_log(...)`; `parse_test_log` does not read the "Test saves:" line.
+  `CppGuardResult.crashed`, `named_failures`, `failed` and `proved` read `TestOutcome.performed` and `failed` only.
+  `exit_code_for` and `saves_failure` are called from `main` alone. A new test runs `prove_cpp_guard` with a stand-in
+  builder and tester whose halves log slots left behind, a clean line and no line, and finds the three results equal and
+  PROVED.
+
+### Evidence
+
+- **Python of record**, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>` on `ad602e1f4` (the code
+  commit; this entry is the only change after it): `7217 passed, 8 skipped in 263.71s (0:04:23)`; JUnit tests 7225,
+  failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". The commit adding this entry was not
+  given a whole-suite run (a window hold was declared once that run had ended); eight files that read this log were run
+  on it one at a time, all passing: `test_decisions_entries_are_separated` (12), `test_the_decisions_log_names_real_files`
+  (2), `test_resolve_decisions_log` (23), `test_the_design_documents_hold_no_control_characters` (3),
+  `test_the_design_document_is_cited_by_name` (7), `test_every_condition_is_recorded_in_the_decisions_log` (3),
+  `test_the_decisions_log_enchantment_codes_resolve` (17), `test_a_failing_not_in_against_a_document_reports_at_once` (6).
+- **Guard proof**, `tools/prove_guard.break_and_run` over the whole suite in a detached `git worktree` copy of
+  `ad602e1f4`, the break `parts = TEST_SAVES_PARTS.fullmatch(saves_line)` in `saves_failure` turned into
+  `return None; parts = ...` (the check removed, the module still importing): **PROVED**, `assert result.proved` held.
+  Broken half "10 failed, 7208 passed, 7 skipped"; restored half "7218 passed, 7 skipped". The ten named failures, all in
+  `tools/tests/test_the_test_run_reports_its_save_slots.py`: `test_slots_left_behind_fail_the_run_and_are_named`,
+  `test_one_slot_left_behind_is_said_in_the_singular_and_fails`,
+  `test_more_than_ten_left_behind_quotes_the_count_of_the_rest`, `test_a_missing_line_fails_a_run_that_performed_tests`,
+  `test_a_failing_test_with_slots_left_still_fails_and_still_names_them`,
+  `test_the_command_fails_a_run_that_left_slots_and_names_them`,
+  `test_the_command_fails_a_run_that_performed_tests_and_logged_no_line`,
+  `test_the_command_says_the_no_tests_reason_before_slots_a_crashed_run_left`,
+  `test_a_narrow_run_follows_the_same_rule[left-behind]` and `test_a_narrow_run_follows_the_same_rule[missing]`.
+
+### Not verified
+
+- **No Unreal run has exercised the new exit code.** The next window's `tests` command is the first; on the evidence of
+  w129B it should exit 0 over the whole suite.
+
+---
+
 ## 2026-11-01 — A creature the floor places draws its enemy modifiers from the floor's seed, and so does the dark floor's raise (#2669)
 
 **Affects:** `ACataclysmEnemyCharacter::DrawModifiersForRarity`, which takes the floor's seed
