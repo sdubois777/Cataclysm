@@ -55,16 +55,21 @@ behind", 4496 / 0), and w129's narrow run of `Cataclysm.SaveLoad.` showed "113 w
 
 ### Evidence
 
-- **Python of record**, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>` on `ad602e1f4` (the code
-  commit; this entry is the only change after it): `7217 passed, 8 skipped in 263.71s (0:04:23)`; JUnit tests 7225,
-  failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". The commit adding this entry was not
-  given a whole-suite run (a window hold was declared once that run had ended); eight files that read this log were run
-  on it one at a time, all passing: `test_decisions_entries_are_separated` (12), `test_the_decisions_log_names_real_files`
+- **Python of record**, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>` on `fccab6fe8`, the code
+  commit moved with no force push onto `development` at `2c007ddc9` (#2669 merged as #2675) as
+  `fix/a-test-run-fails-when-its-tests-leave-saves-1`: `7217 passed, 8 skipped in 219.93s (0:03:39)`; JUnit tests 7225,
+  failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". The move changed none of this
+  change's lines: `git diff` over `tools/unreal_build.py`, `CLAUDE.md` and the two test files between the old head
+  `5f1ef6291` and the moved one is empty, and `development` had not touched them since `e5d4c32aa`; the only conflict
+  was this file's top. Before the move, the same command on `ad602e1f4` (on `e5d4c32aa`) printed `7217 passed, 8
+  skipped in 263.71s (0:04:23)`; JUnit tests 7225, failures 0, errors 0, skipped 8.
+- **The commits that change only this file were not given a whole-suite run.** Eight files that read this log were run
+  on the first of them one at a time, all passing: `test_decisions_entries_are_separated` (12), `test_the_decisions_log_names_real_files`
   (2), `test_resolve_decisions_log` (23), `test_the_design_documents_hold_no_control_characters` (3),
   `test_the_design_document_is_cited_by_name` (7), `test_every_condition_is_recorded_in_the_decisions_log` (3),
   `test_the_decisions_log_enchantment_codes_resolve` (17), `test_a_failing_not_in_against_a_document_reports_at_once` (6).
 - **Guard proof**, `tools/prove_guard.break_and_run` over the whole suite in a detached `git worktree` copy of
-  `ad602e1f4`, the break `parts = TEST_SAVES_PARTS.fullmatch(saves_line)` in `saves_failure` turned into
+  `ad602e1f4` (before the move; its four changed files are identical in `fccab6fe8`), the break `parts = TEST_SAVES_PARTS.fullmatch(saves_line)` in `saves_failure` turned into
   `return None; parts = ...` (the check removed, the module still importing): **PROVED**, `assert result.proved` held.
   Broken half "10 failed, 7208 passed, 7 skipped"; restored half "7218 passed, 7 skipped". The ten named failures, all in
   `tools/tests/test_the_test_run_reports_its_save_slots.py`: `test_slots_left_behind_fail_the_run_and_are_named`,
