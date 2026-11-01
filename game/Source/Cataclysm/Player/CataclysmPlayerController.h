@@ -109,6 +109,19 @@ public:
 	void ApplyPlayingInputMode();
 
 	/**
+	 * THE ONE PLACE THE GAME SETS AN INPUT MODE, for this controller or any other: the playing mode above, and for a
+	 * menu the same mode with the menu focused. `ApplyPlayingInputMode` calls it for this controller; the character
+	 * select screen's controller, which is not one of these, calls it for its menu. Issue #1015's one mode in one
+	 * place, kept; select-screen step 3a (#753), ruled 2026-10-31.
+	 *
+	 * IT SAYS WHICH IT ASKED FOR, "Playing" or "Menu", in `OutAskedFor` when given, for a test to read: the engine applies a mode only to a
+	 * controller with a game viewport and a local player, and records its name only then, and a test world has neither.
+	 * Whether the mode is right is still for a person playing to see.
+	 */
+	static void ApplyPlayingInputModeTo(APlayerController& Controller, class UUserWidget* MenuToFocus = nullptr,
+										FString* OutAskedFor = nullptr);
+
+	/**
 	 * Runs after the frame's input has been gathered. This is where a slot press
 	 * becomes an ability activation; see ProcessAbilityInput for why it is not
 	 * done in the key handler itself.

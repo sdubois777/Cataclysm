@@ -34,6 +34,16 @@ class CATACLYSM_API ACataclysmFrontEndPlayerController : public APlayerControlle
 public:
 	UCataclysmCharacterSelectWidget* SelectScreen() const { return Screen; }
 
+	/**
+	 * The menu's input mode, through the game's one function for it (`ACataclysmPlayerController::
+	 * ApplyPlayingInputModeTo`, issue #1015), the cursor shown and clicks taken. Returns, and keeps, the mode asked for.
+	 * Called by `BeginPlay` with the screen; public so a test can call it with a widget it built.
+	 */
+	FString UseTheMenuInputMode(class UUserWidget* Menu);
+
+	/** The mode `UseTheMenuInputMode` last asked for, or empty. */
+	FString InputModeAskedFor() const { return AskedFor; }
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -45,4 +55,6 @@ protected:
 private:
 	UPROPERTY()
 	TObjectPtr<UCataclysmCharacterSelectWidget> Screen;
+
+	FString AskedFor;
 };

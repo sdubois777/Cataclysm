@@ -38,11 +38,19 @@ when step 3b points the game's start at the screen.
   have noted as its fresh pair (found while tracing P2 below; added before the first window). Holding writes until the
   load decides was rejected: a character saved dead dies inside the load,
   and its death's own write would be dropped. Ruled 2026-10-31, with the guard that the deletion be shown to be narrow.
-- **THE FRONT END SETS NO INPUT MODE.** The game sets one mode, in one place, `ACataclysmPlayerController::
-  ApplyPlayingInputMode` (issue #1015), which `tools/tests/test_one_input_mode.py` enforces; the first Python of record,
-  on dab89b51, failed that check on this step's own `SetInputMode(FInputModeUIOnly())`, which is removed. The front end's
-  controller shows the cursor and takes clicks and mouse-over events instead. UNVERIFIED: whether the screen's buttons
-  take clicks under the engine's default mode; no automation test can see a cursor, so the owner's launch after 3b shows it.
+- **ONE FUNCTION SETS THE INPUT MODE FOR BOTH CONTROLLERS** (issue #1015's one mode in one place, kept; ruled
+  2026-10-31). The first Python of record, on dab89b51, failed `tools/tests/test_one_input_mode.py` on this step's own
+  `SetInputMode(FInputModeUIOnly())` in the front end's controller. Removing it left a menu that might not take clicks,
+  found only at the owner's launch, which was ruled not acceptable. So the one function became
+  `ACataclysmPlayerController::ApplyPlayingInputModeTo(Controller, MenuToFocus, OutAskedFor)`, a static that holds the
+  game's only `SetInputMode` call: the playing mode, GameAndUI with the cursor never locked or hidden during capture, and
+  for a menu the same mode with the menu focused. `ApplyPlayingInputMode()` calls it for the game's controller, so its
+  callers, and the counts the check reads, are unchanged; the front end's controller calls it for its menu. THE CHECK
+  FINDS "THE ONE FUNCTION" BY THE START OF ITS NAME: `void ACataclysmPlayerController::ApplyPlayingInputMode` matches the
+  static's signature first, and its body holds both options and the call (read back, 2026-10-31). UNVERIFIED STILL:
+  that the screen's buttons take clicks. The engine applies a mode only with a game viewport and a local player, and
+  records its name only then, and a test world has neither; so a test reads the mode asked for, and the clicks stay on
+  the owner's launch list after 3b.
 - **TRAVEL DOES NOT RUN IN AN AUTOMATION TEST,** so Continue, New and a refusal record the level they ask for, which the
   tests read. **NO TEST SHOWS THE SCREEN:** a test world has no game instance for `CreateWidget` (#1841), so the screen's
   logic is plain functions called on a `NewObject` widget; that the front end's controller adds the screen to the
@@ -82,6 +90,9 @@ when step 3b points the game's start at the screen.
   REFUSED".
 - `Cataclysm.SaveLoad.ALevelBegunWithNothingChosenStartsFreshAsBefore`: nothing loaded, the fresh run still written to,
   its slot not deleted.
+- `Cataclysm.CharacterSelect.TheFrontEndAsksForTheMenuInputMode`: the front end's controller, spawned deferred so its
+  `BeginPlay` does not look for 3b's asset, asks for the menu mode through the one function, with the cursor shown and
+  clicks taken; CONTROL, the game's own controller asks for the playing mode. Prints "SELECT INPUT MODE".
 
 Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `FSaved::Forget` uses.
 
@@ -89,8 +100,8 @@ Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `F
 
 | Figure | Registered |
 |---|---|
-| The five new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4455 / 0: window w123's 4450 on `development` (59e5dd893), + 5 |
+| The six new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4456 / 0: window w123's 4450 on `development` (59e5dd893), + 6 |
 | Python | of record, with JUnit, and ruff |
 | P1, the load not run (`FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.` broken to an empty report, which reads as a refusal with no reason) | TWO TESTS: the loaded test on "the chosen character was loaded" only (the clean-up still runs, so the slots and the count hold); the refused test on "the refusal's reason is kept for the select screen" only, the empty report giving no reason. The `CharacterSelect` tests do not reach the game mode |
 | P2, the choice not cleared (`Instance->PendingCharacterId.Invalidate(); // A pending load's: ...`) | TWO TESTS: the loaded test on "and the next start loads nothing, the choice cleared before the load" only: the second call loads it again, and its clean-up deletes nothing, because the names it noted are the writer's after the load; the refused test on "the pending choice is cleared" only |
@@ -99,6 +110,7 @@ Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `F
 | P5, THE DELETION NOT NARROW, two swaps: the names read after the load (`{FreshRunSlot, FreshCharacterSlot}` to `{Writer->RunSlotName(), Writer->CharacterSlotName()}`), and the after-load guard off (its clause, ending `// Never the writer's after a load.`, to `false)`) | the loaded test on "and its run's slot", "the fresh character slot is gone", "the fresh run slot is gone" and "a Continue leaves the number of characters unchanged" (one more) only: after a load the writer names the loaded slots, so the loaded run's slot is deleted and the fresh pair is left. "The loaded character's own slot still exists" PASSES, kept by the chosen-slot guard, which these swaps leave. The refused test passes: after a refusal the writer still names the fresh slots |
 | P6, Continue's level not chosen by the run (`OutMap = bInADungeon ? DungeonMap : SandboxMap; // A Continue's: ...` broken to `SandboxMap`) | the continue test on "a run saved in a dungeon opens the dungeon level" and "and asks for its level" only |
 | P7, Continue not handing the character over (`Instance->PendingCharacterId = Shown[Index].CharacterId; // A Continue's: ...`) | the continue test on "Continue hands the character to the game instance" only |
+| P8, the front end not using the one function (`ACataclysmPlayerController::ApplyPlayingInputModeTo(*this, Menu, &AskedFor); // The front end's: the menu mode.`) | the input-mode test on "the front end asks for the menu mode" only; the cursor and clicks are set before the call, and the control does not read the front end |
 
 ### Run
 

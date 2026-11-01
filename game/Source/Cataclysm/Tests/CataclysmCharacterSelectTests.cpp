@@ -4,9 +4,15 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCharacterSelectWidget.h"
+#include "Player/CataclysmFrontEndGameMode.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Misc/ScopeExit.h"
 #include "Save/CataclysmSaveLoad.h"
+#include "Tests/CataclysmTestWorld.h"
 
 namespace CataclysmCharacterSelectTest
 {
@@ -142,6 +148,51 @@ bool FCataclysmCharacterSelectContinueTest::RunTest(const FString&)
 	TestFalse(TEXT("and the screen shows why"), Refusal.IsEmpty());
 	TestFalse(TEXT("New leaves nothing pending"), Instance->PendingCharacterId.IsValid());
 	TestEqual(TEXT("and opens the sandbox"), Screen->LevelRequested(), FString(UCataclysmCharacterSelectWidget::SandboxMap));
+	return true;
+}
+
+/**
+ * The select screen's controller asks for the menu input mode through the game's one function for an input mode
+ * (issue #1015), with the cursor shown and clicks taken; the game's own controller still asks for the playing mode.
+ * WHAT THIS CANNOT SEE: the mode the engine applies. `APlayerController::SetInputMode` applies a mode only with a game
+ * viewport and a local player, and records its name only then; a test world has neither. So whether the menu's buttons
+ * take clicks is for the owner's launch. Issue #753, select-screen step 3a, ruled 2026-10-31. Prints "SELECT INPUT MODE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectInputModeTest,
+	"Cataclysm.CharacterSelect.TheFrontEndAsksForTheMenuInputMode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectInputModeTest::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a test world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// DEFERRED AND NEVER FINISHED, so its `BeginPlay` does not run and look for the screen's asset, which step 3b makes.
+	ACataclysmFrontEndPlayerController* FrontEnd = World->SpawnActorDeferred<ACataclysmFrontEndPlayerController>(
+		ACataclysmFrontEndPlayerController::StaticClass(), FTransform::Identity);
+	APlayerController* Playing = World->SpawnActor<APlayerController>();
+	if (!TestNotNull(TEXT("set-up: the front end's controller"), FrontEnd) || !TestNotNull(TEXT("set-up: a controller"), Playing))
+	{
+		return false;
+	}
+	UCataclysmCharacterSelectWidget* Menu = NewObject<UCataclysmCharacterSelectWidget>();
+	const FString MenuMode = FrontEnd->UseTheMenuInputMode(Menu);
+	FString PlayingMode;
+	ACataclysmPlayerController::ApplyPlayingInputModeTo(*Playing, nullptr, &PlayingMode);
+	AddInfo(FString::Printf(TEXT("SELECT INPUT MODE: the front end asked for '%s' (kept '%s'), cursor %s, clicks %s; the "
+								 "game's controller '%s'"),
+							*MenuMode, *FrontEnd->InputModeAskedFor(), FrontEnd->bShowMouseCursor ? TEXT("shown") : TEXT("HIDDEN"),
+							FrontEnd->bEnableClickEvents ? TEXT("taken") : TEXT("NOT TAKEN"), *PlayingMode));
+
+	TestEqual(TEXT("the front end asks for the menu mode"), FrontEnd->InputModeAskedFor(), FString(TEXT("Menu")));
+	TestTrue(TEXT("with the cursor shown"), FrontEnd->bShowMouseCursor);
+	TestTrue(TEXT("and clicks taken"), FrontEnd->bEnableClickEvents);
+	TestEqual(TEXT("CONTROL: the game's own controller asks for the playing mode"), PlayingMode, FString(TEXT("Playing")));
+	FrontEnd->Destroy();
 	return true;
 }
 

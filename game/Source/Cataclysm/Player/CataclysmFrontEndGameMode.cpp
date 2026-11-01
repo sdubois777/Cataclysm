@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Interface/CataclysmCharacterSelectWidget.h"
+#include "Player/CataclysmPlayerController.h"
 
 ACataclysmFrontEndGameMode::ACataclysmFrontEndGameMode()
 {
@@ -31,12 +32,16 @@ void ACataclysmFrontEndPlayerController::BeginPlay()
 		return;
 	}
 	Screen->AddToViewport();
+	UseTheMenuInputMode(Screen);
+}
 
-	// THE CURSOR SHOWN AND CLICKS TAKEN, AND NO INPUT MODE SET HERE: the game sets one mode, in one place,
-	// `ACataclysmPlayerController::ApplyPlayingInputMode` (issue #1015, `tools/tests/test_one_input_mode.py`), and this
-	// controller is not that one. Whether the screen's buttons take clicks under the engine's default mode is for the
-	// owner's launch to show; no automation test can see a cursor.
+FString ACataclysmFrontEndPlayerController::UseTheMenuInputMode(UUserWidget* Menu)
+{
+	// THE CURSOR SHOWN AND CLICKS TAKEN, AND THE MODE SET BY THE GAME'S ONE FUNCTION FOR IT, issue #1015 and
+	// `tools/tests/test_one_input_mode.py`; this controller is not the game's, so it calls the function's static form.
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
 	bEnableMouseOverEvents = true;
+	ACataclysmPlayerController::ApplyPlayingInputModeTo(*this, Menu, &AskedFor); // The front end's: the menu mode.
+	return AskedFor;
 }
