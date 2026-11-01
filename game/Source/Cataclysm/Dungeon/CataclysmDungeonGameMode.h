@@ -6222,11 +6222,15 @@ public:
 	 */
 	int32 ModifierSeedForPlacement(int32 Index, int32 Salt) const;
 
-	/** How many creatures the dark floor's build has raised a rung since the game mode was made. A test reads it. */
-	int32 DarkFloorRaisesSoFar() const { return DarkFloorRaises; }
+	/**
+	 * How many creatures the dark floor's build has raised to a rung that added modifiers, since the game mode was
+	 * made. A raise that adds none draws nothing, so only these can show where the added draw comes from. A test
+	 * reads it.
+	 */
+	int32 DarkFloorRaisesThatDrewSoFar() const { return DarkFloorRaisesThatDrew; }
 
 private:
-	int32 DarkFloorRaises = 0;
+	int32 DarkFloorRaisesThatDrew = 0;
 
 	/**
 	 * What the arriving wave's creatures notice from, as a multiple of their own

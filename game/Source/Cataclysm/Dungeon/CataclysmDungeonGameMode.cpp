@@ -2512,8 +2512,9 @@ void ACataclysmDungeonGameMode::RaiseForTheDarkFloor(ACataclysmEnemyCharacter* E
 	// THE ADDED MODIFIERS FROM THE FLOOR TOO, under their own salt, as the rest of the creature's placement is (#2669,
 	// ruled 2026-11-01): the raise is fixed by the rung the floor's seed drew, so this draw can be as well.
 	Enemy->SetRarityStep(Rung);
+	const int32 ModifiersBefore = Enemy->ModifierRows.Num();
 	Enemy->DrawModifiersForRarity(ModifierSeedForPlacement(PlacementIndex, DarkFloorModifiersSalt)); // A dark floor's: its raise's modifiers from the floor.
-	++DarkFloorRaises;
+	DarkFloorRaisesThatDrew += Enemy->ModifierRows.Num() > ModifiersBefore ? 1 : 0;
 
 	// AND STOOD AGAIN ON ITS CELL NOW ITS SIZE IS KNOWN, as `SpawnPlacedCreature` does after the rung it drew: a
 	// rarer creature is bigger, and a capsule grows from its middle.

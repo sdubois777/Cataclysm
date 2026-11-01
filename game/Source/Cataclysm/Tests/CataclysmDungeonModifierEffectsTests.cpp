@@ -52261,7 +52261,9 @@ bool FCataclysmThoseInTheDarkFallTest::RunTest(const FString& Parameters)
  * the new rung adds. The raise is fixed by the rung the floor's seed drew, so the added draw now comes from the floor's
  * seed too, under its own salt. Reached as a player reaches it: the player stands on a chasm of floor 2 for a beat and
  * falls. Done twice from the same dungeon seed, each dark floor's creatures' modifiers compared in placement order.
- * SET-UP: the build raised some creature, read from the game mode's count of raises. Prints "DARK FLOOR MODIFIERS".
+ * SET-UP: the build raised some creature to a rung that added modifiers, read from the game mode's count of such
+ * raises; a raise that adds none draws nothing and could not show where the draw comes from. Prints "DARK FLOOR
+ * MODIFIERS".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkModifiersFromTheSeedTest,
 	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorBuiltTwiceRaisesTheSameModifiers",
@@ -52296,7 +52298,7 @@ bool FCataclysmThoseInTheDarkModifiersFromTheSeedTest::RunTest(const FString& Pa
 	const auto FallAndRead = [&](const TCHAR* Which, TArray<FString>& Out, int32& OutRaises) -> bool
 	{
 		Out.Reset();
-		const int32 RaisesBefore = Mode->DarkFloorRaisesSoFar();
+		const int32 RaisesBefore = Mode->DarkFloorRaisesThatDrewSoFar();
 		if (!StandThePlayerOnCell(*this, Mode, Player, Chasm, TEXT("the chasm's cell")))
 		{
 			return false;
@@ -52307,7 +52309,7 @@ bool FCataclysmThoseInTheDarkModifiersFromTheSeedTest::RunTest(const FString& Pa
 		{
 			return false;
 		}
-		OutRaises = Mode->DarkFloorRaisesSoFar() - RaisesBefore;
+		OutRaises = Mode->DarkFloorRaisesThatDrewSoFar() - RaisesBefore;
 		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
 		{
 			TArray<FString> Names;
@@ -52350,7 +52352,7 @@ bool FCataclysmThoseInTheDarkModifiersFromTheSeedTest::RunTest(const FString& Pa
 
 	AddInfo(FString::Printf(TEXT("DARK FLOOR MODIFIERS: seed %d; raises %d then %d; %d creatures then %d; alike %s"), Seed,
 							FirstRaises, AgainRaises, First.Num(), Again.Num(), First == Again ? TEXT("yes") : TEXT("NO")));
-	TestTrue(TEXT("set-up: the dark floor's build raised some creature a rung"), FirstRaises > 0);
+	TestTrue(TEXT("set-up: the dark floor's build raised some creature to a rung that added modifiers"), FirstRaises > 0);
 	TestTrue(TEXT("the dark floor built again raises the same creatures with the same modifiers"), First == Again);
 	return true;
 }
