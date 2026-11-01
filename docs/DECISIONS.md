@@ -13,7 +13,8 @@ stays open: nothing shows the list yet, which is step 3.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w123, every figure as registered:** the new test, the whole suite at 4450 / 0, and P1-P6
+  each proved on exactly its registered assertion.
 - **THE RECORD HELD NO TIME,** so the order the coordinating session ruled, most recently played first, had nothing to
   read. One field is added, `LastWrittenUtc`, with a default and no schema bump (`Save_System_Design.md` section 5), and
   the writer sets it each time it writes the character record. **IT IS THE LAST WRITE OF THE CHARACTER RECORD, NEAR THE
@@ -80,7 +81,37 @@ stays open: nothing shows the list yet, which is step 3.
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
-first attempt (a new worktree, so everything was compiled).
+first attempt (a new worktree, so everything was compiled). Python of record on 405d74509: `7177 passed, 8 skipped in
+196.46s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks passed!". That run ended at 20:39:35 local,
+as the bleed branch's discovery window took the machine; it read only this worktree.
+
+Window w123, 2026-10-31 20:56 to 21:35 local, on 405d74509. Pre-checks measured at 20:56:22, all passing:
+`development`'s CI and Unreal runs succeeded on cee4cb82c, no run in progress or queued, the lock free, no build or editor
+process, no pull request open, no simulation process, 11239 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4450 tests performed, 4450 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4450 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 195.74s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'the writer stamps the record with the time it writes it' to be true" only |
+| P2 | PROVED: "'the newer before the older' to be true" only |
+| P3 | PROVED: "'every timed record before the untimed' to be true" only |
+| P4 | PROVED: "'the unreadable slot is listed once, not hidden' to be 1, but it was 0" only, the test then returning false |
+| P5 | PROVED: "'the run's day' to be 9, but it was 0" only |
+| P6 | PROVED: "'its weapon type, chosen at creation with nothing worn' to be "Greatsword", but it was" empty, only |
+
+Each proof's failing half named the one registered test; each restored half: `62 tests performed, 62 succeeded, 0 failed`.
+After the window no `5E1EC7ED` slot was left in the worktree's `game/Saved/SaveGames`, after the test had run fourteen
+times in it (alone, in the suite, and twice in each proof).
+
+The test's line, from the whole suite's log. The list held 51 rows there, other tests' saves among them, and the fixtures
+kept their order among themselves:
+
+```
+LIST: 51 row(s); Solo #47 'Fixture Solo' level 12, lethality 0, population 0, Solo Self-Found, Greatsword, in a run: day 9, floor 3 of Sandbox, 2026-10-31T20:00:00.000Z; Shared #48 'Fixture Shared' level 4, lethality 1, population 1, shared, Staff, no run, 2026-10-30T08:00:00.000Z; Older #50 'Fixture Older' level 2, lethality 0, population 0, shared, no weapon type, no run, untimed; Unreadable #49 unreadable (what is in the slot is not a JSON object: a Character record could not be parsed as a JSON object); the writer's #0 '' level 20, lethality 0, population 0, shared, Greataxe, in a run: day 0, floor 1 of Sandbox, 2026-11-01T03:09:27.281Z, stamped '2026-11-01T03:09:27.281Z'
+```
 
 ---
 
