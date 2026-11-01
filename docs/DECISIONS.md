@@ -17,8 +17,8 @@ new Python check, `tools/tests/test_the_new_character_screen_is_generated_with_i
 - **NO TEST SEES NEW OPEN THE SCREEN.** A test world cannot make a screen with `CreateWidget` (#1841). The asset test
   shows the one thing the front end checks before it makes the screen: the path it opens loads, as the new-character
   screen's class. The screen opening, and what it shows, is on the owner's launch list below.
-- **GENERATED, NOT YET RUN IN UNREAL.** Window A made the asset exactly as registered (below); window B runs the
-  tests.
+- **GENERATED AND PASSED.** Window A made the asset exactly as registered, and window B passed every registered
+  figure (both below). What no test sees is the screen opening in play, on the launch list.
 - **THE LAYOUT IS NOT DESIGNED,** ruled 2026-11-01: one plain column, as every generated screen is, because the owner
   wants a basic working screen before any polish.
 
@@ -110,6 +110,18 @@ complaint that the asset manager has no rule for `GameFeatureData`, which every 
 **THE RUN TOUCHED EXACTLY THE ONE FILE IT WAS FOR,** by its own report ("The editor run left 1 file(s) changed") and
 by `git status --porcelain --untracked-files=all` afterwards: `?? game/Content/Interface/WBP_NewCharacter.uasset`,
 stored in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS RESTORED.** It is committed with this record.
+
+### The tests (window B)
+
+Window w127B, 2026-11-01, on `5cca2b248` (moved onto `development` e49d4f709), lock `dungeon-w127B`, run by
+`run_w127B.py` from a clean tree; pre-checks all passing at 07:48:20 local, 11236 MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The asset test alone | 1 / 1 | 1 / 1: "NEW CHARACTER ASSET: /Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C loads" |
+| Whole Unreal suite | 4486 / 0 | "4486 tests performed, 4486 succeeded, 0 failed"; declared 4486, gap 0 |
+| Python | of record | "7190 passed, 8 skipped"; JUnit 7198 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| A1 | the asset test fails on "the new-character screen's asset loads" and stops there | PROVED: 0 of 1 with the break, 1 of 1 restored; the broken log, `w127B_A1_run1.log`, fails "the new-character screen's asset loads" only |
 
 ---
 
