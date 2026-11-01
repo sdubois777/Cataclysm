@@ -101,7 +101,7 @@ Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `F
 | Figure | Registered |
 |---|---|
 | The six new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4456 / 0: window w123's 4450 on `development` (59e5dd893), + 6 |
+| Whole Unreal suite | 4460 / 0: window bleed-w1's 4454 on `development` (f1f0920b6, #2659 merged), + 6. MOVED ONTO IT, as `feat/select-screen-arrival-load-1`, from 59e5dd893 (w123's 4450), whose figure this said before |
 | Python | of record, with JUnit, and ruff |
 | P1, the load not run (`FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.` broken to an empty report, which reads as a refusal with no reason) | TWO TESTS: the loaded test on "the chosen character was loaded" only (the clean-up still runs, so the slots and the count hold); the refused test on "the refusal's reason is kept for the select screen" only, the empty report giving no reason. The `CharacterSelect` tests do not reach the game mode |
 | P2, the choice not cleared (`Instance->PendingCharacterId.Invalidate(); // A pending load's: ...`) | TWO TESTS: the loaded test on "and the next start loads nothing, the choice cleared before the load" only: the second call loads it again, and its clean-up deletes nothing, because the names it noted are the writer's after the load; the refused test on "the pending choice is cleared" only |
