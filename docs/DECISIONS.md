@@ -2,6 +2,160 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Converted damage is never damage dealt: it leeches nothing, strikes nobody, and a Masochist it kills dies uncredited (#2664)
+
+**Affects:** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: the leech, the struck-by record, a comment at
+`NoteHitDealt`); `UCataclysmCombatEvents::NoteBlow` (`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp`);
+two new Unreal tests (`game/Source/Cataclysm/Tests/CataclysmConvertedDamageDealtTests.cpp`, new); a sentence in the
+ailment section of `docs/Cataclysm_GDD_v2.md`. Issue [#2664](https://github.com/sdubois777/Cataclysm/issues/2664).
+
+### SAID FIRST
+
+- **RUN IN WINDOW converted-dealt-w1 (under Run): every registered figure as registered, the suite at 4488 / 0, and
+  all three proofs PROVED, each failing on exactly the assertions predicted.**
+- Every figure below was registered before its run, traced by hand from the code. Rebased with no force push onto `development` at `bef3362ca` (#2667, select-screen step 4b, which touches
+  nothing in damage, leech or combat events) as `fix/converted-damage-is-not-dealt-1`. Compiled there with no lock,
+  after one wait on the continuous integration runner's lock: `Build: Succeeded - 13 actions, 10 files compiled`.
+  Python of record on the same head: `7190 passed, 8 skipped in 209.81s`; JUnit tests 7198, failures 0, errors 0,
+  skipped 8; ruff "All checks passed!".
+- **NO NODE'S OWN WORDS SAY CONVERTED DAMAGE IS DEALT**, so nothing here needed the owner. "Bleed damage you deal also
+  leeches 10%-20% of its value as HP" says "you deal", and Feeding Wound's "Your life leech applies to your
+  retaliation damage as well as to your attacks" names attacks and retaliation. The GDD's leech paragraph opens with
+  "Leech is a percentage of the damage actually dealt".
+
+### Rulings, 2026-11-01 (the coordinating session)
+
+- **The principle: converted damage is damage TAKEN, deferred, so it is never damage the Masochist dealt**, though the
+  Masochist laid the bleed on itself and so is named as its instigator.
+- **R1: a Masochist killed by its own converted tick dies UNCREDITED**, following the precedent of a death by an area
+  skill's share on an ally (`ACataclysmPlayerCharacter::OnSomethingDied` passes that one on with no killer).
+- **R2: `NoteHitDealt` is left as it is**, with a comment saying why: it only puts the "dealer" in combat, which
+  `NoteHitTaken` has already done for the same character, so nothing observable changes.
+- **R3: `NoteBlowTaken` is checked first** (below), and handled here only if converted ticks alone reached it.
+
+### Every reader that credited a converted tick as dealt, found on `e49d4f709` (read, not run; line numbers there)
+
+| Reader | Where | What it did with a converted tick | Now |
+|---|---|---|---|
+| Leech, `UCataclysmLeech::NoteHit` credited to the tick's instigator | `CataclysmVitalAttributeSet.cpp:1759-1766` | life, mana and energy-shield leech paid the Masochist back from its own stored damage; "Bleed damage you deal also leeches 10%-20% of its value as HP" (`game/Data/EnchantmentEffects.csv`, scoped to the bleed tag) read it as bleed it dealt | skipped for a converted tick |
+| The last blow and kill credit, `NoteBlow` (`Blow.Attacker`, `Blow.DealtBy`) then `NoteDeath` (`Notice.Killer`) | `CataclysmCombatEvents.cpp:149-150, 167-168, 292` | a Masochist killed by it was announced as killed by itself, and `ACataclysmPlayerCharacter::OnSomethingDied`'s `Killer == this` branch (`CataclysmPlayerCharacter.cpp:1189-1330`, and `:1424`) counted a kill, noted a kill on the worn weapons, raised the `kill` event, asked a death sentence, spawned a summon at the kill, offered the overkill explosion and Necrosis Rise, and restored health on kill, all on the character just dead | no attacker and no dealer recorded: the death is uncredited (R1) |
+| The hit notice, `Notice.Attacker` | `CataclysmCombatEvents.cpp:210` | named the Masochist; no listener acted on it (the player's `hit_dealt` handler returns for a tick, and the dungeon's nine hit rules each need an enemy attacker or an enemy target) | names nobody, by the same line |
+| `NoteStruckBy` | `CataclysmVitalAttributeSet.cpp:1837-1847` | recorded the Masochist as struck by itself, and the first converted tick as the first blow "from" it | skipped for a converted tick |
+| `NoteHitDealt` | `CataclysmVitalAttributeSet.cpp:2503-2510` | put the Masochist in combat as a dealer, which it already was as the one hit | left, with a comment (R2) |
+
+**Left as they are, because they read damage TAKEN:** Fervour from health lost (`UCataclysmFervour::GainFromDamage`,
+on the defender; arriving as the bleed lands is designed); Contagious Torment (`SpreadOnDebuffDamage`, "When a debuff
+on you deals damage", carrier-side, and converted damage counts as a debuff); `NoteHitTaken`, whose attacker is read
+only to cancel skills and which a tick does not do; and `NoteBlowTaken` (below). Retaliation and `hit_dealt` already
+refused a tick, `dot_applied` a self-laid effect, and no dealer Fervour comes from a tick (`GainForEnemiesHit` is
+called by skills and projectiles only).
+
+### The checks the rulings asked for
+
+- **Does a player's own death reach its `OnSomethingDied`? YES, read from the code and not run.**
+  `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` calls `HandleDeath` (`CataclysmVitalAttributeSet.cpp:3020`); `ACataclysmPlayerCharacter::HandleDeath` calls `UCataclysmSkillEffects::MarkDead`, which ends with
+  `UCataclysmCombatEvents::NoteDeath(Actor)` (`CataclysmSkillEffects.cpp:4457`). The player's `OnDeath` binding is made
+  where its other announcements are bound and is removed only to be made again (`CataclysmPlayerCharacter.cpp:2737`),
+  so the player hears its own death, with itself as the victim. Until this change, a death by its own converted tick
+  also named it the killer, and its `Killer == this` branch ran.
+- **The dungeon's death rules that read the killer.** Of the 38 `NoteDeathFor...` rules
+  `ACataclysmDungeonGameMode::OnSomethingDied` calls, eleven read `Notice.Killer`: Blood Gates, Demon Prince, Epidemic,
+  Leech Spores, March of Progress, Mortal Decay, Nothing Is Forgotten, Rule of Chaos, the Corrupted Stalker, Vengeful
+  Wraiths and Void Parasite. **None changes when a player's own converted tick kills it.** Ten of them refuse unless
+  the victim is an enemy creature (or, for March of Progress, its commander); the Corrupted Stalker's asks whether the
+  killer is the Stalker, which neither the player nor nobody is. Nothing in them was changed.
+- **`NoteBlowTaken`: ordinary damage over time ticks reach it too.** It is called for every blow that reached health
+  or a pool, refusing only a share of an ally's blow (`CataclysmVitalAttributeSet.cpp:1964-1970`), and it is handed
+  `Hit.bIsDamageOverTime`. So a converted tick reaches it as any tick does, and that is not this issue. Recorded, not
+  changed.
+
+### What changed
+
+- **Leech:** `if (!Hit.bIsConvertedDamage && !AssetTags.HasTag(...NoLeechTag()))`.
+- **Struck-by:** `Hit.bIsConvertedDamage` joins the conditions that leave `Struck` null, beside a consequence of a
+  death, a row's answer to an event, an ailment's explosion and the two shares.
+- **`NoteBlow`:** one local, `bNobodyDealtIt = Hit.bIsConvertedDamage`, and the attacker and the dealer are null when it
+  holds. `FCataclysmLastBlow::IsOnRecord` reads only the time, so the blow is still on record, with its killing tags,
+  and a death by it is announced with no killer. `MetresFromWhereItWasStruck` answers -1 for no dealer, as for any
+  blow with none.
+- **`NoteHitDealt`:** a comment only (R2).
+
+All three read `FCataclysmIncomingHit::bIsConvertedDamage`, set from the converted-damage mark by the change of
+2026-11-01 below.
+
+### Tests
+
+**New, two, in a group of their own, `Cataclysm.ConvertedDamageDealt.`**, which no other test name begins with. Plain
+actors given the vital, class resource and combat sets, as the fixed-total tests use. A plain actor has no
+regeneration step, so a leech payment is never paid out: whether one was made is what is read.
+
+- `Cataclysm.ConvertedDamageDealt.AMasochistLeechesNothingFromItsOwnConvertedDamage`. A Masochist with 10% life leech
+  converts 100; 1.5 s. Set-up: "one converted tick of 20 landed on the Masochist" (20) and "the leecher's bleed ticked
+  on the enemy". **Control:** "the leecher's own bleed on an enemy made one leech payment" (1), a character with the
+  same leech having laid an ordinary bleed of 20 a tick on an enemy told once that it moved. Then "the Masochist's own
+  converted tick made no leech payment" (0). Before: 1.
+- `Cataclysm.ConvertedDamageDealt.ItsOwnConvertedDamageIsNobodysBlow`. A Masochist converts 100; 1.5 s. **Controls:**
+  an enemy's burn on another character, "the burn's tick is on record", "and names the enemy as its attacker", "and the
+  enemy is recorded as having struck the control". Then "the converted tick is on record as the Masochist's last blow"
+  (set-up), "the converted tick names no attacker, so a death by it is credited to nobody", "and no dealer", "and the
+  Masochist is not recorded as struck by itself". Before: the Masochist as attacker and as dealer (the effect's causer,
+  with no source object), and struck by itself.
+
+**Read and unchanged:** the `Cataclysm.DamageConversion.*` and `Cataclysm.ConvertedDamageTotal.*` tests (none reads
+leech, the last blow or the struck-by record); the `Cataclysm.CombatEvents.*` tests (none lays converted damage); the
+leech tests (none converts a blow).
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each, the two full names above |
+| Whole Unreal suite | 4488 / 0: window w127B's 4486 measured on `bef3362ca`, this branch's base, + 2. Every existing test passes as before, none having been changed |
+| Python | 7198 of record, with JUnit: 7190 passed, 8 skipped, failures 0, errors 0 (no Python test added), and ruff clean |
+| P1, the leech: `if (!Hit.bIsConvertedDamage && !AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))` broken to `if ((!Hit.bIsConvertedDamage \|\| Hit.bIsDamageOverTime) && !AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))` (every converted tick is damage over time, so it is leeched from again), prefix `Cataclysm.ConvertedDamageDealt.AMasochistLeechesNothingFromItsOwnConvertedDamage` | that one test fails on one assertion only: "the Masochist's own converted tick made no leech payment" (to be 0, but it was 1: 10% of 20). The set-up lines and the control (1) pass |
+| P2, the attacker: `const bool bNobodyDealtIt = Hit.bIsConvertedDamage;` broken to `const bool bNobodyDealtIt = Hit.bIsConvertedDamage && !Hit.bIsDamageOverTime;`, prefix `Cataclysm.ConvertedDamageDealt.ItsOwnConvertedDamageIsNobodysBlow` | that one test fails on two assertions only: "the converted tick names no attacker, so a death by it is credited to nobody" and "and no dealer" (each names the Masochist). "the Masochist is not recorded as struck by itself" passes, the struck-by skip being in the vital set; the controls and the set-up lines pass |
+| P3, the struck-by record: `\|\| bAreaSkillShareOnAnAlly \|\| Hit.bIsConvertedDamage` broken to `\|\| bAreaSkillShareOnAnAlly \|\| (Hit.bIsConvertedDamage && !Hit.bIsDamageOverTime)`, prefix `Cataclysm.ConvertedDamageDealt.ItsOwnConvertedDamageIsNobodysBlow` | that one test fails on one assertion only: "and the Masochist is not recorded as struck by itself" (it is). The attacker and dealer lines pass, `NoteBlow` naming nobody either way; the controls pass |
+
+Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no failure.
+Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, **each broken half's log kept**,
+since the predictions are at the assertion. P2 and P3 share a test and fail different assertions of it. None runs
+while a Python suite runs (issue #1630).
+
+### Run
+
+**Window converted-dealt-w1, 2026-11-01, on the registration commit `cbcda6fc4`, runner process 253760**, run by the
+coordinating session with the writing session's scripts (`prechecks_c2275d.py`, `run_c2275d.py`, `prove_c2275d.py`,
+adapted from converted-total-w1's). Pre-checks at 08:20:53 local, all passing: `development` at `bef3362ca` with its
+CI and Unreal runs successful, no run in progress or queued, the lock free, no build or editor process, no open pull
+request, no simulation process, 11287 MB free. Lock converted-dealt-w1 taken, and released at the end.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The two new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4488 tests performed, 4488 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4488 tests in the tree at cbcda6fc4; 4488 performed, gap 0; every declared test was reported by the run" |
+| Memory | `CataclysmTestMemorySummary: tests=5095 peak_used_virtual_mb=8956 final_used_virtual_mb=8620 collections=3445 collection_total_s=117.947 worlds_at_last_collection=2` |
+| Python | `7190 passed, 8 skipped in 194.76s`; JUnit tests 7198, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: AMasochistLeechesNothingFromItsOwnConvertedDamage`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P2 | PROVED: with the break in, `1 failed: ItsOwnConvertedDamageIsNobodysBlow`; restored, 1 succeeded |
+| P3 | PROVED: with the break in, `1 failed: ItsOwnConvertedDamageIsNobodysBlow`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, its anchor matched once, its run reported, and the
+source hash was the same before and after it.
+
+**THE PREDICTIONS ARE CONFIRMED AT THE ASSERTION.** Each broken half's engine log was kept by the tester hook
+(`c2275d_P<n>_run1.log`), and every failed assertion in it is listed here. No prediction was wrong. Each restored
+half's log holds no failed assertion.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| P1 | "the Masochist's own converted tick made no leech payment" (0, 1) | exactly the one predicted; the control (1) and the set-up lines passed |
+| P2 | "the converted tick names no attacker, so a death by it is credited to nobody" (to be true); "and no dealer" (to be true) | exactly the two predicted; "and the Masochist is not recorded as struck by itself" passed, as predicted |
+| P3 | "and the Masochist is not recorded as struck by itself" (to be false) | exactly the one predicted; the attacker and dealer lines passed |
+
+---
+
 ## 2026-11-01 — The new-character screen's asset, made by the generator, so New on the select screen opens it (#753, select-screen step 4b)
 
 **Affects:** `tools/generate_interface_assets.py`, which makes `WBP_NewCharacter` (`make_new_character`, called after
