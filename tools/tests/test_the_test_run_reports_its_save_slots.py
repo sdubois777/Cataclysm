@@ -48,6 +48,47 @@ def test_the_later_of_two_lines_is_reported() -> None:
     assert unreal_build.test_saves_line(log) == "Test saves: 9 written and deleted, 1 left behind: Run_C"
 
 
+# ---------------------------------------------------------------------------
+# Only a line written after the run's last test started is the run's. Issue #2677.
+# ---------------------------------------------------------------------------
+
+#: The engine's smoke tests at start-up, each ending with a line of its own; window w132 measured 607.
+START_UP = "[2026.11.01-21.04.10:092][  0]LogCataclysm: Display: Test saves: 0 written and deleted, 0 left behind\n" * 3
+STARTED = ("[2026.11.01-21.04.17:198][598]LogAutomationController: Display: Test Started. Name={EachTest} "
+           "Path={Cataclysm.SaveStorage.EachTest}\n")
+EXITING = "[2026.11.01-21.04.17:269][601]LogCore: Engine exit requested (reason: Win RequestExit)\n"
+
+
+def test_start_up_lines_alone_count_as_missing_when_tests_were_performed() -> None:
+    """A run whose hook logged nothing for its own tests and whose exit line was lost: the start-up lines say
+    "0 left behind" and must not pass it."""
+    line = unreal_build.test_saves_line(START_UP + STARTED + EXITING)
+    assert line.startswith("Test saves: (no line in the log"), line
+    assert unreal_build.saves_failure(PASSED, line) is not None
+    assert unreal_build.exit_code_for(PASSED, line) != 0
+
+
+def test_the_line_after_the_last_test_started_is_the_one_read() -> None:
+    log = (START_UP + STARTED
+           + "[2026.11.01-21.04.17:268][600]LogCataclysm: Display: Test saves: 4 written and deleted, 1 left behind: "
+             "Run_D\n" + EXITING)
+    assert unreal_build.test_saves_line(log) == "Test saves: 4 written and deleted, 1 left behind: Run_D"
+
+
+def test_a_lost_exit_line_passes_when_the_last_tests_line_is_there() -> None:
+    """Window w131's case: the log ends at "Engine exit requested", and the line the last test's end logged is read.
+    The test's own quotation of the line, logged after it by the automation controller, is not read."""
+    line = unreal_build.test_saves_line(
+        START_UP + STARTED
+        + "[2026.11.01-21.04.17:268][600]LogCataclysm: Display: Test saves: 1 written and deleted, 0 left behind\n"
+        + "[2026.11.01-21.04.17:268][600]LogAutomationController: TEST SAVES LINE: called at each test's end yes; "
+          "returned 'Test saves: 1 written and deleted, 0 left behind'; logged 1\n"
+        + EXITING)
+    assert line == "Test saves: 1 written and deleted, 0 left behind"
+    assert unreal_build.saves_failure(PASSED, line) is None
+    assert unreal_build.exit_code_for(PASSED, line) == 0
+
+
 def test_the_log_line_the_cpp_writes_matches_what_the_wrapper_reads() -> None:
     """The C++ summary's own wording, read from its source, so a rewording there cannot pass unread here."""
     source = (pathlib.Path(__file__).resolve().parents[2] / "game" / "Source" / "Cataclysm" / "Save"
