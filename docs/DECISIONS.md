@@ -15,7 +15,8 @@ this is the last of Group 3d's raised creatures.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w121, every figure as registered:** the four new tests, the whole suite at 4448 / 0, and
+  P1-P10 each proved on exactly its registered assertions.
 - **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-11-01**, on 423af997c: the Reaper test alone failed on one assertion,
   "Expected 'each at the health it was saved at, not full' to be 1, but it was 0". Its two lines:
   "LOAD REAPER on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 0 at
@@ -108,7 +109,49 @@ The first, second and fourth go through `ARaisedRoundTrip`: a beat, then the hal
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
 the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
-compile.
+compile. Python of record on 1255daeb1: `7177 passed, 8 skipped in 192.81s`, JUnit tests 7185, failures 0, errors 0,
+skipped 8; ruff "All checks passed!".
+
+Window w120, 2026-11-01, on 423af997c: stopped at its first step, recorded in SAID FIRST. After the ruled change, compiled
+again with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`; Python of record on
+662dda801: `7177 passed, 8 skipped in 192.11s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks
+passed!".
+
+Window w121, 2026-10-31 18:37 to 19:34 local, on 662dda801. Pre-checks measured at 18:37:17, all passing:
+`development`'s CI and Unreal runs succeeded on c968fed35, no run in progress or queued, the lock free, no build or
+editor process, no pull request open, no simulation process, 11121 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4448 tests performed, 4448 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4448 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 190.39s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'a hit on the Reaper does no damage' to be 47.250000, but it was 6.546806" only; "1 at full health" before the hit |
+| P2 | PROVED: "'as many stand in the rule's list as were saved' to be 1, but it was 0" and "'set-up: the Reaper and the player stand' to be true" only |
+| P3 | PROVED: "'and no second Reaper comes' to be true" only |
+| P4 | PROVED: "'as many stand ...' to be 1, but it was 0" and "'set-up: the Stalker stands after the load' to be not null" only |
+| P5 | PROVED: "'it stands where it stood' to be true" only; its line reading "17928.7 cm from where it stood, which was 17929 cm from the entrance" |
+| P6 | PROVED: "'each at the health it was saved at, not full' to be 1, but it was 0" only |
+| P7 | PROVED: "'the Stalker slain at the save stays slain' to be true" and "'and no floor raises it again' to be false" only; its line reading "NOT SLAIN, and after 31 s A STALKER STANDS" |
+| P8 | PROVED: "'as many stand ...' to be 2, but it was 0" and "'each portal's creatures as at the save' to be "1,1", but it was "0,0"" only |
+| P9 | PROVED: "'each carrying the rule's mark' to be 2, but it was 0" only |
+| P10 | PROVED: "'none is on the floor's list' to be 0, but it was 2" only |
+
+Each proof's failing half named one test, the one registered; each restored half: `60 tests performed, 60 succeeded, 0
+failed`.
+
+The printed lines, from the whole suite:
+
+```
+LOAD REAPER on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 1 at full health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD REAPER HIT: its health 47.2 before a hit of 100 and 47.2 after; after 11 s more the same Reaper
+LOAD STALKER on seed 1: Loaded (... day 1, 223 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD STALKER PLACE: 0.0 cm from where it stood, which was 17929 cm from the entrance; 18 piece(s) worn at the save; the build the same
+LOAD STALKER SLAIN: Loaded (... day 1, 223 creatures, placed where it was saved); slain, and after 31 s none stands
+LOAD PORTAL CREATURES on seed 1: Loaded (... day 1, 225 creatures, placed where it was saved); after a beat 2/2 standing, 2 at half health, 2 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD PORTALS: 2 portal(s); their creatures by portal [1,1], at the save [1,1]; 0 on the floor's list
+```
 
 ---
 
