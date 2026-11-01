@@ -16,8 +16,10 @@ Issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).
 
 ### SAID FIRST
 
-- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
-  code. Rebased with no force push onto `development` at `e70ee48eb` (#2665, select-screen step 4a, which touches
+- **RUN IN WINDOW converted-total-w1 (under Run): every registered figure as registered, the suite at 4485 / 0, and
+  all four proofs PROVED, each failing on exactly the assertions predicted, and the two tests predicted to pass under
+  Q2 and Q3 passing.**
+- Every figure below was registered before its run, traced by hand from the code. Rebased with no force push onto `development` at `e70ee48eb` (#2665, select-screen step 4a, which touches
   nothing in damage, debuffs or the vital set) as `fix/converted-damage-total-is-fixed-1`. Compiled there with no
   lock: `Build: Succeeded - 43 actions, 40 files compiled`, at the first attempt. Python of record on the same head:
   `7187 passed, 8 skipped in 248.51s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!".
@@ -142,7 +144,37 @@ tests that pass under them are part of the prediction. None runs while a Python 
 
 ### Run
 
-Not yet run.
+**Window converted-total-w1, 2026-11-01, on the registration commit `ef1ea7967`, runner process 18052**, run by the
+coordinating session with the writing session's scripts (`prechecks_c2275t.py`, `run_c2275t.py`, `prove_c2275t.py`,
+adapted from converted-w1's). Pre-checks at 07:02:13 local, all passing: `development` at `e70ee48eb` with its CI and
+Unreal runs successful, no run in progress or queued, the lock free, no build or editor process, no open pull request,
+no simulation process, 11438 MB free. Lock converted-total-w1 taken, and released at the end.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4485 tests performed, 4485 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4485 tests in the tree at ef1ea7967; 4485 performed, gap 0; every declared test was reported by the run" |
+| Memory | `CataclysmTestMemorySummary: tests=5092 peak_used_virtual_mb=8978 final_used_virtual_mb=8628 collections=3443 collection_total_s=118.595 worlds_at_last_collection=2` |
+| Python | `7187 passed, 8 skipped in 193.83s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| Q1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: ADurationStatAddsNoDamage`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| Q2 | PROVED: with the break in, `5 tests performed, 2 succeeded, 3 failed: DefencesDoNotMitigateItTwice, MoreDamageOverTimeTakenDoesNotRaiseIt, SuppressedDebuffDamageDoesNotZeroIt`; restored, `5 tests performed, 5 succeeded, 0 failed` |
+| Q3 | PROVED: with the break in, the same `5 tests performed, 2 succeeded, 3 failed` and the same three; restored, 5 succeeded |
+| Q4 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: AHeldDebuffAddsNoTicks`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly what was registered, its anchor matched once, its run reported, and the
+source hash was the same before and after it.
+
+**THE PREDICTIONS ARE CONFIRMED AT THE ASSERTION.** Each broken half's engine log was kept by the tester hook
+(`c2275t_Q<n>_run1.log`), and every failed assertion in it is listed here. No prediction was wrong. Each restored
+half's log holds no failed assertion.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| Q1 | "the converted damage has run out at 5.5 s, its own 5 seconds" (to be false); "by 8 s the Masochist took the 100 it converted and no more: 140.00" (100, 140) | exactly the two predicted, 140 as traced (7.5 s, seven ticks of 20) |
+| Q2 | `DefencesDoNotMitigateItTwice`: "the Masochist took the 100 it converted: 60.00" (100, 60); `MoreDamageOverTimeTakenDoesNotRaiseIt`: "the Masochist took the 100 it converted and no more: 150.00" (100, 150); `SuppressedDebuffDamageDoesNotZeroIt`: "the Masochist took the 100 it converted: 0.00" (100, 0) | exactly the three predicted, one assertion each; every control passed; `ADurationStatAddsNoDamage` and `AHeldDebuffAddsNoTicks` logged `Result={Success}`, as predicted |
+| Q3 | the same three assertions with the same figures | exactly as predicted, the same as Q2; the duration and hold tests logged `Result={Success}` |
+| Q4 | "the converted damage has run out" (to be false); "the Masochist took the 100 it converted and no more: 200.00" (100, 200) | exactly the two predicted, 200 as traced (ten ticks by 10.25 s) |
 
 ---
 
