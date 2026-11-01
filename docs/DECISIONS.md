@@ -16,9 +16,11 @@ Issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session's window held the build machine while this was written.
-  Every figure below is registered before its run, traced by hand from the code. The Unreal total and the Python
-  figure are placeholders until the window is booked.
+- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
+  code. Rebased with no force push onto `development` at `e70ee48eb` (#2665, select-screen step 4a, which touches
+  nothing in damage, debuffs or the vital set) as `fix/converted-damage-total-is-fixed-1`. Compiled there with no
+  lock: `Build: Succeeded - 43 actions, 40 files compiled`, at the first attempt. Python of record on the same head:
+  `7187 passed, 8 skipped in 248.51s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!".
 - **THE PROJECT OWNER DECIDED THE WORDING QUESTION, 2026-11-01: "No: stored total is fixed".** Asked whether the
   "debuffs on you" and "damage over time taken" wording of Vessel Unbroken, Vessel of Plagues, Wound Channeling,
   Symphony of Pain, Echoes of Agony and Doctrine Made Flesh changes converted damage. It does not. Converted damage
@@ -126,8 +128,8 @@ which defaults false). No Python test reads the changed lines; the regular-expre
 | Figure | Registered |
 |---|---|
 | The five new tests alone | 1 / 1 each, the five full names above |
-| Whole Unreal suite | **PLACEHOLDER**: the base's last measured total plus the five tests above, registered when the window is booked. Every existing test passes as before, none having been changed |
-| Python | **PLACEHOLDER**: `development`'s figure of record, unchanged (no Python test added), with JUnit, and ruff clean |
+| Whole Unreal suite | 4485 / 0: window w126B's 4480 measured on `e70ee48eb`, this branch's base, + 5. Every existing test passes as before, none having been changed |
+| Python | 7195 of record, with JUnit: 7187 passed, 8 skipped, failures 0, errors 0 (no Python test added), and ruff clean |
 | Q1, the stretch: `FScalableFloat(bIsConvertedDamage ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(` broken to `FScalableFloat((bIsConvertedDamage && Instigator != Target) ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(` (a converted blow is laid on its own character, so it is stretched again), prefix `Cataclysm.ConvertedDamageTotal.ADurationStatAddsNoDamage` | that one test fails on two assertions only: "the converted damage has run out at 5.5 s, its own 5 seconds" (it lasts 7.5 s) and "by 8 s the Masochist took the 100 it converted and no more: 140.00" (seven ticks of 20). The control and the set-up lines pass |
 | Q2, the skip in `Resolve`: `const bool bMeetsDefences = !Hit.bIsConvertedDamage;` broken to `const bool bMeetsDefences = !Hit.bIsConvertedDamage \|\| Hit.bIsDamageOverTime;` (every converted tick is damage over time, so it meets every step again), prefix `Cataclysm.ConvertedDamageTotal.` (the group, five tests) | three tests fail, each on one assertion only: `MoreDamageOverTimeTakenDoesNotRaiseIt`, "the Masochist took the 100 it converted and no more: 150.00"; `SuppressedDebuffDamageDoesNotZeroIt`, "the Masochist took the 100 it converted: 0.00"; `DefencesDoNotMitigateItTwice`, "the Masochist took the 100 it converted: 60.00". Every control passes, the break touching no burn. `ADurationStatAddsNoDamage` and `AHeldDebuffAddsNoTicks` pass: their Masochists carry no stat `Resolve` reads, so meeting every step changes nothing |
 | Q3, the flag not set: `Hit.bIsConvertedDamage = bConvertedDamage;` broken to `Hit.bIsConvertedDamage = bConvertedDamage && !bPeriodicTick;` (a converted tick is periodic, so the flag is never set), prefix `Cataclysm.ConvertedDamageTotal.` | the same three tests, on the same three assertions and figures as Q2, and the same two pass, for the same reason: with the flag false, `Resolve` meets every step as Q2 makes it |
