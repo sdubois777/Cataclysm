@@ -264,6 +264,21 @@ public:
 	bool bTargetsTheFurthest = false;
 
 	/**
+	 * Whether this minion's type row states a threat of nought, which today is the Spike Trap's and the Skill Trap's.
+	 * Read by `Spawn` from `FCataclysmMinionTypeRow::ThreatPercent`. While it is set, NO CREATURE'S SEARCH FOR THE
+	 * NEAREST SEEKS THIS MINION: `UCataclysmTargetCandidates::NearestHostile` passes over it. Area blows still hurt it.
+	 * The owner's decision of 2026-11-01, issue #2553: "Nearest; threat 0 untargeted".
+	 *
+	 * ONLY NOUGHT, AND NOT "LOW". A turret and a Ballista at 5 are sought by distance alone, as every minion was
+	 * before; a threat above nought is read only by Behind the Veil (`UCataclysmCommand::MinionDrawingEnemyFrom`).
+	 *
+	 * FALSE FOR A MINION SUMMONED WITHOUT A TYPE, which has no row to state a threat, so it stays sought as before.
+	 * Public so a test can clear it by hand for a control, as `bTargetsTheFurthest` is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bDrawsNoAttention = false;
+
+	/**
 	 * The enemy within this minion's reach standing furthest from it, or null. Null for a minion whose row does not
 	 * say `Furthest`, and null when nothing is within reach.
 	 *

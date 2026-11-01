@@ -2891,6 +2891,13 @@ bool FCataclysmVeilDrawsAnEnemyOffTest::RunTest(const FString&)
 	// metres away, nearer than the summoner, so the search answered the trap and
 	// the keystone never applied: it redirects a creature that would attack the
 	// CHARACTER. Three assertions failed and the run found it.
+	//
+	// THAT ACCOUNT IS OF THE GAME BEFORE ISSUE #2553. Since the owner's decision
+	// of 2026-11-01, "Nearest; threat 0 untargeted", the search passes over a
+	// minion whose row states a threat of nought, so a trap placed nearer than
+	// the summoner would no longer be answered. The placement stays as it is
+	// for the reason still standing: a mote or an imp nearer than the summoner
+	// IS answered by the search, and the keystone would then never apply.
 	ACataclysmMinion* Trap =
 		SummonOfType(*this, Summoner.Actor, FVector(0, 5 * M, 0), DrawsNobody);
 	ACataclysmMinion* Some =

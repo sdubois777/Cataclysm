@@ -1132,8 +1132,18 @@ struct FCataclysmMinionTypeRow : public FTableRowBase
 
 	/**
 	 * How much attention this minion draws, as a percentage. A turret sits near
-	 * zero and an imp at 100, which is how a decoy and a turret are one number
-	 * rather than two behaviours.
+	 * zero and an imp at 100.
+	 *
+	 * WHAT READS IT, AND IT IS TWO THINGS, NOT A WEIGHT ON EVERY CHOICE. The
+	 * owner's decision of 2026-11-01, issue #2553: "Nearest; threat 0 untargeted".
+	 *  - NOUGHT: no creature's search for the nearest seeks this minion.
+	 *    `ACataclysmMinion::Spawn` sets `bDrawsNoAttention`, and
+	 *    `UCataclysmTargetCandidates::NearestHostile` passes over it. Area blows
+	 *    still hurt it. Today the Spike Trap's and the Skill Trap's.
+	 *  - ABOVE NOUGHT: it weighs nothing in an ordinary choice, which is the
+	 *    nearest by distance alone. Behind the Veil ranks a summoner's minions by
+	 *    it (`UCataclysmCommand::MinionDrawingEnemyFrom`), and that is its only
+	 *    reader. Drawing an enemy onto a minion otherwise is a taunt's work.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	float ThreatPercent = 0.0f;

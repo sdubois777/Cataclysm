@@ -292,7 +292,12 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	else
 	{
 		// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
-		// asks the sphere, which answers the same question more slowly.
+		// asks the sphere, which answers nearly the same question more slowly.
+		//
+		// NEARLY: IT DOES NOT PASS OVER A MINION WHOSE ROW STATES A THREAT OF NOUGHT,
+		// which `NearestHostile` does since the owner's decision of 2026-11-01 (issue
+		// #2553). Left so deliberately: no test's world reaches this route, so a
+		// filter here could not be shown to work, and a preview is not play.
 		const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
 
