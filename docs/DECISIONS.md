@@ -2,6 +2,148 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Converted damage's total is fixed when it is converted: no stat stretches, holds, scales or mitigates it again (#2275, R3)
+
+**Affects:** `UCataclysmSkillEffects::ApplyDamageOverTime` (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`);
+`UCataclysmDebuffs::HoldStep` (`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp`, and its comment in
+`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h`); a new `FCataclysmIncomingHit::bIsConvertedDamage`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h`), set in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`) and read by `UCataclysmDamageCalculation::Resolve`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp`); five new Unreal tests
+(`game/Source/Cataclysm/Tests/CataclysmConvertedDamageTotalTests.cpp`, new); a paragraph in the ailment section of
+`docs/Cataclysm_GDD_v2.md`. The follow-up R3 of the #2275 entry below, ruled there and named as the next change.
+Issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session's window held the build machine while this was written.
+  Every figure below is registered before its run, traced by hand from the code. The Unreal total and the Python
+  figure are placeholders until the window is booked.
+- **THE PROJECT OWNER DECIDED THE WORDING QUESTION, 2026-11-01: "No: stored total is fixed".** Asked whether the
+  "debuffs on you" and "damage over time taken" wording of Vessel Unbroken, Vessel of Plagues, Wound Channeling,
+  Symphony of Pain, Echoes of Agony and Doctrine Made Flesh changes converted damage. It does not. Converted damage
+  still counts as a bleed and a debuff for conditions (the #2275 entry's R2).
+- **R3 OF THE #2275 ENTRY SAID A DURATION STAT "MAY STRETCH THE TIME". THAT IS WITHDRAWN** (R1 below): The Breaking
+  Point's own words, "over 5 seconds", decide it.
+
+### The owner's decision and the coordinating session's rulings, 2026-11-01
+
+- **Owner: "No: stored total is fixed".** No node's "debuffs on you" or "damage over time taken" wording changes
+  converted damage.
+- **R1: converted damage is never stretched.** No `UCataclysmDebuffs::DurationOn` on a converted blow; it runs its
+  5 seconds, as "converts all damage you take into Bleeding over 5 seconds" says.
+- **R2: `HoldStep` skips converted damage** (Ceaseless Penance). An unbounded payout is a fault.
+- **R3: a converted tick skips `Resolve`'s steps 2 to 6 and the slashing bonus**, through a new
+  `FCataclysmIncomingHit::bIsConvertedDamage` set from the mark. The blow was resolved against every defence before
+  it was converted, so meeting them again mitigates it twice; this covers the defences and the owner's decision.
+- **R4: the pools still apply.** A converted tick meets the temporary absorb, "DoTs deal damage to your mana pool
+  first" and the energy shield (its bleed share, or Warded): they decide who pays, not how much.
+- **R5: immunities and saves still apply**: damage and type immunity, immunity to an attacker, the lethal-blow saves
+  and the Sacrificial Ward. They are outcomes for any damage taken.
+- **R6: the Masochist leeching from its own converted ticks** (`UCataclysmLeech::NoteHit` credits the tick's
+  instigator, which is the Masochist) is filed by the coordinating session as an issue of its own, and is not here.
+
+### Every path that changed a converted tick, found on `c7fd29c63` (read, not run), and what each does now
+
+| Path | Before | After |
+|---|---|---|
+| `debuff_duration_taken` via `DurationOn` in `ApplyDamageOverTime` (Symphony of Pain, Vessel of Plagues, "Debuffs applied to you last 30-50% longer", "Bleeding on you lasts 50-100% longer", "DoTs on you have 100-300% more duration") | more ticks of the same size: Vessel of Plagues made a blow of 100 seven ticks of 20, 140 | not applied: 5 seconds, 5 ticks (R1) |
+| Ceaseless Penance, `UCataclysmDebuffs::HoldStep` | held: its end stood still while its period ran, so above half health it ticked with no bound | not held (R2) |
+| Block, step 2 | rolled on each tick | skipped (R3) |
+| Armour and its penetration, step 3 (Battle-Scarred; the instigator's penetration is the Masochist's own) | applied again | skipped |
+| Resistance, step 4 (a converted tick carries no element, so it met the Masochist's resistance to its own type) | applied again | skipped |
+| Damage reduction, both lines, step 5 (Endurance in Suffering) | applied again | skipped |
+| `damage_taken` and ailment riders, step 6 (Communion of Pain, The Edge, the "you take more/less damage" rows) | applied again | skipped |
+| A hold's multiplier, step 6 (Time-Lock, enemies only) | applied | skipped |
+| `debuff_damage_suppressed`, step 6 (Vessel Unbroken) | every tick zeroed | skipped |
+| `damage_over_time_taken`, step 6 (Wound Channeling, Symphony of Pain, Vessel of Plagues, Echoes of Agony, Doctrine Made Flesh, "DoTs deal double damage to you", "Bleed effects applied to you deal 30-50% increased damage", "DoTs on you tick twice as fast while moving") | scaled | skipped |
+| Slashing bonus, step 9 (the causer is the Masochist, so its own weapon) | +10% | skipped |
+| Temporary absorb, mana first, energy shield (6b to 8) | applied | applied (R4) |
+| Immunities and saves after `Resolve` | applied | applied (R5) |
+
+Evasion, critical strikes and the Nth hit's share never reached a tick and are unchanged.
+
+### What changed
+
+- **`ApplyDamageOverTime`:** the effect's duration is `bIsConvertedDamage ? Numbers.DurationSeconds :
+  UCataclysmDebuffs::DurationOn(...)`. The tick size is unchanged, so 5 ticks of a fifth of the blow.
+- **`HoldStep`:** each effect it would hold is read for the mark (`HeldStamp`) and skipped when it carries it.
+- **`FCataclysmIncomingHit::bIsConvertedDamage`**, a `UPROPERTY` beside `bIsBleed`, set in the vital set from the
+  stamp it already read for the bleed gate.
+- **`Resolve`:** one local, `bMeetsDefences = !Hit.bIsConvertedDamage`, read by block (step 2), armour (step 3),
+  resistance (step 4: the multiplication only), the block holding steps 5 and 6 (`if (Combat && bMeetsDefences)`:
+  both damage reduction lines, `damage_taken`, the Nth hit's share, a hold's multiplier, the suppression and
+  `damage_over_time_taken`), and the slashing bonus at step 9. The pools after step 6 do not read it.
+
+### The node texts this touches
+
+No node names converted damage or The Breaking Point. Through the #2275 entry's R2 these texts' own words reach it,
+and the owner's decision is that none of them changes it: Vessel Unbroken ("Debuffs on you deal no damage at all, and
+each one grants 5% more damage and 5 Fervour per second."), Vessel of Plagues ("Debuffs on you last 50% longer, and
+debuffs on you deal 50% more damage to you."), Wound Channeling ("Damage from debuffs on you is increased by 1% per
+point, ..."), Symphony of Pain ("Debuffs on you last 2% longer per point, and their effect on you is reduced by 1% per
+point."), Echoes of Agony ("Damage taken from damage over time effects is reduced by 1% per point."), Doctrine Made
+Flesh ("Each debuff on you grants 1% more damage and reduces the damage that debuff deals to you by 10%."), and, by
+R2 above, Ceaseless Penance ("Debuffs on you no longer expire while you are above 50% health."). Communion of Pain
+("take 20% more damage"), The Edge ("you take 25% less damage"), Endurance in Suffering and Battle-Scarred reach it
+only as defences, which R3 covers. **The conditions in those same texts are unchanged**: "each one grants", "for each
+unique debuff on you" and Thirst for Pain's "While you are Bleeding" still count converted damage.
+
+### Tests
+
+**New, five, in a group of their own, `Cataclysm.ConvertedDamageTotal.`**, which no other test name begins with. Each
+converts a blow of 100 on a Masochist (a plain actor given the vital, class resource and combat sets) carrying one
+stat, written as an attribute base, or Ceaseless Penance's stat line. Each lays an enemy's burn on a character carrying
+the same stat as **the control that the stat is live**, against a plain character where a figure is compared. A plain
+actor is no player, so no tier's resistance penalty reaches it, and it holds no resistance, armour or energy shield.
+
+- `Cataclysm.ConvertedDamageTotal.ADurationStatAddsNoDamage`. `debuff_duration_taken` 150. "control: a burn on a
+  character with the same stat still runs at 5.5 s"; "the converted damage has run out at 5.5 s, its own 5 seconds";
+  "by 8 s the Masochist took the 100 it converted and no more: ..." (100). Before: still bleeding; 140 (7.5 s, seven
+  ticks of 20).
+- `Cataclysm.ConvertedDamageTotal.MoreDamageOverTimeTakenDoesNotRaiseIt`. `damage_over_time_taken` 150. Controls:
+  "the plain character's burn dealt something" (50) and "the stat made the same burn deal half as much again" (75
+  against 50); "the Masochist took the 100 it converted and no more: ..." (100). Before: 150.
+- `Cataclysm.ConvertedDamageTotal.SuppressedDebuffDamageDoesNotZeroIt`. `debuff_damage_suppressed` 1. Controls: "the
+  plain character's burn dealt something" and "the same burn dealt nothing to the character holding the flag"; "the
+  Masochist took the 100 it converted: ..." (100). Before: 0.
+- `Cataclysm.ConvertedDamageTotal.DefencesDoNotMitigateItTwice`. Damage reduction 50, damage taken 120. Controls: "the
+  plain character's burn dealt something" (50) and "the two stats made the same burn deal 0.6 of it" (30 against 50);
+  "the Masochist took the 100 it converted: ..." (100). Before: 60 (20 x 0.5 x 1.2 a tick).
+- `Cataclysm.ConvertedDamageTotal.AHeldDebuffAddsNoTicks`. Ceaseless Penance on both, both healed to 90% after the
+  blow is converted, `HoldStep` called by hand each quarter second for 41 steps. "control: the burn, held, still runs
+  at 10.25 s"; "the converted damage has run out"; "the Masochist took the 100 it converted and no more: ..." (100).
+  Before: still bleeding; 200 (ten ticks; health 900 to 700 stays above half, so the hold never lets go).
+
+**Read and unchanged:** the `Cataclysm.DamageConversion.*` tests (their Masochists carry no combat set, so no step this
+skips reached them, and none carries a duration stat or Ceaseless Penance); the `Cataclysm.Debuffs` hold tests (they
+hold an ordinary bleed, which carries no mark); every test of `Resolve`'s steps (none builds a hit with the new flag,
+which defaults false). No Python test reads the changed lines; the regular-expression checks on `Resolve`
+(`tools/tests/test_the_damage_reduction_cap_is_one_number.py`) match the damage reduction line, which is unchanged.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, the five full names above |
+| Whole Unreal suite | **PLACEHOLDER**: the base's last measured total plus the five tests above, registered when the window is booked. Every existing test passes as before, none having been changed |
+| Python | **PLACEHOLDER**: `development`'s figure of record, unchanged (no Python test added), with JUnit, and ruff clean |
+| Q1, the stretch: `FScalableFloat(bIsConvertedDamage ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(` broken to `FScalableFloat((bIsConvertedDamage && Instigator != Target) ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(` (a converted blow is laid on its own character, so it is stretched again), prefix `Cataclysm.ConvertedDamageTotal.ADurationStatAddsNoDamage` | that one test fails on two assertions only: "the converted damage has run out at 5.5 s, its own 5 seconds" (it lasts 7.5 s) and "by 8 s the Masochist took the 100 it converted and no more: 140.00" (seven ticks of 20). The control and the set-up lines pass |
+| Q2, the skip in `Resolve`: `const bool bMeetsDefences = !Hit.bIsConvertedDamage;` broken to `const bool bMeetsDefences = !Hit.bIsConvertedDamage \|\| Hit.bIsDamageOverTime;` (every converted tick is damage over time, so it meets every step again), prefix `Cataclysm.ConvertedDamageTotal.` (the group, five tests) | three tests fail, each on one assertion only: `MoreDamageOverTimeTakenDoesNotRaiseIt`, "the Masochist took the 100 it converted and no more: 150.00"; `SuppressedDebuffDamageDoesNotZeroIt`, "the Masochist took the 100 it converted: 0.00"; `DefencesDoNotMitigateItTwice`, "the Masochist took the 100 it converted: 60.00". Every control passes, the break touching no burn. `ADurationStatAddsNoDamage` and `AHeldDebuffAddsNoTicks` pass: their Masochists carry no stat `Resolve` reads, so meeting every step changes nothing |
+| Q3, the flag not set: `Hit.bIsConvertedDamage = bConvertedDamage;` broken to `Hit.bIsConvertedDamage = bConvertedDamage && !bPeriodicTick;` (a converted tick is periodic, so the flag is never set), prefix `Cataclysm.ConvertedDamageTotal.` | the same three tests, on the same three assertions and figures as Q2, and the same two pass, for the same reason: with the flag false, `Resolve` meets every step as Q2 makes it |
+| Q4, the hold: `if (HeldStamp > 0.0f)` broken to `if (HeldStamp > 1.0f)` (the stamp is 1, so nothing is skipped), prefix `Cataclysm.ConvertedDamageTotal.AHeldDebuffAddsNoTicks` | that one test fails on two assertions only: "the converted damage has run out" (it is held and still runs) and "the Masochist took the 100 it converted and no more: 200.00" (ten ticks by 10.25 s). The control passes |
+
+Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no failure.
+Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, **each broken half's log kept**,
+since the predictions are at the assertion. Q2 and Q3 use the group prefix and so name three failures each; the two
+tests that pass under them are part of the prediction. None runs while a Python suite runs (issue #1630).
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-11-01 — A new character is made on the front end with its name and the choices locked at creation, refused at 24 characters, and written at once (#753, select-screen step 4a)
 
 **Affects:** `UCataclysmNewCharacterWidget` (new, `game/Source/Cataclysm/Interface/CataclysmNewCharacterWidget.h`,
