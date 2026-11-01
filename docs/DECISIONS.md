@@ -15,8 +15,11 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
 - **WINDOW w129 PASSED EVERY TEST AND BOTH PROOFS, AND MISSED ONE REGISTERED FIGURE: the whole suite's "Test saves:"
   line was not logged.** The run ends by a forced exit, so the session-stop event that was to log it never fired, and
   the fallback bound to the engine's pre-exit logged nothing. The fallback is now the application's termination, which
-  `CataclysmCollectGarbageBetweenTests.cpp` already binds for the same reason; window w129B shows the line. **The suite
-  left nothing behind all the same:** s5's folder, emptied by hand before the window, held 0 files after the suite.
+  `CataclysmCollectGarbageBetweenTests.cpp` already binds for the same reason. **Window w129B then logged it: "Test
+  saves: 708 written and deleted, 0 left behind"**, the suite at 4496 / 0 and the folder at 0 files before and after.
+- **w129 PREDICTED N "IN THE THOUSANDS"; THE FULL RUN WROTE 708.** The counts that led to the guess were several runs'
+  leftovers, not one run's: #2658's 2,059 files were, by the issue's own text, "after one window's runs (the new test 14
+  times, the full suite, and six proofs)", and s5's 1,553 were left by today's five windows.
 - **THE HOOK THAT DELETES AT EACH TEST'S END HAS NO TEST OF ITS OWN.** A test can call the clean-up and see what it does;
   it cannot see the engine call it. The window's printed "Test saves: N written and deleted, M left behind" is the
   evidence that the hook ran: N large says it did.
@@ -67,7 +70,7 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
   (`Runtime/Core/Private/Misc/AutomationTest.cpp` line 1386). The one other caller, the stop-tests message (line 784),
   dequeues every command first. So a slot written by a latent step is noted before the clean-up runs. **Expected: M
   small**, from writes that do not pass through the storage layer (a few tests put raw text in a slot) and are not
-  deleted by their own tests; N in the thousands.
+  deleted by their own tests; N in the thousands, which was too high: w129B measured 708.
 
 ### Tests
 
@@ -123,6 +126,21 @@ header changes only its comment. **So S1 and S2 stand from w129** (ruled): neith
 | s5's `game/Saved/SaveGames` | counted before and after the suite |
 | Whole Unreal suite | 4496 / 0, its "Test saves:" line printed: N large, **M = 0** |
 | Python | of record, with JUnit, and ruff |
+
+### Window w129B, 2026-11-01, on `4f8bab1ae` (on `development` 690e74239): as registered
+
+Run by `run_w129B.py` under the lock `dungeon-w129B`, from a clean tree; pre-checks all passing at 11:29:03 local, 11032
+MB free; the build compiled nothing. s5's folder was not emptied again: it held 0 files, nothing having written to it
+since w129.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| s5's `game/Saved/SaveGames` | counted before and after the suite | "0 slot files before the suite"; "0 slot files after the suite; new: 0 []" |
+| Whole Unreal suite | 4496 / 0, its "Test saves:" line printed, N large, M = 0 | "4496 tests performed, 4496 succeeded, 0 failed"; declared 4496, gap 0; **"Test saves: 708 written and deleted, 0 left behind"** |
+| Python | of record | "7197 passed, 8 skipped"; JUnit 7205 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+
+**M = 0 in a whole suite, measured twice:** by the line, and by the folder's listing. The issue that makes M > 0 fail a
+run is filed after this merges, as ruled.
 
 ### Run
 
