@@ -283,7 +283,32 @@ top of #2657's, kept whole. Compiled there with no lock: `Build: Succeeded - 42 
 first attempt. Python of record on `b7de1e8a9`: `7180 passed, 8 skipped in 222.48s`; JUnit tests 7188, failures 0,
 errors 0, skipped 8; ruff "All checks passed!".
 
-The run of record: not yet.
+**Window bleed-w1, 2026-10-31 21:54 to 22:19 local, on `f92a442a8`.** Pre-checks: the lock free; 11147 MB free
+(needs 10240); another session's pytest running at first, waited out until it exited; then no other session's suite,
+build or editor (the waiting script of 2026-10-15 left standing, as ruled); the worktree clean but for an untracked
+file that is not this branch's. Lock `bleed-w1` acquired at 21:54:55 and released at 22:18:59 by the runner's exit
+trap.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4454 tests performed, 4454 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4454 tests in the tree at f92a442a8; 4454 performed, gap 0" |
+| Python | `7180 passed, 8 skipped in 191.45s`; JUnit tests 7188, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: ABleedDealsNothingToATargetStandingStill`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P2 | PROVED: with the break in, `1 failed: ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement`; restored, 1 succeeded |
+| P3 | PROVED: with the break in, `1 failed: AConvertedBleedOnAStillCharacterDealsItsFullTotal`; restored, 1 succeeded |
+| P4 | PROVED: with the break in, `1 failed: OnlyTheWearersOwnEffectsAreDealtNotAnotherOrAMinions`; restored, 1 succeeded |
+| P5 | PROVED: with the break in, `1 failed: AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, and `proved` was true for all five. The tree was clean
+after them.
+
+**THE PROOFS ARE CONFIRMED AT THE TEST, NOT AT THE ASSERTION.** The registration predicted which assertions each break
+fails (three, six or five, two, one and one). `prove_cpp_guard` returns only the failed test names, and the engine log
+of each broken half was overwritten by its restored half, so the assertion texts were not kept and those predictions
+were neither confirmed nor refuted by this window. That includes P2's either/or, whether the tick at the 8 s window's
+end lands. The runner should have kept each broken half's log.
 
 ---
 
