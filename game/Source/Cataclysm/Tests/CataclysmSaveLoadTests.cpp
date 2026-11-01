@@ -6699,4 +6699,227 @@ bool FCataclysmSaveLoadPortalCreaturesTest::RunTest(const FString&)
 	});
 }
 
+// ---------------------------------------------------------------------------
+// The saved characters, as the select screen lists them
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/**
+	 * THE FIXTURES' IDENTIFIERS, FIXED AND NOT RANDOM: 5E1EC7ED-0000-4C15-A000-0000000000NN. A real character's is made
+	 * by `FGuid::NewGuid`, whose 122 random bits will not come out as these, so no real save is named like a fixture
+	 * and the test deletes only what it wrote. Select-screen step 2.
+	 */
+	FGuid AListFixture(uint32 Number)
+	{
+		return FGuid(0x5E1EC7ED, 0x00004C15, 0xA0000000, Number);
+	}
+
+	/** A character record written straight to its slot. */
+	bool WriteACharacter(FAutomationTestBase& Test, const FGuid& Id, const TCHAR* Name, int32 Level,
+						 const FCataclysmCharacterPartition& Partition, FName WeaponType, const FGuid& RunId,
+						 const TCHAR* LastWritten)
+	{
+		UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+		Record->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
+		Record->CharacterId = Id;
+		Record->CharacterName = Name;
+		Record->Level = Level;
+		Record->Partition = Partition;
+		Record->StartingWeaponType = WeaponType;
+		Record->CurrentRunId = RunId;
+		Record->LastWrittenUtc = LastWritten;
+		FString Error;
+		return Test.TestTrue(FString::Printf(TEXT("set-up: the record of '%s' was written"), Name),
+							 FCataclysmSaveStorage::WriteToSlot(Record, UCataclysmSavePartition::CharacterSlotName(Id),
+																UserIndex, Error));
+	}
+
+	/** Where `Id`'s row is in the list, or `INDEX_NONE`; and how many rows name it. */
+	int32 RowOf(const TArray<FCataclysmCharacterSummary>& Rows, const FGuid& Id, int32& OutCount)
+	{
+		int32 At = INDEX_NONE;
+		OutCount = 0;
+		for (int32 Index = 0; Index < Rows.Num(); ++Index)
+		{
+			if (Rows[Index].CharacterId == Id)
+			{
+				At = At == INDEX_NONE ? Index : At;
+				++OutCount;
+			}
+		}
+		return At;
+	}
+}
+
+/**
+ * The saved characters are listed from their slots, newest first by the record's last write and then the untimed by
+ * name, each with what the select screen shows: name, level, lethality, the Solo Self-Found and population flags, the
+ * weapon type, and the day of the run it is in, with the floor when the run was saved inside a dungeon. A Solo Self-Found
+ * character, which has no account record, is found; an unreadable slot is listed as unreadable. And the save writer
+ * stamps the record with the time it writes it. Issue #753, select-screen step 2, ruled 2026-10-31. Prints "LIST".
+ *
+ * THE SAVEGAMES FOLDER HOLDS OTHER SAVES, so only the fixtures' rows and their order among themselves are asserted, never
+ * a count. EVERY SLOT WRITTEN HERE IS DELETED, passed or failed, by `ON_SCOPE_EXIT` with the `Delete` the round trips'
+ * `FSaved::Forget` uses, and once before the writing in case an earlier run stopped part way.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadListTest,
+	"Cataclysm.SaveLoad.TheSavedCharactersAreListedNewestFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadListTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FGuid Solo = AListFixture(1);
+	const FGuid Shared = AListFixture(2);
+	const FGuid Older = AListFixture(3);
+	const FGuid Unreadable = AListFixture(4);
+	const FGuid SoloRun = AListFixture(5);
+	const FGuid Written = AListFixture(6);
+	const FGuid WrittenRun = AListFixture(7);
+	const TArray<FString> Slots = {
+		UCataclysmSavePartition::CharacterSlotName(Solo), UCataclysmSavePartition::CharacterSlotName(Shared),
+		UCataclysmSavePartition::CharacterSlotName(Older), UCataclysmSavePartition::CharacterSlotName(Unreadable),
+		UCataclysmSavePartition::RunSlotName(SoloRun), UCataclysmSavePartition::CharacterSlotName(Written),
+		UCataclysmSavePartition::RunSlotName(WrittenRun)};
+	auto DeleteAll = [&Slots]()
+	{
+		for (const FString& Slot : Slots)
+		{
+			Delete(Slot);
+		}
+	};
+	DeleteAll();
+	ON_SCOPE_EXIT { DeleteAll(); };
+
+	// THE FIXTURES. A Solo Self-Found character in a run saved on a dungeon's third floor, the newest; a shared Hardcore
+	// online one with no run, older; one written before the time was saved; and a slot of text that is no record.
+	FCataclysmCharacterPartition SoloSelfFound;
+	SoloSelfFound.bSoloSelfFound = true;
+	FCataclysmCharacterPartition HardcoreOnline;
+	HardcoreOnline.Lethality = ECataclysmLethality::Hardcore;
+	HardcoreOnline.Population = ECataclysmPopulation::Online;
+	UCataclysmRunSave* Run = NewObject<UCataclysmRunSave>();
+	Run->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	Run->RunId = SoloRun;
+	Run->Day = 9;
+	Run->Floor.Dungeon = FName(TEXT("Sandbox"));
+	Run->Floor.Floor = 3;
+	FString Error;
+	if (!WriteACharacter(*this, Solo, TEXT("Fixture Solo"), 12, SoloSelfFound, FName(TEXT("Greatsword")), SoloRun,
+						 TEXT("2026-10-31T20:00:00.000Z"))
+		|| !TestTrue(TEXT("set-up: the Solo Self-Found character's run was written"),
+					 FCataclysmSaveStorage::WriteToSlot(Run, UCataclysmSavePartition::RunSlotName(SoloRun), UserIndex, Error))
+		|| !WriteACharacter(*this, Shared, TEXT("Fixture Shared"), 4, HardcoreOnline, FName(TEXT("Staff")), FGuid(),
+							TEXT("2026-10-30T08:00:00.000Z"))
+		|| !WriteACharacter(*this, Older, TEXT("Fixture Older"), 2, FCataclysmCharacterPartition(), NAME_None, FGuid(),
+							TEXT(""))
+		|| !WriteText(*this, UCataclysmSavePartition::CharacterSlotName(Unreadable), TEXT("this is not a save record")))
+	{
+		return false;
+	}
+
+	// AND THE WRITER'S STAMP: a character saved through the writer, with the trigger that writes both records.
+	FDateTime StampedFrom = FDateTime::UtcNow() - FTimespan::FromSeconds(1.0);
+	FString Stamp;
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		Scene.Writer->BeginRun(WrittenRun, Written, FName(TEXT("Sandbox")), 1);
+		if (!TestNotNull(TEXT("set-up: an empire run was begun"), Scene.Instance->BeginEmpireRun(7)))
+		{
+			return false;
+		}
+		Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		const UCataclysmCharacterSave* ByTheWriter = Read<UCataclysmCharacterSave>(UCataclysmSavePartition::CharacterSlotName(Written));
+		Stamp = ByTheWriter ? ByTheWriter->LastWrittenUtc : FString(TEXT("NO RECORD"));
+	}
+	FDateTime Stamped;
+	const bool bStampReads = FDateTime::ParseIso8601(*Stamp, Stamped);
+	const bool bStampNow = bStampReads && Stamped >= StampedFrom && Stamped <= FDateTime::UtcNow() + FTimespan::FromSeconds(1.0);
+
+	const TArray<FCataclysmCharacterSummary> Rows = FCataclysmSaveLoad::SavedCharacters(UserIndex);
+	int32 SoloCount = 0, SharedCount = 0, OlderCount = 0, UnreadableCount = 0, WrittenCount = 0;
+	const int32 SoloAt = RowOf(Rows, Solo, SoloCount);
+	const int32 SharedAt = RowOf(Rows, Shared, SharedCount);
+	const int32 OlderAt = RowOf(Rows, Older, OlderCount);
+	const int32 UnreadableAt = RowOf(Rows, Unreadable, UnreadableCount);
+	const int32 WrittenAt = RowOf(Rows, Written, WrittenCount);
+	auto Line = [&Rows](int32 At)
+	{
+		if (At == INDEX_NONE)
+		{
+			return FString(TEXT("MISSING"));
+		}
+		const FCataclysmCharacterSummary& Row = Rows[At];
+		if (!Row.bReadable)
+		{
+			return FString::Printf(TEXT("#%d unreadable (%s)"), At, *Row.Why);
+		}
+		return FString::Printf(TEXT("#%d '%s' level %d, lethality %d, population %d, %s, %s, %s, %s"), At, *Row.Name,
+							   Row.Level, static_cast<int32>(Row.Partition.Lethality), static_cast<int32>(Row.Partition.Population),
+							   Row.Partition.bSoloSelfFound ? TEXT("Solo Self-Found") : TEXT("shared"),
+							   Row.WeaponType.IsEmpty() ? TEXT("no weapon type") : *Row.WeaponType,
+							   !Row.bInARun ? TEXT("no run")
+											: !Row.bRunReadable ? TEXT("a run that cannot be read")
+																: *FString::Printf(TEXT("in a run: day %d%s"), Row.Day,
+																				   Row.Floor > 0 ? *FString::Printf(TEXT(", floor %d of %s"), Row.Floor, *Row.Dungeon.ToString()) : TEXT("")),
+							   Row.bTimed ? *Row.LastWrittenUtc.ToIso8601() : TEXT("untimed"));
+	};
+	AddInfo(FString::Printf(TEXT("LIST: %d row(s); Solo %s; Shared %s; Older %s; Unreadable %s; the writer's %s, stamped '%s'"),
+							Rows.Num(), *Line(SoloAt), *Line(SharedAt), *Line(OlderAt), *Line(UnreadableAt), *Line(WrittenAt),
+							*Stamp));
+
+	// FOUND, EACH ONCE.
+	TestEqual(TEXT("the Solo Self-Found character is listed once"), SoloCount, 1);
+	TestTrue(TEXT("CONTROL: and it has no account record to be found by"),
+			 UCataclysmSavePartition::AccountSlotName(SoloSelfFound).IsEmpty());
+	TestEqual(TEXT("the shared character is listed once"), SharedCount, 1);
+	TestEqual(TEXT("the untimed character is listed once"), OlderCount, 1);
+	TestEqual(TEXT("the unreadable slot is listed once, not hidden"), UnreadableCount, 1);
+	if (SoloAt == INDEX_NONE || SharedAt == INDEX_NONE || OlderAt == INDEX_NONE || UnreadableAt == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// WHAT EACH ROW SHOWS.
+	const FCataclysmCharacterSummary& SoloRow = Rows[SoloAt];
+	TestTrue(TEXT("the Solo Self-Found row reads its record"), SoloRow.bReadable);
+	TestEqual(TEXT("its name"), SoloRow.Name, FString(TEXT("Fixture Solo")));
+	TestEqual(TEXT("its level"), SoloRow.Level, 12);
+	TestTrue(TEXT("its Solo Self-Found flag"), SoloRow.Partition.bSoloSelfFound);
+	TestEqual(TEXT("its weapon type, chosen at creation with nothing worn"), SoloRow.WeaponType, FString(TEXT("Greatsword")));
+	TestTrue(TEXT("its run, read"), SoloRow.bInARun && SoloRow.bRunReadable);
+	TestEqual(TEXT("the run's day"), SoloRow.Day, 9);
+	TestEqual(TEXT("and the floor it was saved on"), SoloRow.Floor, 3);
+	TestEqual(TEXT("of its dungeon"), SoloRow.Dungeon, FName(TEXT("Sandbox")));
+	const FCataclysmCharacterSummary& SharedRow = Rows[SharedAt];
+	TestEqual(TEXT("the shared row's lethality"), static_cast<int32>(SharedRow.Partition.Lethality),
+			  static_cast<int32>(ECataclysmLethality::Hardcore));
+	TestEqual(TEXT("and population"), static_cast<int32>(SharedRow.Partition.Population),
+			  static_cast<int32>(ECataclysmPopulation::Online));
+	TestFalse(TEXT("and it is in no run"), SharedRow.bInARun);
+	TestFalse(TEXT("the untimed row has no time"), Rows[OlderAt].bTimed);
+	TestFalse(TEXT("the unreadable row says it is unreadable"), Rows[UnreadableAt].bReadable);
+	TestFalse(TEXT("and why"), Rows[UnreadableAt].Why.IsEmpty());
+
+	// THE ORDER, AMONG THE FIXTURES.
+	TestTrue(TEXT("the newer before the older"), SoloAt < SharedAt);
+	TestTrue(TEXT("every timed record before the untimed"), SharedAt < OlderAt && SharedAt < UnreadableAt);
+
+	// AND THE WRITER'S STAMP.
+	TestTrue(TEXT("the writer stamps the record with the time it writes it"), bStampNow);
+	TestEqual(TEXT("and that character is listed once"), WrittenCount, 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

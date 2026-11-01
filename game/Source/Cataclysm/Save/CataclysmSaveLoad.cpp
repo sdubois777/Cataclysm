@@ -3,6 +3,7 @@
 #include "Save/CataclysmSaveLoad.h"
 
 #include "Cataclysm.h"
+#include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -11,9 +12,13 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
+#include "PlatformFeatures.h"
+#include "SaveGameSystem.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
@@ -351,6 +356,142 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 									 *RunId.ToString(EGuidFormats::Digits), *WhyNoRun);
 	}
 	return Report;
+}
+
+namespace
+{
+	/** A record read out of a slot's text, migrated in memory only; null with `OutWhy` when it cannot be read. */
+	template <typename TRecord>
+	TRecord* ReadForAList(const FString& SlotName, int32 UserIndex, FString& OutWhy)
+	{
+		TArray<uint8> Bytes;
+		if (!UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex)
+			|| !UGameplayStatics::LoadDataFromSlot(Bytes, SlotName, UserIndex) || Bytes.Num() == 0)
+		{
+			OutWhy = TEXT("the slot could not be read");
+			return nullptr;
+		}
+		FString Json;
+		FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+		FString Message;
+		TRecord* Record = Cast<TRecord>(FCataclysmSaveStorage::FromJson(Json, TRecord::StaticClass(),
+																		GetTransientPackage(), Result, Message));
+		if (!Record)
+		{
+			OutWhy = FString::Printf(TEXT("%s%s%s"), FCataclysmSaveStorage::Describe(Result),
+									 Message.IsEmpty() ? TEXT("") : TEXT(": "), *Message);
+		}
+		return Record;
+	}
+
+	/** The first worn weapon's type, in the weapon slots' order, as `EquippedWeaponType` reads it, else empty. */
+	FString WornWeaponTypeOf(const UCataclysmCharacterSave& Record)
+	{
+		const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+		if (!BaseTable)
+		{
+			return FString();
+		}
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
+		{
+			for (const FCataclysmWornItem& Worn : Record.WornGear)
+			{
+				if (Worn.Slot != Slot)
+				{
+					continue;
+				}
+				const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+					Worn.Item.Base, TEXT("SavedCharacters"), /*bWarnIfMissing=*/false);
+				if (Base && !Base->WeaponType.IsEmpty())
+				{
+					return Base->WeaponType;
+				}
+			}
+		}
+		return FString();
+	}
+}
+
+TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 UserIndex)
+{
+	TArray<FCataclysmCharacterSummary> Out;
+	ISaveGameSystem* System = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	TArray<FString> Names;
+	if (!System || !System->GetSaveGameNames(Names, UserIndex))
+	{
+		return Out;
+	}
+
+	const FString Prefix = TEXT("Character_");
+	for (const FString& SlotName : Names)
+	{
+		// ONLY A CHARACTER'S OWN SLOT: its name is the prefix and the 32 digits of its identifier, so a migration's
+		// backup, which has more after them, is left out.
+		FGuid Id;
+		if (!SlotName.StartsWith(Prefix, ESearchCase::CaseSensitive)
+			|| !FGuid::ParseExact(SlotName.RightChop(Prefix.Len()), EGuidFormats::Digits, Id)
+			|| UCataclysmSavePartition::CharacterSlotName(Id) != SlotName)
+		{
+			continue;
+		}
+
+		FCataclysmCharacterSummary& Row = Out.AddDefaulted_GetRef();
+		Row.SlotName = SlotName;
+		Row.CharacterId = Id;
+		const UCataclysmCharacterSave* Record = ReadForAList<UCataclysmCharacterSave>(SlotName, UserIndex, Row.Why);
+		if (!Record)
+		{
+			continue;
+		}
+		Row.bReadable = true;
+		Row.Name = Record->CharacterName;
+		Row.Level = Record->Level;
+		Row.Partition = Record->Partition;
+		Row.WeaponType = WornWeaponTypeOf(*Record);
+		if (Row.WeaponType.IsEmpty() && !Record->StartingWeaponType.IsNone())
+		{
+			Row.WeaponType = Record->StartingWeaponType.ToString();
+		}
+		Row.bTimed = !Record->LastWrittenUtc.IsEmpty() && FDateTime::ParseIso8601(*Record->LastWrittenUtc, Row.LastWrittenUtc);
+
+		// AND THE RUN IT IS IN, for its day and, when saved inside a dungeon, its floor (ruling 2).
+		if (Record->CurrentRunId.IsValid())
+		{
+			Row.bInARun = true;
+			FString RunWhy;
+			if (const UCataclysmRunSave* Run = ReadForAList<UCataclysmRunSave>(
+					UCataclysmSavePartition::RunSlotName(Record->CurrentRunId), UserIndex, RunWhy))
+			{
+				Row.bRunReadable = true;
+				Row.Day = Run->Day;
+				if (Run->Floor.IsOccupied())
+				{
+					Row.Dungeon = Run->Floor.Dungeon;
+					Row.Floor = Run->Floor.Floor;
+				}
+			}
+		}
+	}
+
+	// NEWEST FIRST; THEN THE UNTIMED BY NAME; THEN BY SLOT, so the order is the same every time.
+	Out.Sort([](const FCataclysmCharacterSummary& A, const FCataclysmCharacterSummary& B)
+	{
+		if (A.bTimed != B.bTimed)
+		{
+			return A.bTimed;
+		}
+		if (A.bTimed && A.LastWrittenUtc != B.LastWrittenUtc)
+		{
+			return A.LastWrittenUtc > B.LastWrittenUtc;
+		}
+		if (A.Name != B.Name)
+		{
+			return A.Name < B.Name;
+		}
+		return A.SlotName < B.SlotName;
+	});
+	return Out;
 }
 
 const TCHAR* FCataclysmSaveLoad::Describe(ECataclysmLoadOutcome Outcome)
