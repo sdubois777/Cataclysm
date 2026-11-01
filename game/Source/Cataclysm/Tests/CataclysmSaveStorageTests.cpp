@@ -6,6 +6,7 @@
 
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "Save/CataclysmSaveRecord.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
@@ -534,9 +535,8 @@ bool FCataclysmSaveWaitsForItsSlot::RunTest(const FString&)
  * - a migration's backup of a slot this test made goes with it;
  * - and a migration's backup of a slot that was there before is kept, with the slot.
  *
- * "THERE BEFORE" IS A SLOT PUT DOWN WITHOUT THE STORAGE LAYER, as a save from before the test would have been. WHAT THIS
- * CANNOT SEE is the hook that runs the clean-up at every test's end; the run's "Test saves:" line is the evidence for that.
- * Prints "TEST SAVES".
+ * "THERE BEFORE" IS A SLOT PUT DOWN WITHOUT THE STORAGE LAYER, as a save from before the test would have been. That the
+ * framework runs the clean-up at every test's end is `EachTestsEndLogsTheRunsTestSavesLine`'s to show. Prints "TEST SAVES".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTestSavesDeletedTest,
 	"Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds",
@@ -624,6 +624,84 @@ bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
 	TestFalse(TEXT("a backup of a slot the test made is deleted with it"), Exists(MadeBackup) || Exists(MadeOld));
 	TestTrue(TEXT("a slot that was there before a migration is kept"), Exists(BeforeOld));
 	TestTrue(TEXT("and so is its backup"), Exists(BeforeBackup));
+	return true;
+}
+
+namespace CataclysmSaveStorageTest
+{
+	/** Every `LogCataclysm` line logged while it lives that begins "Test saves: ". */
+	struct FTestSavesLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+		FTestSavesLines() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FTestSavesLines() { if (GLog) { GLog->RemoveOutputDevice(this); } }
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type, const FName& Category) override
+		{
+			if (Category == FName(TEXT("LogCataclysm")) && FCString::Strncmp(Text, TEXT("Test saves: "), 12) == 0)
+			{
+				Lines.Add(FString(Text));
+			}
+		}
+	};
+}
+
+/**
+ * The end of every test logs the run's "Test saves:" line as it stands, after deleting what the test wrote, so a run
+ * whose forced exit loses the exit-time line still has one: the last test's. Issue #2677, ruled 2026-11-01; window w131
+ * measured a narrow run whose log ended at "Engine exit requested" with no such line.
+ *
+ * THE FRAMEWORK'S CALL IS ASKED OF THE FRAMEWORK: `IsCalledAtEachTestsEnd` is whether `OnTestEndEvent` holds the hook
+ * object, as `CataclysmCollectGarbageBetweenTests.cpp` asks of its own. What the call does is run here in the middle of
+ * the test, where its log line can be caught. Prints "TEST SAVES LINE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTestSavesLineTest,
+	"Cataclysm.SaveStorage.EachTestsEndLogsTheRunsTestSavesLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTestSavesLineTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveStorageTest;
+
+	const FString Made = Slot(TEXT("TestSavesLine"));
+	Cleanup(Made);
+	ON_SCOPE_EXIT { Cleanup(Made); };
+	// WHATEVER EARLIER STEPS OF THIS TEST NOTED, forgotten, so only what follows is measured.
+	FCataclysmTestSaves::DeleteWhatTheTestWrote(UserIndex);
+
+	UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
+	Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
+	Record->Label = TEXT("A test's record");
+	FString Error;
+	const bool bMade = FCataclysmSaveStorage::WriteToSlot(Record, Made, UserIndex, Error);
+
+	FString Returned;
+	TArray<FString> Logged;
+	{
+		FTestSavesLines Caught;
+		Returned = FCataclysmTestSaves::EndATest(UserIndex);
+		if (GLog)
+		{
+			GLog->Flush();
+		}
+		Logged = Caught.Lines;
+	}
+	const bool bGone = !UGameplayStatics::DoesSaveGameExist(Made, UserIndex);
+	const bool bCalled = FCataclysmTestSaves::IsCalledAtEachTestsEnd();
+	AddInfo(FString::Printf(TEXT("TEST SAVES LINE: called at each test's end %s; returned '%s'; logged %d [%s]; the slot %s"),
+							bCalled ? TEXT("yes") : TEXT("NO"), *Returned, Logged.Num(), *FString::Join(Logged, TEXT(" | ")),
+							bGone ? TEXT("gone") : TEXT("KEPT")));
+
+	if (!TestTrue(TEXT("set-up: the test wrote a slot of its own"), bMade))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the framework calls it at the end of each test"), bCalled);
+	TestTrue(TEXT("it deletes what the test wrote"), bGone);
+	TestTrue(TEXT("its line is in the form tools/unreal_build.py reads"),
+			 Returned.StartsWith(TEXT("Test saves: ")) && Returned.Contains(TEXT(" written and deleted, "))
+				 && Returned.Contains(TEXT(" left behind")));
+	TestEqual(TEXT("it logs one line"), Logged.Num(), 1);
+	TestTrue(TEXT("and the line logged is the line returned"), Logged.Num() == 1 && Logged[0] == Returned);
 	return true;
 }
 

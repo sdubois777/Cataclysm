@@ -55,21 +55,20 @@ namespace CataclysmTestSaves
 		S.FolderAtStart = TSet<FString>(TheFolder(UCataclysmSaveWriter::UserIndex));
 	}
 
-	/** The run's totals, logged once: when the session stops, or else when the engine exits. */
-	void LogTheSummary()
+	/** The run's totals as they stand, as `SummaryLine` writes them; empty before the run has taken the folder. */
+	FString TheRunSoFar(int32 UserIndex)
 	{
 		FState& S = State();
 		TArray<FString> LeftBehind;
 		int32 Deleted = 0;
 		{
 			FScopeLock Guard(&S.Lock);
-			if (S.bSummaryLogged || !S.bFolderTaken)
+			if (!S.bFolderTaken)
 			{
-				return;
+				return FString();
 			}
-			S.bSummaryLogged = true;
 			Deleted = S.WrittenAndDeleted;
-			for (const FString& Name : TheFolder(UCataclysmSaveWriter::UserIndex))
+			for (const FString& Name : TheFolder(UserIndex))
 			{
 				if (!S.FolderAtStart.Contains(Name))
 				{
@@ -78,7 +77,22 @@ namespace CataclysmTestSaves
 			}
 		}
 		LeftBehind.Sort();
-		UE_LOG(LogCataclysm, Display, TEXT("%s"), *FCataclysmTestSaves::SummaryLine(Deleted, LeftBehind));
+		return FCataclysmTestSaves::SummaryLine(Deleted, LeftBehind);
+	}
+
+	/** The run's totals, logged once more at its end: when the session stops, or else when the engine exits. */
+	void LogTheSummary()
+	{
+		FState& S = State();
+		{
+			FScopeLock Guard(&S.Lock);
+			if (S.bSummaryLogged || !S.bFolderTaken)
+			{
+				return;
+			}
+			S.bSummaryLogged = true;
+		}
+		UE_LOG(LogCataclysm, Display, TEXT("%s"), *TheRunSoFar(UCataclysmSaveWriter::UserIndex));
 	}
 }
 
@@ -146,6 +160,17 @@ TArray<FString> FCataclysmTestSaves::DeleteWhatTheTestWrote(int32 UserIndex)
 	return Deleted;
 }
 
+FString FCataclysmTestSaves::EndATest(int32 UserIndex)
+{
+	DeleteWhatTheTestWrote(UserIndex);
+	const FString Line = CataclysmTestSaves::TheRunSoFar(UserIndex);
+	if (!Line.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Display, TEXT("%s"), *Line); // A test's end: the run's line so far. Issue #2677.
+	}
+	return Line;
+}
+
 FString FCataclysmTestSaves::SummaryLine(int32 WrittenAndDeleted, const TArray<FString>& LeftBehind)
 {
 	FString Line = FString::Printf(TEXT("Test saves: %d written and deleted, %d left behind"), WrittenAndDeleted,
@@ -179,10 +204,8 @@ namespace CataclysmTestSaves
 			FAutomationTestFramework& Framework = FAutomationTestFramework::Get();
 			Framework.OnBeforeAllTestsEvent.AddStatic(&TakeTheFolder);
 			Framework.OnTestStartEvent.AddLambda([](FAutomationTestBase*) { TakeTheFolder(); });
-			Framework.OnTestEndEvent.AddLambda([](FAutomationTestBase*)
-			{
-				FCataclysmTestSaves::DeleteWhatTheTestWrote(UCataclysmSaveWriter::UserIndex); // A test's save: deleted when it ends.
-			});
+			// BOUND TO THIS OBJECT, NOT A LAMBDA, so `IsCalledAtEachTestsEnd` can ask the framework whether it is held.
+			Framework.OnTestEndEvent.AddRaw(this, &FHooks::OnTestEnd); // A test's end: its saves deleted, the line logged.
 			Framework.OnAfterAllTestsEvent.AddStatic(&LogTheSummary);
 			// AND THE APPLICATION'S TERMINATION, NOT THE ENGINE'S PRE-EXIT, which window w129 measured logging nothing:
 			// `-testexit` ends the run with a forced exit straight after the last test, so the worker never receives
@@ -191,7 +214,27 @@ namespace CataclysmTestSaves
 			// summary line.
 			FCoreDelegates::GetApplicationWillTerminateDelegate().AddStatic(&LogTheSummary);
 		}
+
+		~FHooks()
+		{
+			FAutomationTestFramework::Get().OnTestEndEvent.RemoveAll(this);
+		}
+
+		void OnTestEnd(FAutomationTestBase*)
+		{
+			FCataclysmTestSaves::EndATest(UCataclysmSaveWriter::UserIndex);
+		}
 	};
 	static FHooks Hooks;
+}
+
+bool FCataclysmTestSaves::IsCalledAtEachTestsEnd()
+{
+	return FAutomationTestFramework::Get().OnTestEndEvent.IsBoundToObject(&CataclysmTestSaves::Hooks);
+}
+#else
+bool FCataclysmTestSaves::IsCalledAtEachTestsEnd()
+{
+	return false;
 }
 #endif
