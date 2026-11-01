@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A creature the floor places draws its enemy modifiers from the floor's seed, and so does the dark floor's raise (#2669)
+
+**Affects:** `ACataclysmEnemyCharacter::DrawModifiersForRarity`, which takes the floor's seed
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`); `ACataclysmDungeonGameMode`'s two placement loops,
+`ApplyDesignedStats`, `RaiseForTheDarkFloor`, and the new `ModifierSeedForPlacement` and `DarkFloorRaisesThatDrewSoFar`
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`); a new test in
+`game/Source/Cataclysm/Tests/CataclysmDungeonGameModeTests.cpp` and one in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2669](https://github.com/sdubois777/Cataclysm/issues/2669).
+
+### SAID FIRST
+
+- **NO EXISTING TEST FAILED, ALTHOUGH ABOUT 419 TESTS BUILD CREATURES THROUGH THIS PATH AND EVERY ONE OF THEIR DRAWS
+  CHANGED.** Window w130 ran the whole suite at 4499 / 0 (below), as the coordinating session's audit had found: no test
+  depends on a rolled modifier without choosing its creature by what it carries. Both proofs proved.
+- **IN PLAY THE CLOCK STAYS** for every creature the floor's population pass does not place, as #2490 left the rung:
+  summons, reinforcements, Volatile Evolution's rung-up draw, the Royal Guard, the Demon Prince, raised and risen
+  creatures, and maps with no floor plan.
+
+### The ruling, 2026-11-01 (by the coordinating session, from the design)
+
+A creature placed by the floor's population pass draws its enemy modifiers from the floor's seed, as its rarity rung has
+since #2490: `docs/Cataclysm_GDD_v2.md`, "the same seed always produces the same floor". Each creature's stream differs,
+`Seed ^ (salt + index)`, with a salt of its own so the modifier draw does not repeat the rung draw. **Q1, ruled yes:** the
+modifiers the dark floor's raise adds come from the floor as well, under their own salt. **A computed seed of nought** is
+given 1, in one helper, because nought means "no floor seed" and falls back to the clock (ruled).
+
+### The dark floor's raise is fixed by the seed (checked, as the ruling asked)
+
+`RaiseForTheDarkFloor` raises a placed creature to `UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor`
+of its drawn rung, which is a function of that rung alone ("RAISED, HELD TO THE CEILING, AND NEVER LOWERED":
+`FMath::Max(Drawn, FMath::Min(Drawn + ThoseInTheDarkRungsRaised, ThoseInTheDarkHighestRung))`), and the drawn rung comes
+from the floor's seed (#2490). The dark floor itself is built from "the dark floor's own" seed
+(`ThePlayerFellIntoAChasm`). **Whether a player reaches the dark floor depends on play; how it is built, once reached,
+does not.** So its added draw can come from the floor.
+
+### What changes
+
+- `DrawModifiersForRarity(int32 FromTheFloor = 0)`: the stream is `ModifierSeedForTests` if a test set one, else
+  `FromTheFloor` if not nought, else the creature's identity and the clock, as before.
+- `ModifierSeedNow`, set by `TGuardValue` beside `RarityStreamNow` at the same two places, `PopulateFloor`'s loop and the
+  arriving wave's: `ModifierSeedForPlacement(Index, ModifiersFromTheFloorSalt)`, salt `0x6D6D0000` ("mm").
+  `ApplyDesignedStats` passes it.
+- `RaiseForTheDarkFloor` takes the placement's index and draws the added modifiers from
+  `ModifierSeedForPlacement(Index, DarkFloorModifiersSalt)`, salt `0x6D640000` ("md"). It counts the raises that added a
+  modifier, which a test reads.
+- `ModifierSeedForPlacement(Index, Salt)` = `CurrentFloor->GetPlan().Seed ^ (Salt + Index)`, **with a computed nought
+  given 1**.
+
+### Tests
+
+- `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor`: dungeon seed 7, floors 1 to 6 built twice
+  in one session, each creature's modifiers compared in placement order. CONTROLS: some creature carries a modifier; the
+  six floors do not all carry the same ones. Prints "SEEDED MODIFIERS".
+- `Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorBuiltTwiceRaisesTheSameModifiers`: floor 2 of the first
+  seed from 1 to 20 with a chasm (`AFloorWithChasms`), the player standing on the chasm for a beat, the dark floor
+  reached; then the dungeon left and the same done again; each dark floor's creatures' modifiers compared. SET-UP: the
+  build raised some creature to a rung that added modifiers. Prints "DARK FLOOR MODIFIERS". **A second test rather than
+  a seventh assertion**: the chasm and the player's fall need that file's helpers.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4499 / 0: `development`'s 4497 (e5d4c32aa, #2674 merged, window rung-roundtrip-w1), + 2. MOVED ONTO IT, as `fix/floor-creatures-draw-from-the-floor-seed-1`, from 0494ffe7a (4496); the move changed none of this change's files, by `git diff`. Any failure: old and new recorded, the window stops before the proofs |
+| Python | of record, with JUnit, and ruff |
+| F1, the floor's modifier seed not passed (`Enemy->DrawModifiersForRarity(ModifierSeedNow);` to `Enemy->DrawModifiersForRarity(0);`), prefix `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor` | the test fails on one or more of "floor N built again holds the same modifiers in the same order", N from 1 to 6, and nothing else; both controls hold. Which floors cannot be traced: the clock's draws are not known beforehand |
+| F2, the dark floor's added draw on the clock (`...DrawModifiersForRarity(ModifierSeedForPlacement(PlacementIndex, DarkFloorModifiersSalt));` to `...DrawModifiersForRarity(0);`), prefix the dark-floor test's full name | the test fails on "the dark floor built again raises the same creatures with the same modifiers" only. It rests on the set-up's raise adding a modifier, and on the clock's two draws differing, which from a table of many rows is not certain but near it |
+
+### Window w130, 2026-11-01, on `de88c2757` (on `development` e5d4c32aa): as registered
+
+Run by `run_w130.py` under the lock `dungeon-w130`, from a clean tree; held at the coordinating session's word until
+another worktree's Python run and proof had ended, then a listing at 12:47:01 showing no pytest or prove_guard process;
+pre-checks all passing at 12:47:13, 11025 MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The six-floor test alone | 1 / 1 | 1 / 1: "SEEDED MODIFIERS: seed 7, floors 1 to 6; 526 creature(s) carry a modifier; 6 of 6 floors built again alike; floor 1's first five: [Generic_Thorns_of_Glass+Generic_Unyielding+Generic_Phasewalker \| \| Generic_Shielder+Generic_Horde_Leader \| Generic_Thorns_of_Glass+Demonic_Infernal_Sacrifice \| ]" |
+| The dark-floor test alone | 1 / 1 | 1 / 1: "DARK FLOOR MODIFIERS: seed 1; raises 189 then 189; 193 creatures then 193; alike yes" |
+| Whole Unreal suite | 4499 / 0 | **"4499 tests performed, 4499 succeeded, 0 failed"**; declared 4499, gap 0; "Test saves: 712 written and deleted, 0 left behind". **No test depended on a particular draw** |
+| Python | of record | "7197 passed, 8 skipped"; JUnit 7205 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| F1 | one or more of the six "floor N built again ..." and nothing else, the controls holding | PROVED: 0 of 1 with the break, 1 of 1 restored. The broken log fails all six, floors 1 to 6, and nothing else: "0 of 6 floors built again alike", 526 creatures still carrying a modifier |
+| F2 | "the dark floor built again raises the same creatures with the same modifiers" only | PROVED: 0 of 1, then 1 of 1; that assertion only, "raises 189 then 189 ... alike NO" |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w130_F1_run1.log` and `w130_F2_run1.log`.
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
+the first attempt (a new branch). Again after the dark floor's count was made to count only raises that added a
+modifier: `Build: Succeeded - 26 actions, 23 files compiled`. Python of record on that head, 4bd821c49: `7197 passed, 8
+skipped in 206.53s`, the JUnit file tests 7205, failures 0, errors 0, skipped 8; ruff "All checks passed!". **IT
+OVERLAPPED ANOTHER WINDOW:** it ran from 12:02:33 to 12:05:59, and window rung-roundtrip-w1 (#2181) started at 12:02:58,
+its build and its new test alone running beside it. The coordinating session ruled that this voids neither: no proof was
+running, and this branch's compile had ended before that window's build.
+
+---
+
 ## 2026-11-01 — A restored eater's health shares are each carried once through a load and a rung change (#2181)
 
 **Affects:** one new Unreal test, `Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange`, and an

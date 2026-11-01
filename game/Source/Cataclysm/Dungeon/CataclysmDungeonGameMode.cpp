@@ -1792,7 +1792,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 				Enemy->SetArmour(*FixedArmour);
 			}
 		}
-		Enemy->DrawModifiersForRarity();
+		Enemy->DrawModifiersForRarity(ModifierSeedNow);
 	};
 
 	switch (Creature)
@@ -1892,6 +1892,16 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	// afterwards would stand them on whatever replaces it.
 	WaveStillToArrive.Reset();
 	WavePlacementsTried = 0;
+}
+
+int32 ACataclysmDungeonGameMode::ModifierSeedForPlacement(int32 Index, int32 Salt) const
+{
+	if (!CurrentFloor)
+	{
+		return 0;
+	}
+	const int32 Mixed = CurrentFloor->GetPlan().Seed ^ (Salt + Index);
+	return Mixed != 0 ? Mixed : 1; // A creature's modifiers: a floor seed is never nought, which means the clock.
 }
 
 FRandomStream ACataclysmDungeonGameMode::RarityStreamForPlacement(int32 Index) const
@@ -2260,6 +2270,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			// ITS RARITY RUNG FROM THE FLOOR'S SEED AND ITS PLACE IN THE LIST. Issue #2490.
 			const FRandomStream Rarity = RarityStreamForPlacement(PlacementIndex);
 			TGuardValue<const FRandomStream*> FromTheFloor(RarityStreamNow, &Rarity);
+			// AND ITS MODIFIERS FROM THE SAME SEED AND PLACE, under a salt of their own. Issue #2669.
+			TGuardValue<int32> ModifiersFromTheFloor(
+				ModifierSeedNow, ModifierSeedForPlacement(PlacementIndex, ModifiersFromTheFloorSalt));
 			if (ACataclysmEnemyCharacter* Enemy =
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
@@ -2268,7 +2281,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				// Issues #1820 and #41, ruled 2026-10-09.
 				if (bOnTheDarkFloor)
 				{
-					RaiseForTheDarkFloor(Enemy, Placement.Cell);
+					RaiseForTheDarkFloor(Enemy, Placement.Cell, PlacementIndex);
 				}
 				NoteThePack(Enemy, Placement);
 
@@ -2480,7 +2493,8 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	return Enemy;
 }
 
-void ACataclysmDungeonGameMode::RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell)
+void ACataclysmDungeonGameMode::RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell,
+												   int32 PlacementIndex)
 {
 	if (!IsValid(Enemy) || !CurrentFloor || !CurrentFloor->IsBuilt())
 	{
@@ -2495,8 +2509,12 @@ void ACataclysmDungeonGameMode::RaiseForTheDarkFloor(ACataclysmEnemyCharacter* E
 
 	// THE TWO CALLS VOLATILE EVOLUTION MAKES WHEN IT RAISES A RUNG: the rung, which computes every figure afresh
 	// and fills both pools, and then the modifiers the new rung carries, which draws only the shortfall.
+	// THE ADDED MODIFIERS FROM THE FLOOR TOO, under their own salt, as the rest of the creature's placement is (#2669,
+	// ruled 2026-11-01): the raise is fixed by the rung the floor's seed drew, so this draw can be as well.
 	Enemy->SetRarityStep(Rung);
-	Enemy->DrawModifiersForRarity();
+	const int32 ModifiersBefore = Enemy->ModifierRows.Num();
+	Enemy->DrawModifiersForRarity(ModifierSeedForPlacement(PlacementIndex, DarkFloorModifiersSalt)); // A dark floor's: its raise's modifiers from the floor.
+	DarkFloorRaisesThatDrew += Enemy->ModifierRows.Num() > ModifiersBefore ? 1 : 0;
 
 	// AND STOOD AGAIN ON ITS CELL NOW ITS SIZE IS KNOWN, as `SpawnPlacedCreature` does after the rung it drew: a
 	// rarer creature is bigger, and a capsule grows from its middle.
@@ -2668,8 +2686,12 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 	{
 		// ITS RARITY RUNG FROM THE FLOOR'S SEED AND ITS PLACE IN THE POPULATION PASS'S LIST, counted across frames.
 		// Issue #2490.
-		const FRandomStream Rarity = RarityStreamForPlacement(WavePlacementsTried++);
+		const int32 WavePlacement = WavePlacementsTried++;
+		const FRandomStream Rarity = RarityStreamForPlacement(WavePlacement);
 		TGuardValue<const FRandomStream*> FromTheFloor(RarityStreamNow, &Rarity);
+		// AND ITS MODIFIERS FROM THE SAME SEED AND PLACE, under a salt of their own. Issue #2669.
+		TGuardValue<int32> ModifiersFromTheFloor(
+			ModifierSeedNow, ModifierSeedForPlacement(WavePlacement, ModifiersFromTheFloorSalt));
 
 		// ONE THAT FAILS TO SPAWN IS DROPPED RATHER THAN TRIED AGAIN, which is
 		// what putting a whole floor down at once has always done with one.

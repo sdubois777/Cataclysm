@@ -840,8 +840,14 @@ public:
 	 * SAFE TO CALL TWICE. It only ever adds up to the shortfall, so a second
 	 * call at the same rung adds nothing and a call after the rung was raised
 	 * adds the difference.
+	 *
+	 * @param FromTheFloor  the stream's seed when the floor's population pass is
+	 *                      placing this creature, so the same dungeon seed builds
+	 *                      the same modifiers (#2669); nought, every creature made
+	 *                      during play, draws from its identity and the clock.
+	 *                      `SetModifierSeedForTests` wins over both.
 	 */
-	void DrawModifiersForRarity();
+	void DrawModifiersForRarity(int32 FromTheFloor = 0);
 
 	/**
 	 * How long since an aura modifier on this creature last pulsed, in seconds.
