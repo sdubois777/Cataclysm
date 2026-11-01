@@ -1825,6 +1825,10 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**Damage the Masochist has converted is not an applied effect and holds no stack.** The Breaking Point "converts all damage you take into Bleeding over 5 seconds", and that is said of each blow: each converted blow runs as its own bleed for its own 5 seconds, beside every other one and beside any bleed an enemy has applied, so nothing converted is ever lost to a stronger bleed or merged into a weaker one. It is the leech rule ("Each hit starts its own 3-second payout") with the sign reversed, as the health debt is. A cleanse removes the enemy's bleed and keeps the converted damage, which is damage already taken. The character still reads as Bleeding while either runs, and the two are one debuff for every count of debuffs carried. Ruled by the coordinating session on 2026-11-01. Issue #2275.
+
+  
+
 **A damage over time effect deals a fixed amount per tick.** It is not a total handed out in instalments. A bleed that deals 20 damage per tick, ticks once per second and lasts 5 seconds deals 100 damage in total, and every one of those three numbers can be raised on its own.
 
   
