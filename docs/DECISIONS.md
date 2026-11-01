@@ -17,10 +17,14 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
-  code. A compile on `93f3cc7b6`, with no lock, to find errors early: `Build: Succeeded - 42 actions, 39 files
-  compiled`, at the first attempt. Python of record on the same head: `7187 passed, 8 skipped in 223.00s`; JUnit tests
-  7195, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+- **RUN IN WINDOW converted-w1, IN TWO ATTEMPTS (under Run): every registered figure as registered, the suite at
+  4475 / 0, and all six proofs PROVED, each failing on exactly the assertions predicted.** The first attempt stopped
+  at the third new test alone, when the editor ended after the test had passed and without closing its log; why is
+  not known. The second ran to the end.
+- Every figure below was registered before its run, traced by hand from the code. A compile on `93f3cc7b6`, with no
+  lock, to find errors early: `Build: Succeeded - 42 actions, 39 files compiled`, at the first attempt. Python of
+  record on the same head: `7187 passed, 8 skipped in 223.00s`; JUnit tests 7195, failures 0, errors 0, skipped 8;
+  ruff "All checks passed!".
 - **ONE EFFECT PER CONVERTED BLOW, NOT A POOL.** The brief first asked for successive conversions to add up in one
   pool; the coordinating session withdrew that on 2026-11-01, on the design's own words (R1).
 - **THE NEXT CHANGE IS NAMED HERE AND NOT BUILT: converted damage's total is fixed when it is converted** (R3). Today
@@ -199,7 +203,65 @@ test and fail different assertions of it. None runs while a Python suite runs (i
 
 ### Run
 
-Not yet run.
+Window converted-w1, 2026-11-01, on the registration commit `1e77f2847`, run by the coordinating session with the
+writing session's scripts (`prechecks_c2275.py`, `run_c2275.py`, `prove_c2275.py`, adapted from necrosis-w1's). The
+runner refuses the lock unless the pre-checks all pass, the head is exactly `1e77f284` and the tracked tree is clean;
+among the proofs it goes on past an unproved one and stops only on a changed source hash or a run that did not report.
+
+**Attempt 1, runner process 19372. STOPPED at the third new test alone; nothing it measured is in doubt, and nothing
+after it ran.** Pre-checks at 01:58:54 local, all passing: `development` at `29aaa7111` with its CI and Unreal runs
+successful, no run in progress or queued, the lock free, no build or editor process, no open pull request, no
+simulation process, 11278 MB free. Lock converted-w1 taken. `Build: Succeeded - target already up to date, 0 actions,
+nothing compiled`. The first two new tests alone: `1 tests performed, 1 succeeded, 0 failed` each. The third,
+`Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning`: its engine log records
+`Test Completed. Result={Success}` at 08:00:00.190 UTC, then its events, and **ends there**, with no `TestExit` line and
+no closing of the log, where the second test's log has `LogExit: Display: **** TestExit: Automation Test Queue Empty
+****`. The wrapper printed `Tests: unknown tests performed, 1 succeeded, 0 failed` and exited 1; the runner stopped and
+released the lock.
+
+- **Known:** the test itself passed before the editor ended; the editor ended about a second after it; that second
+  was 08:00:00 UTC, 02:00 local, the moment the clocks went back an hour; the coordinating session checked the other
+  sessions' scripts and none was running.
+- **Not known:** why the editor ended. The clock change is a coincidence in time and nothing more is shown. **This is
+  the second such ending**: necrosis-w1's P5 broken half was the first (the #920 entry below).
+- Attempt 1's files are kept beside the scripts, in `c2275_attempt1/`.
+
+**Attempt 2, runner process 15400, to the end.** Pre-checks at 01:01:34 local (after the clocks went back), all
+passing: the same readings, 11170 MB free. Lock converted-w1 taken, and released at the end.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The six new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4475 tests performed, 4475 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4475 tests in the tree at 1e77f2847; 4475 performed, gap 0; every declared test was reported by the run" |
+| Memory | `CataclysmTestMemorySummary: tests=5082 peak_used_virtual_mb=8942 final_used_virtual_mb=8616 collections=3436 collection_total_s=117.961 worlds_at_last_collection=2` |
+| Python | `7187 passed, 8 skipped in 195.72s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| G1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| G2 | PROVED: with the break in, `1 failed: AnEnemysStrongerBleedLeavesTheConvertedDamageRunning`; restored, 1 succeeded |
+| G3 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G4 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G5 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G6 | PROVED: with the break in, `1 failed: ASmallerSecondBlowIsStoredBesideTheFirst`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, its anchors matched once, its run reported, and the
+source hash was the same before and after it.
+
+**THE PREDICTIONS ARE CONFIRMED AT THE ASSERTION.** Each broken half's engine log was kept by the tester hook
+(`c2275_G<n>_run1.log`), and every failed assertion in it is listed here. No prediction was wrong: each proof failed on
+exactly the assertions registered, with the figures traced, and on nothing else. Each restored half's log holds no
+failed assertion.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| G1 | "the enemy's bleed is an effect of its own: two bleeds run" (2, 1); "the still Masochist took the 100 it converted and no more: 160.00" (100, 160) | exactly the two predicted, 160 as traced (the converted end moved to 8.2 s) |
+| G2 | "the converted bleed still runs beside it" (1, 0); "the still Masochist took the 100 it converted: 0.00" (100, 0) | exactly the two predicted |
+| G3 | "the converted blow runs as a bleed of its own" (1, 0); "the still Masochist took the 100 it converted: 0.00" (100, 0) | exactly the two predicted; "kept its count of movement, 2.0" passed, as traced |
+| G4 | "and the enemy's bleed still runs beside it" (to be true) | exactly the one predicted |
+| G5 | "and the enemy's bleed kept its count of movement, 2.0" (2, 0) | exactly the one predicted |
+| G6 | "each converted blow runs as its own bleed: two" (2, 1); "the Masochist took both blows, 150, five ticks each: 100.00" (150, 100) | exactly the two predicted |
+
+The other error lines in those logs are the engine's start-up complaint about `GameFeatureData` in the asset manager
+settings, which every run's log carries, and the `Result={Fail}` line of the test named.
 
 ---
 
