@@ -5,9 +5,9 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-11-01 — The new-character screen's asset, made by the generator, so New on the select screen opens it (#753, select-screen step 4b)
 
 **Affects:** `tools/generate_interface_assets.py`, which makes `WBP_NewCharacter` (`make_new_character`, called after
-`make_character_select`); the asset it makes, WBP_NewCharacter.uasset under game/Content/Interface (Git LFS,
-`.gitattributes` line 13, unchanged), written here as a backticked path when window A commits it, because the log's
-check rightly refuses a path that does not exist yet; `ACataclysmFrontEndPlayerController::NewCharacterScreenAsset` (a read-only getter, for a test,
+`make_character_select`); the asset it made, `game/Content/Interface/WBP_NewCharacter.uasset` (Git LFS,
+`.gitattributes` line 13, unchanged), named without backticks until window A had made it, because the log's check
+refuses a path that does not exist; `ACataclysmFrontEndPlayerController::NewCharacterScreenAsset` (a read-only getter, for a test,
 in `CataclysmFrontEndGameMode.h`); one new test in `game/Source/Cataclysm/Tests/CataclysmCharacterSelectTests.cpp`; and a
 new Python check, `tools/tests/test_the_new_character_screen_is_generated_with_its_bindings.py`. Issue
 [#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open for step 5 (deleting a character).
@@ -17,8 +17,8 @@ new Python check, `tools/tests/test_the_new_character_screen_is_generated_with_i
 - **NO TEST SEES NEW OPEN THE SCREEN.** A test world cannot make a screen with `CreateWidget` (#1841). The asset test
   shows the one thing the front end checks before it makes the screen: the path it opens loads, as the new-character
   screen's class. The screen opening, and what it shows, is on the owner's launch list below.
-- **NOT YET GENERATED OR RUN IN UNREAL.** Compiled once with no lock; window A makes the asset and window B runs the
-  tests, both registered below.
+- **GENERATED, NOT YET RUN IN UNREAL.** Window A made the asset exactly as registered (below); window B runs the
+  tests.
 - **THE LAYOUT IS NOT DESIGNED,** ruled 2026-11-01: one plain column, as every generated screen is, because the owner
   wants a basic working screen before any polish.
 
@@ -94,6 +94,22 @@ Run with `tools/prove_guard.py`'s `break_and_run` on the new check alone, in a `
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 77 actions, 67 files compiled`, at
 the first attempt (a new worktree).
+
+### The editor run (window A)
+
+Window w127A, 2026-11-01, on `35c46e05d`, lock `dungeon-w127A`, after `development` moved to e49d4f709 (#2666) and its
+CI and Unreal runs had completed. Pre-checks all passing at 07:41:08 local, 11365 MB free. Build: `Build: Succeeded -
+target already up to date, 0 actions, nothing compiled`. Then `python tools/run_editor_python.py
+tools/generate_interface_assets.py`, exit 0. Its log, `game/Saved/Logs/run_editor_python.log`, says the ten existing
+screens "already exists; left alone", then "satisfies 12 BindWidget properties: BackButton, ConfirmButton,
+CreationRefusalLabel, DamageTypeBox, LethalityBox, NameBox, PopulationBox, RefusalLabel, SoloSelfFoundBox,
+SummaryLabel, UnlockedLabel, WeaponTypeBox", "created /Game/Interface/WBP_NewCharacter", "/Game/Maps/L_FrontEnd already
+exists; left alone", "done", and "Python script executed successfully". Its `Error:` lines are the engine's start-up
+complaint that the asset manager has no rule for `GameFeatureData`, which every editor start here logs.
+
+**THE RUN TOUCHED EXACTLY THE ONE FILE IT WAS FOR,** by its own report ("The editor run left 1 file(s) changed") and
+by `git status --porcelain --untracked-files=all` afterwards: `?? game/Content/Interface/WBP_NewCharacter.uasset`,
+stored in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS RESTORED.** It is committed with this record.
 
 ---
 
