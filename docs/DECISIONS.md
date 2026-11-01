@@ -2,6 +2,82 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A character's name and partition are saved and loaded, the character select screen's six rulings, and a guard on the death a load runs (#753, select-screen step 1)
+
+**Affects:** `ACataclysmPlayerState` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`), which now holds the
+character's name and partition (`GetCharacterName`, `GetPartition`, `HasIdentity`, `SetIdentity`);
+`FCataclysmSaveGather::CharacterFrom` (`CataclysmSaveGather.cpp`), which writes them when set;
+`FCataclysmSaveApply::CharacterInto` (`CataclysmSaveApply.cpp`), which puts them back; one new test in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: its first acceptance criterion, a load at start-up, is met only when the screen is built (steps 3 to 5).
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WHAT WAS MISSING, read in the code:** `UCataclysmCharacterSave` has had `CharacterName` and `Partition` fields since the
+  record was built, and nothing in play wrote either. Every saved character held an empty name and the default partition
+  (Standard, offline, not Solo Self-Found). A load kept a name only because the writer adopts the loaded record, which the
+  round trip `ACharacterAndItsRunComeBackFromTheirSlots` checks. The character select screen lists both, so they must be
+  written first.
+- **WRITTEN ONLY WHEN SET, as the creation choice is.** A character an automation test stands up has none set, and the save
+  writes none for it, so "nobody chose" is not recorded as "chose Standard and offline". Nothing in play sets them yet: the
+  creator does, in step 4. Until then only a load sets them.
+- **A GUARD ON THE DEATH A LOAD RUNS, asked by the #753 audit of 2026-11-01.** `ACharacterSavedDeadIsLoadedDead` showed
+  that a character saved at no health is loaded dead, but no proof broke the path that kills it. P4 below does.
+
+### Rulings, 2026-11-01 (the character select screen; by the coordinating session from the design and the code)
+
+1. **Characters are found by scanning the `Character_*` slots,** not from the account records: a Solo Self-Found character
+   has no account record, and the account record's character list is never written.
+2. **Each row shows** the name, the level, the lethality mode, the Solo Self-Found and offline or online flags, the equipped
+   weapon type in place of a class (every character is on the Ravager line, #932), and "in a run: day N", with "floor F
+   of <dungeon>" when the run is inside a dungeon. **An unreadable slot is shown as unreadable, never hidden.**
+3. **Offline play opens straight on character select.** Login belongs to online play, which has no service yet, so it is not
+   built now.
+4. **Deleting a Solo Self-Found character warns** that its private tree is destroyed, naming it. The 2026-08-14 entry left
+   the warning to the interface, and its case rests on the player "knowing what is in the tree".
+5. **The private stash goes with the character:** it lives in the character's own record (#576, applied in #599). The same
+   warning names it.
+6. **The run file is deleted with the character,** since a run belongs to one character.
+
+The screen is built as five pull requests, in order: (1) this one; (2) listing the saved characters; (3) the screen and the
+start-up hook, which meets #753's first criterion; (4) a new character, with name, lethality, Solo Self-Found and offline or
+online chosen at creation and refused at 24; (5) deleting a character, with the warnings above.
+
+### What changes
+
+| What | Before | After |
+|---|---|---|
+| The character's name and partition at run time | held nowhere | held by the player state, beside the creation choice |
+| The save | wrote neither; a loaded record's name survived only through the writer's adoption | writes both when set |
+| A load | did not put them anywhere | puts them on the player state |
+
+### Tests
+
+- `Cataclysm.SaveLoad.ACharactersNameAndModeComeBackFromALoad`. Set-up: a character given a name and a Hardcore, online,
+  Solo Self-Found partition, saved with the death trigger, which writes both records before it returns. Checks that the save
+  wrote the name and the partition, that the load put both back on the player state, and that the next write keeps both.
+  Control: the loading character had none set before the load. Prints "LOAD IDENTITY".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1, its line quoted |
+| Whole Unreal suite | 4449 / 0: window w121's 4448 on `development` (e21133d85), + 1 |
+| Python | of record, with JUnit, and ruff |
+| P1, the name not written (`Record.CharacterName = State->GetCharacterName(); // A save's: ...`) | the new test fails on "the save wrote the name", "the load put the name back" and "and the next write keeps both" only. The other reader of the name, the round trip, passes: it writes its name into the record by hand, and the writer's adopted record keeps it |
+| P2, the partition not written (`Record.Partition = State->GetPartition(); // A save's: ...`) | the new test fails on "the save wrote the partition", "the load put the partition back" and "and the next write keeps both" only. No other test reads a gathered partition |
+| P3, a load not putting them back (`State->SetIdentity(Record.CharacterName, Record.Partition); // A load's: ...`) | the new test fails on "the load put the name back" and "the load put the partition back" only. "And the next write keeps both" passes, because with none set the save writes none, and the adopted record keeps both |
+| P4, a direct write to no health not running the death (`NotifyIfHealthReachedZero();` in `UCataclysmVitalAttributeSet::PostAttributeBaseChange`), run with the prefix `Cataclysm.SaveLoad.` | two tests fail, both of which load a character saved at no health: `ACharacterSavedDeadIsLoadedDead` and `ADeathInADungeonIsPaidForAfterALoad`, each on "the character is dead after the load" at least. The assertions after it that need the death (its own write, and what standing up pays and writes) may fail too, so only the two test names and that one assertion are registered. No other test under the prefix kills by writing health directly: a kill by a hit goes through `PostGameplayEffectExecute`, as `KillOnTheFloor`'s and `ReduceHealthDirectly`'s do. Outside the prefix, every test that kills by a direct write would fail as well; the run does not measure those |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled).
+
+---
+
 ## 2026-10-31 — The Reaper, the Corrupted Stalker and Portal Unleashing's creatures standing at a save come back after a load; a slain Stalker stays slain (#753, Group 3d-4b)
 
 **Affects:** `bCorruptedStalkerStanding` and `CorruptedStalkerLocation` on `FCataclysmSavedFloorRuleState`
