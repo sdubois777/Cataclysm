@@ -189,11 +189,15 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 
 	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.
 
-	// THE FRESH SLOTS GO, whatever the load did. Never the chosen character's own slot, which no fresh identifier names.
+	// THE FRESH SLOTS GO, whatever the load did. NEVER THE CHOSEN CHARACTER'S OWN SLOT, which no fresh identifier names;
+	// AND, AFTER A LOAD, NEVER WHAT THE WRITER NOW WRITES: were this ever run a second time, the names it noted would be
+	// the loaded ones. After a refusal the writer still writes the fresh pair, and those go.
 	const FString ChosenSlot = UCataclysmSavePartition::CharacterSlotName(Chosen);
+	const bool bTheWriterMovedOn = Report.Outcome != ECataclysmLoadOutcome::Refused;
 	for (const FString& Fresh : {FreshRunSlot, FreshCharacterSlot})
 	{
-		if (Fresh.IsEmpty() || Fresh == ChosenSlot)
+		if (Fresh.IsEmpty() || Fresh == ChosenSlot
+			|| (bTheWriterMovedOn && (Fresh == Writer->RunSlotName() || Fresh == Writer->CharacterSlotName()))) // Never the writer's after a load.
 		{
 			continue;
 		}

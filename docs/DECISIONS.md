@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — The character the select screen chooses is loaded when its level begins, and the fresh start's slots are deleted; the select screen's logic and the front end's game mode, without assets (#753, select-screen step 3a)
+
+**Affects:** `UCataclysmGameInstance` (`game/Source/Cataclysm/Player/CataclysmGameInstance.h`), which holds the screen's
+hand-over: `PendingCharacterId`, `LastLoadRefusal` and `LastLoadNotice`; `ACataclysmGameMode`
+(`CataclysmGameMode.h`, `.cpp`), whose `StartPlay` and new `HandleStartingNewPlayer` both call the new
+`LoadThePendingCharacter`; `UCataclysmCharacterSelectWidget` (new, `game/Source/Cataclysm/Interface/
+CataclysmCharacterSelectWidget.h`, `.cpp`); `ACataclysmFrontEndGameMode` and `ACataclysmFrontEndPlayerController`
+(new, `game/Source/Cataclysm/Player/CataclysmFrontEndGameMode.h`, `.cpp`); three new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and a new test file,
+`game/Source/Cataclysm/Tests/CataclysmCharacterSelectTests.cpp`, with two. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open: its first criterion, a load at start-up, is met
+when step 3b points the game's start at the screen.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **NOTHING A PLAYER SEES CHANGES YET.** Nothing shows the screen until step 3b makes `WBP_CharacterSelect` and
+  `L_FrontEnd` and points `GameDefaultMap` at it. The front end's game mode and controller are used by no level; a level
+  begun with nothing chosen begins exactly as before.
+- **THE FRESH START IS LEFT AS IT WAS, AND A LOAD IS ADDED AFTER IT.** About ninety tests start a game mode and rely on
+  its fresh run: 83 `StartPlay` calls in `CataclysmDungeonModifierEffectsTests.cpp`, `MakeDungeonScene` in
+  `CataclysmSaveLoadTests.cpp`, `CataclysmSilenceTests.cpp`, `CataclysmDungeonCostsDaysTests.cpp`,
+  `Cataclysm.SaveWriter.TheGameModeIsWhatTurnsTheWriterOn` (a new run identifier on each call), the dark floor's
+  `DarkSaveWriterIn`, and `tools/tests/test_when_a_save_is_written.py`. None holds a chosen character, so each is
+  unchanged. The load needs a writer that is writing, which the fresh start provides.
+- **THE ORDER BETWEEN `StartPlay` AND THE PLAYER'S START IS NOT ASSUMED.** Both call the load; it runs only when a
+  character is chosen, the writer is writing and the player's character stands, so the second of the two loads it.
+- **THE FRESH START'S SLOTS ARE DELETED AFTER THE LOAD, WHATEVER IT DID, and only they.** Beginning the fresh run writes
+  nothing (`UCataclysmSaveWriter::BeginRun`, and `NoteTrigger` writes only while writing), but between it and the load an
+  item entering the inventory, from the dungeon's floor-start rules or the creation choice at possession, writes the
+  character record, and with it the run; reading the code could not rule that out. Left, every Continue would list a
+  nameless character. The two names are noted before the load, and no name read after it is deleted; never the chosen
+  character's own slot; and, after a load, never the slots the writer now writes, which a second run of the load would
+  have noted as its fresh pair (found while tracing P2 below; added before the first window). Holding writes until the
+  load decides was rejected: a character saved dead dies inside the load,
+  and its death's own write would be dropped. Ruled 2026-10-31, with the guard that the deletion be shown to be narrow.
+- **TRAVEL DOES NOT RUN IN AN AUTOMATION TEST,** so Continue, New and a refusal record the level they ask for, which the
+  tests read. **NO TEST SHOWS THE SCREEN:** a test world has no game instance for `CreateWidget` (#1841), so the screen's
+  logic is plain functions called on a `NewObject` widget; that the front end's controller adds the screen to the
+  viewport is not tested, as #1841 records for the floor panel. 3b's asset tests and the owner's launch cover what can be.
+
+### Rulings, 2026-10-31
+
+- **Step 3 split into 3a and 3b;** the generator that makes the screen's asset makes `L_FrontEnd` too (3b).
+- **Leave the fresh start; load from whichever of `StartPlay` and `HandleStartingNewPlayer` comes second.**
+- **Delete the two fresh slots after the load, whatever the outcome; never a name derived after the load, nor the
+  loaded character's own slot or its run;** a test forces a stray write and counts the characters before and after.
+- **A new run begun instead of the saved one: its reason kept and logged;** the heads-up display shows it later.
+
+### What changes
+
+| What | Before | After |
+|---|---|---|
+| A level's start | a fresh run with new identifiers | the same, then the chosen character loaded, when one is chosen |
+| The fresh start's slots | kept | deleted after a load, whatever it did; never another slot |
+| A refused load | (no screen to return to) | its reason kept on the game instance, and the front end's level asked for |
+| The select screen | none | its logic: the rows' text, Continue's level, New; no asset yet |
+
+### Tests
+
+- `Cataclysm.CharacterSelect.EachRowShowsWhatTheRulingLists`: the rows' text for ruling 2's cases, an unnamed character,
+  a run saved outside a dungeon, and an unreadable slot. Prints "SELECT ROWS".
+- `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds`: the level for a run saved in a dungeon, in the sandbox,
+  and for no run; an unreadable row refused with why; Continue handing the character to the game instance; New leaving
+  nothing pending and opening the sandbox. Prints "SELECT CONTINUE".
+- `Cataclysm.SaveLoad.ACharacterChosenOnTheSelectScreenIsLoadedWhenItsLevelBegins`: a saved character chosen; the fresh
+  start's slots written first, by force; then the load. Checks it loaded; the next start loads nothing; both fresh slots
+  are gone; the number of characters is unchanged; and the loaded character's own slot and its run's still exist.
+  Prints "ARRIVAL LOADED".
+- `Cataclysm.SaveLoad.ACharacterTheLoadRefusesSendsThePlayerBackWithWhy`: an unreadable slot at the fixed fixture
+  identifier `5E1EC7ED-0000-4C15-A000-000000000011` chosen. Checks the refusal, its reason kept, the front end asked for,
+  the choice cleared, both fresh slots gone, the number unchanged, and the refused slot still there. Prints "ARRIVAL
+  REFUSED".
+- `Cataclysm.SaveLoad.ALevelBegunWithNothingChosenStartsFreshAsBefore`: nothing loaded, the fresh run still written to,
+  its slot not deleted.
+
+Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `FSaved::Forget` uses.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4455 / 0: window w123's 4450 on `development` (59e5dd893), + 5 |
+| Python | of record, with JUnit, and ruff |
+| P1, the load not run (`FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.` broken to an empty report, which reads as a refusal with no reason) | TWO TESTS: the loaded test on "the chosen character was loaded" only (the clean-up still runs, so the slots and the count hold); the refused test on "the refusal's reason is kept for the select screen" only, the empty report giving no reason. The `CharacterSelect` tests do not reach the game mode |
+| P2, the choice not cleared (`Instance->PendingCharacterId.Invalidate(); // A pending load's: ...`) | TWO TESTS: the loaded test on "and the next start loads nothing, the choice cleared before the load" only: the second call loads it again, and its clean-up deletes nothing, because the names it noted are the writer's after the load; the refused test on "the pending choice is cleared" only |
+| P3, the refusal's reason not kept (`Instance->LastLoadRefusal = Report.Why; // A pending load's: ...`) | the refused test on "the refusal's reason is kept for the select screen" only |
+| P4, the fresh slots not deleted (`UGameplayStatics::DeleteGameInSlot(Fresh, ...); // A pending load's: a fresh slot.`) | TWO TESTS, each on "the fresh character slot is gone", "the fresh run slot is gone" and "a Continue leaves the number of characters unchanged" (one more) only |
+| P5, THE DELETION NOT NARROW, two swaps: the names read after the load (`{FreshRunSlot, FreshCharacterSlot}` to `{Writer->RunSlotName(), Writer->CharacterSlotName()}`), and the after-load guard off (its clause, ending `// Never the writer's after a load.`, to `false)`) | the loaded test on "and its run's slot", "the fresh character slot is gone", "the fresh run slot is gone" and "a Continue leaves the number of characters unchanged" (one more) only: after a load the writer names the loaded slots, so the loaded run's slot is deleted and the fresh pair is left. "The loaded character's own slot still exists" PASSES, kept by the chosen-slot guard, which these swaps leave. The refused test passes: after a refusal the writer still names the fresh slots |
+| P6, Continue's level not chosen by the run (`OutMap = bInADungeon ? DungeonMap : SandboxMap; // A Continue's: ...` broken to `SandboxMap`) | the continue test on "a run saved in a dungeon opens the dungeon level" and "and asks for its level" only |
+| P7, Continue not handing the character over (`Instance->PendingCharacterId = Shown[Index].CharacterId; // A Continue's: ...`) | the continue test on "Continue hands the character to the game instance" only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled); then, with the after-load guard, `Build: Succeeded - 5
+actions, 2 files compiled: CataclysmGameMode.cpp, Module.Cataclysm.11.cpp`.
+
+---
+
 ## 2026-10-31 — A bleed ticks only while its target moves and stops after four seconds of movement; the Masochist's converted damage is exempt (#918)
 
 **Affects:** the gate in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
