@@ -184,6 +184,14 @@ int32 UCataclysmDebuffs::Cleanse(AActor* Character)
 			{
 				continue;
 			}
+			// AND THE HEALING A NECROSIS DENIED, BEING DEALT. Issue #920, ruled by the coordinating session 2026-10-31:
+			// the denial has already happened, as it had when a cleanse ended the Necrosis. Its own mark, not the one
+			// above, which the bleed gate reads too.
+			if (Effect->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+			{
+				continue;
+			}
 			if (AbilitySystem->RemoveActiveGameplayEffect(Handle))
 			{
 				++Removed;

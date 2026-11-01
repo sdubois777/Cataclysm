@@ -340,6 +340,7 @@ const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
+const TCHAR* UCataclysmSkillEffects::DeniedHealingDataName = TEXT("Cataclysm.DeniedHealing");
 const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
 const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
 const TCHAR* UCataclysmSkillEffects::CannotBeMitigatedDataName = TEXT("Cataclysm.CannotBeMitigated");
@@ -1734,7 +1735,8 @@ namespace
 	 * no stronger-application rule meets it, and a second payout runs beside a first. Its ticks carry the ended
 	 * Necrosis's own asset tags, the damage over time flag and its element, and its context, so they are credited
 	 * and typed as the Necrosis's own ticks were and meet the carrier's resistances as every tick does; the
-	 * set-by-caller numbers are not carried, so it is not priced from the applier's stats a second time. One tick a
+	 * set-by-caller numbers are not carried, so it is not priced from the applier's stats a second time; it carries
+	 * one of its own, `DeniedHealingDataName`, which a cleanse and a refresh of the applier's others read. One tick a
 	 * second (`BaseSecondsPerTick`) for `UCataclysmDebuffs::NecrosisDeniedHealingSeconds`, each a fifth of the total,
 	 * the last on the window's end; the applier's three damage over time stats and the carrier's duration stat do not
 	 * move it, so the total dealt is the total denied before resistances. Judgements by the writing session.
@@ -1780,6 +1782,10 @@ namespace
 
 		FGameplayEffectSpec Spec(Effect, Removal.EffectContext, /*Level=*/1.0f);
 		Spec.AppendDynamicAssetTags(AssetTags);
+		// AND STAMPED AS THE HEALING A NECROSIS DENIED, so a later cleanse keeps it and a row refreshing the applier's
+		// other damage over time leaves it alone. Ruled by the coordinating session 2026-10-31: the denial has already
+		// happened, and a payout made longer would deal more than was denied. See `DeniedHealingDataName`.
+		Spec.SetSetByCallerMagnitude(FName(UCataclysmSkillEffects::DeniedHealingDataName), 1.0f);
 		Carrier->ApplyGameplayEffectSpecToSelf(Spec);
 	}
 }
@@ -3142,6 +3148,12 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		FGameplayTagContainer Granted;
 		Active->Spec.GetAllGrantedTags(Granted);
 		if (Except.IsValid() && Granted.HasTag(Except))
+		{
+			continue;
+		}
+		// NOT THE HEALING A NECROSIS DENIED. Issue #920, ruled by the coordinating session 2026-10-31: its total is the
+		// total denied, and its whole window again would deal more than that.
+		if (Active->Spec.GetSetByCallerMagnitude(FName(DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
 		{
 			continue;
 		}

@@ -158,6 +158,8 @@ public:
 	 *   UNTIL 2026-10-06 THIS LEFT EVERY EFFECT THE CHARACTER ITSELF INSTIGATED. It was narrowed to the stamped
 	 *   bleed: anything else a character lays on themselves is removed, a drawback a row lays on its own wearer
 	 *   and what a zone lays on its own owner included.
+	 * - THE HEALING A NECROSIS DENIED, BEING DEALT (`UCataclysmSkillEffects::DeniedHealingDataName`). Issue #920,
+	 *   ruled 2026-10-31: the denial has already happened.
 	 *
 	 * NO IMMUNITY AFTERWARDS, as ruled: a cleanse every few seconds with even a short immunity would make its wearer
 	 * immune for much of a fight.
