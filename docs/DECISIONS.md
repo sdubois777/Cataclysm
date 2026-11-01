@@ -12,8 +12,9 @@ ailment section of `docs/Cataclysm_GDD_v2.md`. Issue [#2664](https://github.com/
 
 ### SAID FIRST
 
-- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
-  code. Rebased with no force push onto `development` at `bef3362ca` (#2667, select-screen step 4b, which touches
+- **RUN IN WINDOW converted-dealt-w1 (under Run): every registered figure as registered, the suite at 4488 / 0, and
+  all three proofs PROVED, each failing on exactly the assertions predicted.**
+- Every figure below was registered before its run, traced by hand from the code. Rebased with no force push onto `development` at `bef3362ca` (#2667, select-screen step 4b, which touches
   nothing in damage, leech or combat events) as `fix/converted-damage-is-not-dealt-1`. Compiled there with no lock,
   after one wait on the continuous integration runner's lock: `Build: Succeeded - 13 actions, 10 files compiled`.
   Python of record on the same head: `7190 passed, 8 skipped in 209.81s`; JUnit tests 7198, failures 0, errors 0,
@@ -123,7 +124,35 @@ while a Python suite runs (issue #1630).
 
 ### Run
 
-Not yet run.
+**Window converted-dealt-w1, 2026-11-01, on the registration commit `cbcda6fc4`, runner process 253760**, run by the
+coordinating session with the writing session's scripts (`prechecks_c2275d.py`, `run_c2275d.py`, `prove_c2275d.py`,
+adapted from converted-total-w1's). Pre-checks at 08:20:53 local, all passing: `development` at `bef3362ca` with its
+CI and Unreal runs successful, no run in progress or queued, the lock free, no build or editor process, no open pull
+request, no simulation process, 11287 MB free. Lock converted-dealt-w1 taken, and released at the end.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The two new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4488 tests performed, 4488 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4488 tests in the tree at cbcda6fc4; 4488 performed, gap 0; every declared test was reported by the run" |
+| Memory | `CataclysmTestMemorySummary: tests=5095 peak_used_virtual_mb=8956 final_used_virtual_mb=8620 collections=3445 collection_total_s=117.947 worlds_at_last_collection=2` |
+| Python | `7190 passed, 8 skipped in 194.76s`; JUnit tests 7198, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: AMasochistLeechesNothingFromItsOwnConvertedDamage`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P2 | PROVED: with the break in, `1 failed: ItsOwnConvertedDamageIsNobodysBlow`; restored, 1 succeeded |
+| P3 | PROVED: with the break in, `1 failed: ItsOwnConvertedDamageIsNobodysBlow`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, its anchor matched once, its run reported, and the
+source hash was the same before and after it.
+
+**THE PREDICTIONS ARE CONFIRMED AT THE ASSERTION.** Each broken half's engine log was kept by the tester hook
+(`c2275d_P<n>_run1.log`), and every failed assertion in it is listed here. No prediction was wrong. Each restored
+half's log holds no failed assertion.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| P1 | "the Masochist's own converted tick made no leech payment" (0, 1) | exactly the one predicted; the control (1) and the set-up lines passed |
+| P2 | "the converted tick names no attacker, so a death by it is credited to nobody" (to be true); "and no dealer" (to be true) | exactly the two predicted; "and the Masochist is not recorded as struck by itself" passed, as predicted |
+| P3 | "and the Masochist is not recorded as struck by itself" (to be false) | exactly the one predicted; the attacker and dealer lines passed |
 
 ---
 
