@@ -2,6 +2,260 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A character is deleted from the select screen after its name is typed, with exactly its own slots (#753, select-screen step 5)
+
+**Affects:** `FCataclysmSaveLoad::SlotsToDelete` and `DeleteCharacter`, and the run identifier on
+`FCataclysmCharacterSummary` (`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `.cpp`); delete mode and the
+confirmation on `UCataclysmCharacterSelectWidget` (`game/Source/Cataclysm/Interface/CataclysmCharacterSelectWidget.h`,
+`.cpp`); `tools/generate_interface_assets.py`, which remakes `WBP_CharacterSelect` once
+(`remake_character_select_without_delete`) and adds the confirmation's widgets; the asset,
+`game/Content/Interface/WBP_CharacterSelect.uasset`, remade in window A; five new tests and six new assertions in the
+select screen's asset test; two new checks in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`.
+Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of the five steps ruled 2026-10-31.
+
+### SAID FIRST
+
+- **WINDOW B (w128B) STOPPED AT THE SUITE: TWO EXISTING TESTS FAILED, AND THIS STEP CHANGES THEM.**
+  `Cataclysm.SaveLoad.MoraleBreaksLeadersStillLeadAfterALoad` and
+  `CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad` kill a Morale Break leader and expect its group to panic.
+  With step 5's three new `Cataclysm.SaveLoad.` tests running before them, the leader they kill drew Horde Leader, and a
+  Horde Leader's death rallies its group instead. Window w128C measured that the order is the cause (below). The cause
+  is in the game's draw, not in step 5: **which creature draws a modifier is not fixed by the pinned dungeon seed.**
+  `ACataclysmEnemyCharacter::DrawModifiersForRarity` seeds each creature's `FRandomStream` from its object's
+  `GetUniqueID()`, the world's clock and a salt, unless `ModifierSeedForTests` is set, which the round trips do not set.
+  The coordinating session files that as an issue. **Ruled 2026-11-01:** both tests now choose a leader that is not a
+  Horde Leader, with a set-up assertion that one was found, in a commit of its own on this branch.
+- **Window A remade `WBP_CharacterSelect` exactly as registered; the six step 5 tests passed alone in window B; and
+  window w128D passed the whole suite, 4493 / 0, with all eight proofs proved (all below).** **ONE PROOF FAILED MORE
+  THAN ITS TRACE:** R3 also failed "the character was deleted" and "the delete reports what it removed", because its
+  break lists a backup's name twice and the second delete of it fails. The guard is proved; the trace was short by two.
+- **DELETING IS IRREVERSIBLE, SO EVERY NAME IS BUILT, NEVER MATCHED BY A PATTERN.** `SlotsToDelete` names each slot
+  from an identifier and matches it whole; `ADeleteRemovesItsCharactersSlotsAndNothingElse` deletes one of two
+  characters on disk and checks that the names gone are exactly a hand-written list and that no other name went.
+- **THE CONFIRMATION FOLLOWS DIABLO IV, AND THE EVIDENCE IS PLAYERS' AND GUIDES', NOT A DEVELOPER'S.** No developer
+  documentation was found for any game. **The coordinating session's recollection -- that Path of Exile asks for the
+  character's name and Diablo III for the word DELETE -- was NOT confirmed** (below).
+- **NO TEST SEES THE SCREEN DRAWN.** The tests drive the screen's logic with rows given; the screen as drawn, the
+  confirmation appearing and Delete greying out, are on the owner's launch list.
+- **WHERE A TEST'S SAVES ARE, read from the engine (asked 2026-11-01, because R3's break deletes every `Character_` slot
+  in the folder).** No `[PlatformFeatures] SaveGameSystemModule` is set in the engine's or this project's ini files, so
+  `FWindowsPlatformFeaturesModule::GetSaveGameSystem` falls back to `FGenericSaveGameSystem`, whose
+  `GetSaveGamePath` is `FPaths::ProjectSavedDir()` + `SaveGames/<slot>.sav`; and `ProjectSavedDir` is the project's own
+  `Saved` folder unless the editor is started with `-saveddirsuffix` or a user folder, which `tools/unreal_build.py`
+  does not pass. So a run from worktree s5 writes to s5's `game/Saved/SaveGames`, never to a per-user folder: on
+  2026-11-01 each worktree that has run tests has its own `game/Saved/SaveGames`, and
+  `%LOCALAPPDATA%/Cataclysm/Saved/SaveGames` does not exist. **The on-disk test prints the resolved absolute path and
+  asserts, as set-up, that it is inside the project's folder and holds the fixture's file**; the path a run prints is
+  recorded here with window B.
+
+### The genre, researched 2026-11-01
+
+| Game | What the sources show | Source |
+|---|---|---|
+| Diablo IV | **The character's name is typed.** One "Undo Character Delete" restores the most recent deletion only | gamepressure.com, "Can you restore a deleted character?" ("write the character's name"); a Steam discussion of 2023-12-12 in which a player asks to delete "without typing a name for confirmation" |
+| Path of Exile 1 and 2 | **A confirmation window**; a typed name **not confirmed** | pathofexile.com forum thread 3330281 (2022-12-16: a confirmation window; 2024-10-05: a player's "Having to type the name of the char is a good thing", which may describe the game or ask for it); thread 3782980 (2025-05-19: "Delete has a confirmation in both games"); a Grinding Gear Games reply there points only to support |
+| Diablo III | **No typed word found**: Delete, then a confirmation message | Blizzard support article 22588 (Restore Hero); a third-party guide |
+| Diablo II: Resurrected | Several steps since patch 1.0.12, 2021-10-12, a held button on console; no typing | mein-mmo.de |
+| Last Epoch | A click confirmation in 2024: players asked for a name confirmation after misclicks; a moderator's opinion that a case-sensitive typed name is best | r/LastEpoch, 2024-03; the forum thread then cited returns 404 |
+| Torchlight Infinite | Nothing found | -- |
+| Outside the genre | AQ3D asks for the word DELETE | support.artix.com |
+
+**What it settles:** the newest shipped game of the genre asks for the character's name, and players of two others
+asked for exactly that after deleting by mistake. Adopted: **the character's name, typed exactly, case and all.**
+**What it does not:** a save with no name. No game of the genre was found asking for a word; **DELETE is a judgement**
+(ruled), readable and typeable where the slot's identifier is neither.
+**Considered and not adopted: an undo,** as Diablo IV has for its most recent deletion. It would need the deleted files
+kept, which ruling 6 and Q1 do not. The owner can ask for it.
+
+### Rulings, 2026-11-01
+
+- **Q1, backups:** a migration's backups of the character slot and its run slot go with the character, matched exactly:
+  the slot's whole name, `_BackupOfVersion`, digits only.
+- **Q2, an unreadable save** can be deleted, freeing one of the 24. Only its character slot goes; its backups are kept,
+  the only way to recover it; any run it had cannot be found and stays. The warning says both.
+- **Q3, the asset:** window A remakes `WBP_CharacterSelect`, registering exactly that one file as modified. The remake is
+  explicit for this one asset (`remake_character_select_without_delete`), runs only when the asset lacks the step's
+  `ConfirmNameBox`, and is never a general remake; a Python check holds that.
+- **Q4:** Back on the new-character screen is unaffected.
+- **The confirmation:** the name typed, after Diablo IV; DELETE for a save with no name; no undo.
+
+### What deleting does
+
+- **Delete** on the select screen turns delete mode on and off. In it a row, an unreadable one included, opens the
+  confirmation instead of continuing.
+- **The confirmation** says who is deleted and that it cannot be undone; its run, on day N, when it is in one (ruling 6);
+  for a Solo Self-Found character, that its own empire upgrade tree and its private stash are destroyed with it (rulings 4
+  and 5, both stored inside the character's own record); for an unreadable save, the Q2 text. Delete is enabled only
+  while the box holds the name exactly.
+- **What goes**, by `SlotsToDelete`: the character slot; its run's slot, unless another listed character names the same
+  run, which solo play never does; and the two slots' backups. The character slot is deleted last, so a delete that
+  stops part way leaves the character listed. Writes in flight finish first.
+- **Outside a run only:** refused when the world's save writer is writing, which never happens on the front end but is
+  checked.
+- **No account record changes.** The account record's `Characters` list is never written (ruling 1, checked again: no
+  writer), and the run record's names only this character.
+
+### Tests
+
+- `Cataclysm.SaveLoad.ADeleteNamesExactlyTheSlotsItRemoves`: `SlotsToDelete` from a list of names, no file touched: a
+  character in a run, one in none, a run another row names, an unreadable record, and a slot not on disk, each to its
+  exact list; a near-miss backup name stays. Prints "DELETE SLOTS".
+- `Cataclysm.SaveLoad.ADeleteRemovesItsCharactersSlotsAndNothingElse`: on disk, two characters each with a run and a
+  backup, a near miss and two unrelated slots; every name before and after; the names gone are exactly the hand-written
+  four, and no other went. Control: the prediction is not empty. Prints "DELETE ON DISK".
+- `Cataclysm.SaveLoad.ADeleteIsRefusedWhileARunIsBeingSaved`: refused in a world whose writer is writing, the slot kept;
+  the same delete outside removes it. Prints "DELETE IN A RUN".
+- `Cataclysm.CharacterSelect.ADeleteWarnsWhatGoesAndAsksForTheName`: the warnings, and the word each save is confirmed
+  by, case-sensitive. Prints "DELETE WARNING".
+- `Cataclysm.CharacterSelect.DeleteModeAsksAndTheWrongNameDeletesNothing`: delete mode asks and does not continue; the
+  wrong name keeps Delete refused and deletes nothing; Cancel keeps the rows; an unreadable row is confirmed by DELETE.
+  Prints "DELETE MODE".
+- `Cataclysm.CharacterSelect.TheSelectScreenAssetLoadsAndHoldsItsBoundWidgets` gains six assertions, one per new widget.
+- The Python file gains two checks: the six widgets are bound and added; and only
+  `remake_character_select_without_delete` calls `delete_asset`, only `make_character_select` calls it, and the widget
+  it looks for is one the screen binds.
+
+### The owner's launch list, added to step 4b's
+
+6. Delete, then Cancel, leaves the character.
+7. Typing the wrong name keeps Delete disabled.
+8. Deleting a Solo Self-Found character shows the warning naming its empire upgrade tree and its private stash.
+9. A deleted character is gone from the list, and stays gone after the game is restarted.
+10. An unreadable save can be deleted by typing DELETE, and its line disappears.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Window A, the editor run | exit 0; the log says `/Game/Interface/WBP_CharacterSelect` "has no ConfirmNameBox ... deleted, to be made again", then "satisfies 9 BindWidget properties" and "created /Game/Interface/WBP_CharacterSelect"; every other screen and `L_FrontEnd` "already exists; left alone"; **exactly one file changed**, `M game/Content/Interface/WBP_CharacterSelect.uasset`. `Error:` lines from loading the old asset, which cannot compile against the new C++, are expected and are quoted in the record |
+| Window B, the five new tests and the asset test alone | 1 / 1 each, their lines quoted |
+| Window B, the whole Unreal suite | 4493 / 0: `development`'s 4488 (59d1c1d3c, #2668 merged, window converted-dealt-w1), + 5. MOVED ONTO IT after window A, as `feat/delete-a-character-1`, from bef3362ca (4486), whose figure this said before; the move changed none of this step's files, by `git diff` |
+| Window B, Python | of record, with JUnit, and ruff |
+| R1, the shared-run guard off (`if (Other.SlotName != Row.SlotName && Other.RunId == Row.RunId)` to `if (false)`), prefix `Cataclysm.SaveLoad.ADelete` | the slots test fails on "a run another character names stays, with its backup" only |
+| R2, a backup's version not checked for digits (`if (bDigitsOnly)` to `if (true)`), same prefix | the slots test fails on "a character in a run: ..." and "a run another character names stays, ..."; the on-disk test on "the prediction is its slot, its run's and the two backups", "exactly those slots are gone" and "and nothing else" |
+| R3, the character slot by a pattern (`Out.Add(CharacterSlot);` to a loop adding every name starting `Character_`), same prefix | the slots test fails on its four cases with a character slot; the on-disk test on "the prediction ...", "exactly those slots are gone" and "and nothing else". IT DELETES EVERY `Character_` SLOT IN THE PROOF WORKTREE'S SaveGames FOLDER, which holds test saves only |
+| R4, the Solo Self-Found warning off (`if (Row.Partition.bSoloSelfFound)` to `if (false)`), prefix `Cataclysm.CharacterSelect.ADeleteWarns` | the warning test fails on "... names its empire upgrade tree" and "and its private stash" only |
+| R5, the writing guard off (`if (Writer && Writer->IsWriting())` to `if (false)`), prefix `Cataclysm.SaveLoad.ADelete` | the in-a-run test fails on "a delete while a run is being saved is refused", "and deletes nothing" and its control, whose slot the break has already deleted |
+| N1, the name matched ignoring case (`ESearchCase::CaseSensitive` to `IgnoreCase` in `ConfirmationMatches`), prefix `Cataclysm.CharacterSelect.` | the warning test fails on "the name in the wrong case does not"; the delete-mode test on "the wrong name keeps Delete disabled" only (its delete then finds no slot and deletes nothing) |
+| P1 (Python), `make_character_select` does not add `ConfirmNameBox` | the step 5 widgets check and 3b's every-bound-widget check fail |
+| P2 (Python), a second function calls `delete_asset` | the remake-scope check fails, only |
+
+### Window w128B, 2026-11-01, on `cc83edbba`: stopped at the suite
+
+Run by `run_w128B.py` under the lock `dungeon-w128B`, from a clean tree; pre-checks all passing at 09:02:54 local, 11229
+MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The six tests alone | 1 / 1 each | 1 / 1 each. "DELETE ON DISK: **the saves are in C:/Projects/Cataclysm/.claude/worktrees/s5/game/Saved/SaveGames; the project is C:/Projects/Cataclysm/.claude/worktrees/s5/game/;** the fixture's file is there", then "10 names before, 6 after; gone [the four expected]; gone and not expected []; the near miss kept, the other character kept". The others as traced |
+| Whole Unreal suite | 4493 / 0 | **"4493 tests performed, 4491 succeeded, 2 failed: CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad, MoraleBreaksLeadersStillLeadAfterALoad"**; declared 4493, gap 0. Each failed after "Morale Break: group 116's leader was a Horde Leader; it rallies": the leaders test on "a leader killed after the load panics its group" ("a leader killed, 0 panicked"), the escaped test on "set-up: creatures escaped" |
+| Python | of record | "7192 passed, 8 skipped"; JUnit 7200 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 to R5, N1 | as traced | **not run**: the runner stops before the proofs when the suite fails |
+
+The measured save path above is the one the coordinating session asked for before R3 runs: s5's own folder.
+
+### Window w128C, 2026-11-01: the order measured
+
+Ruled 2026-11-01 so that the cause is measured. Run by `run_w128C.py` under the lock `dungeon-w128C`; tests only.
+
+| Run | Code | Result | Group 116's leader, from the log |
+|---|---|---|---|
+| The leaders test alone | `cc83edbba` | 1 performed, 1 succeeded | "group 116's leader died; 9 panic" |
+| The escaped test alone | `cc83edbba` | 1 performed, 1 succeeded | "group 116's leader died; 9 panic", "9 escaped", "group 116 is back, 18 creatures" |
+| Prefix `Cataclysm.SaveLoad.` | `cc83edbba` | "69 tests performed, 67 succeeded, 2 failed": the same two | "group 116's leader was a Horde Leader; it rallies", in both |
+| Prefix `Cataclysm.SaveLoad.` | `development` 59d1c1d3c, checked out clean and built | "66 tests performed, 66 succeeded, 0 failed" | "group 116's leader died; 9 panic", in both |
+
+**Alone they pass; after step 5's three tests they fail; without step 5 the same order passes. The order is the
+cause.**
+
+### The change to two existing tests, ruled 2026-11-01
+
+- `MoraleBreaksLeadersStillLeadAfterALoad` kills the first leader after the load that does not carry
+  `Generic_Horde_Leader`, where it killed the first leader; its assertion "a leader killed after the load panics its
+  group" is now guarded by a set-up assertion, "set-up: a leader that is not a Horde Leader stands after the load",
+  where it was guarded by there being any leader.
+- `CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad` chooses a far group whose leader does not carry it; its
+  seed search's set-up assertion reads "... gives a group far from the entrance, led by no Horde Leader".
+- Both through `RalliesInstead` in the tests' namespace. **No assertion of what a load must do changes**; only which
+  leader is killed.
+
+### Registered for window w128D, on the head with the change
+
+| Figure | Registered |
+|---|---|
+| The two Morale Break tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4493 / 0: the change adds no test |
+| Python | of record, with JUnit, and ruff |
+| R1 to R5, N1 | as registered above |
+| M1, the leaders test's choice inverted, so it takes only a Horde Leader (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed && RalliesInstead(Candidate))`), prefix the test's full name | the leaders test fails on **exactly one** of "set-up: a leader that is not a Horde Leader stands after the load" (when no leader draws Horde Leader) and "a leader killed after the load panics its group" (when one does: it rallies instead), and on nothing else. **INVERTED RATHER THAN REVERTED,** because the coordinating session asked, 2026-11-01, for no proof that may not fire: reverting the choice fails only when the draw makes the first leader a Horde Leader, which depends on the tests run before (#2669), so it could pass by the roll; the inversion fails whatever the draw |
+| M2, the escaped test's choice inverted (`&& !RalliesInstead(Candidate))` to `&& RalliesInstead(Candidate))`), prefix the test's full name | the escaped test fails on exactly one of "set-up: a seed from 1 to 20 gives a group far from the entrance, led by no Horde Leader" (no such group on any seed) and "set-up: creatures escaped" (the Horde Leader's group rallies, so nobody flees), and stops there |
+
+### Window w128D, 2026-11-01, on `300c46adf` (on `development` 59d1c1d3c): as registered
+
+Run by `run_w128D.py` under the lock `dungeon-w128D`, from a clean tree; pre-checks all passing at 09:37:41 local, 11301
+MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The two Morale Break tests alone | 1 / 1 each | 1 / 1 each: "group 116's leader died; 9 panic" in both; "a leader killed, 9 panicked"; "away after the load 9/9, after 31 s 0; creatures standing 231 (saved 213, expected 231)" |
+| Whole Unreal suite | 4493 / 0 | **"4493 tests performed, 4493 succeeded, 0 failed"**; declared 4493, gap 0 |
+| Python | of record | "7192 passed, 8 skipped"; JUnit 7200 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 | the slots test on "a run another character names stays, ..." only | PROVED: 2 of 3, then 3 of 3; that assertion only |
+| R2 | the slots test on two cases; the on-disk test on three | PROVED: 1 of 3, then 3 of 3; exactly those five |
+| R3 | the slots test on its four cases; the on-disk test on three | PROVED: 1 of 3, then 3 of 3; those seven, **and two not traced**: "the character was deleted" and "the delete reports what it removed" (8 expected, 5): the break lists a backup's name twice, so the delete stops at the second |
+| R4 | the warning test on the tree and the stash | PROVED: 0 of 1, then 1 of 1; those two only |
+| R5 | the in-a-run test on its two and its control | PROVED: 2 of 3, then 3 of 3; those three only |
+| N1 | the warning test's wrong case; the delete-mode test's wrong name | PROVED: 8 of 10, then 10 of 10; those two only |
+| M1 | the leaders test on exactly one of two | PROVED: 0 of 1, then 1 of 1; "a leader killed after the load panics its group" (a Horde Leader was there to take) |
+| M2 | the escaped test on exactly one of two | PROVED: 0 of 1, then 1 of 1; "set-up: creatures escaped" |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w128D_<proof>_run1.log`. R3's break ran
+behind the on-disk test's path check and deleted inside s5's own `game/Saved/SaveGames` only.
+
+### Python proofs, run before window A
+
+Run with `tools/prove_guard.py`'s `break_and_run` on the select screen's Python file alone, in a `git archive` copy of
+`6bc4f6275`:
+
+| Proof | Break | Measured |
+|---|---|---|
+| P1 | `make_character_select` does not add `ConfirmNameBox` | PROVED: "2 failed, 4 passed", restored "6 passed"; named failures `test_every_bound_widget_of_the_select_screen_is_added_by_its_generator` and `test_the_select_screen_binds_and_its_generator_adds_the_delete_confirmation`, as traced |
+| P2 | `main()` calls `delete_asset` on `WBP_ChoiceButton` | PROVED: "1 failed, 5 passed", restored "6 passed"; named failure `test_the_generator_remakes_only_the_select_screen_and_only_one_made_before_delete`, as traced |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 75 actions, 65 files compiled`, at
+the first attempt (a new worktree). After the move onto 59d1c1d3c: `14 actions, 11 files compiled`. After the change to
+the two Morale Break tests (`ee7bc897d`), the binaries having last been built from 59d1c1d3c's code in w128C's third run:
+`9 actions, 6 files compiled`.
+
+### The editor run (window A)
+
+Window w128A, 2026-11-01, on `087c96f58`, lock `dungeon-w128A`, after `development` moved to 59d1c1d3c (#2668) and its
+CI and Unreal runs had completed. Pre-checks all passing at 08:56:26 local, 11447 MB free. Build: `Build: Succeeded -
+target already up to date, 0 actions, nothing compiled`. Then `python tools/run_editor_python.py
+tools/generate_interface_assets.py`, exit 0. Its log, `game/Saved/Logs/run_editor_python.log`, says, in order:
+
+- the nine screens before it "already exists; left alone";
+- twelve `LogBlueprint: Error:` lines, each of the six new bindings twice, "A required widget binding "DeleteButton"
+  of type Button was not found" and its five like it: **the old asset loaded and failed to compile against the new C++,
+  as registered**;
+- "/Game/Interface/WBP_CharacterSelect has no ConfirmNameBox: made before deleting a character existed; deleted, to be
+  made again";
+- three `LogLinker: Warning:` lines, "WBP_CharacterSelect.uasset: Error opening file", from the file being gone between
+  the delete and the create;
+- "satisfies 9 BindWidget properties: CancelButton, CharacterList, ConfirmDeleteButton, ConfirmNameBox, ConfirmPanel,
+  ConfirmText, DeleteButton, NewButton, RefusalLabel", "created /Game/Interface/WBP_CharacterSelect";
+- `WBP_NewCharacter` and `L_FrontEnd` "already exists; left alone", "done", "Python script executed successfully";
+- and the engine's usual `GameFeatureData` start-up complaint.
+
+**THE DELETE AND THE CREATE AT ONE PATH IN ONE SESSION WORKED.** **THE RUN CHANGED EXACTLY THE ONE FILE IT WAS FOR,** by its
+own report ("The editor run left 1 file(s) changed") and by `git status --porcelain --untracked-files=all` afterwards:
+` M game/Content/Interface/WBP_CharacterSelect.uasset`, in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS
+RESTORED.** It is committed with this record.
+
+---
+
 ## 2026-11-01 — Converted damage is never damage dealt: it leeches nothing, strikes nobody, and a Masochist it kills dies uncredited (#2664)
 
 **Affects:** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`

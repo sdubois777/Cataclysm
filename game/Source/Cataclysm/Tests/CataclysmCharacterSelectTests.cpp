@@ -291,6 +291,118 @@ bool FCataclysmCharacterSelectAssetTest::RunTest(const FString&)
 	TestTrue(TEXT("RefusalLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("RefusalLabel"))) != nullptr);
 	TestTrue(TEXT("NewButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("NewButton"))) != nullptr);
 	TestTrue(TEXT("and TitleLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("TitleLabel"))) != nullptr);
+	// AND STEP 5'S DELETE AND ITS CONFIRMATION, ruled 2026-11-01: window A remakes the asset with them.
+	TestTrue(TEXT("DeleteButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("DeleteButton"))) != nullptr);
+	TestTrue(TEXT("ConfirmPanel, a panel"), Cast<UPanelWidget>(Tree->FindWidget(TEXT("ConfirmPanel"))) != nullptr);
+	TestTrue(TEXT("ConfirmText, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("ConfirmText"))) != nullptr);
+	TestTrue(TEXT("ConfirmNameBox, an editable text box"),
+			 Cast<UEditableTextBox>(Tree->FindWidget(TEXT("ConfirmNameBox"))) != nullptr);
+	TestTrue(TEXT("ConfirmDeleteButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("ConfirmDeleteButton"))) != nullptr);
+	TestTrue(TEXT("CancelButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("CancelButton"))) != nullptr);
+	return true;
+}
+
+/**
+ * The confirmation a delete asks for, as Diablo IV asks it: the character's name typed exactly, case and all, or DELETE
+ * for a save with no name to type. Its text says what goes: the run when it is in one; for a Solo Self-Found character
+ * its own empire upgrade tree and private stash (rulings 4 and 5), which an ordinary one's does not mention; for an
+ * unreadable save, that none of that can be told, that any run stays and its backups are kept. Issue #753, select-screen
+ * step 5, ruled 2026-11-01. Prints "DELETE WARNING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectDeleteWarningTest,
+	"Cataclysm.CharacterSelect.ADeleteWarnsWhatGoesAndAsksForTheName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectDeleteWarningTest::RunTest(const FString&)
+{
+	using namespace CataclysmCharacterSelectTest;
+	using FScreen = UCataclysmCharacterSelectWidget;
+
+	FCataclysmCharacterSummary Solo = InARun(ARow(TEXT("Vesper"), 12), 9, TEXT("Crypt"), 3);
+	Solo.Partition.bSoloSelfFound = true;
+	const FCataclysmCharacterSummary Ordinary = ARow(TEXT("Corin"), 4);
+	const FCataclysmCharacterSummary Unnamed = ARow(TEXT(""), 1);
+	const FCataclysmCharacterSummary Unreadable = AnUnreadableRow();
+	const FString SoloText = FScreen::DeleteWarning(Solo);
+	const FString OrdinaryText = FScreen::DeleteWarning(Ordinary);
+	const FString UnreadableText = FScreen::DeleteWarning(Unreadable);
+	AddInfo(FString::Printf(TEXT("DELETE WARNING: Solo [%s] Ordinary [%s] Unreadable [%s]; words '%s', '%s', '%s'"),
+							*SoloText, *OrdinaryText, *UnreadableText, *FScreen::ConfirmationWordFor(Solo),
+							*FScreen::ConfirmationWordFor(Unnamed), *FScreen::ConfirmationWordFor(Unreadable)));
+
+	TestTrue(TEXT("a Solo Self-Found character's warning names its empire upgrade tree"),
+			 SoloText.Contains(TEXT("empire upgrade tree")));
+	TestTrue(TEXT("and its private stash"), SoloText.Contains(TEXT("private stash")));
+	TestTrue(TEXT("and its run, by its day"), SoloText.Contains(TEXT("run, on day 9")));
+	TestFalse(TEXT("an ordinary character's names neither"),
+			  OrdinaryText.Contains(TEXT("empire upgrade tree")) || OrdinaryText.Contains(TEXT("stash")));
+	TestTrue(TEXT("an unreadable save's says it cannot be read"), UnreadableText.Contains(TEXT("cannot be read")));
+	TestTrue(TEXT("and that its backups are kept"), UnreadableText.Contains(TEXT("backups are kept")));
+	TestEqual(TEXT("a named character is confirmed by its name"), FScreen::ConfirmationWordFor(Solo), FString(TEXT("Vesper")));
+	TestEqual(TEXT("an unnamed one by DELETE"), FScreen::ConfirmationWordFor(Unnamed), FString(FScreen::DeleteWord));
+	TestEqual(TEXT("an unreadable one by DELETE"), FScreen::ConfirmationWordFor(Unreadable), FString(FScreen::DeleteWord));
+	TestTrue(TEXT("the name typed exactly confirms"), FScreen::ConfirmationMatches(Solo, TEXT("Vesper")));
+	TestFalse(TEXT("the name in the wrong case does not"), FScreen::ConfirmationMatches(Solo, TEXT("vesper")));
+	TestFalse(TEXT("nor with a space after it"), FScreen::ConfirmationMatches(Solo, TEXT("Vesper ")));
+	return true;
+}
+
+/**
+ * Delete mode on the select screen: a row clicked in it asks to delete its character and does not continue it, an
+ * unreadable row included; the wrong name typed keeps Delete refused and deletes nothing; Cancel closes the confirmation
+ * and keeps the rows; and out of delete mode a row no longer asks. Rows are given, and nothing here reaches a file.
+ * Issue #753, select-screen step 5, ruled 2026-11-01. Prints "DELETE MODE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectDeleteModeTest,
+	"Cataclysm.CharacterSelect.DeleteModeAsksAndTheWrongNameDeletesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectDeleteModeTest::RunTest(const FString&)
+{
+	using namespace CataclysmCharacterSelectTest;
+
+	UCataclysmCharacterSelectWidget* Screen = NewObject<UCataclysmCharacterSelectWidget>();
+	Screen->SetRowsForTests({ARow(TEXT("Vesper"), 12), AnUnreadableRow()});
+
+	Screen->SetDeleteMode(true);
+	Screen->ClickRow(0);
+	const int32 Asked = Screen->PendingDeleteIndex();
+	const FString Requested = Screen->LevelRequested();
+	const FString Text = Screen->ConfirmationText();
+	Screen->SetConfirmationTyped(TEXT("vesper"));
+	const bool bWrongCanConfirm = Screen->CanConfirmDelete();
+	const bool bWrongConfirmed = Screen->ConfirmDelete();
+	const FString WrongWhy = Screen->RefusalText();
+	const int32 DeletedAfterWrong = Screen->LastDeleted().Num();
+	Screen->SetConfirmationTyped(TEXT("Vesper"));
+	const bool bRightCanConfirm = Screen->CanConfirmDelete();
+	Screen->CancelDelete();
+	const int32 AfterCancel = Screen->PendingDeleteIndex();
+	const int32 RowsAfterCancel = Screen->Rows().Num();
+	Screen->ClickRow(1);
+	Screen->SetConfirmationTyped(TEXT("DELETE"));
+	const bool bUnreadableCanConfirm = Screen->PendingDeleteIndex() == 1 && Screen->CanConfirmDelete();
+	Screen->SetDeleteMode(false);
+	Screen->ClickRow(1);
+	const int32 OutOfMode = Screen->PendingDeleteIndex();
+	AddInfo(FString::Printf(TEXT("DELETE MODE: row 0 asked %d, level '%s', text [%s]; 'vesper' %s, confirm %s (%s), %d deleted; "
+								 "'Vesper' %s; after Cancel %d, %d rows; the unreadable row with DELETE %s; out of the mode %d"),
+							Asked, *Requested, *Text, bWrongCanConfirm ? TEXT("MATCHES") : TEXT("does not match"),
+							bWrongConfirmed ? TEXT("WENT") : TEXT("refused"), *WrongWhy, DeletedAfterWrong,
+							bRightCanConfirm ? TEXT("matches") : TEXT("DOES NOT MATCH"), AfterCancel, RowsAfterCancel,
+							bUnreadableCanConfirm ? TEXT("can be confirmed") : TEXT("CANNOT"), OutOfMode));
+
+	TestEqual(TEXT("in delete mode a row asks to delete its character"), Asked, 0);
+	TestTrue(TEXT("and does not continue it"), Requested.IsEmpty());
+	TestTrue(TEXT("the confirmation names it"), Text.Contains(TEXT("Vesper")));
+	TestFalse(TEXT("the wrong name keeps Delete disabled"), bWrongCanConfirm);
+	TestFalse(TEXT("and Delete with it deletes nothing"), bWrongConfirmed || DeletedAfterWrong != 0);
+	TestTrue(TEXT("and says what to type"), WrongWhy.Contains(TEXT("Vesper")));
+	TestTrue(TEXT("the name typed exactly enables Delete"), bRightCanConfirm);
+	TestEqual(TEXT("Cancel closes the confirmation"), AfterCancel, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and keeps the rows"), RowsAfterCancel, 2);
+	TestTrue(TEXT("an unreadable row asks too, confirmed by DELETE"), bUnreadableCanConfirm);
+	TestEqual(TEXT("out of delete mode a row no longer asks"), OutOfMode, static_cast<int32>(INDEX_NONE));
 	return true;
 }
 

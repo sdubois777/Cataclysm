@@ -138,3 +138,46 @@ def test_the_front_end_opens_the_screen_and_the_level_names_its_game_mode() -> N
     assert "class CATACLYSM_API ACataclysmFrontEndGameMode : public AGameModeBase" in front_end, (
         "CataclysmFrontEndGameMode.h does not declare ACataclysmFrontEndGameMode, the "
         "game mode the generator gives L_FrontEnd.")
+
+
+#: The widgets deleting a character added to the select screen, select-screen step 5.
+DELETE_WIDGETS = ("DeleteButton", "ConfirmPanel", "ConfirmText", "ConfirmNameBox",
+                  "ConfirmDeleteButton", "CancelButton")
+REMAKE = "remake_character_select_without_delete"
+
+
+def test_the_select_screen_binds_and_its_generator_adds_the_delete_confirmation() -> None:
+    """Step 5's six widgets are bound by the screen's C++ and added by its generator."""
+    bound = BIND_WIDGET.findall(without_comments(HEADER.read_text(encoding="utf-8")))
+    added = [node.args[2].value for node in ast.walk(generator_function(SCREEN))
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "add" and len(node.args) >= 3
+             and isinstance(node.args[2], ast.Constant)]
+    for name in DELETE_WIDGETS:
+        assert name in bound, f"{HEADER.name} does not bind {name}, which deleting a character needs (step 5)."
+        assert name in added, f"{SCREEN}() does not add {name}, which {HEADER.name} binds (step 5)."
+
+
+def test_the_generator_remakes_only_the_select_screen_and_only_one_made_before_delete() -> None:
+    """The one asset the generator deletes is WBP_CharacterSelect, and only when it lacks step 5's widget.
+
+    Ruled 2026-11-01: the remake is explicit for this one asset, never a general
+    "remake everything". So every `delete_asset` in the generator is inside
+    remake_character_select_without_delete, that function is called by
+    make_character_select alone, and the widget it looks for is one the screen binds.
+    """
+    tree = generator_tree()
+    deleting = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "delete_asset" for call in ast.walk(node))]
+    assert [node.name for node in deleting] == [REMAKE], (
+        f"delete_asset is called in {[node.name for node in deleting]}; only {REMAKE} may delete an asset.")
+    callers = [node.name for node in tree.body if isinstance(node, ast.FunctionDef) and REMAKE in calls_in(node)]
+    assert callers == [SCREEN], f"{REMAKE} is called by {callers}; only {SCREEN} may call it."
+    remake_source = ast.get_source_segment(GENERATOR.read_text(encoding="utf-8"), generator_function(REMAKE))
+    assert "CHARACTER_SELECT_ASSET" in remake_source and "CHARACTER_SELECT_DELETE_WIDGET" in remake_source, (
+        f"{REMAKE} must name the select screen's asset and the widget step 5 added.")
+    marker = generator_constant("CHARACTER_SELECT_DELETE_WIDGET")
+    bound = BIND_WIDGET.findall(without_comments(HEADER.read_text(encoding="utf-8")))
+    assert marker in bound, (
+        f"The remake looks for {marker!r}, which {HEADER.name} does not bind, so it would remake the screen every run.")
