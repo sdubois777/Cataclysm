@@ -155,8 +155,18 @@ TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests perform
 #: into a set rather than counted. Issue #467.
 SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
 
-#: The line `FCataclysmTestSaves` logs once per run: what the tests' save slots came to. Issue #2658.
-TEST_SAVES = re.compile(r"(Test saves: \d+ written and deleted, \d+ left behind[^\r\n]*)")
+#: The line `FCataclysmTestSaves` logs: what the tests' save slots came to. Issue #2658.
+#:
+#: ONLY AS THE CLEAN-UP WRITES IT, at a line's start or after its own `LogCataclysm: Display: ` prefix. A test may
+#: quote the line inside its own message -- `EachTestsEndLogsTheRunsTestSavesLine` prints "returned 'Test saves: ...'"
+#: through the automation controller -- and that quotation, which ends in "'; logged ...", is not the run's. Issue #2677.
+TEST_SAVES = re.compile(r"(?:^|LogCataclysm: Display: )(Test saves: \d+ written and deleted, \d+ left behind[^\r\n]*)",
+                        re.M)
+
+#: The automation controller's line as each requested test starts: `... Display: Test Started. Name={...}`. Only a
+#: "Test saves:" line after the last of these is the run's: the engine's smoke tests at start-up end about 607 tests
+#: before any requested one starts, and the clean-up logs a line at each of those ends too. Issue #2677.
+TEST_STARTED = "Test Started. Name={"
 
 #: That line's parts: N, M, and the names after M, which the C++ writes only when M > 0 -- the first ten, then
 #: "and K more" (`FCataclysmTestSaves::SummaryLine`). Read by `saves_failure`. Issue #2673.
@@ -996,12 +1006,19 @@ def parse_test_log(text: str) -> TestOutcome:
 def test_saves_line(text: str) -> str:
     """The run's "Test saves: N written and deleted, M left behind" line, or a line saying the log has none.
 
-    THE LAST ONE, because the line is logged when the automation session stops and again cannot be (it is logged once),
-    but a log that somehow held two runs should report the later. A missing line is said, not hidden: it means the hook
-    that logs it did not run, which is the one thing the line is evidence for. Issue #2658.
+    THE LAST ONE WRITTEN AFTER THE RUN'S LAST "Test Started" LINE (`TEST_STARTED`). Since issue #2677 the clean-up logs
+    the line at every test's end as well as at exit, and window w132 measured 607 such lines from the engine's smoke
+    tests at start-up, each "0 written and deleted, 0 left behind", before any requested test started. Read from the
+    whole log, one of those would stand in for a run whose own lines were lost and pass it with slots on disk; read
+    from after the last test's start, the line is the one logged as that test ended or the exit-time line after it,
+    whichever came last, and either carries the run's totals. A log with no "Test Started" line at all is read whole:
+    it started no requested test, so it holds no start-up line to mistake. A missing line is said, not hidden: it
+    means the hook that logs it did not run for the run's tests. Issues #2658, #2677.
     """
-    found = TEST_SAVES.findall(text)
-    return found[-1] if found else "Test saves: (no line in the log; the clean-up's summary was not logged)"
+    start = text.rfind(TEST_STARTED)
+    found = TEST_SAVES.findall(text[start:] if start >= 0 else text)
+    return found[-1] if found else ("Test saves: (no line in the log after its last test started; the clean-up's "
+                                    "summary was not logged)")
 
 
 def saves_failure(tests: TestOutcome | None, saves_line: str) -> str | None:
@@ -1027,7 +1044,8 @@ def saves_failure(tests: TestOutcome | None, saves_line: str) -> str | None:
         if tests is None or tests.crashed:
             return None
         return ("FAILED: the clean-up's summary was not logged, so the run has not shown its tests' saves were "
-                f"deleted. {tests.performed} tests were performed and the log holds no \"Test saves:\" line. "
+                f"deleted. {tests.performed} tests were performed and the log holds no \"Test saves:\" line after its "
+                "last test started. "
                 "Issue #2673.")
 
     left = int(parts.group(2))

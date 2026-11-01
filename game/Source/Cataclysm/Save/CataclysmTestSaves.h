@@ -18,10 +18,15 @@
  * so migrating a slot that existed before never has its backup deleted.
  *
  * WHEN. `FAutomationTestFramework::OnTestEndEvent`, after the test's result is set, deletes exactly the noted slots once
- * their writes in flight finish. The run's totals are logged once, as "Test saves: N written and deleted, M left
- * behind: <names>", when the automation session stops or, failing that, when the application terminates;
- * `tools/unreal_build.py`
- * prints that line beside its "Tests:" line. Reported only; a run is not failed by it (ruled).
+ * their writes in flight finish, and then logs the run's totals so far, as "Test saves: N written and deleted, M left
+ * behind: <names>" (`EndATest`). The same line is logged once more when the automation session stops or, failing that,
+ * when the application terminates. `tools/unreal_build.py` reads the LAST such line in the log and prints it beside its
+ * "Tests:" line; since #2673 a run that leaves a slot behind, or logs no such line, fails.
+ *
+ * A LINE AT EVERY TEST'S END, NOT ONLY AT EXIT. Issue #2677: window w131 measured a run whose log ends at "Engine exit
+ * requested" with neither exit-time line in it, this one and `CataclysmTestMemorySummary:`; the forced exit that
+ * `-testexit` makes can end the process before a line logged at termination reaches the file. A line logged at a test's
+ * end is followed by the framework's own "Test Completed" lines, which that log did keep.
  */
 struct CATACLYSM_API FCataclysmTestSaves
 {
@@ -41,6 +46,16 @@ struct CATACLYSM_API FCataclysmTestSaves
 	 * @return the slots deleted
 	 */
 	static TArray<FString> DeleteWhatTheTestWrote(int32 UserIndex);
+
+	/**
+	 * What the end of every test runs: `DeleteWhatTheTestWrote`, then the run's "Test saves:" line as it stands, logged
+	 * and returned. "Left behind" is measured then: the slots in the folder that were not there when the run took it.
+	 * Empty, and nothing logged, before the run has taken the folder. Issue #2677.
+	 */
+	static FString EndATest(int32 UserIndex);
+
+	/** Whether the automation framework calls `EndATest` at the end of each test. False in a build without tests. */
+	static bool IsCalledAtEachTestsEnd();
 
 	/** The line the run's totals are logged as. */
 	static FString SummaryLine(int32 WrittenAndDeleted, const TArray<FString>& LeftBehind);
