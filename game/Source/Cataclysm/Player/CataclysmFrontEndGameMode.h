@@ -39,8 +39,11 @@ public:
 	/** The select screen, in place of whatever was shown, read again from the saves. */
 	void ShowTheSelectScreen();
 
-	/** The new-character screen, in place of the select screen. Select-screen step 4a; its asset is made in 4b. */
-	void ShowTheNewCharacterScreen();
+	/**
+	 * The new-character screen, in place of the select screen. Select-screen step 4a; its asset is made in 4b. False,
+	 * logged, and the screen shown left as it is when the asset does not load.
+	 */
+	bool ShowTheNewCharacterScreen();
 
 	/**
 	 * The menu's input mode, through the game's one function for it (`ACataclysmPlayerController::
@@ -69,8 +72,8 @@ protected:
 			TEXT("/Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C")));
 
 private:
-	/** Shows one screen, made from `ScreenClass`, in place of the one shown. */
-	void ShowOnly(UClass* ScreenClass, const FString& Path);
+	/** Shows one screen, made from `ScreenClass`, in place of the one shown. False, and nothing replaced, without one. */
+	bool ShowOnly(UClass* ScreenClass, const FString& Path);
 
 	/** The screen shown: the select screen or the new-character screen. */
 	UPROPERTY()

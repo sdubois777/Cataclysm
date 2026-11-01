@@ -146,9 +146,13 @@ bool UCataclysmCharacterSelectWidget::StartNew(UCataclysmGameInstance* Instance)
 
 	// THE NEW-CHARACTER SCREEN, in this screen's place. Select-screen step 4a.
 	bNewCharacterRequested = true;
-	if (ACataclysmFrontEndPlayerController* FrontEnd = Cast<ACataclysmFrontEndPlayerController>(GetOwningPlayer()))
+	if (ACataclysmFrontEndPlayerController* FrontEnd = Cast<ACataclysmFrontEndPlayerController>(GetOwningPlayer());
+		FrontEnd && !FrontEnd->ShowTheNewCharacterScreen())
 	{
-		FrontEnd->ShowTheNewCharacterScreen();
+		// THE ASSET MISSING, as between steps 4a and 4b: this screen stays, and says why.
+		bNewCharacterRequested = false;
+		ShowRefusal(NewCharacterScreenMissing);
+		return false;
 	}
 	return true;
 }

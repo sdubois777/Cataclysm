@@ -33,17 +33,17 @@ void ACataclysmFrontEndPlayerController::ShowTheSelectScreen()
 	ShowOnly(SelectScreenClass.LoadSynchronous(), SelectScreenClass.ToString());
 }
 
-void ACataclysmFrontEndPlayerController::ShowTheNewCharacterScreen()
+bool ACataclysmFrontEndPlayerController::ShowTheNewCharacterScreen()
 {
-	ShowOnly(NewCharacterScreenClass.LoadSynchronous(), NewCharacterScreenClass.ToString());
+	return ShowOnly(NewCharacterScreenClass.LoadSynchronous(), NewCharacterScreenClass.ToString());
 }
 
-void ACataclysmFrontEndPlayerController::ShowOnly(UClass* ScreenClass, const FString& Path)
+bool ACataclysmFrontEndPlayerController::ShowOnly(UClass* ScreenClass, const FString& Path)
 {
-	if (!ScreenClass)
+	if (!ScreenClass) // A front end screen's: a missing asset replaces nothing.
 	{
 		UE_LOG(LogCataclysm, Warning, TEXT("A front end screen's asset is missing: %s"), *Path);
-		return;
+		return false;
 	}
 	if (Shown)
 	{
@@ -53,10 +53,11 @@ void ACataclysmFrontEndPlayerController::ShowOnly(UClass* ScreenClass, const FSt
 	Shown = CreateWidget<UUserWidget>(this, ScreenClass);
 	if (!Shown)
 	{
-		return;
+		return false;
 	}
 	Shown->AddToViewport();
 	UseTheMenuInputMode(Shown);
+	return true;
 }
 
 FString ACataclysmFrontEndPlayerController::UseTheMenuInputMode(UUserWidget* Menu)

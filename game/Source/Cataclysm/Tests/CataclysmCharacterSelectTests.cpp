@@ -22,6 +22,7 @@
 #include "Misc/ScopeExit.h"
 #include "Save/CataclysmSaveLoad.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/UnrealType.h"
 
 namespace CataclysmCharacterSelectTest
 {
@@ -204,6 +205,52 @@ bool FCataclysmCharacterSelectInputModeTest::RunTest(const FString&)
 	TestTrue(TEXT("with the cursor shown"), FrontEnd->bShowMouseCursor);
 	TestTrue(TEXT("and clicks taken"), FrontEnd->bEnableClickEvents);
 	TestEqual(TEXT("CONTROL: the game's own controller asks for the playing mode"), PlayingMode, FString(TEXT("Playing")));
+	FrontEnd->Destroy();
+	return true;
+}
+
+/**
+ * The front end's controller, asked for the new-character screen when its asset does not load -- as between steps 4a
+ * and 4b -- replaces nothing and says so: no crash, no input mode asked for, so the select screen stays. The asset's
+ * path is pointed at one that does not exist, through the property, so the test still holds once step 4b makes the real
+ * one. WHAT THIS CANNOT SEE: the select screen's refusal text, which needs the screen made by `CreateWidget` with the
+ * controller as its owner, and a test world cannot (#1841). Select-screen step 4a, asked 2026-11-01. Prints "NEW SCREEN
+ * MISSING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectNewScreenMissingTest,
+	"Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectNewScreenMissingTest::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a test world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// DEFERRED AND NEVER FINISHED, so its `BeginPlay` does not run and show the select screen.
+	ACataclysmFrontEndPlayerController* FrontEnd = World->SpawnActorDeferred<ACataclysmFrontEndPlayerController>(
+		ACataclysmFrontEndPlayerController::StaticClass(), FTransform::Identity);
+	FSoftClassProperty* Asset = FindFProperty<FSoftClassProperty>(ACataclysmFrontEndPlayerController::StaticClass(),
+																	 TEXT("NewCharacterScreenClass"));
+	if (!TestNotNull(TEXT("set-up: the front end's controller"), FrontEnd)
+		|| !TestNotNull(TEXT("set-up: its new-character screen's asset property"), Asset))
+	{
+		return false;
+	}
+	Asset->SetPropertyValue_InContainer(FrontEnd, FSoftObjectPtr(FSoftObjectPath(
+		TEXT("/Game/Interface/WBP_NoSuchScreen.WBP_NoSuchScreen_C"))));
+	AddExpectedError(TEXT("A front end screen's asset is missing"), EAutomationExpectedErrorFlags::Contains, 1);
+
+	const bool bShown = FrontEnd->ShowTheNewCharacterScreen();
+	AddInfo(FString::Printf(TEXT("NEW SCREEN MISSING: %s; input mode asked for '%s'; the select screen %s"),
+							bShown ? TEXT("SHOWN") : TEXT("not shown"), *FrontEnd->InputModeAskedFor(),
+							FrontEnd->SelectScreen() ? TEXT("PRESENT") : TEXT("as it was, none")));
+
+	TestFalse(TEXT("a missing new-character screen is not shown"), bShown);
+	TestTrue(TEXT("and replaces nothing: no input mode asked for"), FrontEnd->InputModeAskedFor().IsEmpty());
 	FrontEnd->Destroy();
 	return true;
 }
