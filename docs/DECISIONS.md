@@ -15,7 +15,8 @@ Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of th
 
 ### SAID FIRST
 
-- **NOT YET GENERATED OR RUN IN UNREAL.** Compiled once with no lock; windows A and B are registered below.
+- **REMADE, NOT YET RUN IN UNREAL.** Window A remade `WBP_CharacterSelect` exactly as registered (below); window B
+  runs the tests.
 - **DELETING IS IRREVERSIBLE, SO EVERY NAME IS BUILT, NEVER MATCHED BY A PATTERN.** `SlotsToDelete` names each slot
   from an identifier and matches it whole; `ADeleteRemovesItsCharactersSlotsAndNothingElse` deletes one of two
   characters on disk and checks that the names gone are exactly a hand-written list and that no other name went.
@@ -141,6 +142,31 @@ Run with `tools/prove_guard.py`'s `break_and_run` on the select screen's Python 
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 75 actions, 65 files compiled`, at
 the first attempt (a new worktree).
+
+### The editor run (window A)
+
+Window w128A, 2026-11-01, on `087c96f58`, lock `dungeon-w128A`, after `development` moved to 59d1c1d3c (#2668) and its
+CI and Unreal runs had completed. Pre-checks all passing at 08:56:26 local, 11447 MB free. Build: `Build: Succeeded -
+target already up to date, 0 actions, nothing compiled`. Then `python tools/run_editor_python.py
+tools/generate_interface_assets.py`, exit 0. Its log, `game/Saved/Logs/run_editor_python.log`, says, in order:
+
+- the nine screens before it "already exists; left alone";
+- twelve `LogBlueprint: Error:` lines, each of the six new bindings twice, "A required widget binding "DeleteButton"
+  of type Button was not found" and its five like it: **the old asset loaded and failed to compile against the new C++,
+  as registered**;
+- "/Game/Interface/WBP_CharacterSelect has no ConfirmNameBox: made before deleting a character existed; deleted, to be
+  made again";
+- three `LogLinker: Warning:` lines, "WBP_CharacterSelect.uasset: Error opening file", from the file being gone between
+  the delete and the create;
+- "satisfies 9 BindWidget properties: CancelButton, CharacterList, ConfirmDeleteButton, ConfirmNameBox, ConfirmPanel,
+  ConfirmText, DeleteButton, NewButton, RefusalLabel", "created /Game/Interface/WBP_CharacterSelect";
+- `WBP_NewCharacter` and `L_FrontEnd` "already exists; left alone", "done", "Python script executed successfully";
+- and the engine's usual `GameFeatureData` start-up complaint.
+
+**THE DELETE AND THE CREATE AT ONE PATH IN ONE SESSION WORKED.** **THE RUN CHANGED EXACTLY THE ONE FILE IT WAS FOR,** by its
+own report ("The editor run left 1 file(s) changed") and by `git status --porcelain --untracked-files=all` afterwards:
+` M game/Content/Interface/WBP_CharacterSelect.uasset`, in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS
+RESTORED.** It is committed with this record.
 
 ---
 
