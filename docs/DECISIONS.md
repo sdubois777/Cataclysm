@@ -14,7 +14,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** Compiled with no lock; the window is registered below.
+- **WINDOW w130 PASSED AS REGISTERED (below): the whole suite at 4499 / 0 with every floor-placed creature drawing
+  from the floor, and both proofs proved.**
 - **ABOUT 419 TESTS BUILD CREATURES THROUGH THIS PATH, AND THEIR DRAWS CHANGE.** The coordinating session's audit found no
   test that depends on a rolled modifier without choosing its creature by what it carries; a suite failure would say
   otherwise, and is brought to the coordinating session, old and new recorded, before any test changes (ruled).
@@ -72,6 +73,23 @@ does not.** So its added draw can come from the floor.
 | Python | of record, with JUnit, and ruff |
 | F1, the floor's modifier seed not passed (`Enemy->DrawModifiersForRarity(ModifierSeedNow);` to `Enemy->DrawModifiersForRarity(0);`), prefix `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor` | the test fails on one or more of "floor N built again holds the same modifiers in the same order", N from 1 to 6, and nothing else; both controls hold. Which floors cannot be traced: the clock's draws are not known beforehand |
 | F2, the dark floor's added draw on the clock (`...DrawModifiersForRarity(ModifierSeedForPlacement(PlacementIndex, DarkFloorModifiersSalt));` to `...DrawModifiersForRarity(0);`), prefix the dark-floor test's full name | the test fails on "the dark floor built again raises the same creatures with the same modifiers" only. It rests on the set-up's raise adding a modifier, and on the clock's two draws differing, which from a table of many rows is not certain but near it |
+
+### Window w130, 2026-11-01, on `de88c2757` (on `development` e5d4c32aa): as registered
+
+Run by `run_w130.py` under the lock `dungeon-w130`, from a clean tree; held at the coordinating session's word until
+another worktree's Python run and proof had ended, then a listing at 12:47:01 showing no pytest or prove_guard process;
+pre-checks all passing at 12:47:13, 11025 MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The six-floor test alone | 1 / 1 | 1 / 1: "SEEDED MODIFIERS: seed 7, floors 1 to 6; 526 creature(s) carry a modifier; 6 of 6 floors built again alike; floor 1's first five: [Generic_Thorns_of_Glass+Generic_Unyielding+Generic_Phasewalker \| \| Generic_Shielder+Generic_Horde_Leader \| Generic_Thorns_of_Glass+Demonic_Infernal_Sacrifice \| ]" |
+| The dark-floor test alone | 1 / 1 | 1 / 1: "DARK FLOOR MODIFIERS: seed 1; raises 189 then 189; 193 creatures then 193; alike yes" |
+| Whole Unreal suite | 4499 / 0 | **"4499 tests performed, 4499 succeeded, 0 failed"**; declared 4499, gap 0; "Test saves: 712 written and deleted, 0 left behind". **No test depended on a particular draw** |
+| Python | of record | "7197 passed, 8 skipped"; JUnit 7205 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| F1 | one or more of the six "floor N built again ..." and nothing else, the controls holding | PROVED: 0 of 1 with the break, 1 of 1 restored. The broken log fails all six, floors 1 to 6, and nothing else: "0 of 6 floors built again alike", 526 creatures still carrying a modifier |
+| F2 | "the dark floor built again raises the same creatures with the same modifiers" only | PROVED: 0 of 1, then 1 of 1; that assertion only, "raises 189 then 189 ... alike NO" |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w130_F1_run1.log` and `w130_F2_run1.log`.
 
 ### Run
 
