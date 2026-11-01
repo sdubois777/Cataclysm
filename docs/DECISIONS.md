@@ -16,11 +16,13 @@ this is the last of Group 3d's raised creatures.
 ### SAID FIRST
 
 - **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
-- **ONE PART NOT RULED: A SAVE NOW READS THE STALKER'S HEALTH AND POTIONS AS THEY ARE**, not as the last beat kept them a
+- **RULED KEEP, 2026-10-31: A SAVE NOW READS THE STALKER'S HEALTH AND POTIONS AS THEY ARE**, not as the last beat kept them a
   quarter of a second before. The walk record carried the beat's figure (Group 2), so a Stalker hit in the last beat
   before a save came back with that hit undone. Found by the beat-first order: a beat, then the halving, then the save,
   brought the Stalker back at full health. The beat and the save read the figures through one new function, and the
-  beat's own reading is unchanged.
+  beat's own reading is unchanged. Kept by the coordinating session's ruling: a save records the state at the moment of
+  the save, and the kept figure would hand back damage dealt since the last beat. ITS GUARD IS P6 below, which breaks the
+  save back to the beat's kept figure.
 - **WHAT A LOAD DID, read in the code:** the Reaper, the Stalker and a portal's creatures carry no tag, so the save
   skipped them. The Reaper's clock and its "come" mark went back to nought with the floor change, so a load removed the
   Reaper and raised a new one ten seconds later at the entrance, at full health. The walk kept that the Stalker had
