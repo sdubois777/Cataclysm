@@ -190,7 +190,7 @@ cause.**
 | M1, the leaders test's choice inverted, so it takes only a Horde Leader (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed && RalliesInstead(Candidate))`), prefix the test's full name | the leaders test fails on **exactly one** of "set-up: a leader that is not a Horde Leader stands after the load" (when no leader draws Horde Leader) and "a leader killed after the load panics its group" (when one does: it rallies instead), and on nothing else. **INVERTED RATHER THAN REVERTED,** because the coordinating session asked, 2026-11-01, for no proof that may not fire: reverting the choice fails only when the draw makes the first leader a Horde Leader, which depends on the tests run before (#2669), so it could pass by the roll; the inversion fails whatever the draw |
 | M2, the escaped test's choice inverted (`&& !RalliesInstead(Candidate))` to `&& RalliesInstead(Candidate))`), prefix the test's full name | the escaped test fails on exactly one of "set-up: a seed from 1 to 20 gives a group far from the entrance, led by no Horde Leader" (no such group on any seed) and "set-up: creatures escaped" (the Horde Leader's group rallies, so nobody flees), and stops there |
 
-### Window w128D, 2026-11-01, on `300c46adf`: as registered
+### Window w128D, 2026-11-01, on `300c46adf` (on `development` 59d1c1d3c): as registered
 
 Run by `run_w128D.py` under the lock `dungeon-w128D`, from a clean tree; pre-checks all passing at 09:37:41 local, 11301
 MB free; the build compiled nothing.
