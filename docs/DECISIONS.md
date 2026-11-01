@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Each test's end logs the run's "Test saves:" line, so a forced exit that loses the exit-time line cannot fail a run that left nothing behind (#2677)
+
+**Affects:** `FCataclysmTestSaves` (`EndATest` and `IsCalledAtEachTestsEnd`, new; the end-of-test hook now bound to an
+object; `game/Source/Cataclysm/Save/CataclysmTestSaves.h`, `.cpp`); one new test in
+`game/Source/Cataclysm/Tests/CataclysmSaveStorageTests.cpp`, and the comment of the test beside it. **No Python
+changed:** `tools/unreal_build.py` already reads the last "Test saves:" line in the log. Issue
+[#2677](https://github.com/sdubois777/Cataclysm/issues/2677).
+
+### SAID FIRST
+
+- **THE FAULT IT REMOVES WAS MEASURED ONCE, AND ITS CAUSE IS A READING, NOT A MEASUREMENT.** Window w131 (#1472, on
+  1d5ba920a) ran `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` alone: 1 tests performed, 1
+  succeeded, and `tools/unreal_build.py` exited 1 because the log held no "Test saves:" line (#2673's rule). That log
+  ends at "LogCore: Engine exit requested (reason: Win RequestExit)", with neither exit-time line after it -- not this
+  one, and not `CataclysmTestMemorySummary:`. The run before it in the same window wrote both, 1 and 2 milliseconds
+  after the same line. Either the terminate delegate did not run or the log was not flushed before the process ended;
+  the log cannot say which. Today's narrow runs in that worktree: 1 of 5 lost the line.
+- **NOT RULED OUT: the same loss of a line logged at a test's end.** The per-test line is logged before the framework's
+  "Test Completed" lines, which the w131 log kept; it is not logged at the forced exit. The window counts every run that
+  loses the exit-time line, and stops if any run logs fewer per-test lines than tests performed.
+- **THE MEMORY SUMMARY IS LEFT AS IT IS** (ruled): `CataclysmTestMemorySummary:` is logged only at exit and can be lost
+  the same way, and nothing fails on it.
+
+### Rulings, 2026-11-01
+
+- After `DeleteWhatTheTestWrote`, the end of each test logs the run's cumulative line, "Test saves: N written and
+  deleted, M left behind: <names>", with M measured then: the folder against the run's start. **The same `SummaryLine`,**
+  so `tools/unreal_build.py`'s reading of the last such line is unchanged. **The exit-time line is kept.**
+- The noise is accepted: one line per test.
+- A check, with a guard proof, that a test's end writes the line; in the window, several narrow runs each printing a
+  "Test saves:" line, with the count of runs attempted; the suite at 4499 plus the new tests, with Python; and the count
+  of runs that lost the exit-time line.
+
+### What changes
+
+- **`FCataclysmTestSaves::EndATest(UserIndex)`** deletes what the test wrote, then logs and returns the run's line as it
+  stands. Before the run has taken the folder it logs nothing and returns an empty string. The end-of-test hook calls
+  it.
+- **The hook is bound to the static hooks object** (`AddRaw`) rather than a lambda, so **`IsCalledAtEachTestsEnd`** can
+  ask the framework whether `OnTestEndEvent` holds it, as `CataclysmCollectGarbageBetweenTests.cpp` asks of its own
+  collector. The object unbinds itself when it is destroyed.
+- **The exit-time line and the per-test line are one computation** (`TheRunSoFar`), so the two cannot disagree on a
+  run's totals at the same moment.
+- The header's comment no longer says the line is "reported only; a run is not failed by it", which #2673 made untrue.
+
+### The noise, measured
+
+Window w130's kept suite engine log (de88c2757): 660,405,013 bytes, 2,568,965 lines, 4,499 tests. One line per test
+adds 4,500 lines of about 100 bytes, about 0.45 MB: 0.18% of the lines and 0.07% of the bytes. Each line also costs one
+listing of `game/Saved/SaveGames`, which after #2658 holds only what the run left so far.
+
+### Tests
+
+- `Cataclysm.SaveStorage.EachTestsEndLogsTheRunsTestSavesLine`: a slot the test writes; then `EndATest`, with the
+  `LogCataclysm` lines beginning "Test saves: " caught by an output device. Checks: the framework calls it at the end of
+  each test; it deletes what the test wrote; its line is in the form `tools/unreal_build.py` reads; it logs one line;
+  and the line logged is the line returned. Prints "TEST SAVES LINE".
+- `Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds`: its comment no longer says the hook cannot be seen; no
+  assertion changed.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Five narrow runs: the new test by its name, `Cataclysm.SaveStorage.`, `Cataclysm.SaveLoad.`, `Cataclysm.Difficulty.`, `Cataclysm.CharacterSelect.` | each exits 0, performs at least one test with none failed, and logs exactly one "Test saves:" line before "Engine exit requested" per test performed; the runs that lose the exit-time line are counted, and the count is not predicted |
+| Whole Unreal suite | 4500 / 0: `development`'s 4499 (f091d674d, #2676), + 1; its last "Test saves:" line has 0 left behind; 4500 per-test lines before the exit; whether the exit-time line is kept, counted |
+| Python | of record, with JUnit, and ruff |
+| P1, the per-test line not logged (`UE_LOG(LogCataclysm, Display, TEXT("%s"), *Line); // A test's end: the run's line so far. Issue #2677.` to `(void)Line; // ...`), prefix `Cataclysm.SaveStorage.EachTestsEndLogsTheRunsTestSavesLine` | the new test fails on "it logs one line" and "and the line logged is the line returned" only |
+| P2, the hook not bound (`Framework.OnTestEndEvent.AddRaw(this, &FHooks::OnTestEnd); // A test's end: its saves deleted, the line logged.` to `(void)0; // ...`), the same prefix | the new test fails on "the framework calls it at the end of each test" only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
+the first attempt.
+
+---
+
 ## 2026-11-01 — An Unreal test run fails when its tests leave save slots behind, or log no line saying whether they did (#2673)
 
 **Affects:** `tools/unreal_build.py` (`TEST_SAVES_PARTS` and `saves_failure`, new; `exit_code_for`, which now takes the
