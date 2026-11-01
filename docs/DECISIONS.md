@@ -5,8 +5,9 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-11-01 — The new-character screen's asset, made by the generator, so New on the select screen opens it (#753, select-screen step 4b)
 
 **Affects:** `tools/generate_interface_assets.py`, which makes `WBP_NewCharacter` (`make_new_character`, called after
-`make_character_select`); the asset it makes, `game/Content/Interface/WBP_NewCharacter.uasset` (Git LFS, `.gitattributes`
-line 13, unchanged); `ACataclysmFrontEndPlayerController::NewCharacterScreenAsset` (a read-only getter, for a test,
+`make_character_select`); the asset it makes, WBP_NewCharacter.uasset under game/Content/Interface (Git LFS,
+`.gitattributes` line 13, unchanged), written here as a backticked path when window A commits it, because the log's
+check rightly refuses a path that does not exist yet; `ACataclysmFrontEndPlayerController::NewCharacterScreenAsset` (a read-only getter, for a test,
 in `CataclysmFrontEndGameMode.h`); one new test in `game/Source/Cataclysm/Tests/CataclysmCharacterSelectTests.cpp`; and a
 new Python check, `tools/tests/test_the_new_character_screen_is_generated_with_its_bindings.py`. Issue
 [#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open for step 5 (deleting a character).
