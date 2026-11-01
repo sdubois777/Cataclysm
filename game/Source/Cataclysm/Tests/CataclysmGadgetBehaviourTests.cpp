@@ -18,6 +18,8 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+// For a minion type row's ThreatPercent, read by the Cataclysm.TargetChoice. group. Issue #2553.
+#include "Data/CataclysmDataRows.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -1918,6 +1920,187 @@ CATACLYSM_TEST(FCataclysmBallistaTargetsThinkFiresTest,
 	TestTrue(TEXT("a skill copy of the ballista's would be aimed at the furthest within its reach"),
 		Field.Ballista->SkillCopyTarget() == Field.Far);
 	TestTrue(TEXT("control: and the turret's at the nearest"), Turret->SkillCopyTarget() == Field.Near);
+	return true;
+}
+
+// ==========================================================================
+// A minion whose row states a threat of nought is never sought. The owner's
+// decision of 2026-11-01, issue #2553: "Nearest; threat 0 untargeted".
+// ==========================================================================
+
+namespace CataclysmTargetChoiceTest
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	/** What a minion type's own row states as its threat, or -1 when the table holds no such row. */
+	float ThreatOfType(const TCHAR* Type)
+	{
+		const FCataclysmMinionTypeRow* Row =
+			ACataclysmMinion::FindType(ACataclysmMinion::LoadTypeTable(), FString(Type));
+		return Row ? Row->ThreatPercent : -1.0f;
+	}
+
+	/**
+	 * One station: a monster at `Origin`; one minion of the named type, the holder's, 2 m from it along -X; and,
+	 * unless told otherwise, a creature of the players' side 6 m from it along +X. So the minion is the nearest
+	 * thing the monster could attack and the bystander the next. Stations stand 100 m apart and the holder 100 m
+	 * from the first, all beyond the 15 m a monster notices from.
+	 */
+	struct FStation
+	{
+		FStation(FAutomationTestBase& Test, UWorld* World, AActor* Holder, const TCHAR* Type, const FVector& Origin,
+				 bool bWithBystander = true)
+		{
+			Monster = Enemy(World, Origin, 1000.0f);
+			Minion = Place(Test, Holder, Type, Origin + FVector(-2.0f * M, 0.0f, 0.0f));
+			if (bWithBystander)
+			{
+				Bystander = Summoner(World, Origin + FVector(6.0f * M, 0.0f, 0.0f));
+			}
+			bWhole = Monster && Minion && (Bystander || !bWithBystander) && HasABrain(Monster);
+		}
+
+		ACataclysmEnemyCharacter* Monster = nullptr;
+		ACataclysmMinion* Minion = nullptr;
+		ACataclysmEnemyCharacter* Bystander = nullptr;
+		bool bWhole = false;
+	};
+
+	/** What the station's monster chooses with its minion's flag cleared by hand, as every monster chose before. */
+	AActor* ChoiceWithTheFlagCleared(const FStation& Station)
+	{
+		const bool bRead = Station.Minion->bDrawsNoAttention;
+		Station.Minion->bDrawsNoAttention = false;
+		AActor* Chosen = ChoiceOf(Station.Monster);
+		Station.Minion->bDrawsNoAttention = bRead;
+		return Chosen;
+	}
+}
+
+CATACLYSM_TEST(FCataclysmTargetChoiceATrapIsNotSoughtTest,
+	"Cataclysm.TargetChoice.AMonsterDoesNotSeekATrapWhoseRowDrawsNobody")
+{
+	using namespace CataclysmTargetChoiceTest;
+
+	// THREE STATIONS: a Spike Trap with a bystander, a minion of the Skill Trap's type with a bystander, and a Spike
+	// Trap alone. THE SKILL TRAP IS PLACED BY `Spawn` WITH ITS TYPE NAME, as every minion here is, and not by a
+	// player's press: `PlaceSkillTrap` needs a player and a converted slot. So it carries the SkillTrap row, which
+	// is what the search reads, and none of a pressed trap's arming or triggering, which this test does not ask.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(0.0f, -100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	const FStation Spike(*this, World, Holder, TEXT("SpikeTrap"), FVector(0.0f, 0.0f, 0.0f));
+	const FStation Skill(*this, World, Holder, ACataclysmMinion::SkillTrapTypeName, FVector(0.0f, 100.0f * M, 0.0f));
+	const FStation Alone(*this, World, Holder, TEXT("SpikeTrap"), FVector(0.0f, 200.0f * M, 0.0f),
+		/*bWithBystander=*/false);
+	if (!TestTrue(TEXT("set-up: the three stations, each monster with the shared brain"),
+			Spike.bWhole && Skill.bWhole && Alone.bWhole))
+	{
+		return false;
+	}
+
+	// THE CONTROLS, READ FIRST: the rows say nought, and with the flag cleared by hand each monster takes the trap
+	// beside it, which is what every monster did before the decision. So the flag is what moves the choice below.
+	TestEqual(TEXT("control: the Spike Trap's row states a threat of nought"), ThreatOfType(TEXT("SpikeTrap")),
+		0.0f, 0.001f);
+	TestEqual(TEXT("control: and so does the Skill Trap's (T9)"), ThreatOfType(ACataclysmMinion::SkillTrapTypeName),
+		0.0f, 0.001f);
+	if (!TestTrue(TEXT("control: with the flag cleared, the monster takes the Spike Trap 2 m off"),
+			ChoiceWithTheFlagCleared(Spike) == Spike.Minion)
+		|| !TestTrue(TEXT("control: and the other the Skill Trap 2 m off"),
+			ChoiceWithTheFlagCleared(Skill) == Skill.Minion)
+		|| !TestTrue(TEXT("control: and the lone one the trap it stands beside"),
+			ChoiceWithTheFlagCleared(Alone) == Alone.Minion))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Spawn marks the Spike Trap as drawing no attention, from its row"), Spike.Minion->bDrawsNoAttention);
+	TestTrue(TEXT("and the Skill Trap"), Skill.Minion->bDrawsNoAttention);
+
+	// THE DECISION: nearest, and a threat of nought is not sought.
+	TestTrue(TEXT("the monster takes the bystander 6 m off, not the Spike Trap 2 m off"),
+		ChoiceOf(Spike.Monster) == Spike.Bystander);
+	TestTrue(TEXT("the monster takes the bystander 6 m off, not the Skill Trap 2 m off"),
+		ChoiceOf(Skill.Monster) == Skill.Bystander);
+	TestNull(TEXT("with only a trap in sight the monster chooses nothing"), ChoiceOf(Alone.Monster));
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTargetChoiceAnyAttentionIsSoughtTest,
+	"Cataclysm.TargetChoice.EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone")
+{
+	using namespace CataclysmTargetChoiceTest;
+
+	// FOUR STATIONS, ONE FOR EACH TYPE ABOVE NOUGHT THAT A PLAYER'S SKILL MAKES: a Bolt Turret and a Ballista at 5,
+	// a Mote at 40 and an Imp at 100, each 2 m from its monster against a bystander at 6 m. AND THE ISSUE'S TWO
+	// CONTROLS: a monster with no minion near it, and a minion's own choice.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(0.0f, -100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	const FStation Turret(*this, World, Holder, TEXT("BoltTurret"), FVector(0.0f, 0.0f, 0.0f));
+	const FStation Ballista(*this, World, Holder, TEXT("Ballista"), FVector(0.0f, 100.0f * M, 0.0f));
+	const FStation Mote(*this, World, Holder, TEXT("Mote"), FVector(0.0f, 200.0f * M, 0.0f));
+	const FStation Imp(*this, World, Holder, TEXT("Imp"), FVector(0.0f, 300.0f * M, 0.0f));
+
+	// NO MINION: a monster with two of the players' side at 3 and 10 m.
+	const FVector LoneAt(0.0f, 400.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Lone = Enemy(World, LoneAt, 1000.0f);
+	ACataclysmEnemyCharacter* LonesNearer = Summoner(World, LoneAt + FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* LonesFurther = Summoner(World, LoneAt + FVector(-10.0f * M, 0.0f, 0.0f));
+
+	// A MINION'S OWN CHOICE: the holder's imp between two monsters, 1.1 and 1.7 m off.
+	const FVector ChoosingAt(0.0f, 500.0f * M, 0.0f);
+	ACataclysmMinion* Choosing = Place(*this, Holder, TEXT("Imp"), ChoosingAt);
+	ACataclysmEnemyCharacter* ChoosingsNearer = Enemy(World, ChoosingAt + FVector(1.1f * M, 0.0f, 0.0f), 1000.0f);
+	ACataclysmEnemyCharacter* ChoosingsFurther = Enemy(World, ChoosingAt + FVector(-1.7f * M, 0.0f, 0.0f), 1000.0f);
+
+	if (!TestTrue(TEXT("set-up: the four stations, each monster with the shared brain"),
+			Turret.bWhole && Ballista.bWhole && Mote.bWhole && Imp.bWhole)
+		|| !TestTrue(TEXT("set-up: the monster with no minion near it and its two"),
+			Lone && LonesNearer && LonesFurther && HasABrain(Lone))
+		|| !TestTrue(TEXT("set-up: the choosing imp and its two"),
+			Choosing && ChoosingsNearer && ChoosingsFurther && HasABrain(Choosing)))
+	{
+		return false;
+	}
+
+	// THE CONTROLS, READ FIRST.
+	TestTrue(TEXT("control: a monster with no minion near it takes the nearer of its two"),
+		ChoiceOf(Lone) == LonesNearer);
+	TestTrue(TEXT("control: a minion's own choice is the nearer of its two"), ChoiceOf(Choosing) == ChoosingsNearer);
+	TestEqual(TEXT("control: the Bolt Turret's row states 5"), ThreatOfType(TEXT("BoltTurret")), 5.0f, 0.001f);
+	TestEqual(TEXT("control: the Ballista's 5"), ThreatOfType(TEXT("Ballista")), 5.0f, 0.001f);
+	TestEqual(TEXT("control: the Mote's 40"), ThreatOfType(TEXT("Mote")), 40.0f, 0.001f);
+	TestEqual(TEXT("control: the Imp's 100"), ThreatOfType(TEXT("Imp")), 100.0f, 0.001f);
+
+	TestFalse(TEXT("a Bolt Turret draws attention"), Turret.Minion->bDrawsNoAttention);
+	TestFalse(TEXT("so does a Ballista"), Ballista.Minion->bDrawsNoAttention);
+	TestFalse(TEXT("and a Mote"), Mote.Minion->bDrawsNoAttention);
+	TestFalse(TEXT("and an Imp"), Imp.Minion->bDrawsNoAttention);
+
+	// NEAREST, BY DISTANCE ALONE: a threat above nought weighs nothing in the choice.
+	TestTrue(TEXT("the monster takes the Bolt Turret 2 m off, not the bystander 6 m off"),
+		ChoiceOf(Turret.Monster) == Turret.Minion);
+	TestTrue(TEXT("the monster takes the Ballista 2 m off"), ChoiceOf(Ballista.Monster) == Ballista.Minion);
+	TestTrue(TEXT("the monster takes the Mote 2 m off"), ChoiceOf(Mote.Monster) == Mote.Minion);
+	TestTrue(TEXT("the monster takes the Imp 2 m off"), ChoiceOf(Imp.Monster) == Imp.Minion);
 	return true;
 }
 
