@@ -7824,4 +7824,208 @@ bool FCataclysmSaveLoadDeleteInARunTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The character's difficulty tier, issue #1472
+// ---------------------------------------------------------------------------
+
+/**
+ * A character's difficulty tier is written by the save, comes back with a load, and a level the character is continued
+ * into is fought at its run's tier: the game mode, made fresh for the level, takes the tier of the run the game instance
+ * holds, as the arrival's load leaves it. Issue #1472, ruled 2026-11-01. Prints "TIER SAVED".
+ *
+ * THE CONTROLS: the loading character is at tier 1 before the load, and the fresh game mode is at its default, 1, before
+ * the arrival, so a 3 after either was put there.
+ *
+ * THE TIER IS READ WITH `DifficultyTierFor(Mode)`, NOT `DifficultyTierIn`. A world built by an automation test has no
+ * authority game mode and cannot be given one (`CataclysmDifficultyTierTests.cpp` says why), so `DifficultyTierIn` finds
+ * no mode here and answers 1 whatever the mode holds: window w131 measured exactly that, "DifficultyTierIn 1" beside a
+ * mode at 3. The world lookup is the one line no automation test reaches, here as there.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierTest,
+	"Cataclysm.SaveLoad.ACharactersTierComesBackAndItsLevelIsFoughtAtIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTierTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	int32 Written = -1;
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+		Scene.State->SetDifficultyTier(3);
+		if (!TestNotNull(TEXT("set-up: an empire run was begun at tier 3"),
+						 Scene.Instance->BeginEmpireRun(7, ECataclysmSurgeMode::Static, 0, 3)))
+		{
+			return false;
+		}
+		Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		const UCataclysmCharacterSave* Record = Read<UCataclysmCharacterSave>(Saved.CharacterSlot());
+		if (!TestNotNull(TEXT("set-up: the character record was written"), Record))
+		{
+			return false;
+		}
+		Written = Record->DifficultyTier;
+	}
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode for the level"), Mode))
+	{
+		return false;
+	}
+
+	// THE ARRIVAL, as Continue on the select screen leads to it: the character pending, its level beginning.
+	const int32 TierBefore = Scene.State->GetDifficultyTier();
+	const int32 ModeBefore = Mode->DifficultyTier;
+	Scene.Instance->PendingCharacterId = Saved.CharacterId;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const int32 TierAfter = Scene.State->GetDifficultyTier();
+	const int32 RunTier = Scene.Instance->EmpireRun ? Scene.Instance->EmpireRun->DifficultyTier : -1;
+	const int32 ModeAfter = Mode->DifficultyTier;
+	const int32 TierRead = ACataclysmGameMode::DifficultyTierFor(Mode); // The rule, read from the level's mode.
+	AddInfo(FString::Printf(TEXT("TIER SAVED: written %d; the character %d before the load, %d after; outcome %d; the run "
+								 "%d; the level's game mode %d before the arrival, %d after; DifficultyTierFor %d"),
+							Written, TierBefore, TierAfter, static_cast<int32>(Outcome), RunTier, ModeBefore, ModeAfter,
+							TierRead));
+
+	TestEqual(TEXT("the save wrote the character's tier"), Written, 3);
+	TestEqual(TEXT("CONTROL: the loading character was at tier 1 before the load"), TierBefore, 1);
+	TestEqual(TEXT("set-up: the arrival loaded the character"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestEqual(TEXT("the load put the character's tier back"), TierAfter, 3);
+	TestEqual(TEXT("and its run's"), RunTier, 3);
+	TestEqual(TEXT("CONTROL: the level's game mode was at its default before the arrival"), ModeBefore, 1);
+	TestEqual(TEXT("the level is fought at the run's tier"), ModeAfter, 3);
+	TestEqual(TEXT("and the tier rule reads it from that game mode"), TierRead, 3);
+	return true;
+}
+
+/**
+ * A record written before the character's tier existed loads at tier 1, the tier every character starts at. Such a
+ * record is at schema version 3, and reading it runs `Migrate_3_to_4`, which writes tier 1 in (ruled 2026-11-01, the
+ * version bump replacing the first ruling's default). THE RECORD IS WRITTEN BY HAND, at version 3, with no tier key and
+ * almost nothing else: the smallest such record. `ACharacterFileFromBeforeTheTierMigratesToTierOne` runs the committed
+ * version 3 file through the same step and checks every other field is kept. Issue #1472. Prints "TIER BEFORE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierMissingTest,
+	"Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTierMissingTest::RunTest(const FString&)
+{
+	// VERSION 3, THE LAST BEFORE THE TIER, so the read runs `Migrate_3_to_4`. Ruled 2026-11-01.
+	const FString Json = TEXT("{ \"SchemaVersion\": 3, \"CharacterName\": \"Before the tier\", \"Level\": 7 }");
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+	FString Message;
+	const UCataclysmCharacterSave* Record = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Json, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+	AddInfo(FString::Printf(TEXT("TIER BEFORE: %s (%s); '%s', level %d, tier %d"), FCataclysmSaveStorage::Describe(Result),
+							*Message, Record ? *Record->CharacterName : TEXT(""), Record ? Record->Level : -1,
+							Record ? Record->DifficultyTier : -1));
+	if (!TestNotNull(TEXT("set-up: the record without a tier was read"), Record))
+	{
+		return false;
+	}
+	TestFalse(TEXT("set-up: the fixture has no tier key"), Json.Contains(TEXT("DifficultyTier")));
+	TestEqual(TEXT("CONTROL: the keys it has were read"), Record->Level, 7);
+	TestEqual(TEXT("a record written before the tier loads at tier 1"), Record->DifficultyTier, 1);
+	return true;
+}
+
+/**
+ * A new character's run begins at the character's tier, and its level is fought at it; a won run raises the tier by one
+ * and holds it at the highest; and a death's write leaves it as it was. Issue #1472, ruled 2026-11-01.
+ *
+ * THE TIER IS SET TO 4 BEFORE THE CREATION, though a new character is made at 1, so that a run begun at the default
+ * cannot pass for one begun at the character's. The raise has no caller in play yet (#1324); this is one of its callers.
+ * Prints "TIER RUN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierRunTest,
+	"Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTierRunTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	Scene.State->SetDifficultyTier(4);
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Tier Four");
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const int32 RunTier = Scene.Instance->EmpireRun ? Scene.Instance->EmpireRun->DifficultyTier : -1;
+	const int32 ModeTier = Mode->DifficultyTier;
+
+	// A DEATH'S WRITE, and the tier after it.
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	const UCataclysmCharacterSave* Record = Read<UCataclysmCharacterSave>(CharacterSlot);
+	const int32 AfterADeath = Scene.State->GetDifficultyTier();
+	const int32 WrittenAtADeath = Record ? Record->DifficultyTier : -1;
+
+	// A WON RUN'S RAISE, and at the highest.
+	const int32 Raised = Scene.State->RaiseDifficultyTierForAWin();
+	Scene.State->SetDifficultyTier(ACataclysmGameMode::HighestDifficultyTier);
+	const int32 AtTheTop = Scene.State->RaiseDifficultyTierForAWin();
+	AddInfo(FString::Printf(TEXT("TIER RUN: outcome %d; the run %d, the game mode %d; after a death %d, written %d; a win "
+								 "raised 4 to %d; at 8 a win gives %d"),
+							static_cast<int32>(Outcome), RunTier, ModeTier, AfterADeath, WrittenAtADeath, Raised, AtTheTop));
+
+	TestEqual(TEXT("set-up: the new character was made"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestEqual(TEXT("the run is at the character's tier"), RunTier, 4);
+	TestEqual(TEXT("and its level is fought at it"), ModeTier, 4);
+	TestEqual(TEXT("a death leaves the tier as it was"), AfterADeath, 4);
+	TestEqual(TEXT("and its write records it"), WrittenAtADeath, 4);
+	TestEqual(TEXT("a won run raises the tier by one"), Raised, 5);
+	TestEqual(TEXT("and holds it at the highest"), AtTheTop, ACataclysmGameMode::HighestDifficultyTier);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

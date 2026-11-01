@@ -143,15 +143,14 @@ public:
 	 * part way through therefore changes what armour is worth and does not
 	 * re-tier the campaign; the next `Cataclysm.EmpireBegin` picks it up.
 	 *
-	 * **WHERE THE TIER OUGHT TO COME FROM EVENTUALLY IS THE CHARACTER**, and
-	 * not the world. The design has a character at a tier that rises when it
-	 * defeats the Cataclysm boss dungeon and replays the same tier when it
-	 * fails, and neither the character's tier nor a won state exists in the
-	 * game yet. `ACataclysmGameMode::DifficultyTier` says the same of the
-	 * world-wide figure it holds: it "does not block the encounter-level answer
-	 * and should be replaced by it". What this function does is join the tier
-	 * the game HAS to the run; it is not the progression rule. Issue
-	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
+	 * **THE TIER COMES FROM THE CHARACTER**, since issue
+	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472): a new
+	 * character's run, and a loaded character's new run, are begun with the
+	 * character's tier passed in. With no tier passed -- a console command, a
+	 * test -- this falls back to `ACataclysmGameMode::DifficultyTierIn` as
+	 * before. A won run's raise exists (`RaiseDifficultyTierForAWin`) and nothing
+	 * in play calls it until #1324 makes a run winnable. Once begun, the level's
+	 * game mode takes the run's tier (`TakeTheRunsTier`).
 	 *
 	 * IT ALSO FILLS THE RUN'S MODIFIER POOL, which is the one thing a run cannot
 	 * do for itself: `DT_DungeonModifiers` has a row type in this module and

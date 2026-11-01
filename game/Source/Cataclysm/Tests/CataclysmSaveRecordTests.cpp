@@ -130,15 +130,17 @@ namespace CataclysmSaveRecordTest
 	{
 		return {
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
-			// CHARACTER IS AT v3 SINCE 2026-09-24, when a character became
-			// limited to one class tree per damage type (issue #2064), and was
-			// at v2 from 2026-08-24, when the attribute allocation became a
-			// field on it. Character_v1.json and Character_v2.json are still
-			// committed and still read, by the migration tests further down.
+			// CHARACTER IS AT v4 SINCE 2026-11-01, when a character came to
+			// carry its difficulty tier (issue #1472); at v3 from 2026-09-24,
+			// when a character became limited to one class tree per damage
+			// type (issue #2064); and at v2 from 2026-08-24, when the attribute
+			// allocation became a field on it. Character_v1.json, v2 and v3
+			// are still committed and still read, by the migration tests
+			// further down.
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v3.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v4.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v1.json") },
 		};
 	}
@@ -582,7 +584,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v4.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -595,12 +597,14 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v4.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 3"), Read->SchemaVersion, 3);
+	TestEqual(TEXT("it says it is version 4"), Read->SchemaVersion, 4);
+	// 2 AND NOT 1, the default, so a tier that was not read cannot pass. Issue #1472.
+	TestEqual(TEXT("the difficulty tier in the file"), Read->DifficultyTier, 2);
 	TestEqual(TEXT("the name in the file"), Read->CharacterName, FString(TEXT("Vesper")));
 	TestEqual(TEXT("the identifier in the file"),
 		Read->CharacterId.ToString(EGuidFormats::Digits),
@@ -740,6 +744,86 @@ bool FCataclysmSaveCharacterV1Migrates::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A character file from before the difficulty tier migrates to version 4 at tier 1, and keeps every other field.
+ * Issue #1472, ruled 2026-11-01.
+ *
+ * THIS IS WHAT Character_v3.json IS FOR NOW: the current fixture until the tier, kept as the file `Migrate_3_to_4`
+ * runs against. Three things are checked, each of which the others cannot see:
+ *
+ * - THE STEP WRITES THE TIER INTO THE FILE. Run on the parsed file directly, so the key is looked for in the JSON the
+ *   step produced. Read into the record, a step that wrote nothing would still give tier 1, the property's default.
+ * - THE RECORD READS TIER 1, at version 4.
+ * - NOTHING ELSE MOVED: the record, written back out, is the version 3 file with its version 4 and its tier 1 added,
+ *   field for field, as `EveryFixtureHoldsEveryFieldItsRecordWrites` compares a fixture with its record.
+ *
+ * Prints "TIER MIGRATED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveCharacterV3Migrates,
+	"Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	// THE STEP, ON THE FILE.
+	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
+	if (!TestTrue(TEXT("set-up: Character_v3.json is a JSON object"), Stepped.IsValid()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("set-up: the version 3 file has no tier key"), Stepped->HasField(TEXT("DifficultyTier")));
+	FString StepMessage;
+	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
+		GetDefault<UCataclysmCharacterSave>()->MigrationSteps(), UCataclysmCharacterSave::SchemaVersionNow,
+		Stepped.ToSharedRef(), StepMessage);
+	double SteppedTier = -1.0;
+	const bool bWritten = Stepped->TryGetNumberField(TEXT("DifficultyTier"), SteppedTier);
+
+	// THE RECORD.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	// AND NOTHING ELSE MOVED.
+	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
+	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
+	Expected->SetNumberField(TEXT("DifficultyTier"), 1);
+	FString Rewritten;
+	FString Error;
+	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
+	FString Where;
+	const bool bSame = bWroteBack
+		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
+
+	AddInfo(FString::Printf(TEXT("TIER MIGRATED: the step %d (%s), wrote the tier %s at %g; the record at version %d, tier %d; "
+								 "the rest %s"),
+							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), SteppedTier,
+							Read->SchemaVersion, Read->DifficultyTier, bSame ? TEXT("kept") : *Where));
+
+	TestEqual(TEXT("the chain migrates the version 3 file"), static_cast<int32>(Stepping),
+		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
+	TestTrue(TEXT("the step writes tier 1 into the file"), bWritten && SteppedTier == 1.0);
+	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
+	TestEqual(TEXT("a character from before the tier is at tier 1"), Read->DifficultyTier, 1);
+	TestTrue(TEXT("and every other field is kept"), bSame);
+	return true;
+}
+
 namespace CataclysmOneClassMigrationTest
 {
 	/** One spent node as the file writes it. */
@@ -839,7 +923,8 @@ bool FCataclysmSaveMigratesToOneClassPerDamageType::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("it arrives at version 3"), Most->SchemaVersion, 3);
+	// THE CURRENT VERSION, NOT 3: the chain runs on past this step to the last one. Issue #1472 found it written as 3.
+	TestEqual(TEXT("it arrives at the current version"), Most->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
 	TestEqual(TEXT("the Demonic tree with the most points and the War tree are kept"),
 		KeptNodes(*Most),
 		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));
@@ -1255,7 +1340,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v4.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1267,7 +1352,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v4.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

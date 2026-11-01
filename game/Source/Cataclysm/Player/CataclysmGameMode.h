@@ -384,16 +384,17 @@ public:
 	 * capped to 75% -- against 48.19% at tier 8, so every armoured thing in the
 	 * game was 2.07 times harder to hurt than its design says. Issue #514.
 	 *
-	 * THE DESIGN PUTS THIS ON THE ENCOUNTER, NOT THE WORLD. A dungeon has a
-	 * difficulty tier and the enemies inside it stand at that tier. There is no
-	 * dungeon yet -- that is issue #41 -- so this world-wide figure is the
-	 * smallest thing that lets the sandbox match a chosen tier. It does not
-	 * block the encounter-level answer and should be replaced by it.
+	 * IT IS THE TIER OF THE RUN BEING PLAYED, WHICH IS THE CHARACTER'S. Since
+	 * issue #1472 a character carries its own tier (`ACataclysmPlayerState::
+	 * GetDifficultyTier`), a run begins at it and keeps it, and `TakeTheRunsTier`
+	 * sets this from the run the game instance holds at every level start, after
+	 * the arrival's load and when a run begins. This world-wide figure, which once
+	 * said it "does not block the encounter-level answer and should be replaced by
+	 * it", is now that answer's copy for the level being played.
 	 *
-	 * ONE, BECAUSE THE SANDBOX IS WHERE A NEW CHARACTER STANDS. That is the
-	 * start of the game rather than a placeholder. Use the
-	 * `Cataclysm.DifficultyTier` console variable to play at another tier
-	 * without editing this.
+	 * ONE BEFORE ANY RUN, AND IN EVERY TEST WORLD THAT HOLDS NONE: the tier a new
+	 * character begins at. The `Cataclysm.DifficultyTier` console variable still
+	 * wins over it, as a developer's tool.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Difficulty",
 			  meta = (ClampMin = "1", ClampMax = "8"))
@@ -412,6 +413,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Difficulty",
 			  meta = (WorldContext = "WorldContext"))
 	static int32 DifficultyTierIn(const UObject* WorldContext);
+
+	/**
+	 * Sets `DifficultyTier` from the run the game instance holds; false, and nothing changed, when it holds none.
+	 * Issue #1472, ruled 2026-11-01.
+	 *
+	 * A GAME MODE IS MADE FRESH WITH EVERY LEVEL, and the run outlives it on the game instance. So this runs at every
+	 * place a level begins with a run held -- the end of `StartPlay`, after the arrival's load, and when a run begins
+	 * (`UCataclysmGameInstance::BeginEmpireRun`) -- so that the tier every hit, minion and floor reads is the run's,
+	 * which is the character's. The console variable still wins over it in `DifficultyTierFor`, as a developer's tool.
+	 */
+	bool TakeTheRunsTier();
 
 	/**
 	 * The same question with the game mode already in hand.

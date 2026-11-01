@@ -34,9 +34,10 @@ FString UCataclysmCharacterSelectWidget::RowText(const FCataclysmCharacterSummar
 			Run += FString::Printf(TEXT(", floor %d of %s"), Row.Floor, *Row.Dungeon.ToString());
 		}
 	}
-	return FString::Printf(TEXT("%s, level %d, %s%s, %s, %s, %s"),
+	return FString::Printf(TEXT("%s, level %d, %s, tier %d%s, %s, %s, %s"),
 						   Row.Name.IsEmpty() ? TEXT("(unnamed)") : *Row.Name, Row.Level,
 						   *Lethality->GetDisplayNameTextByValue(static_cast<int64>(Row.Partition.Lethality)).ToString(),
+						   Row.DifficultyTier,
 						   Row.Partition.bSoloSelfFound ? TEXT(", Solo Self-Found") : TEXT(""),
 						   *Population->GetDisplayNameTextByValue(static_cast<int64>(Row.Partition.Population)).ToString(),
 						   Row.WeaponType.IsEmpty() ? TEXT("no weapon type") : *Row.WeaponType, *Run);

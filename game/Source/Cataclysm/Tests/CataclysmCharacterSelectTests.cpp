@@ -81,6 +81,7 @@ bool FCataclysmCharacterSelectRowsTest::RunTest(const FString&)
 	Solo.Partition.Population = ECataclysmPopulation::Online;
 	Solo.Partition.bSoloSelfFound = true;
 	Solo.WeaponType = TEXT("Greatsword");
+	Solo.DifficultyTier = 3;
 	FCataclysmCharacterSummary Unnamed = ARow(TEXT(""), 1);
 	FCataclysmCharacterSummary OnTheSurface = InARun(ARow(TEXT("Corin"), 4), 21, TEXT("Sandbox"), 0);
 	const FString SoloText = UCataclysmCharacterSelectWidget::RowText(Solo);
@@ -92,6 +93,9 @@ bool FCataclysmCharacterSelectRowsTest::RunTest(const FString&)
 	TestTrue(TEXT("the name"), SoloText.StartsWith(TEXT("Vesper, ")));
 	TestTrue(TEXT("the level"), SoloText.Contains(TEXT("level 12")));
 	TestTrue(TEXT("the lethality"), SoloText.Contains(TEXT("Hardcore")));
+	// AND THE DIFFICULTY TIER AFTER IT, ALWAYS SHOWN. Issue #1472, ruled 2026-11-01. A new assertion; none above changes.
+	TestTrue(TEXT("the difficulty tier, after the lethality"), SoloText.Contains(TEXT("Hardcore, tier 3")));
+	TestTrue(TEXT("and tier 1 is shown too"), UnnamedText.Contains(TEXT("tier 1")));
 	TestTrue(TEXT("the Solo Self-Found flag"), SoloText.Contains(TEXT("Solo Self-Found")));
 	TestTrue(TEXT("the population"), SoloText.Contains(TEXT("Online")));
 	TestTrue(TEXT("the weapon type"), SoloText.Contains(TEXT("Greatsword")));
