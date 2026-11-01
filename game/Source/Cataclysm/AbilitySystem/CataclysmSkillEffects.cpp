@@ -200,6 +200,13 @@ namespace
 	bool bApplyingASpreadCopy = false;
 
 	/**
+	 * Set while `UCataclysmSkillEffects::ApplyDamageOverTime` takes a running effect off to lay a stronger one of the
+	 * same ailment in its place. Issue #920: a Necrosis replaced that way has not ended, so the healing it denied is
+	 * not dealt yet. See `DealTheDeniedHealingWhenANecrosisEnds`.
+	 */
+	bool bReplacingARunningDamageOverTime = false;
+
+	/**
 	 * The strongest application granting this tag on this target, if any.
 	 *
 	 * AN EFFECT CARRYING NO STATEMENT STATED NOTHING. That is anything granted
@@ -1699,6 +1706,82 @@ namespace
 			Applier, Carrier, Carrier->GetActorLocation(),
 			Whole * UCataclysmSkillEffects::ExplosionAtAnAilmentsEndMultiple, DamageType);
 	}
+
+	/**
+	 * What a Necrosis applied by `ApplyDamageOverTime` is told when it is removed: deal the healing it denied. Issue
+	 * #920, ruled by the coordinating session 2026-10-31 (Q4). "Denies the affected target all healing for that time,
+	 * dealing the denied amount as damage over the following 5 seconds": the TOTAL denied while the Necrosis held,
+	 * `UCataclysmAbilitySystemComponent::NecrosisDeniedHealing`, which `UCataclysmRegeneration::TopUp` added to, is
+	 * dealt over the 5 seconds after it ends.
+	 *
+	 * WHY ITS REMOVAL AND NOT ITS TAG. The engine tells every removal of an active effect through this delegate, the
+	 * one `ExplodeWhenADamageOverTimeEndsByTime` above listens on, and from inside the removal itself: its duration
+	 * running out (`CheckDuration`), a cleanse, a remaining-damage burst that ends it, and a removal by the tag it
+	 * granted. "For any reason" (Q4) is exactly that list, so `bPrematureRemoval` is not read. A watch on the tag would
+	 * hear the same ends, and would also hear the count fall to nought in the middle of a replacement:
+	 * `TagAndReplaceAnyExisting` takes the running Necrosis off BEFORE the stronger one is applied. So would this
+	 * delegate, which is why `ApplyDamageOverTime` raises `bReplacingARunningDamageOverTime` around that removal and
+	 * this keeps the total and returns: a Necrosis replaced by a stronger one still holds, and its total keeps growing
+	 * (Q4: "a refresh extends that time"). A weaker or equal application only moves the running one's start, which is
+	 * no removal at all.
+	 *
+	 * A CARRIER THAT DIED FIRST TAKES NOTHING MORE (Q4). A death removes none of the dead character's effects, so a
+	 * Necrosis can run out on a body, and its last tick can be what kills; the engine reports each as an end. The
+	 * total is emptied either way.
+	 *
+	 * WHAT IT LAYS IS PLAIN DAMAGE OVER TIME AND NOT A NECROSIS, which would deny healing again and owe it again. It
+	 * GRANTS NO TAG, so it is no ailment: nothing reads its carrier as carrying it, a debuff count does not count it,
+	 * no stronger-application rule meets it, and a second payout runs beside a first. Its ticks carry the ended
+	 * Necrosis's own asset tags, the damage over time flag and its element, and its context, so they are credited
+	 * and typed as the Necrosis's own ticks were and meet the carrier's resistances as every tick does; the
+	 * set-by-caller numbers are not carried, so it is not priced from the applier's stats a second time. One tick a
+	 * second (`BaseSecondsPerTick`) for `UCataclysmDebuffs::NecrosisDeniedHealingSeconds`, each a fifth of the total,
+	 * the last on the window's end; the applier's three damage over time stats and the carrier's duration stat do not
+	 * move it, so the total dealt is the total denied before resistances. Judgements by the writing session.
+	 */
+	void DealTheDeniedHealingWhenANecrosisEnds(const FGameplayEffectRemovalInfo& Removal)
+	{
+		if (bReplacingARunningDamageOverTime || !Removal.ActiveEffect || !Removal.OwningASC)
+		{
+			return;
+		}
+		UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Removal.OwningASC);
+		if (!Carrier)
+		{
+			return;
+		}
+		const float Denied = Carrier->NecrosisDeniedHealing;
+		Carrier->NecrosisDeniedHealing = 0.0f;
+		const AActor* Body = Carrier->GetAvatarActor();
+		if (Denied <= 0.0f || !IsValid(Body) || UCataclysmSkillEffects::IsDead(Body))
+		{
+			return;
+		}
+
+		// READ OFF THE ENDED NECROSIS BEFORE ANYTHING IS LAID: its asset tags.
+		FGameplayTagContainer AssetTags;
+		Removal.ActiveEffect->Spec.GetAllAssetTags(AssetTags);
+
+		const float Seconds = UCataclysmDebuffs::NecrosisDeniedHealingSeconds;
+		const float Period = UCataclysmSkillEffects::BaseSecondsPerTick;
+		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmNecrosisDeniedHealing"));
+		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Seconds));
+		Effect->Period = FScalableFloat(Period);
+		// THE FIRST TICK A SECOND AFTER THE NECROSIS ENDS, as every damage over time's first tick lands.
+		Effect->bExecutePeriodicEffectOnApplication = false;
+
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(Denied / (Seconds / Period));
+
+		FGameplayEffectSpec Spec(Effect, Removal.EffectContext, /*Level=*/1.0f);
+		Spec.AppendDynamicAssetTags(AssetTags);
+		Carrier->ApplyGameplayEffectSpecToSelf(Spec);
+	}
 }
 
 const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
@@ -2719,7 +2802,14 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	Modifier.ModifierOp = EGameplayModOp::Additive;
 	Modifier.ModifierMagnitude = FScalableFloat(Numbers.DamagePerTick);
 
-	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+	// A RUNNING EFFECT TAKEN OFF HERE IS REPLACED, NOT ENDED: a stronger one of the same ailment is applied straight
+	// after. Issue #920: so a Necrosis taken off here does not deal the healing it denied, which stays owed to the one
+	// that replaces it. See `DealTheDeniedHealingWhenANecrosisEnds`. Nothing refuses the application below once the
+	// immunity and a row's refusal above have passed, so the replacement always lands.
+	{
+		TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, true);
+		TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+	}
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
@@ -2754,6 +2844,22 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// sentence is about "the enemy" and "them".
 	Delivery.bPricedFromItsAppliersStats = bScalesWithInstigator && Instigator != Target;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
+
+	// AND A NECROSIS'S END IS LISTENED FOR, WHATEVER ENDS IT, because then it deals the healing it denied. Issue #920,
+	// ruled by the coordinating session 2026-10-31. See `DealTheDeniedHealingWhenANecrosisEnds`. Every Necrosis laid
+	// here, a spread copy's and one a character lays on itself included; the listener deals nothing when nothing was
+	// denied. AN APPLICATION THAT ONLY REFRESHED A RUNNING ONE RETURNED ABOVE, so a running Necrosis is listened to once.
+	const FGameplayTag LaidNecrosis = UCataclysmDebuffs::NecrosisTag();
+	if (LaidNecrosis.IsValid() && EffectTag == LaidNecrosis)
+	{
+		const FRunningApplication Laid = RunningApplicationOf(Defender, EffectTag);
+		FOnActiveGameplayEffectRemoved_Info* WhenRemoved =
+			Laid.bFound ? Defender->OnGameplayEffectRemoved_InfoDelegate(Laid.Handle) : nullptr;
+		if (WhenRemoved)
+		{
+			WhenRemoved->AddStatic(&DealTheDeniedHealingWhenANecrosisEnds);
+		}
+	}
 
 	// AND ITS END IS LISTENED FOR, because one that ends by time may explode. Ruled 2026-10-13. See
 	// `ExplodeWhenADamageOverTimeEndsByTime`, which asks the applier's row when the effect ends and does nothing
