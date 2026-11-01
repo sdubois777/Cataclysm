@@ -19,6 +19,11 @@ character record at schema version 4** (`UCataclysmCharacterSave::SchemaVersionN
 
 ### SAID FIRST
 
+- **WINDOW w131'S FIFTH RUNNER, ON 94b9ef912, PASSED, WITH P3 FINISHED IN A FOLLOW-UP WINDOW.** The six tests alone 1 / 1
+  each; the whole suite 4504 / 0 with "Test saves: 712 written and deleted, 0 left behind"; Python 7220 passed; P1 and P2
+  proved. P3's broken half failed exactly its registered assertion, and then its log ended before the run said how many
+  tests it performed, so the proof tool reported "NO MEASUREMENT"; no crash was recorded. P3 alone, on the same head, in
+  window w131P3, proved. Record below.
 - **WINDOW w131'S FOURTH RUNNER FAILED ONE EXISTING ASSERTION THAT WROTE "THE CURRENT VERSION" AS 3.** On c71e8ba25 the
   whole suite ran 4504, 4503 passed, and `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType` failed one
   assertion: "Expected 'it arrives at version 3' to be 3, but it was 4." (`CataclysmSaveRecordTests.cpp` line 926). It
@@ -187,6 +192,30 @@ run's engine log ends at "Engine exit requested" with neither exit-time line aft
 #2677 (merged as #2678) is the fix, and its window w132 measured 2 of 5 narrow runs losing that line and passing.
 #1472 moved onto 4ec191693 as `feat/character-difficulty-tier-2`; its changes under `game/` are the same 527 diff lines
 as before the move.
+
+**Window w131, fifth runner, on 94b9ef912 (`feat/character-difficulty-tier-2`), and w131P3.** Pre-checks all passed,
+11,086 MB free; lock `dungeon-w131` taken, runner PID 325408 started at 15:52:01, lock released at its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` (compiled at 94b9ef912 just before: `6 actions, 3 files compiled`) |
+| `ACharactersTierComesBackAndItsLevelIsFoughtAtIt` alone | 1 / 1; "TIER SAVED: written 3; the character 1 before the load, 3 after; outcome 2; the run 3; the level's game mode 1 before the arrival, 3 after; DifficultyTierFor 3" |
+| `ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne` alone | 1 / 1; "TIER BEFORE: read, and migrated on the way in (); 'Before the tier', level 7, tier 1" |
+| `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` alone | 1 / 1; "TIER RUN: outcome 5; the run 4, the game mode 4; after a death 4, written 4; a win raised 4 to 5; at 8 a win gives 8" |
+| `EachRowShowsWhatTheRulingLists` alone | 1 / 1; "SELECT ROWS: [Vesper, level 12, Hardcore, tier 3, Solo Self-Found, Online, Greatsword, ...] [(unnamed), level 1, Standard, tier 1, Offline, ...] ..." |
+| `ACharacterFileFromBeforeTheTierMigratesToTierOne` alone | 1 / 1; "TIER MIGRATED: the step 1 (), wrote the tier yes at 1; the record at version 4, tier 1; the rest kept" |
+| `EveryFixtureHoldsEveryFieldItsRecordWrites` alone | 1 / 1 |
+| Whole suite | `Tests: 4504 tests performed, 4504 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 712 written and deleted, 0 left behind`; `Declared: 4504 tests in the tree at 94b9ef912; 4504 performed, gap 0`; exit 0 |
+| Python | `7220 passed, 8 skipped in 193.16s`; JUnit tests=7228, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half: "Expected 'the run is at the character's tier' to be 4, but it was 1" and "Expected 'and its level is fought at it' to be 4, but it was 1" only; "TIER RUN: ... the run 1, the game mode 1; after a death 4, ...". Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "Expected 'the level is fought at the run's tier' to be 3, but it was 1" and "Expected 'and the tier rule reads it from that game mode' to be 3, but it was 1" only; "TIER SAVED: ... the run 3; the level's game mode 1 before the arrival, 1 after; DifficultyTierFor 1". Restored: 1 / 1 |
+| P3, in w131 | **NO MEASUREMENT.** The broken half (kept as `w131_P3_run1_first.log`) failed "Expected 'the step writes tier 1 into the file' to be true." only, with "TIER MIGRATED: the step 1 (), wrote the tier NO at -1; the record at version 4, tier 1; the rest kept"; its log then ends at the test's "EndEvents" line, with no "Automation Test Queue Empty N tests performed" and no "Engine exit requested" line, and no crash, fatal or assert line after start-up. The runner stopped there |
+| P3, in w131P3 | PROVED, alone on the same head (ruled: the head did not move, so the suite, P1 and P2 stand). Pre-checks all passed, 11,163 MB free; lock `dungeon-w131P3`, runner PID 328036 at 16:16:07. Broken half: the same one assertion and "wrote the tier NO at -1", "1 tests performed"; restored: 1 / 1, "wrote the tier yes at 1" |
+
+**Nothing else failed in any proof.** Each broken half's log holds, from the automation controller, the test's
+"Result={Fail}" line and the registered assertions only (3 error lines for P1, 3 for P2, 2 for P3); each restored half
+holds none. The proof runner's count line can be lost at exit the same way the "Test saves:" line was; the coordinator
+is filing that as an issue.
 
 ---
 
