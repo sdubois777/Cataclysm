@@ -25,8 +25,10 @@ Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of th
   `GetUniqueID()`, the world's clock and a salt, unless `ModifierSeedForTests` is set, which the round trips do not set.
   The coordinating session files that as an issue. **Ruled 2026-11-01:** both tests now choose a leader that is not a
   Horde Leader, with a set-up assertion that one was found, in a commit of its own on this branch.
-- **Window A remade `WBP_CharacterSelect` exactly as registered (below); the six step 5 tests passed alone in window
-  B. NOT YET PASSED IN UNREAL: the whole suite and the proofs, registered for window w128D below.**
+- **Window A remade `WBP_CharacterSelect` exactly as registered; the six step 5 tests passed alone in window B; and
+  window w128D passed the whole suite, 4493 / 0, with all eight proofs proved (all below).** **ONE PROOF FAILED MORE
+  THAN ITS TRACE:** R3 also failed "the character was deleted" and "the delete reports what it removed", because its
+  break lists a backup's name twice and the second delete of it fails. The guard is proved; the trace was short by two.
 - **DELETING IS IRREVERSIBLE, SO EVERY NAME IS BUILT, NEVER MATCHED BY A PATTERN.** `SlotsToDelete` names each slot
   from an identifier and matches it whole; `ADeleteRemovesItsCharactersSlotsAndNothingElse` deletes one of two
   characters on disk and checks that the names gone are exactly a hand-written list and that no other name went.
@@ -187,6 +189,28 @@ cause.**
 | R1 to R5, N1 | as registered above |
 | M1, the leaders test's choice inverted, so it takes only a Horde Leader (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed && RalliesInstead(Candidate))`), prefix the test's full name | the leaders test fails on **exactly one** of "set-up: a leader that is not a Horde Leader stands after the load" (when no leader draws Horde Leader) and "a leader killed after the load panics its group" (when one does: it rallies instead), and on nothing else. **INVERTED RATHER THAN REVERTED,** because the coordinating session asked, 2026-11-01, for no proof that may not fire: reverting the choice fails only when the draw makes the first leader a Horde Leader, which depends on the tests run before (#2669), so it could pass by the roll; the inversion fails whatever the draw |
 | M2, the escaped test's choice inverted (`&& !RalliesInstead(Candidate))` to `&& RalliesInstead(Candidate))`), prefix the test's full name | the escaped test fails on exactly one of "set-up: a seed from 1 to 20 gives a group far from the entrance, led by no Horde Leader" (no such group on any seed) and "set-up: creatures escaped" (the Horde Leader's group rallies, so nobody flees), and stops there |
+
+### Window w128D, 2026-11-01, on `300c46adf`: as registered
+
+Run by `run_w128D.py` under the lock `dungeon-w128D`, from a clean tree; pre-checks all passing at 09:37:41 local, 11301
+MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The two Morale Break tests alone | 1 / 1 each | 1 / 1 each: "group 116's leader died; 9 panic" in both; "a leader killed, 9 panicked"; "away after the load 9/9, after 31 s 0; creatures standing 231 (saved 213, expected 231)" |
+| Whole Unreal suite | 4493 / 0 | **"4493 tests performed, 4493 succeeded, 0 failed"**; declared 4493, gap 0 |
+| Python | of record | "7192 passed, 8 skipped"; JUnit 7200 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 | the slots test on "a run another character names stays, ..." only | PROVED: 2 of 3, then 3 of 3; that assertion only |
+| R2 | the slots test on two cases; the on-disk test on three | PROVED: 1 of 3, then 3 of 3; exactly those five |
+| R3 | the slots test on its four cases; the on-disk test on three | PROVED: 1 of 3, then 3 of 3; those seven, **and two not traced**: "the character was deleted" and "the delete reports what it removed" (8 expected, 5): the break lists a backup's name twice, so the delete stops at the second |
+| R4 | the warning test on the tree and the stash | PROVED: 0 of 1, then 1 of 1; those two only |
+| R5 | the in-a-run test on its two and its control | PROVED: 2 of 3, then 3 of 3; those three only |
+| N1 | the warning test's wrong case; the delete-mode test's wrong name | PROVED: 8 of 10, then 10 of 10; those two only |
+| M1 | the leaders test on exactly one of two | PROVED: 0 of 1, then 1 of 1; "a leader killed after the load panics its group" (a Horde Leader was there to take) |
+| M2 | the escaped test on exactly one of two | PROVED: 0 of 1, then 1 of 1; "set-up: creatures escaped" |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w128D_<proof>_run1.log`. R3's break ran
+behind the on-disk test's path check and deleted inside s5's own `game/Saved/SaveGames` only.
 
 ### Python proofs, run before window A
 
