@@ -175,7 +175,10 @@ Neither runs while a Python suite runs (issue #1630).
   written), with no lock: `Build: Succeeded - 42 actions, 39 files compiled`. The line names no file; the five unity
   objects that hold the five changed `.cpp` files (`Module.Cataclysm.4`, `.7`, `.9`, `.15` and `.22`) were each
   written by that build, read from their modification times.
-- **Python**: PYTHON_PENDING.
+- **Python of record**, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>` on `ededfa32c`, the
+  registration of the Unreal figures above, with no other change since: `7192 passed, 8 skipped in 250.30s`; JUnit
+  tests 7200, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". The window runs both
+  again on the head that adds this paragraph, which changes only this file.
 
 ### Not verified
 
