@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A new character is made on the front end with its name and the choices locked at creation, refused at 24 characters, and written at once (#753, select-screen step 4a)
+
+**Affects:** `UCataclysmNewCharacterWidget` (new, `game/Source/Cataclysm/Interface/CataclysmNewCharacterWidget.h`,
+`.cpp`), deriving from the creator, whose `Confirm` becomes virtual (`CataclysmCharacterCreationWidget.h`);
+`UCataclysmCharacterSelectWidget::StartNew`, now refused at 24 and showing the new-character screen
+(`CataclysmCharacterSelectWidget.h`, `.cpp`); `ACataclysmFrontEndPlayerController`, which shows one screen at a time
+(`CataclysmFrontEndGameMode.h`, `.cpp`); `FCataclysmPendingCreation` on `UCataclysmGameInstance`
+(`CataclysmGameInstance.h`); `ACataclysmGameMode::MakeThePendingCharacter`, called by `LoadThePendingCharacter`
+(`CataclysmGameMode.h`, `.cpp`); a save trigger, `CharacterCreated` (`CataclysmSaveTriggers.h`, `.cpp`); the trigger
+lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.md` and
+`Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`; four new tests and one changed assertion. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open for step 4b (the screen's asset) and step 5
+(deleting a character).
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **NOTHING A PLAYER SEES YET.** The new-character screen's asset, `WBP_NewCharacter`, is made in step 4b; until then New
+  on the select screen asks the front end for a screen whose asset is missing, and logs so.
+- **TWO EXISTING ASSERTIONS CHANGE, both ruled 2026-11-01.**
+  - `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds` asserted `"and opens the sandbox"` after New
+    (`LevelRequested == SandboxMap`); New now asks for the new-character screen, so it asserts `"and asks for the
+    new-character screen"`. That New changes is the ruled step 4 plan; the line is marked in the test.
+  - `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt` asserted that only `InventoryChanged` and
+    `CharacterDied` write the character record; it gains `CharacterCreated` (Q2: "the test exists to list the
+    triggers"). Its run-record half needs nothing: it asserts every trigger but `AccountChanged` writes the run record,
+    by `WritesTheRunRecord`, `Trigger != AccountChanged`, which already includes the new one; its account half likewise.
+- **THE NAME RULES ARE A JUDGEMENT, ruled 2026-11-01,** and the design says nothing on them: 2 to 16 characters after
+  trimming; letters of any alphabet; single spaces, apostrophes and hyphens only between letters; a refusal names the
+  rule. What the genre does was found only in players' reports, none official: Diablo IV, up to 12 letters, no spaces,
+  not unique (a Steam thread; Gamepur; Upcomer); Path of Exile, ASCII letters and the underscore, unique online, with
+  players asking for the accented letters it lacks (the Path of Exile forum; the wiki refused the fetch); Last Epoch,
+  nothing found. **DUPLICATES ARE ALLOWED, by the design:** `docs/Save_System_Design.md`, "two characters may share a
+  name"; no check against the others exists.
+- **THE FONT DRAWS Ö AND Ł, BY ITS CHARACTER MAP, NOT SEEN ON SCREEN.** No project font exists, so the screens use the
+  engine's Roboto. Its cmap, read by a script, maps Ö, ö, Ł, ł, Cyrillic Ж and Greek Ω; not Chinese 中 or Arabic ا. The
+  engine's `DroidSansFallback.ttf` maps 中 and not ا; whether Slate falls back to it for the default font is not
+  verified. The rule allows any alphabet anyway; the font is a separate fix (ruled).
+- **ONLINE IS SHOWN AND CANNOT BE CHOSEN, ruled 2026-11-01 (Q1):** "Online play needs a service that does not exist yet".
+  The design seals offline characters off because "a local file can be edited", and every save is a local file until a
+  service exists. Every new character is written Offline.
+- **24 COUNTS AN UNREADABLE SLOT**, which still holds one of the 24 (ruled). The count is the select screen's rows, as
+  `FCataclysmSaveLoad::SavedCharacters` reads them.
+- **THE IN-GAME CREATOR IS NOW REDUNDANT:** `WBP_CharacterCreation`, with `UCataclysmCharacterCreationWidget`, opened by
+  the C key through `ACataclysmPlayerController::ToggleCharacterCreation`. Its retirement is for the coordinating
+  session to raise; nothing about it changes here except that `Confirm` is virtual.
+
+### Rulings, 2026-11-01
+
+- **Q1, Online:** shown, Offline chosen, Online disabled with the reason above; written as Offline.
+- **Q2, a new save trigger, `CharacterCreated`,** writing the character and run records asynchronously, added to every
+  list of the triggers: the Python test's, the design's (both the prose list and the table), and the C++ test's.
+- **The name rules,** above. **24 counts unreadable slots.** **Split:** 4a C++ only, 4b the generator run and its test.
+
+### What changes
+
+| What | Before | After |
+|---|---|---|
+| New on the select screen | opened the sandbox: a fresh character, unnamed, Standard | refused at 24; otherwise the new-character screen |
+| A new character's name, lethality, Solo Self-Found, population | not chosen; the defaults | chosen on the new-character screen, Online refused |
+| When its level begins | the fresh start | the same, then its name and partition, its weapon type and damage type, its run at its lethality |
+| Its record | written at its first item or death | written at once (`CharacterCreated`), so it is listed |
+
+### Tests
+
+- `Cataclysm.Creation.ANewCharactersNameFollowsTheRules`: fifteen names, allowed and refused, each refusal's wording
+  checked. Prints "NAME RULES".
+- `Cataclysm.Creation.TheNewCharacterScreenHandsTheCharacterOver`: a refused name hands nothing over; Online is refused
+  with its reason; Confirm hands over the trimmed name, Hardcore, Solo Self-Found, Offline, Sword and War, and asks for
+  the sandbox. Prints "NEW CHARACTER HANDED".
+- `Cataclysm.CharacterSelect.NewIsRefusedWhenTheAccountHoldsTwentyFour`: 24 rows, one unreadable, refuse New with the
+  reason; 23 ask for the new-character screen with nothing pending. The rows are given, because the SaveGames folder
+  holds other tests' saves (#2658). Prints "NEW AT 24".
+- `Cataclysm.SaveLoad.ANewCharacterIsMadeAndWrittenWhenItsLevelBegins`: a pending creation made when the level begins:
+  its name, partition and weapon type on the player; its run at Hardcore (a death costs 10 days); its record written at
+  once with its name, lethality and weapon type, and listed by the select screen by its name; the next start makes
+  nothing. Control: nothing had written its record before. Prints "NEW CHARACTER MADE".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4473 / 0: window w125B's 4469 on `development` (29aaa7111), + 4 |
+| Python | of record, with JUnit, and ruff |
+| R1, the longest name not checked (`if (Length > MostNameLength) // A name's rule: its longest.` to `1000`), prefix `Cataclysm.Creation.` | the name test fails on "17 letters are refused" and its "and the refusal says 'at most'" only |
+| R2, 24 allowed (`return Listed < MostCharacters; // The account's: 24 at most.` to `<=`), prefix `Cataclysm.CharacterSelect.` | the 24 test fails on "New is refused at 24 characters, an unreadable slot among them", "and says why" and "and asks for no new-character screen" only |
+| R3, the creation not handed over (`Creation.bPending = true; // A new character's: the creation handed over.`), prefix `Cataclysm.Creation.` | the hand-over test fails on "the new character is handed over" only |
+| R4, the name and partition not applied (`State->SetIdentity(Creation.Name, Creation.Partition); // A new character's: ...`), prefix `Cataclysm.SaveLoad.` | the made test fails on "it has its name", "and its lethality", "and its Solo Self-Found flag", the record's "with its name" and "and its lethality", and "by its name" only: the gather writes no name or partition for a player with none set |
+| R5, the run not at its lethality (`static_cast<int32>(Creation.Partition.Lethality)); // A new character's: its run's lethality.` to `0);`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its run is at its lethality: a death costs Hardcore's 10 days" (5) only |
+| R6, not written at once (`Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its record was written at once" and stops there |
+| R7, the trigger not writing the character record (its `return true` under `case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: ...` to `return false`), prefix `Cataclysm.Save` | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "its record was written at once", stopping there |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled).
+
+---
+
 ## 2026-11-01 — Converted damage holds no bleed slot: each blow The Breaking Point converts runs as its own bleed, beside an enemy's (#2275)
 
 **Affects:** `UCataclysmSkillEffects::ApplyDamageOverTime` and, in its anonymous namespace, `RunningApplicationOf`,
