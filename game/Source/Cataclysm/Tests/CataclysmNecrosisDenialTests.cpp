@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the row that refreshes the applier's other damage over time, given by hand.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -200,6 +202,54 @@ namespace CataclysmNecrosisDenialTest
 		}
 
 		void Empty() { Struck.Reset(); }
+	};
+
+	/**
+	 * The ticks of the healing a Necrosis denied that land on one character, told apart from every other tick by
+	 * granting no tag: each ailment's and the plain damage over time's tick grants its own. What each took from health
+	 * is kept, in order.
+	 */
+	struct FDeniedHealingTicks
+	{
+		const AActor* Watched = nullptr;
+		TArray<float> Took;
+		FDelegateHandle Handle;
+		UCataclysmCombatEvents* Events = nullptr;
+
+		FDeniedHealingTicks(UWorld* World, const AActor* InWatched)
+			: Watched(InWatched)
+		{
+			Events = UCataclysmCombatEvents::In(World);
+			if (Events)
+			{
+				Handle = Events->OnHit.AddLambda([this](const FCataclysmHitNotice& Notice)
+				{
+					if (Notice.Target == Watched && Notice.bDamageOverTime
+						&& (!Notice.GrantedTags || Notice.GrantedTags->IsEmpty()))
+					{
+						Took.Add(Notice.DealtToHealth);
+					}
+				});
+			}
+		}
+
+		~FDeniedHealingTicks()
+		{
+			if (Events)
+			{
+				Events->OnHit.Remove(Handle);
+			}
+		}
+
+		float Total() const
+		{
+			float Sum = 0.0f;
+			for (const float One : Took)
+			{
+				Sum += One;
+			}
+			return Sum;
+		}
 	};
 
 	/** Where the creatures stand. The applier is at the origin. */
@@ -560,6 +610,174 @@ CATACLYSM_NECROSIS_DENIAL_TEST(FCataclysmNecrosisDeadCarrierTest,
 	TestEqual(TEXT("the dead carrier's total is emptied"), DeniedSoFar(Dead), 0.0f, 0.001f);
 	TestEqual(TEXT("and nothing was laid to deal it: no damage over time runs on the body"),
 			  DamageOverTimeEffectsOn(Dead), 0);
+	return true;
+}
+
+/**
+ * A CLEANSE WHILE THE DENIED HEALING IS BEING DEALT LEAVES IT RUNNING. Ruled by the coordinating session 2026-10-31:
+ * the denial has already happened, the reason a cleanse that ends the Necrosis still pays. A Necrosis of one a tick
+ * for 2 s; 100 denied. At 2.25 s it has run out and its payout is running. The applier also lays a plain damage over
+ * time on the carrier, which a cleanse does remove, and the control's 20 a tick for 5 s is laid. The cleanse removes
+ * exactly one effect, the plain one, and the payout still runs. Over the next 5.75 s the carrier loses what the
+ * control loses, in five ticks of the payout.
+ */
+CATACLYSM_NECROSIS_DENIAL_TEST(FCataclysmNecrosisPayoutCleansedTest,
+	"Cataclysm.Ailments.ACleanseWhileTheDeniedHealingIsDealtLeavesItRunning")
+{
+	using namespace CataclysmNecrosisDenialTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+	const FGameplayTag Plain = PlainDamageOverTimeTag();
+	FNecrosisApplier Applier(World);
+	ACataclysmEnemyCharacter* Carrier = NecroticCreatureAt(World, NecroticFirstAt);
+	ACataclysmEnemyCharacter* Control = NecroticCreatureAt(World, NecroticSecondAt);
+	if (!TestTrue(TEXT("set-up: the Necrosis and plain damage over time tags"), Necrosis.IsValid() && Plain.IsValid())
+		|| !TestTrue(TEXT("set-up: the applier"), Applier.IsComplete())
+		|| !TestNotNull(TEXT("set-up: creature 0, the carrier"), Carrier)
+		|| !TestNotNull(TEXT("set-up: creature 1, the control"), Control)
+		|| !TestTrue(TEXT("set-up: the carrier's Necrosis, one a tick for 2 s, is laid"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Carrier, 1.0f, 2.0f, Necrosis,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	HealThroughTopUp(Carrier, 100.0f);
+	if (!TestEqual(TEXT("set-up: the heal of 100 is denied"), DeniedSoFar(Carrier), 100.0f, 0.001f))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 2.25f);
+	if (!TestFalse(TEXT("set-up: the Necrosis has run out by time"), NecroticCarries(Carrier, Necrosis))
+		|| !TestEqual(TEXT("set-up: and its payout runs: one damage over time on the carrier"),
+			DamageOverTimeEffectsOn(Carrier), 1)
+		|| !TestTrue(TEXT("set-up: the applier's plain damage over time on the carrier, for the cleanse to take"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Carrier, 1.0f, 5.0f, Plain,
+														/*bScalesWithInstigator=*/false))
+		|| !TestTrue(TEXT("set-up: the control's plain damage over time, 20 a tick for 5 s, is laid"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Control, 20.0f, 5.0f, Plain,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+
+	FDeniedHealingTicks Ticks(World, Carrier);
+	if (!TestNotNull(TEXT("set-up: the hit notices"), Ticks.Events))
+	{
+		return false;
+	}
+	const float CarrierBefore = NecroticHealthOf(Carrier);
+	const float ControlBefore = NecroticHealthOf(Control);
+
+	TestEqual(TEXT("the cleanse removes one effect, the plain damage over time"),
+			  UCataclysmDebuffs::Cleanse(Carrier), 1);
+	TestFalse(TEXT("control: the plain damage over time is gone"), NecroticCarries(Carrier, Plain));
+	TestEqual(TEXT("and the payout still runs: one damage over time on the carrier"), DamageOverTimeEffectsOn(Carrier), 1);
+
+	CataclysmTestWorld::RunClock(World, 5.75f);
+	const float CarrierLost = CarrierBefore - NecroticHealthOf(Carrier);
+	const float ControlLost = ControlBefore - NecroticHealthOf(Control);
+	if (!TestTrue(FString::Printf(TEXT("control: the control's plain damage over time took %.3f"), ControlLost),
+				  ControlLost > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(FString::Printf(TEXT("the carrier lost the denied 100 as the control lost its 100 (%.3f against %.3f)"),
+							  CarrierLost, ControlLost),
+			  CarrierLost, ControlLost, 0.01f);
+	TestEqual(TEXT("in five ticks of the payout"), Ticks.Took.Num(), 5);
+	return true;
+}
+
+/**
+ * A ROW REFRESHING THE APPLIER'S OTHER DAMAGE OVER TIME DOES NOT LENGTHEN THE PAYOUT. Ruled by the coordinating
+ * session 2026-10-31: a payout made longer would deal more than was denied. A Necrosis of one a tick for 2 s; 100
+ * denied; at 2.25 s the payout runs, and the applier lays a plain damage over time of one a tick for 5 s on the same
+ * carrier. At 4.5 s, two payout ticks in, the applier gains `dot_application_refreshes_others` and applies a burn to
+ * the carrier. Control: the plain damage over time, which would have ended at 7.25 s, is still carried at 8 s, so the
+ * refresh reached the applier's others. The payout lands five ticks and no more, each the same, so its total is five
+ * of its ticks: the 100, as it was.
+ */
+CATACLYSM_NECROSIS_DENIAL_TEST(FCataclysmNecrosisPayoutNotRefreshedTest,
+	"Cataclysm.Ailments.ARefreshOfTheAppliersOtherDamageOverTimeDoesNotLengthenTheDeniedHealing")
+{
+	using namespace CataclysmNecrosisDenialTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+	const FGameplayTag Plain = PlainDamageOverTimeTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	FNecrosisApplier Applier(World);
+	ACataclysmEnemyCharacter* Carrier = NecroticCreatureAt(World, NecroticFirstAt);
+	if (!TestTrue(TEXT("set-up: the Necrosis, plain damage over time and burn tags"),
+				  Necrosis.IsValid() && Plain.IsValid() && Burn.IsValid())
+		|| !TestTrue(TEXT("set-up: the applier"), Applier.IsComplete())
+		|| !TestNotNull(TEXT("set-up: creature 0, the carrier"), Carrier)
+		|| !TestTrue(TEXT("set-up: the carrier's Necrosis, one a tick for 2 s, is laid"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Carrier, 1.0f, 2.0f, Necrosis,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	HealThroughTopUp(Carrier, 100.0f);
+	if (!TestEqual(TEXT("set-up: the heal of 100 is denied"), DeniedSoFar(Carrier), 100.0f, 0.001f))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 2.25f);
+	FDeniedHealingTicks Ticks(World, Carrier);
+	if (!TestNotNull(TEXT("set-up: the hit notices"), Ticks.Events)
+		|| !TestFalse(TEXT("set-up: the Necrosis has run out by time"), NecroticCarries(Carrier, Necrosis))
+		|| !TestTrue(TEXT("set-up: the applier's plain damage over time, one a tick for 5 s, is laid"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Carrier, 1.0f, 5.0f, Plain,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 2.25f);
+	if (!TestEqual(TEXT("set-up: at 4.5 s the payout has landed two ticks"), Ticks.Took.Num(), 2))
+	{
+		return false;
+	}
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(UCataclysmSkillEffects::DotApplicationRefreshesOthersStat)).Base = 1.0f;
+	Applier.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	if (!TestTrue(TEXT("set-up: with the row, the applier applies a burn to the carrier"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Character, Carrier, 1.0f, 10.0f, Burn,
+														/*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 3.5f);
+	if (!TestTrue(TEXT("control: the refresh reached the applier's plain damage over time, still carried at 8 s"),
+				  NecroticCarries(Carrier, Plain)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	TestEqual(TEXT("the payout landed five ticks and no more"), Ticks.Took.Num(), 5);
+	if (Ticks.Took.Num() > 0)
+	{
+		TestEqual(FString::Printf(TEXT("so its total is five of its ticks, as it was (%.3f, a tick %.3f)"),
+								  Ticks.Total(), Ticks.Took[0]),
+				  Ticks.Total(), 5.0f * Ticks.Took[0], 0.01f);
+	}
 	return true;
 }
 
