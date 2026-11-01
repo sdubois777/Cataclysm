@@ -492,7 +492,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// damage "is then taken as a drain rather than in one hit". So it ticks whole whether its carrier moves
 				// or not, and uses none of the four seconds. Read off the stamp `UCataclysmDebuffs::Cleanse` reads to
 				// keep that same bleed, `UCataclysmSkillEffects::ConvertedDamageDataName` (ruled 2026-10-06), and no
-				// other mark. Issue #2275 holds what that one shared bleed slot already gets wrong.
+				// other mark. SINCE ISSUE #2275 EACH CONVERTED BLOW IS ITS OWN EFFECT, beside any bleed an enemy laid,
+				// which holds the one bleed slot and this count alone (ruled by the coordinating session 2026-11-01).
+				// Until then the two shared one slot: an enemy's weaker bleed only lengthened the converted one, so its
+				// added time ticked here at the converted figure and exempt, and the count was restarted by a blow
+				// being converted.
 				//
 				// AND ONLY A TICK: AN EXECUTION WITH A PERIOD. Ruled by the coordinating session, 2026-10-31: a burst is a
 				// payout of what the bleed has left, not a tick. `UCataclysmSkillEffects::DealRemainingDamageOverTime`

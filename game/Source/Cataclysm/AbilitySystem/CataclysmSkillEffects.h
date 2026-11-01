@@ -60,7 +60,9 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * conversion lays on its own character. Ruled 2026-10-06. The effect is stamped with
 	 * `UCataclysmSkillEffects::ConvertedDamageDataName`, and `UCataclysmDebuffs::Cleanse` keeps an effect that
 	 * carries the stamp and nothing else a character laid on themselves. `UCataclysmVitalAttributeSet` reads the same
-	 * stamp to exempt the bleed from the movement gate, ruled 2026-10-31 (issue #918).
+	 * stamp to exempt the bleed from the movement gate, ruled 2026-10-31 (issue #918). And the stamp keeps it out of
+	 * the one bleed slot: each converted blow is its own effect, which no other application refreshes, replaces or is
+	 * refreshed by (issue #2275, ruled 2026-11-01).
 	 */
 	bool bIsConvertedDamage = false;
 
@@ -1770,6 +1772,12 @@ public:
 	 * one leaves the running one alone and only refreshes how long it runs,
 	 * never shortening it, so the running one's ticks carry on.
 	 *
+	 * EXCEPT CONVERTED DAMAGE (`bIsConvertedDamage`), WHICH HOLDS NO SLOT. Issue
+	 * #2275, ruled 2026-11-01. Each converted blow is laid as its own effect and
+	 * takes nothing off; no other application is compared with one, refreshes
+	 * one or takes one off; and a converted blow restarts no bleed's four
+	 * seconds of movement.
+	 *
 	 * A TARGET CARRYING `ailment_immunity` FOR THIS AILMENT IS GIVEN NOTHING, and
 	 * false is returned: "Unaffected by bleeding", ruled 2026-10-06. It is asked
 	 * before anything else happens, so the applier's `dot_applied` event is not
@@ -2181,7 +2189,8 @@ public:
 	 * The name an effect is stamped under when it is converted damage not yet taken, with any value above nought.
 	 * Ruled 2026-10-06. A plain name and no gameplay tag, as `StatedMagnitudeDataName` is. Read by
 	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect, and by `UCataclysmVitalAttributeSet`, whose bleed tick
-	 * deals it whether its carrier moves or not (issue #918, ruled 2026-10-31).
+	 * deals it whether its carrier moves or not (issue #918, ruled 2026-10-31), and in `CataclysmSkillEffects.cpp` by
+	 * `IsConvertedDamageNotYetTaken`, which keeps the effect out of the one bleed slot (issue #2275, ruled 2026-11-01).
 	 */
 	static const TCHAR* ConvertedDamageDataName;
 

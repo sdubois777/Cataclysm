@@ -2,6 +2,269 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Converted damage holds no bleed slot: each blow The Breaking Point converts runs as its own bleed, beside an enemy's (#2275)
+
+**Affects:** `UCataclysmSkillEffects::ApplyDamageOverTime` and, in its anonymous namespace, `RunningApplicationOf`,
+`TagAndReplaceAnyExisting` (a new `bTakesTheSlot` parameter) and a new `IsConvertedDamageNotYetTaken`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`); comments on `FCataclysmHitDelivery::bIsConvertedDamage`,
+`ApplyDamageOverTime` and `UCataclysmSkillEffects::ConvertedDamageDataName`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`), on `UCataclysmAbilitySystemComponent::BleedMovingSeconds`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`), at the conversion's call
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.cpp`) and at the bleed gate
+(`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`); six new Unreal tests
+(`game/Source/Cataclysm/Tests/CataclysmDamageConversionTests.cpp`); a paragraph in the ailment section of
+`docs/Cataclysm_GDD_v2.md`. Issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).
+
+### SAID FIRST
+
+- **RUN IN WINDOW converted-w1, IN TWO ATTEMPTS (under Run): every registered figure as registered, the suite at
+  4475 / 0, and all six proofs PROVED, each failing on exactly the assertions predicted.** The first attempt stopped
+  at the third new test alone, when the editor ended after the test had passed and without closing its log; why is
+  not known. The second ran to the end.
+- Every figure below was registered before its run, traced by hand from the code. A compile on `93f3cc7b6`, with no
+  lock, to find errors early: `Build: Succeeded - 42 actions, 39 files compiled`, at the first attempt. Python of
+  record on the same head: `7187 passed, 8 skipped in 223.00s`; JUnit tests 7195, failures 0, errors 0, skipped 8;
+  ruff "All checks passed!".
+- **ONE EFFECT PER CONVERTED BLOW, NOT A POOL.** The brief first asked for successive conversions to add up in one
+  pool; the coordinating session withdrew that on 2026-11-01, on the design's own words (R1).
+- **THE NEXT CHANGE IS NAMED HERE AND NOT BUILT: converted damage's total is fixed when it is converted** (R3). Today
+  a duration stat on the Masochist adds ticks to it, Vessel Unbroken zeroes it, and "more damage over time taken"
+  raises it. None of that is touched by this branch.
+
+### Rulings, 2026-11-01 (the coordinating session, from the design; the owner was not needed)
+
+- **R1: each converted blow is its own effect.** The Breaking Point "converts all damage you take into Bleeding over
+  5 seconds", which is said of each blow. The design's health-debt paragraph ("A health debt comes out of health the
+  same way, over 5 seconds, and it is the same rule with the sign reversed.") points at the leech paragraph before it,
+  which says "Each hit starts its own 3-second payout". So a converted blow runs its own five seconds beside every
+  other converted blow and beside any bleed an enemy laid, and no question of restarting a pool's time arises.
+- **R2: converted damage still counts as Bleeding and as a debuff.** Thirst for Pain's `while_bleeding`, and every
+  per-debuff count, read it as before. That is the status quo of the 2026-08-26 entry ("Damage can arrive as Bleeding
+  instead of all at once, and a Masochist can debuff itself") and of #962; this change keeps it.
+- **R3 (recorded for the follow-up, not built here): converted damage's total is fixed when it is converted.** The
+  GDD says converted damage "is damage already taken and deferred, not cancelled". No modifier changes its total: the
+  duration stat may not add ticks to it, Vessel Unbroken's "Debuffs on you deal no damage at all" may not zero it, and
+  "more" or "increased damage over time taken" may not raise it. Conditions may still read it as a bleed or a debuff.
+- **R4: one unique debuff.** Converted damage and an enemy's bleed together are one debuff for every count, as today
+  (`UCataclysmDebuffs::TagsOn` counts unique tags). No change.
+
+### The two faults, re-measured on `development` at `29aaa7111` (read, not run; line numbers there)
+
+The cause, unchanged since the issue was filed: the conversion laid its bleed through the ordinary one-bleed path,
+`ApplyDamageOverTime(Character, Character, ToHealth / 5, 5, BleedTag(), ..., bIsConvertedDamage=true)`
+(`CataclysmDamageConversion.cpp:147-153`), and a true answer made `ConvertIfActive` return the whole blow (`:182`),
+which the caller then took off nothing (`CataclysmVitalAttributeSet.cpp:2025-2036`). Inside `ApplyDamageOverTime` the
+mark changed only the immunity skip, the stamp and the explode listener; `RunningApplicationOf` (`:216-251`) found
+every effect granting the tag, an application no stronger than the running one only refreshed it and returned true
+(`:2748-2758`), and a stronger one took every effect granting the tag off (`TagAndReplaceAnyExisting`, `:162`).
+
+**Fault 1, converted damage lost, still happened four ways:**
+
+- a converted blow no stronger than a running bleed, a second converted blow no bigger than the first included, only
+  refreshed it, and the blow reached neither health nor any bleed;
+- a stronger converted blow took the first off, with what the first had left;
+- an enemy's stronger bleed took the converted bleed off, with what it had left; on a still Masochist that enemy bleed
+  is gated (#918), so the Masochist took nothing at all;
+- **new since #918:** the restart of the four seconds of movement (`:2740-2746`) ran before the branch for any bleed,
+  so a converted blow that only refreshed an enemy's bleed also gave that bleed its four seconds back.
+
+**Fault 2, an enemy's weaker bleed sheltering, still happened, and worse than the issue says.** It had no effect of
+its own, so `UCataclysmDebuffs::Cleanse` kept it by the mark (`CataclysmDebuffs.cpp:182-185`), and so did
+`UCataclysmDebuffs::ImmunityStep` (`:762-768`), which the issue did not name. **And its added time ticked at the
+converted figure, exempt from the gate**, so the Masochist took more than it converted: a blow of 100 converted at
+20 a tick, an enemy's bleed of 1 a tick laid at 3.2 s, the converted end moved from 5.0 to 8.2 s, eight ticks, 160
+taken. The #918 entry states the exempt time and not the excess.
+
+### What changed
+
+- **`IsConvertedDamageNotYetTaken`**, new: whether a running effect carries `ConvertedDamageDataName`. No new mark.
+- **`RunningApplicationOf` skips converted damage.** Every caller asks about an application of an ailment or a status,
+  and converted damage is neither, so none is shown it: `ApplyDamageOverTime` (the strongest-application branch, the
+  Necrosis listener and the explode listener), `ApplyShareOfHealthOverTime`, `RunningAilmentOn`, `ApplyPin`,
+  `ApplyTagForDuration` and `ApplyNamedEffectOnly`. The explode listener of an enemy's bleed now finds that bleed and
+  not a stronger converted one beside it.
+- **`TagAndReplaceAnyExisting` takes converted damage off nothing and is taken off by nothing.** Its removal is the
+  query `RemoveEffectsGranting` makes (`MakeQuery_MatchAnyOwningTags`), now one effect at a time, skipping an effect
+  carrying the mark. A new `bTakesTheSlot` parameter, true by default; a converted blow passes false, so its effect
+  grants the tag, removes nothing and sets no stacking fields. `RemoveEffectsGranting` itself is unchanged.
+  **THE ENGINE'S AUTHORITY GUARD IS KEPT.** `RemoveEffectsGranting` went through the engine's
+  `RemoveActiveEffectsWithGrantedTags`, which removes nothing unless `IsOwnerActorAuthoritative()` is true; the
+  one-at-a-time removal asks the same before it removes anything. Ruled by the coordinating session 2026-11-01: the
+  game is single-player today, but a guard the engine path had is not dropped silently. A test world's plain actors
+  are authoritative, as they were for the engine path, so no test reads it differently.
+- **`ApplyDamageOverTime`:** a converted blow skips the strongest-application branch, so it is always laid as its own
+  effect, and it no longer restarts `BleedMovingSeconds`.
+- **`ConvertIfActive` is unchanged**; a true answer now always means the blow is stored whole. Its comment says so.
+- **`UCataclysmDebuffs::Cleanse` and `ImmunityStep` are unchanged.** The enemy's bleed is now an effect of its own,
+  so both remove it and keep the converted damage by the mark they already read.
+
+### What the research settles, and what it does not
+
+Read 2026-11-01.
+
+| Game | Source | What it says |
+|---|---|---|
+| Path of Exile | https://poedb.tw/us/Petrified_Blood | "When taking Damage from Hits, 40% of Life loss below half Life is Prevented", then a share "is lost over 4 seconds". Silent on how hits combine |
+| Path of Exile | https://poedb.tw/us/Progenesis | "When Hit during effect, 25% of Life loss from Damage taken occurs over 4 seconds instead". Silent on how hits combine |
+| Path of Exile | https://www.pathofexile.com/forum/view-thread/3531073 | A PLAYER, not staff: "its EACH HIT that you take in separate 4 second timers". Unconfirmed by Grinding Gear Games |
+| Path of Exile | https://devtrackers.gg/pathofexile/p/f1854301-game-mechanics-q-amp-a-answers | Staff Q&A: Petrified Blood prevents life loss, not damage. Silent on combining |
+| Last Epoch | https://forum.lastepoch.com/t/new-affix-hit-taken-as-dot/60912 | A community SUGGESTION for such an affix, closed with no developer reply. No shipped mechanic was found |
+| Diablo III and IV | searches | Nothing equivalent found |
+| World of Warcraft (an MMO, outside the genre) | https://warcraft.wiki.gg/wiki/Stagger | The one shipped single-pool precedent found: new damage joins one pool and its 10 seconds restart. No per-tick formula given |
+
+**Refused to load:** `www.poewiki.net` ("Access Denied"), and the devtrackers post "Petrified Blood: a mathematical
+analysis" (HTTP 503).
+
+**Settled:** damage taken over time keeps its total and is paid over a fixed span. **Not settled by the genre:** a
+pool against one instance per hit; Path of Exile by a player's report and Stagger point opposite ways. R1 settles it
+from this game's own design.
+
+### Who reads the mark or the bleed tag, and what each answers now
+
+| Reader | Before | After |
+|---|---|---|
+| `while_bleeding`, Thirst for Pain (`UCataclysmDebuffs::IsBleeding`) | bleeding while the converted bleed ran | the same; also while an enemy's bleed runs beside it (R2) |
+| The bleed gate, `UCataclysmVitalAttributeSet` | converted ticks exempt; an enemy's sheltered time ticked exempt too | converted ticks exempt; an enemy's bleed always gated |
+| `BleedMovingSeconds` | restarted by a converted blow | restarted only by a bleed an application lays |
+| Every count of debuffs (`TagsOn`, `CountOn`: Battle-Scarred, Endurance in Suffering, Doctrine of Pain, Flagellant, Stigmatic, Doctrine Made Flesh, Vessel Unbroken) | one bleed | one bleed, however many converted blows and enemy bleeds run (R4) |
+| `UCataclysmDebuffs::Cleanse`, `ImmunityStep` | kept the converted bleed and any enemy bleed inside it | keep converted damage, remove the enemy's bleed |
+| `ailment_immunity` refusal | converted damage not refused | unchanged |
+| `UCataclysmDebuffs::RefusedByARow` | refuses converted damage too (ruled 2026-10-13) | unchanged |
+| Contagious Torment (`SpreadOnDebuffDamage`) | a converted tick is a debuff on you dealing damage | unchanged; it spreads a bleed at the designed figures |
+| `RunningAilmentOn` | could report a converted bleed | never reports converted damage. Its callers read dying enemies |
+| `RefreshOtherDamageOverTime`, `DealRemainingDamageOverTime` | act only where applier and carrier differ, or on enemies | unchanged; never reach converted damage |
+| `debuff_duration_taken` (Symphony of Pain, Vessel of Plagues) | adds ticks to converted damage | unchanged here; R3's follow-up |
+| `damage_over_time_taken` (Wound Channeling, Symphony of Pain, Vessel of Plagues) and `debuff_damage_suppressed` (Vessel Unbroken) | raise, lower or zero converted ticks | unchanged here; R3's follow-up |
+| The Blood Price's loose `Keyword.DoT.Bleed` | a loose tag, no effect | unchanged |
+| Bulwark's Hemorrhage (not built) | | a fixed-total bleed on an enemy; it will meet the strongest-application rule when built |
+
+### The next change, named and not built
+
+R3: the total of converted damage is fixed at conversion. The duration stat may not add ticks (today
+`UCataclysmDebuffs::DurationOn` lengthens a converted bleed and its tick stays the same size, so under Vessel of
+Plagues a blow of 100 takes seven ticks of 20, before the "50% more"); `debuff_damage_suppressed` may not zero it
+(today The Breaking Point with Vessel Unbroken takes nothing at all while the window is open); and
+`damage_over_time_taken` may not raise it. Conditions may still read it as a bleed or a debuff.
+
+### Tests
+
+**New, six.** Each Masochist stands still, so an enemy's bleed on it ticks nothing (#918) and what it loses is
+exactly the converted damage. Enemy bleeds are laid with `bScalesWithInstigator` false. Helpers are in a namespace of
+their own, `CataclysmConvertedSlotTest`: `CountBleedEffectsOn`, `CountConvertedBleedsOn`, `CarriesABleedLaidBy`,
+`HealthHeldBy`, `LayAnEnemysBleed`.
+
+- `Cataclysm.DamageConversion.ASmallerSecondBlowIsStoredBesideTheFirst`. 100 converted, then 50 at 0.5 s; 6.1 s in all.
+  "each converted blow runs as its own bleed: two" (2); "the Masochist took both blows, 150, five ticks each: ..."
+  (150); "and both have run out" (0). Before this change: 1 and 100 (the second only moved the first's end to 5.5 s).
+- `Cataclysm.DamageConversion.ALargerSecondBlowDoesNotEraseTheFirst`. 50, then 100 at 1.5 s; 7.0 s. "the larger blow
+  took nothing off: two converted bleeds run" (2); "the Masochist took both blows, 150: ..." (150). Before: 1 and 110.
+- `Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning`. 100 converted, then an enemy's
+  bleed of 40 a tick; 5.5 s. "the converted bleed still runs beside it" (1); "and the enemy's bleed runs too"; "the
+  still Masochist took the 100 it converted: ..." (100). Before: 0, true, 0.
+- `Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored`. An enemy's bleed of 40 a tick first,
+  `BleedMovingSeconds` written to 2.0, then 100 converted; 5.5 s. "the converted blow runs as a bleed of its own" (1);
+  "and the enemy's bleed still runs beside it"; "and the enemy's bleed kept its count of movement, 2.0"; "the still
+  Masochist took the 100 it converted: ..." (100). Before: 0, true, 0.0, 0.
+- `Cataclysm.DamageConversion.AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage`. 100 converted; at 3.2 s
+  ("set-up: three of its ticks have landed, 60") an enemy's bleed of 1 a tick for 5 s; 9.5 s. "the enemy's bleed is an
+  effect of its own: two bleeds run" (2); "the still Masochist took the 100 it converted and no more: ..." (100).
+  Before: 1 and 160.
+- `Cataclysm.Cleanse.ItRemovesAnEnemysWeakerBleedAndKeepsTheConvertedDamage`. The same, with a cleanse straight after
+  the enemy's bleed lands. "the cleanse removes one effect, the enemy's bleed" (1); "the enemy's bleed is gone"; "and
+  the converted damage is still carried" (1); "so the Masochist still reads as bleeding"; "the Masochist took the 100 it
+  converted and no more: ..." (100). Before: 0, true, 1, true, 160.
+
+**Read and unchanged:** the fifteen `Cataclysm.DamageConversion.*` tests before this change (none lays two bleeds);
+`Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself` (one marked bleed, kept by the mark);
+`Cataclysm.DebuffImmune.*` (one converted bleed, kept by the immunity step, refused to a holder);
+`Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment` (one converted bleed);
+`Cataclysm.ApplyStatus.ASecondBleedRefreshesAnEqualOrWeakerOneAndAStrongerOneReplacesIt` (no converted damage). No
+Python test reads the changed names; `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py` reads the cap
+and the gate's naming of it, which are unchanged.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The six new tests alone | 1 / 1 each, the six full names above. No other test name begins with any of them |
+| Whole Unreal suite | 4475 / 0: window w125B's 4469 measured on `29aaa7111`, this branch's base, + 6. Every existing test passes as before, none having been changed |
+| Python | 7195 of record, with JUnit: 7187 passed, 8 skipped, failures 0, errors 0 (no Python test added), and ruff clean |
+| G1, the slot's skip in `RunningApplicationOf`: `if (IsConvertedDamageNotYetTaken(Active))` broken to `if (IsConvertedDamageNotYetTaken(nullptr))`, prefix `Cataclysm.DamageConversion.AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage` | that one test fails on two assertions only: "the enemy's bleed is an effect of its own: two bleeds run" (to be 2, but it was 1: the enemy's bleed only refreshed the converted one) and "the still Masochist took the 100 it converted and no more: 160.00" (the converted end moved to 8.2 s, eight ticks of 20). The set-up lines, "three of its ticks have landed, 60" and "reads as standing" included, pass |
+| G2, the removal's skip in `TagAndReplaceAnyExisting`: `if (!IsConvertedDamageNotYetTaken(Holder->GetActiveGameplayEffect(Handle)))` broken to `if (!IsConvertedDamageNotYetTaken(nullptr))`, prefix `Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning` | that one test fails on two assertions only: "the converted bleed still runs beside it" (to be 1, but it was 0: the enemy's bleed took it off) and "the still Masochist took the 100 it converted: 0.00". "and the enemy's bleed runs too" and "reads as standing" pass |
+| G3, the strongest-application branch: `if (!bIsConvertedDamage && Running.bFound && Running.Stated >= Stated)` broken to `if ((!bIsConvertedDamage \|\| Instigator == Target) && Running.bFound && Running.Stated >= Stated)`, prefix `Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored` | that one test fails on two assertions only: "the converted blow runs as a bleed of its own" (to be 1, but it was 0: it only refreshed the enemy's) and "the still Masochist took the 100 it converted: 0.00". "and the enemy's bleed still runs beside it" passes, and so does "kept its count of movement, 2.0": the restart above the branch still skips a converted blow |
+| G4, the slot not taken: `/*bTakesTheSlot=*/!bIsConvertedDamage);` broken to `/*bTakesTheSlot=*/!bIsConvertedDamage \|\| Instigator == Target);`, prefix `Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored` | that one test fails on one assertion only: "and the enemy's bleed still runs beside it" (the converted blow took it off). "runs as a bleed of its own" (1), "kept its count, 2.0" and "took the 100 it converted" (the enemy's bleed is gated either way) pass |
+| G5, the restart skipped: `if (EffectTag == UCataclysmDebuffs::BleedTag() && !bIsConvertedDamage)` broken to `if (EffectTag == UCataclysmDebuffs::BleedTag() && (!bIsConvertedDamage \|\| Instigator == Target))`, prefix `Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored` | that one test fails on one assertion only: "and the enemy's bleed kept its count of movement, 2.0" (0.0). The others pass |
+| G6, G1 and G3 together, the two lines that each alone keep a second converted blow apart, prefix `Cataclysm.DamageConversion.ASmallerSecondBlowIsStoredBesideTheFirst` | that one test fails on two assertions only: "each converted blow runs as its own bleed: two" (to be 2, but it was 1) and "the Masochist took both blows, 150, five ticks each: 100.00" (the second only moved the first's end to 5.5 s). "and both have run out" (0) and the set-up lines pass. Neither break alone fails it: G1 alone leaves the converted blow skipping the branch, and G3 alone leaves the first converted blow hidden from the second |
+
+Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no
+failure. Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, its prefix the one full
+test name given, and **each broken half's log kept**, since the predictions are at the assertion. G3, G4 and G5 share a
+test and fail different assertions of it. None runs while a Python suite runs (issue #1630).
+
+### Run
+
+Window converted-w1, 2026-11-01, on the registration commit `1e77f2847`, run by the coordinating session with the
+writing session's scripts (`prechecks_c2275.py`, `run_c2275.py`, `prove_c2275.py`, adapted from necrosis-w1's). The
+runner refuses the lock unless the pre-checks all pass, the head is exactly `1e77f284` and the tracked tree is clean;
+among the proofs it goes on past an unproved one and stops only on a changed source hash or a run that did not report.
+
+**Attempt 1, runner process 19372. STOPPED at the third new test alone; nothing it measured is in doubt, and nothing
+after it ran.** Pre-checks at 01:58:54 local, all passing: `development` at `29aaa7111` with its CI and Unreal runs
+successful, no run in progress or queued, the lock free, no build or editor process, no open pull request, no
+simulation process, 11278 MB free. Lock converted-w1 taken. `Build: Succeeded - target already up to date, 0 actions,
+nothing compiled`. The first two new tests alone: `1 tests performed, 1 succeeded, 0 failed` each. The third,
+`Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning`: its engine log records
+`Test Completed. Result={Success}` at 08:00:00.190 UTC, then its events, and **ends there**, with no `TestExit` line and
+no closing of the log, where the second test's log has `LogExit: Display: **** TestExit: Automation Test Queue Empty
+****`. The wrapper printed `Tests: unknown tests performed, 1 succeeded, 0 failed` and exited 1; the runner stopped and
+released the lock.
+
+- **Known:** the test itself passed before the editor ended; the editor ended about a second after it; that second
+  was 08:00:00 UTC, 02:00 local, the moment the clocks went back an hour; the coordinating session checked the other
+  sessions' scripts and none was running.
+- **Not known:** why the editor ended. The clock change is a coincidence in time and nothing more is shown. **This is
+  the second such ending**: necrosis-w1's P5 broken half was the first (the #920 entry below).
+- Attempt 1's files are kept beside the scripts, in `c2275_attempt1/`.
+
+**Attempt 2, runner process 15400, to the end.** Pre-checks at 01:01:34 local (after the clocks went back), all
+passing: the same readings, 11170 MB free. Lock converted-w1 taken, and released at the end.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The six new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4475 tests performed, 4475 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4475 tests in the tree at 1e77f2847; 4475 performed, gap 0; every declared test was reported by the run" |
+| Memory | `CataclysmTestMemorySummary: tests=5082 peak_used_virtual_mb=8942 final_used_virtual_mb=8616 collections=3436 collection_total_s=117.961 worlds_at_last_collection=2` |
+| Python | `7187 passed, 8 skipped in 195.72s`; JUnit tests 7195, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| G1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| G2 | PROVED: with the break in, `1 failed: AnEnemysStrongerBleedLeavesTheConvertedDamageRunning`; restored, 1 succeeded |
+| G3 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G4 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G5 | PROVED: with the break in, `1 failed: ABlowConvertedDuringAnEnemysStrongerBleedIsStored`; restored, 1 succeeded |
+| G6 | PROVED: with the break in, `1 failed: ASmallerSecondBlowIsStoredBesideTheFirst`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, its anchors matched once, its run reported, and the
+source hash was the same before and after it.
+
+**THE PREDICTIONS ARE CONFIRMED AT THE ASSERTION.** Each broken half's engine log was kept by the tester hook
+(`c2275_G<n>_run1.log`), and every failed assertion in it is listed here. No prediction was wrong: each proof failed on
+exactly the assertions registered, with the figures traced, and on nothing else. Each restored half's log holds no
+failed assertion.
+
+| Proof | Failed assertions in the broken half | Against the registration |
+|---|---|---|
+| G1 | "the enemy's bleed is an effect of its own: two bleeds run" (2, 1); "the still Masochist took the 100 it converted and no more: 160.00" (100, 160) | exactly the two predicted, 160 as traced (the converted end moved to 8.2 s) |
+| G2 | "the converted bleed still runs beside it" (1, 0); "the still Masochist took the 100 it converted: 0.00" (100, 0) | exactly the two predicted |
+| G3 | "the converted blow runs as a bleed of its own" (1, 0); "the still Masochist took the 100 it converted: 0.00" (100, 0) | exactly the two predicted; "kept its count of movement, 2.0" passed, as traced |
+| G4 | "and the enemy's bleed still runs beside it" (to be true) | exactly the one predicted |
+| G5 | "and the enemy's bleed kept its count of movement, 2.0" (2, 0) | exactly the one predicted |
+| G6 | "each converted blow runs as its own bleed: two" (2, 1); "the Masochist took both blows, 150, five ticks each: 100.00" (150, 100) | exactly the two predicted |
+
+The other error lines in those logs are the engine's start-up complaint about `GameFeatureData` in the asset manager
+settings, which every run's log carries, and the `Result={Fail}` line of the test named.
+
+---
+
 ## 2026-11-01 — The game opens on the character select screen: its asset, the front end's level, and the start map (#753, select-screen step 3b)
 
 **Affects:** `tools/generate_interface_assets.py`, which makes `WBP_CharacterSelect` (`make_character_select`) and
