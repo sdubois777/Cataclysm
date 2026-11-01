@@ -2743,6 +2743,17 @@ public:
 	float BleedMovingSeconds = 0.0f;
 
 	/**
+	 * The health the Necrosis this character carries has denied it so far, owed as damage. Issue #920, ruled by the
+	 * coordinating session 2026-10-31: a carrier of Necrosis is healed by nothing, and the total denied while the
+	 * Necrosis held is dealt over the 5 seconds after it ends, for any reason it ends. Added to by
+	 * `UCataclysmRegeneration::TopUp` in place of each heal of health it refuses; emptied by
+	 * `UCataclysmSkillEffects`' listener on the Necrosis's removal, which lays the total as damage over time unless the
+	 * carrier is dead. A Necrosis only replaced by a stronger one has not ended, and the total stays. One Necrosis at a
+	 * time, so the total belongs to the carrier, as `BleedMovingSeconds` does. Not written to a save.
+	 */
+	float NecrosisDeniedHealing = 0.0f;
+
+	/**
 	 * Whether a movement sample has looked at this character yet.
 	 * Issue #41, slice 2.
 	 */

@@ -158,6 +158,8 @@ public:
 	 *   UNTIL 2026-10-06 THIS LEFT EVERY EFFECT THE CHARACTER ITSELF INSTIGATED. It was narrowed to the stamped
 	 *   bleed: anything else a character lays on themselves is removed, a drawback a row lays on its own wearer
 	 *   and what a zone lays on its own owner included.
+	 * - THE HEALING A NECROSIS DENIED, BEING DEALT (`UCataclysmSkillEffects::DeniedHealingDataName`). Issue #920,
+	 *   ruled 2026-10-31: the denial has already happened.
 	 *
 	 * NO IMMUNITY AFTERWARDS, as ruled: a cleanse every few seconds with even a short immunity would make its wearer
 	 * immune for much of a fight.
@@ -254,6 +256,19 @@ public:
 	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
 	 */
 	static constexpr float BleedMovingSecondsCap = 4.0f;
+
+	/**
+	 * `Keyword.DoT.Necrosis`, or an invalid tag if the vocabulary has lost it. Requested by name, as `BleedTag` is.
+	 * Issue #920: a character carrying it is healed by nothing, see `UCataclysmRegeneration::TopUp`.
+	 */
+	static FGameplayTag NecrosisTag();
+
+	/**
+	 * Over how many seconds a Necrosis deals the healing it denied, once it ends: "denies the affected target all
+	 * healing for that time, dealing the denied amount as damage over the following 5 seconds" (the DoTs sheet,
+	 * `DoT_Necrosis`). Issue #920, ruled by the coordinating session 2026-10-31.
+	 */
+	static constexpr float NecrosisDeniedHealingSeconds = 5.0f;
 
 	/**
 	 * The parent of every damage over time, `Keyword.DoT`. Issue #1815, for

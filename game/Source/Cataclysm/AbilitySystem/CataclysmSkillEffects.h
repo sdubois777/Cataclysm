@@ -2186,6 +2186,15 @@ public:
 	static const TCHAR* ConvertedDamageDataName;
 
 	/**
+	 * The name the damage over time dealing the healing a Necrosis denied is stamped under, with any value above
+	 * nought. Issue #920, ruled by the coordinating session 2026-10-31. A plain name and no gameplay tag, as
+	 * `ConvertedDamageDataName` is, and a mark of its own rather than that one, which the bleed gate and other code
+	 * read. Read by `UCataclysmDebuffs::Cleanse`, which keeps the effect, since the denial has already happened, and by
+	 * `RefreshOtherDamageOverTime`, which does not lengthen it, since that would deal more than was denied.
+	 */
+	static const TCHAR* DeniedHealingDataName;
+
+	/**
 	 * The name an effect is stamped under when its blow is the consequence of a death, with any value above
 	 * nought. Ruled 2026-10-07. A plain name and no gameplay tag, as `ConvertedDamageDataName` is. Read by
 	 * `UCataclysmCombatEvents::NoteBlow`. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`.

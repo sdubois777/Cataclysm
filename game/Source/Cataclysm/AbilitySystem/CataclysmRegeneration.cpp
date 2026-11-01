@@ -5,6 +5,8 @@
 // gameplay attribute it was folded into. Issue #1038.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the Necrosis tag, whose carrier is healed by nothing. Issue #920.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For a patch of burning ground that heals whoever left it faster while they
@@ -151,6 +153,34 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		if (Gain <= 0.0f)
 		{
 			return;
+		}
+
+		// AND A CARRIER OF NECROSIS IS HEALED BY NOTHING, AND WHAT WOULD HAVE COME BACK IS OWED AS DAMAGE. Issue #920,
+		// ruled by the coordinating session 2026-10-31: "denies the affected target all healing for that time, dealing
+		// the denied amount as damage over the following 5 seconds". Healing is everything that comes through here for
+		// health (Q5), so regeneration, leech, potions, a creature's or a floor's heal and a healing skill alike; mana
+		// and the energy shield are not healing and are untouched. The total is dealt when the Necrosis ends, by the
+		// listener `UCataclysmSkillEffects::ApplyDamageOverTime` puts on it.
+		//
+		// WHAT IS OWED IS WHAT WOULD HAVE BEEN RESTORED, after the two multipliers above (the ruling) and held to the
+		// room under the healing ceiling that was not already denied: the carrier's health as it would stand had every
+		// heal denied before this one arrived. So a carrier at full health owes nothing for its regeneration, and one
+		// a hundred short owes at most a hundred however many heals it is offered. A judgement by the writing session.
+		//
+		// BEFORE THE OVERHEAL AND FERVOUR BELOW, so a denied heal leaves no overheal and empties no Fervour: nothing
+		// came back. A heal a held swing refused never reaches here and is not owed.
+		if (UCataclysmAbilitySystemComponent* Necrotic = Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))
+		{
+			const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+			if (Necrosis.IsValid() && Necrotic->HasMatchingGameplayTag(Necrosis))
+			{
+				const float Room = FMath::Max(0.0f,
+					HealthHealingCeiling(AbilitySystem, CeilingShare)
+					- AbilitySystem.GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+					- Necrotic->NecrosisDeniedHealing);
+				Necrotic->NecrosisDeniedHealing += FMath::Min(Gain, Room);
+				return;
+			}
 		}
 	}
 
