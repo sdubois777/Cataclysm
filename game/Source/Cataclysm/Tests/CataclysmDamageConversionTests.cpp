@@ -739,6 +739,393 @@ CATACLYSM_CONVERSION_TEST(FCataclysmConvertedBleedIgnoresTheMovementGateTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Converted damage holds no bleed slot. Issue #2275.
+// ---------------------------------------------------------------------------
+
+/**
+ * EACH CONVERTED BLOW IS ITS OWN EFFECT, BESIDE EVERY OTHER BLEED. Issue #2275, ruled by the coordinating session
+ * 2026-11-01. "Converts all damage you take into Bleeding over 5 seconds" is said of each blow, and the design's
+ * health-debt paragraph is "the same rule with the sign reversed" as leech, where "Each hit starts its own 3-second
+ * payout". Until then the converted bleed shared the one bleed slot every bleed on a target shares: a converted blow
+ * no stronger than a running bleed only refreshed it and was lost, a stronger enemy bleed took the converted one off,
+ * and an enemy's weaker bleed lived on as extra converted time, which a cleanse kept and the movement gate exempted.
+ *
+ * EVERY TEST BELOW KEEPS ITS MASOCHIST STANDING STILL. A plain actor is never sampled, so `IsMoving` stays false and
+ * an enemy's bleed on it ticks nothing (issue #918). What a Masochist loses is then exactly the converted damage, and
+ * any enemy bleed's time sheltering inside a converted one shows as converted ticks that should not be there.
+ *
+ * EACH ENEMY BLEED IS LAID WITH `bScalesWithInstigator` FALSE, so its figure is the one written here and not one the
+ * enemy's damage over time stats made of it.
+ */
+namespace CataclysmConvertedSlotTest
+{
+	using CataclysmDamageConversionTest::FScopedBleeder;
+
+	/** How many effects granting the bleed tag run on this character, converted ones included. */
+	int32 CountBleedEffectsOn(const UAbilitySystemComponent* System)
+	{
+		FGameplayTagContainer Bleeding;
+		Bleeding.AddTag(UCataclysmDebuffs::BleedTag());
+		return System
+			? System->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Bleeding)).Num()
+			: 0;
+	}
+
+	/** How many of those carry the converted-damage mark, `UCataclysmSkillEffects::ConvertedDamageDataName`. */
+	int32 CountConvertedBleedsOn(const UAbilitySystemComponent* System)
+	{
+		if (!System)
+		{
+			return 0;
+		}
+		FGameplayTagContainer Bleeding;
+		Bleeding.AddTag(UCataclysmDebuffs::BleedTag());
+		int32 Converted = 0;
+		for (const FActiveGameplayEffectHandle& Handle :
+				 System->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Bleeding)))
+		{
+			const FActiveGameplayEffect* Active = System->GetActiveGameplayEffect(Handle);
+			if (Active && Active->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+			{
+				++Converted;
+			}
+		}
+		return Converted;
+	}
+
+	/** Whether a bleed this applier laid runs on the character. */
+	bool CarriesABleedLaidBy(const UAbilitySystemComponent* System, const AActor* Applier)
+	{
+		if (!System)
+		{
+			return false;
+		}
+		FGameplayTagContainer Bleeding;
+		Bleeding.AddTag(UCataclysmDebuffs::BleedTag());
+		for (const FActiveGameplayEffectHandle& Handle :
+				 System->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Bleeding)))
+		{
+			const FActiveGameplayEffect* Active = System->GetActiveGameplayEffect(Handle);
+			if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The health a test character holds now. */
+	float HealthHeldBy(const FScopedBleeder& Character)
+	{
+		return Character.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+
+	/** An enemy's ordinary bleed of this much a tick for 5 seconds, laid on the Masochist. */
+	bool LayAnEnemysBleed(const FScopedBleeder& Enemy, const FScopedBleeder& Masochist, float PerTick)
+	{
+		return UCataclysmSkillEffects::ApplyDamageOverTime(Enemy.Actor, Masochist.Actor, PerTick, 5.0f,
+			UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false);
+	}
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmSmallerSecondBlowIsStoredTest,
+	"Cataclysm.DamageConversion.ASmallerSecondBlowIsStoredBesideTheFirst")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// A BLOW OF 100, THEN ONE OF 50 HALF A SECOND LATER. Until issue #2275 the second, at 10 a second against the
+	// first's 20, only refreshed the first: its end moved from 5.0 to 5.5 s, it still ticked five times for 100, and
+	// the 50 was reported converted and taken off nothing. Now each runs its own five ticks: 100 and 50.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the first blow, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+		CataclysmTestWorld::RunClock(World, 0.5f);
+		TestTrue(TEXT("set-up: the window is still open half a second on"), Masochist.IsConverting());
+		TestEqual(TEXT("set-up: and the second, 50, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 50.0f, /*bIsAlreadyDamageOverTime=*/false), 50.0f, 0.01f);
+		TestEqual(TEXT("each converted blow runs as its own bleed: two"),
+			CountConvertedBleedsOn(Masochist.AbilitySystem), 2);
+
+		CataclysmTestWorld::RunClock(World, 5.6f);
+
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the Masochist took both blows, 150, five ticks each: %.2f"), Took),
+			Took, 150.0f, 0.01f);
+		TestEqual(TEXT("and both have run out"), CountConvertedBleedsOn(Masochist.AbilitySystem), 0);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmLargerSecondBlowKeepsTheFirstTest,
+	"Cataclysm.DamageConversion.ALargerSecondBlowDoesNotEraseTheFirst")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// A BLOW OF 50, THEN ONE OF 100 A SECOND AND A HALF LATER. Until issue #2275 the second, at 20 a second against
+	// the first's 10, replaced the first: the first had ticked once, for 10, and its other 40 were lost, so the
+	// Masochist took 110 of 150. Now the first runs on beside the second.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the first blow, 50, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 50.0f, /*bIsAlreadyDamageOverTime=*/false), 50.0f, 0.01f);
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		TestTrue(TEXT("set-up: the window is still open a second and a half on"), Masochist.IsConverting());
+		TestEqual(TEXT("set-up: and the second, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+		TestEqual(TEXT("the larger blow took nothing off: two converted bleeds run"),
+			CountConvertedBleedsOn(Masochist.AbilitySystem), 2);
+
+		CataclysmTestWorld::RunClock(World, 5.5f);
+
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the Masochist took both blows, 150: %.2f"), Took), Took, 150.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmStrongerEnemyBleedLeavesConvertedDamageTest,
+	"Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// A BLOW OF 100 CONVERTED, 20 A TICK; THEN AN ENEMY'S BLEED OF 40 A TICK. Until issue #2275 the enemy's, the
+	// stronger, took the converted bleed off and what it had left was lost; on a Masochist standing still the enemy's
+	// bleed ticks nothing, so the Masochist took nothing at all. Now the two run side by side: the converted 100 is
+	// taken whole, and the enemy's bleed is gated as any bleed on a still target is.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		const FScopedBleeder Enemy(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the blow, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+		TestTrue(TEXT("set-up: the enemy's stronger bleed lands"), LayAnEnemysBleed(Enemy, Masochist, 40.0f));
+
+		TestEqual(TEXT("the converted bleed still runs beside it"), CountConvertedBleedsOn(Masochist.AbilitySystem), 1);
+		TestTrue(TEXT("and the enemy's bleed runs too"), CarriesABleedLaidBy(Masochist.AbilitySystem, Enemy.Actor));
+
+		CataclysmTestWorld::RunClock(World, 5.5f);
+
+		TestFalse(TEXT("set-up: the Masochist reads as standing, so the enemy's bleed ticks nothing"),
+			Masochist.AbilitySystem->IsMoving());
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the still Masochist took the 100 it converted: %.2f"), Took), Took, 100.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmBlowConvertedDuringAnEnemysBleedTest,
+	"Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// AN ENEMY'S BLEED OF 40 A TICK FIRST, WITH TWO OF ITS FOUR SECONDS OF MOVEMENT SPENT; THEN A BLOW OF 100
+	// CONVERTED, 20 A TICK. Until issue #2275 the converted blow, the weaker, only refreshed the enemy's bleed: the 100
+	// was reported converted and taken off nothing, and the enemy's bleed was given its four seconds back. Now the
+	// blow is stored in a bleed of its own, the enemy's bleed runs on beside it, and its count is left alone.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		const FScopedBleeder Enemy(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting())
+			|| !TestTrue(TEXT("set-up: the enemy's bleed lands"), LayAnEnemysBleed(Enemy, Masochist, 40.0f)))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		Masochist.AbilitySystem->BleedMovingSeconds = 2.0f;
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the blow, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+
+		TestEqual(TEXT("the converted blow runs as a bleed of its own"),
+			CountConvertedBleedsOn(Masochist.AbilitySystem), 1);
+		TestTrue(TEXT("and the enemy's bleed still runs beside it"),
+			CarriesABleedLaidBy(Masochist.AbilitySystem, Enemy.Actor));
+		TestEqual(TEXT("and the enemy's bleed kept its count of movement, 2.0"),
+			Masochist.AbilitySystem->BleedMovingSeconds, 2.0f, 0.001f);
+
+		CataclysmTestWorld::RunClock(World, 5.5f);
+
+		TestFalse(TEXT("set-up: the Masochist reads as standing, so the enemy's bleed ticks nothing"),
+			Masochist.AbilitySystem->IsMoving());
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the still Masochist took the 100 it converted: %.2f"), Took), Took, 100.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmWeakerEnemyBleedDoesNotLengthenTest,
+	"Cataclysm.DamageConversion.AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// A BLOW OF 100 CONVERTED, 20 A TICK FOR 5 SECONDS; AT 3.2 SECONDS AN ENEMY'S BLEED OF 1 A TICK FOR 5. Until issue
+	// #2275 the enemy's, the weaker, only refreshed the converted bleed, moving its end from 5.0 to 8.2 s: it ticked
+	// eight times at the converted 20, exempt from the movement gate, and the Masochist took 160 for a blow of 100.
+	// Now the enemy's bleed is its own effect, gated on a still Masochist, and the converted one ends at 5.0 s.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		const FScopedBleeder Enemy(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the blow, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+		CataclysmTestWorld::RunClock(World, 3.2f);
+		TestEqual(TEXT("set-up: three of its ticks have landed, 60"), Before - HealthHeldBy(Masochist), 60.0f, 0.01f);
+		TestTrue(TEXT("set-up: the enemy's weaker bleed lands"), LayAnEnemysBleed(Enemy, Masochist, 1.0f));
+
+		TestEqual(TEXT("the enemy's bleed is an effect of its own: two bleeds run"),
+			CountBleedEffectsOn(Masochist.AbilitySystem), 2);
+
+		CataclysmTestWorld::RunClock(World, 6.3f);
+
+		TestFalse(TEXT("set-up: the Masochist reads as standing, so the enemy's bleed ticks nothing"),
+			Masochist.AbilitySystem->IsMoving());
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the still Masochist took the 100 it converted and no more: %.2f"), Took),
+			Took, 100.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_CONVERSION_TEST(FCataclysmCleanseRemovesTheEnemysBleedTest,
+	"Cataclysm.Cleanse.ItRemovesAnEnemysWeakerBleedAndKeepsTheConvertedDamage")
+{
+	using namespace CataclysmDamageConversionTest;
+	using namespace CataclysmConvertedSlotTest;
+
+	// AS THE TEST ABOVE, WITH A CLEANSE STRAIGHT AFTER THE ENEMY'S BLEED LANDS. Until issue #2275 the enemy's bleed
+	// had no effect of its own, so the cleanse removed nothing: the converted bleed it lived in is kept by its mark
+	// (ruled 2026-10-06), and the Masochist took 160 for a blow of 100. Now the cleanse removes the enemy's bleed and
+	// keeps the converted damage, which deals its 100 and no more.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+		const FScopedBleeder Enemy(World);
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("set-up: the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		const float Before = HealthHeldBy(Masochist);
+
+		TestEqual(TEXT("set-up: the blow, 100, is converted whole"),
+			Conversion::ConvertIfActive(Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f);
+		CataclysmTestWorld::RunClock(World, 3.2f);
+		TestTrue(TEXT("set-up: the enemy's weaker bleed lands"), LayAnEnemysBleed(Enemy, Masochist, 1.0f));
+
+		TestEqual(TEXT("the cleanse removes one effect, the enemy's bleed"), UCataclysmDebuffs::Cleanse(Masochist.Actor), 1);
+		TestFalse(TEXT("the enemy's bleed is gone"), CarriesABleedLaidBy(Masochist.AbilitySystem, Enemy.Actor));
+		TestEqual(TEXT("and the converted damage is still carried"), CountConvertedBleedsOn(Masochist.AbilitySystem), 1);
+		TestTrue(TEXT("so the Masochist still reads as bleeding"), UCataclysmDebuffs::IsBleeding(Masochist.AbilitySystem));
+
+		CataclysmTestWorld::RunClock(World, 6.3f);
+
+		const float Took = Before - HealthHeldBy(Masochist);
+		TestEqual(FString::Printf(TEXT("the Masochist took the 100 it converted and no more: %.2f"), Took),
+			Took, 100.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_CONVERSION_TEST
 
 #endif  // WITH_AUTOMATION_TESTS
