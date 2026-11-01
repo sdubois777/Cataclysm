@@ -256,6 +256,19 @@ public:
 	static constexpr float BleedMovingSecondsCap = 4.0f;
 
 	/**
+	 * `Keyword.DoT.Necrosis`, or an invalid tag if the vocabulary has lost it. Requested by name, as `BleedTag` is.
+	 * Issue #920: a character carrying it is healed by nothing, see `UCataclysmRegeneration::TopUp`.
+	 */
+	static FGameplayTag NecrosisTag();
+
+	/**
+	 * Over how many seconds a Necrosis deals the healing it denied, once it ends: "denies the affected target all
+	 * healing for that time, dealing the denied amount as damage over the following 5 seconds" (the DoTs sheet,
+	 * `DoT_Necrosis`). Issue #920, ruled by the coordinating session 2026-10-31.
+	 */
+	static constexpr float NecrosisDeniedHealingSeconds = 5.0f;
+
+	/**
 	 * The parent of every damage over time, `Keyword.DoT`. Issue #1815, for
 	 * "enemies affected by a DoT". The same branch `DebuffRootNames` counts.
 	 */

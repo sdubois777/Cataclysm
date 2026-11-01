@@ -272,6 +272,12 @@ FGameplayTag UCataclysmDebuffs::BleedTag()
 		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmDebuffs::NecrosisTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+}
+
 FGameplayTag UCataclysmDebuffs::CrippleTag()
 {
 	return UGameplayTagsManager::Get().RequestGameplayTag(

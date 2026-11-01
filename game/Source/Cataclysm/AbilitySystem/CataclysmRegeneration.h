@@ -352,6 +352,12 @@ public:
 	 * without naming a source, so regeneration and leech both have to count and
 	 * both arrive here.
 	 *
+	 * AND IT IS WHERE NECROSIS DENIES HEALING, since issue #920, for the same
+	 * reason: a carrier of `Keyword.DoT.Necrosis` gains no health here, and what
+	 * it would have gained is added to
+	 * `UCataclysmAbilitySystemComponent::NecrosisDeniedHealing`, to be dealt as
+	 * damage over the 5 seconds after the Necrosis ends. Health only.
+	 *
 	 * @param Gain     how much to add before the maximum is considered. A gain
 	 *                 that overflows the pool restores only what fits, and only
 	 *                 what fits removes Fervour
