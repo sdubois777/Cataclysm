@@ -1745,7 +1745,7 @@ namespace
 		{
 			return;
 		}
-		UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Removal.OwningASC);
+		UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Removal.OwningASC.Get());
 		if (!Carrier)
 		{
 			return;
