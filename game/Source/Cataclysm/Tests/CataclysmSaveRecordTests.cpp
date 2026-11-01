@@ -923,7 +923,8 @@ bool FCataclysmSaveMigratesToOneClassPerDamageType::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("it arrives at version 3"), Most->SchemaVersion, 3);
+	// THE CURRENT VERSION, NOT 3: the chain runs on past this step to the last one. Issue #1472 found it written as 3.
+	TestEqual(TEXT("it arrives at the current version"), Most->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
 	TestEqual(TEXT("the Demonic tree with the most points and the War tree are kept"),
 		KeptNodes(*Most),
 		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));

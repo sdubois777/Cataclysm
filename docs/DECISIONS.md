@@ -19,6 +19,14 @@ character record at schema version 4** (`UCataclysmCharacterSave::SchemaVersionN
 
 ### SAID FIRST
 
+- **WINDOW w131'S FOURTH RUNNER FAILED ONE EXISTING ASSERTION THAT WROTE "THE CURRENT VERSION" AS 3.** On c71e8ba25 the
+  whole suite ran 4504, 4503 passed, and `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType` failed one
+  assertion: "Expected 'it arrives at version 3' to be 3, but it was 4." (`CataclysmSaveRecordTests.cpp` line 926). It
+  reads `Character_v2.json` through `FromJson`, which now runs the chain on to version 4; its tree-keeping assertions all
+  passed. **My sweep missed it** because it looked for tests that set a version and not for tests that compare one. The
+  six tests alone passed 1 / 1 each, including "TIER MIGRATED: the step 1 (), wrote the tier yes at 1; the record at
+  version 4, tier 1; the rest kept"; Python 7220 passed; "Test saves: 712 written and deleted, 0 left behind". No proof
+  ran. Changed as ruled, and the sweep redone (below).
 - **WINDOW w131'S THIRD RUNNER FAILED AN EXISTING GUARD, AND THE FIX IS A SCHEMA VERSION.** On 268b53b2e the whole suite
   ran 4503, 4502 passed, and `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` failed: "Character_v3.json
   and the record it loads into disagree at the record.DifficultyTier is on the second side only. Either the fixture is
@@ -121,6 +129,21 @@ character record at schema version 4** (`UCataclysmCharacterSave::SchemaVersionN
 | `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` | reads `Character_v3.json`; "it says it is version 3", `SchemaVersion` == 3 | reads `Character_v4.json`; "it says it is version 4", `SchemaVersion` == 4; **added** "the difficulty tier in the file", `DifficultyTier` == 2 |
 | `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear` | reads `Character_v3.json` | reads `Character_v4.json`; no assertion changed |
 | `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne` (this change's own) | its JSON at `SchemaVersionNow` | its JSON at 3; no assertion changed |
+| `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType` (after w131's fourth runner) | "it arrives at version 3", `SchemaVersion` == 3 | "it arrives at the current version", `SchemaVersion` == `UCataclysmCharacterSave::SchemaVersionNow`, as `ACharacterFileFromBeforeAttributesStillLoads` words the same check |
+
+**The second sweep, for a version READ or COMPARED** (ruled after w131's fourth runner): in
+`game/Source/Cataclysm/Tests/`, `SchemaVersion` near a literal 1 to 4, assertion text naming "version N", "to be 3", and
+every `TestEqual` on a record's `SchemaVersion`. Each hit:
+
+| Where | What it is | Kept or changed |
+|---|---|---|
+| `CataclysmSaveRecordTests.cpp` 926 | a character read through the whole chain | **changed** to `SchemaVersionNow`, above |
+| `CataclysmSaveRecordTests.cpp` 605 | the version 4 fixture's own stated version | kept at 4, as ruled: it is what the file says |
+| `CataclysmSaveRecordTests.cpp` 419, 821 | a character at the current version | already `SchemaVersionNow` |
+| `CataclysmSaveRecordTests.cpp` 782, 818 | the version 3 file before its step | kept: a fixed historical version |
+| `CataclysmSaveLoadTests.cpp` 7943 | the record-before-the-tier input | kept at 3: a fixed historical version |
+| `CataclysmSaveMigrationTests.cpp` 225, 229, 233, 283, 289, 297, 348, 355, 363, 398, 431, 468, 484 | chains built by the test, or the example record, each at its own numbers | kept: not the character record |
+| `CataclysmSaveStorageTests.cpp` 192, 213, 238, 239, 254, 583 | the example record, at 3 | kept: not the character record |
 
 **Swept and unchanged:** every other test sets a character's version from `UCataclysmCharacterSave::SchemaVersionNow`
 rather than a number; the two literal `"SchemaVersion": 3` strings in `CataclysmSaveStorageTests.cpp` are the example
