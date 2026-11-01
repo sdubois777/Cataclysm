@@ -2058,8 +2058,9 @@ public:
 	 *
 	 * @param OnlyGranting  only effects granting this tag, e.g. a Necrosis; an
 	 *                      invalid tag takes every one
-	 * @param bEndEach      remove each effect once its share is dealt
-	 * @return how many effects were dealt
+	 * @param bEndEach      remove each effect once its share is dealt, and a bleed whose four seconds of
+	 *                      movement are spent too, which pays nothing (issue #918, ruled 2026-10-31)
+	 * @return how many effects were dealt; a spent bleed ended without pay is not counted
 	 */
 	static int32 DealRemainingDamageOverTime(const AActor* Owner, AActor* Target, float Percent,
 											 const FGameplayTag& OnlyGranting, bool bEndEach);

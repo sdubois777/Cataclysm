@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -202,6 +203,12 @@ CATACLYSM_TEST(FCataclysmRemainingAfterRealTicksTest,
 	// TEN A TICK FOR TEN SECONDS, two and a half seconds in: two ticks have
 	// landed and eight are left, so the burst is 80 and the effect is gone. A
 	// SECOND ONE, REFRESHED to ten seconds at the same moment, has ten left.
+	//
+	// AND A SPENT BLEED OF THE WEARER'S BESIDE THE POISON, which the burst ends
+	// without paying. Issue #918, ruled 2026-10-31. The target is a plain actor
+	// that never moves, so the bleed deals nothing and the poison's figures are
+	// what they were; its four seconds of movement are written as spent by hand,
+	// so it has nothing left to pay, and its window still has seven and a half.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -217,12 +224,16 @@ CATACLYSM_TEST(FCataclysmRemainingAfterRealTicksTest,
 		const FFighter Wearer(World);
 		const FFighter Plain(World);
 		const FFighter Refreshed(World);
+		const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
 		if (!TestTrue(TEXT("set-up: a poison lands"), TenATick(Wearer.Actor, Plain.Actor, Poison))
-			|| !TestTrue(TEXT("set-up: and a second"), TenATick(Wearer.Actor, Refreshed.Actor, Poison)))
+			|| !TestTrue(TEXT("set-up: and a second"), TenATick(Wearer.Actor, Refreshed.Actor, Poison))
+			|| !TestTrue(TEXT("set-up: and the wearer's bleed on the first"),
+				Bleed.IsValid() && TenATick(Wearer.Actor, Plain.Actor, Bleed)))
 		{
 			return false;
 		}
 		CataclysmTestWorld::RunClock(World, 2.5f);
+		Plain.AbilitySystem->BleedMovingSeconds = UCataclysmDebuffs::BleedMovingSecondsCap;
 		if (!TestEqual(TEXT("set-up: two ticks of ten have landed"), HealthOf(Plain.Actor), 980.0f, 0.01f))
 		{
 			return false;
@@ -239,6 +250,8 @@ CATACLYSM_TEST(FCataclysmRemainingAfterRealTicksTest,
 				Wearer.Actor, Plain.Actor, 100.0f, FGameplayTag(), /*bEndEach=*/true), 1);
 		TestEqual(TEXT("and deals its eighty at once"), HealthOf(Plain.Actor), 900.0f, 0.01f);
 		TestFalse(TEXT("and the poison is gone"), Running(Plain.Actor, Poison).IsValid());
+		TestFalse(TEXT("and the spent bleed, which paid nothing and was not counted, is ended too"),
+			Running(Plain.Actor, Bleed).IsValid());
 
 		CataclysmTestWorld::RunClock(World, 3.0f);
 		TestEqual(TEXT("so nothing ticks after it"), HealthOf(Plain.Actor), 900.0f, 0.01f);

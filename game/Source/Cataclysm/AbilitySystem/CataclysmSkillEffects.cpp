@@ -3305,6 +3305,7 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		float Amount = 0.0f;
 	};
 	TArray<FBurst> Bursts;
+	TArray<FActiveGameplayEffectHandle> SpentBleeds;
 	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
 	{
 		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
@@ -3321,12 +3322,27 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		Burst.Amount = RemainingDamageOverTime(Defender, Handle) * Percent / 100.0f;
 		if (Burst.Amount <= 0.0f)
 		{
+			// A SPENT BLEED PAYS NOTHING AND IS STILL ENDED. Issue #918, ruled by the coordinating session on
+			// 2026-10-31. A bleed whose four seconds of movement are spent has nothing left to deal, but its window
+			// still runs and its tag with it, so the slow rider and the bleed-scoped rows still read it. The row says
+			// it ends each damage over time, so only the payment is skipped. Found by asking again by the timer alone:
+			// an effect with ticks left there and none held to its movement is exactly such a bleed. NOT COUNTED in
+			// what this returns, which is the bursts paid.
+			if (bEndEach && RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) > 0.0f)
+			{
+				SpentBleeds.Add(Handle);
+			}
 			continue;
 		}
 		Burst.Handle = Handle;
 		Burst.Context = Active->Spec.GetContext();
 		Active->Spec.GetAllAssetTags(Burst.AssetTags);
 		Bursts.Add(MoveTemp(Burst));
+	}
+
+	for (const FActiveGameplayEffectHandle& Spent : SpentBleeds)
+	{
+		Defender->RemoveActiveGameplayEffect(Spent);
 	}
 
 	for (const FBurst& Burst : Bursts)
