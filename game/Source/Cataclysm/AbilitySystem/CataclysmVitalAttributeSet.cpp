@@ -494,11 +494,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// keep that same bleed, `UCataclysmSkillEffects::ConvertedDamageDataName` (ruled 2026-10-06), and no
 				// other mark. Issue #2275 holds what that one shared bleed slot already gets wrong.
 				//
-				// AND ONLY A TICK: AN EXECUTION WITH A PERIOD. A judgement by the writing session, 2026-10-31, for the
-				// coordinating session to confirm. `UCataclysmSkillEffects::DealRemainingDamageOverTime` deals what a
-				// bleed has left as one instant blow carrying the bleed's own tags, so it would meet this gate too; with
-				// "ends each" it takes the bleed off first, and a still target would lose the bleed and the burst both.
-				// The ruling is about ticks, so a burst is left to deal what `RemainingDamageOverTime` says, as before.
+				// AND ONLY A TICK: AN EXECUTION WITH A PERIOD. Ruled by the coordinating session, 2026-10-31: a burst is a
+				// payout of what the bleed has left, not a tick. `UCataclysmSkillEffects::DealRemainingDamageOverTime`
+				// deals it as one instant blow carrying the bleed's own tags, so it would meet this gate too; with "ends
+				// each" it takes the bleed off first, and a still target would lose the bleed and the burst both.
+				// So a burst deals what `RemainingDamageOverTime` says, which holds a bleed to its four seconds.
 				const bool bConvertedDamage = Data.EffectSpec.GetSetByCallerMagnitude(
 					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 				const bool bPeriodicTick = Data.EffectSpec.GetPeriod() > 0.0f;

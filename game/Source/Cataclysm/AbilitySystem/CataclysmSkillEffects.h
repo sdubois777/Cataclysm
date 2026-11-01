@@ -1956,9 +1956,17 @@ public:
 	 * or for a share of current health, `ShareOfHealthOverTicks`. 0 for an effect
 	 * that is not a damage over time, is inhibited, or has no tick left. Issue
 	 * #1833 group D part 4.
+	 *
+	 * A BLEED'S TICKS LEFT ARE HELD TO WHAT ITS FOUR SECONDS OF MOVEMENT STILL ALLOW, whether or not its carrier
+	 * moves now; converted damage is not. Issue #918, ruled 2026-10-31.
+	 *
+	 * @param bHeldToABleedsMovement  false to count a bleed's ticks by its timer alone, for a caller asking whether
+	 *        an effect is a damage over time at all rather than what it will deal: `RefreshOtherDamageOverTime`, whose
+	 *        refresh restarts a spent bleed's four seconds and so must still find it
 	 */
 	static float RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
-										 const FActiveGameplayEffectHandle& Handle);
+										 const FActiveGameplayEffectHandle& Handle,
+										 bool bHeldToABleedsMovement = true);
 
 	/** One damage over time ailment running on a character. Issue #919. */
 	struct FRunningAilment

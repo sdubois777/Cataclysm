@@ -2643,8 +2643,9 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// REFRESHES IT. Issue #918, ruled 2026-10-31. One bleed at a time, so the count belongs to the carrier and the one a
 	// stronger bleed replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to it at each tick.
 	//
-	// A REFRESH TOO, WHICH IS A JUDGEMENT BY THE WRITING SESSION, 2026-10-31, for the coordinating session to confirm. A
-	// refresh gives the running bleed a new window; with the old count kept, a bleed refreshed by every blow of a fast
+	// A REFRESH TOO, RULED BY THE COORDINATING SESSION, 2026-10-31: under the one-slot rule a refresh stands for a new
+	// application, and in the genre each new bleed carries its own full duration. A refresh gives the running bleed a
+	// new window; with the old count kept, a bleed refreshed by every blow of a fast
 	// attacker would deal four seconds of ticks and then nothing for as long as the blows kept coming, while the target
 	// still read as bleeding. Here, before the branch below, so the refresh and the replacement both reach it.
 	if (EffectTag == UCataclysmDebuffs::BleedTag())
@@ -3040,7 +3041,11 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		}
 		// ONLY AN EFFECT THAT STILL HAS DAMAGE TO DEAL. `RemainingDamageOverTime`
 		// is nought for anything that deals no damage a tick.
-		if (RemainingDamageOverTime(Defender, Handle) <= 0.0f)
+		//
+		// BY ITS TIMER ALONE, NOT HELD TO A BLEED'S FOUR SECONDS OF MOVEMENT. Issue #918: a bleed that has spent its
+		// four seconds still has its window, and this refresh restarts the four seconds (ruled 2026-10-31), so it
+		// must still be found.
+		if (RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) <= 0.0f)
 		{
 			continue;
 		}
@@ -3058,8 +3063,7 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
 	}
 	// A BLEED GIVEN ITS WHOLE WINDOW AGAIN STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, as a bleed refreshed in
-	// `ApplyDamageOverTime` does. Issue #918; the same judgement by the writing session, 2026-10-31, for the
-	// coordinating session to confirm.
+	// `ApplyDamageOverTime` does. Issue #918; the same ruling by the coordinating session, 2026-10-31.
 	if (bRefreshesABleed)
 	{
 		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
@@ -3143,7 +3147,8 @@ float UCataclysmSkillEffects::ShareOfHealthOverTicks(float Share, float Health,
 }
 
 float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
-													  const FActiveGameplayEffectHandle& Handle)
+													  const FActiveGameplayEffectHandle& Handle,
+													  bool bHeldToABleedsMovement)
 {
 	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
 	const FActiveGameplayEffect* Active =
@@ -3182,7 +3187,28 @@ float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemCompon
 	const float SecondsLeft = Timers.TimerExists(Active->DurationHandle)
 		? Timers.GetTimerRemaining(Active->DurationHandle)
 		: Active->GetTimeRemaining(World->GetTimeSeconds());
-	const int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
+	int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
+
+	// AND A BLEED NEVER MORE THAN ITS FOUR SECONDS OF MOVEMENT ALLOW. Issue #918, ruled by the coordinating session on
+	// 2026-10-31: a bleed stops after four seconds of movement, so what it has left can never be more than the ticks
+	// that budget still lets land. Counted the way the gate in `UCataclysmVitalAttributeSet` lets them through: a tick
+	// lands while the count is short of the cap, and adds its period. NOT whether the carrier is moving now, which says
+	// nothing about how it will move. NOT CONVERTED DAMAGE, which the gate exempts and which deals its whole total.
+	if (Ticks > 0 && bHeldToABleedsMovement)
+	{
+		FGameplayTagContainer Granted;
+		Active->Spec.GetAllGrantedTags(Granted);
+		const UCataclysmAbilitySystemComponent* Carrier = Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		const bool bConvertedDamage = Active->Spec.GetSetByCallerMagnitude(
+			FName(ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+		if (Carrier && !bConvertedDamage && Granted.HasTag(UCataclysmDebuffs::BleedTag()))
+		{
+			const int32 TheBudgetAllows = FMath::Max(0, FMath::CeilToInt32(
+				(UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER - Carrier->BleedMovingSeconds)
+				/ SecondsPerTick));
+			Ticks = FMath::Min(Ticks, TheBudgetAllows);
+		}
+	}
 	if (Ticks <= 0)
 	{
 		return 0.0f;
