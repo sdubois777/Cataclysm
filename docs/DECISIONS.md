@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A test's new save slots are deleted when it ends, never one that was there before nor its backup, and each run reports what its tests left (#2658)
+
+**Affects:** `FCataclysmTestSaves` (new, `game/Source/Cataclysm/Save/CataclysmTestSaves.h`, `.cpp`); the three writes of
+`FCataclysmSaveStorage` (`game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp`: `WriteToSlot`, `WriteToSlotAsync` and the
+migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Tests/CataclysmSaveStorageTests.cpp`;
+`tools/unreal_build.py`, which prints the run's "Test saves:" line; and a new Python check,
+`tools/tests/test_the_test_run_reports_its_save_slots.py`. Issue [#2658](https://github.com/sdubois777/Cataclysm/issues/2658).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **THE HOOK THAT DELETES AT EACH TEST'S END HAS NO TEST OF ITS OWN.** A test can call the clean-up and see what it does;
+  it cannot see the engine call it. The window's printed "Test saves: N written and deleted, M left behind" is the
+  evidence that the hook ran: N large says it did.
+- **REPORTED, NOT FAILED ON (ruled).** A run with slots left behind is not failed by this change. Making M > 0 fail is a
+  later change, made only after a window has shown M = 0, and filed as an issue once this window has measured M.
+- **NOTHING IS DELETED THAT A TEST DID NOT MAKE, AND NO SCRIPT DELETES THE SLOTS ALREADY LEFT (ruled, Q3).** The main
+  checkout's `game/Saved/SaveGames` may hold the owner's saves and is never touched. A worktree's folder holds test saves
+  only and goes with the worktree.
+
+### Rulings, 2026-11-01
+
+- **Q1:** per test, on `OnTestEndEvent`.
+- **Q2:** report only; the line printed by `tools/unreal_build.py` beside the "Tests:" line.
+- **Q3:** no deletion script, nothing deleted automatically; a worktree's folder may be emptied by hand before a window.
+- **Backups:** a migration backup is noted only when its source slot is noted, so a test that migrates a slot which
+  existed before never has that slot's backup deleted. The "did not exist before" check runs on the game thread, before
+  an asynchronous write is queued, not when it lands.
+
+### What changes
+
+- **`FCataclysmSaveStorage` notes each slot before writing it,** in the three places it writes: `WriteToSlot`, just before
+  `SaveDataToSlot`; `WriteToSlotAsync`, on the calling thread before the task is launched; and `ReadFromSlot`, just before
+  a migration's backup is written (`NoteABackup`). A slot is noted only while `GIsAutomationTesting` and only if it does
+  not exist yet; a backup only when its source is noted.
+- **When each test ends** (`FAutomationTestFramework::OnTestEndEvent`), the noted slots are deleted once their writes in
+  flight finish, and counted.
+- **The run's totals** are logged once, "Test saves: N written and deleted, M left behind: <the first ten names>", M
+  being the slots in the folder at the end that were not there at the start. The folder is taken when the automation
+  session starts (`OnBeforeAllTestsEvent`) or else at the first test; the line is logged when the session stops
+  (`OnAfterAllTestsEvent`) or else when the engine exits (`FCoreDelegates::OnEnginePreExit`).
+- **`tools/unreal_build.py tests`** prints that line, or "Test saves: (no line in the log; ...)", after its "Tests:" line.
+  The exit code does not change.
+
+### The two checks asked before the window
+
+- **A PACKAGED GAME CARRIES NO HOOKS.** The hook object is inside `#if WITH_AUTOMATION_TESTS`, which the engine defines as
+  `WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS` (`Runtime/Core/Public/Misc/AutomationTest.h` line 64); UnrealBuildTool
+  sets both to 0 for the Test and Shipping configurations (`UEBuildTarget.cs` lines 6311 to 6327: "bCompileDevTests =
+  (Configuration != UnrealTargetConfiguration.Test && Configuration != UnrealTargetConfiguration.Shipping)"), and this
+  project forces neither on. `NoteAWrite` and `NoteABackup` return before anything else when `GIsAutomationTesting` is
+  false: no file-existence check and no lock, so a player's saves cost one flag read each.
+- **THE END OF A TEST COMES AFTER ITS LATENT COMMANDS.** `FAutomationWorkerModule::Tick`
+  (`Runtime/AutomationWorker/Private/AutomationWorkerModule.cpp` lines 66 to 85) runs `ExecuteLatentCommands` and reaches
+  `ReportTestComplete` only once they report complete; `ReportTestComplete` (line 186) calls
+  `FAutomationTestFramework::StopTest`, whose `InternalStopTest` broadcasts `OnTestEndEvent`
+  (`Runtime/Core/Private/Misc/AutomationTest.cpp` line 1386). The one other caller, the stop-tests message (line 784),
+  dequeues every command first. So a slot written by a latent step is noted before the clean-up runs. **Expected: M
+  small**, from writes that do not pass through the storage layer (a few tests put raw text in a slot) and are not
+  deleted by their own tests; N in the thousands.
+
+### Tests
+
+- `Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds`: runs the clean-up the end of every test runs. A slot the test
+  made is deleted; one that was there before, written over, is kept; an asynchronous write's slot is noted when queued,
+  before it lands, and deleted; a migrated slot the test made goes with its backup; a slot that was there before a
+  migration is kept, and so is its backup. "There before" is a slot put down without the storage layer. Prints "TEST
+  SAVES".
+- `tools/tests/test_the_test_run_reports_its_save_slots.py`: five checks of the wrapper's reading of the line, one of
+  them that the C++ still writes the wording the wrapper reads.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| First step: s5's `game/Saved/SaveGames` listed, prefix `Cataclysm.SaveLoad.` run, listed again | both counts and the run's "Test saves:" line printed; after small, N large |
+| The new test alone | 1 / 1, its line quoted |
+| Whole Unreal suite | 4494 / 0: `development`'s 4493 (09323b971, #2670), + 1; moved onto #2553's measured total + 1 if it merges first |
+| The suite's "Test saves:" line | printed; N large, M small |
+| Python | of record, with JUnit, and ruff |
+| S1, "did not exist before" off in `NoteAWrite` (`if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))` to `if (false)`), prefix `Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds` | the test fails on "a slot that was there before the test wrote over it is kept" and "a slot that was there before a migration is kept" (its write-back then noted) only |
+| S2, the backup rule off in `NoteABackup` (`if (IsNoted(SourceSlot))` to `if (true)`), same prefix | the test fails on "and so is its backup" only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 5 actions, 2 files compiled:
+Module.Cataclysm.28.cpp, Module.Cataclysm.12.cpp`, which hold `CataclysmSaveStorageTests.cpp`, and
+`CataclysmSaveStorage.cpp` with `CataclysmTestSaves.cpp`, by the unity files' contents. Again after `NoteABackup` was
+made to return before its lock when no test runs: `Build: Succeeded - 5 actions, 2 files compiled: CataclysmTestSaves.cpp,
+Module.Cataclysm.12.cpp`.
+
+---
+
 ## 2026-11-01 — Every creature still takes the nearest thing it can attack, and a minion whose row states a threat of nought is never sought (#2553)
 
 **Affects:** `ACataclysmMinion::bDrawsNoAttention` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`), set in

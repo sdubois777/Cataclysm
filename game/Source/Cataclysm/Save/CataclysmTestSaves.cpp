@@ -84,6 +84,7 @@ namespace CataclysmTestSaves
 
 void FCataclysmTestSaves::NoteAWrite(const FString& SlotName, int32 UserIndex)
 {
+	// NOTHING AT ALL WHEN NO TEST RUNS, not even the existence check: a player's every save comes through here.
 	if (!GIsAutomationTesting || SlotName.IsEmpty())
 	{
 		return;
@@ -99,6 +100,11 @@ void FCataclysmTestSaves::NoteAWrite(const FString& SlotName, int32 UserIndex)
 
 void FCataclysmTestSaves::NoteABackup(const FString& BackupName, const FString& SourceSlot, int32 UserIndex)
 {
+	// NOTHING AT ALL WHEN NO TEST RUNS, not even the lock: a player's every migration comes through here.
+	if (!GIsAutomationTesting)
+	{
+		return;
+	}
 	if (IsNoted(SourceSlot)) // A test's save: a backup is noted only with the slot it backs up.
 	{
 		NoteAWrite(BackupName, UserIndex);
