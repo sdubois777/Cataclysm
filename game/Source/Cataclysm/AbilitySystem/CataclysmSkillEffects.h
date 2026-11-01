@@ -59,7 +59,8 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * Whether this is damage a character converted and has not yet taken: the bleed the Masochist's damage
 	 * conversion lays on its own character. Ruled 2026-10-06. The effect is stamped with
 	 * `UCataclysmSkillEffects::ConvertedDamageDataName`, and `UCataclysmDebuffs::Cleanse` keeps an effect that
-	 * carries the stamp and nothing else a character laid on themselves.
+	 * carries the stamp and nothing else a character laid on themselves. `UCataclysmVitalAttributeSet` reads the same
+	 * stamp to exempt the bleed from the movement gate, ruled 2026-10-31 (issue #918).
 	 */
 	bool bIsConvertedDamage = false;
 
@@ -2170,7 +2171,8 @@ public:
 	/**
 	 * The name an effect is stamped under when it is converted damage not yet taken, with any value above nought.
 	 * Ruled 2026-10-06. A plain name and no gameplay tag, as `StatedMagnitudeDataName` is. Read by
-	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect.
+	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect, and by `UCataclysmVitalAttributeSet`, whose bleed tick
+	 * deals it whether its carrier moves or not (issue #918, ruled 2026-10-31).
 	 */
 	static const TCHAR* ConvertedDamageDataName;
 

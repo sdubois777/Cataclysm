@@ -485,7 +485,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// of the four seconds; the bleed's own window runs on either way, so a carrier that stands still for
 				// all of it takes nothing. Seconds are moving ticks times the period, so a faster tick rate still
 				// fits more ticks into the four seconds.
-				if (Hit.bIsBleed)
+				//
+				// NOT CONVERTED DAMAGE. Ruled 2026-10-31. The bleed the Masochist's damage conversion lays on its own
+				// character (`UCataclysmDamageConversion`, The Breaking Point) is damage already taken and stored, and
+				// the conversion defers it rather than cancelling it: the design's health-debt paragraph says owed
+				// damage "is then taken as a drain rather than in one hit". So it ticks whole whether its carrier moves
+				// or not, and uses none of the four seconds. Read off the stamp `UCataclysmDebuffs::Cleanse` reads to
+				// keep that same bleed, `UCataclysmSkillEffects::ConvertedDamageDataName` (ruled 2026-10-06), and no
+				// other mark. Issue #2275 holds what that one shared bleed slot already gets wrong.
+				const bool bConvertedDamage = Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				if (Hit.bIsBleed && !bConvertedDamage)
 				{
 					if (UCataclysmAbilitySystemComponent* Carrier =
 							Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
