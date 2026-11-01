@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmTargetCandidates.h"
+// For a minion type row's threat of nought, which no creature's search seeks. Issue #2553.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystemComponent.h"
@@ -14,6 +16,22 @@
 // CataclysmEnemyController.cpp, so that a capture shows the rebuilds beside the
 // thinking passes and the time they took.
 CSV_DECLARE_CATEGORY_EXTERN(CataclysmAI);
+
+namespace
+{
+	/**
+	 * Whether a candidate is a minion whose type row states a threat of nought, which no creature's search seeks.
+	 * The owner's decision of 2026-11-01, issue #2553: "Nearest; threat 0 untargeted".
+	 *
+	 * NAMED AT LENGTH ON PURPOSE. Unreal builds this module as a unity build, where an anonymous namespace is shared
+	 * by every file in the unit; `CapsuleReachesInto` below records a collision that cost a runner build.
+	 */
+	bool MinionWhoseRowDrawsNoAttention(const ACataclysmCharacterBase* Candidate)
+	{
+		const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Candidate);
+		return AsMinion && AsMinion->bDrawsNoAttention;
+	}
+}
 
 UCataclysmTargetCandidates* UCataclysmTargetCandidates::In(const UWorld* World)
 {
@@ -331,10 +349,17 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 			// hostility test reads ability systems and walks owner chains, so it
 			// is asked only of a candidate that would be nearer than the best so
 			// far.
+			//
+			// AND A MINION WHOSE ROW STATES A THREAT OF NOUGHT IS PASSED OVER, as
+			// if it were not there: the owner's decision of 2026-11-01, issue
+			// #2553, "Nearest; threat 0 untargeted". A cast and a flag, so it is
+			// asked before the hostility test. A threat above nought weighs
+			// nothing here; only Behind the Veil reads it.
 			const double DistanceSquared =
 				FVector::DistSquared(Candidate->GetActorLocation(), Origin);
 			if (DistanceSquared >= NearestDistanceSquared
 				|| !CapsuleReachesInto(Candidate, Origin, RadiusCm)
+				|| MinionWhoseRowDrawsNoAttention(Candidate)
 				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher))
 			{
 				continue;

@@ -1312,6 +1312,11 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		// the generator should have refused leaves the minion choosing as every minion did before the column was read.
 		Minion->bTargetsTheFurthest = Type->TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase);
 
+		// AND WHETHER ANY CREATURE SEEKS IT AT ALL: not when its row states a threat of nought. The owner's decision of
+		// 2026-11-01, issue #2553, "Nearest; threat 0 untargeted". NOUGHT OR LESS AND NOTHING ABOVE, so a turret at 5
+		// is still sought by distance alone; `UCataclysmTargetCandidates::NearestHostile` is the reader.
+		Minion->bDrawsNoAttention = Type->ThreatPercent <= 0.0f;
+
 		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
 		// centimetres, the same conversion the shape parameters make.
 		// A ZERO IS NOT A MISSING NUMBER HERE: it is what makes a turret, a
