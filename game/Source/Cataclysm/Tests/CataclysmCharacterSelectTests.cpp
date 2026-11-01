@@ -4,7 +4,16 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Blueprint/WidgetTree.h"
 #include "Engine/World.h"
+#include "GameFramework/WorldSettings.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Player/CataclysmGameMode.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "Components/Button.h"
+#include "Components/PanelWidget.h"
+#include "Components/TextBlock.h"
+#include "Misc/PackageName.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCharacterSelectWidget.h"
 #include "Player/CataclysmFrontEndGameMode.h"
@@ -193,6 +202,74 @@ bool FCataclysmCharacterSelectInputModeTest::RunTest(const FString&)
 	TestTrue(TEXT("and clicks taken"), FrontEnd->bEnableClickEvents);
 	TestEqual(TEXT("CONTROL: the game's own controller asks for the playing mode"), PlayingMode, FString(TEXT("Playing")));
 	FrontEnd->Destroy();
+	return true;
+}
+
+/**
+ * The select screen's asset: the path the front end's controller opens loads, is the screen's class, and its tree holds
+ * the widgets the screen binds. Read from the asset's own widget tree, because a test world has no game instance for
+ * `CreateWidget` (#1841), as the choice panel's asset test does. Fails until `tools/generate_interface_assets.py` has
+ * made `WBP_CharacterSelect`. Issue #753, select-screen step 3b, ruled 2026-10-31. Prints "SELECT ASSET".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectAssetTest,
+	"Cataclysm.CharacterSelect.TheSelectScreenAssetLoadsAndHoldsItsBoundWidgets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectAssetTest::RunTest(const FString&)
+{
+	// THE PATH THE CONTROLLER ITSELF HOLDS, so the test cannot name a different one from the one play opens.
+	const TSoftClassPtr<UCataclysmCharacterSelectWidget>& Path =
+		GetDefault<ACataclysmFrontEndPlayerController>()->SelectScreenAsset();
+	UClass* ScreenClass = Path.LoadSynchronous();
+	AddInfo(FString::Printf(TEXT("SELECT ASSET: %s %s"), *Path.ToString(), ScreenClass ? TEXT("loads") : TEXT("DOES NOT LOAD")));
+	if (!TestNotNull(TEXT("the select screen's asset loads"), ScreenClass))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is the select screen's class"), ScreenClass->IsChildOf(UCataclysmCharacterSelectWidget::StaticClass()));
+
+	const UWidgetBlueprintGeneratedClass* Generated = Cast<UWidgetBlueprintGeneratedClass>(ScreenClass);
+	const UWidgetTree* Tree = Generated ? Generated->GetWidgetTreeArchetype() : nullptr;
+	if (!TestNotNull(TEXT("it is a widget blueprint with a tree"), Tree))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its tree holds CharacterList, a panel"), Cast<UPanelWidget>(Tree->FindWidget(TEXT("CharacterList"))) != nullptr);
+	TestTrue(TEXT("RefusalLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("RefusalLabel"))) != nullptr);
+	TestTrue(TEXT("NewButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("NewButton"))) != nullptr);
+	TestTrue(TEXT("and TitleLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("TitleLabel"))) != nullptr);
+	return true;
+}
+
+/**
+ * The game starts on the front end's level, and that level's game mode is the front end's: `GameDefaultMap` names the
+ * level `ACataclysmGameMode::FrontEndMap` names, which a refused load returns to, and its world settings name
+ * `ACataclysmFrontEndGameMode`. Fails until step 3b's generator run has made `L_FrontEnd` and the start map names it.
+ * Issue #753, select-screen step 3b, ruled 2026-10-31. Prints "SELECT START MAP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectStartMapTest,
+	"Cataclysm.CharacterSelect.TheGameStartsOnTheFrontEndMap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectStartMapTest::RunTest(const FString&)
+{
+	const FString FrontEnd = ACataclysmGameMode::FrontEndMap;
+	const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *FrontEnd, *FPackageName::GetShortName(FrontEnd));
+
+	// THE START MAP AS THE ENGINE'S CONFIG HOLDS IT, the setting `UGameMapsSettings` reads; read here, because that class
+	// is in the EngineSettings module, which this module does not depend on.
+	FString StartMap;
+	GConfig->GetString(TEXT("/Script/EngineSettings.GameMapsSettings"), TEXT("GameDefaultMap"), StartMap, GEngineIni);
+	const UWorld* Level = LoadObject<UWorld>(nullptr, *ObjectPath);
+	const AWorldSettings* Settings = Level && Level->PersistentLevel ? Level->PersistentLevel->GetWorldSettings() : nullptr;
+	const UClass* GameMode = Settings ? Settings->DefaultGameMode.Get() : nullptr;
+	AddInfo(FString::Printf(TEXT("SELECT START MAP: the game starts on '%s'; '%s' %s, its game mode %s"), *StartMap,
+							*ObjectPath, Level ? TEXT("loads") : TEXT("DOES NOT LOAD"),
+							GameMode ? *GameMode->GetName() : TEXT("NONE")));
+
+	TestEqual(TEXT("the game's start map is the front end"), StartMap, ObjectPath);
+	TestNotNull(TEXT("the front end's level loads"), Level);
+	TestTrue(TEXT("its game mode is the front end's"), GameMode == ACataclysmFrontEndGameMode::StaticClass());
 	return true;
 }
 
