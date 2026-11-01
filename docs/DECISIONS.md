@@ -11,9 +11,10 @@ the count's restart in `UCataclysmSkillEffects::ApplyDamageOverTime` and `UCatac
 and a bleed's remaining ticks held to the count in `UCataclysmSkillEffects::RemainingDamageOverTime`, which gains a
 `bHeldToABleedsMovement` parameter, and a spent bleed ended unpaid by `UCataclysmSkillEffects::DealRemainingDamageOverTime`
 (`CataclysmSkillEffects.cpp` and `.h`); the comments on
-`FCataclysmHitDelivery::bIsConvertedDamage` and `UCataclysmSkillEffects::ConvertedDamageDataName`; eight existing Unreal
+`FCataclysmHitDelivery::bIsConvertedDamage` and `UCataclysmSkillEffects::ConvertedDamageDataName`; twelve existing Unreal
 tests, in `CataclysmCombatEventsTests.cpp`, `CataclysmDebuffTests.cpp`, `CataclysmRisenImpTests.cpp`,
-`CataclysmEnchantmentEffectTests.cpp`, `CataclysmRemainingDamageTests.cpp` and `CataclysmApplyStatusTests.cpp`; four new ones
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmRemainingDamageTests.cpp`, `CataclysmApplyStatusTests.cpp`,
+`CataclysmDamageTypeTests.cpp`, `CataclysmDebuffImmuneTests.cpp` and `CataclysmEnemyModifierTests.cpp`; four new ones
 (`game/Source/Cataclysm/Tests/CataclysmBleedMovementTests.cpp`, new, and `CataclysmDamageConversionTests.cpp`); a new
 Python pin, `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py`; the ailment section of
 `docs/Cataclysm_GDD_v2.md`. Issue [#918](https://github.com/sdubois777/Cataclysm/issues/918).
@@ -128,7 +129,8 @@ and adds nothing to the count. **It is read off the mark the cleanse exception r
 
 **The damage-conversion tests were checked and need no edit.** None of them reads a converted bleed's tick:
 `Cataclysm.DamageConversion.*` (all fourteen before this change: windows, cooldowns, what is converted, the cleanse);
-`Cataclysm.DebuffImmune.*` (the converted bleed is kept by the immunity step, and refused to a holder); the converted
+`Cataclysm.DebuffImmune.*` (the converted bleed is kept by the immunity step, and refused to a holder; one test in that
+group, `ARefusedDamageOverTimeTakesNothing`, was changed for another reason, below); the converted
 bleed in `Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself` (carries after a cleanse); the
 converted bleed in `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment` (applied and carried, not
 ticked); `CataclysmHealthWrittenDirectlyTests.cpp`
@@ -143,9 +145,10 @@ the project owner in the DoTs sheet and ruled by the coordinating session.
 
 ### Tests changed, and why
 
-Nine. The first five read a bleed tick that a still target now refuses; each now gives the bleed a moving target,
+Twelve. The first five read a bleed tick that a still target now refuses; each now gives the bleed a moving target,
 and no assertion changed. The next three read `RemainingDamageOverTime`, and each now asserts the capped figure (R9).
-The ninth gains one check for R10.
+The ninth gains one check for R10. The last three were found by the discovery run (under Run), outside the survey's
+eighteen files; each also gives its bleed a moving target, and no assertion changed.
 
 - `Cataclysm.CombatEvents.ADeathFromATickNamesTheAilment` — the bleed pass of its seven-ailment loop, and its Rend half,
   read the tick's hit notice and the kill. Each victim, and the Rend victim, is told it moved (`NoteMovedMetres(1.0f)`)
@@ -162,6 +165,24 @@ The ninth gains one check for R10.
   ticks start a leech payment. Its creature is a character, re-sampled every 0.25 s, so a single note would not last:
   the second 2.5 s of clock now walks it 10 cm a step and tells it so, as `CataclysmDotOnAMovingTargetTests.cpp` does,
   and a new set-up line asserts it reads as moving.
+
+Found by the discovery run, each ruled 2026-10-31 to be fixed the same way. Each reads a bleed tick on a target that
+had never been seen moving. The failure line each printed is quoted.
+
+- `Cataclysm.DamageType.AnEnergyShieldAbsorbsEveryTickButABleed` — "Expected 'a bleed tick reaches health through a full
+  shield' to be 1000.000000, but it was 0.000000 and outside tolerance 1.000000." One manual tick on a plain actor
+  with no clock. The defender is told it moved before the bleed, so its one tick lands; nothing else in the test reads
+  movement.
+- `Cataclysm.DebuffImmune.ARefusedDamageOverTimeTakesNothing` — "Expected 'control: 3.5 seconds of a bleed took health
+  from the target of a character holding no flag: 0.00' to be true." Three plain actors are told they moved: the
+  control's target, so its three ticks land inside the four seconds; and the two the refused bleeds were aimed at, the
+  holder's target and the holder, **so that the refusal, and not a still target, is the only reason they lose
+  nothing.** Without those two notes, "the holder's target lost nothing" and "and the holder lost nothing" would pass
+  for the gate's reason even if the refusal failed.
+- `Cataclysm.EnemyModifiers.ATickWhoseShareReachesABondedCreaturesHealthKillsIt` — "Expected 'set-up: the tick takes
+  health from a creature with no bond, and under half of what it holds (0.00)' to be true." The control and the
+  bonded creature are told they moved before their ticks. No clock runs, and the three manual ticks (one on the
+  control, two on the bonded creature) are each inside the four seconds, so every tick the test relies on lands.
 
 The three the survey left uncertain:
 
@@ -239,7 +260,22 @@ Each break keeps every name it touches in use, so each compiles alone. Each proo
 
 ### Run
 
-Not yet.
+**Discovery run, 2026-10-31, on `14d4e99a5`. Not a registration.** Compiled first with `python tools/unreal_build.py
+build`, no lock: `Build: Succeeded - 74 actions, 64 files compiled`, after waiting twice on the continuous integration
+runner's compile. Python of record on the same head: `7180 passed, 8 skipped in 251.88s`; JUnit tests 7188, failures 0,
+errors 0, skipped 8; ruff "All checks passed!". Pre-checks for the run: the lock free, 11232 MB free, no other
+session's suite, build or editor running (one waiting script of 2026-10-15 left standing, ruled not to conflict).
+Under the lock `bleed-discovery`, released after:
+
+```
+Build: Succeeded - target already up to date, 0 actions, nothing compiled
+Tests: 4452 tests performed, 4449 succeeded, 3 failed: AnEnergyShieldAbsorbsEveryTickButABleed, ARefusedDamageOverTimeTakesNothing, ATickWhoseShareReachesABondedCreaturesHealthKillsIt. 43 skipped part of what they check: ...
+Declared: 4452 tests in the tree at 14d4e99a5; 4452 performed, gap 0; every declared test was reported by the run. Issue #1707.
+```
+
+Every test this branch changed or added passed. The three failures are the three above, fixed after it.
+
+The run of record: not yet.
 
 ---
 
