@@ -17,7 +17,8 @@ when step 3b points the game's start at the screen.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w124, every figure as registered:** the six new tests, the whole suite at 4460 / 0, and
+  P1-P8 each proved on exactly its registered tests and assertions, P5 showing the deletion narrow.
 - **NOTHING A PLAYER SEES CHANGES YET.** Nothing shows the screen until step 3b makes `WBP_CharacterSelect` and
   `L_FrontEnd` and points `GameDefaultMap` at it. The front end's game mode and controller are used by no level; a level
   begun with nothing chosen begins exactly as before.
@@ -116,7 +117,50 @@ Every slot a test writes is deleted by `ON_SCOPE_EXIT` with the `Delete` that `F
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
 first attempt (a new worktree, so everything was compiled); then, with the after-load guard, `Build: Succeeded - 5
-actions, 2 files compiled: CataclysmGameMode.cpp, Module.Cataclysm.11.cpp`.
+actions, 2 files compiled: CataclysmGameMode.cpp, Module.Cataclysm.11.cpp`. The first Python of record, on dab89b51,
+failed `test_one_input_mode.py`, recorded in SAID FIRST. After the input-mode change, 114e61a74 compiled (`16 actions,
+13 files compiled`) and passed Python, `7177 passed, 8 skipped`. MOVED onto f1f0920b6 (#2659 merged) as
+`feat/select-screen-arrival-load-1`; compile of record on 143bc94b4, no lock: `Build: Succeeded - 42 actions, 39 files
+compiled`, after one wait for the continuous integration runner's lock; Python of record on 143bc94b4: `7180 passed, 8
+skipped in 190.33s`, JUnit tests 7188, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w124, 2026-10-31 22:34 to 23:15 local, on 143bc94b4. Pre-checks measured at 22:34:04, all passing:
+`development`'s CI and Unreal runs succeeded on f1f0920b6, no run in progress or queued, the lock free, no build or editor
+process, no pull request open, no simulation process, 11540 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The six new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4460 tests performed, 4460 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4460 performed, gap 0" |
+| Python | `7180 passed, 8 skipped in 192.30s`; JUnit tests 7188, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED, the two tests registered: "'the chosen character was loaded' to be 2, but it was 4" and "'the refusal's reason is kept for the select screen' to be false" only |
+| P2 | PROVED, the two tests registered: "'and the next start loads nothing, the choice cleared before the load' to be 0, but it was 2" and "'the pending choice is cleared' to be false" only |
+| P3 | PROVED: "'the refusal's reason is kept for the select screen' to be false" only |
+| P4 | PROVED, the two tests registered, each on "'the fresh character slot is gone'", "'the fresh run slot is gone'" and "'a Continue leaves the number of characters unchanged' to be 51, but it was 52" only |
+| P5 | PROVED, THE DELETION SHOWN NARROW: the loaded test only, on "'and its run's slot' to be true", "'the fresh character slot is gone'", "'the fresh run slot is gone'" and "'... unchanged' to be 51, but it was 52" only; "the loaded character's own slot still exists" passed, as traced |
+| P6 | PROVED: "'a run saved in a dungeon opens the dungeon level' to be true" and "'and asks for its level' to be "/Game/Maps/L_Dungeon", but it was "/Game/Maps/L_Sandbox"" only |
+| P7 | PROVED: "Continue hands the character to the game instance: The two values are not equal" only (an identifier's comparison words its failure so) |
+| P8 | PROVED: "'the front end asks for the menu mode' to be "Menu", but it was" empty, only |
+
+Each proof's restored half: `65 tests performed, 65 succeeded, 0 failed` under `Cataclysm.SaveLoad.` and `3 tests
+performed, 3 succeeded, 0 failed` under `Cataclysm.CharacterSelect.`. After the window no `5E1EC7ED` slot was left in the
+worktree's SaveGames folder. The count the tests read was 51 in the suite and the proofs, the folder holding other tests'
+saves (#2658), which is why each test compares its own count before and after.
+
+The new tests' lines, from the whole suite's log:
+
+```
+SELECT ROWS: [Vesper, level 12, Hardcore, Solo Self-Found, Online, Greatsword, in a run: day 9, floor 3 of Crypt] [(unnamed), level 1, Standard, Offline, no weapon type, no run] [Corin, level 4, Standard, Offline, no weapon type, in a run: day 21] [Unreadable save, Character_Unreadable: not a JSON object]
+SELECT CONTINUE: dungeon run -> /Game/Maps/L_Dungeon, sandbox run -> /Game/Maps/L_Sandbox, no run -> /Game/Maps/L_Sandbox, unreadable refused (this save cannot be read: not a JSON object); Continue went, handed the character, opened /Game/Maps/L_Dungeon; New opened /Game/Maps/L_Sandbox, pending none
+ARRIVAL LOADED: outcome 2, then 0; characters listed 51 before, 51 after; the fresh character slot gone, the fresh run slot gone; the loaded character's slot kept, its run's kept
+ARRIVAL REFUSED: outcome 4; why 'the character record in 'Character_5E1EC7ED00004C15A000000000000011' could not be read: what is in the slot is not a JSON object, a Character record could not be parsed as a JSON object'; back to '/Game/Maps/L_FrontEnd'; pending cleared; characters listed 51 before, 51 after; the fresh character slot gone, the fresh run slot gone; the refused character's slot kept
+SELECT INPUT MODE: the front end asked for 'Menu' (kept 'Menu'), cursor shown, clicks taken; the game's controller 'Playing'
+```
+
+FOR THE OWNER'S LAUNCH AFTER STEP 3B, unverified until then (the owner is away until 2026-11-16): that the game opens on
+the select screen, that its buttons take clicks, that Continue on a character loads it in the right level, and that a
+refused load returns to the screen with its reason shown.
 
 ---
 
