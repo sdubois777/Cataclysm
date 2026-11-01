@@ -287,7 +287,11 @@ CATACLYSM_TEST(FCataclysmRemainingOnlyOwnTest,
 			UCataclysmSkillEffects::DealRemainingDamageOverTime(
 				Wearer.Actor, Target.Actor, 100.0f, FGameplayTag(), /*bEndEach=*/true), 1);
 		TestFalse(TEXT("the wearer's poison is dealt and gone"), Running(Target.Actor, Poison).IsValid());
-		TestEqual(TEXT("another's bleed keeps its eight ticks"), RemainingOn(Target.Actor, Bleed), 80.0f, 0.01f);
+		// A BLEED HAS LEFT ONLY WHAT ITS FOUR SECONDS OF MOVEMENT ALLOW. Issue #918, ruled 2026-10-31. Its timer has
+		// eight ticks left, and the target, a plain actor no sample reads, has never moved, so none of the four seconds
+		// is spent and four ticks of ten are what it can still deal.
+		TestEqual(TEXT("another's bleed keeps the four ticks its four seconds of movement allow"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
 		TestEqual(TEXT("the minion's burn keeps its eight ticks"), RemainingOn(Target.Actor, Burn), 80.0f, 0.01f);
 	}
 	return true;
@@ -582,6 +586,11 @@ CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
 		{
 			return false;
 		}
+		// THE TARGET IS MOVING THROUGHOUT, so the bleed's ticks land and spend its four seconds of movement, and a
+		// refresh can be seen to give them back. Issue #918, ruled 2026-10-31. A plain actor, which no movement sample
+		// reads, so one note holds for the whole test. Nothing else here asks whether it moves.
+		Target.AbilitySystem->NoteMovedMetres(1.0f);
+
 		// FOUR AND A HALF SECONDS, BETWEEN TICKS. The first run of this test waited exactly four, and the tick due
 		// at second four had not landed: seven were left where six were expected.
 		CataclysmTestWorld::RunClock(World, 4.5f);
@@ -594,7 +603,10 @@ CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
 		// WITH NO ROW, ANOTHER APPLICATION REFRESHES NOTHING.
 		TestTrue(TEXT("with no row, the wearer applies a disease"), TenATick(Wearer.Actor, Target.Actor, Disease));
 		TestEqual(TEXT("and the poison still has six ticks left"), RemainingOn(Target.Actor, Poison), 60.0f, 0.01f);
-		TestEqual(TEXT("and the bleed"), RemainingOn(Target.Actor, Bleed), 60.0f, 0.01f);
+		// THE BLEED HAS NOTHING LEFT: its four ticks, at one to four seconds, spent its four seconds of movement, and
+		// what it has left is held to them although its timer has six. Issue #918, ruled 2026-10-31.
+		TestEqual(TEXT("and the bleed, its four seconds of movement spent, has nothing left"),
+			RemainingOn(Target.Actor, Bleed), 0.0f, 0.01f);
 
 		// WITH THE STAT.
 		TMap<FName, FCataclysmStatInputs> Inputs;
@@ -603,7 +615,10 @@ CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
 		TestTrue(TEXT("with the stat, the wearer applies a necrosis"), TenATick(Wearer.Actor, Target.Actor, Necrosis));
 		TestEqual(TEXT("the poison has its own ten seconds again: ten ticks"),
 			RemainingOn(Target.Actor, Poison), 100.0f, 0.01f);
-		TestEqual(TEXT("and the bleed"), RemainingOn(Target.Actor, Bleed), 100.0f, 0.01f);
+		// THE REFRESH GIVES THE BLEED ITS WINDOW AND ITS FOUR SECONDS AGAIN, ruled 2026-10-31: ten ticks on its timer,
+		// four of them what its four seconds of movement allow.
+		TestEqual(TEXT("and the bleed has its window and its four seconds again: four ticks"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
 		TestEqual(TEXT("and the disease, which had lost nothing, is as it was"),
 			RemainingOn(Target.Actor, Disease), 100.0f, 0.01f);
 		TestEqual(TEXT("another character's burn is not refreshed"), RemainingOn(Target.Actor, Burn), 60.0f, 0.01f);
@@ -612,8 +627,12 @@ CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
 		CataclysmTestWorld::RunClock(World, 2.0f);
 		TestEqual(TEXT("two seconds on, the poison has eight ticks left"),
 			RemainingOn(Target.Actor, Poison), 80.0f, 0.01f);
+		// TWO MOVING TICKS, AT FIVE AND SIX SECONDS, SPENT TWO OF THE BLEED'S FOUR SECONDS.
+		TestEqual(TEXT("two seconds on, the bleed has two of its four seconds left: two ticks"),
+			RemainingOn(Target.Actor, Bleed), 20.0f, 0.01f);
 		TestTrue(TEXT("the wearer applies the poison again"), TenATick(Wearer.Actor, Target.Actor, Poison));
-		TestEqual(TEXT("which refreshes the bleed to ten ticks"), RemainingOn(Target.Actor, Bleed), 100.0f, 0.01f);
+		TestEqual(TEXT("which refreshes the bleed, and its four seconds again: four ticks"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
 		TestEqual(TEXT("and still not the other character's burn, which has four left"),
 			RemainingOn(Target.Actor, Burn), 40.0f, 0.01f);
 	}

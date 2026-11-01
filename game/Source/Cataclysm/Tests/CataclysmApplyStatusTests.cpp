@@ -119,6 +119,25 @@ namespace CataclysmApplyStatusTest
 	}
 
 	/** What the running effect granting `Granted` on `Actor` has left to deal. */
+	/**
+	 * What one tick of the one running effect granting `Granted` on `Actor` deals, before defences, or -1 when there is
+	 * not exactly one or it has more than one modifier. Issue #918: what a bleed has left is held to four of these.
+	 */
+	float PerTickOn(const AActor* Actor, const FGameplayTag& Granted)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		if (!System)
+		{
+			return -1.0f;
+		}
+		const TArray<FActiveGameplayEffectHandle> Found = System->GetActiveEffects(
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Granted)));
+		const FActiveGameplayEffect* Active = Found.Num() == 1 ? System->GetActiveGameplayEffect(Found[0]) : nullptr;
+		return Active && Active->Spec.Def && Active->Spec.Def->Modifiers.Num() == 1
+			? Active->Spec.GetModifierMagnitude(0)
+			: -1.0f;
+	}
+
 	float RemainingOn(const AActor* Actor, const FGameplayTag& Granted)
 	{
 		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
@@ -561,12 +580,20 @@ CATACLYSM_TEST(FCataclysmSecondBleedTest,
 		Strike(100.0f);
 		const float Whole = SecondsLeftOn(Target.Actor, Bleed);
 		const float Normal = RemainingOn(Target.Actor, Bleed);
+		const float NormalTick = PerTickOn(Target.Actor, Bleed);
 		if (!TestEqual(TEXT("set-up: one bleed"), EffectsGranting(Target.Actor, Bleed), 1)
 			|| !TestTrue(*FString::Printf(TEXT("set-up: it runs %.2f s and has %.1f to deal"), Whole, Normal),
 				Whole > 2.0f && Normal > 0.0f))
 		{
 			return false;
 		}
+		// WHAT A BLEED HAS LEFT IS HELD TO ITS FOUR SECONDS OF MOVEMENT. Issue #918, ruled 2026-10-31. Its timer has
+		// five ticks; the target, a plain actor no sample reads, never moves, so none of the four seconds is spent and
+		// four ticks are what it can deal. Each figure below is that capped one; the comparisons are unchanged.
+		TestTrue(*FString::Printf(TEXT("set-up: its %.2f s hold more than four ticks, so the cap is what binds"), Whole),
+			Whole > 4.0f + 0.05f);
+		TestEqual(TEXT("what it has to deal is four of its ticks, what its four seconds of movement allow"),
+			Normal, 4.0f * NormalTick, 0.01f);
 
 		CataclysmTestWorld::RunClock(World, 1.5f);
 		const float Later = SecondsLeftOn(Target.Actor, Bleed);
@@ -583,6 +610,8 @@ CATACLYSM_TEST(FCataclysmSecondBleedTest,
 		TestEqual(TEXT("a stronger second bleed leaves one"), EffectsGranting(Target.Actor, Bleed), 1);
 		TestTrue(*FString::Printf(TEXT("and replaces it, dealing more: %.1f against %.1f"), Stronger, Normal),
 			Stronger > Normal * 1.5f);
+		const float StrongerTick = PerTickOn(Target.Actor, Bleed);
+		TestEqual(TEXT("a new bleed, so four of its ticks again"), Stronger, 4.0f * StrongerTick, 0.01f);
 
 		CataclysmTestWorld::RunClock(World, 1.5f);
 		Strike(50.0f);
@@ -591,6 +620,8 @@ CATACLYSM_TEST(FCataclysmSecondBleedTest,
 			SecondsLeftOn(Target.Actor, Bleed), Whole, 0.05f);
 		TestTrue(*FString::Printf(TEXT("without weakening it: %.1f to deal"), RemainingOn(Target.Actor, Bleed)),
 			RemainingOn(Target.Actor, Bleed) > Normal * 1.5f);
+		TestEqual(TEXT("still four of the stronger one's ticks"), RemainingOn(Target.Actor, Bleed),
+			4.0f * StrongerTick, 0.01f);
 	}
 	return true;
 }
