@@ -14,11 +14,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **WINDOW w130 PASSED AS REGISTERED (below): the whole suite at 4499 / 0 with every floor-placed creature drawing
-  from the floor, and both proofs proved.**
-- **ABOUT 419 TESTS BUILD CREATURES THROUGH THIS PATH, AND THEIR DRAWS CHANGE.** The coordinating session's audit found no
-  test that depends on a rolled modifier without choosing its creature by what it carries; a suite failure would say
-  otherwise, and is brought to the coordinating session, old and new recorded, before any test changes (ruled).
+- **NO EXISTING TEST FAILED, ALTHOUGH ABOUT 419 TESTS BUILD CREATURES THROUGH THIS PATH AND EVERY ONE OF THEIR DRAWS
+  CHANGED.** Window w130 ran the whole suite at 4499 / 0 (below), as the coordinating session's audit had found: no test
+  depends on a rolled modifier without choosing its creature by what it carries. Both proofs proved.
 - **IN PLAY THE CLOCK STAYS** for every creature the floor's population pass does not place, as #2490 left the rung:
   summons, reinforcements, Volatile Evolution's rung-up draw, the Royal Guard, the Demon Prince, raised and risen
   creatures, and maps with no floor plan.
