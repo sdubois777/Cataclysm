@@ -134,6 +134,15 @@ branch `feat/the-player-sees-what-affects-them` at the commit that carries this 
 - Nothing in this entry has been built or run in Unreal yet. The figures above are registrations.
 - What the list looks like on screen, which no automation test can see.
 
+### Run
+
+Compiled with `python tools/unreal_build.py build` on `345591cfd`, the lock free and no window held: `Build: Succeeded -
+43 actions, 40 files compiled`, at the first attempt; the two unity files holding the new `.cpp` files
+(`Module.Cataclysm.10.cpp.obj`, `Module.Cataclysm.26.cpp.obj`) were written by that build. Python of record on the
+same head, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>`: `7217 passed, 8 skipped in 197.49s
+(0:03:17)`; JUnit tests 7225, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". This
+change adds no Python test, so the totals are `f091d674d`'s.
+
 ---
 
 ## 2026-11-01 — A character carries its own difficulty tier: its runs begin at it, every level is fought at the run's, and a won run will raise it (#1472)
