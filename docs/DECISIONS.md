@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A restored eater's health shares are each carried once through a load and a rung change (#2181)
+
+**Affects:** one new Unreal test, `Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange`, and an
+include of `Character/CataclysmEnemyRarity.h`, both in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`.
+**No game code changed.** Issue [#2181](https://github.com/sdubois777/Cataclysm/issues/2181).
+
+### SAID FIRST
+
+- **PASSED IN WINDOW rung-roundtrip-w1, ON `b7959bfca`: 4497 OF 4497, P1 AND P2 PROVED, EVERY PREDICTION HELD AT THE
+  ASSERTION AND AT THE FIGURE** (recorded under "Window rung-roundtrip-w1" below). Every Unreal figure under "Registered
+  before the run" was a prediction traced by hand from the code, made before the window. One check ran before the
+  window and is not the window's evidence: the coordinating session ran
+  the test alone at `ed686bca8` (this change's first registration, on `690e74239`, with a tolerance of 0.5), under the
+  lock, 1 of 1, printing "LOAD RUNG SHARES on seed 1: ... rung 0 to 1; ... after the rise 13.64 (own 8.74, expected
+  13.64; Famished twice 16.36, souls twice 16.78); 2 eaten, 3 souls".
+- **THE TOLERANCE WAS TIGHTENED FROM 0.5 TO 0.01 AFTER THAT CHECK, because it showed the figures are about ten
+  points.** Own was 8.74, so at 0.5 the P2 break below would have passed Famished Beasts' share (1.47 against 1.75)
+  and Soul Harvest's (2.65 against 3.15), and the P1 break would have failed Soul Harvest's by 0.52, at the edge. Float
+  error on figures this size is far below 0.01. Nothing else in the test changed.
+- **MOVED, with no force push, onto `development` at `0494ffe7a`** (#2658 merged as #2672, which does not touch
+  `CataclysmSaveLoadTests.cpp`) as `fix/a-restored-creatures-shares-survive-a-rung-change-1`; the only conflict was this
+  file's top.
+- **What #2181 still lacked was this test, not code.** #2632 kept a restored creature's starting maximum
+  (`FCataclysmSaveGather::CreatureFrom` saves `StartingHealth`, `FCataclysmSaveApply::CreatureInto` puts it back with
+  `SetHealth`) and Soul Harvest's souls and the health they added; #2646 kept Famished Beasts' drops eaten and the
+  health they added (`ACataclysmDungeonGameMode::RestoreCreatureRoles`). Both rung-change paths, `StepVolatileEvolution`
+  and `NoteDeathForBloodForgedChampions`, rebuild the stat block through `SetRarityStep` and `DrawModifiersForRarity`,
+  then `PutTheHealthSharesBack` (Famished Beasts' share on the new rung's maximum) and
+  `ApplySoulHarvestFigures(..., /*bFreshBlock=*/true)` (Soul Harvest's on that). The issue asked for one round trip
+  showing each share carried exactly once; none existed.
+
+### What the test does
+
+On a dungeon carrying Famished Beasts, Soul Harvest and Volatile Evolution, in `ARoundTripOfRows`, with
+`Cataclysm.VolatileEvolutionRoll` pinned to 100 (never under the 10% chance) until the test asks for the rise:
+
+- **Before the save.** The first pinned seed from 1 to 20 whose floor 2 has a creature that eats, with no other creature
+  within twice the eating reach (`AFamishedEaterKeepsItsDropsAndShareAfterALoad`'s choice), below Volatile
+  Evolution's ceiling and holding no player build. It eats two drops (two `AGearDropAt` and a beat each), then is given
+  three souls through `RestoreCreatureRoles`, as `ACreaturesHeldSoulsAndTheFedBossComeBack` gives them, which is what a
+  soul given in play does: a holding with nothing added, then the figures applied. **Set-up, gating:** two eaten, three
+  souls, a starting maximum above nought, and **its maximum already equal to its own maximum on its rung with each share
+  on it once**, within the tolerance, so the formula the rise is held to describes this creature.
+- **After the load.** The eater is the creature standing within 1 cm of where it stood, found by place and not by its
+  drops, so a load that lost them is measured. A beat at the entrance; then it is wounded to half its maximum and one
+  beat runs with the roll pinned to 0.
+- **The figure.** Own = the starting maximum **the save held** x the rarity table's health scaling for the rung it is on
+  now x `UCataclysmEnemyModifiers::MaxHealthMultiplier` of the rows it holds **after** the rise (a rung-up draws the new
+  rung's modifiers) x its commander's multiplier, which is what `ApplyStartingAttributes` writes. Expected = Own x
+  `FamishedBeastsMultiplier(2)`, plus `SoulHarvestHealthAdded` of that for 3 souls.
+- **Asserted, each within a tolerance of 0.01.** The maximum after the load and a beat is the one saved; one beat
+  raised it one rung; it has still eaten two; it still holds three souls; **the maximum is Expected**; Famished Beasts'
+  recorded share (read through `CreatureRolesInto`) is Own x (`FamishedBeastsMultiplier(2)` - 1); Soul Harvest's
+  recorded share (read through `SoulHarvestHeldBy`) is `SoulHarvestHealthAdded(Own x FamishedBeastsMultiplier(2), 3)`.
+- **Controls.** The maximum less both recorded shares is Own; and a share carried twice -- Famished Beasts' multiplier
+  applied twice, or Soul Harvest's health added twice -- reads a figure more than 1.0 from Expected, so the tolerance
+  tells a doubled share apart. After the test the roll's variable is what it was. Prints "LOAD RUNG
+  SHARES".
+- **Volatile Evolution and not Blood-Forged Champions**, because one pinned roll and one beat raise a rung, where
+  Blood-Forged needs deaths fed to a champion. The two paths run the same four calls in the same order (read
+  2026-11-01); Blood-Forged's is not exercised by this test.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Build, in the window | the compile below; the window changes no source before the proofs |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed`, prefix `Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange` |
+| Whole Unreal suite | **4497 / 0**: 4496, the coordinating session's figure for `development` at `0494ffe7a` (#2658 merged as #2672, window w129B's 4496 / 0), this branch's base, + the 1 test added here. No existing test changes |
+| Python | the figure of record under "Compiled, and Python of record", unchanged (no Python test added), with JUnit, and ruff clean |
+| P1, the Famished restore: `Creature.DropsEaten = Saved.FamishedDropsEaten;` in `RestoreCreatureRoles` (`CataclysmDungeonGameMode.cpp`) broken to `Creature.DropsEaten = 0;`, prefix the test's full name | `1 tests performed, 0 succeeded, 1 failed`, on four assertions only: "it has still eaten two" (0); "its maximum is the new rung's own, Famished Beasts' share on it once, Soul Harvest's on that once" (Own x 1.3 against Own x 1.56, about 11.36 against 13.64 on the check's creature: `PutTheHealthSharesBack` skips an eater of nought, so only the souls go back); "Famished Beasts records its share once" (0 against about 1.75, `CreatureRolesInto` records nothing for nought eaten); "Soul Harvest records its share once" (Own x 0.3 against Own x 0.36, about 2.62 against 3.15). Passing: the load, the maximum after the load (the saved maximum is written back by `MaximumsInto`), the rung, the souls, both controls (the maximum less the shares is still Own), and the roll put back |
+| P2, the starting maximum: `if (Saved.StartingHealth > 0.0f)` in `FCataclysmSaveApply::CreatureInto` (`CataclysmSaveApply.cpp`) broken to `if (Saved.StartingHealth < 0.0f)`, prefix the test's full name | `1 tests performed, 0 succeeded, 1 failed`, on four assertions only: the maximum, Famished Beasts' share, Soul Harvest's share, and "CONTROL: the maximum less both recorded shares is the new rung's own maximum". Traced: the restored creature's starting maximum is then the class default, 0 (`ACataclysmEnemyCharacter::StartingMaxHealth`; no subclass sets it), so `ApplyStartingAttributes` writes no maximum and the rise leaves the loaded maximum M0 = Own0 x 1.56 standing as its own; the shares go on that, giving M0 x 1.56, against Own' x 1.56 with Own' = Own0 x 1.85 (`EnemyRarities.csv`, every step) x the rows' change. They agree only if the rows drawn on the rise multiply maximum health by about 0.84. On the check's creature (Own' 8.74, rung 0 to 1), with no row change, about: maximum 11.50 against 13.64; Famished Beasts' share 1.47 against 1.75; Soul Harvest's 2.65 against 3.15; the maximum less both 7.37 against 8.74. Passing: the load, the maximum after the load, the rung, drops, souls, the doubled-share control, and the roll put back |
+
+Each break keeps every name it touches in use, so each file compiles; each anchor occurs once in its file (checked
+with `prove_r2181.py --anchors-only`). Each runs through `tools/unreal_build.prove_cpp_guard` with
+`assert result.proved`, the prefix the test's full name (no other test's name begins with it), and **each broken half's
+engine log kept**, since the predictions are at the assertion. Each restored half must name no failure. Neither runs
+while a Python suite runs (issue #1630).
+
+### Compiled, and Python of record
+
+- **The compile**, `python tools/unreal_build.py build` on `91e9221f2` (this change moved onto `0494ffe7a`) with the
+  tolerance change and this file's edits in the working tree, uncommitted, with no lock: `Build: Succeeded - 8 actions,
+  5 files compiled: Module.Cataclysm.27.cpp, Module.Cataclysm.28.cpp, Module.Cataclysm.29.cpp, Module.Cataclysm.12.cpp,
+  CataclysmSaveLoadTests.cpp`, after one wait of 60 s for the continuous integration runner's mutex. The test file
+  compiled alone there, being modified; committed, it goes back into its unity file, which the first registration's
+  compile on `ed686bca8` built (`Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp`).
+- **Python of record**, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>` on the same tree:
+  `7197 passed, 8 skipped in 218.75s (0:03:38)`; JUnit tests 7205, failures 0, errors 0, skipped 8.
+  `python -m ruff check .`: "All checks passed!". The commit that adds this paragraph changes only this file and the
+  test's tolerance, both measured above.
+
+### Window rung-roundtrip-w1, run 2026-11-01 by the coordinating session
+
+On `b7959bfca`, branch `fix/a-restored-creatures-shares-survive-a-rung-change-1`, on `development` at `0494ffe7a`.
+Pre-checks at 12:02:46 all passed, 10,932 MB of physical memory free; the runner (started 12:02:58) took the lock as
+`rung-roundtrip-w1` and released it. **The dungeon session's Python run of record for #2669 overlapped the window's
+first three minutes** (it ended at 12:05:59): the build and the test alone. No proof was running then, and that
+session's compile had ended before this window's build began.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | the test compiled | "Build: Succeeded - target already up to date, 0 actions, nothing compiled": the worker's build had already compiled this test file, unchanged since |
+| The test alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed", at the tolerance of 0.01 |
+| Whole Unreal suite | 4497 / 0 | "4497 tests performed, 4497 succeeded, 0 failed"; "Declared: 4497 tests in the tree at b7959bfca; 4497 performed, gap 0"; "Test saves: 710 written and deleted, 0 left behind" |
+| Python | 7197 passed, 8 skipped | "7197 passed, 8 skipped in 196.13s"; JUnit tests 7205, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | four assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. The kept broken-half log fails exactly the four registered: "it has still eaten two" (0); the maximum (11.363625 against 13.636350); "Famished Beasts records its share once" (0 against 1.748250); "Soul Harvest records its share once" (2.622375 against 3.146850) |
+| P2 | four assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. The kept broken-half log fails exactly the four registered: the maximum (11.498760 against 13.636350); Famished Beasts' share (1.474200 against 1.748250); Soul Harvest's (2.653560 against 3.146850); "CONTROL: the maximum less both recorded shares is the new rung's own maximum" (7.371000 against 8.741250). Its line prints "starting maximum saved 4.72, now 0.00", the break's trace |
+
+### Not verified
+
+- Blood-Forged Champions' rung change after a load is read to run the same calls, and is not tested.
+- **Carrion Feast's feeders are not covered by this test.** The first comment on #2181 calls them a reset across a
+  load, but that ruling was superseded on 2026-10-31: raised creatures are now saved as records ("AN EARLIER RULING
+  SUPERSEDED", in this file). Their load is tested by `Cataclysm.SaveLoad.CarrionFeastsFeedersAndCarcassesComeBackAfterALoad`,
+  not through a rung change.
+
+---
+
 ## 2026-11-01 — A test's new save slots are deleted when it ends, never one that was there before nor its backup, and each run reports what its tests left (#2658)
 
 **Affects:** `FCataclysmTestSaves` (new, `game/Source/Cataclysm/Save/CataclysmTestSaves.h`, `.cpp`); the three writes of
