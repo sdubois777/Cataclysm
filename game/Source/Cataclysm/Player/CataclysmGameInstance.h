@@ -5,9 +5,23 @@
 #include "CoreMinimal.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/GameInstance.h"
+#include "Save/CataclysmSavePartition.h"
 #include "CataclysmGameInstance.generated.h"
 
 class UCataclysmEmpireRun;
+
+/**
+ * A character made on the front end's new-character screen, waiting for the level its Confirm opened to begin: the name
+ * and partition, locked at creation, and the weapon type and damage type. Issue #753, select-screen step 4a.
+ */
+struct FCataclysmPendingCreation
+{
+	bool bPending = false;
+	FString Name;
+	FCataclysmCharacterPartition Partition;
+	FName WeaponType;
+	FName DamageType;
+};
 
 /**
  * What survives travelling between levels. Today that is the empire run.
@@ -81,6 +95,9 @@ public:
 	FGuid PendingCharacterId;
 	FString LastLoadRefusal;
 	FString LastLoadNotice;
+
+	/** The new character the new-character screen made, made by the level's start and cleared first. Step 4a. */
+	FCataclysmPendingCreation PendingCreation;
 
 	/**
 	 * Throws away whatever run was in progress and starts a fresh one.

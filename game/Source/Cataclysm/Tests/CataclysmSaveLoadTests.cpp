@@ -39,6 +39,8 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
@@ -7131,6 +7133,174 @@ bool FCataclysmSaveLoadNothingPendingTest::RunTest(const FString&)
 			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::NothingPending));
 	TestEqual(TEXT("the fresh run is still the one written to"), Scene.Writer->RunSlotName(), FreshRun);
 	TestTrue(TEXT("and its character slot was not deleted"), UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex));
+	return true;
+}
+
+/**
+ * A new character from the new-character screen is made when its level begins: its name and partition, its weapon type
+ * and damage type, its empire run at its lethality, and its records written at once (`CharacterCreated`), so it is
+ * listed on the select screen. The creation is cleared first, so the level's next start makes nothing. Issue #753,
+ * select-screen step 4a, ruled 2026-11-01. Prints "NEW CHARACTER MADE".
+ *
+ * TWO CASES, BECAUSE GIVING THE CHOSEN WEAPON ALSO WRITES THE RECORD. A creation that gives a weapon moves it through
+ * the inventory, which notes `InventoryChanged`, and that writes the character record too; so the first case cannot
+ * tell whether `CharacterCreated` wrote. The second chooses the weapon type the character already wears, the starting
+ * Greataxe, so `ApplyCreationChoice` changes only the damage type and nothing in the inventory moves: there the new
+ * trigger is the only write. Its set-up asserts the inventory's change count did not move, which every place that notes
+ * `InventoryChanged` raises. Found by window w126's R6, ruled 2026-11-01.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterTest,
+	"Cataclysm.SaveLoad.ANewCharacterIsMadeAndWrittenWhenItsLevelBegins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadNewCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// THE SECOND CASE, IN A SCENE OF ITS OWN, made and torn down first: nothing in the inventory moves.
+	FString HeldType;
+	bool bHeldWrittenBefore = true;
+	bool bHeldWritten = false;
+	int32 InventoryChangesDuring = -1;
+	ACataclysmGameMode::EPendingLoad HeldOutcome = ACataclysmGameMode::EPendingLoad::NothingPending;
+	{
+		FLoadScene Held = MakeScene();
+		if (!TestTrue(TEXT("set-up: the second case's world was built"), Held.IsUsable()))
+		{
+			if (Held.World)
+			{
+				Held.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Held.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FString HeldRunSlot = Held.Writer->RunSlotName();
+		const FString HeldCharacterSlot = Held.Writer->CharacterSlotName();
+		ON_SCOPE_EXIT { Delete(HeldRunSlot); Delete(HeldCharacterSlot); };
+		ACataclysmGameMode* HeldMode = AGameModeIn(Held);
+		const UCataclysmEquipmentComponent* Equipment = Held.Character->GetEquipment();
+		const UCataclysmInventoryComponent* Inventory = Held.Character->GetInventory();
+		HeldType = Equipment ? Equipment->EquippedWeaponType() : FString();
+		if (!TestNotNull(TEXT("set-up: the second case's game mode"), HeldMode)
+			|| !TestNotNull(TEXT("set-up: and its inventory"), Inventory)
+			|| !TestFalse(TEXT("set-up: the character already wears a weapon, whose type is chosen"), HeldType.IsEmpty()))
+		{
+			return false;
+		}
+
+		FCataclysmPendingCreation& HeldCreation = Held.Instance->PendingCreation;
+		HeldCreation.bPending = true;
+		HeldCreation.Name = TEXT("Ivo Thorn");
+		HeldCreation.Partition.Lethality = ECataclysmLethality::Standard;
+		HeldCreation.WeaponType = FName(*HeldType);
+		HeldCreation.DamageType = FName(TEXT("War"));
+		bHeldWrittenBefore = UGameplayStatics::DoesSaveGameExist(HeldCharacterSlot, UserIndex);
+
+		const int32 ChangesBefore = Inventory->ChangeCount();
+		HeldOutcome = HeldMode->LoadThePendingCharacter();
+		InventoryChangesDuring = Inventory->ChangeCount() - ChangesBefore;
+		const double HeldGiveUpAt = FPlatformTime::Seconds() + 2.0;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(HeldCharacterSlot) && FPlatformTime::Seconds() < HeldGiveUpAt)
+		{
+			FPlatformProcess::Sleep(0.01f);
+		}
+		bHeldWritten = UGameplayStatics::DoesSaveGameExist(HeldCharacterSlot, UserIndex);
+	}
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER MADE, NOTHING MOVED: outcome %d; chose the worn %s; the inventory changed %d "
+								 "time(s); the record %s before, %s after"),
+							static_cast<int32>(HeldOutcome), *HeldType, InventoryChangesDuring,
+							bHeldWrittenBefore ? TEXT("EXISTED") : TEXT("absent"), bHeldWritten ? TEXT("written") : TEXT("ABSENT")));
+	TestEqual(TEXT("the second case's character was made"), static_cast<int32>(HeldOutcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestEqual(TEXT("set-up: nothing in its inventory moved, so no InventoryChanged was noted"), InventoryChangesDuring, 0);
+	TestFalse(TEXT("CONTROL: nothing had written the second case's record before"), bHeldWrittenBefore);
+	TestTrue(TEXT("with nothing moved, its record was written at once, by the new trigger alone"), bHeldWritten);
+
+	// THE FIRST CASE: a weapon of another type given.
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Vesper Ash");
+	Creation.Partition.Lethality = ECataclysmLethality::Hardcore;
+	Creation.Partition.bSoloSelfFound = true;
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+	const bool bWrittenBefore = UGameplayStatics::DoesSaveGameExist(CharacterSlot, UserIndex);
+
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const ACataclysmGameMode::EPendingLoad Again = Mode->LoadThePendingCharacter();
+
+	// THE WRITE IS ASYNCHRONOUS, so waited for, as `Delete` waits.
+	const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+	while (FCataclysmSaveStorage::HasAWriteInFlight(CharacterSlot) && FPlatformTime::Seconds() < GiveUpAt)
+	{
+		FPlatformProcess::Sleep(0.01f);
+	}
+	const UCataclysmCharacterSave* Record = UGameplayStatics::DoesSaveGameExist(CharacterSlot, UserIndex)
+		? Read<UCataclysmCharacterSave>(CharacterSlot) : nullptr;
+	int32 Listed = 0;
+	FString ListedName;
+	for (const FCataclysmCharacterSummary& Row : FCataclysmSaveLoad::SavedCharacters(UserIndex))
+	{
+		if (Row.SlotName == CharacterSlot)
+		{
+			++Listed;
+			ListedName = Row.Name;
+		}
+	}
+	const int32 DeathDays = Scene.Instance->EmpireRun ? Scene.Instance->EmpireRun->DeathDayCost() : -1;
+
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER MADE: outcome %d, then %d; '%s' (lethality %d, %s), %s and %s; a death "
+								 "costs %d days; the record %s before, %s after ('%s', lethality %d, %s, weapon %s); listed "
+								 "%d time(s) as '%s'"),
+							static_cast<int32>(Outcome), static_cast<int32>(Again), *Scene.State->GetCharacterName(),
+							static_cast<int32>(Scene.State->GetPartition().Lethality),
+							Scene.State->GetPartition().bSoloSelfFound ? TEXT("Solo Self-Found") : TEXT("shared"),
+							*Scene.State->GetChosenWeaponType().ToString(), *Scene.State->GetChosenDamageType().ToString(),
+							DeathDays, bWrittenBefore ? TEXT("EXISTED") : TEXT("absent"), Record ? TEXT("written") : TEXT("ABSENT"),
+							Record ? *Record->CharacterName : TEXT(""), Record ? static_cast<int32>(Record->Partition.Lethality) : -1,
+							Record && Record->Partition.bSoloSelfFound ? TEXT("Solo Self-Found") : TEXT("shared"),
+							Record ? *Record->StartingWeaponType.ToString() : TEXT(""), Listed, *ListedName));
+
+	TestEqual(TEXT("the new character was made"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestEqual(TEXT("and the next start makes nothing, the creation cleared first"), static_cast<int32>(Again),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::NothingPending));
+	TestEqual(TEXT("it has its name"), Scene.State->GetCharacterName(), FString(TEXT("Vesper Ash")));
+	TestEqual(TEXT("and its lethality"), static_cast<int32>(Scene.State->GetPartition().Lethality),
+			  static_cast<int32>(ECataclysmLethality::Hardcore));
+	TestTrue(TEXT("and its Solo Self-Found flag"), Scene.State->GetPartition().bSoloSelfFound);
+	TestEqual(TEXT("and its weapon type"), Scene.State->GetChosenWeaponType(), FName(TEXT("Greatsword")));
+	TestEqual(TEXT("its run is at its lethality: a death costs Hardcore's 10 days"), DeathDays, 10);
+	TestFalse(TEXT("CONTROL: nothing had written its record before"), bWrittenBefore);
+	if (!TestNotNull(TEXT("its record was written at once"), Record))
+	{
+		return true;
+	}
+	TestEqual(TEXT("with its name"), Record->CharacterName, FString(TEXT("Vesper Ash")));
+	TestEqual(TEXT("and its lethality"), static_cast<int32>(Record->Partition.Lethality),
+			  static_cast<int32>(ECataclysmLethality::Hardcore));
+	TestEqual(TEXT("and its weapon type"), Record->StartingWeaponType, FName(TEXT("Greatsword")));
+	TestEqual(TEXT("and the select screen lists it once"), Listed, 1);
+	TestEqual(TEXT("by its name"), ListedName, FString(TEXT("Vesper Ash")));
 	return true;
 }
 

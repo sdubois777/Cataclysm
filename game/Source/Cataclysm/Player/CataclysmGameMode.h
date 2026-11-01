@@ -42,6 +42,8 @@ public:
 		Loaded,
 		LoadedWithANewRun,
 		Refused,
+		/** A new character from the new-character screen was made and written. Select-screen step 4a. */
+		Created,
 	};
 
 	/**
@@ -65,6 +67,15 @@ public:
 	 * PUBLIC SO A TEST CAN CALL IT, as `BeginSavingThisRun` is.
 	 */
 	EPendingLoad LoadThePendingCharacter();
+
+	/**
+	 * A NEW CHARACTER, from the front end's new-character screen, made on the fresh start, which is its own: its name and
+	 * partition (`SetIdentity`), its weapon type and damage type, its empire run begun at its lethality, and its records
+	 * written at once (`ECataclysmSaveTrigger::CharacterCreated`). The creation is cleared before any of it. Called by
+	 * `LoadThePendingCharacter` when one is pending. Issue #753, select-screen step 4a, ruled 2026-11-01.
+	 */
+	EPendingLoad MakeThePendingCharacter(class UCataclysmGameInstance& Instance, class UCataclysmSaveWriter& Writer,
+										 class ACataclysmPlayerCharacter& Character);
 
 	/** The level a refusal asked to go back to, for tests; travel itself does not run in an automation test. */
 	FString FrontEndRequested() const { return FrontEndRequest; }

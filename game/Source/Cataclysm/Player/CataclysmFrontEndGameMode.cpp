@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Interface/CataclysmCharacterSelectWidget.h"
+#include "Interface/CataclysmNewCharacterWidget.h"
 #include "Player/CataclysmPlayerController.h"
 
 ACataclysmFrontEndGameMode::ACataclysmFrontEndGameMode()
@@ -19,20 +20,44 @@ void ACataclysmFrontEndPlayerController::BeginPlay()
 	{
 		return;
 	}
-	const TSubclassOf<UCataclysmCharacterSelectWidget> ScreenClass = SelectScreenClass.LoadSynchronous();
-	if (!ScreenClass)
+	ShowTheSelectScreen();
+}
+
+UCataclysmCharacterSelectWidget* ACataclysmFrontEndPlayerController::SelectScreen() const
+{
+	return Cast<UCataclysmCharacterSelectWidget>(Shown);
+}
+
+void ACataclysmFrontEndPlayerController::ShowTheSelectScreen()
+{
+	ShowOnly(SelectScreenClass.LoadSynchronous(), SelectScreenClass.ToString());
+}
+
+bool ACataclysmFrontEndPlayerController::ShowTheNewCharacterScreen()
+{
+	return ShowOnly(NewCharacterScreenClass.LoadSynchronous(), NewCharacterScreenClass.ToString());
+}
+
+bool ACataclysmFrontEndPlayerController::ShowOnly(UClass* ScreenClass, const FString& Path)
+{
+	if (!ScreenClass) // A front end screen's: a missing asset replaces nothing.
 	{
-		UE_LOG(LogCataclysm, Warning, TEXT("The character select screen's asset is missing: %s"),
-			   *SelectScreenClass.ToString());
-		return;
+		UE_LOG(LogCataclysm, Warning, TEXT("A front end screen's asset is missing: %s"), *Path);
+		return false;
 	}
-	Screen = CreateWidget<UCataclysmCharacterSelectWidget>(this, ScreenClass);
-	if (!Screen)
+	if (Shown)
 	{
-		return;
+		Shown->RemoveFromParent();
+		Shown = nullptr;
 	}
-	Screen->AddToViewport();
-	UseTheMenuInputMode(Screen);
+	Shown = CreateWidget<UUserWidget>(this, ScreenClass);
+	if (!Shown)
+	{
+		return false;
+	}
+	Shown->AddToViewport();
+	UseTheMenuInputMode(Shown);
+	return true;
 }
 
 FString ACataclysmFrontEndPlayerController::UseTheMenuInputMode(UUserWidget* Menu)

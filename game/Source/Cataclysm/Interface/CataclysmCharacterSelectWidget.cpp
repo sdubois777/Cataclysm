@@ -7,6 +7,7 @@
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Kismet/GameplayStatics.h"
+#include "Player/CataclysmFrontEndGameMode.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveWriter.h"
 
@@ -128,14 +129,32 @@ bool UCataclysmCharacterSelectWidget::ContinueAt(int32 Index, UCataclysmGameInst
 	return true;
 }
 
-void UCataclysmCharacterSelectWidget::StartNew(UCataclysmGameInstance* Instance)
+bool UCataclysmCharacterSelectWidget::StartNew(UCataclysmGameInstance* Instance)
 {
+	bNewCharacterRequested = false;
+	if (!HasRoomForANewCharacter(Shown.Num()))
+	{
+		ShowRefusal(FString::Printf(TEXT("this account holds %d characters, the most it may; delete one to make another"),
+									MostCharacters));
+		return false;
+	}
 	Instance = Instance ? Instance : OwnInstance();
 	if (Instance)
 	{
 		Instance->PendingCharacterId.Invalidate();
 	}
-	Open(SandboxMap);
+
+	// THE NEW-CHARACTER SCREEN, in this screen's place. Select-screen step 4a.
+	bNewCharacterRequested = true;
+	if (ACataclysmFrontEndPlayerController* FrontEnd = Cast<ACataclysmFrontEndPlayerController>(GetOwningPlayer());
+		FrontEnd && !FrontEnd->ShowTheNewCharacterScreen())
+	{
+		// THE ASSET MISSING, as between steps 4a and 4b: this screen stays, and says why.
+		bNewCharacterRequested = false;
+		ShowRefusal(NewCharacterScreenMissing);
+		return false;
+	}
+	return true;
 }
 
 void UCataclysmCharacterSelectWidget::HandleRowClicked(FName Value)

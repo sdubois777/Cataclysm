@@ -2,6 +2,182 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A new character is made on the front end with its name and the choices locked at creation, refused at 24 characters, and written at once (#753, select-screen step 4a)
+
+**Affects:** `UCataclysmNewCharacterWidget` (new, `game/Source/Cataclysm/Interface/CataclysmNewCharacterWidget.h`,
+`.cpp`), deriving from the creator, whose `Confirm` becomes virtual (`CataclysmCharacterCreationWidget.h`);
+`UCataclysmCharacterSelectWidget::StartNew`, now refused at 24 and showing the new-character screen
+(`CataclysmCharacterSelectWidget.h`, `.cpp`); `ACataclysmFrontEndPlayerController`, which shows one screen at a time
+(`CataclysmFrontEndGameMode.h`, `.cpp`); `FCataclysmPendingCreation` on `UCataclysmGameInstance`
+(`CataclysmGameInstance.h`); `ACataclysmGameMode::MakeThePendingCharacter`, called by `LoadThePendingCharacter`
+(`CataclysmGameMode.h`, `.cpp`); a save trigger, `CharacterCreated` (`CataclysmSaveTriggers.h`, `.cpp`); the trigger
+lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.md` and
+`Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`; five new tests and two changed assertions. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open for step 4b (the screen's asset) and step 5
+(deleting a character).
+
+### SAID FIRST
+
+- **WINDOW w126 STOPPED AT ITS SIXTH PROOF, R6, WHICH DID NOT PROVE.** With the immediate write removed, every test
+  still passed: giving the chosen weapon moves it through the inventory, which notes `InventoryChanged`, and that writes
+  the character record as well, so the made test could not tell which wrote. Everything before it passed (below). The
+  made test gains a second case, a creation that moves nothing in the inventory, where the new trigger is the only
+  write (ruled 2026-11-01). **Window w126B then passed it, and R6, R7 and R8 proved as traced**, on `f3186260d`
+  after the move onto `development` c7fd29c63 (below).
+- **IN PLAY THE NEW TRIGGER IS NOT ALWAYS THE ONLY WRITE.** When the chosen weapon type is not the one worn, the weapon
+  given writes the record first, through the inventory; when it is the one worn, only the damage type changes and
+  `CharacterCreated` is the only write.
+- **NOTHING A PLAYER SEES YET.** The new-character screen's asset, `WBP_NewCharacter`, is made in step 4b. Until then New
+  on the select screen asks the front end for a screen whose asset is missing: the front end logs it and replaces
+  nothing, and the select screen stays and shows "the new-character screen could not be opened: its asset is missing",
+  as asked 2026-11-01. A test sees the front end's half; **the select screen's text is not seen by any test**, because it
+  needs the screen made by `CreateWidget` with the front end as its owner, which a test world cannot do (#1841). The
+  front end's half is proved by R8 below, which breaks the missing-asset branch to report the screen shown without
+  making anything, so no null class reaches `CreateWidget`.
+- **TWO EXISTING ASSERTIONS CHANGE, both ruled 2026-11-01.**
+  - `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds` asserted `"and opens the sandbox"` after New
+    (`LevelRequested == SandboxMap`); New now asks for the new-character screen, so it asserts `"and asks for the
+    new-character screen"`. That New changes is the ruled step 4 plan; the line is marked in the test.
+  - `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt` asserted that only `InventoryChanged` and
+    `CharacterDied` write the character record; it gains `CharacterCreated` (Q2: "the test exists to list the
+    triggers"). Its run-record half needs nothing: it asserts every trigger but `AccountChanged` writes the run record,
+    by `WritesTheRunRecord`, `Trigger != AccountChanged`, which already includes the new one; its account half likewise.
+- **THE NAME RULES ARE A JUDGEMENT, ruled 2026-11-01,** and the design says nothing on them: 2 to 16 characters after
+  trimming; letters of any alphabet; single spaces, apostrophes and hyphens only between letters; a refusal names the
+  rule. What the genre does was found only in players' reports, none official: Diablo IV, up to 12 letters, no spaces,
+  not unique (a Steam thread; Gamepur; Upcomer); Path of Exile, ASCII letters and the underscore, unique online, with
+  players asking for the accented letters it lacks (the Path of Exile forum; the wiki refused the fetch); Last Epoch,
+  nothing found. **DUPLICATES ARE ALLOWED, by the design:** `docs/Save_System_Design.md`, "two characters may share a
+  name"; no check against the others exists.
+- **THE FONT DRAWS Ö AND Ł, BY ITS CHARACTER MAP, NOT SEEN ON SCREEN.** No project font exists, so the screens use the
+  engine's Roboto. Its cmap, read by a script, maps Ö, ö, Ł, ł, Cyrillic Ж and Greek Ω; not Chinese 中 or Arabic ا. The
+  engine's `DroidSansFallback.ttf` maps 中 and not ا; whether Slate falls back to it for the default font is not
+  verified. The rule allows any alphabet anyway; the font is a separate fix (ruled).
+- **ONLINE IS SHOWN AND CANNOT BE CHOSEN, ruled 2026-11-01 (Q1):** "Online play needs a service that does not exist yet".
+  The design seals offline characters off because "a local file can be edited", and every save is a local file until a
+  service exists. Every new character is written Offline.
+- **24 COUNTS AN UNREADABLE SLOT**, which still holds one of the 24 (ruled). The count is the select screen's rows, as
+  `FCataclysmSaveLoad::SavedCharacters` reads them.
+- **THE IN-GAME CREATOR IS NOW REDUNDANT:** `WBP_CharacterCreation`, with `UCataclysmCharacterCreationWidget`, opened by
+  the C key through `ACataclysmPlayerController::ToggleCharacterCreation`. Its retirement is for the coordinating
+  session to raise; nothing about it changes here except that `Confirm` is virtual.
+
+### Rulings, 2026-11-01
+
+- **Q1, Online:** shown, Offline chosen, Online disabled with the reason above; written as Offline.
+- **Q2, a new save trigger, `CharacterCreated`,** writing the character and run records asynchronously, added to every
+  list of the triggers: the Python test's, the design's (both the prose list and the table), and the C++ test's.
+- **The name rules,** above. **24 counts unreadable slots.** **Split:** 4a C++ only, 4b the generator run and its test.
+
+### What changes
+
+| What | Before | After |
+|---|---|---|
+| New on the select screen | opened the sandbox: a fresh character, unnamed, Standard | refused at 24; otherwise the new-character screen |
+| A new character's name, lethality, Solo Self-Found, population | not chosen; the defaults | chosen on the new-character screen, Online refused |
+| When its level begins | the fresh start | the same, then its name and partition, its weapon type and damage type, its run at its lethality |
+| Its record | written at its first item or death | written at once (`CharacterCreated`), so it is listed |
+
+### Tests
+
+- `Cataclysm.Creation.ANewCharactersNameFollowsTheRules`: fifteen names, allowed and refused, each refusal's wording
+  checked. Prints "NAME RULES".
+- `Cataclysm.Creation.TheNewCharacterScreenHandsTheCharacterOver`: a refused name hands nothing over; Online is refused
+  with its reason; Confirm hands over the trimmed name, Hardcore, Solo Self-Found, Offline, Sword and War, and asks for
+  the sandbox. Prints "NEW CHARACTER HANDED".
+- `Cataclysm.CharacterSelect.NewIsRefusedWhenTheAccountHoldsTwentyFour`: 24 rows, one unreadable, refuse New with the
+  reason; 23 ask for the new-character screen with nothing pending. The rows are given, because the SaveGames folder
+  holds other tests' saves (#2658). Prints "NEW AT 24".
+- `Cataclysm.SaveLoad.ANewCharacterIsMadeAndWrittenWhenItsLevelBegins`: a pending creation made when the level begins:
+  its name, partition and weapon type on the player; its run at Hardcore (a death costs 10 days); its record written at
+  once with its name, lethality and weapon type, and listed by the select screen by its name; the next start makes
+  nothing. Control: nothing had written its record before. Prints "NEW CHARACTER MADE". **A SECOND CASE, added after
+  w126 (ruled 2026-11-01),** in a scene of its own: the creation chooses the weapon type the character already wears, the
+  starting Greataxe, so nothing in the inventory moves. Set-up: the inventory's change count did not move, and every
+  place that notes `InventoryChanged` raises it, so the case cannot fall back to the inventory's write. The test sees the
+  write as the character's save slot existing, after waiting for the write in flight, when it did not before. Prints
+  "NEW CHARACTER MADE, NOTHING MOVED".
+- `Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing`: the front end, its new-character screen's asset
+  pointed through the property at one that does not exist, so the test still holds once 4b makes the real one: not
+  shown, no input mode asked for, its warning expected once. Prints "NEW SCREEN MISSING".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The five new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4474 / 0: window w125B's 4469 on `development` (29aaa7111), + 5 |
+| Python | of record, with JUnit, and ruff |
+| R1, the longest name not checked (`if (Length > MostNameLength) // A name's rule: its longest.` to `1000`), prefix `Cataclysm.Creation.` | the name test fails on "17 letters are refused" and its "and the refusal says 'at most'" only |
+| R2, 24 allowed (`return Listed < MostCharacters; // The account's: 24 at most.` to `<=`), prefix `Cataclysm.CharacterSelect.` | the 24 test fails on "New is refused at 24 characters, an unreadable slot among them", "and says why" and "and asks for no new-character screen" only |
+| R3, the creation not handed over (`Creation.bPending = true; // A new character's: the creation handed over.`), prefix `Cataclysm.Creation.` | the hand-over test fails on "the new character is handed over" only |
+| R4, the name and partition not applied (`State->SetIdentity(Creation.Name, Creation.Partition); // A new character's: ...`), prefix `Cataclysm.SaveLoad.` | the made test fails on "it has its name", "and its lethality", "and its Solo Self-Found flag", the record's "with its name" and "and its lethality", and "by its name" only: the gather writes no name or partition for a player with none set |
+| R5, the run not at its lethality (`static_cast<int32>(Creation.Partition.Lethality)); // A new character's: its run's lethality.` to `0);`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its run is at its lethality: a death costs Hardcore's 10 days" (5) only |
+| R6, not written at once (`Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its record was written at once" and stops there |
+| R7, the trigger not writing the character record (its `return true` under `case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: ...` to `return false`), prefix `Cataclysm.Save` | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "its record was written at once", stopping there |
+| R8, a missing screen reported as shown (the `return false;` after `A front end screen's asset is missing` in `ACataclysmFrontEndPlayerController::ShowOnly` to `return true;`, nothing made), prefix `Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing` | the missing-screen test fails on "a missing new-character screen is not shown" only: no input mode is asked for and the warning is still logged once |
+
+### Window w126, 2026-11-01, on `d94ec51de`: stopped at R6
+
+Run by `run_w126.py` under the lock `dungeon-w126`, from a clean tree at `d94ec51de`; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The five new tests alone | 1 / 1 each | 1 / 1 each, every marker line printed |
+| Whole Unreal suite | 4474 / 0 | "4474 tests performed, 4474 succeeded, 0 failed"; declared 4474, gap 0 |
+| Python | of record | "7187 passed, 8 skipped"; JUnit 7195 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 | the name test, on its two assertions | PROVED: 13 of 14 with the break, 14 of 14 restored; the broken log fails "17 letters are refused" and "17 letters are refused, and the refusal says 'at most'" only |
+| R2 | the 24 test, on its three assertions | PROVED: 6 of 7, then 7 of 7; the broken log fails the three registered and nothing else |
+| R3 | the hand-over test, on one assertion | PROVED: 13 of 14, then 14 of 14; the broken log fails "the new character is handed over" only |
+| R4 | the made test, on its six assertions | PROVED: 65 of 66, then 66 of 66; the broken log fails the six registered and nothing else |
+| R5 | the made test, on one assertion | PROVED: 65 of 66, then 66 of 66; the broken log fails "... a death costs Hardcore's 10 days" (10, but it was 5) only |
+| R6 | the made test, on "its record was written at once" | **NOT A PROOF**: 66 of 66 with the break and restored. The runner stopped here; R7 and R8 did not run |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w126_R<n>_run1.log`, after the window.
+**R7'S REGISTERED TRACE WAS WRONG FOR THE MADE TEST**, by the same cause as R6: the inventory's write would have kept
+"its record was written at once" passing. Re-registered below.
+
+### Registered for window w126B, on the head with the second case
+
+R1 to R5 stand from w126: the code they break is unchanged (ruled).
+
+| Figure | Registered |
+|---|---|
+| The made test alone | 1 / 1, both its lines quoted |
+| Whole Unreal suite | 4480 / 0: window converted-w1's 4475 on `development` (c7fd29c63, #2663 merged), + 5; the second case is in the same test. MOVED ONTO IT, as `feat/new-character-creator-1`, from 29aaa7111; the files R1 to R8 break and the four test files are identical before and after the move, by `git diff --quiet` |
+| Python | of record, with JUnit, and ruff |
+| R6, as above | the made test fails on "with nothing moved, its record was written at once, by the new trigger alone" only; its first case still passes, its record written through the inventory |
+| R7, as above | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R8, as above | as registered for w126 |
+
+### Window w126B, 2026-11-01, on `f3186260d`: as registered
+
+Run by `run_w126B.py` under the lock `dungeon-w126B`, from a clean tree at `f3186260d`; the build compiled nothing.
+**Its first attempt stopped at its first check** and ran nothing: the script that wrote the runner replaced its
+branch but not its second copy of the head, which still named w126's `d94ec51d`, and the runner's head check refused.
+The script now replaces both and asserts each once; the second attempt is the record.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The made test alone | 1 / 1, both lines | 1 / 1. "NEW CHARACTER MADE, NOTHING MOVED: outcome 5; chose the worn Greataxe; the inventory changed 0 time(s); the record absent before, written after", and the first case's line as in w126 |
+| Whole Unreal suite | 4480 / 0 | "4480 tests performed, 4480 succeeded, 0 failed"; declared 4480, gap 0 |
+| Python | of record | "7187 passed, 8 skipped"; JUnit 7195 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R6 | the made test, on the second case's assertion only | PROVED: 65 of 66 with the break, 66 of 66 restored; the broken log fails "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R7 | the triggers test and the made test, one assertion each | PROVED: 157 of 159, then 159 of 159; the broken log fails "'a character being created' writes the character record" and "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R8 | the missing-screen test, on one assertion | PROVED: 0 of 1, then 1 of 1; the broken log fails "a missing new-character screen is not shown" only |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w126B_R<n>_run1.log`. With R1 to R5 from
+w126, all eight proofs registered for this step have proved as traced.
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled). Again after the missing-screen refusal and its test:
+`Build: Succeeded - 37 actions, 34 files compiled`. Again after the made test's second case: `Build: Succeeded - 6
+actions, 3 files compiled: Module.Cataclysm.27.cpp, Module.Cataclysm.28.cpp, CataclysmSaveLoadTests.cpp`.
+
+---
+
 ## 2026-11-01 — Converted damage holds no bleed slot: each blow The Breaking Point converts runs as its own bleed, beside an enemy's (#2275)
 
 **Affects:** `UCataclysmSkillEffects::ApplyDamageOverTime` and, in its anonymous namespace, `RunningApplicationOf`,

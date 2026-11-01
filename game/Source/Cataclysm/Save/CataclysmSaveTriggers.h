@@ -71,6 +71,17 @@ enum class ECataclysmSaveTrigger : uint8
 	 * holds: the days are the run's, and the health is in the run record's floor placement.
 	 */
 	DeathProcessed = 8,
+
+	/**
+	 * A character made on the front end's new-character screen, its name, partition and creation choice applied when
+	 * its level begins (`ACataclysmGameMode::LoadThePendingCharacter`). Issue #753, select-screen step 4a, ruled
+	 * 2026-11-01.
+	 *
+	 * WHY IT EXISTS. Without it the new character's record waited for its first item or its first death, and a player
+	 * who quit before either found the character missing from the select screen. AN ORDINARY ASYNCHRONOUS WRITE, of the
+	 * character record and the run record.
+	 */
+	CharacterCreated = 9,
 };
 
 /**

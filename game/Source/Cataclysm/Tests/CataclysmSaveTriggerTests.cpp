@@ -116,8 +116,10 @@ bool FCataclysmSaveRecordsAreWrittenForTheRightReasons::RunTest(const FString&)
 		// THE CHARACTER RECORD IS WRITTEN FOR THE TWO THINGS THAT CHANGE IT.
 		// What a character is carrying lives in its own record, so an item has
 		// to reach it; and a death is written whole.
+		// RULED 2026-11-01, select-screen step 4a: a character being created writes its record too, so it is listed at
+		// once; the set was InventoryChanged and CharacterDied only.
 		const bool bCharacter = Trigger == ECataclysmSaveTrigger::InventoryChanged
-			|| Trigger == ECataclysmSaveTrigger::CharacterDied;
+			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated;
 		TestEqual(FString::Printf(TEXT("'%s' writes the character record"),
 					FTriggers::NameOf(Trigger)),
 			FTriggers::WritesTheCharacterRecord(Trigger), bCharacter);

@@ -41,6 +41,10 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::CharacterDied:
 			return true;
 
+		// A NEW CHARACTER, so it is listed on the select screen at once. Issue #753, select-screen step 4a.
+		case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: a new character writes its record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -111,6 +115,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::CharacterDied:          return TEXT("the character dying");
 		case ECataclysmSaveTrigger::AccountChanged:         return TEXT("the account record changing");
 		case ECataclysmSaveTrigger::DeathProcessed:         return TEXT("a death having been paid for");
+		case ECataclysmSaveTrigger::CharacterCreated:       return TEXT("a character being created");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -137,5 +142,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::CharacterDied,
 		ECataclysmSaveTrigger::AccountChanged,
 		ECataclysmSaveTrigger::DeathProcessed,
+		ECataclysmSaveTrigger::CharacterCreated,
 	};
 }

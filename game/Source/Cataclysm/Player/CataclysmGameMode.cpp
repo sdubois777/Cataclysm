@@ -162,11 +162,40 @@ void ACataclysmGameMode::HandleStartingNewPlayer_Implementation(APlayerControlle
 	LoadThePendingCharacter();
 }
 
+ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCataclysmGameInstance& Instance,
+																			 UCataclysmSaveWriter& Writer,
+																			 ACataclysmPlayerCharacter& Character)
+{
+	const FCataclysmPendingCreation Creation = Instance.PendingCreation;
+	Instance.PendingCreation = FCataclysmPendingCreation(); // A new character's: cleared before it is made.
+	ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>();
+	if (!State)
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("A new character could not be made: the player has no player state"));
+		return EPendingLoad::Refused;
+	}
+
+	// ITS NAME AND PARTITION, AND ITS WEAPON TYPE AND DAMAGE TYPE, which the screen checked before it handed them over.
+	State->SetIdentity(Creation.Name, Creation.Partition); // A new character's: its name and partition.
+	State->SetCreationChoice(Creation.WeaponType, Creation.DamageType);
+	Character.ApplyCreationChoice();
+
+	// ITS EMPIRE RUN, AT ITS LETHALITY: the fresh start's run, when one began, is Standard's.
+	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
+	Instance.BeginEmpireRun(Seed, ECataclysmSurgeMode::Static,
+							static_cast<int32>(Creation.Partition.Lethality)); // A new character's: its run's lethality.
+
+	// AND WRITTEN AT ONCE, so the select screen lists it even if the player quits before anything else writes.
+	Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.
+	UE_LOG(LogCataclysm, Log, TEXT("A new character, '%s', was made and written"), *Creation.Name);
+	return EPendingLoad::Created;
+}
+
 ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 {
 	UWorld* World = GetWorld();
 	UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
-	if (!Instance || !Instance->PendingCharacterId.IsValid())
+	if (!Instance || (!Instance->PendingCreation.bPending && !Instance->PendingCharacterId.IsValid()))
 	{
 		return EPendingLoad::NothingPending;
 	}
@@ -179,6 +208,12 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 	if (!Writer || !Writer->IsWriting() || !Character)
 	{
 		return EPendingLoad::Waiting;
+	}
+
+	// A NEW CHARACTER, from the new-character screen, rather than a saved one. Select-screen step 4a.
+	if (Instance->PendingCreation.bPending)
+	{
+		return MakeThePendingCharacter(*Instance, *Writer, *Character);
 	}
 
 	// THE FRESH RUN'S TWO SLOTS, NOTED BEFORE THE LOAD; the only names the clean-up below may delete.
