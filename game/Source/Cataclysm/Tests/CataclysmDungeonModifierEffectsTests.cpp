@@ -52254,6 +52254,107 @@ bool FCataclysmThoseInTheDarkFallTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * THE DARK FLOOR BUILT TWICE RAISES THE SAME CREATURES WITH THE SAME MODIFIERS. Issue #2669, ruled 2026-11-01.
+ *
+ * The dark floor's build raises each placed creature a rung (`RaiseForTheDarkFloor`), and the raise draws the modifiers
+ * the new rung adds. The raise is fixed by the rung the floor's seed drew, so the added draw now comes from the floor's
+ * seed too, under its own salt. Reached as a player reaches it: the player stands on a chasm of floor 2 for a beat and
+ * falls. Done twice from the same dungeon seed, each dark floor's creatures' modifiers compared in placement order.
+ * SET-UP: the build raised some creature, read from the game mode's count of raises. Prints "DARK FLOOR MODIFIERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkModifiersFromTheSeedTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorBuiltTwiceRaisesTheSameModifiers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkModifiersFromTheSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed))
+	{
+		return false;
+	}
+	const FIntPoint Chasm = Mode->ThoseInTheDarkChasmCellsNow()[0];
+
+	// ONE FALL FROM FLOOR 2 OF THE CHOSEN SEED: the dark floor's creatures' modifiers, and the raises its build made.
+	const auto FallAndRead = [&](const TCHAR* Which, TArray<FString>& Out, int32& OutRaises) -> bool
+	{
+		Out.Reset();
+		const int32 RaisesBefore = Mode->DarkFloorRaisesSoFar();
+		if (!StandThePlayerOnCell(*this, Mode, Player, Chasm, TEXT("the chasm's cell")))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		if (!TestTrue(FString::Printf(TEXT("set-up: the %s fall reached the dark floor"), Which),
+					  Mode->ThePlayerIsOnTheDarkFloor()))
+		{
+			return false;
+		}
+		OutRaises = Mode->DarkFloorRaisesSoFar() - RaisesBefore;
+		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			TArray<FString> Names;
+			if (IsValid(Creature))
+			{
+				for (const FName& Row : Creature->ModifierRows)
+				{
+					Names.Add(Row.ToString());
+				}
+			}
+			Out.Add(FString::Join(Names, TEXT("+")));
+		}
+		return TestTrue(FString::Printf(TEXT("set-up: the %s dark floor holds creatures"), Which), Out.Num() > 0);
+	};
+
+	TArray<FString> First;
+	int32 FirstRaises = 0;
+	if (!FallAndRead(TEXT("first"), First, FirstRaises))
+	{
+		return false;
+	}
+
+	// THE SAME FLOOR 2 AGAIN, the dungeon left as `ThoseInTheDarkAFallHappensOnce...` leaves it, and the same chasm
+	// fallen into again.
+	Mode->LeaveEmpireDungeon();
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	Mode->DungeonSeed = Seed;
+	if (!TestTrue(TEXT("set-up: floor 2 of the seed was built again"), Mode->GoToFloor(2))
+		|| !TestFalse(TEXT("set-up: and it is not the dark floor"), Mode->ThePlayerIsOnTheDarkFloor()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TArray<FString> Again;
+	int32 AgainRaises = 0;
+	if (!FallAndRead(TEXT("second"), Again, AgainRaises))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("DARK FLOOR MODIFIERS: seed %d; raises %d then %d; %d creatures then %d; alike %s"), Seed,
+							FirstRaises, AgainRaises, First.Num(), Again.Num(), First == Again ? TEXT("yes") : TEXT("NO")));
+	TestTrue(TEXT("set-up: the dark floor's build raised some creature a rung"), FirstRaises > 0);
+	TestTrue(TEXT("the dark floor built again raises the same creatures with the same modifiers"), First == Again);
+	return true;
+}
+
 // T6. A FALL HAPPENS ONCE: IT TAKES THE PLAYER OFF THE FLOOR, AND THE DARK FLOOR HAS NO CHASM TO FALL INTO. CONTROL: THE
 // SAME FLOOR BUILT AGAIN AFTER THE DUNGEON IS LEFT IS NOT THE DARK FLOOR, AND IS FALLEN FROM AGAIN.
 //

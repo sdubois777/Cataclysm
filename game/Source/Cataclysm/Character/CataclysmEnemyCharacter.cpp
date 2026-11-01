@@ -1557,7 +1557,7 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	ApplyStartingAttributes();
 }
 
-void ACataclysmEnemyCharacter::DrawModifiersForRarity()
+void ACataclysmEnemyCharacter::DrawModifiersForRarity(int32 FromTheFloor)
 {
 	const int32 Wanted =
 		UCataclysmEnemyModifiers::CountForRarityStep(RarityStep);
@@ -1577,8 +1577,12 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 	// creatures made in the same frame must not all come out the same.
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	FRandomStream Stream(ModifierSeedForTests != 0
-		? ModifierSeedForTests
+	//
+	// EXCEPT A CREATURE THE FLOOR ITSELF IS PLACING, which draws from the floor's
+	// seed and its place in the floor's list, so the same seed builds the same
+	// floor. Issue #2669, ruled 2026-11-01, as #2490 did for the rung.
+	FRandomStream Stream(ModifierSeedForTests != 0 ? ModifierSeedForTests
+		: FromTheFloor != 0 ? FromTheFloor // A creature's modifiers: the floor's seed when the floor places it.
 		: (GetUniqueID() ^ static_cast<int32>(Now * 1000.0f)
 		   ^ ModifierDrawSalt));
 

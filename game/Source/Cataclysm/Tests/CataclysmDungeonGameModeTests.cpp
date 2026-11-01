@@ -3182,6 +3182,107 @@ bool FCataclysmRarityFromTheFloorsSeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The same dungeon seed builds the same floors' enemy modifiers. Issue #2669, ruled 2026-11-01.
+ *
+ * `docs/Cataclysm_GDD_v2.md`: "the same seed always produces the same floor". Until #2669 each creature the floor placed
+ * drew its modifiers from its own identity and the clock, which no seed controls, so two builds of one floor could differ
+ * in which creature carried Horde Leader; window w128C measured a test's order deciding it. Now it draws from the floor
+ * plan's seed and its place in the floor's list, as its rung has since #2490.
+ *
+ * FLOORS 1 TO 6 OF ONE DUNGEON SEED, BUILT TWICE in one session, each creature's modifiers compared in the order it was
+ * placed. Built twice so the clock and the creatures' identities differ between the builds. THE CONTROLS: some creature
+ * carries a modifier, so the lists are not lists of nothing, which would agree however they were drawn; and the six
+ * floors do not all carry the same ones, so the draw is per floor. Prints "SEEDED MODIFIERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifiersFromTheFloorsSeedTest,
+	"Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifiersFromTheFloorsSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 7;
+
+	// EACH CREATURE'S MODIFIERS AS ONE STRING, in the order it was placed.
+	const auto ModifiersOfFloor = [&](int32 Floor, TArray<FString>& Out) -> bool
+	{
+		Out.Reset();
+		if (!TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			TArray<FString> Names;
+			if (IsValid(Creature))
+			{
+				for (const FName& Row : Creature->ModifierRows)
+				{
+					Names.Add(Row.ToString());
+				}
+			}
+			Out.Add(FString::Join(Names, TEXT("+")));
+		}
+		return TestTrue(FString::Printf(TEXT("set-up: floor %d holds creatures"), Floor), Out.Num() > 0);
+	};
+
+	TArray<TArray<FString>> First;
+	int32 Carrying = 0;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<FString> Modifiers;
+		if (!ModifiersOfFloor(Floor, Modifiers))
+		{
+			return false;
+		}
+		for (const FString& One : Modifiers)
+		{
+			Carrying += One.IsEmpty() ? 0 : 1;
+		}
+		First.Add(Modifiers);
+	}
+
+	int32 FloorsAlike = 0;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<FString> Again;
+		if (!ModifiersOfFloor(Floor, Again))
+		{
+			return false;
+		}
+		const bool bAlike = Again == First[Floor - 1];
+		FloorsAlike += bAlike ? 1 : 0;
+		TestTrue(FString::Printf(TEXT("floor %d built again holds the same modifiers in the same order"), Floor), bAlike);
+	}
+
+	bool bFloorsDiffer = false;
+	for (int32 Index = 1; Index < First.Num(); ++Index)
+	{
+		bFloorsDiffer = bFloorsDiffer || First[Index] != First[0];
+	}
+	AddInfo(FString::Printf(TEXT("SEEDED MODIFIERS: seed 7, floors 1 to 6; %d creature(s) carry a modifier; %d of 6 floors "
+								 "built again alike; floor 1's first five: [%s]"),
+							Carrying, FloorsAlike,
+							*FString::Join(TArray<FString>(First[0].GetData(), FMath::Min(5, First[0].Num())), TEXT(" | "))));
+	TestTrue(TEXT("CONTROL: some creature on the six floors carries a modifier"), Carrying > 0);
+	TestTrue(TEXT("CONTROL: the six floors do not all carry the same modifiers"), bFloorsDiffer);
+	return true;
+}
+
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeFirstFrameTest,
 	"Cataclysm.DungeonMode.AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare",

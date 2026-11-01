@@ -5076,7 +5076,7 @@ private:
 	 * `UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor` gives, with the modifiers the new rung
 	 * carries, and stood again on its cell now its size is known. Nothing for a creature already at the ceiling.
 	 */
-	void RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell);
+	void RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell, int32 PlacementIndex);
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
@@ -6198,6 +6198,35 @@ private:
 
 	/** Mixed with the floor plan's seed and a placement's index for its rarity rung. The letters "rr". Issue #2490. */
 	static constexpr int32 RarityFromTheFloorSalt = 0x72720000;
+
+	/**
+	 * The seed a creature the floor itself is placing draws its enemy modifiers from, while it is being placed;
+	 * nought otherwise, which is every creature made during play and draws from its identity and the clock. Issue
+	 * #2669, ruled 2026-11-01. Set beside `RarityStreamNow`, at the same two places, and read by `ApplyDesignedStats`.
+	 */
+	int32 ModifierSeedNow = 0;
+
+public:
+	/** Mixed with the floor plan's seed and a placement's index for its enemy modifiers. The letters "mm". #2669. */
+	static constexpr int32 ModifiersFromTheFloorSalt = 0x6D6D0000;
+
+	/** The same for the modifiers the dark floor's raised rung adds. The letters "md". #2669, ruled 2026-11-01. */
+	static constexpr int32 DarkFloorModifiersSalt = 0x6D640000;
+
+	/**
+	 * The floor's modifier seed for its `Index`th placement under `Salt`: the floor plan's seed mixed with both.
+	 *
+	 * NEVER NOUGHT. `DrawModifiersForRarity` reads nought as "no floor seed" and goes to the clock, so a mix that
+	 * comes out nought is given 1 instead: otherwise one placement in four billion would draw from the clock and the
+	 * same seed would not always build the same floor (ruled). Nought with no floor, which no caller reaches.
+	 */
+	int32 ModifierSeedForPlacement(int32 Index, int32 Salt) const;
+
+	/** How many creatures the dark floor's build has raised a rung since the game mode was made. A test reads it. */
+	int32 DarkFloorRaisesSoFar() const { return DarkFloorRaises; }
+
+private:
+	int32 DarkFloorRaises = 0;
 
 	/**
 	 * What the arriving wave's creatures notice from, as a multiple of their own
