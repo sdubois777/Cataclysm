@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — The game opens on the character select screen: its asset, the front end's level, and the start map (#753, select-screen step 3b)
+
+**Affects:** `tools/generate_interface_assets.py`, which makes `WBP_CharacterSelect` (`make_character_select`) and
+`L_FrontEnd` (`make_front_end_map`); the two assets it made, `game/Content/Interface/WBP_CharacterSelect.uasset` and
+`game/Content/Maps/L_FrontEnd.umap` (Git LFS, `.gitattributes` lines 13 and 14, unchanged); `GameDefaultMap` in
+`game/Config/DefaultEngine.ini`; `ACataclysmFrontEndPlayerController::SelectScreenAsset` (a read-only getter, for a test);
+the map table in `game/README.md`; two new tests in `game/Source/Cataclysm/Tests/CataclysmCharacterSelectTests.cpp`; and
+a new Python check, `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753): its first acceptance criterion, a load at start-up, is met by
+this step in the code; a player's launch has not yet confirmed it (below).
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** The two assets were made by window A, the generator run alone (below); the tests are
+  registered for window B.
+- **THE GAME NOW OPENS ON `L_FrontEnd`, AND THE EDITOR STILL ON `L_Sandbox`.** `GameDefaultMap` changes;
+  `EditorStartupMap` does not (ruled). Every reader of the start map was searched for, in `game/Source`, `tools` and
+  `tools/tests`, and each keeps working:
+  - no C++ reads `GameDefaultMap`; the only level-opening calls are step 3a's two, Continue and New in
+    `CataclysmCharacterSelectWidget.cpp` and a refused load in `CataclysmGameMode.cpp`;
+  - `tools/unreal_build.py` starts the editor for the automation tests with no map, so it opens on `EditorStartupMap`,
+    unchanged; the tests build their own worlds;
+  - `tools/run_editor_python.py` names no map, and each script opens levels by path;
+  - `tools/generate_input_assets.py` and `tools/generate_dungeon_map.py` build `L_Sandbox` and `L_Dungeon` by name;
+  - `tools/tests/test_game_readme_is_true.py` skips its only-map claim, because the readme no longer makes it, and
+    `test_map_built_data_is_not_committed.py` and `test_run_editor_python.py` name `L_Sandbox` only as paths.
+- **ONE FAULT ON THE WAY.** The first compile failed at link: `UGameMapsSettings::GetGameDefaultMap` is in the
+  EngineSettings module, which the game module does not link. The start-map test reads the same setting through
+  `GConfig` from the engine's ini instead; no module dependency is added.
+- **WHAT NO TEST HERE CAN SEE, for the owner's launch** (the owner is away until 2026-11-16): that the game opens on the
+  select screen; that the cursor shows and its buttons take clicks; that Continue on a character saved in the sandbox
+  loads it there, and on one saved in a dungeon loads it in `L_Dungeon` on its floor; that a refused load returns to the
+  screen with its reason shown; and that New opens the sandbox. **AND: the game has never been packaged; the first
+  packaging checks that `L_FrontEnd` is cooked and opens.** With no `MapsToCook` list the cooker cooks every map under
+  Content and the startup maps, which is engine behaviour and not measured here.
+
+### Rulings, 2026-10-31
+
+- **Two windows: A, the generator run only, then the two assets committed; B, the registered tests.** Every other path
+  the run touched restored in this worktree only and named below; the start map changed in the same commit as the
+  assets, so it never names a level that does not exist.
+- **The generator that makes the screens makes `L_FrontEnd` too,** in `tools/generate_dungeon_map.py`'s pattern, which
+  made `L_Dungeon` through the same commandlet: a new level, a player start, its world settings naming
+  `ACataclysmFrontEndGameMode`, saved. No light, so no `_BuiltData`.
+
+### The editor run (window A)
+
+Window w125A, 2026-11-01, on c0bd43755, lock `dungeon-w125A`. Pre-checks all passing, 11490 MB free. Build: `Build:
+Succeeded - target already up to date, 0 actions, nothing compiled`. Then `python tools/run_editor_python.py
+tools/generate_interface_assets.py`, exit 0, which logged that the nine existing screens were "already exists; left
+alone", then "satisfies 3 BindWidget properties: CharacterList, NewButton, RefusalLabel", "created
+/Game/Interface/WBP_CharacterSelect", "created /Game/Maps/L_FrontEnd with the game mode
+/Script/Cataclysm.CataclysmFrontEndGameMode", "done", and "Python script executed successfully". Its four `Error:` lines
+are the engine's start-up complaint that the asset manager has no rule for `GameFeatureData`, which every editor start
+here logs.
+
+**THE RUN TOUCHED EXACTLY THE TWO FILES IT WAS FOR,** by its own report ("The editor run left 2 file(s) changed") and by
+`git status --porcelain --untracked-files=all` afterwards: `game/Content/Interface/WBP_CharacterSelect.uasset` and
+`game/Content/Maps/L_FrontEnd.umap`, both untracked, both stored in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS
+RESTORED.** Both are committed with the start map, the readme row and the Python check.
+
+### Tests
+
+- `Cataclysm.CharacterSelect.TheSelectScreenAssetLoadsAndHoldsItsBoundWidgets`: the path the front end's controller
+  opens loads, is the screen's class, and its tree holds `CharacterList`, `RefusalLabel`, `NewButton` and `TitleLabel`;
+  read from the asset's own tree, as the choice panel's asset test reads its, because a test world has no game instance
+  for `CreateWidget` (#1841). Prints "SELECT ASSET".
+- `Cataclysm.CharacterSelect.TheGameStartsOnTheFrontEndMap`: `GameDefaultMap` names the level
+  `ACataclysmGameMode::FrontEndMap` names, which a refused load returns to; that level loads; and its world settings
+  name `ACataclysmFrontEndGameMode`. Prints "SELECT START MAP".
+- `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`, four checks: the start map is
+  `L_FrontEnd` and the editor's is `L_Sandbox`; `main()` makes the screen after `make_choice_button` and the level after
+  both; every `BindWidget` of the screen is added by `make_character_select`; the controller opens the asset the
+  generator makes, and the level names the front end's game mode, which the C++ declares.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4462 / 0: window w124's 4460 on `development` (17c95a8d1), + 2; moved, if the Necrosis branch merges first, onto its measured total + 2 |
+| Python | of record, with JUnit, and ruff; the new file's four tests among them |
+| Q1, the controller naming another asset (`/Game/Interface/WBP_CharacterSelect.WBP_CharacterSelect_C` to `..._X.WBP_CharacterSelect_X_C`, in `CataclysmFrontEndGameMode.h`), prefix `Cataclysm.CharacterSelect.` | the asset test fails on "the select screen's asset loads" only, and stops there |
+| Q2, the front end's level named as the sandbox (`FrontEndMap = TEXT("/Game/Maps/L_FrontEnd")` to `L_Sandbox`, in `CataclysmGameMode.h`), prefix `Cataclysm.CharacterSelect.` | the start-map test fails on "the game's start map is the front end" and "its game mode is the front end's" only: `L_Sandbox` loads and names no game mode of its own. No other test under the prefix reads `FrontEndMap` |
+| PY1, the start map put back to the sandbox, by `tools/prove_guard.py` over the new file | `test_the_game_starts_on_the_front_end_and_the_editor_on_the_sandbox` fails, and no other test in the file |
+| PY2, the level made before the screen in `main()`, by `tools/prove_guard.py` over the new file | `test_main_makes_the_screen_after_the_button_and_the_level_after_both` fails, and no other test in the file |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: first `Build: Failed - 2 actions, no file compiled`, the
+link fault above; then `Build: Succeeded - 5 actions, 2 files compiled: CataclysmCharacterSelectTests.cpp,
+Module.Cataclysm.14.cpp`. Python on c0bd43755, before the assets: `7180 passed, 8 skipped`; ruff "All checks passed!".
+
+---
+
 ## 2026-10-31 — A carrier of Necrosis is healed by nothing, and the total denied is dealt over the 5 seconds after the Necrosis ends (#920)
 
 **Affects:** the denial in `UCataclysmRegeneration::TopUp` (`game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp`,

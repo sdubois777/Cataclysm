@@ -96,6 +96,7 @@ them by hand.
 | Path | What it is |
 |---|---|
 | `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. |
+| `Content/Maps/L_FrontEnd.umap` | The level the game opens on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor still opens on `L_Sandbox`. Issue #753. |
 | `Content/Data/` | Twenty-nine DataTable assets: twenty-five imported from the design workbook, two from the simulation package's enemy model, and two from the class passive tree files. See below. |
 | `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
