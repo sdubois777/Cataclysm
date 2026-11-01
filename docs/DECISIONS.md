@@ -22,8 +22,8 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
   still passed: giving the chosen weapon moves it through the inventory, which notes `InventoryChanged`, and that writes
   the character record as well, so the made test could not tell which wrote. Everything before it passed (below). The
   made test gains a second case, a creation that moves nothing in the inventory, where the new trigger is the only
-  write (ruled 2026-11-01); window w126B, registered below, runs it with R6, R7 and R8. **NOT YET PASSED IN UNREAL:
-  that case, and R6 to R8.**
+  write (ruled 2026-11-01). **Window w126B then passed it, and R6, R7 and R8 proved as traced**, on `f3186260d`
+  after the move onto `development` c7fd29c63 (below).
 - **IN PLAY THE NEW TRIGGER IS NOT ALWAYS THE ONLY WRITE.** When the chosen weapon type is not the one worn, the weapon
   given writes the record first, through the inventory; when it is the one worn, only the damage type changes and
   `CharacterCreated` is the only write.
@@ -149,6 +149,25 @@ R1 to R5 stand from w126: the code they break is unchanged (ruled).
 | R6, as above | the made test fails on "with nothing moved, its record was written at once, by the new trigger alone" only; its first case still passes, its record written through the inventory |
 | R7, as above | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "with nothing moved, its record was written at once, by the new trigger alone" only |
 | R8, as above | as registered for w126 |
+
+### Window w126B, 2026-11-01, on `f3186260d`: as registered
+
+Run by `run_w126B.py` under the lock `dungeon-w126B`, from a clean tree at `f3186260d`; the build compiled nothing.
+**Its first attempt stopped at its first check** and ran nothing: the script that wrote the runner replaced its
+branch but not its second copy of the head, which still named w126's `d94ec51d`, and the runner's head check refused.
+The script now replaces both and asserts each once; the second attempt is the record.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The made test alone | 1 / 1, both lines | 1 / 1. "NEW CHARACTER MADE, NOTHING MOVED: outcome 5; chose the worn Greataxe; the inventory changed 0 time(s); the record absent before, written after", and the first case's line as in w126 |
+| Whole Unreal suite | 4480 / 0 | "4480 tests performed, 4480 succeeded, 0 failed"; declared 4480, gap 0 |
+| Python | of record | "7187 passed, 8 skipped"; JUnit 7195 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R6 | the made test, on the second case's assertion only | PROVED: 65 of 66 with the break, 66 of 66 restored; the broken log fails "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R7 | the triggers test and the made test, one assertion each | PROVED: 157 of 159, then 159 of 159; the broken log fails "'a character being created' writes the character record" and "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R8 | the missing-screen test, on one assertion | PROVED: 0 of 1, then 1 of 1; the broken log fails "a missing new-character screen is not shown" only |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w126B_R<n>_run1.log`. With R1 to R5 from
+w126, all eight proofs registered for this step have proved as traced.
 
 ### Run
 
