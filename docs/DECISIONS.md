@@ -86,7 +86,7 @@ Run with `tools/prove_guard.py`'s `break_and_run` on the new check alone, in a `
 |---|---|
 | Window A, the editor run | exit 0; logs "satisfies 12 BindWidget properties" and "created /Game/Interface/WBP_NewCharacter"; the ten existing screens and `L_FrontEnd` "already exists; left alone"; **exactly one file changed**, `game/Content/Interface/WBP_NewCharacter.uasset`, untracked; any other is restored in the worktree and named here |
 | Window B, the asset test alone | 1 / 1, its line quoted |
-| Window B, the whole Unreal suite | 4481 / 0: `development`'s 4480 (e70ee48eb, window w126B), + 1 |
+| Window B, the whole Unreal suite | 4486 / 0: `development`'s 4485 (e49d4f709, #2666 merged, window converted-total-w1), + 1. MOVED ONTO IT after window A, as `feat/new-character-screen-asset-1`, from e70ee48eb (4480), whose figure this said before; the move changed none of this step's files, by `git diff` |
 | Window B, Python | of record, with JUnit, and ruff |
 | A1, the front end's path naming a missing asset (`/Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C` to `.../WBP_NoSuchScreen.WBP_NoSuchScreen_C` in `CataclysmFrontEndGameMode.h`), prefix `Cataclysm.CharacterSelect.TheNewCharacterScreenAsset` | the asset test fails on "the new-character screen's asset loads" and stops there |
 
