@@ -76,7 +76,12 @@ does not.** So its added draw can come from the floor.
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
-the first attempt (a new branch).
+the first attempt (a new branch). Again after the dark floor's count was made to count only raises that added a
+modifier: `Build: Succeeded - 26 actions, 23 files compiled`. Python of record on that head, 4bd821c49: `7197 passed, 8
+skipped in 206.53s`, the JUnit file tests 7205, failures 0, errors 0, skipped 8; ruff "All checks passed!". **IT
+OVERLAPPED ANOTHER WINDOW:** it ran from 12:02:33 to 12:05:59, and window rung-roundtrip-w1 (#2181) started at 12:02:58,
+its build and its new test alone running beside it. The coordinating session ruled that this voids neither: no proof was
+running, and this branch's compile had ended before that window's build.
 
 ---
 
