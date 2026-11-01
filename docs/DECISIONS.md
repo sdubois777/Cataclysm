@@ -18,7 +18,15 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WINDOW w126 STOPPED AT ITS SIXTH PROOF, R6, WHICH DID NOT PROVE.** With the immediate write removed, every test
+  still passed: giving the chosen weapon moves it through the inventory, which notes `InventoryChanged`, and that writes
+  the character record as well, so the made test could not tell which wrote. Everything before it passed (below). The
+  made test gains a second case, a creation that moves nothing in the inventory, where the new trigger is the only
+  write (ruled 2026-11-01); window w126B, registered below, runs it with R6, R7 and R8. **NOT YET PASSED IN UNREAL:
+  that case, and R6 to R8.**
+- **IN PLAY THE NEW TRIGGER IS NOT ALWAYS THE ONLY WRITE.** When the chosen weapon type is not the one worn, the weapon
+  given writes the record first, through the inventory; when it is the one worn, only the damage type changes and
+  `CharacterCreated` is the only write.
 - **NOTHING A PLAYER SEES YET.** The new-character screen's asset, `WBP_NewCharacter`, is made in step 4b. Until then New
   on the select screen asks the front end for a screen whose asset is missing: the front end logs it and replaces
   nothing, and the select screen stays and shows "the new-character screen could not be opened: its asset is missing",
@@ -83,7 +91,12 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
 - `Cataclysm.SaveLoad.ANewCharacterIsMadeAndWrittenWhenItsLevelBegins`: a pending creation made when the level begins:
   its name, partition and weapon type on the player; its run at Hardcore (a death costs 10 days); its record written at
   once with its name, lethality and weapon type, and listed by the select screen by its name; the next start makes
-  nothing. Control: nothing had written its record before. Prints "NEW CHARACTER MADE".
+  nothing. Control: nothing had written its record before. Prints "NEW CHARACTER MADE". **A SECOND CASE, added after
+  w126 (ruled 2026-11-01),** in a scene of its own: the creation chooses the weapon type the character already wears, the
+  starting Greataxe, so nothing in the inventory moves. Set-up: the inventory's change count did not move, and every
+  place that notes `InventoryChanged` raises it, so the case cannot fall back to the inventory's write. The test sees the
+  write as the character's save slot existing, after waiting for the write in flight, when it did not before. Prints
+  "NEW CHARACTER MADE, NOTHING MOVED".
 - `Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing`: the front end, its new-character screen's asset
   pointed through the property at one that does not exist, so the test still holds once 4b makes the real one: not
   shown, no input mode asked for, its warning expected once. Prints "NEW SCREEN MISSING".
@@ -104,11 +117,45 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
 | R7, the trigger not writing the character record (its `return true` under `case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: ...` to `return false`), prefix `Cataclysm.Save` | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "its record was written at once", stopping there |
 | R8, a missing screen reported as shown (the `return false;` after `A front end screen's asset is missing` in `ACataclysmFrontEndPlayerController::ShowOnly` to `return true;`, nothing made), prefix `Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing` | the missing-screen test fails on "a missing new-character screen is not shown" only: no input mode is asked for and the warning is still logged once |
 
+### Window w126, 2026-11-01, on `d94ec51de`: stopped at R6
+
+Run by `run_w126.py` under the lock `dungeon-w126`, from a clean tree at `d94ec51de`; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The five new tests alone | 1 / 1 each | 1 / 1 each, every marker line printed |
+| Whole Unreal suite | 4474 / 0 | "4474 tests performed, 4474 succeeded, 0 failed"; declared 4474, gap 0 |
+| Python | of record | "7187 passed, 8 skipped"; JUnit 7195 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 | the name test, on its two assertions | PROVED: 13 of 14 with the break, 14 of 14 restored; the broken log fails "17 letters are refused" and "17 letters are refused, and the refusal says 'at most'" only |
+| R2 | the 24 test, on its three assertions | PROVED: 6 of 7, then 7 of 7; the broken log fails the three registered and nothing else |
+| R3 | the hand-over test, on one assertion | PROVED: 13 of 14, then 14 of 14; the broken log fails "the new character is handed over" only |
+| R4 | the made test, on its six assertions | PROVED: 65 of 66, then 66 of 66; the broken log fails the six registered and nothing else |
+| R5 | the made test, on one assertion | PROVED: 65 of 66, then 66 of 66; the broken log fails "... a death costs Hardcore's 10 days" (10, but it was 5) only |
+| R6 | the made test, on "its record was written at once" | **NOT A PROOF**: 66 of 66 with the break and restored. The runner stopped here; R7 and R8 did not run |
+
+The per-assertion checks were read from the proofs' kept broken-half logs, `w126_R<n>_run1.log`, after the window.
+**R7'S REGISTERED TRACE WAS WRONG FOR THE MADE TEST**, by the same cause as R6: the inventory's write would have kept
+"its record was written at once" passing. Re-registered below.
+
+### Registered for window w126B, on the head with the second case
+
+R1 to R5 stand from w126: the code they break is unchanged (ruled).
+
+| Figure | Registered |
+|---|---|
+| The made test alone | 1 / 1, both its lines quoted |
+| Whole Unreal suite | 4474 / 0: the second case is in the same test, so the count is unchanged |
+| Python | of record, with JUnit, and ruff |
+| R6, as above | the made test fails on "with nothing moved, its record was written at once, by the new trigger alone" only; its first case still passes, its record written through the inventory |
+| R7, as above | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "with nothing moved, its record was written at once, by the new trigger alone" only |
+| R8, as above | as registered for w126 |
+
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
 first attempt (a new worktree, so everything was compiled). Again after the missing-screen refusal and its test:
-`Build: Succeeded - 37 actions, 34 files compiled`.
+`Build: Succeeded - 37 actions, 34 files compiled`. Again after the made test's second case: `Build: Succeeded - 6
+actions, 3 files compiled: Module.Cataclysm.27.cpp, Module.Cataclysm.28.cpp, CataclysmSaveLoadTests.cpp`.
 
 ---
 
