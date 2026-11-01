@@ -16,7 +16,8 @@ stays open: 3d-4b follows.
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w119, every figure as registered:** the five new tests, the whole suite at 4444 / 0, and
+  P1-P9 each proved on exactly its registered assertion, P3 with its condition met.
 - **A COST EVERY LOAD RESET, read in the code and checked by hand: Plague Convergence's disease stacks.** Nothing under
   `Save/` named `PlagueConvergenceStacks`, and `ApplyFloorRulesToPlayer` sets it to nought on every floor change, a load's
   included. Up to 6 stacks, burning up to 16% of maximum health a second, went with a quit and a reload, with up to 30 of
@@ -91,7 +92,42 @@ The first four through `ARaisedRoundTrip`, beat first, then halved, then saved; 
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
-the first attempt (a new worktree, so everything was compiled).
+the first attempt (a new worktree, so everything was compiled). Python of record on 41f80ce5b: `7177 passed, 8 skipped in
+192.72s`, the JUnit file tests 7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w119, 2026-10-31, 17:19 to 18:12, on 41f80ce5b. Pre-checks measured at 17:19:44, all passing: `development`'s CI
+and Unreal runs succeeded on 9b225263a, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, no simulation process, 11486 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The five new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4444 tests performed, 4444 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4444 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 193.25s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'the disease stacks are carried still' to be 2, but it was 0" only |
+| P2 | PROVED: "'and, begun, a wave comes on its cadence' to be true" only |
+| P3 | PROVED, its condition met: "'each at the health it was saved at, not full' to be 3, but it was 0" only; the fresh wave came whole, its line reading "3/3 standing, 0 at half health" |
+| P4 | PROVED: "'as many stand in the rule's list as were saved' to be 3, but it was 0" only; its line reading "0 wave creature(s) on the floor's list" |
+| P5 | PROVED: "'and its spread' to be 3, but it was 1" only |
+| P6 | PROVED: "'the bloom keeps the health it had left' to be 0.500000, but it was 1.000000" only |
+| P7 | PROVED: "'as many stand ...' to be 2, but it was 0" only |
+| P8 | PROVED: "'as many stand ...' to be 1, but it was 0" only |
+| P9 | PROVED: "'the raised creature's drop keeps its mark' to be true" only |
+
+Each proof's restored half: `56 tests performed, 56 succeeded, 0 failed`.
+
+The printed lines, from the whole suite:
+
+```
+LOAD CONVERGENCE on seed 1: Loaded (... day 1, 226 creatures, placed where it was saved); after a beat 3/3 standing, 3 at half health, 3 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD CONVERGENCE STACKS: 2/2 stacks after the load; 3 standing at the save, 6 after 11 s
+LOAD BLOOM WAVES on seed 1: Loaded (... day 1, 226 creatures, placed where it was saved); after a beat 3/3 standing, 3 at half health, 3 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD BLOOM: the bloom at 0.50 of its health, 3/3 patches, 0 wave creature(s) on the floor's list
+LOAD TRICK OR TREAT on seed 1: Loaded (... day 1, 225 creatures, placed where it was saved); after a beat 2/2 standing, 2 at half health, 2 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD PORTAL WARDEN on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 1 at half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223
+LOAD RAISED DROP: Loaded (... day 1, 211 creatures, placed where it was saved); the marked drop marked, the plain drop unmarked
+```
 
 ---
 
