@@ -5082,6 +5082,9 @@ bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
 
 	constexpr int32 DropsToEat = 2;
 	constexpr int32 SoulsToHold = 3;
+	// A HUNDREDTH OF A POINT, because a floor 2 creature's maximum is about ten points: a tolerance of half a point
+	// would let a share wrong by a quarter of a point pass. Float error on figures this size is far below it.
+	constexpr float Tolerance = 0.01f;
 
 	// A CREATURE'S OWN MAXIMUM ON ITS RUNG, as `ACataclysmEnemyCharacter::ApplyStartingAttributes` rebuilds it: the
 	// starting maximum times the rung's health scaling, its rows' multiplier and its commander's.
@@ -5104,7 +5107,7 @@ bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
 
 	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.VolatileEvolutionRoll"));
 	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
-	const bool bRan = WithTheSeedPutBack(*this, [this, DropsToEat, SoulsToHold, &OwnMaximum, &WithBothShares]()
+	const bool bRan = WithTheSeedPutBack(*this, [this, DropsToEat, SoulsToHold, Tolerance, &OwnMaximum, &WithBothShares]()
 	{
 		// NO CREATURE MUTATES UNTIL THE TEST SAYS SO: a roll of 100 is never under the chance.
 		FPinnedConsoleValue NoMutation(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("100"));
@@ -5118,7 +5121,8 @@ bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
 		float MaximumSaved = -1.0f;
 		return ARoundTripOfRows(*this,
 			{FName(Effects::FamishedBeastsKey), FName(Effects::SoulHarvestKey), FName(Effects::VolatileEvolutionKey)},
-			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, &OwnMaximum, &WithBothShares](
+			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, Tolerance, &OwnMaximum,
+				 &WithBothShares](
 				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
 				FPinnedDungeonSeed& PinnedSeed)
 			{
@@ -5178,9 +5182,9 @@ bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
 					&& TestEqual(TEXT("set-up: it holds three souls"), Souls, SoulsToHold)
 					&& TestTrue(TEXT("set-up: it has a starting maximum to be rebuilt from"), StartingSaved > 0.0f)
 					&& TestEqual(TEXT("set-up: before the save its maximum is its own with each share on it once"),
-								 MaximumSaved, WithBothShares(OwnMaximum(*Eater, StartingSaved)), 0.5f);
+								 MaximumSaved, WithBothShares(OwnMaximum(*Eater, StartingSaved)), Tolerance);
 			},
-			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, &OwnMaximum](
+			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, Tolerance, &OwnMaximum](
 				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
 				const FCataclysmLoadReport& Report)
 			{
@@ -5248,20 +5252,20 @@ bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
 										Abilities->GetNumericAttribute(Vitals::GetHealthAttribute())));
 
 				TestEqual(TEXT("after the load and a beat its maximum is the one saved"), MaximumAfterLoad, MaximumSaved,
-						  0.5f);
+						  Tolerance);
 				TestEqual(TEXT("one beat raised it one rung"), Eater->RarityStep,
 						  RungBefore + Effects::VolatileEvolutionRungsGained);
 				TestEqual(TEXT("it has still eaten two"), Eater->DropsEaten, DropsToEat);
 				TestEqual(TEXT("and still holds three souls"), Souls, SoulsToHold);
 				TestEqual(TEXT("its maximum is the new rung's own, Famished Beasts' share on it once, Soul Harvest's on "
 							   "that once"),
-						  Maximum, Expected, 0.5f);
+						  Maximum, Expected, Tolerance);
 				TestEqual(TEXT("Famished Beasts records its share once"), FamishedShare,
-						  Own * (Effects::FamishedBeastsMultiplier(DropsToEat) - 1.0f), 0.5f);
+						  Own * (Effects::FamishedBeastsMultiplier(DropsToEat) - 1.0f), Tolerance);
 				TestEqual(TEXT("Soul Harvest records its share once"), SoulShare,
-						  Effects::SoulHarvestHealthAdded(WithFamished, SoulsToHold), 0.5f);
+						  Effects::SoulHarvestHealthAdded(WithFamished, SoulsToHold), Tolerance);
 				TestEqual(TEXT("CONTROL: the maximum less both recorded shares is the new rung's own maximum"),
-						  Maximum - FamishedShare - SoulShare, Own, 0.5f);
+						  Maximum - FamishedShare - SoulShare, Own, Tolerance);
 				TestTrue(FString::Printf(TEXT("CONTROL: a share carried twice reads %.2f or %.2f, which the tolerance "
 											  "tells apart from %.2f"),
 										 WithFamishedTwice, WithSoulsTwice, Expected),
