@@ -127,6 +127,21 @@ kept, which ruling 6 and Q1 do not. The owner can ask for it.
 | P1 (Python), `make_character_select` does not add `ConfirmNameBox` | the step 5 widgets check and 3b's every-bound-widget check fail |
 | P2 (Python), a second function calls `delete_asset` | the remake-scope check fails, only |
 
+### Python proofs, run before window A
+
+Run with `tools/prove_guard.py`'s `break_and_run` on the select screen's Python file alone, in a `git archive` copy of
+`6bc4f6275`:
+
+| Proof | Break | Measured |
+|---|---|---|
+| P1 | `make_character_select` does not add `ConfirmNameBox` | PROVED: "2 failed, 4 passed", restored "6 passed"; named failures `test_every_bound_widget_of_the_select_screen_is_added_by_its_generator` and `test_the_select_screen_binds_and_its_generator_adds_the_delete_confirmation`, as traced |
+| P2 | `main()` calls `delete_asset` on `WBP_ChoiceButton` | PROVED: "1 failed, 5 passed", restored "6 passed"; named failure `test_the_generator_remakes_only_the_select_screen_and_only_one_made_before_delete`, as traced |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 75 actions, 65 files compiled`, at
+the first attempt (a new worktree).
+
 ---
 
 ## 2026-11-01 — Converted damage is never damage dealt: it leeches nothing, strikes nobody, and a Masochist it kills dies uncredited (#2664)
