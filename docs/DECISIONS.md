@@ -110,6 +110,20 @@ free; the build compiled nothing. **Before the lock, s5's `game/Saved/SaveGames`
 The narrow run logged its line because there the worker received the stop message before the exit; which comes first
 varies.
 
+### The summary's trigger corrected, and window w129B registered
+
+`git diff --stat b532b14ba 21ce5dc5b` over the two files: `CataclysmTestSaves.cpp | 9 +++++++--`, `CataclysmTestSaves.h |
+3 ++-`. In the `.cpp` the only lines changed are the hooks' comment ("or else the engine's exit" to "or else the
+application's termination") and the binding, `FCoreDelegates::OnEnginePreExit.AddStatic(&LogTheSummary);` replaced by
+`FCoreDelegates::GetApplicationWillTerminateDelegate().AddStatic(&LogTheSummary);` and a five-line comment saying why; the
+header changes only its comment. **So S1 and S2 stand from w129** (ruled): neither line they break changed.
+
+| Figure | Registered |
+|---|---|
+| s5's `game/Saved/SaveGames` | counted before and after the suite |
+| Whole Unreal suite | 4496 / 0, its "Test saves:" line printed: N large, **M = 0** |
+| Python | of record, with JUnit, and ruff |
+
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 5 actions, 2 files compiled:
