@@ -187,7 +187,12 @@ namespace
 			// BUT NOT CONVERTED DAMAGE NOT YET TAKEN. Issue #2275: until it, an enemy's stronger bleed took the
 			// Masochist's converted bleed off here, and what it had left to deal was lost. The same query
 			// `RemoveEffectsGranting` makes, `MakeQuery_MatchAnyOwningTags`, so nothing else it removes changes.
-			if (UAbilitySystemComponent* Holder = UCataclysmTargeting::AbilitySystemOf(Target))
+			//
+			// AND ONLY WHERE THE OWNER IS AUTHORITATIVE, the guard the engine's `RemoveActiveEffectsWithGrantedTags`
+			// makes before it removes anything, kept now the removal is one effect at a time. Ruled by the coordinating
+			// session 2026-11-01: the game is single-player today, but a guard the engine path had is not dropped.
+			UAbilitySystemComponent* Holder = UCataclysmTargeting::AbilitySystemOf(Target);
+			if (Holder && Holder->IsOwnerActorAuthoritative())
 			{
 				FGameplayTagContainer Granting;
 				Granting.AddTag(EffectTag);

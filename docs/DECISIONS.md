@@ -82,6 +82,11 @@ taken. The #918 entry states the exempt time and not the excess.
   query `RemoveEffectsGranting` makes (`MakeQuery_MatchAnyOwningTags`), now one effect at a time, skipping an effect
   carrying the mark. A new `bTakesTheSlot` parameter, true by default; a converted blow passes false, so its effect
   grants the tag, removes nothing and sets no stacking fields. `RemoveEffectsGranting` itself is unchanged.
+  **THE ENGINE'S AUTHORITY GUARD IS KEPT.** `RemoveEffectsGranting` went through the engine's
+  `RemoveActiveEffectsWithGrantedTags`, which removes nothing unless `IsOwnerActorAuthoritative()` is true; the
+  one-at-a-time removal asks the same before it removes anything. Ruled by the coordinating session 2026-11-01: the
+  game is single-player today, but a guard the engine path had is not dropped silently. A test world's plain actors
+  are authoritative, as they were for the engine path, so no test reads it differently.
 - **`ApplyDamageOverTime`:** a converted blow skips the strongest-application branch, so it is always laid as its own
   effect, and it no longer restarts `BleedMovingSeconds`.
 - **`ConvertIfActive` is unchanged**; a true answer now always means the blow is stored whole. Its comment says so.
