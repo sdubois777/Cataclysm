@@ -10,6 +10,7 @@
 class UButton;
 class UCataclysmChoiceButton;
 class UCataclysmGameInstance;
+class UEditableTextBox;
 class UPanelWidget;
 class UTextBlock;
 
@@ -87,6 +88,57 @@ public:
 	/** For tests: the rows, as `Refresh` would read them. */
 	void SetRowsForTests(const TArray<FCataclysmCharacterSummary>& InRows) { Shown = InRows; }
 
+	// --- Deleting a character, select-screen step 5, ruled 2026-11-01 ---------------------------------------------------
+
+	/** What is typed to confirm deleting a save that has no name to type: an unreadable one, or an unnamed one. */
+	static constexpr const TCHAR* DeleteWord = TEXT("DELETE");
+
+	/**
+	 * What must be typed to delete `Row`'s character: its name, as Diablo IV asks, or `DeleteWord` when it has none.
+	 */
+	static FString ConfirmationWordFor(const FCataclysmCharacterSummary& Row);
+
+	/** Whether `Typed` confirms deleting `Row`'s character: exactly its confirmation word, case and all. */
+	static bool ConfirmationMatches(const FCataclysmCharacterSummary& Row, const FString& Typed);
+
+	/**
+	 * The confirmation's text: who is deleted and that it cannot be undone; its run, when it is in one (ruling 6); for a
+	 * Solo Self-Found character, that its own empire upgrade tree and private stash go with it (rulings 4 and 5); for an
+	 * unreadable save, that none of that can be told, that any run it had stays, and that its backups are kept (Q2).
+	 */
+	static FString DeleteWarning(const FCataclysmCharacterSummary& Row);
+
+	/** What a click on row `Index` does: in delete mode it asks to delete that character, otherwise it continues it. */
+	void ClickRow(int32 Index);
+
+	/** Delete mode on or off. In it a row asks to delete its character instead of continuing it. Closes any confirmation. */
+	void SetDeleteMode(bool bOn);
+	bool IsInDeleteMode() const { return bDeleteMode; }
+
+	/** Opens the confirmation for row `Index`, nothing typed yet. False for a row that does not exist. */
+	bool AskToDeleteAt(int32 Index);
+
+	/** What the player has typed in the confirmation; Delete is enabled only while it matches. */
+	void SetConfirmationTyped(const FString& Typed);
+
+	/** Whether a confirmation is open and what was typed matches its row. */
+	bool CanConfirmDelete() const;
+
+	/**
+	 * Deletes the confirmed row's character with `FCataclysmSaveLoad::DeleteCharacter`, then leaves delete mode and reads
+	 * the saves again. Refused, deleting nothing, when what was typed does not match.
+	 */
+	bool ConfirmDelete();
+
+	/** Closes the confirmation; delete mode stays as it was. */
+	void CancelDelete();
+
+	int32 PendingDeleteIndex() const { return PendingDelete; }
+	FString ConfirmationText() const { return Confirmation; }
+
+	/** The slots the last delete removed. */
+	const TArray<FString>& LastDeleted() const { return Deleted; }
+
 protected:
 	virtual void NativeConstruct() override;
 
@@ -105,6 +157,28 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> TitleLabel;
 
+	/** Delete mode on and off. Select-screen step 5. */
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> DeleteButton;
+
+	/** The confirmation, hidden until a row asks to delete its character. */
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UPanelWidget> ConfirmPanel;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> ConfirmText;
+
+	/** Where the character's name, or `DeleteWord`, is typed. */
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UEditableTextBox> ConfirmNameBox;
+
+	/** Enabled only while what is typed matches. */
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> ConfirmDeleteButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> CancelButton;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Interface")
 	TSoftClassPtr<UCataclysmChoiceButton> ChoiceButtonClass =
 		TSoftClassPtr<UCataclysmChoiceButton>(FSoftObjectPath(
@@ -117,6 +191,24 @@ private:
 	UFUNCTION()
 	void HandleNewClicked();
 
+	UFUNCTION()
+	void HandleDeleteClicked();
+
+	UFUNCTION()
+	void HandleConfirmDeleteClicked();
+
+	UFUNCTION()
+	void HandleCancelClicked();
+
+	UFUNCTION()
+	void HandleConfirmNameChanged(const FText& Text);
+
+	/** The rows as buttons, from `Shown`: every row clickable in delete mode, only the readable ones otherwise. */
+	void ShowRows();
+
+	/** The confirmation shown or hidden, and Delete enabled as `CanConfirmDelete` says. */
+	void ShowConfirmation();
+
 	UCataclysmGameInstance* OwnInstance() const;
 	void ShowRefusal(const FString& Why);
 	void Open(const FString& Map);
@@ -125,4 +217,9 @@ private:
 	FString Refusal;
 	FString Requested;
 	bool bNewCharacterRequested = false;
+	bool bDeleteMode = false;
+	int32 PendingDelete = INDEX_NONE;
+	FString Typed;
+	FString Confirmation;
+	TArray<FString> Deleted;
 };

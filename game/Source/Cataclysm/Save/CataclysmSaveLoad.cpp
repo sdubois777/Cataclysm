@@ -459,6 +459,7 @@ TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 Use
 		if (Record->CurrentRunId.IsValid())
 		{
 			Row.bInARun = true;
+			Row.RunId = Record->CurrentRunId;
 			FString RunWhy;
 			if (const UCataclysmRunSave* Run = ReadForAList<UCataclysmRunSave>(
 					UCataclysmSavePartition::RunSlotName(Record->CurrentRunId), UserIndex, RunWhy))
@@ -492,6 +493,124 @@ TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 Use
 		return A.SlotName < B.SlotName;
 	});
 	return Out;
+}
+
+TArray<FString> FCataclysmSaveLoad::SlotsToDelete(const FCataclysmCharacterSummary& Row,
+												  const TArray<FString>& AllSlotNames,
+												  const TArray<FCataclysmCharacterSummary>& OtherRows)
+{
+	TArray<FString> Out;
+	const FString CharacterSlot = UCataclysmSavePartition::CharacterSlotName(Row.CharacterId);
+	if (!Row.CharacterId.IsValid() || !AllSlotNames.Contains(CharacterSlot))
+	{
+		return Out;
+	}
+	Out.Add(CharacterSlot); // A delete's: the character's own slot, by its exact name.
+
+	// AN UNREADABLE RECORD: ITS SLOT ONLY (Q2). Its run cannot be known, and its backups are how it is recovered.
+	if (!Row.bReadable)
+	{
+		return Out;
+	}
+
+	TArray<FString> Records = {CharacterSlot};
+	if (Row.RunId.IsValid())
+	{
+		bool bNamedByAnother = false;
+		for (const FCataclysmCharacterSummary& Other : OtherRows)
+		{
+			if (Other.SlotName != Row.SlotName && Other.RunId == Row.RunId) // A delete's: a run another character names stays.
+			{
+				bNamedByAnother = true;
+			}
+		}
+		const FString RunSlot = UCataclysmSavePartition::RunSlotName(Row.RunId);
+		if (!bNamedByAnother && AllSlotNames.Contains(RunSlot))
+		{
+			Out.Add(RunSlot);
+			Records.Add(RunSlot);
+		}
+	}
+
+	// THE BACKUPS OF THOSE SLOTS, `<slot>_BackupOfVersion<N>` exactly: the slot's whole name, the infix, then digits only.
+	for (const FString& Record : Records)
+	{
+		const FString Prefix = Record + FCataclysmSaveStorage::BackupInfix;
+		for (const FString& Name : AllSlotNames)
+		{
+			if (!Name.StartsWith(Prefix, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+			const FString Version = Name.RightChop(Prefix.Len());
+			bool bDigitsOnly = !Version.IsEmpty();
+			for (const TCHAR Character : Version)
+			{
+				bDigitsOnly = bDigitsOnly && FChar::IsDigit(Character);
+			}
+			if (bDigitsOnly) // A delete's: a backup's version, digits only.
+			{
+				Out.Add(Name);
+			}
+		}
+	}
+	return Out;
+}
+
+bool FCataclysmSaveLoad::DeleteCharacter(const FCataclysmCharacterSummary& Row,
+										 const TArray<FCataclysmCharacterSummary>& OtherRows, int32 UserIndex,
+										 const UWorld* World, TArray<FString>& OutDeleted, FString& OutWhy)
+{
+	OutDeleted.Reset();
+	const UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	if (Writer && Writer->IsWriting()) // A delete's: never while a run is being saved.
+	{
+		OutWhy = TEXT("a run is being saved here; a character is deleted only from the character select screen");
+		return false;
+	}
+
+	ISaveGameSystem* System = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	TArray<FString> Names;
+	if (!System || !System->GetSaveGameNames(Names, UserIndex))
+	{
+		OutWhy = TEXT("the saves could not be listed");
+		return false;
+	}
+	const TArray<FString> Slots = SlotsToDelete(Row, Names, OtherRows);
+	if (Slots.IsEmpty())
+	{
+		OutWhy = FString::Printf(TEXT("there is no save named %s to delete"), *Row.SlotName);
+		return false;
+	}
+
+	// WRITES IN FLIGHT FINISH FIRST, as every test's `Delete` waits for them.
+	const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+	for (const FString& Slot : Slots)
+	{
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Slot))
+		{
+			if (FPlatformTime::Seconds() > GiveUpAt)
+			{
+				OutWhy = FString::Printf(TEXT("%s is still being written; nothing was deleted"), *Slot);
+				return false;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+	}
+
+	// THE CHARACTER SLOT LAST, so a delete that stops part way leaves the character listed and deletable again.
+	for (int32 Index = Slots.Num() - 1; Index >= 0; --Index)
+	{
+		if (!UGameplayStatics::DeleteGameInSlot(Slots[Index], UserIndex))
+		{
+			OutWhy = FString::Printf(TEXT("%s could not be deleted; %d of %d were"), *Slots[Index], OutDeleted.Num(),
+									 Slots.Num());
+			return false;
+		}
+		OutDeleted.Add(Slots[Index]);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("A character was deleted: %s"), *FString::Join(OutDeleted, TEXT(", ")));
+	return true;
 }
 
 const TCHAR* FCataclysmSaveLoad::Describe(ECataclysmLoadOutcome Outcome)

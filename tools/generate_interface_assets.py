@@ -20,7 +20,9 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_SkillAssignment     which skill from the pool goes on which of the six
                             keys, issue #837 layer 4
     WBP_CharacterSelect     the character select screen: the saved characters,
-                            Continue and New, issue #753
+                            Continue, New and Delete, issue #753; the one
+                            asset this script remakes, once, see
+                            remake_character_select_without_delete
     WBP_NewCharacter        the new-character screen New opens: a name, the
                             lethality, Solo Self-Found, the population, the
                             weapon type and damage type, issue #753
@@ -698,16 +700,48 @@ def make_skill_assignment():
 CHARACTER_SELECT_PARENT = "CataclysmCharacterSelectWidget"
 CHARACTER_SELECT_ASSET = "WBP_CharacterSelect"
 
+# THE WIDGET STEP 5 ADDED, which a WBP_CharacterSelect made before it lacks.
+CHARACTER_SELECT_DELETE_WIDGET = "ConfirmNameBox"
+
+
+def remake_character_select_without_delete(parent):
+    """Deletes WBP_CharacterSelect when it was made before deleting a character
+    existed, so make_character_select makes it again. Issue #753, select-screen
+    step 5, ruled 2026-11-01.
+
+    THE ONE EXCEPTION TO "LEFT ALONE WHEN IT EXISTS", AND ONLY FOR THIS ASSET.
+    Step 5 binds six new widgets, so the screen made in step 3b cannot compile
+    against the new C++, and nobody has laid it out by hand since. An asset that
+    already holds CHARACTER_SELECT_DELETE_WIDGET is left alone, so a second run,
+    or a screen a designer has since changed, is never remade. Nothing else in
+    this file deletes an asset.
+    """
+    if not authoring.widget_blueprint_exists(INTERFACE_DIR, CHARACTER_SELECT_ASSET):
+        return
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHARACTER_SELECT_ASSET, parent)
+    if blueprint is not None and CHARACTER_SELECT_DELETE_WIDGET in authoring.widget_names(blueprint):
+        return
+    path = "{}/{}".format(INTERFACE_DIR, CHARACTER_SELECT_ASSET)
+    log("{} has no {}: made before deleting a character existed; deleted, to be "
+        "made again.".format(path, CHARACTER_SELECT_DELETE_WIDGET))
+    blueprint = None
+    if not editor_assets.delete_asset(path):
+        raise SystemExit("Could not delete {} to make it again.".format(path))
+    unreal.SystemLibrary.collect_garbage()
+
 
 def make_character_select():
-    """The character select screen, issue #753 select-screen step 3b.
+    """The character select screen, issue #753 select-screen steps 3b and 5.
 
     THE WHOLE SCREEN, in the front end's level, which shows nothing else: the
     saved characters, newest first, one WBP_ChoiceButton each, filled at run
-    time by UCataclysmCharacterSelectWidget; why the last load was refused; and
-    a button for a new character.
+    time by UCataclysmCharacterSelectWidget; why the last load was refused; a
+    button for a new character; and, from step 5, Delete and the confirmation
+    a delete needs, the character's name typed.
     """
     parent = parent_class(CHARACTER_SELECT_PARENT)
+    remake_character_select_without_delete(parent)
     if authoring.widget_blueprint_exists(INTERFACE_DIR, CHARACTER_SELECT_ASSET):
         log("{}/{} already exists; left alone.".format(
             INTERFACE_DIR, CHARACTER_SELECT_ASSET))
@@ -744,6 +778,24 @@ def make_character_select():
     add(blueprint, unreal.Button, "NewButton", "Body")
     new_label = add(blueprint, unreal.TextBlock, "NewLabel", "NewButton")
     set_text(new_label, "New character", size=18)
+
+    # DELETE, AND ITS CONFIRMATION (step 5): hidden by the C++ until a row asks.
+    add(blueprint, unreal.Button, "DeleteButton", "Body")
+    delete_label = add(blueprint, unreal.TextBlock, "DeleteLabel", "DeleteButton")
+    set_text(delete_label, "Delete a character", size=18)
+
+    add(blueprint, unreal.VerticalBox, "ConfirmPanel", "Body")
+    confirm_text = add(blueprint, unreal.TextBlock, "ConfirmText", "ConfirmPanel")
+    set_text(confirm_text, "", size=16)
+    confirm_text.set_editor_property("auto_wrap_text", True)
+    add(blueprint, unreal.EditableTextBox, "ConfirmNameBox", "ConfirmPanel")
+    add(blueprint, unreal.HorizontalBox, "ConfirmRow", "ConfirmPanel")
+    add(blueprint, unreal.Button, "ConfirmDeleteButton", "ConfirmRow")
+    confirm_delete = add(blueprint, unreal.TextBlock, "ConfirmDeleteLabel", "ConfirmDeleteButton")
+    set_text(confirm_delete, "Delete", size=18)
+    add(blueprint, unreal.Button, "CancelButton", "ConfirmRow")
+    cancel = add(blueprint, unreal.TextBlock, "CancelLabel", "CancelButton")
+    set_text(cancel, "Cancel", size=18)
 
     check_every_bound_widget(blueprint, parent)
     if not authoring.compile_and_save(blueprint):

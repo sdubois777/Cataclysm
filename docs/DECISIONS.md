@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A character is deleted from the select screen after its name is typed, with exactly its own slots (#753, select-screen step 5)
+
+**Affects:** `FCataclysmSaveLoad::SlotsToDelete` and `DeleteCharacter`, and the run identifier on
+`FCataclysmCharacterSummary` (`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `.cpp`); delete mode and the
+confirmation on `UCataclysmCharacterSelectWidget` (`game/Source/Cataclysm/Interface/CataclysmCharacterSelectWidget.h`,
+`.cpp`); `tools/generate_interface_assets.py`, which remakes `WBP_CharacterSelect` once
+(`remake_character_select_without_delete`) and adds the confirmation's widgets; the asset,
+`game/Content/Interface/WBP_CharacterSelect.uasset`, remade in window A; five new tests and six new assertions in the
+select screen's asset test; two new checks in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`.
+Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of the five steps ruled 2026-10-31.
+
+### SAID FIRST
+
+- **NOT YET GENERATED OR RUN IN UNREAL.** Compiled once with no lock; windows A and B are registered below.
+- **DELETING IS IRREVERSIBLE, SO EVERY NAME IS BUILT, NEVER MATCHED BY A PATTERN.** `SlotsToDelete` names each slot
+  from an identifier and matches it whole; `ADeleteRemovesItsCharactersSlotsAndNothingElse` deletes one of two
+  characters on disk and checks that the names gone are exactly a hand-written list and that no other name went.
+- **THE CONFIRMATION FOLLOWS DIABLO IV, AND THE EVIDENCE IS PLAYERS' AND GUIDES', NOT A DEVELOPER'S.** No developer
+  documentation was found for any game. **The coordinating session's recollection -- that Path of Exile asks for the
+  character's name and Diablo III for the word DELETE -- was NOT confirmed** (below).
+- **NO TEST SEES THE SCREEN DRAWN.** The tests drive the screen's logic with rows given; the screen as drawn, the
+  confirmation appearing and Delete greying out, are on the owner's launch list.
+
+### The genre, researched 2026-11-01
+
+| Game | What the sources show | Source |
+|---|---|---|
+| Diablo IV | **The character's name is typed.** One "Undo Character Delete" restores the most recent deletion only | gamepressure.com, "Can you restore a deleted character?" ("write the character's name"); a Steam discussion of 2023-12-12 in which a player asks to delete "without typing a name for confirmation" |
+| Path of Exile 1 and 2 | **A confirmation window**; a typed name **not confirmed** | pathofexile.com forum thread 3330281 (2022-12-16: a confirmation window; 2024-10-05: a player's "Having to type the name of the char is a good thing", which may describe the game or ask for it); thread 3782980 (2025-05-19: "Delete has a confirmation in both games"); a Grinding Gear Games reply there points only to support |
+| Diablo III | **No typed word found**: Delete, then a confirmation message | Blizzard support article 22588 (Restore Hero); a third-party guide |
+| Diablo II: Resurrected | Several steps since patch 1.0.12, 2021-10-12, a held button on console; no typing | mein-mmo.de |
+| Last Epoch | A click confirmation in 2024: players asked for a name confirmation after misclicks; a moderator's opinion that a case-sensitive typed name is best | r/LastEpoch, 2024-03; the forum thread then cited returns 404 |
+| Torchlight Infinite | Nothing found | -- |
+| Outside the genre | AQ3D asks for the word DELETE | support.artix.com |
+
+**What it settles:** the newest shipped game of the genre asks for the character's name, and players of two others
+asked for exactly that after deleting by mistake. Adopted: **the character's name, typed exactly, case and all.**
+**What it does not:** a save with no name. No game of the genre was found asking for a word; **DELETE is a judgement**
+(ruled), readable and typeable where the slot's identifier is neither.
+**Considered and not adopted: an undo,** as Diablo IV has for its most recent deletion. It would need the deleted files
+kept, which ruling 6 and Q1 do not. The owner can ask for it.
+
+### Rulings, 2026-11-01
+
+- **Q1, backups:** a migration's backups of the character slot and its run slot go with the character, matched exactly:
+  the slot's whole name, `_BackupOfVersion`, digits only.
+- **Q2, an unreadable save** can be deleted, freeing one of the 24. Only its character slot goes; its backups are kept,
+  the only way to recover it; any run it had cannot be found and stays. The warning says both.
+- **Q3, the asset:** window A remakes `WBP_CharacterSelect`, registering exactly that one file as modified. The remake is
+  explicit for this one asset (`remake_character_select_without_delete`), runs only when the asset lacks the step's
+  `ConfirmNameBox`, and is never a general remake; a Python check holds that.
+- **Q4:** Back on the new-character screen is unaffected.
+- **The confirmation:** the name typed, after Diablo IV; DELETE for a save with no name; no undo.
+
+### What deleting does
+
+- **Delete** on the select screen turns delete mode on and off. In it a row, an unreadable one included, opens the
+  confirmation instead of continuing.
+- **The confirmation** says who is deleted and that it cannot be undone; its run, on day N, when it is in one (ruling 6);
+  for a Solo Self-Found character, that its own empire upgrade tree and its private stash are destroyed with it (rulings 4
+  and 5, both stored inside the character's own record); for an unreadable save, the Q2 text. Delete is enabled only
+  while the box holds the name exactly.
+- **What goes**, by `SlotsToDelete`: the character slot; its run's slot, unless another listed character names the same
+  run, which solo play never does; and the two slots' backups. The character slot is deleted last, so a delete that
+  stops part way leaves the character listed. Writes in flight finish first.
+- **Outside a run only:** refused when the world's save writer is writing, which never happens on the front end but is
+  checked.
+- **No account record changes.** The account record's `Characters` list is never written (ruling 1, checked again: no
+  writer), and the run record's names only this character.
+
+### Tests
+
+- `Cataclysm.SaveLoad.ADeleteNamesExactlyTheSlotsItRemoves`: `SlotsToDelete` from a list of names, no file touched: a
+  character in a run, one in none, a run another row names, an unreadable record, and a slot not on disk, each to its
+  exact list; a near-miss backup name stays. Prints "DELETE SLOTS".
+- `Cataclysm.SaveLoad.ADeleteRemovesItsCharactersSlotsAndNothingElse`: on disk, two characters each with a run and a
+  backup, a near miss and two unrelated slots; every name before and after; the names gone are exactly the hand-written
+  four, and no other went. Control: the prediction is not empty. Prints "DELETE ON DISK".
+- `Cataclysm.SaveLoad.ADeleteIsRefusedWhileARunIsBeingSaved`: refused in a world whose writer is writing, the slot kept;
+  the same delete outside removes it. Prints "DELETE IN A RUN".
+- `Cataclysm.CharacterSelect.ADeleteWarnsWhatGoesAndAsksForTheName`: the warnings, and the word each save is confirmed
+  by, case-sensitive. Prints "DELETE WARNING".
+- `Cataclysm.CharacterSelect.DeleteModeAsksAndTheWrongNameDeletesNothing`: delete mode asks and does not continue; the
+  wrong name keeps Delete refused and deletes nothing; Cancel keeps the rows; an unreadable row is confirmed by DELETE.
+  Prints "DELETE MODE".
+- `Cataclysm.CharacterSelect.TheSelectScreenAssetLoadsAndHoldsItsBoundWidgets` gains six assertions, one per new widget.
+- The Python file gains two checks: the six widgets are bound and added; and only
+  `remake_character_select_without_delete` calls `delete_asset`, only `make_character_select` calls it, and the widget
+  it looks for is one the screen binds.
+
+### The owner's launch list, added to step 4b's
+
+6. Delete, then Cancel, leaves the character.
+7. Typing the wrong name keeps Delete disabled.
+8. Deleting a Solo Self-Found character shows the warning naming its empire upgrade tree and its private stash.
+9. A deleted character is gone from the list, and stays gone after the game is restarted.
+10. An unreadable save can be deleted by typing DELETE, and its line disappears.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Window A, the editor run | exit 0; the log says `/Game/Interface/WBP_CharacterSelect` "has no ConfirmNameBox ... deleted, to be made again", then "satisfies 9 BindWidget properties" and "created /Game/Interface/WBP_CharacterSelect"; every other screen and `L_FrontEnd` "already exists; left alone"; **exactly one file changed**, `M game/Content/Interface/WBP_CharacterSelect.uasset`. `Error:` lines from loading the old asset, which cannot compile against the new C++, are expected and are quoted in the record |
+| Window B, the five new tests and the asset test alone | 1 / 1 each, their lines quoted |
+| Window B, the whole Unreal suite | 4491 / 0: `development`'s 4486 (bef3362ca, window w127B), + 5; moved onto #2664's measured total + 5 if it merges first |
+| Window B, Python | of record, with JUnit, and ruff |
+| R1, the shared-run guard off (`if (Other.SlotName != Row.SlotName && Other.RunId == Row.RunId)` to `if (false)`), prefix `Cataclysm.SaveLoad.ADelete` | the slots test fails on "a run another character names stays, with its backup" only |
+| R2, a backup's version not checked for digits (`if (bDigitsOnly)` to `if (true)`), same prefix | the slots test fails on "a character in a run: ..." and "a run another character names stays, ..."; the on-disk test on "the prediction is its slot, its run's and the two backups", "exactly those slots are gone" and "and nothing else" |
+| R3, the character slot by a pattern (`Out.Add(CharacterSlot);` to a loop adding every name starting `Character_`), same prefix | the slots test fails on its four cases with a character slot; the on-disk test on "the prediction ...", "exactly those slots are gone" and "and nothing else". IT DELETES EVERY `Character_` SLOT IN THE PROOF WORKTREE'S SaveGames FOLDER, which holds test saves only |
+| R4, the Solo Self-Found warning off (`if (Row.Partition.bSoloSelfFound)` to `if (false)`), prefix `Cataclysm.CharacterSelect.ADeleteWarns` | the warning test fails on "... names its empire upgrade tree" and "and its private stash" only |
+| R5, the writing guard off (`if (Writer && Writer->IsWriting())` to `if (false)`), prefix `Cataclysm.SaveLoad.ADelete` | the in-a-run test fails on "a delete while a run is being saved is refused", "and deletes nothing" and its control, whose slot the break has already deleted |
+| N1, the name matched ignoring case (`ESearchCase::CaseSensitive` to `IgnoreCase` in `ConfirmationMatches`), prefix `Cataclysm.CharacterSelect.` | the warning test fails on "the name in the wrong case does not"; the delete-mode test on "the wrong name keeps Delete disabled" only (its delete then finds no slot and deletes nothing) |
+| P1 (Python), `make_character_select` does not add `ConfirmNameBox` | the step 5 widgets check and 3b's every-bound-widget check fail |
+| P2 (Python), a second function calls `delete_asset` | the remake-scope check fails, only |
+
+---
+
 ## 2026-11-01 — Converted damage is never damage dealt: it leeches nothing, strikes nobody, and a Masochist it kills dies uncredited (#2664)
 
 **Affects:** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`

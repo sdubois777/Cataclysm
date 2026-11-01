@@ -52,6 +52,8 @@
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
+#include "PlatformFeatures.h"
+#include "SaveGameSystem.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -7301,6 +7303,265 @@ bool FCataclysmSaveLoadNewCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("and its weapon type"), Record->StartingWeaponType, FName(TEXT("Greatsword")));
 	TestEqual(TEXT("and the select screen lists it once"), Listed, 1);
 	TestEqual(TEXT("by its name"), ListedName, FString(TEXT("Vesper Ash")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Deleting a character, select-screen step 5
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** Every save name the save system holds now, as `FCataclysmSaveLoad::DeleteCharacter` lists them. */
+	TArray<FString> EverySaveName()
+	{
+		TArray<FString> Names;
+		if (ISaveGameSystem* System = IPlatformFeaturesModule::Get().GetSaveGameSystem())
+		{
+			System->GetSaveGameNames(Names, UserIndex);
+		}
+		return Names;
+	}
+
+	/** A row as the list gives it, for `SlotsToDelete`, which reads only these fields. */
+	FCataclysmCharacterSummary ADeleteRow(const FGuid& Id, bool bReadable, const FGuid& RunId)
+	{
+		FCataclysmCharacterSummary Row;
+		Row.SlotName = UCataclysmSavePartition::CharacterSlotName(Id);
+		Row.CharacterId = Id;
+		Row.bReadable = bReadable;
+		Row.RunId = RunId;
+		Row.bInARun = RunId.IsValid();
+		return Row;
+	}
+}
+
+/**
+ * Exactly which slots deleting a character removes, from a list of names, without touching a file: its character slot;
+ * its run's slot, unless another row names the same run; and the migration backups of those two, the whole slot name, the
+ * infix and digits only, so a near miss such as `..._BackupOfVersion2x` stays. An unreadable record gives its character
+ * slot only, its backups kept (Q2); a slot not on disk gives nothing. Issue #753, select-screen step 5, ruled 2026-11-01.
+ * Prints "DELETE SLOTS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSlotsToDeleteTest,
+	"Cataclysm.SaveLoad.ADeleteNamesExactlyTheSlotsItRemoves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSlotsToDeleteTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FGuid A = AListFixture(0x21);
+	const FGuid RunA = AListFixture(0x22);
+	const FGuid B = AListFixture(0x23);
+	const FGuid RunB = AListFixture(0x24);
+	const FGuid Missing = AListFixture(0x25);
+	const FString CA = UCataclysmSavePartition::CharacterSlotName(A);
+	const FString RA = UCataclysmSavePartition::RunSlotName(RunA);
+	const FString CB = UCataclysmSavePartition::CharacterSlotName(B);
+	const FString RB = UCataclysmSavePartition::RunSlotName(RunB);
+	const FString Infix = FCataclysmSaveStorage::BackupInfix;
+	const TArray<FString> Names = {CA, RA, CA + Infix + TEXT("3"), CA + Infix + TEXT("2x"), RA + Infix + TEXT("1"),
+								   CB, RB, CB + Infix + TEXT("1"), TEXT("Account_Fixture"), TEXT("Unrelated_Fixture")};
+
+	const FCataclysmCharacterSummary RowA = ADeleteRow(A, true, RunA);
+	const FCataclysmCharacterSummary RowB = ADeleteRow(B, true, FGuid());
+	const FCataclysmCharacterSummary RowAShared = ADeleteRow(B, true, RunA);
+	const FString Ordinary = FString::Join(FCataclysmSaveLoad::SlotsToDelete(RowA, Names, {RowB}), TEXT(" | "));
+	const FString NoRun = FString::Join(FCataclysmSaveLoad::SlotsToDelete(RowB, Names, {RowA}), TEXT(" | "));
+	const FString Shared = FString::Join(FCataclysmSaveLoad::SlotsToDelete(RowA, Names, {RowAShared}), TEXT(" | "));
+	const FString Unreadable = FString::Join(FCataclysmSaveLoad::SlotsToDelete(ADeleteRow(A, false, FGuid()), Names, {}),
+											 TEXT(" | "));
+	const FString NotOnDisk = FString::Join(FCataclysmSaveLoad::SlotsToDelete(ADeleteRow(Missing, true, FGuid()), Names, {}),
+											TEXT(" | "));
+	AddInfo(FString::Printf(TEXT("DELETE SLOTS: ordinary [%s]; no run [%s]; a run another names [%s]; unreadable [%s]; "
+								 "not on disk [%s]"),
+							*Ordinary, *NoRun, *Shared, *Unreadable, *NotOnDisk));
+
+	TestEqual(TEXT("a character in a run: its slot, its run's, and both slots' backups, the near miss kept"), Ordinary,
+			  FString::Join(TArray<FString>{CA, RA, CA + Infix + TEXT("3"), RA + Infix + TEXT("1")}, TEXT(" | ")));
+	TestEqual(TEXT("a character in no run: its slot and its backup"), NoRun,
+			  FString::Join(TArray<FString>{CB, CB + Infix + TEXT("1")}, TEXT(" | ")));
+	TestEqual(TEXT("a run another character names stays, with its backup"), Shared,
+			  FString::Join(TArray<FString>{CA, CA + Infix + TEXT("3")}, TEXT(" | ")));
+	TestEqual(TEXT("an unreadable record: its slot only, its backups kept"), Unreadable, CA);
+	TestEqual(TEXT("a slot not on disk: nothing"), NotOnDisk, FString());
+	return true;
+}
+
+/**
+ * Deleting a character removes exactly the slots `SlotsToDelete` names, ON DISK, and nothing else: two characters, each
+ * with a run and a backup, a near-miss backup name, and two unrelated slots; every save name is taken before and after,
+ * and the difference is exactly the four predicted. The row is read by the select screen's listing, so the run it names is
+ * the listing's. Control: the prediction is not empty. Every slot written is deleted on exit. Issue #753, select-screen
+ * step 5, ruled 2026-11-01. Prints "DELETE ON DISK".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadDeleteOnDiskTest,
+	"Cataclysm.SaveLoad.ADeleteRemovesItsCharactersSlotsAndNothingElse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadDeleteOnDiskTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FGuid A = AListFixture(0x26);
+	const FGuid RunA = AListFixture(0x27);
+	const FGuid B = AListFixture(0x28);
+	const FGuid RunB = AListFixture(0x29);
+	const FString Infix = FCataclysmSaveStorage::BackupInfix;
+	const FString CA = UCataclysmSavePartition::CharacterSlotName(A);
+	const FString RA = UCataclysmSavePartition::RunSlotName(RunA);
+	const FString CB = UCataclysmSavePartition::CharacterSlotName(B);
+	const FString RB = UCataclysmSavePartition::RunSlotName(RunB);
+	const FString AccountFixture = TEXT("Account_DeleteFixture_5E1EC7ED");
+	const FString UnrelatedFixture = TEXT("DeleteFixture_5E1EC7ED_Unrelated");
+	const TArray<FString> Slots = {CA, RA, CA + Infix + TEXT("3"), CA + Infix + TEXT("2x"), RA + Infix + TEXT("1"),
+								   CB, RB, CB + Infix + TEXT("1"), AccountFixture, UnrelatedFixture};
+	auto DeleteAll = [&Slots]()
+	{
+		for (const FString& Slot : Slots)
+		{
+			Delete(Slot);
+		}
+	};
+	DeleteAll();
+	ON_SCOPE_EXIT { DeleteAll(); };
+
+	FCataclysmCharacterPartition SoloSelfFound;
+	SoloSelfFound.bSoloSelfFound = true;
+	FString Error;
+	auto WriteARun = [this, &Error](const FGuid& RunId)
+	{
+		UCataclysmRunSave* Run = NewObject<UCataclysmRunSave>();
+		Run->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+		Run->RunId = RunId;
+		Run->Day = 4;
+		return TestTrue(TEXT("set-up: a run was written"),
+						FCataclysmSaveStorage::WriteToSlot(Run, UCataclysmSavePartition::RunSlotName(RunId), UserIndex, Error));
+	};
+	if (!WriteACharacter(*this, A, TEXT("Fixture Deleted"), 7, SoloSelfFound, FName(TEXT("Sword")), RunA,
+						 TEXT("2026-11-01T10:00:00.000Z"))
+		|| !WriteARun(RunA) || !WriteText(*this, CA + Infix + TEXT("3"), TEXT("a backup"))
+		|| !WriteText(*this, CA + Infix + TEXT("2x"), TEXT("a near miss")) || !WriteText(*this, RA + Infix + TEXT("1"), TEXT("a backup"))
+		|| !WriteACharacter(*this, B, TEXT("Fixture Kept"), 3, FCataclysmCharacterPartition(), FName(TEXT("Staff")), RunB,
+							TEXT("2026-11-01T09:00:00.000Z"))
+		|| !WriteARun(RunB) || !WriteText(*this, CB + Infix + TEXT("1"), TEXT("a backup"))
+		|| !WriteText(*this, AccountFixture, TEXT("not deleted")) || !WriteText(*this, UnrelatedFixture, TEXT("not deleted")))
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmCharacterSummary> Rows = FCataclysmSaveLoad::SavedCharacters(UserIndex);
+	int32 Count = 0;
+	const int32 At = RowOf(Rows, A, Count);
+	if (!TestTrue(TEXT("set-up: the character to delete is listed once"), At != INDEX_NONE && Count == 1))
+	{
+		return false;
+	}
+	TArray<FCataclysmCharacterSummary> Others = Rows;
+	Others.RemoveAt(At);
+	const TArray<FString> Before = EverySaveName();
+	const TArray<FString> Predicted = FCataclysmSaveLoad::SlotsToDelete(Rows[At], Before, Others);
+	TArray<FString> Deleted;
+	FString Why;
+	const bool bDeleted = FCataclysmSaveLoad::DeleteCharacter(Rows[At], Others, UserIndex, nullptr, Deleted, Why);
+	const TArray<FString> After = EverySaveName();
+
+	// WHAT SHOULD GO, WRITTEN OUT BY HAND, so "nothing else" is not measured against the function being tested.
+	TArray<FString> Expected = {CA, RA, CA + Infix + TEXT("3"), RA + Infix + TEXT("1")};
+	Expected.Sort();
+	TArray<FString> Gone;
+	TArray<FString> LostOthers;
+	for (const FString& Name : Before)
+	{
+		if (!After.Contains(Name))
+		{
+			Gone.Add(Name);
+			if (!Expected.Contains(Name))
+			{
+				LostOthers.Add(Name);
+			}
+		}
+	}
+	Gone.Sort();
+	TArray<FString> PredictedSorted = Predicted;
+	PredictedSorted.Sort();
+	AddInfo(FString::Printf(TEXT("DELETE ON DISK: %s (%s); %d names before, %d after; gone [%s]; gone and not expected [%s]; "
+								 "the near miss %s, the other character %s"),
+							bDeleted ? TEXT("deleted") : TEXT("REFUSED"), *Why, Before.Num(), After.Num(),
+							*FString::Join(Gone, TEXT(" | ")), *FString::Join(LostOthers, TEXT(" | ")),
+							After.Contains(CA + Infix + TEXT("2x")) ? TEXT("kept") : TEXT("GONE"),
+							After.Contains(CB) && After.Contains(RB) ? TEXT("kept") : TEXT("GONE")));
+
+	TestFalse(TEXT("CONTROL: the prediction is not empty"), Predicted.IsEmpty());
+	TestTrue(TEXT("the character was deleted"), bDeleted);
+	TestEqual(TEXT("the prediction is its slot, its run's and the two backups"),
+			  FString::Join(PredictedSorted, TEXT(" | ")), FString::Join(Expected, TEXT(" | ")));
+	TestEqual(TEXT("exactly those slots are gone"), FString::Join(Gone, TEXT(" | ")), FString::Join(Expected, TEXT(" | ")));
+	TestTrue(TEXT("and nothing else: no other save is gone"), LostOthers.IsEmpty());
+	TestEqual(TEXT("the delete reports what it removed"), Deleted.Num(), Predicted.Num());
+	return true;
+}
+
+/**
+ * A character is deleted only outside a run: in a world whose save writer is writing, the delete is refused and its slot
+ * stays; the same delete with no such world removes it. Issue #753, select-screen step 5, ruled 2026-11-01. Prints
+ * "DELETE IN A RUN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadDeleteInARunTest,
+	"Cataclysm.SaveLoad.ADeleteIsRefusedWhileARunIsBeingSaved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadDeleteInARunTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FGuid Id = AListFixture(0x2A);
+	const FString Slot = UCataclysmSavePartition::CharacterSlotName(Id);
+	Delete(Slot);
+	ON_SCOPE_EXIT { Delete(Slot); };
+	if (!WriteACharacter(*this, Id, TEXT("Fixture In A Run"), 2, FCataclysmCharacterPartition(), NAME_None, FGuid(),
+						 TEXT("2026-11-01T08:00:00.000Z")))
+	{
+		return false;
+	}
+	FCataclysmCharacterSummary Row = ADeleteRow(Id, true, FGuid());
+
+	bool bInARun = true;
+	TArray<FString> DeletedInARun;
+	FString WhyInARun;
+	bool bWriting = false;
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FString SceneRun = Scene.Writer->RunSlotName();
+		const FString SceneCharacter = Scene.Writer->CharacterSlotName();
+		ON_SCOPE_EXIT { Delete(SceneRun); Delete(SceneCharacter); };
+		bWriting = Scene.Writer->IsWriting();
+		bInARun = FCataclysmSaveLoad::DeleteCharacter(Row, {}, UserIndex, Scene.World, DeletedInARun, WhyInARun);
+	}
+	const bool bStayed = UGameplayStatics::DoesSaveGameExist(Slot, UserIndex);
+	TArray<FString> DeletedOutside;
+	FString WhyOutside;
+	const bool bOutside = FCataclysmSaveLoad::DeleteCharacter(Row, {}, UserIndex, nullptr, DeletedOutside, WhyOutside);
+	const bool bGone = !UGameplayStatics::DoesSaveGameExist(Slot, UserIndex);
+	AddInfo(FString::Printf(TEXT("DELETE IN A RUN: the writer %s; in the run %s (%s), the slot %s; outside %s, the slot %s"),
+							bWriting ? TEXT("writing") : TEXT("NOT WRITING"), bInARun ? TEXT("DELETED") : TEXT("refused"),
+							*WhyInARun, bStayed ? TEXT("stayed") : TEXT("WENT"), bOutside ? TEXT("deleted") : TEXT("REFUSED"),
+							bGone ? TEXT("gone") : TEXT("STAYED")));
+
+	TestTrue(TEXT("set-up: the world's writer is writing a run"), bWriting);
+	TestFalse(TEXT("a delete while a run is being saved is refused"), bInARun);
+	TestTrue(TEXT("and deletes nothing"), DeletedInARun.IsEmpty() && bStayed);
+	TestTrue(TEXT("CONTROL: the same delete outside a run removes it"), bOutside && bGone);
 	return true;
 }
 

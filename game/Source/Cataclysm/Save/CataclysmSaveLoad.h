@@ -89,6 +89,9 @@ struct CATACLYSM_API FCataclysmCharacterSummary
 	bool bRunReadable = false;
 	int32 Day = 0;
 
+	/** The run the record names, which a delete removes with it (select-screen step 5); invalid when it names none. */
+	FGuid RunId;
+
 	/** The dungeon and floor the run was saved on; `Floor` 0 when it was saved outside a dungeon. */
 	FName Dungeon;
 	int32 Floor = 0;
@@ -123,4 +126,29 @@ struct CATACLYSM_API FCataclysmSaveLoad
 	 * listing never rewrites or backs up a file; a load does that when the player picks one.
 	 */
 	static TArray<FCataclysmCharacterSummary> SavedCharacters(int32 UserIndex);
+
+	/**
+	 * Exactly the slots deleting `Row`'s character removes, among `AllSlotNames`, its character slot first. Select-screen
+	 * step 5, ruled 2026-11-01. EVERY NAME IS BUILT FROM AN IDENTIFIER AND MATCHED WHOLE, never by a pattern:
+	 *
+	 * - its character slot, `Character_<its identifier>`;
+	 * - for a record that reads, its run's slot, `Run_<the run it names>` (ruling 6), unless one of `OtherRows` names the
+	 *   same run, which solo play never does;
+	 * - and the migration backups of those two slots, `<slot>_BackupOfVersion` and digits only (Q1).
+	 *
+	 * AN UNREADABLE RECORD GIVES ITS CHARACTER SLOT ONLY (Q2): its run cannot be known, and its backups are kept, being the
+	 * only way to recover it. Empty when the character slot is not among `AllSlotNames`.
+	 */
+	static TArray<FString> SlotsToDelete(const FCataclysmCharacterSummary& Row, const TArray<FString>& AllSlotNames,
+										 const TArray<FCataclysmCharacterSummary>& OtherRows);
+
+	/**
+	 * Deletes `Row`'s character: the slots `SlotsToDelete` names among those the save system holds, its character slot
+	 * last, so a delete that stops part way leaves the character listed. Writes in flight to any of them finish first.
+	 *
+	 * OUTSIDE A RUN ONLY: refused, deleting nothing, when `World`'s save writer is writing. False with why when nothing
+	 * can be deleted or a delete fails; `OutDeleted` holds what was deleted either way.
+	 */
+	static bool DeleteCharacter(const FCataclysmCharacterSummary& Row, const TArray<FCataclysmCharacterSummary>& OtherRows,
+								int32 UserIndex, const UWorld* World, TArray<FString>& OutDeleted, FString& OutWhy);
 };
