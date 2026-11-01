@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — The saved characters are listed from their slots, newest first by the time each record was last written (#753, select-screen step 2)
+
+**Affects:** `FCataclysmSaveLoad::SavedCharacters` and `FCataclysmCharacterSummary` (new) in
+`game/Source/Cataclysm/Save/CataclysmSaveLoad.h` and `.cpp`; one `SaveGame` field, `LastWrittenUtc`, on
+`UCataclysmCharacterSave` (`CataclysmSaveRecords.h`); `UCataclysmSaveWriter` (`CataclysmSaveWriter.cpp`), which sets it;
+the fixture `game/Tests/SaveFixtures/Character_v3.json`; one new test in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: nothing shows the list yet, which is step 3.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **THE RECORD HELD NO TIME,** so the order the coordinating session ruled, most recently played first, had nothing to
+  read. One field is added, `LastWrittenUtc`, with a default and no schema bump (`Save_System_Design.md` section 5), and
+  the writer sets it each time it writes the character record. **IT IS THE LAST WRITE OF THE CHARACTER RECORD, NEAR THE
+  LAST PLAY BUT NOT EQUAL TO IT:** the record is written on an inventory change and on a death, not at every moment of
+  play. A record written before this has no time and is listed after every timed one.
+- **ISO 8601 TEXT AND NOT A NUMBER OF TICKS,** because JSON carries a number as a double, which cannot hold every tick.
+- **NOT THE SLOT FILE'S MODIFICATION TIME,** ruled: the engine's save system gives the names of slots and not their
+  times, so reading a file's time would go around it, and a console's save store has no such file.
+- **A LISTING WRITES NOTHING.** A record older than this build is migrated in memory only, through
+  `FCataclysmSaveStorage::FromJson`; `ReadFromSlot` would write a backup and the migrated record, which a load still does
+  when the player picks a character. A migration's backup slots are left out of the list.
+- **THE TEST WRITES INTO THE REAL SaveGames FOLDER,** which holds other tests' and real saves. So it asserts only its own
+  fixtures' rows and their order among themselves, never a count. Its slots are named by fixed identifiers,
+  `5E1EC7ED-0000-4C15-A000-0000000000NN` (NN 01 to 07), which a character's random `FGuid::NewGuid` will not produce, and
+  every one of them is deleted whether the test passes or fails, by `ON_SCOPE_EXIT` with the `Delete` that the round
+  trips' `FSaved::Forget` uses, and once before writing in case an earlier run stopped part way.
+
+### Rulings, 2026-10-31
+
+- **The order: newest first by the record's last write; then the untimed by name;** then by slot, so the order is the same
+  every time. **`LastWrittenUtc`** added with a default, set by the writer on every character write; the fixture carries
+  it. **Found by `ISaveGameSystem::GetSaveGameNames` filtered to the `Character_` prefix** (ruling 1 of step 1). **A
+  fixture with a Solo Self-Found character that has no account record**, to show the scan finds it.
+
+### What each row holds
+
+| Field | From |
+|---|---|
+| Slot and identifier | the slot's name |
+| Readable, or why not | reading the slot; an unreadable one is listed, never hidden (ruling 2) |
+| Name, level, partition | the character record |
+| Weapon type | the first worn weapon's type, in the weapon slots' order, as `EquippedWeaponType` reads it; else the type chosen at creation; else empty |
+| In a run; its day; its dungeon and floor | the record's `CurrentRunId`, and that run's record when it reads; the floor only when the run was saved inside a dungeon |
+| Last written | `LastWrittenUtc`, or untimed |
+
+### Tests
+
+- `Cataclysm.SaveLoad.TheSavedCharactersAreListedNewestFirst`. Fixtures, written straight to their slots:
+  - a Solo Self-Found character, level 12, a Greatsword chosen at creation, in a run on day 9 saved on floor 3 of
+    "Sandbox", written 2026-10-31T20:00Z;
+  - a shared Hardcore online character, level 4, in no run, written 2026-10-30T08:00Z;
+  - one with no time;
+  - a slot of text that is no record;
+  - and a character saved through the writer, for its stamp.
+
+  It checks that each fixture is listed once, with the Solo Self-Found one having no account slot; each row's fields; the
+  order, newer before older and every timed before the untimed; and that the writer's stamp is the time of the write.
+  Prints "LIST".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1, its line quoted |
+| Whole Unreal suite | 4450 / 0: window w122's 4449 on `development` (cee4cb82c), + 1 |
+| Python | of record, with JUnit, and ruff |
+| P1, the writer not stamping (`LastCharacter->LastWrittenUtc = FDateTime::UtcNow().ToIso8601(); // A save's: ...`) | the new test fails on "the writer stamps the record with the time it writes it" only; no other test reads the field |
+| P2, the timed sorted oldest first (`return A.LastWrittenUtc > B.LastWrittenUtc;` broken to `<`) | the new test fails on "the newer before the older" only |
+| P3, the untimed sorted first (`return A.bTimed;` broken to `return !A.bTimed;`) | the new test fails on "every timed record before the untimed" only |
+| P4, an unreadable slot left out (`Out.Pop();` before the `continue` that follows a failed read) | the new test fails on "the unreadable slot is listed once, not hidden" (0) and stops there, returning false: what follows needs every fixture's row |
+| P5, the run's day not read (`Row.Day = Run->Day;`) | the new test fails on "the run's day" (0) only |
+| P6, the creation choice not read for the weapon type (`Row.WeaponType = Record->StartingWeaponType.ToString();`) | the new test fails on "its weapon type, chosen at creation with nothing worn" only |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled).
+
+---
+
 ## 2026-10-31 — A character's name and partition are saved and loaded, the character select screen's six rulings, and a guard on the death a load runs (#753, select-screen step 1)
 
 **Affects:** `ACataclysmPlayerState` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`), which now holds the
