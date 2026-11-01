@@ -14,6 +14,8 @@ Issue [#1591](https://github.com/sdubois777/Cataclysm/issues/1591).
 
 ### SAID FIRST
 
+- **PASSED IN WINDOW effects-list-w1, ON `80554917b`: 4511 OF 4511, E1 AND E2 PROVED, EVERY PREDICTION HELD AT THE
+  ASSERTION** (recorded under "Window effects-list-w1" below).
 - **No automation test can see the screen**, so the list is tested and the drawing is not. `AHUD::PostRender` checks
   `FApp::CanEverRender()` and the test command passes `-nullrhi`, so `DrawHUD` never runs under test (the wall
   `ACataclysmHUD`'s own class comment records). What is drawn, in which colour and where, is unverified until somebody
@@ -138,10 +140,25 @@ Not the window's evidence: the coordinating session ran the seven tests alone on
 `f091d674d`) under the prefix `Cataclysm.PlayerEffects.`, as a short check: 7 of 7 passed, with "Test saves: 0 written
 and deleted, 0 left behind". The move changed none of the C++ those tests read.
 
+### Window effects-list-w1, run 2026-11-01 by the coordinating session
+
+On `80554917b`, branch `feat/the-player-sees-what-affects-them-1`, on `development` at `68af556f4`. Pre-checks at
+16:35:43 all passed, 11,133 MB of physical memory free, after the dungeon session's Python run had ended at 16:35:39;
+the runner (started 16:35:55) took the lock as `effects-list-w1` and released it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| The seven new tests, prefix `Cataclysm.PlayerEffects.` | 7 / 7 | "7 tests performed, 7 succeeded, 0 failed" |
+| Whole Unreal suite | 4511 / 0 | "4511 tests performed, 4511 succeeded, 0 failed"; "Declared: 4511 tests in the tree at 80554917b; 4511 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7220 passed, 8 skipped in 199.31s"; JUnit tests 7228, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| E1 | one assertion | PROVED: "1 tests performed, 0 succeeded, 1 failed: ABleedIsListedAsADebuffWithItsSecondsLeft"; restored 1 of 1. The kept broken-half log fails exactly "Expected 'the bleed is the one entry' to be 1, but it was 0." and no other assertion |
+| E2 | two assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed: ABuffIsListedAfterEveryDebuff"; restored 1 of 1. The kept broken-half log fails exactly "the stagger, then the curse, then the buff" ("Commander, Staggered, Quarry" against "Staggered, Quarry, Commander") and "two debuffs, then one buff" ("B D D" against "D D B"), and no other assertion |
+
 ### Not verified
 
-- No window has run yet: the whole Unreal suite and the two proofs are registrations.
-- What the list looks like on screen, which no automation test can see.
+- What the list looks like on screen, which no automation test can see: on the owner's launch check after 2026-11-16,
+  with the position, the colours and the cap, which the owner may change.
 
 ### Run
 
