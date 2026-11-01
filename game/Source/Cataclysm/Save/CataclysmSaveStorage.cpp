@@ -13,6 +13,7 @@
 #include "SaveGameSystem.h"
 #include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecord.h"
+#include "Save/CataclysmTestSaves.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -296,6 +297,8 @@ bool FCataclysmSaveStorage::WriteToSlot(const UCataclysmSaveRecord* Record, cons
 	// thread, and the callback is not part of the task.
 	LastWriteTo(SlotName).Wait();
 
+	// A TEST'S NEW SLOT IS NOTED BEFORE IT IS WRITTEN, so the end of the test deletes it. Issue #2658.
+	FCataclysmTestSaves::NoteAWrite(SlotName, UserIndex);
 	if (!UGameplayStatics::SaveDataToSlot(Bytes, SlotName, UserIndex))
 	{
 		OutError = FString::Printf(TEXT("the save system would not write to slot '%s'"), *SlotName);
@@ -348,6 +351,10 @@ bool FCataclysmSaveStorage::WriteToSlotAsync(const UCataclysmSaveRecord* Record,
 	// the blocking `SaveGame`, then the callback handed to the core ticker, with
 	// the same flags. `OnAsyncComplete`, the engine's helper for that last step,
 	// is protected, so its one line is repeated here.
+	// A TEST'S NEW SLOT IS NOTED HERE, ON THE CALLER'S THREAD AND BEFORE THE WRITE IS QUEUED, while "did it exist before"
+	// still means before this write and not whenever the task lands. Issue #2658, ruled 2026-11-01.
+	FCataclysmTestSaves::NoteAWrite(SlotName, UserIndex);
+
 	FWritesInFlight& Writes = WritesInFlight();
 	FScopeLock Guard(&Writes.Lock);
 	ForgetFinishedWrites(Writes);
@@ -427,6 +434,8 @@ UCataclysmSaveRecord* FCataclysmSaveStorage::ReadFromSlot(
 	if (bWillMigrate)
 	{
 		const FString Backup = BackupSlotName(SlotName, OnDisk);
+		// A BACKUP IS NOTED ONLY WITH THE SLOT IT BACKS UP, so a slot that was there before a test keeps its backup.
+		FCataclysmTestSaves::NoteABackup(Backup, SlotName, UserIndex);
 		if (!UGameplayStatics::SaveDataToSlot(Bytes, Backup, UserIndex))
 		{
 			// REFUSED RATHER THAN MIGRATED WITHOUT ONE. A migration with no way

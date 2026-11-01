@@ -155,6 +155,9 @@ TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests perform
 #: into a set rather than counted. Issue #467.
 SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
 
+#: The line `FCataclysmTestSaves` logs once per run: what the tests' save slots came to. Issue #2658.
+TEST_SAVES = re.compile(r"(Test saves: \d+ written and deleted, \d+ left behind[^\r\n]*)")
+
 #: The engine refusing to register a test, capturing the C++ class name.
 #:
 #: A REFUSED TEST DOES NOT RUN, IS NOT LISTED, AND IS NOT COUNTED, so the run
@@ -986,6 +989,17 @@ def parse_test_log(text: str) -> TestOutcome:
     )
 
 
+def test_saves_line(text: str) -> str:
+    """The run's "Test saves: N written and deleted, M left behind" line, or a line saying the log has none.
+
+    THE LAST ONE, because the line is logged when the automation session stops and again cannot be (it is logged once),
+    but a log that somehow held two runs should report the later. A missing line is said, not hidden: it means the hook
+    that logs it did not run, which is the one thing the line is evidence for. Issue #2658.
+    """
+    found = TEST_SAVES.findall(text)
+    return found[-1] if found else "Test saves: (no line in the log; the clean-up's summary was not logged)"
+
+
 def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> None:
     """Write the original bytes back and make sure the file looks newer than the build.
 
@@ -1493,6 +1507,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     tests = run_automation_tests(arguments.prefix)
     print(f"Tests: {tests.summary}")
+    # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result and never part of it: reported, not failed on (#2658, ruled
+    # 2026-11-01). Read again from the log the run left, as `run_automation_tests` read it.
+    print(test_saves_line(TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else ""))
     # THE INPUTS BESIDE THE ANSWER. Issue #1707. A prefix narrows the run and not
     # the tree, so with a prefix the gap is the tests outside it and the line
     # still says what the whole tree declares; the names are the useful part.
