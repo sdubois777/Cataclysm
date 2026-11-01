@@ -19,7 +19,8 @@
  *
  * WHEN. `FAutomationTestFramework::OnTestEndEvent`, after the test's result is set, deletes exactly the noted slots once
  * their writes in flight finish. The run's totals are logged once, as "Test saves: N written and deleted, M left
- * behind: <names>", when the automation session stops or, failing that, when the engine exits; `tools/unreal_build.py`
+ * behind: <names>", when the automation session stops or, failing that, when the application terminates;
+ * `tools/unreal_build.py`
  * prints that line beside its "Tests:" line. Reported only; a run is not failed by it (ruled).
  */
 struct CATACLYSM_API FCataclysmTestSaves

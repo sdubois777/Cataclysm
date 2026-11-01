@@ -12,7 +12,11 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WINDOW w129 PASSED EVERY TEST AND BOTH PROOFS, AND MISSED ONE REGISTERED FIGURE: the whole suite's "Test saves:"
+  line was not logged.** The run ends by a forced exit, so the session-stop event that was to log it never fired, and
+  the fallback bound to the engine's pre-exit logged nothing. The fallback is now the application's termination, which
+  `CataclysmCollectGarbageBetweenTests.cpp` already binds for the same reason; window w129B shows the line. **The suite
+  left nothing behind all the same:** s5's folder, emptied by hand before the window, held 0 files after the suite.
 - **THE HOOK THAT DELETES AT EACH TEST'S END HAS NO TEST OF ITS OWN.** A test can call the clean-up and see what it does;
   it cannot see the engine call it. The window's printed "Test saves: N written and deleted, M left behind" is the
   evidence that the hook ran: N large says it did.
@@ -42,7 +46,9 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
 - **The run's totals** are logged once, "Test saves: N written and deleted, M left behind: <the first ten names>", M
   being the slots in the folder at the end that were not there at the start. The folder is taken when the automation
   session starts (`OnBeforeAllTestsEvent`) or else at the first test; the line is logged when the session stops
-  (`OnAfterAllTestsEvent`) or else when the engine exits (`FCoreDelegates::OnEnginePreExit`).
+  (`OnAfterAllTestsEvent`) or else when the application terminates
+  (`FCoreDelegates::GetApplicationWillTerminateDelegate`, which the Windows exit broadcasts and then flushes the log; the
+  engine's pre-exit, used first, logged nothing in w129).
 - **`tools/unreal_build.py tests`** prints that line, or "Test saves: (no line in the log; ...)", after its "Tests:" line.
   The exit code does not change.
 
@@ -84,6 +90,25 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
 | Python | of record, with JUnit, and ruff |
 | S1, "did not exist before" off in `NoteAWrite` (`if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))` to `if (false)`), prefix `Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds` | the test fails on "a slot that was there before the test wrote over it is kept" and "a slot that was there before a migration is kept" (its write-back then noted) only |
 | S2, the backup rule off in `NoteABackup` (`if (IsNoted(SourceSlot))` to `if (true)`), same prefix | the test fails on "and so is its backup" only |
+
+### Window w129, 2026-11-01, on `b532b14ba` (on `development` 690e74239): one figure not met
+
+Run by `run_w129.py` under the lock `dungeon-w129`, from a clean tree; pre-checks all passing at 10:59:02 local, 11229 MB
+free; the build compiled nothing. **Before the lock, s5's `game/Saved/SaveGames` was emptied by hand, as ruled: it held
+1,553 files, every one a `Run_` slot, and held 0 at 10:59:14.** Nothing else was touched.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The folder around prefix `Cataclysm.SaveLoad.` | after close to before; N large | "69 tests performed, 69 succeeded, 0 failed"; **"Test saves: 113 written and deleted, 0 left behind"**; "the folder held 0 slot files before and 0 after; new after the run: 0 []" |
+| The new test alone | 1 / 1 | 1 / 1: "deleted [..._TestSavesMade, ..._TestSavesQueued, ..._TestSavesMadeOld, ..._TestSavesMadeOld_BackupOfVersion1]; made gone, there before kept, queued gone (noted when queued: yes), made old gone and its backup gone, there before old kept and its backup kept" |
+| Whole Unreal suite | 4496 / 0 | "4496 tests performed, 4496 succeeded, 0 failed"; declared 4496, gap 0 |
+| The suite's "Test saves:" line | printed; N large, M small | **NOT MET**: "Test saves: (no line in the log; the clean-up's summary was not logged)". The kept log shows "Sending StopTestSession" and, in the same frame, "TestExit: Automation Test Queue Empty" and "Engine exit requested", and never "Received StopTestSession". **s5's folder held 0 files after the suite and Python (11:20:02) and after the proofs: M = 0 by listing** |
+| Python | of record | "7197 passed, 8 skipped"; JUnit 7205 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| S1 | two assertions | PROVED: 0 of 1 with the break, 1 of 1 restored; the broken log fails exactly the two registered |
+| S2 | one assertion | PROVED: 0 of 1, then 1 of 1; exactly "and so is its backup" |
+
+The narrow run logged its line because there the worker received the stop message before the exit; which comes first
+varies.
 
 ### Run
 

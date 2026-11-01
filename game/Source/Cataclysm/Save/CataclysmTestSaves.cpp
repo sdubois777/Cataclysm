@@ -170,7 +170,7 @@ namespace CataclysmTestSaves
 	 * THE HOOKS, REGISTERED AS THE TESTS THEMSELVES ARE: a static object, made when the module loads, whose constructor
 	 * adds to the automation framework's events, as `IMPLEMENT_SIMPLE_AUTOMATION_TEST` adds each test. The end of each
 	 * test deletes what it wrote; the start of the session, or else the first test, takes the folder; the end of the
-	 * session, or else the engine's exit, logs the totals.
+	 * session, or else the application's termination, logs the totals.
 	 */
 	struct FHooks
 	{
@@ -184,7 +184,12 @@ namespace CataclysmTestSaves
 				FCataclysmTestSaves::DeleteWhatTheTestWrote(UCataclysmSaveWriter::UserIndex); // A test's save: deleted when it ends.
 			});
 			Framework.OnAfterAllTestsEvent.AddStatic(&LogTheSummary);
-			FCoreDelegates::OnEnginePreExit.AddStatic(&LogTheSummary);
+			// AND THE APPLICATION'S TERMINATION, NOT THE ENGINE'S PRE-EXIT, which window w129 measured logging nothing:
+			// `-testexit` ends the run with a forced exit straight after the last test, so the worker never receives
+			// its stop-session message and `OnAfterAllTestsEvent` never fires; the Windows exit broadcasts this delegate
+			// and then flushes the log, which is why `CataclysmCollectGarbageBetweenTests.cpp` binds it for its own
+			// summary line.
+			FCoreDelegates::GetApplicationWillTerminateDelegate().AddStatic(&LogTheSummary);
 		}
 	};
 	static FHooks Hooks;
