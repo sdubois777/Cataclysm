@@ -9,6 +9,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmClassStats.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Save/CataclysmSavePartition.h"
 #include "CataclysmPlayerState.generated.h"
 
 class UDataTable;
@@ -295,6 +296,26 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
 	void SetCreationChoice(FName WeaponType, FName DamageType);
+
+	/**
+	 * The character's name and its partition -- lethality, population and the Solo Self-Found flag -- all set at
+	 * creation and never changed after. The character record holds them, and the character select screen lists them.
+	 *
+	 * HERE FOR THE REASON THE CREATION CHOICE IS HERE, and UNSET UNTIL SOMETHING SETS THEM, as that choice is: the
+	 * creator, or a load. A character an automation test stands up has none, and the save writes none for it, so an
+	 * unnamed character is not recorded as having chosen Standard and offline. Issue #753, select-screen step 1.
+	 */
+	const FString& GetCharacterName() const { return CharacterName; }
+	const FCataclysmCharacterPartition& GetPartition() const { return Partition; }
+
+	/** Whether the creator or a load set the name and partition, as opposed to their defaults. */
+	bool HasIdentity() const { return bHasIdentity; }
+
+	/**
+	 * Set the name and partition. NOT VALIDATED, for the reason `SetCreationChoice` gives: a load puts back what the
+	 * record holds, and the creator checks what it offers before it calls this.
+	 */
+	void SetIdentity(const FString& InCharacterName, const FCataclysmCharacterPartition& InPartition);
 
 	// ----------------------------------------------------------------------
 	// Passive points and where they went
@@ -732,6 +753,15 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Creation")
 	FCataclysmCreationChoice CreationChoice;
+
+	/** The name and partition, and whether either was set. See `GetCharacterName`. Select-screen step 1. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	FString CharacterName;
+
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	FCataclysmCharacterPartition Partition;
+
+	bool bHasIdentity = false;
 
 	/**
 	 * REPLICATED, because the client draws the tree screen from it and the

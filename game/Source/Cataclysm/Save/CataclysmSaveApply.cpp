@@ -667,6 +667,9 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 		State->SetCreationChoice(Record.StartingWeaponType, Record.StartingDamageType);
 	}
 
+	// THE NAME AND PARTITION, as the record holds them, so the next save writes them back. Select-screen step 1 (#753).
+	State->SetIdentity(Record.CharacterName, Record.Partition); // A load's: the name and partition.
+
 	// THE ATTRIBUTE POINTS, AS SPENT.
 	State->RestoreSpentAttributePoints(Record.SpentAttributePoints);
 

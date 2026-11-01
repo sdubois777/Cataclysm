@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A character's name and partition are saved and loaded, the character select screen's six rulings, and a guard on the death a load runs (#753, select-screen step 1)
+
+**Affects:** `ACataclysmPlayerState` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`), which now holds the
+character's name and partition (`GetCharacterName`, `GetPartition`, `HasIdentity`, `SetIdentity`);
+`FCataclysmSaveGather::CharacterFrom` (`CataclysmSaveGather.cpp`), which writes them when set;
+`FCataclysmSaveApply::CharacterInto` (`CataclysmSaveApply.cpp`), which puts them back; one new test in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)
+stays open: its first acceptance criterion, a load at start-up, is met only when the screen is built (steps 3 to 5).
+
+### SAID FIRST
+
+- **PASSED IN UNREAL, window w122, every figure as registered:** the new test, the whole suite at 4449 / 0, and P1-P4
+  each proved on exactly its registered tests and assertions.
+- **WHAT WAS MISSING, read in the code:** `UCataclysmCharacterSave` has had `CharacterName` and `Partition` fields since the
+  record was built, and nothing in play wrote either. Every saved character held an empty name and the default partition
+  (Standard, offline, not Solo Self-Found). A load kept a name only because the writer adopts the loaded record, which the
+  round trip `ACharacterAndItsRunComeBackFromTheirSlots` checks. The character select screen lists both, so they must be
+  written first.
+- **WRITTEN ONLY WHEN SET, as the creation choice is.** A character an automation test stands up has none set, and the save
+  writes none for it, so "nobody chose" is not recorded as "chose Standard and offline". Nothing in play sets them yet: the
+  creator does, in step 4. Until then only a load sets them.
+- **A GUARD ON THE DEATH A LOAD RUNS, asked by the #753 audit of 2026-10-31.** `ACharacterSavedDeadIsLoadedDead` showed
+  that a character saved at no health is loaded dead, but no proof broke the path that kills it. P4 below does.
+
+### Rulings, 2026-10-31 (the character select screen; by the coordinating session from the design and the code)
+
+1. **Characters are found by scanning the `Character_*` slots,** not from the account records: a Solo Self-Found character
+   has no account record, and the account record's character list is never written.
+2. **Each row shows** the name, the level, the lethality mode, the Solo Self-Found and offline or online flags, the equipped
+   weapon type in place of a class (every character is on the Ravager line, #932), and "in a run: day N", with "floor F
+   of <dungeon>" when the run is inside a dungeon. **An unreadable slot is shown as unreadable, never hidden.**
+3. **Offline play opens straight on character select.** Login belongs to online play, which has no service yet, so it is not
+   built now.
+4. **Deleting a Solo Self-Found character warns** that its private tree is destroyed, naming it. The 2026-08-14 entry left
+   the warning to the interface, and its case rests on the player "knowing what is in the tree".
+5. **The private stash goes with the character:** it lives in the character's own record (#576, applied in #599). The same
+   warning names it.
+6. **The run file is deleted with the character,** since a run belongs to one character.
+
+The screen is built as five pull requests, in order: (1) this one; (2) listing the saved characters; (3) the screen and the
+start-up hook, which meets #753's first criterion; (4) a new character, with name, lethality, Solo Self-Found and offline or
+online chosen at creation and refused at 24; (5) deleting a character, with the warnings above.
+
+### What changes
+
+| What | Before | After |
+|---|---|---|
+| The character's name and partition at run time | held nowhere | held by the player state, beside the creation choice |
+| The save | wrote neither; a loaded record's name survived only through the writer's adoption | writes both when set |
+| A load | did not put them anywhere | puts them on the player state |
+
+### Tests
+
+- `Cataclysm.SaveLoad.ACharactersNameAndModeComeBackFromALoad`. Set-up: a character given a name and a Hardcore, online,
+  Solo Self-Found partition, saved with the death trigger, which writes both records before it returns. Checks that the save
+  wrote the name and the partition, that the load put both back on the player state, and that the next write keeps both.
+  Control: the loading character had none set before the load. Prints "LOAD IDENTITY".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The new test alone | 1 / 1, its line quoted |
+| Whole Unreal suite | 4449 / 0: window w121's 4448 on `development` (e21133d85), + 1 |
+| Python | of record, with JUnit, and ruff |
+| P1, the name not written (`Record.CharacterName = State->GetCharacterName(); // A save's: ...`) | the new test fails on "the save wrote the name", "the load put the name back" and "and the next write keeps both" only. The other reader of the name, the round trip, passes: it writes its name into the record by hand, and the writer's adopted record keeps it |
+| P2, the partition not written (`Record.Partition = State->GetPartition(); // A save's: ...`) | the new test fails on "the save wrote the partition", "the load put the partition back" and "and the next write keeps both" only. No other test reads a gathered partition |
+| P3, a load not putting them back (`State->SetIdentity(Record.CharacterName, Record.Partition); // A load's: ...`) | the new test fails on "the load put the name back" and "the load put the partition back" only. "And the next write keeps both" passes, because with none set the save writes none, and the adopted record keeps both |
+| P4, a direct write to no health not running the death (`NotifyIfHealthReachedZero();` in `UCataclysmVitalAttributeSet::PostAttributeBaseChange`), run with the prefix `Cataclysm.SaveLoad.` | two tests fail, both of which load a character saved at no health: `ACharacterSavedDeadIsLoadedDead` and `ADeathInADungeonIsPaidForAfterALoad`, each on "the character is dead after the load" at least. The assertions after it that need the death (its own write, and what standing up pays and writes) may fail too, so only the two test names and that one assertion are registered. No other test under the prefix kills by writing health directly: a kill by a hit goes through `PostGameplayEffectExecute`, as `KillOnTheFloor`'s and `ReduceHealthDirectly`'s do. Outside the prefix, every test that kills by a direct write would fail as well; the run does not measure those |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
+first attempt (a new worktree, so everything was compiled). The first Python of record, on 97bad675a, failed one test,
+`test_no_entry_is_dated_later_than_today`: this entry had been dated 2026-11-01, the UTC date, where the local date was
+2026-10-31. Commit 1df1f7f7b corrects that and three lines of the 3d-4b entry written the same way; compiled again with no
+lock, `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`. Python of record on 1df1f7f7b: `7177
+passed, 8 skipped in 190.06s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w122, 2026-10-31 19:53 to 20:27 local, on 1df1f7f7b. Pre-checks measured at 19:53:32, all passing:
+`development`'s CI and Unreal runs succeeded on e21133d85, no run in progress or queued, the lock free, no build or editor
+process, no pull request open, no simulation process, 11337 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4449 tests performed, 4449 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4449 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 196.93s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'the save wrote the name' to be "Vesper of the Ash", but it was" the empty name, "'the load put the name back' ..." and "'and the next write keeps both' to be true" only |
+| P2 | PROVED: "'the save wrote the partition' to be true", "'the load put the partition back' to be true" and "'and the next write keeps both' to be true" only; its line reading "lethality 0, population 0, shared" |
+| P3 | PROVED: "'the load put the name back' ..." and "'the load put the partition back' to be true" only; its line reading "the next write keeps both" |
+| P4 | PROVED, the two tests registered and no other: `ACharacterSavedDeadIsLoadedDead` on "the character is dead after the load", and after it "its death raised the death's own write" (0, not 6), "which was written before the load returned" and "standing up raised the write that says the death was paid for" (0, not 8); `ADeathInADungeonIsPaidForAfterALoad` on "the character is dead after the load", and after it "standing up ran the walk's days and charged the death's" (1, not 7), "the ordinary dungeon resolved on the death", "and the walk ended" (12, not -1) and "and the paid death was written" (4, not 8). The later assertions were allowed by the registration |
+
+Each proof's restored half: `61 tests performed, 61 succeeded, 0 failed`.
+
+The new test's line, from the whole suite's log:
+
+```
+LOAD IDENTITY: written 'Vesper of the Ash' (lethality 1, population 1, Solo Self-Found); Loaded (... day 0, 0 creatures, placed where it was saved); none set before the load, 'Vesper of the Ash' (lethality 1, population 1, Solo Self-Found) after it; the next write keeps both
+```
+
+THE WINDOW'S OWN ECHO OF THAT LINE WAS MISSING when the test ran alone: the runner's filter for the alone step still named
+the last window's four labels, a fault in the window script and not in the game. The line above is read from the suite's
+engine log, kept by the runner.
+
+---
+
 ## 2026-10-31 — The Reaper, the Corrupted Stalker and Portal Unleashing's creatures standing at a save come back after a load; a slain Stalker stays slain (#753, Group 3d-4b)
 
 **Affects:** `bCorruptedStalkerStanding` and `CorruptedStalkerLocation` on `FCataclysmSavedFloorRuleState`
@@ -17,7 +125,7 @@ this is the last of Group 3d's raised creatures.
 
 - **PASSED IN UNREAL, window w121, every figure as registered:** the four new tests, the whole suite at 4448 / 0, and
   P1-P10 each proved on exactly its registered assertions.
-- **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-11-01**, on 423af997c: the Reaper test alone failed on one assertion,
+- **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-10-31**, on 423af997c: the Reaper test alone failed on one assertion,
   "Expected 'each at the health it was saved at, not full' to be 1, but it was 0". Its two lines:
   "LOAD REAPER on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 0 at
   half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223" and "LOAD REAPER HIT: its health
@@ -25,7 +133,7 @@ this is the last of Group 3d's raised creatures.
   LOAD: `CataclysmVitalAttributeSet.cpp` line 241, in `PreAttributeChange`, under "A CREATURE THAT CANNOT BE HURT IS HELD
   AT ITS MAXIMUM: The Reaper", reads `if (Unhurt && Unhurt->bCannotBeHurt)` and sets `NewValue = GetMaxHealth();`. The
   halving before the save is refused, so the Reaper is saved and loaded at its full 47.2, and it is never at half health
-  in play either. RULED 2026-11-01: `ARaisedRoundTrip` and `TheRaisedCameBack` take an optional expected share, 0.5 by
+  in play either. RULED 2026-10-31: `ARaisedRoundTrip` and `TheRaisedCameBack` take an optional expected share, 0.5 by
   default, so no existing test's assertion changes; the Reaper test alone passes 1.0, and its line reads "each at its
   full health, at which it is held". That assertion checks the saved full health; P1 is what proves the Reaper cannot be
   hurt. The other three tests, the suite, Python and the proofs were not run.
@@ -112,7 +220,7 @@ the first attempt (a new worktree, so everything was compiled), after one wait f
 compile. Python of record on 1255daeb1: `7177 passed, 8 skipped in 192.81s`, JUnit tests 7185, failures 0, errors 0,
 skipped 8; ruff "All checks passed!".
 
-Window w120, 2026-11-01, on 423af997c: stopped at its first step, recorded in SAID FIRST. After the ruled change, compiled
+Window w120, 2026-10-31 (local), on 423af997c: stopped at its first step, recorded in SAID FIRST. After the ruled change, compiled
 again with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`; Python of record on
 662dda801: `7177 passed, 8 skipped in 192.11s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks
 passed!".

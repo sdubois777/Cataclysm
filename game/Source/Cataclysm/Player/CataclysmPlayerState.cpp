@@ -143,6 +143,13 @@ bool ACataclysmPlayerState::ChooseAtCreation(const UDataTable* WeaponSkillTable,
 	return true;
 }
 
+void ACataclysmPlayerState::SetIdentity(const FString& InCharacterName, const FCataclysmCharacterPartition& InPartition)
+{
+	CharacterName = InCharacterName;
+	Partition = InPartition;
+	bHasIdentity = true;
+}
+
 void ACataclysmPlayerState::SetCreationChoice(FName WeaponType, FName DamageType)
 {
 	CreationChoice.WeaponType = WeaponType;
