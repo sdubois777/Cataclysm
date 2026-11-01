@@ -117,7 +117,7 @@ kept, which ruling 6 and Q1 do not. The owner can ask for it.
 |---|---|
 | Window A, the editor run | exit 0; the log says `/Game/Interface/WBP_CharacterSelect` "has no ConfirmNameBox ... deleted, to be made again", then "satisfies 9 BindWidget properties" and "created /Game/Interface/WBP_CharacterSelect"; every other screen and `L_FrontEnd` "already exists; left alone"; **exactly one file changed**, `M game/Content/Interface/WBP_CharacterSelect.uasset`. `Error:` lines from loading the old asset, which cannot compile against the new C++, are expected and are quoted in the record |
 | Window B, the five new tests and the asset test alone | 1 / 1 each, their lines quoted |
-| Window B, the whole Unreal suite | 4491 / 0: `development`'s 4486 (bef3362ca, window w127B), + 5; moved onto #2664's measured total + 5 if it merges first |
+| Window B, the whole Unreal suite | 4493 / 0: `development`'s 4488 (59d1c1d3c, #2668 merged, window converted-dealt-w1), + 5. MOVED ONTO IT after window A, as `feat/delete-a-character-1`, from bef3362ca (4486), whose figure this said before; the move changed none of this step's files, by `git diff` |
 | Window B, Python | of record, with JUnit, and ruff |
 | R1, the shared-run guard off (`if (Other.SlotName != Row.SlotName && Other.RunId == Row.RunId)` to `if (false)`), prefix `Cataclysm.SaveLoad.ADelete` | the slots test fails on "a run another character names stays, with its backup" only |
 | R2, a backup's version not checked for digits (`if (bDigitsOnly)` to `if (true)`), same prefix | the slots test fails on "a character in a run: ..." and "a run another character names stays, ..."; the on-disk test on "the prediction is its slot, its run's and the two backups", "exactly those slots are gone" and "and nothing else" |
