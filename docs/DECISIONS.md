@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-01 — A character's name and partition are saved and loaded, the character select screen's six rulings, and a guard on the death a load runs (#753, select-screen step 1)
+## 2026-10-31 — A character's name and partition are saved and loaded, the character select screen's six rulings, and a guard on the death a load runs (#753, select-screen step 1)
 
 **Affects:** `ACataclysmPlayerState` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`), which now holds the
 character's name and partition (`GetCharacterName`, `GetPartition`, `HasIdentity`, `SetIdentity`);
@@ -22,10 +22,10 @@ stays open: its first acceptance criterion, a load at start-up, is met only when
 - **WRITTEN ONLY WHEN SET, as the creation choice is.** A character an automation test stands up has none set, and the save
   writes none for it, so "nobody chose" is not recorded as "chose Standard and offline". Nothing in play sets them yet: the
   creator does, in step 4. Until then only a load sets them.
-- **A GUARD ON THE DEATH A LOAD RUNS, asked by the #753 audit of 2026-11-01.** `ACharacterSavedDeadIsLoadedDead` showed
+- **A GUARD ON THE DEATH A LOAD RUNS, asked by the #753 audit of 2026-10-31.** `ACharacterSavedDeadIsLoadedDead` showed
   that a character saved at no health is loaded dead, but no proof broke the path that kills it. P4 below does.
 
-### Rulings, 2026-11-01 (the character select screen; by the coordinating session from the design and the code)
+### Rulings, 2026-10-31 (the character select screen; by the coordinating session from the design and the code)
 
 1. **Characters are found by scanning the `Character_*` slots,** not from the account records: a Solo Self-Found character
    has no account record, and the account record's character list is never written.
@@ -93,7 +93,7 @@ this is the last of Group 3d's raised creatures.
 
 - **PASSED IN UNREAL, window w121, every figure as registered:** the four new tests, the whole suite at 4448 / 0, and
   P1-P10 each proved on exactly its registered assertions.
-- **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-11-01**, on 423af997c: the Reaper test alone failed on one assertion,
+- **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-10-31**, on 423af997c: the Reaper test alone failed on one assertion,
   "Expected 'each at the health it was saved at, not full' to be 1, but it was 0". Its two lines:
   "LOAD REAPER on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 0 at
   half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223" and "LOAD REAPER HIT: its health
@@ -101,7 +101,7 @@ this is the last of Group 3d's raised creatures.
   LOAD: `CataclysmVitalAttributeSet.cpp` line 241, in `PreAttributeChange`, under "A CREATURE THAT CANNOT BE HURT IS HELD
   AT ITS MAXIMUM: The Reaper", reads `if (Unhurt && Unhurt->bCannotBeHurt)` and sets `NewValue = GetMaxHealth();`. The
   halving before the save is refused, so the Reaper is saved and loaded at its full 47.2, and it is never at half health
-  in play either. RULED 2026-11-01: `ARaisedRoundTrip` and `TheRaisedCameBack` take an optional expected share, 0.5 by
+  in play either. RULED 2026-10-31: `ARaisedRoundTrip` and `TheRaisedCameBack` take an optional expected share, 0.5 by
   default, so no existing test's assertion changes; the Reaper test alone passes 1.0, and its line reads "each at its
   full health, at which it is held". That assertion checks the saved full health; P1 is what proves the Reaper cannot be
   hurt. The other three tests, the suite, Python and the proofs were not run.
@@ -188,7 +188,7 @@ the first attempt (a new worktree, so everything was compiled), after one wait f
 compile. Python of record on 1255daeb1: `7177 passed, 8 skipped in 192.81s`, JUnit tests 7185, failures 0, errors 0,
 skipped 8; ruff "All checks passed!".
 
-Window w120, 2026-11-01, on 423af997c: stopped at its first step, recorded in SAID FIRST. After the ruled change, compiled
+Window w120, 2026-10-31 (local), on 423af997c: stopped at its first step, recorded in SAID FIRST. After the ruled change, compiled
 again with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`; Python of record on
 662dda801: `7177 passed, 8 skipped in 192.11s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks
 passed!".

@@ -417,7 +417,7 @@ bool FCataclysmSaveLoadRoundTripTest::RunTest(const FString&)
  * A character's name and partition, set as the creator will set them, are written by the save, come back with a load, and
  * are written again by the next save. Until this nothing in play wrote either, so every record held an empty name and the
  * default mode, and the character select screen would have had nothing to list. Issue #753, select-screen step 1, ruled
- * 2026-11-01. Prints "LOAD IDENTITY".
+ * 2026-10-31. Prints "LOAD IDENTITY".
  *
  * THE CONTROL is the loading character before the load: it has no name or partition set.
  */
