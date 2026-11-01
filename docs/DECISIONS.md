@@ -10,8 +10,10 @@ include of `Character/CataclysmEnemyRarity.h`, both in `game/Source/Cataclysm/Te
 
 ### SAID FIRST
 
-- **REGISTERED; NO WINDOW HAS RUN.** Every Unreal figure under "Registered before the run" is a prediction traced by
-  hand from the code. One check ran before the window and is not the window's evidence: the coordinating session ran
+- **PASSED IN WINDOW rung-roundtrip-w1, ON `b7959bfca`: 4497 OF 4497, P1 AND P2 PROVED, EVERY PREDICTION HELD AT THE
+  ASSERTION AND AT THE FIGURE** (recorded under "Window rung-roundtrip-w1" below). Every Unreal figure under "Registered
+  before the run" was a prediction traced by hand from the code, made before the window. One check ran before the
+  window and is not the window's evidence: the coordinating session ran
   the test alone at `ed686bca8` (this change's first registration, on `690e74239`, with a tolerance of 0.5), under the
   lock, 1 of 1, printing "LOAD RUNG SHARES on seed 1: ... rung 0 to 1; ... after the rise 13.64 (own 8.74, expected
   13.64; Famished twice 16.36, souls twice 16.78); 2 eaten, 3 souls".
@@ -92,13 +94,30 @@ while a Python suite runs (issue #1630).
   `python -m ruff check .`: "All checks passed!". The commit that adds this paragraph changes only this file and the
   test's tolerance, both measured above.
 
+### Window rung-roundtrip-w1, run 2026-11-01 by the coordinating session
+
+On `b7959bfca`, branch `fix/a-restored-creatures-shares-survive-a-rung-change-1`, on `development` at `0494ffe7a`.
+Pre-checks at 12:02:46 all passed, 10,932 MB of physical memory free; the runner (started 12:02:58) took the lock as
+`rung-roundtrip-w1` and released it. **The dungeon session's Python run of record for #2669 overlapped the window's
+first three minutes** (it ended at 12:05:59): the build and the test alone. No proof was running then, and that
+session's compile had ended before this window's build began.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | the test compiled | "Build: Succeeded - target already up to date, 0 actions, nothing compiled": the worker's build had already compiled this test file, unchanged since |
+| The test alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed", at the tolerance of 0.01 |
+| Whole Unreal suite | 4497 / 0 | "4497 tests performed, 4497 succeeded, 0 failed"; "Declared: 4497 tests in the tree at b7959bfca; 4497 performed, gap 0"; "Test saves: 710 written and deleted, 0 left behind" |
+| Python | 7197 passed, 8 skipped | "7197 passed, 8 skipped in 196.13s"; JUnit tests 7205, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | four assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. The kept broken-half log fails exactly the four registered: "it has still eaten two" (0); the maximum (11.363625 against 13.636350); "Famished Beasts records its share once" (0 against 1.748250); "Soul Harvest records its share once" (2.622375 against 3.146850) |
+| P2 | four assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. The kept broken-half log fails exactly the four registered: the maximum (11.498760 against 13.636350); Famished Beasts' share (1.474200 against 1.748250); Soul Harvest's (2.653560 against 3.146850); "CONTROL: the maximum less both recorded shares is the new rung's own maximum" (7.371000 against 8.741250). Its line prints "starting maximum saved 4.72, now 0.00", the break's trace |
+
 ### Not verified
 
-- The test at the 0.01 tolerance has not run; the check before the window ran it at 0.5, and found seed 1 and a
-  creature rising from rung 0 to 1.
 - Blood-Forged Champions' rung change after a load is read to run the same calls, and is not tested.
-- Carrion Feast's feeders are ruled a reset across a load (#2181's first comment), so a feeder's shares are not tested
-  here.
+- **Carrion Feast's feeders are not covered by this test.** The first comment on #2181 calls them a reset across a
+  load, but that ruling was superseded on 2026-10-31: raised creatures are now saved as records ("AN EARLIER RULING
+  SUPERSEDED", in this file). Their load is tested by `Cataclysm.SaveLoad.CarrionFeastsFeedersAndCarcassesComeBackAfterALoad`,
+  not through a rung change.
 
 ---
 
