@@ -7835,6 +7835,11 @@ bool FCataclysmSaveLoadDeleteInARunTest::RunTest(const FString&)
  *
  * THE CONTROLS: the loading character is at tier 1 before the load, and the fresh game mode is at its default, 1, before
  * the arrival, so a 3 after either was put there.
+ *
+ * THE TIER IS READ WITH `DifficultyTierFor(Mode)`, NOT `DifficultyTierIn`. A world built by an automation test has no
+ * authority game mode and cannot be given one (`CataclysmDifficultyTierTests.cpp` says why), so `DifficultyTierIn` finds
+ * no mode here and answers 1 whatever the mode holds: window w131 measured exactly that, "DifficultyTierIn 1" beside a
+ * mode at 3. The world lookup is the one line no automation test reaches, here as there.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierTest,
 	"Cataclysm.SaveLoad.ACharactersTierComesBackAndItsLevelIsFoughtAtIt",
@@ -7903,9 +7908,9 @@ bool FCataclysmSaveLoadTierTest::RunTest(const FString&)
 	const int32 TierAfter = Scene.State->GetDifficultyTier();
 	const int32 RunTier = Scene.Instance->EmpireRun ? Scene.Instance->EmpireRun->DifficultyTier : -1;
 	const int32 ModeAfter = Mode->DifficultyTier;
-	const int32 TierRead = ACataclysmGameMode::DifficultyTierIn(Scene.Character);
+	const int32 TierRead = ACataclysmGameMode::DifficultyTierFor(Mode); // The rule, read from the level's mode.
 	AddInfo(FString::Printf(TEXT("TIER SAVED: written %d; the character %d before the load, %d after; outcome %d; the run "
-								 "%d; the level's game mode %d before the arrival, %d after; DifficultyTierIn %d"),
+								 "%d; the level's game mode %d before the arrival, %d after; DifficultyTierFor %d"),
 							Written, TierBefore, TierAfter, static_cast<int32>(Outcome), RunTier, ModeBefore, ModeAfter,
 							TierRead));
 
@@ -7917,7 +7922,7 @@ bool FCataclysmSaveLoadTierTest::RunTest(const FString&)
 	TestEqual(TEXT("and its run's"), RunTier, 3);
 	TestEqual(TEXT("CONTROL: the level's game mode was at its default before the arrival"), ModeBefore, 1);
 	TestEqual(TEXT("the level is fought at the run's tier"), ModeAfter, 3);
-	TestEqual(TEXT("and every reader of the tier gets it"), TierRead, 3);
+	TestEqual(TEXT("and the tier rule reads it from that game mode"), TierRead, 3);
 	return true;
 }
 

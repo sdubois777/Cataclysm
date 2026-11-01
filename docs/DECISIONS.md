@@ -63,7 +63,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 - `Cataclysm.SaveLoad.ACharactersTierComesBackAndItsLevelIsFoughtAtIt`: a character at tier 3, with its run, saved; then
   the arrival in a new world with a fresh game mode, as Continue leads to it: the tier comes back on the character and the
-  run, and the game mode, at its default 1 before, is at 3 after, as `DifficultyTierIn` reads. Prints "TIER SAVED".
+  run, and the game mode, at its default 1 before, is at 3 after, as `DifficultyTierFor` reads from it. Prints "TIER
+  SAVED". Not `DifficultyTierIn`: an automation world has no authority game mode, so that answers 1 here whatever the mode
+  holds (window w131, below).
 - `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne`: a record written by hand at the current schema
   version with no tier key reads tier 1; the keys it has are read. Prints "TIER BEFORE".
 - `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt`: a new character at tier 4 (set so a run at the
@@ -79,12 +81,25 @@ Decisions made outside the Google Drive documents, newest first.
 | Whole Unreal suite | 4502 / 0: `development`'s 4499 (f091d674d, #2676, which added no Unreal test), + 3; and, under #2673's exit code, a "Test saves:" line with 0 left behind |
 | Python | of record, with JUnit, and ruff |
 | P1, a new character's run not given its tier (`State->GetDifficultyTier()); // A new character's: its run at its tier.` to `0); // ...`), prefix `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTier` | the run test fails on "the run is at the character's tier" and "and its level is fought at it" only, both 1: with no tier given, `BeginEmpireRun` asks `DifficultyTierIn` of a game instance with no world, which answers 1 |
-| P2, the arrival not setting the level's tier (`TakeTheRunsTier(); // An arrival's: the loaded run's tier.` to `(void)0; // ...`), prefix `Cataclysm.SaveLoad.ACharactersTierComesBack` | the saved-tier test fails on "the level is fought at the run's tier" and "and every reader of the tier gets it" only, both 1; the tier on the character and the run still come back |
+| P2, the arrival not setting the level's tier (`TakeTheRunsTier(); // An arrival's: the loaded run's tier.` to `(void)0; // ...`), prefix `Cataclysm.SaveLoad.ACharactersTierComesBack` | the saved-tier test fails on "the level is fought at the run's tier" and "and the tier rule reads it from that game mode" only, both 1; the tier on the character and the run still come back |
 
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
 the first attempt.
+
+**Window w131, on dfd0cbacc, STOPPED at its first test run alone; nothing after it ran.** The build compiled 40 files.
+`Cataclysm.SaveLoad.ACharactersTierComesBackAndItsLevelIsFoughtAtIt` failed one assertion: `Expected 'and every reader of
+the tier gets it' to be 3, but it was 1`. Its line: "TIER SAVED: written 3; the character 1 before the load, 3 after;
+outcome 2; the run 3; the level's game mode 1 before the arrival, 3 after; DifficultyTierIn 1". **The fault was the
+test's, not the game's:** the test read the tier with `DifficultyTierIn(Scene.Character)`, which looks up the world's
+authority game mode, and a world built by an automation test has none (`CataclysmDifficultyTierTests.cpp` and
+`DifficultyTierFor`'s comment record this, measured 2026-08-16). The game mode the test spawned held 3; nothing looked
+there. **Changed, old -> new:** that assertion, `DifficultyTierIn(Scene.Character)` "and every reader of the tier gets it"
+-> `DifficultyTierFor(Mode)` "and the tier rule reads it from that game mode"; the printed label `DifficultyTierIn` ->
+`DifficultyTierFor`; P2's prediction names the new assertion. **What this leaves untested, as before #1472:** the world
+lookup in `DifficultyTierIn`, and the one in `UCataclysmGameInstance::BeginEmpireRun` that finds the level's game mode,
+both of which answer null in every automation world.
 
 ---
 
