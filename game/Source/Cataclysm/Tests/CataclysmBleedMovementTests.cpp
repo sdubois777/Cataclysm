@@ -120,7 +120,7 @@ namespace CataclysmBleedMovementTest
 	}
 
 	/** Whether a creature reads as moving now. */
-	bool ReadsAsMoving(const AActor* Who)
+	bool BleedReadsAsMoving(const AActor* Who)
 	{
 		const UCataclysmAbilitySystemComponent* System = BleedSystemOf(Who);
 		return System && System->IsMoving();
@@ -295,8 +295,8 @@ CATACLYSM_BLEED_MOVEMENT_TEST(FCataclysmBleedStandingStillTest,
 	}
 
 	const TArray<float> Lost = PaceTheBled(World, {}, {Bled, Control}, 5.5f);
-	TestFalse(TEXT("set-up: creature 0 reads as standing at the end"), ReadsAsMoving(Bled));
-	TestFalse(TEXT("set-up: the control reads as standing at the end"), ReadsAsMoving(Control));
+	TestFalse(TEXT("set-up: creature 0 reads as standing at the end"), BleedReadsAsMoving(Bled));
+	TestFalse(TEXT("set-up: the control reads as standing at the end"), BleedReadsAsMoving(Control));
 	if (!TestTrue(FString::Printf(TEXT("control: the burn took %.3f from the control"), Lost[1]), Lost[1] > 0.0f)
 		|| !TestTrue(TEXT("control: the control's burn ticks were announced"), Notices.On(Control, Burn) > 0))
 	{
@@ -363,7 +363,7 @@ CATACLYSM_BLEED_MOVEMENT_TEST(FCataclysmBleedStopsAfterFourSecondsTest,
 	{
 		Windows.Add(PaceTheBled(World, {Walker}, {}, 1.0f)[0]);
 		TestTrue(FString::Printf(TEXT("set-up: the walker reads as moving at the end of window %d"), Window + 1),
-				 ReadsAsMoving(Walker));
+				 BleedReadsAsMoving(Walker));
 		if (Window == 4)
 		{
 			TestTrue(TEXT("5.5 s after it was laid, a tick after its last, the bleed is still carried"),
@@ -448,7 +448,7 @@ CATACLYSM_BLEED_MOVEMENT_TEST(FCataclysmBleedSecondsNotTicksTest,
 	}
 
 	PaceTheBled(World, {Walker}, {}, 8.5f);
-	TestTrue(TEXT("set-up: the walker reads as moving at the end"), ReadsAsMoving(Walker));
+	TestTrue(TEXT("set-up: the walker reads as moving at the end"), BleedReadsAsMoving(Walker));
 	TestEqual(TEXT("eight ticks of half a second were announced, four seconds of movement"),
 			  Notices.On(Walker, Bleed), 8);
 	TestEqual(TEXT("the count stands at the four seconds"), WalkerSystem->BleedMovingSeconds,
