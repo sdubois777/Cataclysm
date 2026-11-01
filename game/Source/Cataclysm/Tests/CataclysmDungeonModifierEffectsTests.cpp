@@ -7587,9 +7587,15 @@ bool FCataclysmBrandTellsThePanelTest::RunTest(const FString& Parameters)
 
 	Mode->DungeonModifiers = {BrandOfTheAggressor};
 	Mode->FloorNumber = 1;
+	// BRAND OF THE AGGRESSOR AND NO OTHER ROW, so no other rule refreshes the panel on these blows and the count below
+	// is the brand handler's alone. Read 2026-11-01: of the nine handlers `OnSomethingWasHit` calls, four refresh the
+	// panel -- Wasting Sickness and Holy Repercussions only on a floor carrying their row, Plague Convergence only
+	// for a blow its own creature lands on the player, and Brand of the Aggressor.
 	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor())
-		|| !TestTrue(TEXT("the floor carries Brand of the Aggressor"),
-					 Mode->FloorBrief.Modifiers.Contains(BrandOfTheAggressor)))
+		|| !TestTrue(FString::Printf(TEXT("set-up: the floor carries Brand of the Aggressor and no other row: %d rows"),
+									 Mode->FloorBrief.Modifiers.Num()),
+					 Mode->FloorBrief.Modifiers.Num() == 1
+						 && Mode->FloorBrief.Modifiers[0] == BrandOfTheAggressor))
 	{
 		return false;
 	}
@@ -7615,7 +7621,7 @@ bool FCataclysmBrandTellsThePanelTest::RunTest(const FString& Parameters)
 							*Shown.LiveCounts.FindRef(BrandOfTheAggressor), Shown.FloorNumber, Shown.RowKeys.Num()));
 
 	TestTrue(TEXT("CONTROL: the floor's start told the controller, so the record is read at all"), CallsAtTheFloor > 0);
-	TestTrue(TEXT("the controller is told at least once for each landed blow"), Shown.Calls - CallsAtTheFloor >= Blows);
+	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsAtTheFloor, Blows);
 	TestEqual(TEXT("and what it is told last is the brand count after the third blow"),
 			  Shown.LiveCounts.FindRef(BrandOfTheAggressor), Expected);
 	TestTrue(TEXT("with the row among the rows it lists"), Shown.RowKeys.Contains(BrandOfTheAggressor));
