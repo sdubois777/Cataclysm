@@ -81,6 +81,9 @@ struct CATACLYSM_API FCataclysmCharacterSummary
 	int32 Level = 0;
 	FCataclysmCharacterPartition Partition;
 
+	/** The character's difficulty tier, from its record. Issue #1472. */
+	int32 DifficultyTier = 1;
+
 	/** The first worn weapon's type, in the weapon slots' order, else the type chosen at creation, else empty. */
 	FString WeaponType;
 

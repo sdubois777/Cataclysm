@@ -2,6 +2,7 @@
 
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
+#include "Player/CataclysmGameMode.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -148,6 +149,17 @@ void ACataclysmPlayerState::SetIdentity(const FString& InCharacterName, const FC
 	CharacterName = InCharacterName;
 	Partition = InPartition;
 	bHasIdentity = true;
+}
+
+void ACataclysmPlayerState::SetDifficultyTier(int32 Tier)
+{
+	DifficultyTier = FMath::Clamp(Tier, ACataclysmGameMode::LowestDifficultyTier, ACataclysmGameMode::HighestDifficultyTier);
+}
+
+int32 ACataclysmPlayerState::RaiseDifficultyTierForAWin()
+{
+	SetDifficultyTier(DifficultyTier + 1); // A won run's: one tier higher.
+	return DifficultyTier;
 }
 
 void ACataclysmPlayerState::SetCreationChoice(FName WeaponType, FName DamageType)

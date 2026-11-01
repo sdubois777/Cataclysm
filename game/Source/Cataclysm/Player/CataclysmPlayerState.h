@@ -317,6 +317,28 @@ public:
 	 */
 	void SetIdentity(const FString& InCharacterName, const FCataclysmCharacterPartition& InPartition);
 
+	/**
+	 * The character's difficulty tier, 1 to 8: how many Cataclysms its runs face. Issue #1472.
+	 *
+	 * THE CHARACTER'S, NOT THE WORLD'S. `docs/Cataclysm_GDD_v2.md`, section IV: "a character at difficulty tier 3 facing
+	 * Demonic, War and Death, who fails, restarts against Demonic, War and Death". A run begins at it and keeps it
+	 * ("A run is played at a fixed tier", section XII); only a won run raises it, and a failed one leaves it. A new
+	 * character begins at 1, one Cataclysm. The character record holds it.
+	 */
+	int32 GetDifficultyTier() const { return DifficultyTier; }
+
+	/** Set it, held to the game's range; a load puts back what the record holds. */
+	void SetDifficultyTier(int32 Tier);
+
+	/**
+	 * A won run's raise: one tier higher, held at the highest. Returns the new tier.
+	 *
+	 * NOTHING IN PLAY CALLS THIS YET, ON PURPOSE. No run can be won: the Cataclysm boss dungeon, the enemy capital and
+	 * the loss condition do not exist, and #1324 is the change that will make a won run call this (ruled 2026-11-01).
+	 * Tests are its only callers until then.
+	 */
+	int32 RaiseDifficultyTierForAWin();
+
 	// ----------------------------------------------------------------------
 	// Passive points and where they went
 	// ----------------------------------------------------------------------
@@ -762,6 +784,10 @@ protected:
 	FCataclysmCharacterPartition Partition;
 
 	bool bHasIdentity = false;
+
+	/** See `GetDifficultyTier`. Issue #1472. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	int32 DifficultyTier = 1;
 
 	/**
 	 * REPLICATED, because the client draws the tree screen from it and the

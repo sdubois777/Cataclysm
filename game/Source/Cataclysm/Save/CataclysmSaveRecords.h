@@ -1124,6 +1124,17 @@ public:
 	FCataclysmCharacterPartition Partition;
 
 	/**
+	 * The character's difficulty tier, 1 to 8. Issue #1472. `ACataclysmPlayerState::GetDifficultyTier`.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `UCataclysmRunSave::PartialDay`'s reason (ruled 2026-11-01): a record written before
+	 * the field has no key for it, `FJsonObjectConverter::JsonObjectToUStruct` -- called by `FCataclysmSaveStorage::FromJson`
+	 * with strict mode off -- reads only the keys the JSON has, and the property keeps this default, tier 1, which is
+	 * where the design starts every character.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DifficultyTier = 1;
+
+	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
 	 * character select screen's second step. THE LAST WRITE OF THE CHARACTER RECORD, NEAR THE LAST PLAY BUT NOT EQUAL TO
 	 * IT: the record is written on an inventory change and on a death, not on every moment of play. The select screen

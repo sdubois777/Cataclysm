@@ -312,7 +312,8 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		RunId = FGuid::NewGuid();
 		const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
 		Instance->BeginEmpireRun(Seed, ECataclysmSurgeMode::Static,
-								 static_cast<int32>(SavedCharacter->Partition.Lethality));
+								 static_cast<int32>(SavedCharacter->Partition.Lethality),
+								 SavedCharacter->DifficultyTier); // A load's new run: at the character's tier.
 	}
 
 	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS, on the saved floor when there is one.
@@ -448,6 +449,7 @@ TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 Use
 		Row.Name = Record->CharacterName;
 		Row.Level = Record->Level;
 		Row.Partition = Record->Partition;
+		Row.DifficultyTier = Record->DifficultyTier;
 		Row.WeaponType = WornWeaponTypeOf(*Record);
 		if (Row.WeaponType.IsEmpty() && !Record->StartingWeaponType.IsNone())
 		{

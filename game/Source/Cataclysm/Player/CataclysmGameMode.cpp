@@ -5,6 +5,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
@@ -152,6 +153,20 @@ void ACataclysmGameMode::StartPlay()
 
 	// AND THE CHARACTER THE SELECT SCREEN CHOSE, if one is pending and the player has started. Select-screen step 3a.
 	LoadThePendingCharacter();
+
+	// AND THE TIER OF THE RUN THE GAME INSTANCE HOLDS, which this new game mode did not have. Issue #1472.
+	TakeTheRunsTier(); // A level's start: the run's tier.
+}
+
+bool ACataclysmGameMode::TakeTheRunsTier()
+{
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(this, /*bStartIfNone=*/false);
+	if (!Run)
+	{
+		return false;
+	}
+	DifficultyTier = FMath::Clamp(Run->DifficultyTier, LowestDifficultyTier, HighestDifficultyTier); // A level's: the run's tier.
+	return true;
 }
 
 void ACataclysmGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -183,7 +198,9 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCa
 	// ITS EMPIRE RUN, AT ITS LETHALITY: the fresh start's run, when one began, is Standard's.
 	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
 	Instance.BeginEmpireRun(Seed, ECataclysmSurgeMode::Static,
-							static_cast<int32>(Creation.Partition.Lethality)); // A new character's: its run's lethality.
+							static_cast<int32>(Creation.Partition.Lethality), // A new character's: its run's lethality.
+							State->GetDifficultyTier()); // A new character's: its run at its tier. Issue #1472.
+	TakeTheRunsTier(); // A new character's: this level fought at its run's tier.
 
 	// AND WRITTEN AT ONCE, so the select screen lists it even if the player quits before anything else writes.
 	Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.
@@ -251,8 +268,10 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 	{
 		case ECataclysmLoadOutcome::Loaded:
 			UE_LOG(LogCataclysm, Log, TEXT("The select screen's character: %s"), *Report.Why);
+			TakeTheRunsTier(); // An arrival's: the loaded run's tier.
 			return EPendingLoad::Loaded;
 		case ECataclysmLoadOutcome::LoadedWithANewRun:
+			TakeTheRunsTier();
 			Instance->LastLoadNotice = Report.Why;
 			UE_LOG(LogCataclysm, Warning, TEXT("The select screen's character: %s"), *Report.Why);
 			return EPendingLoad::LoadedWithANewRun;

@@ -531,6 +531,9 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 			Record.Partition = State->GetPartition(); // A save's: the character's partition.
 		}
 
+		// AND THE DIFFICULTY TIER, ALWAYS: a character without one set is at tier 1, which is the truth. Issue #1472.
+		Record.DifficultyTier = State->GetDifficultyTier(); // A save's: the character's tier.
+
 		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
 		//
 		// WRITTEN UNCONDITIONALLY, UNLIKE THE CREATION CHOICE ABOVE, and the

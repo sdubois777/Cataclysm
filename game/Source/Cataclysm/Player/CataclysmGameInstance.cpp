@@ -72,6 +72,16 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginEmpireRun(
 
 	EmpireRun->Begin(Seed, Mode, LethalityRung, Tier);
 
+	// AND THE GAME MODE OF THE LEVEL BEING PLAYED TAKES ITS TIER, so a run begun during play is fought at its own tier at
+	// once. Issue #1472.
+	if (UWorld* World = GetWorld())
+	{
+		if (ACataclysmGameMode* GameMode = World->GetAuthGameMode<ACataclysmGameMode>())
+		{
+			GameMode->TakeTheRunsTier();
+		}
+	}
+
 	return EmpireRun;
 }
 
