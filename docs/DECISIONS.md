@@ -2,6 +2,92 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A character carries its own difficulty tier: its runs begin at it, every level is fought at the run's, and a won run will raise it (#1472)
+
+**Affects:** `ACataclysmPlayerState` (`GetDifficultyTier`, `SetDifficultyTier`, `RaiseDifficultyTierForAWin`;
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`); `UCataclysmCharacterSave::DifficultyTier`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), gathered and applied (`CataclysmSaveGather.cpp`,
+`CataclysmSaveApply.cpp`); `FCataclysmCharacterSummary::DifficultyTier` and a loaded character's new run
+(`CataclysmSaveLoad.h`, `.cpp`); `ACataclysmGameMode::TakeTheRunsTier` and its callers, and `DifficultyTier`'s comment
+(`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `.cpp`); `UCataclysmGameInstance::BeginEmpireRun` and its comment
+(`CataclysmGameInstance.h`, `.cpp`); the select screen's row (`CataclysmCharacterSelectWidget.cpp`); three new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two new assertions in an existing select-screen test. Issue
+[#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** Compiled with no lock; the window is registered below.
+- **NOTHING IN PLAY RAISES THE TIER YET, ON PURPOSE.** No run can be won: the Cataclysm boss dungeon, the enemy capital
+  and the loss condition do not exist. `RaiseDifficultyTierForAWin` is built and tested, and #1324 is the change that will
+  call it when a run is won (ruled). Until then every character stays at the tier it has.
+- **THE DESIGN SETTLES THE SHAPE, and the issue quotes it:** the tier is fixed for a run (section XII), rises between
+  runs only on a win (section IV), and belongs to the character (section IV). What follows decides only what the document
+  leaves open.
+
+### Rulings, 2026-11-01
+
+- **Q1:** build the win's raise now; tests are its only callers; its comment names #1324.
+- **Q2, no schema version bump.** A record written before the field loads at tier 1: `FCataclysmSaveStorage::FromJson`
+  reads the fields with `FJsonObjectConverter::JsonObjectToUStruct(..., CPF_SaveGame, 0, false, ...)`, strict mode off,
+  which sets only the properties whose keys the JSON has, so `DifficultyTier` keeps its default, 1. The precedent is the
+  run record's `PartialDay`.
+- **Q3, the game mode is set from the run, at every level start where a run is held** (`TakeTheRunsTier`): the end of
+  `ACataclysmGameMode::StartPlay`, which the sandbox and the dungeon both run; after the arrival's load, in both outcomes
+  that load a character; after a new character's run begins; and in `UCataclysmGameInstance::BeginEmpireRun`, for a run
+  begun during play. A game mode is made fresh with each level, which is why it is not enough to set it once. The
+  console variable `Cataclysm.DifficultyTier` still wins, in `DifficultyTierFor`, as before.
+- **Q4, the select row shows "tier N" after the lethality, always.** No existing assertion of the row's text changes:
+  `Cataclysm.CharacterSelect.EachRowShowsWhatTheRulingLists` asserts each part with `Contains`, `StartsWith` and
+  `EndsWith`, none of which the inserted words break. Two assertions are added to it: "Hardcore, tier 3", and "tier 1" on
+  the unnamed row.
+- **Q5, out of scope, an open question for the owner:** may a player play below the highest tier they have reached? The
+  design says "The whole climb is eight campaigns" and nothing about going back down; Diablo IV chooses a World Tier per
+  run and Path of Exile a map per map, as the issue notes. **Recommendation: yes, a choice at the start of each run, from
+  tier 1 to the character's own, with the character's tier still rising only from a run won at its own tier**, so going
+  back down costs nothing and gains nothing. Not asked now; on the owner's list for after 16 November.
+
+### What changes
+
+- `ACataclysmPlayerState` holds `DifficultyTier`, 1 to 8, starting at 1; `SetDifficultyTier` holds it to the game's range
+  (`ACataclysmGameMode::LowestDifficultyTier` and `HighestDifficultyTier`); `RaiseDifficultyTierForAWin` adds one.
+- The character record holds it, written always (a character with none set is at 1, which is true) and put back by a
+  load.
+- **A new character's run begins at its tier** (`MakeThePendingCharacter`), and so does **the new run a loaded character
+  is given when its run cannot be read** (`FCataclysmSaveLoad::CharacterAndRun`). A run that loads keeps its own saved
+  tier, as it already did.
+- A character made before this change is at tier 1, the tier the design starts every character at; a run it is in keeps
+  the tier it was saved at until it ends.
+- A death touches nothing that holds the tier.
+
+### Tests
+
+- `Cataclysm.SaveLoad.ACharactersTierComesBackAndItsLevelIsFoughtAtIt`: a character at tier 3, with its run, saved; then
+  the arrival in a new world with a fresh game mode, as Continue leads to it: the tier comes back on the character and the
+  run, and the game mode, at its default 1 before, is at 3 after, as `DifficultyTierIn` reads. Prints "TIER SAVED".
+- `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne`: a record written by hand at the current schema
+  version with no tier key reads tier 1; the keys it has are read. Prints "TIER BEFORE".
+- `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt`: a new character at tier 4 (set so a run at the
+  default cannot pass): its run and its level at 4; a death's write leaves it at 4; a win raises it to 5; at 8 a win
+  leaves 8. Prints "TIER RUN".
+- `Cataclysm.CharacterSelect.EachRowShowsWhatTheRulingLists`: the two added assertions above.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests and the changed select test alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4502 / 0: `development`'s 4499 (f091d674d, #2676, which added no Unreal test), + 3; and, under #2673's exit code, a "Test saves:" line with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, a new character's run not given its tier (`State->GetDifficultyTier()); // A new character's: its run at its tier.` to `0); // ...`), prefix `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTier` | the run test fails on "the run is at the character's tier" and "and its level is fought at it" only, both 1: with no tier given, `BeginEmpireRun` asks `DifficultyTierIn` of a game instance with no world, which answers 1 |
+| P2, the arrival not setting the level's tier (`TakeTheRunsTier(); // An arrival's: the loaded run's tier.` to `(void)0; // ...`), prefix `Cataclysm.SaveLoad.ACharactersTierComesBack` | the saved-tier test fails on "the level is fought at the run's tier" and "and every reader of the tier gets it" only, both 1; the tier on the character and the run still come back |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
+the first attempt.
+
+---
+
 ## 2026-11-01 — Each test's end logs the run's "Test saves:" line, and the test run reads only one written after its last test started, so a forced exit that loses the exit-time line cannot fail a run that left nothing behind (#2677)
 
 **Affects:** `FCataclysmTestSaves` (`EndATest` and `IsCalledAtEachTestsEnd`, new; the end-of-test hook now bound to an
