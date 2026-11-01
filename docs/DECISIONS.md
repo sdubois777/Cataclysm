@@ -79,7 +79,7 @@ migration backup in `ReadFromSlot`); one new test in `game/Source/Cataclysm/Test
 |---|---|
 | First step: s5's `game/Saved/SaveGames` listed, prefix `Cataclysm.SaveLoad.` run, listed again | both counts and the run's "Test saves:" line printed; after small, N large |
 | The new test alone | 1 / 1, its line quoted |
-| Whole Unreal suite | 4494 / 0: `development`'s 4493 (09323b971, #2670), + 1; moved onto #2553's measured total + 1 if it merges first |
+| Whole Unreal suite | 4496 / 0: `development`'s 4495 (690e74239, #2671 merged, window threat-zero-w1), + 1. MOVED ONTO IT, as `fix/tests-delete-their-saves-1`, from 09323b971 (4493), whose figure this said before; the move changed none of this change's files, by `git diff` |
 | The suite's "Test saves:" line | printed; N large, M small |
 | Python | of record, with JUnit, and ruff |
 | S1, "did not exist before" off in `NoteAWrite` (`if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))` to `if (false)`), prefix `Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds` | the test fails on "a slot that was there before the test wrote over it is kept" and "a slot that was there before a migration is kept" (its write-back then noted) only |
@@ -91,7 +91,9 @@ Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeede
 Module.Cataclysm.28.cpp, Module.Cataclysm.12.cpp`, which hold `CataclysmSaveStorageTests.cpp`, and
 `CataclysmSaveStorage.cpp` with `CataclysmTestSaves.cpp`, by the unity files' contents. Again after `NoteABackup` was
 made to return before its lock when no test runs: `Build: Succeeded - 5 actions, 2 files compiled: CataclysmTestSaves.cpp,
-Module.Cataclysm.12.cpp`.
+Module.Cataclysm.12.cpp`. Python of record on that head, 5e2773ad4: `7197 passed, 8 skipped in 247.75s`, the JUnit file
+tests 7205, failures 0, errors 0, skipped 8; ruff "All checks passed!"; it ended at 10:22:30, before window
+threat-zero-w1 started at 10:22:58.
 
 ---
 
