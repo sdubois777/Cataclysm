@@ -15,8 +15,18 @@ Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of th
 
 ### SAID FIRST
 
-- **REMADE, NOT YET RUN IN UNREAL.** Window A remade `WBP_CharacterSelect` exactly as registered (below); window B
-  runs the tests.
+- **WINDOW B (w128B) STOPPED AT THE SUITE: TWO EXISTING TESTS FAILED, AND THIS STEP CHANGES THEM.**
+  `Cataclysm.SaveLoad.MoraleBreaksLeadersStillLeadAfterALoad` and
+  `CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad` kill a Morale Break leader and expect its group to panic.
+  With step 5's three new `Cataclysm.SaveLoad.` tests running before them, the leader they kill drew Horde Leader, and a
+  Horde Leader's death rallies its group instead. Window w128C measured that the order is the cause (below). The cause
+  is in the game's draw, not in step 5: **which creature draws a modifier is not fixed by the pinned dungeon seed.**
+  `ACataclysmEnemyCharacter::DrawModifiersForRarity` seeds each creature's `FRandomStream` from its object's
+  `GetUniqueID()`, the world's clock and a salt, unless `ModifierSeedForTests` is set, which the round trips do not set.
+  The coordinating session files that as an issue. **Ruled 2026-11-01:** both tests now choose a leader that is not a
+  Horde Leader, with a set-up assertion that one was found, in a commit of its own on this branch.
+- **Window A remade `WBP_CharacterSelect` exactly as registered (below); the six step 5 tests passed alone in window
+  B. NOT YET PASSED IN UNREAL: the whole suite and the proofs, registered for window w128D below.**
 - **DELETING IS IRREVERSIBLE, SO EVERY NAME IS BUILT, NEVER MATCHED BY A PATTERN.** `SlotsToDelete` names each slot
   from an identifier and matches it whole; `ADeleteRemovesItsCharactersSlotsAndNothingElse` deletes one of two
   characters on disk and checks that the names gone are exactly a hand-written list and that no other name went.
@@ -128,6 +138,56 @@ kept, which ruling 6 and Q1 do not. The owner can ask for it.
 | P1 (Python), `make_character_select` does not add `ConfirmNameBox` | the step 5 widgets check and 3b's every-bound-widget check fail |
 | P2 (Python), a second function calls `delete_asset` | the remake-scope check fails, only |
 
+### Window w128B, 2026-11-01, on `cc83edbba`: stopped at the suite
+
+Run by `run_w128B.py` under the lock `dungeon-w128B`, from a clean tree; pre-checks all passing at 09:02:54 local, 11229
+MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The six tests alone | 1 / 1 each | 1 / 1 each. "DELETE ON DISK: **the saves are in C:/Projects/Cataclysm/.claude/worktrees/s5/game/Saved/SaveGames; the project is C:/Projects/Cataclysm/.claude/worktrees/s5/game/;** the fixture's file is there", then "10 names before, 6 after; gone [the four expected]; gone and not expected []; the near miss kept, the other character kept". The others as traced |
+| Whole Unreal suite | 4493 / 0 | **"4493 tests performed, 4491 succeeded, 2 failed: CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad, MoraleBreaksLeadersStillLeadAfterALoad"**; declared 4493, gap 0. Each failed after "Morale Break: group 116's leader was a Horde Leader; it rallies": the leaders test on "a leader killed after the load panics its group" ("a leader killed, 0 panicked"), the escaped test on "set-up: creatures escaped" |
+| Python | of record | "7192 passed, 8 skipped"; JUnit 7200 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| R1 to R5, N1 | as traced | **not run**: the runner stops before the proofs when the suite fails |
+
+The measured save path above is the one the coordinating session asked for before R3 runs: s5's own folder.
+
+### Window w128C, 2026-11-01: the order measured
+
+Ruled 2026-11-01 so that the cause is measured. Run by `run_w128C.py` under the lock `dungeon-w128C`; tests only.
+
+| Run | Code | Result | Group 116's leader, from the log |
+|---|---|---|---|
+| The leaders test alone | `cc83edbba` | 1 performed, 1 succeeded | "group 116's leader died; 9 panic" |
+| The escaped test alone | `cc83edbba` | 1 performed, 1 succeeded | "group 116's leader died; 9 panic", "9 escaped", "group 116 is back, 18 creatures" |
+| Prefix `Cataclysm.SaveLoad.` | `cc83edbba` | "69 tests performed, 67 succeeded, 2 failed": the same two | "group 116's leader was a Horde Leader; it rallies", in both |
+| Prefix `Cataclysm.SaveLoad.` | `development` 59d1c1d3c, checked out clean and built | "66 tests performed, 66 succeeded, 0 failed" | "group 116's leader died; 9 panic", in both |
+
+**Alone they pass; after step 5's three tests they fail; without step 5 the same order passes. The order is the
+cause.**
+
+### The change to two existing tests, ruled 2026-11-01
+
+- `MoraleBreaksLeadersStillLeadAfterALoad` kills the first leader after the load that does not carry
+  `Generic_Horde_Leader`, where it killed the first leader; its assertion "a leader killed after the load panics its
+  group" is now guarded by a set-up assertion, "set-up: a leader that is not a Horde Leader stands after the load",
+  where it was guarded by there being any leader.
+- `CreaturesThatEscapedMoraleBreakStillComeBackAfterALoad` chooses a far group whose leader does not carry it; its
+  seed search's set-up assertion reads "... gives a group far from the entrance, led by no Horde Leader".
+- Both through `RalliesInstead` in the tests' namespace. **No assertion of what a load must do changes**; only which
+  leader is killed.
+
+### Registered for window w128D, on the head with the change
+
+| Figure | Registered |
+|---|---|
+| The two Morale Break tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4493 / 0: the change adds no test |
+| Python | of record, with JUnit, and ruff |
+| R1 to R5, N1 | as registered above |
+| M1, the leaders test's choice reverted (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed)`, killing the first leader as before), prefix `Cataclysm.SaveLoad.` | the leaders test fails on "a leader killed after the load panics its group" only: in this order group 116's leader draws Horde Leader, as w128B and w128C measured twice. **THE PREDICTION RESTS ON THE ORDER'S DRAW**; if the change moves the objects' identifiers so the draw differs, the break passes and the proof is recorded as not proved, which would show the test passing by the roll |
+| M2, the escaped test's choice reverted (`&& !RalliesInstead(Candidate))` to `)`), same prefix | the escaped test fails on "set-up: creatures escaped" only, and stops there; the same rest on the order's draw |
+
 ### Python proofs, run before window A
 
 Run with `tools/prove_guard.py`'s `break_and_run` on the select screen's Python file alone, in a `git archive` copy of
@@ -141,7 +201,9 @@ Run with `tools/prove_guard.py`'s `break_and_run` on the select screen's Python 
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 75 actions, 65 files compiled`, at
-the first attempt (a new worktree).
+the first attempt (a new worktree). After the move onto 59d1c1d3c: `14 actions, 11 files compiled`. After the change to
+the two Morale Break tests (`ee7bc897d`), the binaries having last been built from 59d1c1d3c's code in w128C's third run:
+`9 actions, 6 files compiled`.
 
 ### The editor run (window A)
 
