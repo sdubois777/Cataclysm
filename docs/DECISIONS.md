@@ -68,7 +68,7 @@ does not.** So its added draw can come from the floor.
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4499 / 0: the #2181 window's 4497 once it merges, + 2; else `development`'s 4496 (0494ffe7a), + 2. Any failure: old and new recorded, the window stops before the proofs |
+| Whole Unreal suite | 4499 / 0: `development`'s 4497 (e5d4c32aa, #2674 merged, window rung-roundtrip-w1), + 2. MOVED ONTO IT, as `fix/floor-creatures-draw-from-the-floor-seed-1`, from 0494ffe7a (4496); the move changed none of this change's files, by `git diff`. Any failure: old and new recorded, the window stops before the proofs |
 | Python | of record, with JUnit, and ruff |
 | F1, the floor's modifier seed not passed (`Enemy->DrawModifiersForRarity(ModifierSeedNow);` to `Enemy->DrawModifiersForRarity(0);`), prefix `Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor` | the test fails on one or more of "floor N built again holds the same modifiers in the same order", N from 1 to 6, and nothing else; both controls hold. Which floors cannot be traced: the clock's draws are not known beforehand |
 | F2, the dark floor's added draw on the clock (`...DrawModifiersForRarity(ModifierSeedForPlacement(PlacementIndex, DarkFloorModifiersSalt));` to `...DrawModifiersForRarity(0);`), prefix the dark-floor test's full name | the test fails on "the dark floor built again raises the same creatures with the same modifiers" only. It rests on the set-up's raise adding a modifier, and on the clock's two draws differing, which from a table of many rows is not certain but near it |
