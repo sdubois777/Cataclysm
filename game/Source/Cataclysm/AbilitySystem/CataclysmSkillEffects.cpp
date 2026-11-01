@@ -2639,6 +2639,22 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// A BLEED THAT LANDS STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, WHETHER IT REPLACES THE RUNNING ONE OR ONLY
+	// REFRESHES IT. Issue #918, ruled 2026-10-31. One bleed at a time, so the count belongs to the carrier and the one a
+	// stronger bleed replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to it at each tick.
+	//
+	// A REFRESH TOO, WHICH IS A JUDGEMENT BY THE WRITING SESSION, 2026-10-31, for the coordinating session to confirm. A
+	// refresh gives the running bleed a new window; with the old count kept, a bleed refreshed by every blow of a fast
+	// attacker would deal four seconds of ticks and then nothing for as long as the blows kept coming, while the target
+	// still read as bleeding. Here, before the branch below, so the refresh and the replacement both reach it.
+	if (EffectTag == UCataclysmDebuffs::BleedTag())
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
+	}
+
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
 	if (Running.bFound && Running.Stated >= Stated)
 	{
@@ -2703,16 +2719,6 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	Modifier.ModifierMagnitude = FScalableFloat(Numbers.DamagePerTick);
 
 	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
-
-	// A NEW BLEED STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN. Issue #918, ruled 2026-10-31. One bleed at a time, so the
-	// one this replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to the count at each tick.
-	if (EffectTag == UCataclysmDebuffs::BleedTag())
-	{
-		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
-		{
-			Carrier->BleedMovingSeconds = 0.0f;
-		}
-	}
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);

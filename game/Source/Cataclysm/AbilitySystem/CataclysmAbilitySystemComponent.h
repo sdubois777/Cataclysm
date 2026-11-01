@@ -2737,7 +2737,8 @@ public:
 	 * bleed ticks only while its target moves and stops after `UCataclysmDebuffs::BleedMovingSecondsCap` seconds of
 	 * movement, counted as moving ticks times the tick's period, so the tick-frequency stat still works. Added to by
 	 * `UCataclysmVitalAttributeSet` at each moving tick; restarted by `UCataclysmSkillEffects::ApplyDamageOverTime`
-	 * whenever a bleed is applied, since a character carries one bleed at a time.
+	 * whenever a bleed lands, a refresh of the running one included, since a character carries one bleed at a time.
+	 * Not added to by a tick of converted damage, which the gate exempts.
 	 */
 	float BleedMovingSeconds = 0.0f;
 
