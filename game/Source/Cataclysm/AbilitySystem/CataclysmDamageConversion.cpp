@@ -150,6 +150,11 @@ float UCataclysmDamageConversion::ConvertIfActive(
 		/*bScalesWithInstigator=*/false, /*DealtBy=*/nullptr, /*Skill=*/nullptr, NAME_None,
 		// MARKED AS CONVERTED DAMAGE, which is what a cleanse keeps. Ruled 2026-10-06. Until then a cleanse kept
 		// everything a character had laid on themselves, and this bleed was kept for that reason.
+		//
+		// AND THE MARK KEEPS IT OUT OF THE ONE BLEED SLOT, so a true answer below always means this blow is stored
+		// whole, in an effect of its own. Issue #2275, ruled by the coordinating session 2026-11-01. Until then a blow
+		// no stronger than a running bleed only refreshed that bleed and was lost, and a stronger one took the running
+		// bleed off, an earlier converted blow's unpaid remainder with it.
 		/*bIsConvertedDamage=*/true);
 
 	if (!bApplied)

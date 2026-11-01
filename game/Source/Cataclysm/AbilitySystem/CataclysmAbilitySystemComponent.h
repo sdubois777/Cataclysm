@@ -2738,7 +2738,8 @@ public:
 	 * movement, counted as moving ticks times the tick's period, so the tick-frequency stat still works. Added to by
 	 * `UCataclysmVitalAttributeSet` at each moving tick; restarted by `UCataclysmSkillEffects::ApplyDamageOverTime`
 	 * whenever a bleed lands, a refresh of the running one included, since a character carries one bleed at a time.
-	 * Not added to by a tick of converted damage, which the gate exempts.
+	 * Not added to by a tick of converted damage, which the gate exempts, and not restarted when a blow is converted:
+	 * converted damage runs beside that one bleed and holds no slot (issue #2275).
 	 */
 	float BleedMovingSeconds = 0.0f;
 

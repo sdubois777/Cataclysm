@@ -102,6 +102,21 @@ namespace
 	}
 
 	/**
+	 * Whether a running effect is converted damage not yet taken: the bleed the Masochist's damage conversion lays on
+	 * its own character, stamped with `UCataclysmSkillEffects::ConvertedDamageDataName`. Issue #2275.
+	 *
+	 * THE ONE QUESTION THE BLEED SLOT ASKS OF IT, so the slot and the strongest-application rule cannot disagree about
+	 * what they skip: `TagAndReplaceAnyExisting` does not take one off, and `RunningApplicationOf` does not find one.
+	 * The mark is the one `UCataclysmDebuffs::Cleanse` keeps and the bleed gate exempts; no new mark was added.
+	 */
+	bool IsConvertedDamageNotYetTaken(const FActiveGameplayEffect* Active)
+	{
+		return Active
+			&& Active->Spec.GetSetByCallerMagnitude(
+				FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	}
+
+	/**
 	 * Grant a tag for as long as this effect lasts, and take off whatever was
 	 * granting that tag already.
 	 *
@@ -143,31 +158,57 @@ namespace
 	 * ONE STACK ONLY is the design's rule for every effect a player can apply,
 	 * and it is aggregated by TARGET rather than by source so that two
 	 * characters burning the same enemy still produce one burn.
+	 *
+	 * EXCEPT CONVERTED DAMAGE NOT YET TAKEN, WHICH HOLDS NO SLOT. Issue #2275, ruled by the coordinating session
+	 * 2026-11-01. The bleed the Masochist's damage conversion lays on its own character is a blow already taken and
+	 * stored, not an application of the ailment, so nothing laid here takes one off, and one is laid with
+	 * `bTakesTheSlot` false: it grants the tag and removes nothing, so each converted blow runs as its own effect
+	 * beside every other bleed. See `IsConvertedDamageNotYetTaken`.
 	 */
 	void TagAndReplaceAnyExisting(UGameplayEffect* Effect,
 								  const FGameplayTag& EffectTag,
-								  AActor* Target)
+								  AActor* Target,
+								  bool bTakesTheSlot = true)
 	{
 		if (!Effect || !EffectTag.IsValid())
 		{
 			return;
 		}
 
-		// WHATEVER WAS ALREADY GRANTING THIS TAG COMES OFF FIRST, so the effect
-		// about to be applied is the only one. Taking it off is also what
-		// unregisters its modifiers from the target's attribute aggregators,
-		// which is the half that matters here: an effect left registered is an
-		// effect whose tag requirements are still being read on every
-		// recalculation.
-		UCataclysmSkillEffects::RemoveEffectsGranting(Target, EffectTag);
+		if (bTakesTheSlot)
+		{
+			// WHATEVER WAS ALREADY GRANTING THIS TAG COMES OFF FIRST, so the effect
+			// about to be applied is the only one. Taking it off is also what
+			// unregisters its modifiers from the target's attribute aggregators,
+			// which is the half that matters here: an effect left registered is an
+			// effect whose tag requirements are still being read on every
+			// recalculation.
+			//
+			// BUT NOT CONVERTED DAMAGE NOT YET TAKEN. Issue #2275: until it, an enemy's stronger bleed took the
+			// Masochist's converted bleed off here, and what it had left to deal was lost. The same query
+			// `RemoveEffectsGranting` makes, `MakeQuery_MatchAnyOwningTags`, so nothing else it removes changes.
+			if (UAbilitySystemComponent* Holder = UCataclysmTargeting::AbilitySystemOf(Target))
+			{
+				FGameplayTagContainer Granting;
+				Granting.AddTag(EffectTag);
+				for (const FActiveGameplayEffectHandle& Handle :
+						 Holder->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granting)))
+				{
+					if (!IsConvertedDamageNotYetTaken(Holder->GetActiveGameplayEffect(Handle)))
+					{
+						Holder->RemoveActiveGameplayEffect(Handle);
+					}
+				}
+			}
 
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		Effect->StackingType = EGameplayEffectStackingType::AggregateByTarget;
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			Effect->StackingType = EGameplayEffectStackingType::AggregateByTarget;
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-		Effect->StackLimitCount = 1;
-		Effect->StackDurationRefreshPolicy =
-			EGameplayEffectStackingDurationPolicy::RefreshOnSuccessfulApplication;
+			Effect->StackLimitCount = 1;
+			Effect->StackDurationRefreshPolicy =
+				EGameplayEffectStackingDurationPolicy::RefreshOnSuccessfulApplication;
+		}
 
 		UTargetTagsGameplayEffectComponent& TagsComponent =
 			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
@@ -234,6 +275,15 @@ namespace
 			const FActiveGameplayEffect* Active =
 				Defender->GetActiveGameplayEffect(Handle);
 			if (!Active)
+			{
+				continue;
+			}
+			// NOT CONVERTED DAMAGE NOT YET TAKEN, which is no application of the ailment and holds no slot. Issue
+			// #2275, ruled by the coordinating session 2026-11-01. Until it, an enemy's weaker bleed only refreshed
+			// the Masochist's converted bleed, so it had no effect of its own: a cleanse kept it, and its time ticked
+			// at the converted figure, exempt from the movement gate. And a converted blow weaker than a running
+			// bleed only refreshed it and was lost. Every caller asks about an application, so none is shown one.
+			if (IsConvertedDamageNotYetTaken(Active))
 			{
 				continue;
 			}
@@ -2737,7 +2787,12 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// new window; with the old count kept, a bleed refreshed by every blow of a fast
 	// attacker would deal four seconds of ticks and then nothing for as long as the blows kept coming, while the target
 	// still read as bleeding. Here, before the branch below, so the refresh and the replacement both reach it.
-	if (EffectTag == UCataclysmDebuffs::BleedTag())
+	//
+	// NOT FOR CONVERTED DAMAGE. Issue #2275, ruled by the coordinating session 2026-11-01. A converted blow is no
+	// application of the ailment and refreshes no bleed, and its own ticks neither read nor add to the count, which the
+	// gate exempts them from. Until it, a blow converted while an enemy's bleed ran gave that bleed its four seconds
+	// back.
+	if (EffectTag == UCataclysmDebuffs::BleedTag() && !bIsConvertedDamage)
 	{
 		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
 		{
@@ -2745,8 +2800,14 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// CONVERTED DAMAGE NOT YET TAKEN NEITHER REFRESHES NOR IS REFRESHED. Issue #2275, ruled by the coordinating
+	// session 2026-11-01: "converts all damage you take into Bleeding over 5 seconds" is said of each blow, and the
+	// design's health-debt paragraph is "the same rule with the sign reversed" as leech, where "Each hit starts its own
+	// 3-second payout". So every converted blow is laid below as its own effect, beside every other bleed, and
+	// `RunningApplicationOf` does not show one to anybody else's application. Until it, a converted blow no stronger
+	// than a running bleed only refreshed that bleed, and the blow was taken off neither health nor anything else.
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
-	if (Running.bFound && Running.Stated >= Stated)
+	if (!bIsConvertedDamage && Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
 			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds, AppliedTags));
@@ -2812,9 +2873,13 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// after. Issue #920: so a Necrosis taken off here does not deal the healing it denied, which stays owed to the one
 	// that replaces it. See `DealTheDeniedHealingWhenANecrosisEnds`. Nothing refuses the application below once the
 	// immunity and a row's refusal above have passed, so the replacement always lands.
+	//
+	// A CONVERTED BLOW TAKES NO SLOT AND TAKES NOTHING OFF. Issue #2275: it grants the tag and runs beside whatever
+	// else is granting it, an enemy's bleed and the earlier converted blows included. An ordinary bleed laid here takes
+	// off every running bleed but converted damage, which `TagAndReplaceAnyExisting` leaves.
 	{
 		TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, true);
-		TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+		TagAndReplaceAnyExisting(Effect, EffectTag, Target, /*bTakesTheSlot=*/!bIsConvertedDamage);
 	}
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
@@ -2872,7 +2937,9 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// for an applier with none.
 	//
 	// THE EFFECT JUST APPLIED IS THE ONE RUNNING UNDER THIS TAG: `TagAndReplaceAnyExisting` took every other one
-	// off. None is found when the target refused the application, and then nothing is listened for.
+	// off. None is found when the target refused the application, and then nothing is listened for. CONVERTED DAMAGE
+	// it leaves running, and `RunningApplicationOf` does not show it (issue #2275), so a converted bleed stronger than
+	// this one is not the one listened to, as it was until that change.
 	//
 	// NOT AN AILMENT A CHARACTER LAYS ON ITSELF, and not converted damage, which nobody applied.
 	//
