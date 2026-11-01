@@ -25,7 +25,7 @@ void UCataclysmFloorModifierPanel::SetFloorModifiers(
 	FloorNumber = FMath::Max(1, InFloorNumber);
 	Lines = UCataclysmFloorModifierPanelLayout::LinesFor(
 		RowKeys, UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
-		LiveCounts);
+		LiveCounts); // A panel's: what each row is counting. Tested, issue #1841.
 	Redraw();
 }
 
