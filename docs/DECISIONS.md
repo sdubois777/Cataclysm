@@ -9,7 +9,9 @@ and its header's comment); `UCataclysmAbilitySystemComponent::NecrosisDeniedHeal
 `UCataclysmDebuffs::NecrosisTag` and `UCataclysmDebuffs::NecrosisDeniedHealingSeconds` (`CataclysmDebuffs.h` and `.cpp`,
 5.0); in `CataclysmSkillEffects.cpp`, the listener `DealTheDeniedHealingWhenANecrosisEnds`, the flag
 `bReplacingARunningDamageOverTime`, and two additions to `UCataclysmSkillEffects::ApplyDamageOverTime` (the flag raised
-around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lays); five new Unreal tests
+around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lays); the payout's mark
+`UCataclysmSkillEffects::DeniedHealingDataName`, which `UCataclysmDebuffs::Cleanse` keeps and
+`UCataclysmSkillEffects::RefreshOtherDamageOverTime` skips; seven new Unreal tests
 (`game/Source/Cataclysm/Tests/CataclysmNecrosisDenialTests.cpp`, new); a new Python pin,
 `tools/tests/test_necrosis_denied_healing_seconds_match_the_design.py`; the ailment section of
 `docs/Cataclysm_GDD_v2.md`. Issue [#920](https://github.com/sdubois777/Cataclysm/issues/920).
@@ -21,9 +23,9 @@ around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lay
   Unreal total is a placeholder. Ruff was run on the one Python file this adds: "All checks passed!".
 - **NO EXISTING TEST WAS CHANGED.** None heals a character carrying a Necrosis (searched, below), and a Necrosis that
   ends having denied nothing lays nothing, so no existing figure moves.
-- **FIVE THINGS THE WRITING SESSION DID NOT DECIDE, FOR THE COORDINATING SESSION**, under "Wanting a ruling" at the
-  end: the room the denial is held to (J1), a cleanse after the Necrosis has ended (J3), a payout's kill raising no imp
-  (J5), the thrall healed to full when taken, and a row that refreshes the applier's other damage over time.
+- **SIX FOLLOW-UP RULINGS, MADE BY THE COORDINATING SESSION THE SAME DAY** on questions the first draft raised, are
+  under Rulings as R1 to R6. Two changed what is built: a later cleanse now leaves the payout running (R2), and a row
+  refreshing the applier's other damage over time now leaves it alone (R5). Each has a new test and a proof (P7, P6).
 
 ### Rulings, 2026-10-31 (the coordinating session)
 
@@ -43,6 +45,24 @@ around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lay
 - **Necrosis reaches no player today, and nothing is added to make it.** No enemy row and no dungeon modifier applies
   it; the issue says so. The denial is written for any carrier, so a player carrying one would be denied too, but no
   player can carry one.
+- **R1 (J1): the denied amount is held to the room under the healing ceiling not already denied.** "The denied amount"
+  is what healing would have done, and healing past full health was never healing; without the limit, repeated heals
+  on a carrier at full health would owe damage made from nothing.
+- **R2 (J3): a later cleanse leaves the payout running**, for the reason the cleanse that ends a Necrosis still pays:
+  the denial has already happened. Kept by the cleanse's existing exception, on a narrow mark of the payout's own,
+  `DeniedHealingDataName`. NOT the converted-damage mark, which the bleed gate and other code read.
+- **R3 (J5): a kill by the payout raises no imp**, accepted as built and stated as a consequence: Necrosis Rise reads
+  the killing blow's granted Necrosis tag, and by then the Necrosis has ended.
+- **R4: the thrall healed to full when taken is left as it is.** `Subjugate`'s "to full" is the owner's wording, and
+  issue #1713 is open beside it. Stated as a consequence: a creature taken while carrying the player's Necrosis is
+  healed to full past it, keeps the Necrosis and its denied total, and takes the payout when the Necrosis ends, as
+  the player's own thrall.
+- **R5: this branch must not ship a payout a refresh lengthens.** `RefreshOtherDamageOverTime`
+  (`dot_application_refreshes_others`) found effects by their instigator and ticks left, so it would have given a
+  running payout its whole 5 seconds again and dealt more than was denied, a fault this change would create. It now
+  skips an effect carrying `DeniedHealingDataName`.
+- **R6: Nothing Is Forgotten's refill is out of scope**, and named below as a heal outside `TopUp` that a Necrosis does
+  not deny.
 
 ### What it does
 
@@ -85,12 +105,15 @@ there (Q4, and so a Necrosis that ran out on a body deals nothing). Otherwise it
   carrier's resistances.**
 - **Its ticks carry the ended Necrosis's asset tags and its context.** So they are typed (`Keyword.DoT`, and the element
   if the Necrosis carried one) and credited (instigator, dealer, skill) as the Necrosis's own ticks were, and meet the
-  carrier's resistances and energy shield as every non-bleed tick does. The set-by-caller numbers are not carried: it is
-  not "priced from its applier's stats" (#2235), states no magnitude, and is not converted damage.
-- **What its tags let reach it.** It carries `Keyword.DoT` as an asset tag and owning-tag queries match asset tags, so:
-  a burst of the applier's remaining damage over time ("When you die, all active DoTs ... instantly deal their remaining
-  damage") pays what it has left, as for any of the applier's damage over time; and a LATER cleanse removes it (J3). A
-  burst limited to Necrosis (the critical strike row) does not see it: it grants no Necrosis.
+  carrier's resistances and energy shield as every non-bleed tick does. The Necrosis's set-by-caller numbers are not
+  carried: it is not "priced from its applier's stats" (#2235), states no magnitude, and is not converted damage. It
+  carries one number of its own, `DeniedHealingDataName`, at 1.
+- **What reaches it.** It carries `Keyword.DoT` as an asset tag and owning-tag queries match asset tags, so a cleanse's
+  query finds it; the cleanse keeps it by its mark (R2), beside the converted-damage exception. A row refreshing the
+  applier's other damage over time skips it by the same mark (R5). A burst of the applier's remaining damage over time
+  ("When you die, all active DoTs ... instantly deal their remaining damage") pays what it has left, as for any of the
+  applier's damage over time, which deals no more than the total (J4). A burst limited to Necrosis (the critical strike
+  row) does not see it: it grants no Necrosis.
 
 ### The direct writes of health, classified
 
@@ -140,8 +163,15 @@ creature's `SetHealth`; each read in its function. Cited by function, not line. 
 **D. A heal kept out of `TopUp`, with its reason.** `UCataclysmCommand::Subjugate`, a taken thrall "healed to full,
 once". The owner's ruling says "to full", and the comment there already says why it is not in `TopUp`: a healing
 ceiling in the path would leave the creature short and contradict the ruling. Issue #1713 is open on whether a curse
-should cut it. Routing it through `TopUp` would also let a Necrosis deny it. **Left as it was**, and under "Wanting a
-ruling" below, because a creature the player takes can be carrying the player's own Necrosis.
+should cut it. Routing it through `TopUp` would also let a Necrosis deny it. **Left as it was, ruled (R4).** The
+consequence: a creature taken while carrying the player's Necrosis is healed to full past it, keeps the Necrosis and
+its denied total, and takes the payout when the Necrosis ends, as the player's own thrall.
+
+**And a heal outside `TopUp` that a Necrosis does not deny, out of scope (R6).** `ApplyNothingIsForgottenFigures` is
+called again after a rung change (`NoteDeathForBloodForgedChampions`, `StepVolatileEvolution`) and writes the fed
+boss's health to its new maximum: a full refill mid-fight, by that rule's own shape ("it arrives full"), after the
+rung change has put the creature's health back (group C). It reaches only the Nothing Is Forgotten boss, and only if
+that boss changes rung. A Necrosis on it does not stop it.
 
 **Heals already through `TopUp`, which a Necrosis now denies** (for reference, not changed): the regeneration step and
 Blood Pyre's extra (`UCataclysmRegeneration::ApplyStep`); leech (`UCataclysmLeech::PayOutStep`); potions
@@ -165,9 +195,9 @@ heals (`UCataclysmEnemyModifiers::TimedStep`, `HealAlliesPulse`); and two floor 
 - **Necrosis Rise** (`UCataclysmRisenImps::RiseOnNecrosisKill`): a kill by a Necrosis tick still raises an imp. A kill by
   the payout does not (J5).
 
-### Judgements by the writing session
+### Judgements by the writing session, and what became of them
 
-- **J1, the room.** The denied amount is held to the room under the healing ceiling not already denied:
+- **J1, the room. RULED, R1.** The denied amount is held to the room under the healing ceiling not already denied:
   `min(gain, max(0, HealthHealingCeiling - Health - NecrosisDeniedHealing))`. It is the carrier's health as it would
   stand had every heal denied before this one arrived, so "would have been restored" is read as `TopUp` would have
   restored it. Without it, a creature at full health that regenerates 10% a second (the necrotic fog) would owe a whole
@@ -175,12 +205,13 @@ heals (`UCataclysmEnemyModifiers::TimedStep`, `HealAlliesPulse`); and two floor 
   every step.
 - **J2, the payout's shape**, above: no tag, one tick a second, the total exact before resistances, typed and credited
   as the Necrosis's ticks.
-- **J3, a cleanse AFTER the Necrosis has ended removes the payout running**, as it removes any damage over time, because
-  its asset tag matches the cleanse's `Keyword.DoT` root. Q4's cleanse is the one that ends the Necrosis, and the payout
-  that cleanse starts is laid after its list was read, so it survives it.
+- **J3, a cleanse after the Necrosis has ended. RULED THE OTHER WAY, R2.** The first draft let it remove the payout,
+  since its asset tag matches the cleanse's `Keyword.DoT` root. It now keeps it by its mark. (The payout a cleanse
+  starts by ending the Necrosis was never at risk: it is laid after that cleanse's list was read.)
 - **J4, a burst of the applier's remaining damage over time reaches a running payout**, and pays what it has left.
-- **J5, a payout's kill raises no imp and names no ailment.** `RiseOnNecrosisKill` asks the killing blow's GRANTED tags
-  for the Necrosis tag, and the payout grants none, so that it is not a Necrosis.
+  Not a leak: what it has left is part of the total.
+- **J5, a payout's kill raises no imp and names no ailment. ACCEPTED, R3.** `RiseOnNecrosisKill` asks the killing
+  blow's GRANTED tags for the Necrosis tag, and the payout grants none, so that it is not a Necrosis.
 - **J6, a denied heal leaves no overheal and empties no Fervour.**
 - **J7, the denied total is not written to a save.** No damage over time is saved; a load lays no Necrosis back.
 
@@ -238,6 +269,20 @@ by the same applier, so no figure assumes a creature's defences.
   denied; the first marked dead (`MarkDead`, which leaves its effects). At 2.25 s set-up: both Necroses ran out; controls:
   "the control's total has been taken" and "and is being dealt: one damage over time runs on it". Then "the dead
   carrier's total is emptied" (0) and "and nothing was laid to deal it: no damage over time runs on the body" (0).
+- `Cataclysm.Ailments.ACleanseWhileTheDeniedHealingIsDealtLeavesItRunning` (R2). A Necrosis for 2 s; 100 denied; at
+  2.25 s set-up: it ran out "and its payout runs: one damage over time on the carrier". The applier lays a plain damage
+  over time of one a tick on the carrier, for the cleanse to take, and the control's 20 a tick. Then "the cleanse
+  removes one effect, the plain damage over time" (1), "control: the plain damage over time is gone", "and the payout
+  still runs: one damage over time on the carrier" (1); after 5.75 s "the carrier lost the denied 100 as the control
+  lost its 100 (...)" and "in five ticks of the payout" (5). Payout ticks are counted as the damage over time notices on
+  the carrier whose blow granted no tag; every other tick grants its own.
+- `Cataclysm.Ailments.ARefreshOfTheAppliersOtherDamageOverTimeDoesNotLengthenTheDeniedHealing` (R5). A Necrosis for 2 s;
+  100 denied; at 2.25 s the applier lays a plain damage over time of one a tick for 5 s on the carrier (it would end at
+  7.25 s). At 4.5 s, set-up: "at 4.5 s the payout has landed two ticks" (2); the applier is given
+  `dot_application_refreshes_others` by hand (`SetStatInputs`, as `Cataclysm.RemainingDamage.*` does) and applies a
+  burn to the carrier. At 8 s, control: "the refresh reached the applier's plain damage over time, still carried at
+  8 s". At 10 s: "the payout landed five ticks and no more" (5) and "so its total is five of its ticks, as it was
+  (...)", the sum of what its ticks took against five times its first.
 
 And in Python, `tools/tests/test_necrosis_denied_healing_seconds_match_the_design.py`, three tests, the shape of the
 bleed's pin: `DoT_Necrosis` still says "denies the affected target all healing for that time" and "dealing the denied
@@ -249,43 +294,28 @@ tests) found both phrases in the row, the constant at 5.0 and the name in the co
 
 | Figure | Registered |
 |---|---|
-| The five new tests alone | 1 / 1 each, by the five full names above |
-| Whole Unreal suite | **PLACEHOLDER**: the last measured total on `development` at this branch's base (`f1f0920b6`) + 5, 0 failed. Not known to this session |
+| The seven new tests alone | 1 / 1 each, by the seven full names above |
+| Whole Unreal suite | **PLACEHOLDER**: the last measured total on `development` at this branch's base (`f1f0920b6`) + 7, 0 failed. Not known to this session |
 | Python | **PLACEHOLDER**: the last measured JUnit total on `development` + 3 (the new file), failures 0, errors 0, and ruff clean |
 | P1, the carrier check broken: in `TopUp`, `const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();` broken to `const FGameplayTag Necrosis = UCataclysmDebuffs::BleedTag();`, prefix `Cataclysm.Ailments.NecrosisDeniesHealingWhileItHolds` | that one test, the only name the prefix selects, fails on two assertions only: "the carrier of a Necrosis is healed nothing" (to be 500, but it was 600: it carries no bleed, so it is healed) and "and the 100 it would have been healed is its denied total" (to be 100, but it was 0). Every set-up line reads the Necrosis tag through `UCataclysmDebuffs::NecrosisTag` in the test, which the break does not touch, and passes; the control, which carries neither, is healed 100 and passes; "and the control has denied nothing" reads 0 and passes |
 | P2, the conversion broken: in the listener, `Carrier->ApplyGameplayEffectSpecToSelf(Spec);` broken to `(void)Spec;`, prefix `Cataclysm.Ailments.NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds` | that one test fails on four assertions only: "three seconds in, the carrier has lost what the control lost (...)" (0 against the control's three ticks), "so the total was dealt over time and not at once (...)" (0 is not above 0), "the carrier lost the whole denied 100 as the control lost its 100 (...)" (0) and "in five ticks, one a second" (to be 5, but it was 0). "its denied total has been taken to be dealt" passes, the total being emptied before the broken line; "nothing is dealt at once" and "and a second later nothing more" read nought either way and pass; the control lines pass |
 | P3, the cleanse case broken: in the listener, `if (bReplacingARunningDamageOverTime \|\| !Removal.ActiveEffect` broken to `if (bReplacingARunningDamageOverTime \|\| Removal.bPrematureRemoval \|\| !Removal.ActiveEffect` (only an end by time pays, the shape the burn explosion has), prefix `Cataclysm.Ailments.ANecrosisEndedByACleanseStillDealsTheHealingItDenied` | that one test fails on three assertions only: "the cleansed Necrosis's denied total has been taken to be dealt" (to be 0, but it was 100: the listener returns before emptying it), "the carrier lost the denied 100 as the control lost its 100 (...)" (0) and "in five ticks" (to be 5, but it was 0). The cleanse still removes the Necrosis, so both set-up lines on it pass, and the control passes. `Cataclysm.Ailments.NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds`, an end by time, would pass under this break; the prefix does not select it |
-| P4, the replacement flag broken: in `ApplyDamageOverTime`, `TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, true);` broken to `TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, false);`, prefix `Cataclysm.Ailments.ANecrosisReplacedByAStrongerOneKeepsTheHealingItDenied` | that one test fails on four assertions only: "the replaced Necrosis has not ended, so its total of 100 is still owed" (to be 100, but it was 0: the replacement paid it out), "and nothing was laid to deal it: one damage over time, the second Necrosis" (to be 1, but it was 2: that payout and the second Necrosis), "and its total grows to 150" (to be 150, but it was 50: the 50 had the whole room) and "the carrier lost the whole 150 as the control lost its 150 (...)" (50 against 150: the cleanse removes the first payout before it ticks, matching it by its `Keyword.DoT` asset tag, J3, and the second deals 50). "in five ticks: one payout, not one per Necrosis" PASSES at 5, the second payout's five; "the carrier still carries a Necrosis" and "the stronger Necrosis denies healing too" pass. **This proof is in addition to the three asked for** and may be dropped |
-| P5, the death check broken: in the listener, `if (Denied <= 0.0f \|\| !IsValid(Body) \|\| UCataclysmSkillEffects::IsDead(Body))` broken to `if (Denied <= 0.0f \|\| !IsValid(Body))`, prefix `Cataclysm.Ailments.ANecrosisOnACarrierThatDiedFirstDealsNothingMore` | that one test fails on one assertion only: "and nothing was laid to deal it: no damage over time runs on the body" (to be 0, but it was 1). "the dead carrier's total is emptied" passes, the total being emptied before the check; the set-up and control lines pass. **In addition to the three asked for**, and may be dropped |
+| P4, the replacement flag broken: in `ApplyDamageOverTime`, `TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, true);` broken to `TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, false);`, prefix `Cataclysm.Ailments.ANecrosisReplacedByAStrongerOneKeepsTheHealingItDenied` | that one test fails on four assertions only: "the replaced Necrosis has not ended, so its total of 100 is still owed" (to be 100, but it was 0: the replacement paid it out), "and nothing was laid to deal it: one damage over time, the second Necrosis" (to be 1, but it was 2: that payout and the second Necrosis), "and its total grows to 150" (to be 150, but it was 50: the 50 had the whole room) and "in five ticks: one payout, not one per Necrosis" (to be 5, but it was 10: the cleanse keeps the first payout by its mark, R2, and its ending of the second Necrosis lays a second payout of 50, so two run, five ticks each). "the carrier lost the whole 150 as the control lost its 150 (...)" PASSES: 100 and 50 are 150. "the carrier still carries a Necrosis" and "the stronger Necrosis denies healing too" pass. **RETRACED AFTER R2**: before the cleanse kept a payout, the first payout was removed by it, the loss line failed (50) and the ticks line passed (5). Kept by ruling, beside the three asked for |
+| P5, the death check broken: in the listener, `if (Denied <= 0.0f \|\| !IsValid(Body) \|\| UCataclysmSkillEffects::IsDead(Body))` broken to `if (Denied <= 0.0f \|\| !IsValid(Body))`, prefix `Cataclysm.Ailments.ANecrosisOnACarrierThatDiedFirstDealsNothingMore` | that one test fails on one assertion only: "and nothing was laid to deal it: no damage over time runs on the body" (to be 0, but it was 1). "the dead carrier's total is emptied" passes, the total being emptied before the check; the set-up and control lines pass. Kept by ruling, beside the three asked for |
+| P6, the refresh exclusion broken: in `RefreshOtherDamageOverTime`, `FName(DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)` broken to `FName(DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 1.0f)` (the mark is 1, so nothing is skipped), prefix `Cataclysm.Ailments.ARefreshOfTheAppliersOtherDamageOverTimeDoesNotLengthenTheDeniedHealing` | that one test fails on two assertions only: "the payout landed five ticks and no more" (to be 5, but it was 7: refreshed at 4.5 s, its end moves from 7 s to 9.5 s, and its ticks at 3 and 4 s are followed by five more at 5 to 9 s) and "so its total is five of its ticks, as it was (...)" (seven ticks against five times one). The set-up line "at 4.5 s the payout has landed two ticks" passes, and so does the control "the refresh reached the applier's plain damage over time, still carried at 8 s", which the break does not touch |
+| P7, the cleanse exception broken: in `UCataclysmDebuffs::Cleanse`, `FName(UCataclysmSkillEffects::DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)` broken to `FName(UCataclysmSkillEffects::DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 1.0f)`, prefix `Cataclysm.Ailments.ACleanseWhileTheDeniedHealingIsDealtLeavesItRunning` | that one test fails on four assertions only: "the cleanse removes one effect, the plain damage over time" (to be 1, but it was 2), "and the payout still runs: one damage over time on the carrier" (to be 1, but it was 0), "the carrier lost the denied 100 as the control lost its 100 (...)" (0: the cleanse at 2.25 s comes before the payout's first tick at 3 s, and the plain one is removed before its first) and "in five ticks of the payout" (to be 5, but it was 0). "control: the plain damage over time is gone" passes, and the set-up and control lines pass. `Cataclysm.Ailments.ANecrosisEndedByACleanseStillDealsTheHealingItDenied` would pass under this break, its payout being laid after that cleanse's list was read; the prefix does not select it |
 
 Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no failure.
 Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, its prefix the one full test name
 given, which no other test name begins with. **Keep each broken half's log**: the predictions above are at the
 assertion, and the #918 window could confirm its own only at the test because the broken halves' logs were overwritten.
 
-### Wanting a ruling
+### Ruled, and nothing left open
 
-1. **J1, the room.** Confirm that the denied amount is held to the room under the healing ceiling not already denied,
-   or rule that every heal offered is owed in full after the two multipliers (the ruling's words read alone).
-2. **J3, a cleanse after the Necrosis has ended removes the payout.** Keep it (it is damage over time), or keep the
-   payout through a cleanse as converted damage is kept (the stamp `ConvertedDamageDataName`, which carries other
-   meanings and was not borrowed).
-3. **J5, the payout's kill raises no imp.** "Enemies killed by necrosis rise": is the healing a Necrosis denied
-   "necrosis" for that row? It would need the payout to carry something `RiseOnNecrosisKill` reads, other than the
-   Necrosis tag, which it must not grant.
-4. **The thrall healed to full when taken (group D).** A creature carrying the player's Necrosis, taken as a thrall, is
-   healed to full past the Necrosis, keeps the Necrosis and its total, and when the Necrosis ends the total is dealt to
-   the player's own thrall. Should the take end the Necrosis, or clear the total, or route the heal through `TopUp`?
-   Issue #1713 is the open question beside it.
-5. **A row that refreshes the applier's other damage over time** (`dot_application_refreshes_others`,
-   `RefreshOtherDamageOverTime`) finds effects by their instigator and ticks left, so it would find a running payout
-   and give it its whole 5 seconds again: more than was denied. Found, not changed. A three-line skip of an effect
-   granting no tag would exclude it, and no other running damage over time grants none today; it was not built because
-   it would ship untested.
-
-Also found, outside this change: `ApplyNothingIsForgottenFigures` is called again after a rung change
-(`NoteDeathForBloodForgedChampions`, `StepVolatileEvolution`) and writes the fed boss's health to its new maximum, a
-full refill mid-fight outside `TopUp`. It reaches only the Nothing Is Forgotten boss and only if that boss changes rung.
+The five questions the first draft put under "Wanting a ruling" were ruled the same day as R1 to R5 above, and the
+finding beside them as R6. The first draft built neither the cleanse exception nor the refresh skip; both were built
+after the rulings, with their tests and the proofs P6 and P7, and P4 was retraced for R2. Nothing in this entry is
+waiting on a ruling.
 
 ---
 
