@@ -1,0 +1,25 @@
+# Window w131, proof P3, the broken half: the last 19 lines of its engine log, verbatim. Issue #2679.
+#
+# The log stops after the test's events: no queue-empty line, no exit line, no crash line. The whole log is
+# w131_P3_run1_first.log in the dungeon session's scratchpad (403,783 bytes, 2,961 lines, 2026-11-01, head
+# 94b9ef912); its first 2,942 lines are the editor starting. Read by
+# tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py.
+[2026.11.01-23.14.30:001][598]LogAutomationCommandLine: Display: Found 1 automation tests based on 'Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne'
+[2026.11.01-23.14.30:001][598]LogAutomationCommandLine: Display: 	Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne
+[2026.11.01-23.14.30:002][598]LogAutomationController: Sending StopTests to C646DDDB44B54A57071892AC0E3BAD65
+[2026.11.01-23.14.30:005][598]LogAutomationController: Sending StartTestSession to C646DDDB44B54A57071892AC0E3BAD65
+[2026.11.01-23.14.30:005][598]LogAutomationController: Display: Clearing ../../../../../../Projects/Cataclysm/.claude/worktrees/s5/game/Saved/Automation/Logs/ and ../../../../../../Projects/Cataclysm/.claude/worktrees/s5/game/Saved/Automation/Tmp/
+[2026.11.01-23.14.30:005][598]AutomationTestingLog: -----Test Run 3----
+[2026.11.01-23.14.30:006][598]LogAutomationController: Sending RunTest ACharacterFileFromBeforeTheTierMigratesToTierOne to C646DDDB44B54A57071892AC0E3BAD65
+[2026.11.01-23.14.30:006][598]LogAutomationController: Display: Test Started. Name={ACharacterFileFromBeforeTheTierMigratesToTierOne} Path={Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne}
+[2026.11.01-23.14.30:007][599]LogAutomationWorker: Received StopTests from 9A7176C848FA1B659ED0A790D3A542BE
+[2026.11.01-23.14.30:007][599]LogAutomationWorker: Received StartTestSession from 9A7176C848FA1B659ED0A790D3A542BE
+[2026.11.01-23.14.30:007][599]LogAutomationWorker: Received RunTests ACharacterFileFromBeforeTheTierMigratesToTierOne from 9A7176C848FA1B659ED0A790D3A542BE
+[2026.11.01-23.14.30:300][600]LogUObjectHash: Compacting FUObjectHashTables data took   0.46ms
+[2026.11.01-23.14.30:301][600]LogCataclysm: Display: Test saves: 0 written and deleted, 0 left behind
+[2026.11.01-23.14.30:301][600]LogAutomationController: Error: Test Completed. Result={Fail} Name={ACharacterFileFromBeforeTheTierMigratesToTierOne} Path={Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne}
+[2026.11.01-23.14.30:301][600]LogAutomationController: BeginEvents: Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne
+[2026.11.01-23.14.30:301][600]LogAutomationController: TIER MIGRATED: the step 1 (), wrote the tier NO at -1; the record at version 4, tier 1; the rest kept
+[2026.11.01-23.14.30:301][600]LogAutomationController: Error: Expected 'the step writes tier 1 into the file' to be true. [C:\Projects\Cataclysm\.claude\worktrees\s5\game\Source\Cataclysm\Tests\CataclysmSaveRecordTests.cpp(821)]
+[2026.11.01-23.14.30:301][600]LogAutomationController: LogCataclysm: Test saves: 0 written and deleted, 0 left behind [log] 
+[2026.11.01-23.14.30:301][600]LogAutomationController: EndEvents: Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne

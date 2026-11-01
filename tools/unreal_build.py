@@ -138,6 +138,17 @@ TEST_RESULT = re.compile(r"Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]+)\}"
 #: `... Automation Test Queue Empty 141 tests performed.`
 TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests performed")
 
+#: The engine's list of the tests a session will run, printed when the session starts and before any of them does:
+#: `LogAutomationCommandLine: Display: Found 141 automation tests based on 'Cataclysm.Skills.'`, then one line per
+#: test, `LogAutomationCommandLine: Display: <tab>Cataclysm.Skills.AThing`. Read by `performed_from_completed_lines`.
+#: The engine's smoke tests at start-up are not in it. Issue #2679.
+TESTS_FOUND = re.compile(r"LogAutomationCommandLine: Display: Found (\d+) automation tests based on ")
+FOUND_PATH = re.compile(r"LogAutomationCommandLine: Display: \t(\S+)")
+
+#: A test's result with its full name: `... Test Completed. Result={Fail} Name={AThing} Path={Cataclysm.Skills.AThing}`.
+#: `TEST_RESULT` reads the short `Name`; the requested list names tests by their full path. Issue #2679.
+COMPLETED_PATH = re.compile(r"Test Completed\. Result=\{\w+\}\s+Name=\{[^}]+\}\s+Path=\{([^}]+)\}")
+
 #: The token a test writes when it could not check part of what it is named for.
 #:
 #: FIFTEEN TESTS TAKE A SHORTER PATH WHEN THE PARAGON ART IS ABSENT, checking
@@ -367,6 +378,15 @@ class TestOutcome:
     #: #1736.
     refused_registration: tuple[str, ...] = ()
 
+    #: Whether `performed` was counted from the run's "Test Completed" lines, because the log has no queue-empty line.
+    #:
+    #: THE ENGINE LOG SOMETIMES STOPS RIGHT AFTER THE LAST TEST'S EVENTS, before "Automation Test Queue Empty N tests
+    #: performed" (issue #2679, three runs on 2026-11-01, one of them window w131's proof P3). Every requested test
+    #: then has its result in the log and the run read as crashed all the same. `performed_from_completed_lines`
+    #: counts it from the engine's own list of the run's tests instead, and this says so, so the fallback is never
+    #: silent: `summary` names it.
+    counted_from_completed_lines: bool = False
+
     @property
     def crashed(self) -> bool:
         """The run never reported how many tests it performed.
@@ -399,7 +419,10 @@ class TestOutcome:
     @property
     def summary(self) -> str:
         performed = "unknown" if self.performed is None else self.performed
-        line = (f"{performed} tests performed, {len(self.succeeded)} succeeded, "
+        # SAID BESIDE THE COUNT IT QUALIFIES. Issue #2679.
+        counted = (" (counted from their Test Completed lines: the log has no queue-empty line, issue #2679)"
+                   if self.counted_from_completed_lines else "")
+        line = (f"{performed} tests performed{counted}, {len(self.succeeded)} succeeded, "
                 f"{len(self.failed)} failed")
         if self.failed:
             line += ": " + ", ".join(self.failed)
@@ -994,13 +1017,60 @@ def parse_test_log(text: str) -> TestOutcome:
     refused = sorted(set(REFUSED_REGISTRATION.findall(text)))
 
     performed_match = TESTS_PERFORMED.search(text)
+    performed = int(performed_match.group(1)) if performed_match else None
+    # THE QUEUE-EMPTY LINE FIRST, AND THE PER-TEST LINES ONLY WITHOUT IT. Issue #2679.
+    counted = False
+    if performed is None:
+        performed = performed_from_completed_lines(text)
+        counted = performed is not None
     return TestOutcome(
-        int(performed_match.group(1)) if performed_match else None,
+        performed,
         tuple(succeeded),
         tuple(failed),
         tuple(skipped),
         tuple(refused),
+        counted,
     )
+
+
+def performed_from_completed_lines(text: str) -> int | None:
+    """How many tests a run performed, counted from its "Test Completed" lines, or None when that cannot be shown.
+
+    FOR A LOG WITH NO QUEUE-EMPTY LINE. Issue #2679: the engine log sometimes stops right after the last test's events,
+    so "Automation Test Queue Empty N tests performed" is missing from a run whose every test finished.
+
+    THE REQUESTED TESTS ARE THE ENGINE'S OWN LIST FOR THIS RUN: the "Found N automation tests based on '<prefix>'"
+    line and the N full test paths printed after it (`TESTS_FOUND`, `FOUND_PATH`). Not the prefix, whose matching is
+    the engine's (case-insensitive, a string and not a group), and not the declared count, which is read from the
+    source and has never been exact. THE LAST SUCH BLOCK, in case a log ever holds more than one; only the "Test
+    Completed" lines after it are counted. Measured on 2026-11-01: window w131's suite log printed "Found 4504", 4504
+    paths, and 4504 "Test Completed" lines; its P3 broken half printed "Found 1", one path and one "Test Completed"
+    line, and stopped there.
+
+    N ONLY WHEN EVERY LISTED TEST HAS A "Test Completed" LINE. A listed test with none -- the log cut off during it,
+    or before it started -- leaves the run unfinished, and None keeps it reading as crashed. So does a block whose
+    path lines are fewer than its N, a block of 0, and a log with no block at all.
+    """
+    blocks = list(TESTS_FOUND.finditer(text))
+    if not blocks:
+        return None
+    last = blocks[-1]
+    expected = int(last.group(1))
+    if expected == 0:
+        return None
+    after = text[last.end():]
+    paths: list[str] = []
+    for line in after.splitlines()[1:]:
+        listed = FOUND_PATH.search(line)
+        if not listed:
+            break
+        paths.append(listed.group(1))
+    if len(paths) != expected:
+        return None
+    completed = set(COMPLETED_PATH.findall(after))
+    if not set(paths) <= completed:
+        return None
+    return expected
 
 
 def test_saves_line(text: str) -> str:
