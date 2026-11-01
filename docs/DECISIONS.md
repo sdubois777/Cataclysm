@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — The Reaper, the Corrupted Stalker and Portal Unleashing's creatures standing at a save come back after a load; a slain Stalker stays slain (#753, Group 3d-4b)
+
+**Affects:** `bCorruptedStalkerStanding` and `CorruptedStalkerLocation` on `FCataclysmSavedFloorRuleState`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); the gather's comment on the creatures a rule made
+(`CataclysmSaveGather.cpp`); two more tags of `RaisedByOf`, `RestoreCreatureRoles`, `FloorRuleStateNow`,
+`RestoreFloorRuleState`, `WalkStateNow`, `StepTheCorruptedStalker`, `RaiseTheCorruptedStalker` (a place to raise it at)
+and `CorruptedStalkerCarriesNow` (new, the one function the beat and the save read the Stalker's health and potions by)
+on `ACataclysmDungeonGameMode`; the fixture `game/Tests/SaveFixtures/Run_v1.json`; four new tests in
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`. Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753):
+this is the last of Group 3d's raised creatures.
+
+### SAID FIRST
+
+- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **ONE PART NOT RULED: A SAVE NOW READS THE STALKER'S HEALTH AND POTIONS AS THEY ARE**, not as the last beat kept them a
+  quarter of a second before. The walk record carried the beat's figure (Group 2), so a Stalker hit in the last beat
+  before a save came back with that hit undone. Found by the beat-first order: a beat, then the halving, then the save,
+  brought the Stalker back at full health. The beat and the save read the figures through one new function, and the
+  beat's own reading is unchanged.
+- **WHAT A LOAD DID, read in the code:** the Reaper, the Stalker and a portal's creatures carry no tag, so the save
+  skipped them. The Reaper's clock and its "come" mark went back to nought with the floor change, so a load removed the
+  Reaper and raised a new one ten seconds later at the entrance, at full health. The walk kept that the Stalker had
+  hunted, so it came again thirty seconds after the load at the entrance. The portals are rebuilt where the floor's seed
+  puts them, so a load removed what they had sent and they sent new creatures ten seconds later.
+- **"A SLAIN STALKER STAYS SLAIN" WAS NOT TESTED ACROSS A LOAD.** Group 2's round trip
+  (`AWalksCreatureStateComesBackFromALoad`) sets the mark false, so it reads the same with or without the save, and the
+  rule's own test (`Cataclysm.DungeonModifierEffects.ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon`) has no load. A
+  new test reads it.
+- **ONE PART CANNOT BE SEEN BY A TEST, so it has no proof:** the load sets the Stalker's "come this floor" mark, so the
+  beat does not raise a second one. While the restored Stalker stands, the beat stops before it reads that mark. Once it
+  is slain, the beat does not run for it at all.
+
+### Rulings, 2026-10-31
+
+- **Q2 of 3d-4: the Stalker is saved as standing and where,** raised at once there by the function that raises it in
+  play, with the build the floor's seed gives it and the health and potions the walk carries. Its mana and cooldowns
+  restart (D1). None of the owner's Stalker decisions of 2026-10-25 and 2026-10-26 changes.
+- **The Reaper is a record with a tag,** put back unable to be hurt, as the floor's Reaper, and come.
+- **A portal's creature is a record with a tag and its portal's index,** put back into that portal's list, paying
+  nothing, and off the floor's list.
+
+### What changes
+
+| Kind | Saved | Put back |
+|---|---|---|
+| The Reaper (`TheReaper`) | as a record | unable to be hurt; the floor's Reaper; come, so the beat raises no second |
+| The Corrupted Stalker | standing, and where | raised at once where it stood, its build from the floor's seed; come this floor |
+| Its health and potions | as they are at the save (the walk, Group 2) | as before, through the raise |
+| A portal's creature (`PortalUnleashing`, group the portal's index) | as a record | an Abomination, paying nothing, in its portal's list, off the floor's list |
+
+### Tests
+
+The first, second and fourth go through `ARaisedRoundTrip`: a beat, then the halving, then the save.
+
+- `Cataclysm.SaveLoad.TheReaperStillStandsAndCannotBeHurtAfterALoad`. Set-up: 11 s on the beat. The mark it reads is the
+  Reaper's rung, not its being unable to be hurt. After the load it also checks two things: a hit of 100 from the
+  player, with the Reaper's evasion and shield at nought and nothing answered back, leaves its health where it was; and
+  after 11 s more it is still the same Reaper. Prints "LOAD REAPER" and "LOAD REAPER HIT".
+- `Cataclysm.SaveLoad.TheCorruptedStalkerStandsWhereItStoodAfterALoad`. Set-up: 61 s on the beat, the first floor it
+  hunts. After the load it also checks that the Stalker stands within 1 cm of where it stood, and that its build matches
+  the one at the save: the entry, and each worn piece's base and every affix's row, tier and roll. Two controls: where
+  it stood is more than 500 cm from the entrance, and it wore pieces. Prints "LOAD STALKER", "LOAD STALKER PLACE" and
+  "LOAD STALKER BUILD".
+- `Cataclysm.SaveLoad.ASlainCorruptedStalkerStaysSlainAfterALoad`. Set-up: the Stalker raised, then slain. After the
+  load it is slain still, and after 31 s none stands. Prints "LOAD STALKER SLAIN".
+- `Cataclysm.SaveLoad.APortalsCreaturesStillStandAfterALoad`. Set-up: 11 s on the beat, so each portal sends one. After
+  the load it also checks that each portal's creatures are as at the save, and that none is on the floor's list. Prints
+  "LOAD PORTAL CREATURES" and "LOAD PORTALS".
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4448 / 0: window w119's 4444 on `development` (c968fed35), + 4 |
+| Python | of record, with JUnit, and ruff |
+| P1, the Reaper's flag not put back (`Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.`) | the Reaper test fails on "a hit on the Reaper does no damage" only; no other test reads a restored Reaper |
+| P2, the Reaper not linked (`TheReaper = &Creature; // A load's: the Reaper.`) | the Reaper test fails on "as many stand in the rule's list as were saved" (0) and "set-up: the Reaper and the player stand" only: its list reads the link; "and no second Reaper comes" is not reached |
+| P3, the Reaper not marked as come (`bTheReaperRaised = true; // A load's: the Reaper has come.`) | the Reaper test fails on "and no second Reaper comes" only: the clock raises a second 10 s in, which the link then names |
+| P4, the Stalker not raised (`RaiseTheCorruptedStalker(&State.CorruptedStalkerLocation); ...`) | the Stalker test fails on "as many stand ..." (0) and "set-up: the Stalker stands after the load" only; the slain test saves no standing Stalker |
+| P5, the Stalker raised at the entrance (`At ? *At // A load's: where the Stalker stood.` broken to `false ? *At ...`) | the Stalker test fails on "it stands where it stood" only; its control passes |
+| P6, the save reading the last beat's health (`Walk.CorruptedStalkerHealthShare = Share; // A save's: ...`) | the Stalker test fails on "each at the health it was saved at, not full" (0) only: the beat before the halving kept 1.0 |
+| P7, the slain mark not put back (`bCorruptedStalkerSlain = Walk.bCorruptedStalkerSlain;`) | the slain test fails on "the Stalker slain at the save stays slain" and "and no floor raises it again" only; Group 2's round trip sets the mark false and reads the same |
+| P8, a portal's creature not put back (`VoidPortals[Saved.RaisedGroup].Sent.Add(&Creature); ...`) | the portal test fails on "as many stand ..." (0) and "each portal's creatures as at the save" only; "none is on the floor's list" passes, none being read |
+| P9, a portal's creature paying (`Creature.bDiesUnpaid = true; // A load's: a portal's creature pays nothing.`) | the portal test fails on "each carrying the rule's mark" (0) only |
+| P10, a portal's creature left on the floor's list (`FloorEnemies.Remove(&Creature); // A load's: a portal's creature off ...`) | the portal test fails on "none is on the floor's list" only: the clear's count reads the floor's own, which a raised creature is not |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at
+the first attempt (a new worktree, so everything was compiled), after one wait for the continuous integration runner's
+compile.
+
+---
+
 ## 2026-10-31 — Plague Convergence keeps its stacks, its creatures and its start across a load; a standing Infection Bloom keeps its waves, spread and health; a trick's pair, an Unstable Portal's Warden and a raised creature's drop mark come back (#753, Group 3d-4a)
 
 **Affects:** `bDroppedByARaisedCreature` on `FCataclysmSavedGroundItem`, and `bPlagueConvergenceBegun`,
