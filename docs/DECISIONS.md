@@ -2,6 +2,181 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Every creature still takes the nearest thing it can attack, and a minion whose row states a threat of nought is never sought (#2553)
+
+**Affects:** `ACataclysmMinion::bDrawsNoAttention` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`), set in
+`ACataclysmMinion::Spawn` (`CataclysmMinion.cpp`); `UCataclysmTargetCandidates::NearestHostile` and a new helper,
+`MinionWhoseRowDrawsNoAttention` (`game/Source/Cataclysm/Character/CataclysmTargetCandidates.cpp`); a comment at the
+preview-only sphere route of `ACataclysmEnemyController::ChooseTarget`; the `ThreatPercent` comment
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); the Behind the Veil test's placement note
+(`CataclysmCommandTests.cpp`); two new Unreal tests (`CataclysmGadgetBehaviourTests.cpp`, group
+`Cataclysm.TargetChoice.`). Issue [#2553](https://github.com/sdubois777/Cataclysm/issues/2553).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** Written while another session's window held the machine. Every figure under
+  "Registered before the run" is a prediction traced by hand from the code, and the totals are placeholders. Nothing
+  here is measured.
+- **WHAT A PLAYER WOULD NOTICE: a monster no longer walks up to a trap and hits it.** A Skill Trap (and a Spike Trap)
+  is passed over by every creature's search for the nearest, so a monster with only a trap in sight chooses nothing,
+  and one with a trap 2 m off and the player 6 m off goes for the player. Area blows still hurt a trap. **Nothing else
+  moves:** a turret, a Ballista, a mote, an imp and every other minion are sought by distance alone, as before, and no
+  creature's choice among non-minions changes.
+- **THIS BUILDS A RULING THAT HAD NOT BEEN BUILT.** Trap ruling T9 (below) said a Skill Trap is "not targeted". Until
+  this change only its row said so.
+
+### The owner's decision, 2026-11-01
+
+> "Nearest; threat 0 untargeted".
+
+Relayed by the coordinating session, choosing option (c) of three put to the owner:
+
+- **(a)** change nothing and close #2553 as designed, leaving T9's "not targeted" unbuilt;
+- **(b)** weigh distance by threat, `distance / (ThreatPercent / 100)` with nought never chosen, under which a turret at 5
+  is chosen over the player only when it stands 20 times nearer;
+- **(c)** keep the nearest, and never seek a type whose row states nought. **Chosen.**
+
+**What (b) would have done, and why it was not chosen.** It is the reading the column was created with: issue
+[#336](https://github.com/sdubois777/Cataclysm/issues/336), which made the table, called `ThreatPercent` "How much
+attention a minion draws. A turret near zero, an imp at 100, a future bodyguard far above". That intent never reached
+`docs/`. Under (b) a turret is practically never attacked while the player is in reach, which hollows out every row
+written on a gadget being destroyed or hurt. It also breaks a merged test:
+`Cataclysm.GadgetTargets.AHoldersSpikeTrapAndImpAndAMonsterChooseAsTheyDidBefore` asserts "the monster chooses the
+turret beside it, the nearest thing it can attack", with the turret 3 m off and a creature of the players' side 6 m
+off: 3 / 0.05 = 60 against 6. No genre source read uses a passive weight of this kind (below).
+
+### T9's history
+
+- **2026-10-19, ruled by the coordinating session** on the enchantment session's trap design, among T1 to T19:
+  "T9 not targeted, area blows hurt it, health 40."
+- **2026-10-20, recorded and not built.** The entry "A row can convert the Heavy, Special or Ultimate slot into a
+  placeable trap…" lists, under its rulings table, T9 as "The type row (below): threat 0, health 40. Nothing in code."
+  Its player summary says "Enemies do not seek a trap (threat 0) but area blows hurt it". **Nothing read a threat of
+  nought in a target choice**, so a trap was sought whenever it was the nearest hostile. The one test of it,
+  `Cataclysm.Traps.TheSkillTrapRowIsAMachineTrapOfFortyHealthThatDealsDrawsAndWalksNothing`, asserts only the row
+  ("and draws no enemy (T9)").
+- **A RUN HAD ALREADY SEEN A TRAP SOUGHT.** The Behind the Veil test's own note (`CataclysmCommandTests.cpp`, in
+  `Cataclysm.Command.AMinionDrawsANearbyEnemyOffItsSummoner`) records that a trap placed nearer than the summoner was
+  "answered" by the search. That note now says it describes the game before this change.
+- **2026-10-27**, the Ballista's entry below ruled "ThreatPercent stays out" of that change and filed #2553.
+- **2026-11-01**, the owner's decision above.
+
+### What the design says (read out of `origin/development` at `59d1c1d3c`)
+
+- **`docs/Cataclysm_GDD_v2.md` names the stat and never says what reads it.** "Every minion type has its own stats."
+  The paragraph lists "reach and threat weight". No passage says how a creature chooses a target, and none mentions
+  aggro, a decoy or a minion being targeted; "aggro range" appears only for Horde dungeons.
+- **The Ritualist:** "It survives at range and behind what it summons rather than by being hard to hit." Nearest-first
+  already puts a summoned melee minion between a ranged Ritualist and what it is fighting.
+- **Behind the Veil, 2026-09-18** ("A minion draws a nearby enemy off its summoner, a boss ignores it…"): the minion
+  drawn is "The one drawing most attention", and a minion drawing nothing is "Not eligible at all", because "Sending
+  enemies at a turret would contradict the number the data states". This decision gives nought the same meaning in
+  the ordinary search.
+- **The taunt research, 2026-10-18** ("A worn row can give its wearer an aura that… taunts…"): "Nothing read supports a
+  threat-only version (option c)". Drawing an enemy onto something is a taunt, and taunts are built.
+- **The data assumes gadgets are attacked:** "When a gadget is destroyed…", "When a gadget is reduced below 25% HP…",
+  "Gadgets have 40%-70% increased HP", and the merged test name "…AHoldersTurretTakesNoDamageFromABlow…AndIsStillChosenAsATarget".
+  A turret at 5 is therefore still sought.
+
+### What the genre settles, and what it does not
+
+Read through WebFetch, which summarises a page, so each line is that summary's account and not a verbatim reading,
+except where a quotation is marked.
+
+| Game | What it does | Source | Read? |
+|---|---|---|---|
+| Path of Exile | Decoy Totem "Summons a totem that taunts nearby monsters to attack it"; lasts 8 s, 4 s cooldown | poedb.tw/us/Decoy_Totem | Yes |
+| Path of Exile | Mark_GGG, a developer: "While taunted, a monster's AI cannot consider any object as a potential target except the taunter." | pathofexile.com/forum/view-thread/1693556 | Yes |
+| Path of Exile | Meat Shield: "Minions from Supported Skills have 20% chance to Taunt on Hit" | poedb.tw/us/Meat_Shield_Support | Yes |
+| Path of Exile | A monster modifier, "Traps cannot be Damaged for +5 seconds after being Thrown", so a trap can normally be damaged; Skitterbots "cannot be targeted or damaged", a flag and not a weight | poedb.tw/us/Trap, first 100,000 characters | Yes |
+| Path of Exile | A player reports monsters "ignored the minions already on top of them and made a beeline to me"; no staff reply | pathofexile.com/forum/view-thread/3621704 | Yes |
+| Torchlight Infinite | Protection Field: "Minions summoned by the supported skill Taunt nearby enemies every 6 s." | tlidb.com/en/Taunt | Yes |
+| Diablo IV | The class overview says nothing on targeting: "The Golems are front-line disruption tanks." | maxroll.gg/d4/resources/necromancer-class-overview | Yes |
+| Diablo IV | The Bone Golem taunts nearby enemies | Upcomer, PC Gamer and Prima Games, known from search summaries only | **Not fetched** |
+| Last Epoch | The official support article on minion targeting modes, and forum reports that enemies go for the player; no developer statement on how a monster chooses | support.lastepoch.com and forum.lastepoch.com, search summaries only | **Not fetched** |
+| Path of Exile | Decoy Totem's wiki page | poewiki.net/wiki/Decoy_Totem | **Refused**: an access-denied page |
+
+**Settled by the research:** no game read gives a minion a passive weight that biases a monster's choice of target.
+Each expresses "attack this instead" as a taunt (Decoy Totem, Meat Shield, Protection Field, the Bone Golem), and an
+untargetable deployable as a flag (Skitterbots).
+
+**Not settled, and this game's own:** no developer documents how a monster chooses by default, so nearest-first is
+this game's, as it was. That nought means "never sought" rather than "lowest" follows Behind the Veil's ruling and
+T9, not a source.
+
+### The Spike Trap shares the nought, and T9 did not rule on it
+
+`game/Data/MinionTypes.csv` states 0 for `SpikeTrap` as well as `SkillTrap`, so a Spike Trap is now passed over too.
+The only row that makes one is `War_Spear_Ultimate`, Iron Fortress (`Minions=Ballista:2, SpikeTrap:3`), which is
+War content under the no-War mandate. **Whether play reaches a Spike Trap today is not verified.** T15 ("no trap
+behaviour on Iron Fortress's spike traps") is about triggering and is untouched.
+
+### What changed
+
+- **`ACataclysmMinion::bDrawsNoAttention`**, public beside `bTargetsTheFurthest` so a test can clear it,
+  `Spawn` setting it from `Type->ThreatPercent <= 0.0f`. A minion with no type has no row, keeps `false`, and is
+  sought as before. (`ThreatDrawnBy` reads such a minion as nought for Behind the Veil; the two questions differ, and
+  that is left as it is.)
+- **`NearestHostile` passes over such a minion**, through `MinionWhoseRowDrawsNoAttention`, after the capsule test and
+  before the hostility test, which reads ability systems and walks owner chains. The helper's name is long on purpose:
+  the module is a unity build, where an anonymous namespace is shared across files.
+- **Not changed:** `HostileDistancesWithinMetres` and `HostileActorsWithinMetres`, which count what is near rather than
+  choose a target; a gadget's `HostilesWithinReach`; `MinionDrawingEnemyFrom`.
+- **The preview-only sphere route in `ChooseTarget` is left unfiltered**, and a comment says so: no test's world reaches
+  it, so a filter there could not be shown to work.
+
+### Tests
+
+**New, two, in a group of their own, `Cataclysm.TargetChoice.`**, which no other test name began with, in
+`CataclysmGadgetBehaviourTests.cpp` with its helpers (`Enemy`, `Summoner`, `Place`, `ChoiceOf`, `HasABrain`). Each
+station is a monster with a minion of the holder's 2 m off along -X and a creature of the players' side 6 m off along
++X. Stations stand 100 m apart and the holder 100 m from the first, beyond a monster's 15 m of notice.
+
+- `Cataclysm.TargetChoice.AMonsterDoesNotSeekATrapWhoseRowDrawsNobody`. Three stations: a Spike Trap; a minion of the
+  Skill Trap's type; a Spike Trap with no bystander. **The Skill Trap is placed by `Place`, which is `Spawn` with the
+  type name, not by `PlaceSkillTrap`**, which needs a player and a converted slot; so it carries the SkillTrap row and
+  none of a pressed trap's arming, which the search does not ask. **Controls:** both rows state nought; with the flag
+  cleared by hand each monster takes the trap beside it (the game before). Then: Spawn set both flags; "the monster
+  takes the bystander 6 m off, not the Spike Trap 2 m off"; the same for the Skill Trap; "with only a trap in sight
+  the monster chooses nothing". Before this change: the trap, the trap, and the trap.
+- `Cataclysm.TargetChoice.EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone`. Four stations: a Bolt Turret
+  and a Ballista (5), a Mote (40) and an Imp (100). **Controls, the two #2553 asked for:** a monster with no minion
+  near it takes the nearer of two of the players' side at 3 and 10 m; the holder's imp between two monsters at 1.1 and
+  1.7 m takes the nearer. Then the four rows' figures; none of the four is marked; each monster takes the minion 2 m
+  off. It passes before this change too; it is here to fail if "nought" ever becomes "low".
+
+**Read and expected to pass unchanged:** `Cataclysm.Command.` (the Behind the Veil tests: the trap there stands 6.4 m
+off, further than the summoner, and the draw skips it as it did), `Cataclysm.GadgetTargets.` (the monster still takes
+the turret at 5), `Cataclysm.BallistaTargets.`, `Cataclysm.GadgetDrain.` and `Cataclysm.Traps.`. No existing test was
+found asserting that a creature chooses a Spike Trap or a Skill Trap.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Build | compiles `CataclysmMinion.cpp`, `CataclysmTargetCandidates.cpp`, `CataclysmEnemyController.cpp` (a comment), `CataclysmGadgetBehaviourTests.cpp` and `CataclysmCommandTests.cpp` (a comment), and what includes `CataclysmMinion.h` and `CataclysmDataRows.h` |
+| The group `Cataclysm.TargetChoice.` | `2 tests performed, 2 succeeded, 0 failed` |
+| Whole Unreal suite | PLACEHOLDER: the total last measured on `59d1c1d3c` + 2, 0 failed |
+| Python | PLACEHOLDER: the base's figure of record unchanged (no Python test added), with JUnit, and ruff clean |
+| P1, the search: `\|\| MinionWhoseRowDrawsNoAttention(Candidate)` in `CataclysmTargetCandidates.cpp` broken to `\|\| (false && MinionWhoseRowDrawsNoAttention(Candidate))`, prefix `Cataclysm.TargetChoice.` | `2 tests performed, 1 succeeded, 1 failed`: `AMonsterDoesNotSeekATrapWhoseRowDrawsNobody`, on three assertions only: "the monster takes the bystander 6 m off, not the Spike Trap 2 m off", "the monster takes the bystander 6 m off, not the Skill Trap 2 m off" (each takes the trap), and "with only a trap in sight the monster chooses nothing" (it takes the trap). The controls and the two "Spawn marks…" lines pass. `EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone` passes |
+| P2, the threshold: `Minion->bDrawsNoAttention = Type->ThreatPercent <= 0.0f;` in `CataclysmMinion.cpp` broken to `Minion->bDrawsNoAttention = Type->ThreatPercent < 50.0f;`, prefix `Cataclysm.TargetChoice.` | `2 tests performed, 1 succeeded, 1 failed`: `EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone`, on six assertions only: "a Bolt Turret draws attention", "so does a Ballista", "and a Mote", and "the monster takes the Bolt Turret 2 m off, not the bystander 6 m off", "the monster takes the Ballista 2 m off", "the monster takes the Mote 2 m off" (each takes the bystander). The Imp's two lines and both controls pass. `AMonsterDoesNotSeekATrapWhoseRowDrawsNobody` passes, nought being below 50 |
+
+Each break keeps every name it touches in use, so each compiles alone; each anchor occurs once in its file. Each
+runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, the prefix with its trailing dot, and
+**each broken half's log kept**, since the predictions are at the assertion. Each restored half must name no failure.
+Neither runs while a Python suite runs (issue #1630).
+
+### Not verified
+
+- **Nothing was compiled or run.** In particular, that `Place` yields a minion of the SkillTrap type depends on
+  `DT_MinionTypes.uasset` holding that row, which `Cataclysm.Traps.TheSkillTrapRowIs…` asserts and this session did not
+  run.
+- The engine's own headers were searched for a type named `FStation` under `Engine/Source/Runtime` only, not its
+  plugins.
+- Whether a player can field a Spike Trap in the Demonic slice.
+
+---
+
 ## 2026-11-01 — A character is deleted from the select screen after its name is typed, with exactly its own slots (#753, select-screen step 5)
 
 **Affects:** `FCataclysmSaveLoad::SlotsToDelete` and `DeleteCharacter`, and the run identifier on
