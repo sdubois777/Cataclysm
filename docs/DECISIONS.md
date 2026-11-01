@@ -77,6 +77,11 @@ listing of `game/Saved/SaveGames`, which after #2658 holds only what the run lef
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 43 actions, 40 files compiled`, at
 the first attempt.
 
+**Python of record on 029ff6338 failed one check**, `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py`
+(#1522): "1 failed, 7216 passed, 8 skipped". The new test's capture was flushed and read from the test's body, and the
+rule requires the capture's own reader to flush before it reads. **Changed:** the capture has a `Caught()` that flushes
+and returns the lines, and the test reads through it; no assertion changed.
+
 ---
 
 ## 2026-11-01 — An Unreal test run fails when its tests leave save slots behind, or log no line saying whether they did (#2673)

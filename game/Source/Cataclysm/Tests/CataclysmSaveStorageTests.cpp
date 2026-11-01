@@ -642,6 +642,15 @@ namespace CataclysmSaveStorageTest
 				Lines.Add(FString(Text));
 			}
 		}
+		/** The lines caught, after the log is flushed: a line from another thread is buffered until then. #1522. */
+		TArray<FString> Caught()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
 	};
 }
 
@@ -677,13 +686,9 @@ bool FCataclysmTestSavesLineTest::RunTest(const FString&)
 	FString Returned;
 	TArray<FString> Logged;
 	{
-		FTestSavesLines Caught;
+		FTestSavesLines Capture;
 		Returned = FCataclysmTestSaves::EndATest(UserIndex);
-		if (GLog)
-		{
-			GLog->Flush();
-		}
-		Logged = Caught.Lines;
+		Logged = Capture.Caught();
 	}
 	const bool bGone = !UGameplayStatics::DoesSaveGameExist(Made, UserIndex);
 	const bool bCalled = FCataclysmTestSaves::IsCalledAtEachTestsEnd();
