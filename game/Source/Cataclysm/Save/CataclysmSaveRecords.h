@@ -1123,6 +1123,16 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmCharacterPartition Partition;
 
+	/**
+	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
+	 * character select screen's second step. THE LAST WRITE OF THE CHARACTER RECORD, NEAR THE LAST PLAY BUT NOT EQUAL TO
+	 * IT: the record is written on an inventory change and on a death, not on every moment of play. The select screen
+	 * lists the newest first. Text and not a number of ticks, because JSON carries a number as a double, which cannot
+	 * hold every tick. Issue #753, select-screen step 2, ruled 2026-10-31.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString LastWrittenUtc;
+
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 Level = 1;
 

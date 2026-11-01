@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Save/CataclysmSavePartition.h"
 
 class ACataclysmPlayerCharacter;
 class UWorld;
@@ -63,6 +64,40 @@ struct CATACLYSM_API FCataclysmLoadReport
  * under way, a dungeon or floor the record does not hold) it is refused whole. THE WALK'S AND THE FLOOR'S RULE STATE
  * IS NOT SAVED, and comes back as a floor starting; #753's next step saves what carries across floors.
  */
+/**
+ * One saved character, as the character select screen lists it. Issue #753, select-screen step 2, ruled 2026-10-31.
+ *
+ * AN UNREADABLE SLOT IS LISTED, NOT HIDDEN (ruling 2): `bReadable` false, `Why` saying what reading it said, and only the
+ * slot and the identifier its name gives.
+ */
+struct CATACLYSM_API FCataclysmCharacterSummary
+{
+	FString SlotName;
+	FGuid CharacterId;
+	bool bReadable = false;
+	FString Why;
+
+	FString Name;
+	int32 Level = 0;
+	FCataclysmCharacterPartition Partition;
+
+	/** The first worn weapon's type, in the weapon slots' order, else the type chosen at creation, else empty. */
+	FString WeaponType;
+
+	/** Whether the record names a run, and whether that run's record could be read for its day and floor. */
+	bool bInARun = false;
+	bool bRunReadable = false;
+	int32 Day = 0;
+
+	/** The dungeon and floor the run was saved on; `Floor` 0 when it was saved outside a dungeon. */
+	FName Dungeon;
+	int32 Floor = 0;
+
+	/** When the record was last written; `bTimed` false for a record written before the time was saved. */
+	bool bTimed = false;
+	FDateTime LastWrittenUtc;
+};
+
 struct CATACLYSM_API FCataclysmSaveLoad
 {
 	/**
@@ -76,4 +111,16 @@ struct CATACLYSM_API FCataclysmSaveLoad
 
 	/** The outcome in words. */
 	static const TCHAR* Describe(ECataclysmLoadOutcome Outcome);
+
+	/**
+	 * Every saved character, newest first by its record's last write, then those with no time by name, then by slot.
+	 *
+	 * FOUND BY SCANNING THE `Character_` SLOTS the save system holds (ruling 1), not from the account records: a Solo
+	 * Self-Found character has no account record, and the account record's list is never written. A migration's backups
+	 * are left out.
+	 *
+	 * READS AND WRITES NOTHING BACK. A record older than this build is migrated in memory only, as `FromJson` does, so a
+	 * listing never rewrites or backs up a file; a load does that when the player picks one.
+	 */
+	static TArray<FCataclysmCharacterSummary> SavedCharacters(int32 UserIndex);
 };

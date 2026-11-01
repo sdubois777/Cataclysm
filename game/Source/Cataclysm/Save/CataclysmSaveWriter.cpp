@@ -305,6 +305,9 @@ bool UCataclysmSaveWriter::WriteTheCharacterRecord(ECataclysmSaveTrigger Trigger
 	// AND THE RUN IT IS IN, which is how a load finds the run's slot. Issue #753, the start-up step.
 	LastCharacter->CurrentRunId = RunId;
 
+	// AND WHEN, which orders the character select screen's list. Select-screen step 2.
+	LastCharacter->LastWrittenUtc = FDateTime::UtcNow().ToIso8601(); // A save's: when it was written.
+
 	if (!FCataclysmSaveGather::CharacterFrom(*Character, *LastCharacter))
 	{
 		return false;
