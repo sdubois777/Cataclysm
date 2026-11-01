@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmPlayerController.h"
@@ -691,87 +692,27 @@ void ACataclysmHUD::DrawPlayerVitals()
 					   /*bLabelReserved=*/true);
 	}
 
-	// AND WHAT IS HOLDING THE PLAYER, above the bars. Fear: a feared player is
-	// walked away with the keys refused, and needs telling why.
-	const FString Feared = UCataclysmCombatOverlay::FearedTextFor(Pawn);
-	if (!Feared.IsEmpty())
+	// AND EVERYTHING AFFECTING THE PLAYER, ABOVE THE BARS, IN ONE LIST. Issue #1591, ruled 2026-11-01 by the
+	// coordinating session. Until then this function drew fourteen texts one by one -- Feared, Maddened, the four
+	// tagged debuffs, Withering and Withered, Touch of Nothing and Negated, the held buff, the immunities, the kept
+	// stacks and what is owed -- and a bleed, a burn, a knockdown, a pin, a stagger, every other named debuff, every
+	// buff and Forced March's stacks were drawn nowhere. `UCataclysmPlayerEffects` builds the list, those fourteen
+	// texts included and each by its own function, so nothing is drawn twice.
+	//
+	// DEBUFFS FIRST IN RED, THEN BUFFS IN WHITE, at most `MostShown` lines and then "+N more". READ TOP DOWN, the
+	// last line sitting where the first of the old texts did, just above the bars: a judgement, so the list reads
+	// in its own order rather than upward. Polled each frame like everything else here.
+	const TArray<FCataclysmPlayerEffect> Shown =
+		UCataclysmPlayerEffects::ShownFrom(UCataclysmPlayerEffects::EntriesFor(Pawn));
+	const float LineStep = PlayerBarHeightPx + PlayerBarGapPx;
+	float LineTop = Top - LineStep * Shown.Num();
+	for (const FCataclysmPlayerEffect& Entry : Shown)
 	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(Feared, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-	}
-
-	// AND MADNESS, since Insanity Bursts can madden the player (2026-09-26): their
-	// own minions turn on them, and without a word it reads as a fault.
-	const FString Maddened = UCataclysmCombatOverlay::MaddenedTextFor(Pawn);
-	if (!Maddened.IsEmpty())
-	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(Maddened, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-	}
-
-	// AND THE TAGGED DEBUFFS, one line each, as Madness above. The first four because a worn row can put any of them
-	// on the player every 15 seconds, and until issue #2379 nothing named them; Withering and Withered since #1722.
-	for (const FString& Debuff :
-		 {UCataclysmCombatOverlay::CrippledTextFor(Pawn), UCataclysmCombatOverlay::WeakenedTextFor(Pawn),
-		  UCataclysmCombatOverlay::ShreddedTextFor(Pawn), UCataclysmCombatOverlay::StunnedTextFor(Pawn),
-		  // AND FAMINE'S WITHERING COUNT, THEN ITS SLOW. Issue #1722: the count shows so the slow can be seen coming.
-		  UCataclysmCombatOverlay::WitheringTextFor(Pawn), UCataclysmCombatOverlay::WitheredTextFor(Pawn),
-		  // AND VOID'S TOUCH OF NOTHING, THEN "Negated" WHEN A STACK REFUSED A BUFF. Issue #1722.
-		  UCataclysmCombatOverlay::TouchOfNothingTextFor(Pawn), UCataclysmCombatOverlay::NegatedTextFor(Pawn)})
-	{
-		if (!Debuff.IsEmpty())
-		{
-			Top -= PlayerBarHeightPx + PlayerBarGapPx;
-			DrawTextCentred(Debuff, FLinearColor::White,
-							PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-		}
-	}
-
-	// AND THE BUFF A WORN ROW DREW, WITH ITS SECONDS LEFT, such as "Commander 12s". Ruled 2026-10-12 by the
-	// coordinating session: the held buff is shown wherever the drawn debuff of the merged drawback is shown to
-	// the player, and Madness, the one of those five debuffs a screen names, is named just above. The owner's
-	// rule is that a system ships with a basic in-game display.
-	const FString HeldBuff = UCataclysmCombatOverlay::HeldBuffTextFor(Pawn);
-	if (!HeldBuff.IsEmpty())
-	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(HeldBuff, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-	}
-
-	// AND EVERY DAMAGE TYPE THE PLAYER IS IMMUNE TO FOR A TIME, WITH ITS SECONDS LEFT, such as "Immune War 4s".
-	// Ruled 2026-10-12 by the coordinating session: a text above the player's bars for each open type, in the form
-	// of the held buff's just above. One line: several types are joined in the one text.
-	const FString ImmuneTo = UCataclysmCombatOverlay::DamageTypeImmunityTextFor(Pawn);
-	if (!ImmuneTo.IsEmpty())
-	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(ImmuneTo, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-	}
-
-	// AND THE KEPT STACKS OF A WORN ROW, WITH THEIR CAP, such as "Temporal Flux 3/5". Ruled 2026-10-12 by the
-	// coordinating session, under the owner's rule that a system ships with a basic in-game display. Shown while
-	// the row is worn, at nought too. On a line of its own, as each text above is.
-	const FString KeptStacks = UCataclysmCombatOverlay::KeptStacksTextFor(Pawn);
-	if (!KeptStacks.IsEmpty())
-	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(KeptStacks, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
-	}
-
-	// AND THE DELAYED DAMAGE THE PLAYER STILL OWES, such as "Owed 132". Ruled 2026-10-12 by the coordinating
-	// session, for "25%-50% of damage taken is dealt over 4-8 seconds": the wearer must see what is still owed.
-	// Shown while the store holds anything. On a line of its own, as each text above is.
-	const FString Owed = UCataclysmCombatOverlay::OwedTextFor(Pawn);
-	if (!Owed.IsEmpty())
-	{
-		Top -= PlayerBarHeightPx + PlayerBarGapPx;
-		DrawTextCentred(Owed, FLinearColor::White,
-						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+		DrawTextCentred(UCataclysmPlayerEffects::TextFor(Entry),
+						UCataclysmCombatOverlay::ColourFromHex(Entry.bDebuff ? UCataclysmPlayerEffects::DebuffInkHex
+																				: UCataclysmPlayerEffects::BuffInkHex),
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, LineTop, 1.0f);
+		LineTop += LineStep;
 	}
 }
 

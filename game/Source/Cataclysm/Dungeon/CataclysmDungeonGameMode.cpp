@@ -22050,6 +22050,20 @@ ACataclysmDungeonGameMode* ACataclysmDungeonGameMode::InWorld(UWorld* World)
 	return nullptr;
 }
 
+void ACataclysmDungeonGameMode::NihilsEmbraceShownNow(float& OutResistanceLessPercent,
+												  float& OutResistanceMorePercent,
+												  float& OutRewardSecondsLeft) const
+{
+	OutResistanceLessPercent = ResistanceLessApplied;
+	OutResistanceMorePercent = ResistanceMoreApplied;
+	// THE REWARD'S SECONDS ONLY WHILE THE REWARD IS APPLIED, so a window the next beat has not yet closed reads as the
+	// stat line does.
+	const UWorld* World = GetWorld();
+	OutRewardSecondsLeft = ResistanceMoreApplied > 0.0f && World
+		? FMath::Max(0.0f, NihilsEmbraceRewardUntilSeconds - World->GetTimeSeconds())
+		: 0.0f;
+}
+
 bool ACataclysmDungeonGameMode::ContagiousTouchIsOn() const
 {
 	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::ContagiousTouchKey));
