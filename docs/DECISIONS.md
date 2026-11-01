@@ -82,7 +82,7 @@ RESTORED.** Both are committed with the start map, the readme row and the Python
 | Figure | Registered |
 |---|---|
 | The two new tests alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4462 / 0: window w124's 4460 on `development` (17c95a8d1), + 2; moved, if the Necrosis branch merges first, onto its measured total + 2 |
+| Whole Unreal suite | 4469 / 0: window necrosis-w1's 4467 on `development` (114a60f05, #2661 merged), + 2. MOVED ONTO IT, as `feat/select-screen-front-end-map-1`, from 17c95a8d1 (w124's 4460), whose figure this said before |
 | Python | of record, with JUnit, and ruff; the new file's four tests among them |
 | Q1, the controller naming another asset (`/Game/Interface/WBP_CharacterSelect.WBP_CharacterSelect_C` to `..._X.WBP_CharacterSelect_X_C`, in `CataclysmFrontEndGameMode.h`), prefix `Cataclysm.CharacterSelect.` | the asset test fails on "the select screen's asset loads" only, and stops there |
 | Q2, the front end's level named as the sandbox (`FrontEndMap = TEXT("/Game/Maps/L_FrontEnd")` to `L_Sandbox`, in `CataclysmGameMode.h`), prefix `Cataclysm.CharacterSelect.` | the start-map test fails on "the game's start map is the front end" and "its game mode is the front end's" only: `L_Sandbox` loads and names no game mode of its own. No other test under the prefix reads `FrontEndMap` |
