@@ -246,10 +246,10 @@ And in Python, `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py`
 
 | Figure | Registered |
 |---|---|
-| Narrowed discovery run (ruled first) | Not a registration. Prefixes: `Cataclysm.Ailments.`, `Cataclysm.DamageConversion.`, `Cataclysm.CombatEvents.`, `Cataclysm.Debuffs.`, `Cataclysm.NecrosisRise.`, `Cataclysm.Enchantments.`, `Cataclysm.RemainingDamage.`, `Cataclysm.ApplyStatus.`, `Cataclysm.DotOnAMovingTarget.`, `Cataclysm.Contagion.`, `Cataclysm.MeleeBleed.`, `Cataclysm.DebuffImmune.`, `Cataclysm.Cleanse.` |
-| The four new tests alone, the three changed for R9 and the one given a check for R10 | 1 / 1 each |
-| Whole Unreal suite | UNREGISTERED: the total is taken after the discovery run, as the last measured total on this branch's base plus the four tests it adds by name |
-| Python | three new tests; the total of record is taken on the branch's head, with JUnit, and ruff |
+| Discovery run (ruled first) | Not a registration: the whole suite, on `14d4e99a5`, recorded under Run |
+| The four new tests alone | 1 / 1 each: `Cataclysm.Ailments.ABleedDealsNothingToATargetStandingStill`, `Cataclysm.Ailments.ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement`, `Cataclysm.Ailments.ABleedTickingTwiceASecondStopsAfterFourSecondsOfMovementNotAfterFourTicks`, `Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal` |
+| Whole Unreal suite | 4454 / 0: window w123's 4450 on `development` (59e5dd893), + 4. Every test this branch changed passes in it, the three the discovery run found included |
+| Python | 7188 of record, with JUnit: 7180 passed, 8 skipped, failures 0, errors 0 (7185 on `development` + the three new tests), and ruff clean |
 | P1, the gate made "always moving": `if (!Carrier->IsMoving()` broken to `if (!(Carrier->IsMoving() \|\| !Carrier->IsMoving())`, prefix `Cataclysm.Ailments.ABleedDealsNothingToATargetStandingStill` | that one test, the only name the prefix selects, fails on three assertions only: "creature 0 lost only what its burn took (...)" (four bleed ticks more than the control), "and not one of its bleed's ticks was announced" (to be 0, but it was 4) and "and it used none of the four seconds of movement" (to be 0, but it was 4). The cap still stops the fifth tick. The set-up lines read the sampler, which the break does not touch, and pass; the burn's notices are equal; the bleed is gone at the end |
 | P2, the four seconds removed: `BleedMovingSecondsCap - KINDA_SMALL_NUMBER)` broken to `BleedMovingSecondsCap * 1000.0f)`, prefix `Cataclysm.Ailments.ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement` | that one test fails on six assertions only: "tick 5, ...", "tick 6, ...", "tick 7, ..." and "tick 8, after four seconds of movement, took nothing", "four of the bleed's ticks were announced, and no more" (to be 4, but it was 8) and "the count stands at the four seconds" (8.0). The eighth tick falls at the 8 s window's end and lands, as the tenth does in `Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration`; if it did not, five, with 7 and 7.0. Ticks 2 to 4 still equal the first; the bleed is still carried at 5.5 s and gone at 8.5 s |
 | P3, the exemption removed: `if (Hit.bIsBleed && bPeriodicTick && !bConvertedDamage)` broken to `... && (!bConvertedDamage \|\| Hit.bIsBleed))`, prefix `Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal` | that one test fails on two assertions only: "the still character took the whole 100 it converted, 0.00" (every tick gated) and "and the moving one the same, 80.00, ..." (four ticks, then the cap). Its set-up lines, the two movement readings and "the converted bleed has run out" pass |
@@ -257,6 +257,8 @@ And in Python, `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py`
 | P5, a spent bleed not ended: `Defender->RemoveActiveGameplayEffect(Spent);` broken to `(void)Spent;`, prefix `Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect` | that one test, the only name the prefix selects, fails on one assertion only: "and the spent bleed, which paid nothing and was not counted, is ended too" (to be false). "the burst reaches one effect" still reads 1 and "and deals its eighty at once" 900, the bleed paying nothing either way; "and the poison is gone" passes; and "so nothing ticks after it" still reads 900, since the bleed left running is on a target that never moves and its four seconds are spent |
 
 Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no failure.
+Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, its prefix the one full test name
+given, which no other test name begins with.
 
 ### Run
 
@@ -274,6 +276,12 @@ Declared: 4452 tests in the tree at 14d4e99a5; 4452 performed, gap 0; every decl
 ```
 
 Every test this branch changed or added passed. The three failures are the three above, fixed after it.
+
+**Moved to `fix/a-bleed-ticks-only-while-its-target-moves-2`**, rebased with no force push onto `development` at
+`59e5dd893` (#2657, which touches only save code, save tests and this log; nothing bleed reads). This entry was put on
+top of #2657's, kept whole. Compiled there with no lock: `Build: Succeeded - 42 actions, 39 files compiled`, at the
+first attempt. Python of record on `b7de1e8a9`: `7180 passed, 8 skipped in 222.48s`; JUnit tests 7188, failures 0,
+errors 0, skipped 8; ruff "All checks passed!".
 
 The run of record: not yet.
 
