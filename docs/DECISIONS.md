@@ -18,9 +18,9 @@ around `TagAndReplaceAnyExisting`, and the listener put on every Necrosis it lay
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session held the build machine while this was written, and the
-  writing session was told to run no suite, Python included. Every figure below is registered before its run. The
-  Unreal total is a placeholder. Ruff was run on the one Python file this adds: "All checks passed!".
+- **COMPILED AND PYTHON RUN; NO UNREAL TEST RUN YET.** Written while another session held the build machine, and
+  compiled and run in Python afterwards, when the coordinating session cleared it (under Run). Every Unreal figure
+  below is registered before its run.
 - **NO EXISTING TEST WAS CHANGED.** None heals a character carrying a Necrosis (searched, below), and a Necrosis that
   ends having denied nothing lays nothing, so no existing figure moves.
 - **SIX FOLLOW-UP RULINGS, MADE BY THE COORDINATING SESSION THE SAME DAY** on questions the first draft raised, are
@@ -294,9 +294,9 @@ tests) found both phrases in the row, the constant at 5.0 and the name in the co
 
 | Figure | Registered |
 |---|---|
-| The seven new tests alone | 1 / 1 each, by the seven full names above |
-| Whole Unreal suite | **PLACEHOLDER**: the last measured total on `development` at this branch's base (`f1f0920b6`) + 7, 0 failed. Not known to this session |
-| Python | **PLACEHOLDER**: the last measured JUnit total on `development` + 3 (the new file), failures 0, errors 0, and ruff clean |
+| The seven new tests alone | 1 / 1 each: `Cataclysm.Ailments.NecrosisDeniesHealingWhileItHolds`, `Cataclysm.Ailments.NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds`, `Cataclysm.Ailments.ANecrosisEndedByACleanseStillDealsTheHealingItDenied`, `Cataclysm.Ailments.ANecrosisReplacedByAStrongerOneKeepsTheHealingItDenied`, `Cataclysm.Ailments.ANecrosisOnACarrierThatDiedFirstDealsNothingMore`, `Cataclysm.Ailments.ACleanseWhileTheDeniedHealingIsDealtLeavesItRunning`, `Cataclysm.Ailments.ARefreshOfTheAppliersOtherDamageOverTimeDoesNotLengthenTheDeniedHealing`. No other test name begins with any of the seven |
+| Whole Unreal suite | 4467 / 0: window w124's 4460 on `development` (`17c95a8d1`, #2660 merged), + 7. Every existing test passes as before, none having been changed |
+| Python | 7191 of record, with JUnit: 7183 passed, 8 skipped, failures 0, errors 0 (7188 on `development` + the three new tests), and ruff clean |
 | P1, the carrier check broken: in `TopUp`, `const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();` broken to `const FGameplayTag Necrosis = UCataclysmDebuffs::BleedTag();`, prefix `Cataclysm.Ailments.NecrosisDeniesHealingWhileItHolds` | that one test, the only name the prefix selects, fails on two assertions only: "the carrier of a Necrosis is healed nothing" (to be 500, but it was 600: it carries no bleed, so it is healed) and "and the 100 it would have been healed is its denied total" (to be 100, but it was 0). Every set-up line reads the Necrosis tag through `UCataclysmDebuffs::NecrosisTag` in the test, which the break does not touch, and passes; the control, which carries neither, is healed 100 and passes; "and the control has denied nothing" reads 0 and passes |
 | P2, the conversion broken: in the listener, `Carrier->ApplyGameplayEffectSpecToSelf(Spec);` broken to `(void)Spec;`, prefix `Cataclysm.Ailments.NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds` | that one test fails on four assertions only: "three seconds in, the carrier has lost what the control lost (...)" (0 against the control's three ticks), "so the total was dealt over time and not at once (...)" (0 is not above 0), "the carrier lost the whole denied 100 as the control lost its 100 (...)" (0) and "in five ticks, one a second" (to be 5, but it was 0). "its denied total has been taken to be dealt" passes, the total being emptied before the broken line; "nothing is dealt at once" and "and a second later nothing more" read nought either way and pass; the control lines pass |
 | P3, the cleanse case broken: in the listener, `if (bReplacingARunningDamageOverTime \|\| !Removal.ActiveEffect` broken to `if (bReplacingARunningDamageOverTime \|\| Removal.bPrematureRemoval \|\| !Removal.ActiveEffect` (only an end by time pays, the shape the burn explosion has), prefix `Cataclysm.Ailments.ANecrosisEndedByACleanseStillDealsTheHealingItDenied` | that one test fails on three assertions only: "the cleansed Necrosis's denied total has been taken to be dealt" (to be 0, but it was 100: the listener returns before emptying it), "the carrier lost the denied 100 as the control lost its 100 (...)" (0) and "in five ticks" (to be 5, but it was 0). The cleanse still removes the Necrosis, so both set-up lines on it pass, and the control passes. `Cataclysm.Ailments.NecrosisDealsTheDeniedHealingOverTheFollowingFiveSeconds`, an end by time, would pass under this break; the prefix does not select it |
@@ -309,6 +309,22 @@ Each break keeps every name it touches in use, so each compiles alone. Each proo
 Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, its prefix the one full test name
 given, which no other test name begins with. **Keep each broken half's log**: the predictions above are at the
 assertion, and the #918 window could confirm its own only at the test because the broken halves' logs were overwritten.
+
+### Run
+
+**Compiled and run in Python before any window**, when the coordinating session cleared it, with no lock. On the first
+branch, `feat/necrosis-denies-healing` at `67431fea7` (base `f1f0920b6`): `python tools/unreal_build.py build` waited
+twice on the continuous integration runner's mutex and printed `Build: Succeeded - 42 actions, 39 files compiled`, at
+the first attempt; Python of record `7183 passed, 8 skipped in 241.65s`, JUnit tests 7191, failures 0, errors 0,
+skipped 8; ruff "All checks passed!".
+
+**Moved to `feat/necrosis-denies-healing-1`**, rebased with no force push onto `development` at `17c95a8d1` (#2660, the
+select screen's step 3a: the player controller, the arrival load, front-end classes and save tests; nothing in
+healing, debuffs or damage over time). This log conflicted at the top; `tools/resolve_decisions_log.py` refused (two
+hunks), so it was rebuilt by script as `development`'s log with this entry, byte for byte as committed, on top, and
+checked: `development`'s text unchanged around it, no conflict marker at a line start, no 0x08. This entry is first
+because its first commit (22:50 -0600) is later than the first commit writing #2660's entry (21:48 -0600). Compiled
+there at `97b193844`: `Build: Succeeded - 42 actions, 39 files compiled`.
 
 ### Ruled, and nothing left open
 
