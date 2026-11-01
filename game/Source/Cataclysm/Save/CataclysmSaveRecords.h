@@ -348,6 +348,13 @@ struct CATACLYSM_API FCataclysmSavedGroundItem
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FVector Location = FVector::ZeroVector;
 
+	/**
+	 * A creature a dungeon rule raised mid-floor dropped this, so Trick or Treat rolls nothing for it. Without it a load
+	 * gave such a drop a roll it never had. Issue #753, Group 3d-4a, ruled 2026-10-31 (Q3 b).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bDroppedByARaisedCreature = false;
+
 	/** Whether this drop is crafting materials rather than a piece of gear. */
 	bool IsMaterial() const { return !Material.IsNone() && MaterialQuantity > 0; }
 };
@@ -854,6 +861,27 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FVector> CarrionCarcasses;
+
+	/**
+	 * Plague Convergence: whether it has begun, which is progress, so its waves come again on their cadence after a load
+	 * rather than after the floor's wait; and the disease stacks, a cost built up. The seconds to the next wave are a
+	 * timer and restart (D1). Issue #753, Group 3d-4a, ruled 2026-10-31 (Q1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlagueConvergenceBegun = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PlagueConvergenceStacks = 0;
+
+	/**
+	 * A standing Infection Bloom's spread, the points its patches lie on, and the health it has left, or -1 when no
+	 * bloom stood. The rebuilt bloom stands at full health with one point. Issue #753, Group 3d-4a (Q3 a).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FVector> InfectionBloomPatchPoints;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float InfectionBloomHealthLeft = -1.0f;
 };
 
 /**

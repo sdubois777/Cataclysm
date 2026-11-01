@@ -6016,4 +6016,283 @@ bool FCataclysmSaveLoadFeedersTest::RunTest(const FString&)
 	});
 }
 
+namespace CataclysmSaveLoadTest
+{
+	/** Plague Convergence's creatures standing, read through the rule's own question. */
+	TArray<ACataclysmEnemyCharacter*> ConvergenceStanding(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Standing;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Mode.IsAPlagueConvergenceCreature(Enemy.Get()))
+			{
+				Standing.Add(Enemy.Get());
+			}
+		}
+		return Standing;
+	}
+}
+
+/**
+ * Plague Convergence after a load: its creatures standing stand again, the disease stacks the player carried are carried
+ * still (a cost built up), and, begun, its waves come on their cadence and not after the floor's wait again (Q1). Until
+ * this the creatures went, the stacks went to nought, and nothing came for 120 s. Issue #753, Group 3d-4a, ruled
+ * 2026-10-31. Prints "LOAD CONVERGENCE" and "LOAD CONVERGENCE STACKS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadConvergenceTest,
+	"Cataclysm.SaveLoad.APlagueConvergenceGoesOnAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadConvergenceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 StacksSaved = -1;
+		return ARaisedRoundTrip(*this, FName(Effects::PlagueConvergenceKey), TEXT("LOAD CONVERGENCE"),
+			[&StacksSaved](ACataclysmDungeonGameMode& Mode)
+			{
+				// THE CONVERGENCE BEGUN AND ITS FIRST WAVE COME, then two of its blows landed on the player, which stack.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				if (!Player)
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, *Player);
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::PlagueConvergenceBeginsAfterSeconds + 1.0f); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				const TArray<ACataclysmEnemyCharacter*> Come = ConvergenceStanding(Mode);
+				if (Come.IsEmpty())
+				{
+					return false;
+				}
+				if (UAbilitySystemComponent* Abilities = Player->GetAbilitySystemComponent())
+				{
+					Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+				}
+				UCataclysmSkillEffects::ApplyHit(Come[0], Player, 1.0f);
+				UCataclysmSkillEffects::ApplyHit(Come[0], Player, 1.0f);
+				StacksSaved = Mode.PlagueConvergenceDiseaseStacks();
+				// AND THE FIRST WAVE CAME WHOLE, so a fresh wave after the load is the same size.
+				return StacksSaved > 0 && Come.Num() == Effects::PlagueConvergenceCreaturesPerWave;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return ConvergenceStanding(Mode); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bDiesUnpaid; },
+			[this, &StacksSaved](ACataclysmDungeonGameMode& Mode, int32 StandingSaved)
+			{
+				const int32 Stacks = Mode.PlagueConvergenceDiseaseStacks();
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::PlagueConvergenceSecondsBetweenWaves + 1.0f); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				const int32 StandingAfterAWave = ConvergenceStanding(Mode).Num();
+				AddInfo(FString::Printf(TEXT("LOAD CONVERGENCE STACKS: %d/%d stacks after the load; %d standing at the save, "
+											 "%d after %.0f s"),
+										Stacks, StacksSaved, StandingSaved, StandingAfterAWave,
+										Effects::PlagueConvergenceSecondsBetweenWaves + 1.0f));
+				TestEqual(TEXT("the disease stacks are carried still"), Stacks, StacksSaved);
+				TestTrue(TEXT("and, begun, a wave comes on its cadence"), StandingAfterAWave > StandingSaved);
+			});
+	});
+}
+
+/**
+ * A standing Infection Bloom after a load: its waves standing stand again, not on the floor's list, and the bloom keeps its
+ * spread and the health it had left (Q3 a). Until this the waves went, and the bloom stood at full health with one patch.
+ * Issue #753, Group 3d-4a. Prints "LOAD BLOOM WAVES" and "LOAD BLOOM".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadBloomWavesTest,
+	"Cataclysm.SaveLoad.AnInfectionBloomsWavesAndSpreadComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadBloomWavesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 PatchesSaved = -1;
+		return ARaisedRoundTrip(*this, FName(Effects::InfectionBloomKey), TEXT("LOAD BLOOM WAVES"),
+			[&PatchesSaved](ACataclysmDungeonGameMode& Mode)
+			{
+				// A WAVE SENT AND THE SPREAD GROWN, then the bloom taken to half its health.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				ACataclysmEnemyCharacter* Bloom = Mode.InfectionBloomNow();
+				if (!Player || !Bloom)
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, *Player);
+				for (int32 Beat = 0; Beat < BeatsOver(Effects::InfectionBloomSecondsBetweenWaves + 1.0f); ++Beat)
+				{
+					BeatOnce(Mode);
+				}
+				ToHalfHealth({Bloom});
+				PatchesSaved = Mode.InfectionBloomPatchesNow().Num();
+				return PatchesSaved > 1;
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.InfectionBloomWaveCreaturesStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.bDiesUnpaid; },
+			[this, &PatchesSaved](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				int32 OnTheList = 0;
+				for (ACataclysmEnemyCharacter* Wave : Mode.InfectionBloomWaveCreaturesStanding())
+				{
+					OnTheList += Mode.FloorEnemies.Contains(Wave) ? 1 : 0;
+				}
+				const ACataclysmEnemyCharacter* Bloom = Mode.InfectionBloomNow();
+				const float Share = Bloom ? HealthShareOf(*Bloom) : -1.0f;
+				const int32 Patches = Mode.InfectionBloomPatchesNow().Num();
+				AddInfo(FString::Printf(TEXT("LOAD BLOOM: the bloom at %.2f of its health, %d/%d patches, %d wave creature(s) "
+											 "on the floor's list"),
+										Share, Patches, PatchesSaved, OnTheList));
+				TestEqual(TEXT("no wave is on the floor's list"), OnTheList, 0);
+				TestEqual(TEXT("the bloom keeps the health it had left"), Share, 0.5f, 0.01f);
+				TestEqual(TEXT("and its spread"), Patches, PatchesSaved);
+			});
+	});
+}
+
+/**
+ * A trick's pair standing at a save stands after the load, paying as it did. Until this a pickup, a quit and a reload kept
+ * the treat and escaped the trick. Issue #753, Group 3d-4a. Prints "LOAD TRICK OR TREAT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTrickOrTreatTest,
+	"Cataclysm.SaveLoad.ATricksPairStillStandsAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadTrickOrTreatTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.TrickOrTreatRoll"));
+	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
+	const bool bRan = WithTheSeedPutBack(*this, [this]()
+	{
+		FPinnedConsoleValue ATrick(TEXT("Cataclysm.TrickOrTreatRoll"), TEXT("10"));
+		return ARaisedRoundTrip(*this, FName(Effects::TrickOrTreatKey), TEXT("LOAD TRICK OR TREAT"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				// A DROP TAKEN BY HAND ON A TRICK, which raises the pair.
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				ACataclysmDroppedItem* Drop = Player ? AGearDropAt(*Mode.GetWorld(), Player->GetActorLocation()) : nullptr;
+				return Drop && UCataclysmDropPickup::TakeInto(Player->GetInventory(), Drop, /*bByHand=*/true);
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.TrickOrTreatPairStanding(); },
+			[](const ACataclysmEnemyCharacter& One) { return One.PaysForItsDeath(); });
+	});
+	TestEqual(TEXT("and the trick's roll is put back"), RollVariable ? RollVariable->GetString() : FString(), RollBefore);
+	return bRan;
+}
+
+/**
+ * An Unstable Portal's Warden standing at a save stands after the load, at its mini-boss rung, paying as it did. Until this
+ * a load removed it, its fight escaped and its reward lost. Issue #753, Group 3d-4a. Prints "LOAD PORTAL WARDEN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPortalWardenTest,
+	"Cataclysm.SaveLoad.AnUnstablePortalsWardenStillStandsAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadPortalWardenTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.UnstablePortalRoll"));
+	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
+	const bool bRan = WithTheSeedPutBack(*this, [this]()
+	{
+		FPinnedConsoleValue AWarden(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("90"));
+		return ARaisedRoundTrip(*this, FName(Effects::UnstablePortalKey), TEXT("LOAD PORTAL WARDEN"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				// THE STAIRS REACHED ON A ROLL THAT RAISES THE WARDEN, as the rule's own test reaches them.
+				ACataclysmDungeonStairs* Stairs = Mode.Stairs.Get();
+				return Stairs && Stairs->ArriveAt(Stairs->GetActorLocation());
+			},
+			[](const ACataclysmDungeonGameMode& Mode) { return Mode.UnstablePortalWardensStanding(); },
+			[](const ACataclysmEnemyCharacter& One)
+			{
+				return One.PaysForItsDeath() && One.RarityStep == UCataclysmDungeonModifierEffects::UnstablePortalMiniBossRung;
+			});
+	});
+	TestEqual(TEXT("and the portal's roll is put back"), RollVariable ? RollVariable->GetString() : FString(), RollBefore);
+	return bRan;
+}
+
+/**
+ * A drop a raised creature left keeps that mark across a load, so Trick or Treat rolls nothing for it after the load
+ * either, and an ordinary drop stays unmarked (Q3 b). Until this a load cleared the mark. Issue #753, Group 3d-4a. Prints
+ * "LOAD RAISED DROP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRaisedDropTest,
+	"Cataclysm.SaveLoad.ARaisedCreaturesDropKeepsItsMarkAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRaisedDropTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		FVector MarkedAt = FVector::ZeroVector;
+		FVector PlainAt = FVector::ZeroVector;
+		return ARoundTripOfRows(*this, {},
+			[this, &MarkedAt, &PlainAt](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+										FPinnedDungeonSeed&)
+			{
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				MarkedAt = Player.GetActorLocation() + FVector(200.0f, 0.0f, 0.0f);
+				PlainAt = Player.GetActorLocation() + FVector(-200.0f, 0.0f, 0.0f);
+				ACataclysmDroppedItem* Marked = AGearDropAt(World, MarkedAt);
+				ACataclysmDroppedItem* Plain = AGearDropAt(World, PlainAt);
+				if (!TestNotNull(TEXT("set-up: a marked drop"), Marked) || !TestNotNull(TEXT("set-up: a plain drop"), Plain))
+				{
+					return false;
+				}
+				Marked->bDroppedByARaisedCreature = true;
+				MarkedAt = Marked->GetActorLocation();
+				PlainAt = Plain->GetActorLocation();
+				return ThePlayerIsAlive(*this, Player);
+			},
+			[this, &MarkedAt, &PlainAt](ACataclysmDungeonGameMode&, ACataclysmPlayerCharacter&, UWorld& World,
+										const FCataclysmLoadReport& Report)
+			{
+				const ACataclysmDroppedItem* Marked = nullptr;
+				const ACataclysmDroppedItem* Plain = nullptr;
+				for (TActorIterator<ACataclysmDroppedItem> It(&World); It; ++It)
+				{
+					if (FVector::Dist2D(It->GetActorLocation(), MarkedAt) < 1.0f)
+					{
+						Marked = *It;
+					}
+					if (FVector::Dist2D(It->GetActorLocation(), PlainAt) < 1.0f)
+					{
+						Plain = *It;
+					}
+				}
+				AddInfo(FString::Printf(TEXT("LOAD RAISED DROP: %s (%s); the marked drop %s, the plain drop %s"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										!Marked ? TEXT("MISSING") : Marked->bDroppedByARaisedCreature ? TEXT("marked")
+																										: TEXT("UNMARKED"),
+										!Plain ? TEXT("MISSING") : Plain->bDroppedByARaisedCreature ? TEXT("MARKED")
+																									 : TEXT("unmarked")));
+				if (!TestNotNull(TEXT("set-up: the marked drop came back"), Marked)
+					|| !TestNotNull(TEXT("set-up: the plain drop came back"), Plain))
+				{
+					return;
+				}
+				TestTrue(TEXT("the raised creature's drop keeps its mark"), Marked->bDroppedByARaisedCreature);
+				TestFalse(TEXT("and the plain drop is not marked"), Plain->bDroppedByARaisedCreature);
+			});
+	});
+}
+
 #endif // WITH_AUTOMATION_TESTS

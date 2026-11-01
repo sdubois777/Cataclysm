@@ -252,7 +252,8 @@
 					"X": 1100,
 					"Y": -500,
 					"Z": 96
-				}
+				},
+				"bDroppedByARaisedCreature": true
 			}
 		],
 		"UsedObjects": [
@@ -384,7 +385,17 @@
 					"Y": -140.25,
 					"Z": 96
 				}
-			]
+			],
+			"bPlagueConvergenceBegun": true,
+			"PlagueConvergenceStacks": 3,
+			"InfectionBloomPatchPoints": [
+				{
+					"X": 400.5,
+					"Y": 260.25,
+					"Z": 96
+				}
+			],
+			"InfectionBloomHealthLeft": 37.5
 		},
 		"Characters": [
 			{

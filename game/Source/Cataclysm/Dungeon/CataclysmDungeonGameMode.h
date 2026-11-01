@@ -2828,6 +2828,16 @@ public:
 	static constexpr const TCHAR* RaisedWarzoneAlly = TEXT("WarzoneAlly");
 	static constexpr const TCHAR* RaisedVoidling = TEXT("Voidling");
 	static constexpr const TCHAR* RaisedCarrionFeeder = TEXT("CarrionFeeder");
+	static constexpr const TCHAR* RaisedPlagueConvergence = TEXT("PlagueConvergence");
+	static constexpr const TCHAR* RaisedBloomWave = TEXT("BloomWave");
+	static constexpr const TCHAR* RaisedTrickOrTreat = TEXT("TrickOrTreat");
+	static constexpr const TCHAR* RaisedUnstablePortalWarden = TEXT("UnstablePortalWarden");
+
+	/** Trick or Treat, for tests: the pair a trick raised that still stands. Issue #753, Group 3d-4a. */
+	TArray<ACataclysmEnemyCharacter*> TrickOrTreatPairStanding() const;
+
+	/** Unstable Portal, for tests: the Wardens its rolls raised that still stand. Issue #753, Group 3d-4a. */
+	TArray<ACataclysmEnemyCharacter*> UnstablePortalWardensStanding() const;
 
 	/** Pandora's Box, for tests: how many waves the first box under way has let out, or 0 when none is. */
 	int32 PandorasBoxWavesCameNow() const { return PandorasBoxWaves.IsEmpty() ? 0 : PandorasBoxWaves[0].Came; }
@@ -5363,6 +5373,12 @@ private:
 	 */
 	int32 UnstablePortalRolls = 0;
 	int32 UnstablePortalLast = -1;
+
+	/** Unstable Portal: the Wardens its rolls raised, so a save knows them. Issue #753, Group 3d-4a. */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> UnstablePortalWardens;
+
+	/** Trick or Treat: the creatures its tricks raised, so a save knows them. Issue #753, Group 3d-4a. */
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> TrickOrTreatPair;
 
 	/**
 	 * The creatures a rule raised mid-floor in answer to the player -- the Unstable Portal's

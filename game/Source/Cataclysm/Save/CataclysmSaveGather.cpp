@@ -138,6 +138,7 @@ FCataclysmSavedGroundItem FCataclysmSaveGather::GroundItemFrom(
 	Saved.Material = Drop.Material;
 	Saved.MaterialQuantity = Drop.MaterialQuantity;
 	Saved.Location = Drop.GetActorLocation();
+	Saved.bDroppedByARaisedCreature = Drop.bDroppedByARaisedCreature;
 
 	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE NOT COPIED. All four are
 	// worked out from the two fields above plus the game's data tables, so a
