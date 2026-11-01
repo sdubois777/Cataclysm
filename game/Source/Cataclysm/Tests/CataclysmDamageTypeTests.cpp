@@ -785,6 +785,10 @@ CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
 			ShieldBeforeBurn - Defender.Vitals->GetEnergyShield(), 1000.0f, 1.0f);
 
 		// A REAL BLEED, ONE TICK: straight past the shield to health.
+		//
+		// ON A DEFENDER THAT IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled
+		// 2026-10-31). A plain actor, which no movement sample reads, and no clock runs, so one note holds.
+		Defender.AbilitySystem->NoteMovedMetres(1.0f);
 		const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
 		const float ShieldBeforeBleed = Defender.Vitals->GetEnergyShield();
 		TestTrue(TEXT("a bleed is applied"),

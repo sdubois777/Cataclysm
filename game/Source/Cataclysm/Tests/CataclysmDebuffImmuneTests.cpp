@@ -357,6 +357,14 @@ CATACLYSM_DEBUFF_IMMUNE_TEST(FCataclysmDebuffImmuneDamageLostTest,
 		return false;
 	}
 
+	// EVERY ONE THAT COULD BLEED IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled
+	// 2026-10-31). The control's target, so its bleed's ticks land; and the two the refused bleeds were aimed at, so
+	// that the refusal, and not a still target, is the only reason they lose nothing. Plain actors, which no movement
+	// sample reads, so one note each holds; the three ticks in 3.5 s are inside the four seconds.
+	PlainsTarget.AbilitySystem->NoteMovedMetres(1.0f);
+	HoldersTarget.AbilitySystem->NoteMovedMetres(1.0f);
+	Holder.AbilitySystem->NoteMovedMetres(1.0f);
+
 	const float PlainsTargetBefore = PlainsTarget.Health();
 	const float HoldersTargetBefore = HoldersTarget.Health();
 	const float HolderBefore = Holder.Health();

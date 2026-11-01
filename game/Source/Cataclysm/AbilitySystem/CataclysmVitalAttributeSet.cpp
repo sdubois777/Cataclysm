@@ -479,6 +479,51 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Data.EffectSpec.GetAllGrantedTags(Granted);
 				Hit.bIsBleed = Granted.HasTag(UCataclysmDebuffs::BleedTag());
 
+				// A BLEED TICKS ONLY WHILE ITS TARGET MOVES, AND STOPS AFTER 4 SECONDS OF MOVEMENT. Issue #918, ruled
+				// 2026-10-31. "Moving" is the movement sampler's answer, the one every movement condition reads, so a
+				// knockback or a pull counts. A tick on a carrier last seen standing still deals nothing and uses none
+				// of the four seconds; the bleed's own window runs on either way, so a carrier that stands still for
+				// all of it takes nothing. Seconds are moving ticks times the period, so a faster tick rate still
+				// fits more ticks into the four seconds.
+				//
+				// NOT CONVERTED DAMAGE. Ruled 2026-10-31. The bleed the Masochist's damage conversion lays on its own
+				// character (`UCataclysmDamageConversion`, The Breaking Point) is damage already taken and stored, and
+				// the conversion defers it rather than cancelling it: the design's health-debt paragraph says owed
+				// damage "is then taken as a drain rather than in one hit". So it ticks whole whether its carrier moves
+				// or not, and uses none of the four seconds. Read off the stamp `UCataclysmDebuffs::Cleanse` reads to
+				// keep that same bleed, `UCataclysmSkillEffects::ConvertedDamageDataName` (ruled 2026-10-06), and no
+				// other mark. Issue #2275 holds what that one shared bleed slot already gets wrong.
+				//
+				// AND ONLY A TICK: AN EXECUTION WITH A PERIOD. Ruled by the coordinating session, 2026-10-31: a burst is a
+				// payout of what the bleed has left, not a tick. `UCataclysmSkillEffects::DealRemainingDamageOverTime`
+				// deals it as one instant blow carrying the bleed's own tags, so it would meet this gate too; with "ends
+				// each" it takes the bleed off first, and a still target would lose the bleed and the burst both.
+				// So a burst deals what `RemainingDamageOverTime` says, which holds a bleed to its four seconds.
+				const bool bConvertedDamage = Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				const bool bPeriodicTick = Data.EffectSpec.GetPeriod() > 0.0f;
+				if (Hit.bIsBleed && bPeriodicTick && !bConvertedDamage)
+				{
+					if (UCataclysmAbilitySystemComponent* Carrier =
+							Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+					{
+						if (!Carrier->IsMoving()
+							|| Carrier->BleedMovingSeconds
+								>= UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER)
+						{
+							// NO TICK AT ALL, NOT A TICK OF NOUGHT. Ruled 2026-10-31: a gated tick raises no damage
+							// or hit event, counts toward no counter, leeches and heals nothing, lays no rider and
+							// shows no number. So it returns here, after `SetDamage(0.0f)` above has cleared the
+							// incoming figure, rather than carrying a zero through everything below.
+							return;
+						}
+						else
+						{
+							Carrier->BleedMovingSeconds += Data.EffectSpec.GetPeriod();
+						}
+					}
+				}
+
 				// AND WHICH AILMENT IT IS, for a defender's row that names one.
 				// Ruled 2026-10-06. Every granted tag under the damage over time
 				// parent; a tick with no ailment grants none and carries none.

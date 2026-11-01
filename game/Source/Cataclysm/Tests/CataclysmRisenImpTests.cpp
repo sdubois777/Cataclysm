@@ -730,6 +730,13 @@ namespace CataclysmNecrosisRiseTest
 		Victim->SetHealth(10.0f);
 		UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(Victim));
+		// THE VICTIM IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled 2026-10-31), and
+		// the Bleed caller below needs its tick to land. Nothing samples the victim before the tick, which runs at once.
+		// The Necrosis callers ignore it.
+		if (Its)
+		{
+			Its->NoteMovedMetres(1.0f);
+		}
 		const FGameplayTag Tag = Ailment(AilmentName);
 		if (!Test.TestTrue(TEXT("set-up: the ailment is laid"),
 				Its && Tag.IsValid() && UCataclysmSkillEffects::ApplyDamageOverTime(

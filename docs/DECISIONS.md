@@ -2,6 +2,316 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-31 — A bleed ticks only while its target moves and stops after four seconds of movement; the Masochist's converted damage is exempt (#918)
+
+**Affects:** the gate in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`); `UCataclysmDebuffs::BleedMovingSecondsCap`
+(`CataclysmDebuffs.h`, 4.0); `UCataclysmAbilitySystemComponent::BleedMovingSeconds` (`CataclysmAbilitySystemComponent.h`);
+the count's restart in `UCataclysmSkillEffects::ApplyDamageOverTime` and `UCataclysmSkillEffects::RefreshOtherDamageOverTime`,
+and a bleed's remaining ticks held to the count in `UCataclysmSkillEffects::RemainingDamageOverTime`, which gains a
+`bHeldToABleedsMovement` parameter, and a spent bleed ended unpaid by `UCataclysmSkillEffects::DealRemainingDamageOverTime`
+(`CataclysmSkillEffects.cpp` and `.h`); the comments on
+`FCataclysmHitDelivery::bIsConvertedDamage` and `UCataclysmSkillEffects::ConvertedDamageDataName`; twelve existing Unreal
+tests, in `CataclysmCombatEventsTests.cpp`, `CataclysmDebuffTests.cpp`, `CataclysmRisenImpTests.cpp`,
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmRemainingDamageTests.cpp`, `CataclysmApplyStatusTests.cpp`,
+`CataclysmDamageTypeTests.cpp`, `CataclysmDebuffImmuneTests.cpp` and `CataclysmEnemyModifierTests.cpp`; four new ones
+(`game/Source/Cataclysm/Tests/CataclysmBleedMovementTests.cpp`, new, and `CataclysmDamageConversionTests.cpp`); a new
+Python pin, `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py`; the ailment section of
+`docs/Cataclysm_GDD_v2.md`. Issue [#918](https://github.com/sdubois777/Cataclysm/issues/918).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session held the build machine while this was written. Every figure
+  below is registered before its run. The Unreal total is not registered: a narrowed discovery run comes first, as
+  ruled, and its total is not a registration.
+- **THREE QUESTIONS THE WRITING SESSION RAISED, RULED BY THE COORDINATING SESSION THE SAME DAY.** They are under
+  Rulings below as R7, R8 and R9. The first draft of this entry recorded them as judgements, and the third the other
+  way round: `RemainingDamageOverTime` left uncapped and the three uncertain tests unchanged. Both are corrected.
+- **ONE KNOWN FAULT MEETS THE EXEMPTION, issue [#2275](https://github.com/sdubois777/Cataclysm/issues/2275).** A
+  character carries one bleed. An enemy's bleed weaker than a running converted bleed only lengthens the marked one, so
+  its added time ticks exempt; a converted bleed weaker than a running enemy bleed only refreshes the enemy's, which
+  stays gated, and the converted damage is lost as #2275 already records. Nothing here changes that.
+
+### Rulings, 2026-10-31 (the coordinating session)
+
+- **Seconds, not ticks.** A moving tick adds the effect's period to the count, so a bleed ticking twice a second fits
+  eight ticks into the four seconds and the damage over time frequency stat still works.
+- **The 5 s window runs whether or not the target moves.** A target that stands still for all of it takes nothing.
+- **"Moving" is the existing sampler**, `UCataclysmAbilitySystemComponent::IsMoving()`: the last 0.25 s sample by
+  `UCataclysmMovement::SampleStep` saw the character at least `MovedMetresThreshold` (0.05 m) from where the sample
+  before it did. **A knockback or a pull counts as movement**, because the sampler sees the distance and cannot tell
+  who moved the character. An instant relocation (`NoteRelocatedInstantly`: a blink, a teleport) does not, since issue
+  #2388 keeps it out of the distance walked.
+- **After four seconds of movement the ticks stop, and the effect and its tag stay until the window ends.** For the
+  designed 5 s bleed that is at most one period more; a bleed a duration stat has lengthened stays for its extra time
+  too, ticking nothing.
+- **A gated tick is no tick**, an early return in the attribute set, not a tick of nought.
+- **The Masochist's converted damage is exempt** (below).
+- **R7: a refresh restarts the four seconds.** A bleed that only refreshes the running one restarts its count, as one
+  that replaces it does, and so does a row that gives the applier's bleed its whole window again
+  (`RefreshOtherDamageOverTime`). The reason: under the one-slot rule (#2275) a refresh stands for a new application,
+  and in the genre (Path of Exile) each new bleed carries its own full duration. Otherwise a bleed refreshed by every
+  blow of a fast attacker would tick for four seconds of movement and then read as bleeding while dealing nothing.
+  Until this change the count restarted only when a new effect was made.
+- **R8: the gate applies to periodic ticks only.** `DealRemainingDamageOverTime` deals what a bleed has left as one
+  instant blow carrying the bleed's own tags, so the gate met it too, and with "ends each" a still target lost the
+  bleed and the burst both. A burst is a payout of what the bleed has left, not a tick.
+- **R9: `RemainingDamageOverTime` must not overstate a bleed.** A bleed stops after four seconds of movement, so it can
+  never deal more than four seconds of ticks. Its ticks left are the timer's, held to what the budget left still lets
+  land: `(cap - BleedMovingSeconds) / period`. ROUNDED AS THE GATE COUNTS, which is how "rounded as the tick count is"
+  was read: up, less the gate's tolerance, so it is exactly the ticks the gate will let through. At a period dividing
+  four the two readings agree; at 0.3 s the gate lets fourteen through (3.9 s of count is short of 4) and a floor
+  would say thirteen, which would understate. **Not** whether the carrier is
+  moving now, since its future movement is unknown. Converted damage is exempt, as everywhere. So the burst, which
+  reads this figure, pays at most what the bleed could still deal, and a spent bleed has nothing to pay.
+  **`RefreshOtherDamageOverTime` asks with `bHeldToABleedsMovement` false**: it asks only whether an effect is a damage
+  over time with ticks left, and under R7 its refresh gives a spent bleed its four seconds back, so it must still find
+  one.
+- **R10: under "ends each", a spent bleed is still ENDED.** It pays nought, and only the payment is skipped. The row
+  says it ends each damage over time; a spent bleed left running would keep its tag, and with it the slow rider and the
+  bleed-scoped rows the row was meant to end. `DealRemainingDamageOverTime` finds one by asking again with
+  `bHeldToABleedsMovement` false: ticks left on its timer and none held to its movement is exactly a spent bleed. It is
+  ended before the bursts are dealt, and NOT COUNTED in what the function returns, which stays the bursts paid, so a
+  caller's "the burst reaches one effect" reads what it did. (The first draft of R9 skipped it and left it running;
+  corrected the same day.)
+
+### What a gated tick no longer does
+
+Read in `PostGameplayEffectExecute` after the gate, which sits inside the damage branch straight after the tick's
+granted tags are gathered. Everything after it in that branch is skipped, and nothing follows the branch: the health,
+mana and energy shield branches are other attributes. Before the gate only the figure is worked out and
+`SetDamage(0.0f)` clears it, so a gated tick leaves the damage attribute at nought.
+
+A gated tick: deals nothing to the energy shield or health; raises no hit notice (`UCataclysmCombatEvents`) and so no
+worn row's blow-taken or damage-taken event; leeches nothing for the applier; restarts no energy shield refill wait;
+fills no Fervour; spreads no debuff by Contagious; records no first blow through; asks no `dot_damage` judgement
+(#2235); kills nothing and leaves no overkill; shows no number.
+
+**NOTHING HAD TO MOVE ABOVE THE RETURN.** The record the brief asked about, the applied ailment's remaining damage, is
+not written per tick: `RemainingDamageOverTime` reads the effect's own period and duration timers, which the engine
+runs whether or not the attribute set returns early, and the `FRunningAilment` built in `ApplyDamageOverTime` is built
+once, when the bleed is laid. No other hook runs on a tick: nothing in the module binds
+`OnPeriodicGameplayEffectExecuteDelegate` or overrides `PreGameplayEffectExecute`.
+
+### Who still sees a bleed whose ticks have stopped
+
+The tag stays until the window ends, so everything that asks whether a character is bleeding still says yes:
+
+- **the "Bleeding enemies move 5%-10% slower" rider** (`Positive_Bleeding_enemies_move_5_10_slower`,
+  `ailment_movement_speed`), handed over by `ReceiveAilmentRiders` when the bleed was laid;
+- **the bleed-scoped rows**: "Bleeding enemies take 20%-40% increased damage" (`ailment_damage_taken`), the bleed
+  spreading from a dying enemy (`ailment_spread_on_death`, whose copy arrives as a new bleed with the time left and so
+  a fresh four seconds on its new carrier), and the `while_bleeding` condition (`State.bIsBleeding`, Thirst for Pain);
+- **every count of debuffs carried** (`UCataclysmDebuffs::CountOn`, Flagellant, Stigmatic, Doctrine Made Flesh and the
+  rest), and a shared-debuff bonus (`DamageAgainstSharedDebuff`).
+
+### What the gate does not reach
+
+- **Converted damage** (below).
+- **The Reckoning's health-debt bleed-out.** `UCataclysmHealthDebt::DrainWhileDebtExceedsHealth` takes health with
+  `ApplyModToAttribute` and never lays the bleed tag, and an ordinary deferred debt drains the same way, so neither
+  reaches the attribute set's damage branch. Checked; nothing to exempt.
+- **A loose `Keyword.DoT.Bleed` tag** (`ApplyTagForDuration`; the Blood Price "bleed", whose damage is the hazard's
+  `ApplyDirectDamage`), **a `bIsDamageOverTime` direct hit** (its spec adds asset tags only), and **a hand-built
+  `bIsBleed` hit given to `UCataclysmDamageCalculation::Resolve`**. None carries a granted bleed through the attribute
+  set.
+- **A remaining-damage burst**, by R8; what it pays is held to the four seconds by R9.
+- **Bulwark's Hemorrhage (War, not built) WILL fall under the gate when it is built**, if it lays its bleed through
+  `ApplyDamageOverTime` as every other bleed does.
+
+### The converted-damage exemption
+
+Ruled 2026-10-31. The bleed the Masochist's damage conversion lays on its own character (`UCataclysmDamageConversion`,
+The Breaking Point) is damage already taken and stored. The conversion defers it; it does not cancel it. The design's
+health-debt paragraph says owed damage "is then taken as a drain rather than in one hit". So a tick of it is not gated
+and adds nothing to the count. **It is read off the mark the cleanse exception reads,**
+`UCataclysmSkillEffects::ConvertedDamageDataName` on the effect (ruled 2026-10-06), and no new mark was added.
+
+**The damage-conversion tests were checked and need no edit.** None of them reads a converted bleed's tick:
+`Cataclysm.DamageConversion.*` (all fourteen before this change: windows, cooldowns, what is converted, the cleanse);
+`Cataclysm.DebuffImmune.*` (the converted bleed is kept by the immunity step, and refused to a holder; one test in that
+group, `ARefusedDamageOverTimeTakesNothing`, was changed for another reason, below); the converted
+bleed in `Cataclysm.Cleanse.ItKeepsABuffAndABleedThePlayerPutOnItself` (carries after a cleanse); the
+converted bleed in `Cataclysm.StatExemption.DamageOverTimeOnTheWearerIsScopedByAilment` (applied and carried, not
+ticked); `CataclysmHealthWrittenDirectlyTests.cpp`
+and `CataclysmDeathTests.cpp` (the window only); `CataclysmHealthDebtTests.cpp` and `CataclysmMasochistDebtBuildTests.cpp`
+(the drains above); `CataclysmEnergyShieldKeystoneTests.cpp` (hand-built `Resolve` hits).
+
+### What the research settles, and what it does not
+
+No new source was read. The issue already records the genre's nearest rule: in Path of Exile a bleed deals more while
+its target moves, rather than only then. The gate, the four seconds and the exemption are this game's own, stated by
+the project owner in the DoTs sheet and ruled by the coordinating session.
+
+### Tests changed, and why
+
+Twelve. The first five read a bleed tick that a still target now refuses; each now gives the bleed a moving target,
+and no assertion changed. The next three read `RemainingDamageOverTime`, and each now asserts the capped figure (R9).
+The ninth gains one check for R10. The last three were found by the discovery run (under Run), outside the survey's
+eighteen files; each also gives its bleed a moving target, and no assertion changed.
+
+- `Cataclysm.CombatEvents.ADeathFromATickNamesTheAilment` — the bleed pass of its seven-ailment loop, and its Rend half,
+  read the tick's hit notice and the kill. Each victim, and the Rend victim, is told it moved (`NoteMovedMetres(1.0f)`)
+  before its one tick. No clock runs, so no sample overturns it; the other six ailments ignore it.
+- `Cataclysm.CombatEvents.AnAilmentGearRollsOnASkillsBlowNamesTheSkill` — reads one bleed tick's notice. The target is
+  told it moved before the tick, for the same reason.
+- `Cataclysm.Debuffs.ABleedAppliedAgainAtTheSameStrengthStillTicks` — reads health lost to bleeds over 4.2 s of clock.
+  Both targets are plain actors, which no sample reads, so one note each holds. The four ticks fall inside the four
+  seconds, so "at least 30" still holds; the re-applied bleed's count restarts at each refresh (R7), which
+  changes nothing here.
+- `Cataclysm.NecrosisRise.AKillThatIsNotNecrosisRaisesNothing` — its helper `KilledByATickOf` kills with one tick. The
+  helper now tells its victim it moved before the tick; the Necrosis callers ignore it.
+- `Cataclysm.Enchantments.ALeechRowScopedToAnAilmentLeechesFromThatAilmentsTicksAndNoOthers` — reads that a bleed's
+  ticks start a leech payment. Its creature is a character, re-sampled every 0.25 s, so a single note would not last:
+  the second 2.5 s of clock now walks it 10 cm a step and tells it so, as `CataclysmDotOnAMovingTargetTests.cpp` does,
+  and a new set-up line asserts it reads as moving.
+
+Found by the discovery run, each ruled 2026-10-31 to be fixed the same way. Each reads a bleed tick on a target that
+had never been seen moving. The failure line each printed is quoted.
+
+- `Cataclysm.DamageType.AnEnergyShieldAbsorbsEveryTickButABleed` — "Expected 'a bleed tick reaches health through a full
+  shield' to be 1000.000000, but it was 0.000000 and outside tolerance 1.000000." One manual tick on a plain actor
+  with no clock. The defender is told it moved before the bleed, so its one tick lands; nothing else in the test reads
+  movement.
+- `Cataclysm.DebuffImmune.ARefusedDamageOverTimeTakesNothing` — "Expected 'control: 3.5 seconds of a bleed took health
+  from the target of a character holding no flag: 0.00' to be true." Three plain actors are told they moved: the
+  control's target, so its three ticks land inside the four seconds; and the two the refused bleeds were aimed at, the
+  holder's target and the holder, **so that the refusal, and not a still target, is the only reason they lose
+  nothing.** Without those two notes, "the holder's target lost nothing" and "and the holder lost nothing" would pass
+  for the gate's reason even if the refusal failed.
+- `Cataclysm.EnemyModifiers.ATickWhoseShareReachesABondedCreaturesHealthKillsIt` — "Expected 'set-up: the tick takes
+  health from a creature with no bond, and under half of what it holds (0.00)' to be true." The control and the
+  bonded creature are told they moved before their ticks. No clock runs, and the three manual ticks (one on the
+  control, two on the bonded creature) are each inside the four seconds, so every tick the test relies on lands.
+
+The three the survey left uncertain:
+
+- `Cataclysm.ApplyStatus.ASecondBleedRefreshesAnEqualOrWeakerOneAndAStrongerOneReplacesIt` — compares what each bleed
+  has left to tell a replacement from a refresh. Its target is a plain actor that never moves, so each figure is now
+  four ticks of its bleed and not five; the comparisons ("more than 1.5 times") hold as they were, so they stay. **Three
+  assertions are added** so the capped figure is what is checked, each against the running effect's own tick read off
+  it by a new helper, `PerTickOn`: "what it has to deal is four of its ticks, ...", "a new bleed, so four of its ticks
+  again" and "still four of the stronger one's ticks". A set-up line first asserts the bleed's window holds more than
+  four ticks ("set-up: its ... s hold more than four ticks, so the cap is what binds"), without which the three would
+  pass uncapped.
+- `Cataclysm.RemainingDamage.OnlyTheWearersOwnEffectsAreDealtNotAnotherOrAMinions` — "another's bleed keeps its eight
+  ticks" (80) is now "another's bleed keeps the four ticks its four seconds of movement allow" (40): the timer has eight
+  ticks left, and the target, a plain actor, has never moved. What it checks, that the wearer's burst leaves another's
+  bleed alone, is unchanged.
+- `Cataclysm.RemainingDamage.ApplyingADamageOverTimeEffectRefreshesTheAppliersOthersOnThatTargetOnlyWhenARowSaysSo` —
+  with every figure capped and a still target it would read 40 at each step and could no longer see a refresh, so
+  **its target is now told once that it moves**, and the bleed's figures follow its four seconds. At 4.5 s its four
+  ticks have spent them: "and the bleed, its four seconds of movement spent, has nothing left" (0, was "and the bleed",
+  60). The necrosis under the row refreshes it: "and the bleed has its window and its four seconds again: four ticks"
+  (40, was 100), which is R7 in `RefreshOtherDamageOverTime` and the timer-only ask there, since a spent bleed reads
+  nought held to its movement. Two moving ticks later: "two seconds on, the bleed has two of its four seconds left: two
+  ticks" (20, new). And the poison applied again: "which refreshes the bleed, and its four seconds again: four ticks"
+  (40, was "which refreshes the bleed to ten ticks", 100). The poison, disease and burn figures are unchanged.
+
+**No test covered "ends each" with a spent bleed**, searched in every file reading `DealRemainingDamageOverTime` or
+`RemainingDamageOverTime` (`CataclysmRemainingDamageTests.cpp`, `CataclysmBurnExplodesTests.cpp`,
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmSkillTrapBlowHooksTests.cpp`, `CataclysmApplyStatusTests.cpp`): none
+lays a bleed before a burst. So one check is added to an existing test, and the registration does not move:
+
+- `Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect` — the wearer also bleeds the
+  poisoned target ("set-up: and the wearer's bleed on the first"). The target is a plain actor that never moves, so the
+  bleed deals nothing and the poison's 980, 80 and 900 are as they were; at 2.5 s its four seconds are written as spent
+  by hand. The burst still "reaches one effect" (the poison, the only one paid) and deals its eighty, and the new check,
+  "and the spent bleed, which paid nothing and was not counted, is ended too", reads that the bleed is gone.
+
+### New tests
+
+- `Cataclysm.Ailments.ABleedDealsNothingToATargetStandingStill`. Two creatures stand 5.5 s. One carries a bleed and a
+  burn of ten a tick for 5 s; the control, the same burn and no bleed. Controls: the burn took something from the
+  control, and its ticks were announced. Then: the first lost exactly what the control lost; its burn's ticks were
+  announced as the control's were; **none of its bleed's ticks was announced, so a gated tick raises no hit notice**;
+  the bleed is gone at the end (the window ran while it stood); the count is nought.
+- `Cataclysm.Ailments.ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement`. A bleed of ten a tick for 8 s, longer
+  than the designed 5 so that only the four seconds can stop the fifth to eighth ticks, on a creature walking
+  throughout. Eight one-second windows each holding one tick: the first four lose the same and more than nothing, the
+  last four lose nothing; four ticks announced; the count at 4.0; the bleed still carried 5.5 s after it was laid;
+  gone at 8.5 s.
+- `Cataclysm.Ailments.ABleedTickingTwiceASecondStopsAfterFourSecondsOfMovementNotAfterFourTicks`. The applier's
+  `dot_frequency` written at 200, so the bleed's period is 0.5 s (a set-up check). Ten a tick for 8 s on a walker:
+  eight ticks announced, the count at 4.0.
+- `Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal`, **the control on the exemption.** Two
+  Masochists each convert a blow of 100 into a bleed of 20 a tick for 5 s; one stands, one is told it moved. After
+  5.5 s of clock each has lost the whole 100.
+
+And in Python, `tools/tests/test_bleed_moving_seconds_cap_matches_the_design.py`, three tests: `DoT_Bleed` still says
+"ticks only while the affected target is moving" and "stopping after 4 seconds of movement"; `BleedMovingSecondsCap` in
+`CataclysmDebuffs.h` is 4.0; and the attribute set's code, comments stripped, names the constant.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Discovery run (ruled first) | Not a registration: the whole suite, on `14d4e99a5`, recorded under Run |
+| The four new tests alone | 1 / 1 each: `Cataclysm.Ailments.ABleedDealsNothingToATargetStandingStill`, `Cataclysm.Ailments.ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement`, `Cataclysm.Ailments.ABleedTickingTwiceASecondStopsAfterFourSecondsOfMovementNotAfterFourTicks`, `Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal` |
+| Whole Unreal suite | 4454 / 0: window w123's 4450 on `development` (59e5dd893), + 4. Every test this branch changed passes in it, the three the discovery run found included |
+| Python | 7188 of record, with JUnit: 7180 passed, 8 skipped, failures 0, errors 0 (7185 on `development` + the three new tests), and ruff clean |
+| P1, the gate made "always moving": `if (!Carrier->IsMoving()` broken to `if (!(Carrier->IsMoving() \|\| !Carrier->IsMoving())`, prefix `Cataclysm.Ailments.ABleedDealsNothingToATargetStandingStill` | that one test, the only name the prefix selects, fails on three assertions only: "creature 0 lost only what its burn took (...)" (four bleed ticks more than the control), "and not one of its bleed's ticks was announced" (to be 0, but it was 4) and "and it used none of the four seconds of movement" (to be 0, but it was 4). The cap still stops the fifth tick. The set-up lines read the sampler, which the break does not touch, and pass; the burn's notices are equal; the bleed is gone at the end |
+| P2, the four seconds removed: `BleedMovingSecondsCap - KINDA_SMALL_NUMBER)` broken to `BleedMovingSecondsCap * 1000.0f)`, prefix `Cataclysm.Ailments.ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement` | that one test fails on six assertions only: "tick 5, ...", "tick 6, ...", "tick 7, ..." and "tick 8, after four seconds of movement, took nothing", "four of the bleed's ticks were announced, and no more" (to be 4, but it was 8) and "the count stands at the four seconds" (8.0). The eighth tick falls at the 8 s window's end and lands, as the tenth does in `Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration`; if it did not, five, with 7 and 7.0. Ticks 2 to 4 still equal the first; the bleed is still carried at 5.5 s and gone at 8.5 s |
+| P3, the exemption removed: `if (Hit.bIsBleed && bPeriodicTick && !bConvertedDamage)` broken to `... && (!bConvertedDamage \|\| Hit.bIsBleed))`, prefix `Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal` | that one test fails on two assertions only: "the still character took the whole 100 it converted, 0.00" (every tick gated) and "and the moving one the same, 80.00, ..." (four ticks, then the cap). Its set-up lines, the two movement readings and "the converted bleed has run out" pass |
+| P4, the cap in `RemainingDamageOverTime` removed: `Ticks = FMath::Min(Ticks, TheBudgetAllows);` broken to `Ticks = FMath::Max(Ticks, TheBudgetAllows);`, prefix `Cataclysm.RemainingDamage.OnlyTheWearersOwnEffectsAreDealtNotAnotherOrAMinions` | that one test, the only name the prefix selects, fails on one assertion only: "another's bleed keeps the four ticks its four seconds of movement allow" (to be 40, but it was 80: eight on the timer, the larger of eight and four). "one effect is the wearer's" still reads 1, since the burst reads only the wearer's poison; "the wearer's poison is dealt and gone" and "the minion's burn keeps its eight ticks" read no bleed and pass |
+| P5, a spent bleed not ended: `Defender->RemoveActiveGameplayEffect(Spent);` broken to `(void)Spent;`, prefix `Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect` | that one test, the only name the prefix selects, fails on one assertion only: "and the spent bleed, which paid nothing and was not counted, is ended too" (to be false). "the burst reaches one effect" still reads 1 and "and deals its eighty at once" 900, the bleed paying nothing either way; "and the poison is gone" passes; and "so nothing ticks after it" still reads 900, since the bleed left running is on a target that never moves and its four seconds are spent |
+
+Each break keeps every name it touches in use, so each compiles alone. Each proof's restored half must name no failure.
+Each runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, its prefix the one full test name
+given, which no other test name begins with.
+
+### Run
+
+**Discovery run, 2026-10-31, on `14d4e99a5`. Not a registration.** Compiled first with `python tools/unreal_build.py
+build`, no lock: `Build: Succeeded - 74 actions, 64 files compiled`, after waiting twice on the continuous integration
+runner's compile. Python of record on the same head: `7180 passed, 8 skipped in 251.88s`; JUnit tests 7188, failures 0,
+errors 0, skipped 8; ruff "All checks passed!". Pre-checks for the run: the lock free, 11232 MB free, no other
+session's suite, build or editor running (one waiting script of 2026-10-15 left standing, ruled not to conflict).
+Under the lock `bleed-discovery`, released after:
+
+```
+Build: Succeeded - target already up to date, 0 actions, nothing compiled
+Tests: 4452 tests performed, 4449 succeeded, 3 failed: AnEnergyShieldAbsorbsEveryTickButABleed, ARefusedDamageOverTimeTakesNothing, ATickWhoseShareReachesABondedCreaturesHealthKillsIt. 43 skipped part of what they check: ...
+Declared: 4452 tests in the tree at 14d4e99a5; 4452 performed, gap 0; every declared test was reported by the run. Issue #1707.
+```
+
+Every test this branch changed or added passed. The three failures are the three above, fixed after it.
+
+**Moved to `fix/a-bleed-ticks-only-while-its-target-moves-2`**, rebased with no force push onto `development` at
+`59e5dd893` (#2657, which touches only save code, save tests and this log; nothing bleed reads). This entry was put on
+top of #2657's, kept whole. Compiled there with no lock: `Build: Succeeded - 42 actions, 39 files compiled`, at the
+first attempt. Python of record on `b7de1e8a9`: `7180 passed, 8 skipped in 222.48s`; JUnit tests 7188, failures 0,
+errors 0, skipped 8; ruff "All checks passed!".
+
+**Window bleed-w1, 2026-10-31 21:54 to 22:19 local, on `f92a442a8`.** Pre-checks: the lock free; 11147 MB free
+(needs 10240); another session's pytest running at first, waited out until it exited; then no other session's suite,
+build or editor (the waiting script of 2026-10-15 left standing, as ruled); the worktree clean but for an untracked
+file that is not this branch's. Lock `bleed-w1` acquired at 21:54:55 and released at 22:18:59 by the runner's exit
+trap.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | `1 tests performed, 1 succeeded, 0 failed` each |
+| Whole Unreal suite | `4454 tests performed, 4454 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "Declared: 4454 tests in the tree at f92a442a8; 4454 performed, gap 0" |
+| Python | `7180 passed, 8 skipped in 191.45s`; JUnit tests 7188, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | PROVED: with the break in, `1 tests performed, 0 succeeded, 1 failed: ABleedDealsNothingToATargetStandingStill`; restored, `1 tests performed, 1 succeeded, 0 failed` |
+| P2 | PROVED: with the break in, `1 failed: ABleedOnAMovingTargetStopsAfterFourSecondsOfMovement`; restored, 1 succeeded |
+| P3 | PROVED: with the break in, `1 failed: AConvertedBleedOnAStillCharacterDealsItsFullTotal`; restored, 1 succeeded |
+| P4 | PROVED: with the break in, `1 failed: OnlyTheWearersOwnEffectsAreDealtNotAnotherOrAMinions`; restored, 1 succeeded |
+| P5 | PROVED: with the break in, `1 failed: AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect`; restored, 1 succeeded |
+
+Each proof's `named_failures` was exactly its registered test, and `proved` was true for all five. The tree was clean
+after them.
+
+**THE PROOFS ARE CONFIRMED AT THE TEST, NOT AT THE ASSERTION.** The registration predicted which assertions each break
+fails (three, six or five, two, one and one). `prove_cpp_guard` returns only the failed test names, and the engine log
+of each broken half was overwritten by its restored half, so the assertion texts were not kept and those predictions
+were neither confirmed nor refuted by this window. That includes P2's either/or, whether the tick at the 8 s window's
+end lands. The runner should have kept each broken half's log.
+
+---
+
 ## 2026-10-31 — The saved characters are listed from their slots, newest first by the time each record was last written (#753, select-screen step 2)
 
 **Affects:** `FCataclysmSaveLoad::SavedCharacters` and `FCataclysmCharacterSummary` (new) in

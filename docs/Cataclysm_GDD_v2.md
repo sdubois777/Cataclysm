@@ -1945,7 +1945,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**Two of the six conditions are not built yet.** Bleed's movement gate and Necrosis's healing denial are stated here and in the DoTs sheet and nothing implements them; they are issues #918 and #920. Disease's spread on death is built, issue #919, on the project owner's answer of 2026-10-06: the 2 nearest enemies within 5 metres of the body, a count and a distance `docs/DECISIONS.md` records as a judgement. Void Splinter is built, under the project owner's answer on issue #915.
+**One of the six conditions is not built yet.** Necrosis's healing denial is stated here and in the DoTs sheet and nothing implements it; it is issue #920. Bleed's movement gate is built, issue #918, ruled 2026-10-31: a tick lands only while the movement sampler last saw the target moving, a knockback or a pull included, and a bleed stops ticking once it has ticked through 4 seconds of movement, counted as moving ticks times the tick's period so the damage over time frequency stat still fits more ticks in. Its 5 second window runs whether the target moves or not, so a target that stands still for all of it takes nothing. The Masochist's converted damage, laid as a bleed by The Breaking Point, is not gated: that bleed is damage already taken and deferred, not cancelled. `docs/DECISIONS.md` has the entry. Disease's spread on death is built, issue #919, on the project owner's answer of 2026-10-06: the 2 nearest enemies within 5 metres of the body, a count and a distance `docs/DECISIONS.md` records as a judgement. Void Splinter is built, under the project owner's answer on issue #915.
 
   
 

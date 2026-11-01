@@ -1239,6 +1239,11 @@ bool FCataclysmCombatEventsTickDeath::RunTest(const FString&)
 			continue;
 		}
 
+		// THE VICTIM IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled 2026-10-31) and
+		// a tick that does not land announces nothing. No clock runs in this test, so no movement sample comes to say
+		// otherwise before the tick. Every other ailment ignores it.
+		VictimSystem->NoteMovedMetres(1.0f);
+
 		const int32 HitsBefore = Heard.Hits.Num();
 		const int32 DeathsBefore = Heard.Deaths.Num();
 		TestEqual(FString::Printf(TEXT("one %s ran a tick"), Name),
@@ -1300,6 +1305,8 @@ bool FCataclysmCombatEventsTickDeath::RunTest(const FString&)
 		return false;
 	}
 
+	// MOVING, for the bleed's sake, as each victim above is.
+	RentSystem->NoteMovedMetres(1.0f);
 	const int32 HitsBeforeRend = Heard.Hits.Num();
 	const int32 DeathsBeforeRend = Heard.Deaths.Num();
 	RentSystem->ExecutePeriodicEffectsGrantingForTests(Bleed);
@@ -1625,6 +1632,10 @@ bool FCataclysmCombatEventsRolledAilment::RunTest(const FString&)
 	}
 	TestFalse(TEXT("the target took the blow and lived"),
 			  UCataclysmSkillEffects::IsDead(Target));
+
+	// THE TARGET IS MOVING, because a bleed ticks only while its target moves (issue #918, ruled 2026-10-31). No clock
+	// runs here, so no movement sample comes to say otherwise before the tick.
+	TargetSystem->NoteMovedMetres(1.0f);
 
 	const FGameplayTag BleedTag = TagNamed(Bleed->TagName);
 	const int32 BeforeTick = Heard.Hits.Num();

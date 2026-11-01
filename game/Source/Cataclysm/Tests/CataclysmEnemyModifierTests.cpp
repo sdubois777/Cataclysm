@@ -3097,6 +3097,12 @@ CATACLYSM_MODIFIER_TEST(FCataclysmBondTickKillsTest,
 		return false;
 	}
 
+	// BOTH BLEEDING CREATURES ARE MOVING, because a bleed ticks only while its target moves and stops after four
+	// seconds of movement (issue #918, ruled 2026-10-31). No clock runs, so no movement sample comes to say otherwise,
+	// and the three ticks below, one on the control and two on the bonded creature, are each inside the four seconds.
+	ControlSystem->NoteMovedMetres(1.0f);
+	BondedSystem->NoteMovedMetres(1.0f);
+
 	// THE WHOLE TICK, MEASURED ON A CREATURE WITH NO BOND. A bleed of 1,000 a tick, not scaled by the player.
 	if (!TestTrue(TEXT("set-up: the bleed is applied to the control"),
 				  UCataclysmSkillEffects::ApplyDamageOverTime(Player, Control, /*DamagePerTick=*/1000.0f,

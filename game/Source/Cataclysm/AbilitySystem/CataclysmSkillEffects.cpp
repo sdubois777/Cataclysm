@@ -2639,6 +2639,23 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// A BLEED THAT LANDS STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, WHETHER IT REPLACES THE RUNNING ONE OR ONLY
+	// REFRESHES IT. Issue #918, ruled 2026-10-31. One bleed at a time, so the count belongs to the carrier and the one a
+	// stronger bleed replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to it at each tick.
+	//
+	// A REFRESH TOO, RULED BY THE COORDINATING SESSION, 2026-10-31: under the one-slot rule a refresh stands for a new
+	// application, and in the genre each new bleed carries its own full duration. A refresh gives the running bleed a
+	// new window; with the old count kept, a bleed refreshed by every blow of a fast
+	// attacker would deal four seconds of ticks and then nothing for as long as the blows kept coming, while the target
+	// still read as bleeding. Here, before the branch below, so the refresh and the replacement both reach it.
+	if (EffectTag == UCataclysmDebuffs::BleedTag())
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
+	}
+
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
 	if (Running.bFound && Running.Stated >= Stated)
 	{
@@ -3008,6 +3025,7 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 	// WHAT EACH NEEDS IS TAKEN FIRST, because moving an effect's start changes
 	// the list being read.
 	TArray<TPair<FActiveGameplayEffectHandle, float>> Moves;
+	bool bRefreshesABleed = false;
 	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
 	{
 		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
@@ -3023,7 +3041,11 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		}
 		// ONLY AN EFFECT THAT STILL HAS DAMAGE TO DEAL. `RemainingDamageOverTime`
 		// is nought for anything that deals no damage a tick.
-		if (RemainingDamageOverTime(Defender, Handle) <= 0.0f)
+		//
+		// BY ITS TIMER ALONE, NOT HELD TO A BLEED'S FOUR SECONDS OF MOVEMENT. Issue #918: a bleed that has spent its
+		// four seconds still has its window, and this refresh restarts the four seconds (ruled 2026-10-31), so it
+		// must still be found.
+		if (RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) <= 0.0f)
 		{
 			continue;
 		}
@@ -3033,11 +3055,21 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		if (Longer > 0.0f)
 		{
 			Moves.Emplace(Handle, Longer);
+			bRefreshesABleed = bRefreshesABleed || Granted.HasTag(UCataclysmDebuffs::BleedTag());
 		}
 	}
 	for (const TPair<FActiveGameplayEffectHandle, float>& Move : Moves)
 	{
 		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
+	}
+	// A BLEED GIVEN ITS WHOLE WINDOW AGAIN STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, as a bleed refreshed in
+	// `ApplyDamageOverTime` does. Issue #918; the same ruling by the coordinating session, 2026-10-31.
+	if (bRefreshesABleed)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
 	}
 	return Moves.Num();
 }
@@ -3115,7 +3147,8 @@ float UCataclysmSkillEffects::ShareOfHealthOverTicks(float Share, float Health,
 }
 
 float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
-													  const FActiveGameplayEffectHandle& Handle)
+													  const FActiveGameplayEffectHandle& Handle,
+													  bool bHeldToABleedsMovement)
 {
 	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
 	const FActiveGameplayEffect* Active =
@@ -3154,7 +3187,28 @@ float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemCompon
 	const float SecondsLeft = Timers.TimerExists(Active->DurationHandle)
 		? Timers.GetTimerRemaining(Active->DurationHandle)
 		: Active->GetTimeRemaining(World->GetTimeSeconds());
-	const int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
+	int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
+
+	// AND A BLEED NEVER MORE THAN ITS FOUR SECONDS OF MOVEMENT ALLOW. Issue #918, ruled by the coordinating session on
+	// 2026-10-31: a bleed stops after four seconds of movement, so what it has left can never be more than the ticks
+	// that budget still lets land. Counted the way the gate in `UCataclysmVitalAttributeSet` lets them through: a tick
+	// lands while the count is short of the cap, and adds its period. NOT whether the carrier is moving now, which says
+	// nothing about how it will move. NOT CONVERTED DAMAGE, which the gate exempts and which deals its whole total.
+	if (Ticks > 0 && bHeldToABleedsMovement)
+	{
+		FGameplayTagContainer Granted;
+		Active->Spec.GetAllGrantedTags(Granted);
+		const UCataclysmAbilitySystemComponent* Carrier = Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		const bool bConvertedDamage = Active->Spec.GetSetByCallerMagnitude(
+			FName(ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+		if (Carrier && !bConvertedDamage && Granted.HasTag(UCataclysmDebuffs::BleedTag()))
+		{
+			const int32 TheBudgetAllows = FMath::Max(0, FMath::CeilToInt32(
+				(UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER - Carrier->BleedMovingSeconds)
+				/ SecondsPerTick));
+			Ticks = FMath::Min(Ticks, TheBudgetAllows);
+		}
+	}
 	if (Ticks <= 0)
 	{
 		return 0.0f;
@@ -3251,6 +3305,7 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		float Amount = 0.0f;
 	};
 	TArray<FBurst> Bursts;
+	TArray<FActiveGameplayEffectHandle> SpentBleeds;
 	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
 	{
 		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
@@ -3267,12 +3322,27 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		Burst.Amount = RemainingDamageOverTime(Defender, Handle) * Percent / 100.0f;
 		if (Burst.Amount <= 0.0f)
 		{
+			// A SPENT BLEED PAYS NOTHING AND IS STILL ENDED. Issue #918, ruled by the coordinating session on
+			// 2026-10-31. A bleed whose four seconds of movement are spent has nothing left to deal, but its window
+			// still runs and its tag with it, so the slow rider and the bleed-scoped rows still read it. The row says
+			// it ends each damage over time, so only the payment is skipped. Found by asking again by the timer alone:
+			// an effect with ticks left there and none held to its movement is exactly such a bleed. NOT COUNTED in
+			// what this returns, which is the bursts paid.
+			if (bEndEach && RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) > 0.0f)
+			{
+				SpentBleeds.Add(Handle);
+			}
 			continue;
 		}
 		Burst.Handle = Handle;
 		Burst.Context = Active->Spec.GetContext();
 		Active->Spec.GetAllAssetTags(Burst.AssetTags);
 		Bursts.Add(MoveTemp(Burst));
+	}
+
+	for (const FActiveGameplayEffectHandle& Spent : SpentBleeds)
+	{
+		Defender->RemoveActiveGameplayEffect(Spent);
 	}
 
 	for (const FBurst& Burst : Bursts)

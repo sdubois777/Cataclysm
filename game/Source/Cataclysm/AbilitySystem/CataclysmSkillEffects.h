@@ -59,7 +59,8 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * Whether this is damage a character converted and has not yet taken: the bleed the Masochist's damage
 	 * conversion lays on its own character. Ruled 2026-10-06. The effect is stamped with
 	 * `UCataclysmSkillEffects::ConvertedDamageDataName`, and `UCataclysmDebuffs::Cleanse` keeps an effect that
-	 * carries the stamp and nothing else a character laid on themselves.
+	 * carries the stamp and nothing else a character laid on themselves. `UCataclysmVitalAttributeSet` reads the same
+	 * stamp to exempt the bleed from the movement gate, ruled 2026-10-31 (issue #918).
 	 */
 	bool bIsConvertedDamage = false;
 
@@ -1955,9 +1956,17 @@ public:
 	 * or for a share of current health, `ShareOfHealthOverTicks`. 0 for an effect
 	 * that is not a damage over time, is inhibited, or has no tick left. Issue
 	 * #1833 group D part 4.
+	 *
+	 * A BLEED'S TICKS LEFT ARE HELD TO WHAT ITS FOUR SECONDS OF MOVEMENT STILL ALLOW, whether or not its carrier
+	 * moves now; converted damage is not. Issue #918, ruled 2026-10-31.
+	 *
+	 * @param bHeldToABleedsMovement  false to count a bleed's ticks by its timer alone, for a caller asking whether
+	 *        an effect is a damage over time at all rather than what it will deal: `RefreshOtherDamageOverTime`, whose
+	 *        refresh restarts a spent bleed's four seconds and so must still find it
 	 */
 	static float RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
-										 const FActiveGameplayEffectHandle& Handle);
+										 const FActiveGameplayEffectHandle& Handle,
+										 bool bHeldToABleedsMovement = true);
 
 	/** One damage over time ailment running on a character. Issue #919. */
 	struct FRunningAilment
@@ -2049,8 +2058,9 @@ public:
 	 *
 	 * @param OnlyGranting  only effects granting this tag, e.g. a Necrosis; an
 	 *                      invalid tag takes every one
-	 * @param bEndEach      remove each effect once its share is dealt
-	 * @return how many effects were dealt
+	 * @param bEndEach      remove each effect once its share is dealt, and a bleed whose four seconds of
+	 *                      movement are spent too, which pays nothing (issue #918, ruled 2026-10-31)
+	 * @return how many effects were dealt; a spent bleed ended without pay is not counted
 	 */
 	static int32 DealRemainingDamageOverTime(const AActor* Owner, AActor* Target, float Percent,
 											 const FGameplayTag& OnlyGranting, bool bEndEach);
@@ -2170,7 +2180,8 @@ public:
 	/**
 	 * The name an effect is stamped under when it is converted damage not yet taken, with any value above nought.
 	 * Ruled 2026-10-06. A plain name and no gameplay tag, as `StatedMagnitudeDataName` is. Read by
-	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect.
+	 * `UCataclysmDebuffs::Cleanse`, which keeps the effect, and by `UCataclysmVitalAttributeSet`, whose bleed tick
+	 * deals it whether its carrier moves or not (issue #918, ruled 2026-10-31).
 	 */
 	static const TCHAR* ConvertedDamageDataName;
 

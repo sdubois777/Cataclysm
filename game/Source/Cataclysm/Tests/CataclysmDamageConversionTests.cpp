@@ -673,6 +673,72 @@ CATACLYSM_CONVERSION_TEST(FCataclysmConvertedDamageSurvivesACleanseTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONVERSION_TEST(FCataclysmConvertedBleedIgnoresTheMovementGateTest,
+	"Cataclysm.DamageConversion.AConvertedBleedOnAStillCharacterDealsItsFullTotal")
+{
+	using namespace CataclysmDamageConversionTest;
+
+	// A BLEED TICKS ONLY WHILE ITS TARGET MOVES, AND STOPS AFTER FOUR SECONDS OF MOVEMENT, BUT NOT THIS ONE. Issue
+	// #918, ruled 2026-10-31. The conversion defers damage already taken; it does not cancel it, so its bleed deals its
+	// whole total whether its character moves or not. THIS IS THE CONTROL ON THE EXEMPTION: with it removed, the still
+	// character below takes nothing and the moving one takes four ticks of its five.
+	//
+	// TWO MASOCHISTS, EACH CONVERTING ONE BLOW OF 100 INTO A BLEED OF 20 A TICK FOR 5 SECONDS. One stands, which a
+	// plain actor always does: no movement sample ever reads one, and `IsMoving` starts false. The other is told once
+	// that it moved, which nothing overturns for the same reason. The clock runs 5.5 seconds in the engine's own
+	// ticks; the fifth tick lands at the window's end, as the tenth of a ten-second effect does in
+	// `Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration`.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Still(World);
+		const FScopedBleeder Moving(World);
+		Moving.AbilitySystem->NoteMovedMetres(1.0f);
+
+		float Before[2] = {0.0f, 0.0f};
+		const FScopedBleeder* Both[2] = {&Still, &Moving};
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			const FScopedBleeder& One = *Both[Index];
+			One.TakeTheNode();
+			One.MoveHealthTo(0.4f);
+			if (!TestTrue(TEXT("set-up: the window is open"), One.IsConverting())
+				|| !TestEqual(TEXT("set-up: the whole blow was converted"),
+					Conversion::ConvertIfActive(One.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false), 100.0f, 0.01f)
+				|| !TestTrue(TEXT("set-up: the character is bleeding with it"),
+					UCataclysmDebuffs::IsBleeding(One.AbilitySystem)))
+			{
+				World->DestroyWorld(false);
+				return false;
+			}
+			Before[Index] = One.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		}
+
+		CataclysmTestWorld::RunClock(World, 5.5f);
+
+		TestFalse(TEXT("set-up: the still character reads as standing"), Still.AbilitySystem->IsMoving());
+		TestTrue(TEXT("set-up: the moving one reads as moving"), Moving.AbilitySystem->IsMoving());
+		const float StillTook = Before[0] - Still.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		const float MovingTook = Before[1] - Moving.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		TestEqual(FString::Printf(TEXT("the still character took the whole 100 it converted, %.2f"), StillTook),
+				  StillTook, 100.0f, 0.01f);
+		TestEqual(FString::Printf(TEXT("and the moving one the same, %.2f, so the four seconds did not stop it"),
+								  MovingTook),
+				  MovingTook, 100.0f, 0.01f);
+		TestFalse(TEXT("the converted bleed has run out"), UCataclysmDebuffs::IsBleeding(Still.AbilitySystem));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_CONVERSION_TEST
 
 #endif  // WITH_AUTOMATION_TESTS
