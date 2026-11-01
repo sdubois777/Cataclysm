@@ -3024,6 +3024,7 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 	// WHAT EACH NEEDS IS TAKEN FIRST, because moving an effect's start changes
 	// the list being read.
 	TArray<TPair<FActiveGameplayEffectHandle, float>> Moves;
+	bool bRefreshesABleed = false;
 	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
 	{
 		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
@@ -3049,11 +3050,22 @@ int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AA
 		if (Longer > 0.0f)
 		{
 			Moves.Emplace(Handle, Longer);
+			bRefreshesABleed = bRefreshesABleed || Granted.HasTag(UCataclysmDebuffs::BleedTag());
 		}
 	}
 	for (const TPair<FActiveGameplayEffectHandle, float>& Move : Moves)
 	{
 		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
+	}
+	// A BLEED GIVEN ITS WHOLE WINDOW AGAIN STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, as a bleed refreshed in
+	// `ApplyDamageOverTime` does. Issue #918; the same judgement by the writing session, 2026-10-31, for the
+	// coordinating session to confirm.
+	if (bRefreshesABleed)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
 	}
 	return Moves.Num();
 }
