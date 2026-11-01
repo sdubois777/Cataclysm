@@ -18989,7 +18989,24 @@ bool FCataclysmLeechScopedToAnAilmentTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	CataclysmTestWorld::RunClock(World, 2.5f);
+	// AND THE CREATURE WALKS WHILE IT BLEEDS, because a bleed ticks only while its target moves. Issue #918, ruled
+	// 2026-10-31. A creature is sampled every 0.25 s by its own step, and a sample that finds it where it stood says it
+	// stopped, so a single note would not last: it is put 10 cm further along +Y and told so on every 0.05 s step, as
+	// `CataclysmDotOnAMovingTargetTests.cpp` walks its creatures. The two ticks in these 2.5 s are inside the four
+	// seconds of movement a bleed ticks for.
+	UCataclysmAbilitySystemComponent* Walking =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!TestNotNull(TEXT("set-up: the creature's ability system, to say it is walking"), Walking))
+	{
+		return false;
+	}
+	for (int32 Step = 0; Step < 50; ++Step)
+	{
+		Target->SetActorLocation(Target->GetActorLocation() + FVector(0.0f, 10.0f, 0.0f));
+		Walking->NoteMovedMetres(0.1f);
+		CataclysmTestWorld::RunClock(World, 0.05f, 0.05f);
+	}
+	TestTrue(TEXT("set-up: the creature reads as moving"), Walking->IsMoving());
 	TestTrue(TEXT("a bleed's ticks start a payment"), Wearer.AbilitySystem->GetLeechPayments().Num() > 0);
 	return true;
 }

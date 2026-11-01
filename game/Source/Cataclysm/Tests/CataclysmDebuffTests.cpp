@@ -1818,6 +1818,14 @@ CATACLYSM_DEBUFF_TEST(FCataclysmEqualBleedKeepsTickingTest,
 	const FGameplayAttribute Health =
 		UCataclysmVitalAttributeSet::GetHealthAttribute();
 
+	// BOTH TARGETS ARE MOVING, because a bleed ticks only while its target moves
+	// and stops after four seconds of movement. Issue #918, ruled 2026-10-31.
+	// Each is a plain actor, which no movement sample ever reads, so one note
+	// holds for the whole test. The four ticks below fall inside the four
+	// seconds, so the figures this test asks for are what they were.
+	LeftAlone.AbilitySystem->NoteMovedMetres(1.0f);
+	AppliedAgain.AbilitySystem->NoteMovedMetres(1.0f);
+
 	// A BLEED OF 10 A TICK ON EACH, then the same bleed on the second target
 	// again every 0.6 seconds for 4.2 seconds. The interval between ticks is a
 	// second when nothing has raised the attacker's frequency, so that is 0.6
