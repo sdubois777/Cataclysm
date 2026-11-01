@@ -38,6 +38,11 @@ when step 3b points the game's start at the screen.
   have noted as its fresh pair (found while tracing P2 below; added before the first window). Holding writes until the
   load decides was rejected: a character saved dead dies inside the load,
   and its death's own write would be dropped. Ruled 2026-10-31, with the guard that the deletion be shown to be narrow.
+- **THE FRONT END SETS NO INPUT MODE.** The game sets one mode, in one place, `ACataclysmPlayerController::
+  ApplyPlayingInputMode` (issue #1015), which `tools/tests/test_one_input_mode.py` enforces; the first Python of record,
+  on dab89b51, failed that check on this step's own `SetInputMode(FInputModeUIOnly())`, which is removed. The front end's
+  controller shows the cursor and takes clicks and mouse-over events instead. UNVERIFIED: whether the screen's buttons
+  take clicks under the engine's default mode; no automation test can see a cursor, so the owner's launch after 3b shows it.
 - **TRAVEL DOES NOT RUN IN AN AUTOMATION TEST,** so Continue, New and a refusal record the level they ask for, which the
   tests read. **NO TEST SHOWS THE SCREEN:** a test world has no game instance for `CreateWidget` (#1841), so the screen's
   logic is plain functions called on a `NewObject` widget; that the front end's controller adds the screen to the
