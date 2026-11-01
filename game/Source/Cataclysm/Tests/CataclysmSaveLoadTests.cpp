@@ -18,6 +18,7 @@
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
@@ -5055,6 +5056,220 @@ bool FCataclysmSaveLoadFamishedTest::RunTest(const FString&)
 						  0.5f);
 			});
 	});
+}
+
+/**
+ * A creature that ate two drops and holds three souls, saved, restored, then raised a rung by Volatile Evolution, carries
+ * each health share exactly once: its maximum is the new rung's own maximum, rebuilt from the starting maximum it was
+ * saved with, times Famished Beasts' multiplier for two drops, plus Soul Harvest's health for three souls on that. Issue
+ * #2181, the round trip it asks for. THE FAULTS IT GUARDS: a restored creature rebuilt from a starting maximum the save
+ * did not keep, and a share lost or put on twice when a rung change after a load writes the stat block over. Prints
+ * "LOAD RUNG SHARES".
+ *
+ * THE SOULS ARE PUT ON THROUGH THE RESTORE'S OWN CALL, as `ACreaturesHeldSoulsAndTheFedBossComeBack` puts them, which
+ * is what a soul given in play does: a holding made with nothing added, and the figures applied. AFTER the drops are
+ * eaten, so Soul Harvest's share is reckoned on the maximum that already holds Famished Beasts', the order the rung
+ * change puts them back in.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRungSharesTest,
+	"Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRungSharesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	constexpr int32 DropsToEat = 2;
+	constexpr int32 SoulsToHold = 3;
+
+	// A CREATURE'S OWN MAXIMUM ON ITS RUNG, as `ACataclysmEnemyCharacter::ApplyStartingAttributes` rebuilds it: the
+	// starting maximum times the rung's health scaling, its rows' multiplier and its commander's.
+	auto OwnMaximum = [](const ACataclysmEnemyCharacter& Creature, float Starting)
+	{
+		float HealthScale = 1.0f;
+		float DamageScale = 1.0f;
+		float ArmourScale = 1.0f;
+		UCataclysmEnemyRarity::ScalingFromCommon(UCataclysmEnemyRarity::LoadEnemyRarityTable(), Creature.RarityStep,
+												 HealthScale, DamageScale, ArmourScale);
+		return Starting * HealthScale * UCataclysmEnemyModifiers::MaxHealthMultiplier(Creature.ModifierRows)
+			* Creature.GetCommanderHealthMultiplier();
+	};
+	// AND ITS MAXIMUM WITH EACH SHARE ON IT ONCE: Famished Beasts' multiplier on its own, Soul Harvest's health on that.
+	auto WithBothShares = [DropsToEat, SoulsToHold](float Own)
+	{
+		const float WithFamished = Own * UCataclysmDungeonModifierEffects::FamishedBeastsMultiplier(DropsToEat);
+		return WithFamished + UCataclysmDungeonModifierEffects::SoulHarvestHealthAdded(WithFamished, SoulsToHold);
+	};
+
+	IConsoleVariable* RollVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.VolatileEvolutionRoll"));
+	const FString RollBefore = RollVariable ? RollVariable->GetString() : FString();
+	const bool bRan = WithTheSeedPutBack(*this, [this, DropsToEat, SoulsToHold, &OwnMaximum, &WithBothShares]()
+	{
+		// NO CREATURE MUTATES UNTIL THE TEST SAYS SO: a roll of 100 is never under the chance.
+		FPinnedConsoleValue NoMutation(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("100"));
+		if (!TestNotNull(TEXT("set-up: the mutation roll can be pinned"), NoMutation.Variable))
+		{
+			return false;
+		}
+		int32 Seed = INDEX_NONE;
+		FVector EaterAt = FVector::ZeroVector;
+		float StartingSaved = -1.0f;
+		float MaximumSaved = -1.0f;
+		return ARoundTripOfRows(*this,
+			{FName(Effects::FamishedBeastsKey), FName(Effects::SoulHarvestKey), FName(Effects::VolatileEvolutionKey)},
+			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, &OwnMaximum, &WithBothShares](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+				FPinnedDungeonSeed& PinnedSeed)
+			{
+				// AN EATER WITH NO OTHER CREATURE WITHIN TWICE THE EATING REACH, so the drops under it are its own, and
+				// UNDER VOLATILE EVOLUTION'S CEILING, so it can rise. The first seed from 1 to 20 whose floor 2 has one.
+				ACataclysmEnemyCharacter* Eater = nullptr;
+				for (int32 Pinned = 1; Pinned <= 20 && !Eater; ++Pinned)
+				{
+					PinnedSeed.Pin(Pinned);
+					if (!Mode.GoToFloor(2))
+					{
+						continue;
+					}
+					StandAtTheEntrance(Mode, Player);
+					BeatOnce(Mode);
+					for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+					{
+						if (Eater || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy)
+							|| !Enemy->bSeeksDropsForTheFloorRule || Enemy->bHoldsAPlayerBuild
+							|| Enemy->RarityStep >= Effects::VolatileEvolutionHighestRung)
+						{
+							continue;
+						}
+						bool bAlone = true;
+						for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+						{
+							bAlone = bAlone && (*It == Enemy.Get()
+												|| FVector::Dist2D(It->GetActorLocation(), Enemy->GetActorLocation())
+													> 2.0f * Effects::FamishedBeastsEatWithinCm);
+						}
+						Eater = bAlone ? Enemy.Get() : nullptr;
+					}
+					Seed = Eater ? Pinned : INDEX_NONE;
+				}
+				if (!TestNotNull(TEXT("set-up: a seed from 1 to 20 gives a creature that eats, alone, under the ceiling"),
+								 Eater))
+				{
+					return false;
+				}
+				for (int32 Drop = 0; Drop < DropsToEat; ++Drop)
+				{
+					AGearDropAt(World, Eater->GetActorLocation());
+					BeatOnce(Mode);
+				}
+				FCataclysmSavedCreature Holder;
+				Holder.SoulHarvestSouls = SoulsToHold;
+				Mode.RestoreCreatureRoles(*Eater, Holder);
+				int32 Souls = 0;
+				float SoulHealth = 0.0f;
+				Mode.SoulHarvestHeldBy(Eater, Souls, SoulHealth);
+				EaterAt = Eater->GetActorLocation();
+				StartingSaved = Eater->GetStartingMaxHealth();
+				MaximumSaved = MaximumHealthOf(*Eater);
+				// THE SAME COMPOSITION ALREADY HOLDS ON ITS FIRST RUNG, so the figure the rise is held to describes this
+				// creature and a failure after the load is the round trip's.
+				return TestEqual(TEXT("set-up: it ate two"), Eater->DropsEaten, DropsToEat)
+					&& TestEqual(TEXT("set-up: it holds three souls"), Souls, SoulsToHold)
+					&& TestTrue(TEXT("set-up: it has a starting maximum to be rebuilt from"), StartingSaved > 0.0f)
+					&& TestEqual(TEXT("set-up: before the save its maximum is its own with each share on it once"),
+								 MaximumSaved, WithBothShares(OwnMaximum(*Eater, StartingSaved)), 0.5f);
+			},
+			[this, &Seed, &EaterAt, &StartingSaved, &MaximumSaved, DropsToEat, SoulsToHold, &OwnMaximum](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld& World,
+				const FCataclysmLoadReport& Report)
+			{
+				using Vitals = UCataclysmVitalAttributeSet;
+
+				// THE EATER IS THE CREATURE STANDING WHERE IT STOOD, its record having put it there; found by place and
+				// not by its drops, so a load that lost them is measured rather than refused as a set-up.
+				ACataclysmEnemyCharacter* Eater = nullptr;
+				for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+				{
+					if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It)
+						&& FVector::Dist2D(It->GetActorLocation(), EaterAt) < 1.0f)
+					{
+						Eater = *It;
+					}
+				}
+				UAbilitySystemComponent* Abilities = Eater ? UCataclysmTargeting::AbilitySystemOf(Eater) : nullptr;
+				if (!TestNotNull(TEXT("set-up: the eater stands where it stood after the load"), Eater)
+					|| !TestNotNull(TEXT("set-up: and has an ability system"), Abilities))
+				{
+					return;
+				}
+				StandAtTheEntrance(Mode, Player);
+				BeatOnce(Mode);
+				const int32 RungBefore = Eater->RarityStep;
+				const float MaximumAfterLoad = MaximumHealthOf(*Eater);
+
+				// WOUNDED UNDER THE THRESHOLD, THEN ONE BEAT WITH THE ROLL PINNED TO RISE.
+				Abilities->SetNumericAttributeBase(Vitals::GetHealthAttribute(), 0.5f * MaximumAfterLoad);
+				{
+					FPinnedConsoleValue Mutates(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+					BeatOnce(Mode);
+				}
+
+				// WHAT THE NEW RUNG'S OWN MAXIMUM IS, from the starting maximum the save held and the rows the creature
+				// carries AFTER the rise, because a rung-up draws the new rung's modifiers.
+				const float Own = OwnMaximum(*Eater, StartingSaved);
+				const float WithFamished = Own * Effects::FamishedBeastsMultiplier(DropsToEat);
+				const float Expected = WithFamished + Effects::SoulHarvestHealthAdded(WithFamished, SoulsToHold);
+				const float Maximum = MaximumHealthOf(*Eater);
+
+				// EACH SHARE AS THE RULE THAT ADDED IT RECORDS IT.
+				int32 Souls = 0;
+				float SoulShare = 0.0f;
+				Mode.SoulHarvestHeldBy(Eater, Souls, SoulShare);
+				FCataclysmSavedCreature Roles;
+				Mode.CreatureRolesInto(*Eater, Roles);
+				const float FamishedShare = Roles.FamishedHealthAdded;
+
+				// A SHARE CARRIED TWICE, for the control: Famished Beasts' multiplier applied twice, and Soul Harvest's
+				// health added twice.
+				const float FamishedTwice = WithFamished * Effects::FamishedBeastsMultiplier(DropsToEat);
+				const float WithFamishedTwice =
+					FamishedTwice + Effects::SoulHarvestHealthAdded(FamishedTwice, SoulsToHold);
+				const float WithSoulsTwice = WithFamished + 2.0f * Effects::SoulHarvestHealthAdded(WithFamished, SoulsToHold);
+
+				AddInfo(FString::Printf(TEXT("LOAD RUNG SHARES on seed %d: %s (%s); rung %d to %d; starting maximum saved "
+											 "%.2f, now %.2f; maximum saved %.2f, after the load %.2f, after the rise %.2f "
+											 "(own %.2f, expected %.2f; Famished twice %.2f, souls twice %.2f); %d eaten, "
+											 "%d souls; Famished's share %.2f, Soul Harvest's %.2f; health %.2f"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, RungBefore,
+										Eater->RarityStep, StartingSaved, Eater->GetStartingMaxHealth(), MaximumSaved,
+										MaximumAfterLoad, Maximum, Own, Expected, WithFamishedTwice, WithSoulsTwice,
+										Eater->DropsEaten, Souls, FamishedShare, SoulShare,
+										Abilities->GetNumericAttribute(Vitals::GetHealthAttribute())));
+
+				TestEqual(TEXT("after the load and a beat its maximum is the one saved"), MaximumAfterLoad, MaximumSaved,
+						  0.5f);
+				TestEqual(TEXT("one beat raised it one rung"), Eater->RarityStep,
+						  RungBefore + Effects::VolatileEvolutionRungsGained);
+				TestEqual(TEXT("it has still eaten two"), Eater->DropsEaten, DropsToEat);
+				TestEqual(TEXT("and still holds three souls"), Souls, SoulsToHold);
+				TestEqual(TEXT("its maximum is the new rung's own, Famished Beasts' share on it once, Soul Harvest's on "
+							   "that once"),
+						  Maximum, Expected, 0.5f);
+				TestEqual(TEXT("Famished Beasts records its share once"), FamishedShare,
+						  Own * (Effects::FamishedBeastsMultiplier(DropsToEat) - 1.0f), 0.5f);
+				TestEqual(TEXT("Soul Harvest records its share once"), SoulShare,
+						  Effects::SoulHarvestHealthAdded(WithFamished, SoulsToHold), 0.5f);
+				TestEqual(TEXT("CONTROL: the maximum less both recorded shares is the new rung's own maximum"),
+						  Maximum - FamishedShare - SoulShare, Own, 0.5f);
+				TestTrue(FString::Printf(TEXT("CONTROL: a share carried twice reads %.2f or %.2f, which the tolerance "
+											  "tells apart from %.2f"),
+										 WithFamishedTwice, WithSoulsTwice, Expected),
+						 FMath::Abs(WithFamishedTwice - Expected) > 1.0f && FMath::Abs(WithSoulsTwice - Expected) > 1.0f);
+			});
+	});
+	TestEqual(TEXT("and the mutation roll is put back"), RollVariable ? RollVariable->GetString() : FString(), RollBefore);
+	return bRan;
 }
 
 namespace CataclysmSaveLoadTest

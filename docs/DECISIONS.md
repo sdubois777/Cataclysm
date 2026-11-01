@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A restored eater's health shares are each carried once through a load and a rung change (#2181)
+
+**Affects:** one new Unreal test, `Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange`, and an
+include of `Character/CataclysmEnemyRarity.h`, both in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`.
+**No game code changed.** Issue [#2181](https://github.com/sdubois777/Cataclysm/issues/2181).
+
+### SAID FIRST
+
+- **REGISTERED, NOT YET RUN.** No Unreal test has run on this branch. Every Unreal figure under "Registered before the
+  run" is a prediction traced by hand from the code.
+- **What #2181 still lacked was this test, not code.** #2632 kept a restored creature's starting maximum
+  (`FCataclysmSaveGather::CreatureFrom` saves `StartingHealth`, `FCataclysmSaveApply::CreatureInto` puts it back with
+  `SetHealth`) and Soul Harvest's souls and the health they added; #2646 kept Famished Beasts' drops eaten and the
+  health they added (`ACataclysmDungeonGameMode::RestoreCreatureRoles`). Both rung-change paths, `StepVolatileEvolution`
+  and `NoteDeathForBloodForgedChampions`, rebuild the stat block through `SetRarityStep` and `DrawModifiersForRarity`,
+  then `PutTheHealthSharesBack` (Famished Beasts' share on the new rung's maximum) and
+  `ApplySoulHarvestFigures(..., /*bFreshBlock=*/true)` (Soul Harvest's on that). The issue asked for one round trip
+  showing each share carried exactly once; none existed.
+
+### What the test does
+
+On a dungeon carrying Famished Beasts, Soul Harvest and Volatile Evolution, in `ARoundTripOfRows`, with
+`Cataclysm.VolatileEvolutionRoll` pinned to 100 (never under the 10% chance) until the test asks for the rise:
+
+- **Before the save.** The first pinned seed from 1 to 20 whose floor 2 has a creature that eats, with no other creature
+  within twice the eating reach (`AFamishedEaterKeepsItsDropsAndShareAfterALoad`'s choice), below Volatile
+  Evolution's ceiling and holding no player build. It eats two drops (two `AGearDropAt` and a beat each), then is given
+  three souls through `RestoreCreatureRoles`, as `ACreaturesHeldSoulsAndTheFedBossComeBack` gives them, which is what a
+  soul given in play does: a holding with nothing added, then the figures applied. **Set-up, gating:** two eaten, three
+  souls, a starting maximum above nought, and **its maximum already equal to its own maximum on its rung with each share
+  on it once**, within 0.5, so the formula the rise is held to describes this creature.
+- **After the load.** The eater is the creature standing within 1 cm of where it stood, found by place and not by its
+  drops, so a load that lost them is measured. A beat at the entrance; then it is wounded to half its maximum and one
+  beat runs with the roll pinned to 0.
+- **The figure.** Own = the starting maximum **the save held** x the rarity table's health scaling for the rung it is on
+  now x `UCataclysmEnemyModifiers::MaxHealthMultiplier` of the rows it holds **after** the rise (a rung-up draws the new
+  rung's modifiers) x its commander's multiplier, which is what `ApplyStartingAttributes` writes. Expected = Own x
+  `FamishedBeastsMultiplier(2)`, plus `SoulHarvestHealthAdded` of that for 3 souls.
+- **Asserted.** The maximum after the load and a beat is the one saved (0.5); one beat raised it one rung; it has still
+  eaten two; it still holds three souls; **the maximum is Expected** (0.5); Famished Beasts' recorded share (read
+  through `CreatureRolesInto`) is Own x (`FamishedBeastsMultiplier(2)` - 1) (0.5); Soul Harvest's recorded share (read
+  through `SoulHarvestHeldBy`) is `SoulHarvestHealthAdded(Own x FamishedBeastsMultiplier(2), 3)` (0.5).
+- **Controls.** The maximum less both recorded shares is Own (0.5); and a share carried twice -- Famished Beasts'
+  multiplier applied twice, or Soul Harvest's health added twice -- reads a figure more than 1.0 from Expected, so the
+  0.5 tolerance tells a doubled share apart. After the test the roll's variable is what it was. Prints "LOAD RUNG
+  SHARES".
+- **Volatile Evolution and not Blood-Forged Champions**, because one pinned roll and one beat raise a rung, where
+  Blood-Forged needs deaths fed to a champion. The two paths run the same four calls in the same order (read
+  2026-11-01); Blood-Forged's is not exercised by this test.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Build, in the window | the compile below; the window changes no source before the proofs |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed`, prefix `Cataclysm.SaveLoad.ARestoredEatersSharesAreCarriedOnceThroughARungChange` |
+| Whole Unreal suite | **4496 / 0**: 4495, window threat-zero-w1's measured total on `fc1b1a9a4`, which merged as `690e74239` (#2671), this branch's base, + the 1 test added here. No existing test changes |
+| Python | the figure of record under "Compiled, and Python of record", unchanged (no Python test added), with JUnit, and ruff clean |
+| P1, the Famished restore: `Creature.DropsEaten = Saved.FamishedDropsEaten;` in `RestoreCreatureRoles` (`CataclysmDungeonGameMode.cpp`) broken to `Creature.DropsEaten = 0;`, prefix the test's full name | `1 tests performed, 0 succeeded, 1 failed`, on four assertions only: "it has still eaten two" (0); "its maximum is the new rung's own, Famished Beasts' share on it once, Soul Harvest's on that once" (Own x 1.3 against Own x 1.56: `PutTheHealthSharesBack` skips an eater of nought, so only the souls go back); "Famished Beasts records its share once" (0, `CreatureRolesInto` records nothing for nought eaten); "Soul Harvest records its share once" (Own x 0.3 against Own x 0.36). Passing: the load, the maximum after the load (the saved maximum is written back by `MaximumsInto`), the rung, the souls, both controls (the maximum less the shares is still Own), and the roll put back |
+| P2, the starting maximum: `if (Saved.StartingHealth > 0.0f)` in `FCataclysmSaveApply::CreatureInto` (`CataclysmSaveApply.cpp`) broken to `if (Saved.StartingHealth < 0.0f)`, prefix the test's full name | `1 tests performed, 0 succeeded, 1 failed`, on four assertions only: the maximum, Famished Beasts' share, Soul Harvest's share, and "CONTROL: the maximum less both recorded shares is the new rung's own maximum". Traced: the restored creature's starting maximum is then the class default, 0 (`ACataclysmEnemyCharacter::StartingMaxHealth`; no subclass sets it), so `ApplyStartingAttributes` writes no maximum and the rise leaves the loaded maximum M0 = Own0 x 1.56 standing as its own; the shares go on that, giving M0 x 1.56, against Own' x 1.56 with Own' = Own0 x 1.85 (`EnemyRarities.csv`, every step) x the rows' change. They agree only if the rows drawn on the rise multiply maximum health by about 0.84. Passing: the load, the maximum after the load, the rung, drops, souls, the doubled-share control, and the roll put back |
+
+Each break keeps every name it touches in use, so each file compiles; each anchor occurs once in its file (checked
+with `prove_r2181.py --anchors-only`). Each runs through `tools/unreal_build.prove_cpp_guard` with
+`assert result.proved`, the prefix the test's full name (no other test's name begins with it), and **each broken half's
+engine log kept**, since the predictions are at the assertion. Each restored half must name no failure. Neither runs
+while a Python suite runs (issue #1630).
+
+### Compiled, and Python of record
+
+Not yet run.
+
+### Not verified
+
+- Which seed and which creature the test finds, and that a seed from 1 to 20 gives an eater below the ceiling with the
+  three rows on the dungeon; the Famished test found one on seed 1 with Famished Beasts alone.
+- Blood-Forged Champions' rung change after a load is read to run the same calls, and is not tested.
+- Carrion Feast's feeders are ruled a reset across a load (#2181's first comment), so a feeder's shares are not tested
+  here.
+
+---
+
 ## 2026-11-01 — A test's new save slots are deleted when it ends, never one that was there before nor its backup, and each run reports what its tests left (#2658)
 
 **Affects:** `FCataclysmTestSaves` (new, `game/Source/Cataclysm/Save/CataclysmTestSaves.h`, `.cpp`); the three writes of
