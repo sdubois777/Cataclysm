@@ -16,6 +16,18 @@ this is the last of Group 3d's raised creatures.
 ### SAID FIRST
 
 - **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **WINDOW w120 STOPPED AT ITS FIRST STEP, 2026-11-01**, on 423af997c: the Reaper test alone failed on one assertion,
+  "Expected 'each at the health it was saved at, not full' to be 1, but it was 0". Its two lines:
+  "LOAD REAPER on seed 1: Loaded (... day 1, 224 creatures, placed where it was saved); after a beat 1/1 standing, 0 at
+  half health, 1 marked, 0 counted as the floor's own; the floor's own standing 223/223" and "LOAD REAPER HIT: its health
+  47.2 before a hit of 100 and 47.2 after; after 11 s more the same Reaper". THE CAUSE IS THE TEST'S EXPECTATION, NOT THE
+  LOAD: `CataclysmVitalAttributeSet.cpp` line 241, in `PreAttributeChange`, under "A CREATURE THAT CANNOT BE HURT IS HELD
+  AT ITS MAXIMUM: The Reaper", reads `if (Unhurt && Unhurt->bCannotBeHurt)` and sets `NewValue = GetMaxHealth();`. The
+  halving before the save is refused, so the Reaper is saved and loaded at its full 47.2, and it is never at half health
+  in play either. RULED 2026-11-01: `ARaisedRoundTrip` and `TheRaisedCameBack` take an optional expected share, 0.5 by
+  default, so no existing test's assertion changes; the Reaper test alone passes 1.0, and its line reads "each at its
+  full health, at which it is held". That assertion checks the saved full health; P1 is what proves the Reaper cannot be
+  hurt. The other three tests, the suite, Python and the proofs were not run.
 - **RULED KEEP, 2026-10-31: A SAVE NOW READS THE STALKER'S HEALTH AND POTIONS AS THEY ARE**, not as the last beat kept them a
   quarter of a second before. The walk record carried the beat's figure (Group 2), so a Stalker hit in the last beat
   before a save came back with that hit undone. Found by the beat-first order: a beat, then the halving, then the save,
@@ -59,7 +71,8 @@ this is the last of Group 3d's raised creatures.
 The first, second and fourth go through `ARaisedRoundTrip`: a beat, then the halving, then the save.
 
 - `Cataclysm.SaveLoad.TheReaperStillStandsAndCannotBeHurtAfterALoad`. Set-up: 11 s on the beat. The mark it reads is the
-  Reaper's rung, not its being unable to be hurt. After the load it also checks two things: a hit of 100 from the
+  Reaper's rung, not its being unable to be hurt, and the health it reads is its full health, at which the game holds it
+  (w120, above). After the load it also checks two things: a hit of 100 from the
   player, with the Reaper's evasion and shield at nought and nothing answered back, leaves its health where it was; and
   after 11 s more it is still the same Reaper. Prints "LOAD REAPER" and "LOAD REAPER HIT".
 - `Cataclysm.SaveLoad.TheCorruptedStalkerStandsWhereItStoodAfterALoad`. Set-up: 61 s on the beat, the first floor it
@@ -77,11 +90,11 @@ The first, second and fourth go through `ARaisedRoundTrip`: a beat, then the hal
 
 | Figure | Registered |
 |---|---|
-| The four new tests alone | 1 / 1 each, their lines quoted |
+| The four new tests alone | 1 / 1 each, their lines quoted (registered for w120; registered again for w121) |
 | Whole Unreal suite | 4448 / 0: window w119's 4444 on `development` (c968fed35), + 4 |
 | Python | of record, with JUnit, and ruff |
-| P1, the Reaper's flag not put back (`Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.`) | the Reaper test fails on "a hit on the Reaper does no damage" only; no other test reads a restored Reaper |
-| P2, the Reaper not linked (`TheReaper = &Creature; // A load's: the Reaper.`) | the Reaper test fails on "as many stand in the rule's list as were saved" (0) and "set-up: the Reaper and the player stand" only: its list reads the link; "and no second Reaper comes" is not reached |
+| P1, the Reaper's flag not put back (`Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.`) | the Reaper test fails on "a hit on the Reaper does no damage" only: the load restores the saved health, which is its maximum, so "each at its full health, at which it is held" passes before the hit; no other test reads a restored Reaper |
+| P2, the Reaper not linked (`TheReaper = &Creature; // A load's: the Reaper.`) | the Reaper test fails on "as many stand in the rule's list as were saved" (0) and "set-up: the Reaper and the player stand" only; "each at its full health" reads none: its list reads the link; "and no second Reaper comes" is not reached |
 | P3, the Reaper not marked as come (`bTheReaperRaised = true; // A load's: the Reaper has come.`) | the Reaper test fails on "and no second Reaper comes" only: the clock raises a second 10 s in, which the link then names |
 | P4, the Stalker not raised (`RaiseTheCorruptedStalker(&State.CorruptedStalkerLocation); ...`) | the Stalker test fails on "as many stand ..." (0) and "set-up: the Stalker stands after the load" only; the slain test saves no standing Stalker |
 | P5, the Stalker raised at the entrance (`At ? *At // A load's: where the Stalker stood.` broken to `false ? *At ...`) | the Stalker test fails on "it stands where it stood" only; its control passes |

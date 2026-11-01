@@ -5503,28 +5503,34 @@ namespace CataclysmSaveLoadTest
 	/**
 	 * WHAT A RAISED CREATURE'S ROUND TRIP ASSERTS, the same for each kind: as many standing in its rule's list as saved, each
 	 * at half its health and carrying the rule's mark, the floor's own standing count as saved, and not one of the floor's
-	 * own, which is what the stairs' seal reads. Prints one line, `Label` first.
+	 * own, which is what the stairs' seal reads. Prints one line, `Label` first. `ExpectedShare` is the share of its health
+	 * each was saved at: a half, or all of it for a creature the game holds at its maximum, the Reaper (window w120, 3d-4b).
 	 */
 	void TheRaisedCameBack(FAutomationTestBase& Test, const TCHAR* Label, int32 Seed, const FCataclysmLoadReport& Report,
 						   ACataclysmDungeonGameMode& Mode, const TArray<ACataclysmEnemyCharacter*>& Standing,
-						   int32 StandingSaved, int32 LivingSaved, TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked)
+						   int32 StandingSaved, int32 LivingSaved, TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked,
+						   float ExpectedShare = 0.5f)
 	{
+		const bool bHeldAtFull = FMath::IsNearlyEqual(ExpectedShare, 1.0f);
 		int32 AtHalf = 0;
 		int32 WithMark = 0;
 		int32 FloorsOwn = 0;
 		for (ACataclysmEnemyCharacter* One : Standing)
 		{
-			AtHalf += FMath::IsNearlyEqual(HealthShareOf(*One), 0.5f, 0.01f) ? 1 : 0;
+			AtHalf += FMath::IsNearlyEqual(HealthShareOf(*One), ExpectedShare, 0.01f) ? 1 : 0;
 			WithMark += Marked(*One) && One->bRaisedByARule ? 1 : 0;
 			FloorsOwn += Mode.IsOneOfTheFloorsOwnStanding(One) ? 1 : 0;
 		}
 		const int32 Living = Mode.LivingFloorEnemies();
-		Test.AddInfo(FString::Printf(TEXT("%s on seed %d: %s (%s); after a beat %d/%d standing, %d at half health, %d marked, %d "
+		Test.AddInfo(FString::Printf(TEXT("%s on seed %d: %s (%s); after a beat %d/%d standing, %d at %s health, %d marked, %d "
 										  "counted as the floor's own; the floor's own standing %d/%d"),
 									 Label, Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Standing.Num(),
-									 StandingSaved, AtHalf, WithMark, FloorsOwn, Living, LivingSaved));
+									 StandingSaved, AtHalf, bHeldAtFull ? TEXT("full") : TEXT("half"), WithMark, FloorsOwn,
+									 Living, LivingSaved));
 		Test.TestEqual(TEXT("as many stand in the rule's list as were saved"), Standing.Num(), StandingSaved);
-		Test.TestEqual(TEXT("each at the health it was saved at, not full"), AtHalf, Standing.Num());
+		Test.TestEqual(bHeldAtFull ? TEXT("each at its full health, at which it is held")
+								   : TEXT("each at the health it was saved at, not full"),
+					   AtHalf, Standing.Num());
 		Test.TestEqual(TEXT("each carrying the rule's mark"), WithMark, Standing.Num());
 		Test.TestEqual(TEXT("none counted as the floor's own, which the stairs' seal reads"), FloorsOwn, 0);
 		Test.TestEqual(TEXT("and the floor's own standing as saved, which the clear reads"), Living, LivingSaved);
@@ -5541,7 +5547,7 @@ namespace CataclysmSaveLoadTest
 						  TFunctionRef<bool(ACataclysmDungeonGameMode&)> Raise,
 						  TFunctionRef<TArray<ACataclysmEnemyCharacter*>(const ACataclysmDungeonGameMode&)> Standing,
 						  TFunctionRef<bool(const ACataclysmEnemyCharacter&)> Marked,
-						  TFunction<void(ACataclysmDungeonGameMode&, int32)> AlsoAfter = nullptr)
+						  TFunction<void(ACataclysmDungeonGameMode&, int32)> AlsoAfter = nullptr, float ExpectedShare = 0.5f)
 	{
 		int32 Seed = INDEX_NONE;
 		int32 StandingSaved = -1;
@@ -5565,7 +5571,8 @@ namespace CataclysmSaveLoadTest
 			{
 				StandAtTheEntrance(Mode, Player);
 				BeatOnce(Mode);
-				TheRaisedCameBack(Test, Label, Seed, Report, Mode, Standing(Mode), StandingSaved, LivingSaved, Marked);
+				TheRaisedCameBack(Test, Label, Seed, Report, Mode, Standing(Mode), StandingSaved, LivingSaved, Marked,
+								  ExpectedShare);
 				if (AlsoAfter)
 				{
 					AlsoAfter(Mode, StandingSaved);
@@ -6336,8 +6343,8 @@ namespace CataclysmSaveLoadTest
 }
 
 /**
- * The Reaper standing at a save stands after the load, at the health it had, still unable to be hurt, and the floor's
- * Reaper, so the beat does not raise a second. Until this a load removed it and the floor's clock raised a new one ten
+ * The Reaper standing at a save stands after the load, at its full health, at which the game holds it, still unable to be
+ * hurt, and the floor's Reaper, so the beat does not raise a second. Until this a load removed it and the floor's clock raised a new one ten
  * seconds later at the entrance. Issue #753, Group 3d-4b, ruled 2026-10-31. Prints "LOAD REAPER" and "LOAD REAPER HIT".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadReaperTest,
@@ -6401,7 +6408,10 @@ bool FCataclysmSaveLoadReaperTest::RunTest(const FString&)
 				}
 				TestEqual(TEXT("a hit on the Reaper does no damage"), After, Before);
 				TestTrue(TEXT("and no second Reaper comes"), bTheSame);
-			});
+			},
+			// AT ITS FULL HEALTH: the game holds a creature that cannot be hurt at its maximum, so the halving before the
+			// save is refused and it is saved at full health (window w120). What proves it cannot be hurt is the hit above.
+			1.0f);
 	});
 }
 
