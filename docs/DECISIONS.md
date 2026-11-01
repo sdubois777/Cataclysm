@@ -23,9 +23,9 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
   on the select screen asks the front end for a screen whose asset is missing: the front end logs it and replaces
   nothing, and the select screen stays and shows "the new-character screen could not be opened: its asset is missing",
   as asked 2026-11-01. A test sees the front end's half; **the select screen's text is not seen by any test**, because it
-  needs the screen made by `CreateWidget` with the front end as its owner, which a test world cannot do (#1841). **No
-  proof was run for this.** Breaking the missing-asset check sends a null class to `CreateWidget` in a test world,
-  which could stop the run rather than fail a test.
+  needs the screen made by `CreateWidget` with the front end as its owner, which a test world cannot do (#1841). The
+  front end's half is proved by R8 below, which breaks the missing-asset branch to report the screen shown without
+  making anything, so no null class reaches `CreateWidget`.
 - **TWO EXISTING ASSERTIONS CHANGE, both ruled 2026-11-01.**
   - `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds` asserted `"and opens the sandbox"` after New
     (`LevelRequested == SandboxMap`); New now asks for the new-character screen, so it asserts `"and asks for the
@@ -102,6 +102,7 @@ lists in `tools/tests/test_when_a_save_is_written.py`, `docs/Save_System_Design.
 | R5, the run not at its lethality (`static_cast<int32>(Creation.Partition.Lethality)); // A new character's: its run's lethality.` to `0);`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its run is at its lethality: a death costs Hardcore's 10 days" (5) only |
 | R6, not written at once (`Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.`), prefix `Cataclysm.SaveLoad.` | the made test fails on "its record was written at once" and stops there |
 | R7, the trigger not writing the character record (its `return true` under `case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: ...` to `return false`), prefix `Cataclysm.Save` | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "its record was written at once", stopping there |
+| R8, a missing screen reported as shown (the `return false;` after `A front end screen's asset is missing` in `ACataclysmFrontEndPlayerController::ShowOnly` to `return true;`, nothing made), prefix `Cataclysm.CharacterSelect.AMissingNewCharacterScreenReplacesNothing` | the missing-screen test fails on "a missing new-character screen is not shown" only: no input mode is asked for and the warning is still logged once |
 
 ### Run
 
