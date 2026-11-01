@@ -11,12 +11,23 @@ Decisions made outside the Google Drive documents, newest first.
 (`CataclysmSaveLoad.h`, `.cpp`); `ACataclysmGameMode::TakeTheRunsTier` and its callers, and `DifficultyTier`'s comment
 (`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `.cpp`); `UCataclysmGameInstance::BeginEmpireRun` and its comment
 (`CataclysmGameInstance.h`, `.cpp`); the select screen's row (`CataclysmCharacterSelectWidget.cpp`); three new tests in
-`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two new assertions in an existing select-screen test. Issue
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two new assertions in an existing select-screen test; **the
+character record at schema version 4** (`UCataclysmCharacterSave::SchemaVersionNow`, and `Migrate_3_to_4` in
+`CataclysmSaveRecords.cpp`), a new fixture `game/Tests/SaveFixtures/Character_v4.json`, a note in that folder's
+`README.md`, one new test and three changed ones in `game/Source/Cataclysm/Tests/CataclysmSaveRecordTests.cpp`. Issue
 [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** Compiled with no lock; the window is registered below.
+- **WINDOW w131'S THIRD RUNNER FAILED AN EXISTING GUARD, AND THE FIX IS A SCHEMA VERSION.** On 268b53b2e the whole suite
+  ran 4503, 4502 passed, and `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` failed: "Character_v3.json
+  and the record it loads into disagree at the record.DifficultyTier is on the second side only. Either the fixture is
+  missing a field the record now has, or it holds one the record dropped" (`CataclysmSaveRecordTests.cpp` line 558). The
+  new field was not in the committed character fixture. **Adding it there was not allowed:**
+  `game/Tests/SaveFixtures/README.md` lets a fixture gain a field only while nothing can load a save, and #753
+  (`78ad0fa81`) made saves load. So the character record goes to **version 4**, with `Migrate_3_to_4` writing tier 1,
+  and **Q2 below is overridden** (ruled 2026-11-01). The other measurements of that run held: the four tests alone 1 / 1
+  each, Python 7220 passed, "Test saves: 712 written and deleted, 0 left behind". No proof ran.
 - **NO AUTOMATION TEST SHOWS THAT EVERY READER OF THE TIER GETS IT.** Hits, minions and floors read the tier through
   `ACataclysmGameMode::DifficultyTierIn`, which finds the world's authority game mode, and a world built by an automation
   test has none and cannot be given one. The tests show the level's game mode takes the run's tier and that
@@ -34,10 +45,17 @@ Decisions made outside the Google Drive documents, newest first.
 ### Rulings, 2026-11-01
 
 - **Q1:** build the win's raise now; tests are its only callers; its comment names #1324.
-- **Q2, no schema version bump.** A record written before the field loads at tier 1: `FCataclysmSaveStorage::FromJson`
-  reads the fields with `FJsonObjectConverter::JsonObjectToUStruct(..., CPF_SaveGame, 0, false, ...)`, strict mode off,
-  which sets only the properties whose keys the JSON has, so `DifficultyTier` keeps its default, 1. The precedent is the
-  run record's `PartialDay`.
+- **Q2, OVERRIDDEN: a schema version bump, to 4, with a migration step.** The first ruling was no bump: a record
+  written before the field loads at tier 1, because `FCataclysmSaveStorage::FromJson` reads with
+  `FJsonObjectConverter::JsonObjectToUStruct(..., CPF_SaveGame, 0, false, ...)`, strict mode off, and a property whose
+  key the JSON lacks keeps its default, 1; the precedent was the run record's `PartialDay`. That was ruled without the
+  fixtures' `README.md`, which is the written rule: once the game can load a save, a field added to a record takes a
+  schema version and a migration step, and #753 made saves load. **Ruled 2026-11-01, option (B):** version 4;
+  `Migrate_3_to_4` writes tier 1 explicitly; a new `Character_v4.json`, version 3's file at version 4 with
+  `"DifficultyTier": 2`; the completeness test pointed at it; `Character_v3.json` left exactly as it is, now a
+  migration input. The coordinator's reason for not arguing the README's trigger away: no player file exists today, and
+  that stops being true when the owner plays builds after 16 November. `LastWrittenUtc` crossing the same rule in
+  `59e5dd893` without a version is recorded in the README as a slip and not undone.
 - **Q3, the game mode is set from the run, at every level start where a run is held** (`TakeTheRunsTier`): the end of
   `ACataclysmGameMode::StartPlay`, which the sandbox and the dungeon both run; after the arrival's load, in both outcomes
   that load a character; after a new character's run begins; and in `UCataclysmGameInstance::BeginEmpireRun`, for a run
@@ -64,6 +82,15 @@ Decisions made outside the Google Drive documents, newest first.
   tier, as it already did.
 - A character made before this change is at tier 1, the tier the design starts every character at; a run it is in keeps
   the tier it was saved at until it ends.
+- **The character record is at schema version 4.** `Migrate_3_to_4` sets `DifficultyTier` to 1 in a version 3 file,
+  written out rather than left to the default, for `Migrate_1_to_2`'s reason: a migrated record ought to describe itself
+  completely. The chain is `Migrate_1_to_2`, `Migrate_2_to_3`, `Migrate_3_to_4`, each one version wide, as
+  `tools/tests/test_save_migrations_are_single_steps.py` requires, and that test's rule of one committed fixture per
+  version is met by `Character_v4.json`.
+- **`game/Tests/SaveFixtures/README.md`** gains a note in its own format: the exception's trigger fired with #753
+  (`78ad0fa81`), and from #1472 on a new field takes a version; and `LastWrittenUtc` (`59e5dd893`) was added to version 3
+  after that trigger without one, said plainly as a slip. Its table lists `Character_v4.json`, and its count of the
+  character record's migrations reads three, version 4 since 2026-11-01.
 - A death touches nothing that holds the tier.
 
 ### Tests
@@ -73,22 +100,43 @@ Decisions made outside the Google Drive documents, newest first.
   run, and the game mode, at its default 1 before, is at 3 after, as `DifficultyTierFor` reads from it. Prints "TIER
   SAVED". Not `DifficultyTierIn`: an automation world has no authority game mode, so that answers 1 here whatever the mode
   holds (window w131, below).
-- `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne`: a record written by hand at the current schema
-  version with no tier key reads tier 1; the keys it has are read. Prints "TIER BEFORE".
+- `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne`: a record written by hand **at version 3**,
+  with no tier key and almost nothing else, reads tier 1 through `Migrate_3_to_4`; the keys it has are read. Prints
+  "TIER BEFORE". **It sits beside the migration test below rather than becoming it:** this is the smallest version 3
+  record, and that one is the committed version 3 file with every field it has.
+- `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne`, new: `Character_v3.json` run through the
+  chain on its parsed JSON, so the step's own write of the tier is looked for in the file (a step that wrote nothing
+  would still read tier 1, the default); then read into the record, at version 4 and tier 1; then written back and
+  compared field for field with the version 3 file with its version 4 and its tier 1 added. Prints "TIER MIGRATED".
 - `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt`: a new character at tier 4 (set so a run at the
   default cannot pass): its run and its level at 4; a death's write leaves it at 4; a win raises it to 5; at 8 a win
   leaves 8. Prints "TIER RUN".
 - `Cataclysm.CharacterSelect.EachRowShowsWhatTheRulingLists`: the two added assertions above.
 
+**Changed in existing tests by the version bump, old -> new** (ruled; every other assertion unchanged):
+
+| Test | Old | New |
+|---|---|---|
+| `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` | its character entry `Character_v3.json` | `Character_v4.json`; no assertion changed |
+| `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` | reads `Character_v3.json`; "it says it is version 3", `SchemaVersion` == 3 | reads `Character_v4.json`; "it says it is version 4", `SchemaVersion` == 4; **added** "the difficulty tier in the file", `DifficultyTier` == 2 |
+| `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear` | reads `Character_v3.json` | reads `Character_v4.json`; no assertion changed |
+| `Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne` (this change's own) | its JSON at `SchemaVersionNow` | its JSON at 3; no assertion changed |
+
+**Swept and unchanged:** every other test sets a character's version from `UCataclysmCharacterSave::SchemaVersionNow`
+rather than a number; the two literal `"SchemaVersion": 3` strings in `CataclysmSaveStorageTests.cpp` are the example
+record's, which stays at 3; `CataclysmSaveMigrationTests.cpp` reads only the `Example_` files; no Python test names a
+character record field; `docs/Save_System_Design.md` has no version table for the character record.
+
 ### Registered before the run
 
 | Figure | Registered |
 |---|---|
-| The three new tests and the changed select test alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4503 / 0: `development`'s 4500 (4ec191693, #2678), + 3; and, under #2673's exit code as #2677 left it, a "Test saves:" line after the last test started, with 0 left behind |
+| Alone: the three new tier tests, the changed select test, the new migration test and the completeness test that failed | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | **4504 / 0**: `development`'s 4500 (4ec191693, #2678), + 4 (three tier tests and the migration test); and, under #2673's exit code as #2677 left it, a "Test saves:" line after the last test started, with 0 left behind |
 | Python | of record, with JUnit, and ruff |
 | P1, a new character's run not given its tier (`State->GetDifficultyTier()); // A new character's: its run at its tier.` to `0); // ...`), prefix `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTier` | the run test fails on "the run is at the character's tier" and "and its level is fought at it" only, both 1: with no tier given, `BeginEmpireRun` asks `DifficultyTierIn` of a game instance with no world, which answers 1 |
 | P2, the arrival not setting the level's tier (`TakeTheRunsTier(); // An arrival's: the loaded run's tier.` to `(void)0; // ...`), prefix `Cataclysm.SaveLoad.ACharactersTierComesBack` | the saved-tier test fails on "the level is fought at the run's tier" and "and the tier rule reads it from that game mode" only, both 1; the tier on the character and the run still come back |
+| P3, the migration step not writing the tier (`Record->SetNumberField(TEXT("DifficultyTier"), 1); // A migration's: tier 1, written out.` to `(void)Record; // ...`), prefix `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne` | the migration test fails on "the step writes tier 1 into the file" only: the record still reads tier 1, its default, and written back it still matches the version 3 file with tier 1 added |
 
 ### Run
 
