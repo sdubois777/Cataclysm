@@ -2,6 +2,129 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — The new-character screen's asset, made by the generator, so New on the select screen opens it (#753, select-screen step 4b)
+
+**Affects:** `tools/generate_interface_assets.py`, which makes `WBP_NewCharacter` (`make_new_character`, called after
+`make_character_select`); the asset it made, `game/Content/Interface/WBP_NewCharacter.uasset` (Git LFS,
+`.gitattributes` line 13, unchanged), named without backticks until window A had made it, because the log's check
+refuses a path that does not exist; `ACataclysmFrontEndPlayerController::NewCharacterScreenAsset` (a read-only getter, for a test,
+in `CataclysmFrontEndGameMode.h`); one new test in `game/Source/Cataclysm/Tests/CataclysmCharacterSelectTests.cpp`; and a
+new Python check, `tools/tests/test_the_new_character_screen_is_generated_with_its_bindings.py`. Issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) stays open for step 5 (deleting a character).
+
+### SAID FIRST
+
+- **NO TEST SEES NEW OPEN THE SCREEN.** A test world cannot make a screen with `CreateWidget` (#1841). The asset test
+  shows the one thing the front end checks before it makes the screen: the path it opens loads, as the new-character
+  screen's class. The screen opening, and what it shows, is on the owner's launch list below.
+- **GENERATED AND PASSED.** Window A made the asset exactly as registered, and window B passed every registered
+  figure (both below). What no test sees is the screen opening in play, on the launch list.
+- **THE LAYOUT IS NOT DESIGNED,** ruled 2026-11-01: one plain column, as every generated screen is, because the owner
+  wants a basic working screen before any polish.
+
+### Rulings, 2026-11-01
+
+- **Q1, the layout:** a plain vertical column: the title; Name and its box; Lethality and its buttons; Solo Self-Found;
+  Population and its buttons; the creator's weapon and damage types; the summary, unlocked and refusal lines; Begin and
+  Back.
+- **Q2, Solo Self-Found:** a check box with a separate text label beside it, in a row of their own, because the C++
+  binds the check box itself.
+- **Q3, the owner's launch list**, below, with one item added by the ruling: a name in Ö or Ł draws correctly in the
+  name box, since the font was checked only by its character map (step 4a).
+- **Two windows, as step 3b:** A, the generator run only, registering exactly one changed file, then the asset
+  committed; B, the registered tests.
+
+### What changes once the asset exists
+
+- **New on the select screen opens the new-character screen.** `ShowOnly` loads the class, makes the screen, removes the
+  select screen and asks for the menu input mode; Back shows the select screen again, read again from the saves.
+- **No existing test changes**, because none reaches `CreateWidget` with this path:
+  `NewIsRefusedWhenTheAccountHoldsTwentyFour` builds the select screen with no owning player, so `StartNew` finds no
+  front end; `AMissingNewCharacterScreenReplacesNothing` points the property at a path that does not exist; and
+  `ContinueOpensTheLevelTheRunNeeds` asserts only `NewCharacterRequested`.
+- **Start-up does not change.** `GameDefaultMap` and `L_FrontEnd` are untouched; the generator leaves `L_FrontEnd` alone
+  because it exists.
+
+### The owner's launch list
+
+When the owner next launches the game (they are away until 2026-11-16):
+
+1. New on the select screen shows the new-character screen.
+2. Lethality and Population show their buttons; choosing Online is refused with its reason.
+3. A name in Ö or Ł draws correctly in the name box.
+4. Begin with an allowed name opens the sandbox, and the character is listed on the select screen on return.
+5. Back returns to the select screen.
+
+### Tests
+
+- `Cataclysm.CharacterSelect.TheNewCharacterScreenAssetLoadsAndHoldsItsBoundWidgets`: the path the front end's
+  controller opens (read through `NewCharacterScreenAsset`, so the test cannot name another) loads, is the new-character
+  screen's class, is a widget blueprint with a tree, and the tree holds the twelve bound widgets by name and type: the
+  creator's `WeaponTypeBox`, `DamageTypeBox` (panels), `SummaryLabel`, `UnlockedLabel`, `RefusalLabel` (text) and
+  `ConfirmButton`; and the screen's `NameBox` (an editable text box), `LethalityBox`, `PopulationBox` (panels),
+  `SoloSelfFoundBox` (a check box), `CreationRefusalLabel` (text) and `BackButton`. Prints "NEW CHARACTER ASSET".
+- `tools/tests/test_the_new_character_screen_is_generated_with_its_bindings.py`, three checks: every `BindWidget` in the
+  two headers is added by `make_new_character`, read with a floor of twelve; `main()` makes the screen after
+  `make_choice_button` and before `make_front_end_map`; and the front end's controller names the asset the generator
+  makes, once.
+- **A WIDGET MISSING FROM THE ASSET CANNOT BE PROVED IN UNREAL:** the asset is binary and made only by the generator.
+  The Python check guards that instead, and P1 below proves it.
+
+### Python proofs, run before window A
+
+Run with `tools/prove_guard.py`'s `break_and_run` on the new check alone, in a `git archive` copy of `bd6fd878e`:
+
+| Proof | Break | Registered | Measured |
+|---|---|---|---|
+| P1 | `make_new_character` does not add `BackButton` | the bindings check fails, only | PROVED: "1 failed, 2 passed", restored "3 passed"; named failure `test_every_bound_widget_of_the_new_character_screen_is_added_by_its_generator` |
+| P2 | `main()` makes the screen before `make_choice_button` | the order check fails, only | PROVED: "1 failed, 2 passed", restored "3 passed"; named failure `test_main_makes_the_screen_after_the_button_and_before_the_level` |
+| P3 | `NEW_CHARACTER_ASSET` names `WBP_NewCharacterX` | the path check fails, only | PROVED: "1 failed, 2 passed", restored "3 passed"; named failure `test_the_front_end_opens_the_asset_the_generator_makes` |
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| Window A, the editor run | exit 0; logs "satisfies 12 BindWidget properties" and "created /Game/Interface/WBP_NewCharacter"; the ten existing screens and `L_FrontEnd` "already exists; left alone"; **exactly one file changed**, `game/Content/Interface/WBP_NewCharacter.uasset`, untracked; any other is restored in the worktree and named here |
+| Window B, the asset test alone | 1 / 1, its line quoted |
+| Window B, the whole Unreal suite | 4486 / 0: `development`'s 4485 (e49d4f709, #2666 merged, window converted-total-w1), + 1. MOVED ONTO IT after window A, as `feat/new-character-screen-asset-1`, from e70ee48eb (4480), whose figure this said before; the move changed none of this step's files, by `git diff` |
+| Window B, Python | of record, with JUnit, and ruff |
+| A1, the front end's path naming a missing asset (`/Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C` to `.../WBP_NoSuchScreen.WBP_NoSuchScreen_C` in `CataclysmFrontEndGameMode.h`), prefix `Cataclysm.CharacterSelect.TheNewCharacterScreenAsset` | the asset test fails on "the new-character screen's asset loads" and stops there |
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 77 actions, 67 files compiled`, at
+the first attempt (a new worktree).
+
+### The editor run (window A)
+
+Window w127A, 2026-11-01, on `35c46e05d`, lock `dungeon-w127A`, after `development` moved to e49d4f709 (#2666) and its
+CI and Unreal runs had completed. Pre-checks all passing at 07:41:08 local, 11365 MB free. Build: `Build: Succeeded -
+target already up to date, 0 actions, nothing compiled`. Then `python tools/run_editor_python.py
+tools/generate_interface_assets.py`, exit 0. Its log, `game/Saved/Logs/run_editor_python.log`, says the ten existing
+screens "already exists; left alone", then "satisfies 12 BindWidget properties: BackButton, ConfirmButton,
+CreationRefusalLabel, DamageTypeBox, LethalityBox, NameBox, PopulationBox, RefusalLabel, SoloSelfFoundBox,
+SummaryLabel, UnlockedLabel, WeaponTypeBox", "created /Game/Interface/WBP_NewCharacter", "/Game/Maps/L_FrontEnd already
+exists; left alone", "done", and "Python script executed successfully". Its `Error:` lines are the engine's start-up
+complaint that the asset manager has no rule for `GameFeatureData`, which every editor start here logs.
+
+**THE RUN TOUCHED EXACTLY THE ONE FILE IT WAS FOR,** by its own report ("The editor run left 1 file(s) changed") and
+by `git status --porcelain --untracked-files=all` afterwards: `?? game/Content/Interface/WBP_NewCharacter.uasset`,
+stored in Git LFS. **NOTHING ELSE WAS TOUCHED, SO NOTHING WAS RESTORED.** It is committed with this record.
+
+### The tests (window B)
+
+Window w127B, 2026-11-01, on `5cca2b248` (moved onto `development` e49d4f709), lock `dungeon-w127B`, run by
+`run_w127B.py` from a clean tree; pre-checks all passing at 07:48:20 local, 11236 MB free; the build compiled nothing.
+
+| Figure | Registered | Measured |
+|---|---|---|
+| The asset test alone | 1 / 1 | 1 / 1: "NEW CHARACTER ASSET: /Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C loads" |
+| Whole Unreal suite | 4486 / 0 | "4486 tests performed, 4486 succeeded, 0 failed"; declared 4486, gap 0 |
+| Python | of record | "7190 passed, 8 skipped"; JUnit 7198 tests, 0 failures, 0 errors, 8 skipped; ruff "All checks passed!" |
+| A1 | the asset test fails on "the new-character screen's asset loads" and stops there | PROVED: 0 of 1 with the break, 1 of 1 restored; the broken log, `w127B_A1_run1.log`, fails "the new-character screen's asset loads" only |
+
+---
+
 ## 2026-11-01 — Converted damage's total is fixed when it is converted: no stat stretches, holds, scales or mitigates it again (#2275, R3)
 
 **Affects:** `UCataclysmSkillEffects::ApplyDamageOverTime` (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`);

@@ -58,6 +58,9 @@ public:
 	/** The screen's asset, which a test loads. Select-screen step 3b. */
 	const TSoftClassPtr<UCataclysmCharacterSelectWidget>& SelectScreenAsset() const { return SelectScreenClass; }
 
+	/** The new-character screen's asset, which a test loads. Select-screen step 4b. */
+	const TSoftClassPtr<UCataclysmNewCharacterWidget>& NewCharacterScreenAsset() const { return NewCharacterScreenClass; }
+
 protected:
 	virtual void BeginPlay() override;
 

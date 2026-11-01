@@ -21,6 +21,9 @@ WHAT IT MAKES, under `/Game/Interface`:
                             keys, issue #837 layer 4
     WBP_CharacterSelect     the character select screen: the saved characters,
                             Continue and New, issue #753
+    WBP_NewCharacter        the new-character screen New opens: a name, the
+                            lethality, Solo Self-Found, the population, the
+                            weapon type and damage type, issue #753
 
 AND ONE LEVEL, under `/Game/Maps`:
 
@@ -749,6 +752,98 @@ def make_character_select():
     log("created {}/{}".format(INTERFACE_DIR, CHARACTER_SELECT_ASSET))
 
 
+NEW_CHARACTER_PARENT = "CataclysmNewCharacterWidget"
+NEW_CHARACTER_ASSET = "WBP_NewCharacter"
+
+
+def make_new_character():
+    """The new-character screen, issue #753 select-screen step 4b.
+
+    THE CREATOR'S TREE AND FOUR MORE CHOICES, in one plain column, ruled
+    2026-11-01: a name, the lethality, Solo Self-Found and the population above
+    the creator's weapon and damage types, then Begin and Back. The lethality and
+    population lists are filled at run time with WBP_ChoiceButton copies by
+    UCataclysmNewCharacterWidget, as the weapon types are.
+    """
+    parent = parent_class(NEW_CHARACTER_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, NEW_CHARACTER_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, NEW_CHARACTER_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, NEW_CHARACTER_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(NEW_CHARACTER_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Create a character", size=30)
+
+    name_heading = add(blueprint, unreal.TextBlock, "NameHeading", "Body")
+    set_text(name_heading, "Name", size=18)
+    add(blueprint, unreal.EditableTextBox, "NameBox", "Body")
+
+    lethality_heading = add(blueprint, unreal.TextBlock, "LethalityHeading", "Body")
+    set_text(lethality_heading, "Lethality", size=18)
+    add(blueprint, unreal.WrapBox, "LethalityBox", "Body")
+
+    # A CHECK BOX HOLDS ONE CHILD, and the C++ binds the box itself, so its
+    # words are a text block beside it in a row of their own (ruled).
+    add(blueprint, unreal.HorizontalBox, "SoloSelfFoundRow", "Body")
+    add(blueprint, unreal.CheckBox, "SoloSelfFoundBox", "SoloSelfFoundRow")
+    solo = add(blueprint, unreal.TextBlock, "SoloSelfFoundLabel", "SoloSelfFoundRow")
+    set_text(solo, "Solo Self-Found", size=18)
+
+    population_heading = add(blueprint, unreal.TextBlock, "PopulationHeading", "Body")
+    set_text(population_heading, "Population", size=18)
+    add(blueprint, unreal.WrapBox, "PopulationBox", "Body")
+
+    weapon_heading = add(blueprint, unreal.TextBlock, "WeaponHeading", "Body")
+    set_text(weapon_heading, "Weapon", size=18)
+    add(blueprint, unreal.WrapBox, "WeaponTypeBox", "Body")
+
+    damage_heading = add(blueprint, unreal.TextBlock, "DamageHeading", "Body")
+    set_text(damage_heading, "Damage type", size=18)
+    add(blueprint, unreal.WrapBox, "DamageTypeBox", "Body")
+
+    summary = add(blueprint, unreal.TextBlock, "SummaryLabel", "Body")
+    set_text(summary, "", size=18)
+
+    unlocked = add(blueprint, unreal.TextBlock, "UnlockedLabel", "Body")
+    set_text(unlocked, "", size=16)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    creation_refusal = add(blueprint, unreal.TextBlock, "CreationRefusalLabel", "Body")
+    set_text(creation_refusal, "", size=16)
+    creation_refusal.set_editor_property("auto_wrap_text", True)
+
+    add(blueprint, unreal.Button, "ConfirmButton", "Body")
+    confirm = add(blueprint, unreal.TextBlock, "ConfirmLabel", "ConfirmButton")
+    set_text(confirm, "Begin", size=20)
+
+    add(blueprint, unreal.Button, "BackButton", "Body")
+    back = add(blueprint, unreal.TextBlock, "BackLabel", "BackButton")
+    set_text(back, "Back", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            NEW_CHARACTER_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, NEW_CHARACTER_ASSET))
+
+
 MAPS_DIR = "/Game/Maps"
 FRONT_END_LEVEL = "L_FrontEnd"
 FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
@@ -814,6 +909,7 @@ def main():
     make_choice_panel()
     make_skill_assignment()
     make_character_select()
+    make_new_character()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
     make_front_end_map()

@@ -11,11 +11,14 @@
 #include "Player/CataclysmGameMode.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Components/Button.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Misc/PackageName.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCharacterSelectWidget.h"
+#include "Interface/CataclysmNewCharacterWidget.h"
 #include "Player/CataclysmFrontEndGameMode.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmGameInstance.h"
@@ -288,6 +291,63 @@ bool FCataclysmCharacterSelectAssetTest::RunTest(const FString&)
 	TestTrue(TEXT("RefusalLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("RefusalLabel"))) != nullptr);
 	TestTrue(TEXT("NewButton, a button"), Cast<UButton>(Tree->FindWidget(TEXT("NewButton"))) != nullptr);
 	TestTrue(TEXT("and TitleLabel, a text block"), Cast<UTextBlock>(Tree->FindWidget(TEXT("TitleLabel"))) != nullptr);
+	return true;
+}
+
+/**
+ * The new-character screen's asset: the path the front end's controller opens when New is pressed loads, is the
+ * new-character screen's class, and its tree holds the twelve widgets the screen binds, by name and type -- six from
+ * the creator it derives from and six of its own. Read from the asset's own widget tree, as the select screen's asset
+ * test does, because a test world cannot make the screen with `CreateWidget` (#1841); WHAT THIS CANNOT SEE is the
+ * screen shown when New is pressed, which is on the owner's launch list. Fails until
+ * `tools/generate_interface_assets.py` has made `WBP_NewCharacter`. Issue #753, select-screen step 4b, ruled
+ * 2026-11-01. Prints "NEW CHARACTER ASSET".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNewCharacterAssetTest,
+	"Cataclysm.CharacterSelect.TheNewCharacterScreenAssetLoadsAndHoldsItsBoundWidgets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNewCharacterAssetTest::RunTest(const FString&)
+{
+	// THE PATH THE CONTROLLER ITSELF HOLDS, so the test cannot name a different one from the one New opens.
+	const TSoftClassPtr<UCataclysmNewCharacterWidget>& Path =
+		GetDefault<ACataclysmFrontEndPlayerController>()->NewCharacterScreenAsset();
+	UClass* ScreenClass = Path.LoadSynchronous();
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER ASSET: %s %s"), *Path.ToString(),
+							ScreenClass ? TEXT("loads") : TEXT("DOES NOT LOAD")));
+	if (!TestNotNull(TEXT("the new-character screen's asset loads"), ScreenClass))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is the new-character screen's class"),
+			 ScreenClass->IsChildOf(UCataclysmNewCharacterWidget::StaticClass()));
+
+	const UWidgetBlueprintGeneratedClass* Generated = Cast<UWidgetBlueprintGeneratedClass>(ScreenClass);
+	const UWidgetTree* Tree = Generated ? Generated->GetWidgetTreeArchetype() : nullptr;
+	if (!TestNotNull(TEXT("it is a widget blueprint with a tree"), Tree))
+	{
+		return false;
+	}
+	auto Holds = [this, Tree](const TCHAR* Name, UClass* Type)
+	{
+		const UWidget* Found = Tree->FindWidget(FName(Name));
+		TestTrue(FString::Printf(TEXT("its tree holds %s, a %s"), Name, *Type->GetName()),
+				 Found && Found->IsA(Type));
+	};
+	// THE CREATOR'S SIX.
+	Holds(TEXT("WeaponTypeBox"), UPanelWidget::StaticClass());
+	Holds(TEXT("DamageTypeBox"), UPanelWidget::StaticClass());
+	Holds(TEXT("SummaryLabel"), UTextBlock::StaticClass());
+	Holds(TEXT("UnlockedLabel"), UTextBlock::StaticClass());
+	Holds(TEXT("RefusalLabel"), UTextBlock::StaticClass());
+	Holds(TEXT("ConfirmButton"), UButton::StaticClass());
+	// AND THE NEW SCREEN'S SIX.
+	Holds(TEXT("NameBox"), UEditableTextBox::StaticClass());
+	Holds(TEXT("LethalityBox"), UPanelWidget::StaticClass());
+	Holds(TEXT("SoloSelfFoundBox"), UCheckBox::StaticClass());
+	Holds(TEXT("PopulationBox"), UPanelWidget::StaticClass());
+	Holds(TEXT("CreationRefusalLabel"), UTextBlock::StaticClass());
+	Holds(TEXT("BackButton"), UButton::StaticClass());
 	return true;
 }
 
