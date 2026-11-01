@@ -9,6 +9,9 @@
 #include "Save/CataclysmSaveRecord.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
+#include "Save/CataclysmTestSaves.h"
+#include "Misc/ScopeExit.h"
+#include "UObject/Package.h"
 #include "Tests/CataclysmSaveExampleRecord.h"
 #include "Tests/CataclysmSaveFixtures.h"
 
@@ -518,6 +521,109 @@ bool FCataclysmSaveWaitsForItsSlot::RunTest(const FString&)
 	{
 		Cleanup(SlotName);
 	}
+	return true;
+}
+
+/**
+ * The slots a test writes are deleted when it ends, and nothing that was there before. Issue #2658, ruled 2026-11-01.
+ * `FCataclysmTestSaves::DeleteWhatTheTestWrote` is what the end of every test runs; this runs it in the middle and looks:
+ *
+ * - a slot this test made with `WriteToSlot` is deleted;
+ * - a slot that was there before, written over by `WriteToSlot`, is kept;
+ * - an asynchronous write's slot is noted when the write is queued, before it lands, and is deleted;
+ * - a migration's backup of a slot this test made goes with it;
+ * - and a migration's backup of a slot that was there before is kept, with the slot.
+ *
+ * "THERE BEFORE" IS A SLOT PUT DOWN WITHOUT THE STORAGE LAYER, as a save from before the test would have been. WHAT THIS
+ * CANNOT SEE is the hook that runs the clean-up at every test's end; the run's "Test saves:" line is the evidence for that.
+ * Prints "TEST SAVES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTestSavesDeletedTest,
+	"Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveStorageTest;
+
+	const FString Made = Slot(TEXT("TestSavesMade"));
+	const FString Before = Slot(TEXT("TestSavesThereBefore"));
+	const FString Queued = Slot(TEXT("TestSavesQueued"));
+	const FString MadeOld = Slot(TEXT("TestSavesMadeOld"));
+	const FString BeforeOld = Slot(TEXT("TestSavesThereBeforeOld"));
+	const TArray<FString> Slots = {Made, Before, Queued, MadeOld, BeforeOld};
+	for (const FString& Each : Slots)
+	{
+		Cleanup(Each);
+	}
+	ON_SCOPE_EXIT
+	{
+		for (const FString& Each : Slots)
+		{
+			Cleanup(Each);
+		}
+	};
+	// WHATEVER EARLIER STEPS OF THIS TEST NOTED, forgotten, so only what follows is measured.
+	FCataclysmTestSaves::DeleteWhatTheTestWrote(UserIndex);
+
+	FString Version1Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Example_v1.json"), Version1Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+	UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
+	Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
+	Record->Label = TEXT("A test's record");
+
+	// MADE BY THE TEST, and THERE BEFORE IT, written over.
+	FString Error;
+	const bool bMade = FCataclysmSaveStorage::WriteToSlot(Record, Made, UserIndex, Error);
+	const bool bBeforePut = PutTextInSlot(Before, TEXT("{ \"SchemaVersion\": 3 }"));
+	const bool bBeforeWritten = FCataclysmSaveStorage::WriteToSlot(Record, Before, UserIndex, Error);
+
+	// QUEUED: noted before it lands.
+	const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(Record, Queued, UserIndex, nullptr, Error);
+	const bool bNotedWhenQueued = FCataclysmTestSaves::IsNoted(Queued);
+
+	// A MIGRATION OF EACH: the test's own slot, noted by hand as a write would note it, and one there before.
+	FCataclysmTestSaves::NoteAWrite(MadeOld, UserIndex);
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+	FString Message;
+	const bool bOldsPut = PutTextInSlot(MadeOld, Version1Text) && PutTextInSlot(BeforeOld, Version1Text);
+	const bool bMadeOldRead = FCataclysmSaveStorage::ReadFromSlot(MadeOld, UserIndex,
+		UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Result, Message) != nullptr;
+	const bool bBeforeOldRead = FCataclysmSaveStorage::ReadFromSlot(BeforeOld, UserIndex,
+		UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Result, Message) != nullptr;
+	const FString MadeBackup = FCataclysmSaveStorage::BackupSlotName(MadeOld, 1);
+	const FString BeforeBackup = FCataclysmSaveStorage::BackupSlotName(BeforeOld, 1);
+	const bool bBackupsWritten = UGameplayStatics::DoesSaveGameExist(MadeBackup, UserIndex)
+		&& UGameplayStatics::DoesSaveGameExist(BeforeBackup, UserIndex);
+
+	const TArray<FString> Deleted = FCataclysmTestSaves::DeleteWhatTheTestWrote(UserIndex);
+	auto Exists = [](const FString& Name) { return UGameplayStatics::DoesSaveGameExist(Name, UserIndex); };
+	AddInfo(FString::Printf(TEXT("TEST SAVES: deleted [%s]; made %s, there before %s, queued %s (noted when queued: %s), "
+								 "made old %s and its backup %s, there before old %s and its backup %s"),
+							*FString::Join(Deleted, TEXT(" | ")), Exists(Made) ? TEXT("KEPT") : TEXT("gone"),
+							Exists(Before) ? TEXT("kept") : TEXT("GONE"), Exists(Queued) ? TEXT("KEPT") : TEXT("gone"),
+							bNotedWhenQueued ? TEXT("yes") : TEXT("NO"), Exists(MadeOld) ? TEXT("KEPT") : TEXT("gone"),
+							Exists(MadeBackup) ? TEXT("KEPT") : TEXT("gone"), Exists(BeforeOld) ? TEXT("kept") : TEXT("GONE"),
+							Exists(BeforeBackup) ? TEXT("kept") : TEXT("GONE")));
+
+	if (!TestTrue(TEXT("set-up: every slot was written"), bMade && bBeforePut && bBeforeWritten && bQueued && bOldsPut)
+		|| !TestTrue(TEXT("set-up: both old records were read and migrated, each backed up"),
+					 bMadeOldRead && bBeforeOldRead && bBackupsWritten))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a slot the test made is deleted when it ends"), Exists(Made));
+	TestTrue(TEXT("a slot that was there before the test wrote over it is kept"), Exists(Before));
+	TestTrue(TEXT("an asynchronous write's slot is noted when the write is queued, before it lands"), bNotedWhenQueued);
+	TestFalse(TEXT("and is deleted"), Exists(Queued));
+	TestFalse(TEXT("a backup of a slot the test made is deleted with it"), Exists(MadeBackup) || Exists(MadeOld));
+	TestTrue(TEXT("a slot that was there before a migration is kept"), Exists(BeforeOld));
+	TestTrue(TEXT("and so is its backup"), Exists(BeforeBackup));
 	return true;
 }
 
