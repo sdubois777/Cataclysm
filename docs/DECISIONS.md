@@ -85,7 +85,7 @@ Decisions made outside the Google Drive documents, newest first.
 | Figure | Registered |
 |---|---|
 | The three new tests and the changed select test alone | 1 / 1 each, their lines quoted |
-| Whole Unreal suite | 4502 / 0: `development`'s 4499 (f091d674d, #2676, which added no Unreal test), + 3; and, under #2673's exit code, a "Test saves:" line with 0 left behind |
+| Whole Unreal suite | 4503 / 0: `development`'s 4500 (4ec191693, #2678), + 3; and, under #2673's exit code as #2677 left it, a "Test saves:" line after the last test started, with 0 left behind |
 | Python | of record, with JUnit, and ruff |
 | P1, a new character's run not given its tier (`State->GetDifficultyTier()); // A new character's: its run at its tier.` to `0); // ...`), prefix `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTier` | the run test fails on "the run is at the character's tier" and "and its level is fought at it" only, both 1: with no tier given, `BeginEmpireRun` asks `DifficultyTierIn` of a game instance with no world, which answers 1 |
 | P2, the arrival not setting the level's tier (`TakeTheRunsTier(); // An arrival's: the loaded run's tier.` to `(void)0; // ...`), prefix `Cataclysm.SaveLoad.ACharactersTierComesBack` | the saved-tier test fails on "the level is fought at the run's tier" and "and the tier rule reads it from that game mode" only, both 1; the tier on the character and the run still come back |
@@ -107,6 +107,15 @@ there. **Changed, old -> new:** that assertion, `DifficultyTierIn(Scene.Characte
 `DifficultyTierFor`; P2's prediction names the new assertion. **What this leaves untested, as before #1472:** the world
 lookup in `DifficultyTierIn`, and the one in `UCataclysmGameInstance::BeginEmpireRun` that finds the level's game mode,
 both of which answer null in every automation world.
+
+**Window w131, second runner, on 1d5ba920a, STOPPED at its third test run alone, which passed.** The three new tests
+alone each read 1 / 1: "TIER SAVED: ... DifficultyTierFor 3"; "TIER BEFORE: read (); 'Before the tier', level 7, tier
+1"; "TIER RUN: outcome 5; the run 4, the game mode 4; after a death 4, written 4; a win raised 4 to 5; at 8 a win gives
+8". The third's `tools/unreal_build.py` exited 1: "the clean-up's summary was not logged ... Issue #2673", because that
+run's engine log ends at "Engine exit requested" with neither exit-time line after it. **Not a fault of this change:**
+#2677 (merged as #2678) is the fix, and its window w132 measured 2 of 5 narrow runs losing that line and passing.
+#1472 moved onto 4ec191693 as `feat/character-difficulty-tier-2`; its changes under `game/` are the same 527 diff lines
+as before the move.
 
 ---
 
