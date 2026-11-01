@@ -395,7 +395,13 @@
 					"Z": 96
 				}
 			],
-			"InfectionBloomHealthLeft": 37.5
+			"InfectionBloomHealthLeft": 37.5,
+			"bCorruptedStalkerStanding": true,
+			"CorruptedStalkerLocation": {
+				"X": -320.5,
+				"Y": 610.25,
+				"Z": 96
+			}
 		},
 		"Characters": [
 			{

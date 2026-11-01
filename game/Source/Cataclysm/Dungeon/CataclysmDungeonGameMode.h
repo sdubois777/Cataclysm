@@ -2812,8 +2812,9 @@ public:
 	/**
 	 * THE RULE THAT RAISED THIS CREATURE IN PLAY AND WOULD KNOW IT AGAIN, by a plain tag, and its group: true only for a
 	 * creature in one of these rules' lists -- the tithe's angels, the relics' spirits, the totems' Elites, the banner's
-	 * assailants, and a Pandora's Box's standing wave, its group the wave's index. Any other creature answers false, and
-	 * the save skips it if a rule raised it. Issue #753, Group 3d-3a, ruled 2026-10-31.
+	 * assailants, and a Pandora's Box's standing wave, its group the wave's index; and, since 3d-3b and 3d-4, the kinds
+	 * the tags below name, a portal's creature's group the portal's index. Any other creature answers false, and the save
+	 * skips it if a rule raised it. Issue #753, Group 3d-3a, ruled 2026-10-31.
 	 */
 	bool RaisedByOf(const ACataclysmEnemyCharacter& Creature, FName& OutTag, int32& OutGroup) const;
 
@@ -2832,6 +2833,8 @@ public:
 	static constexpr const TCHAR* RaisedBloomWave = TEXT("BloomWave");
 	static constexpr const TCHAR* RaisedTrickOrTreat = TEXT("TrickOrTreat");
 	static constexpr const TCHAR* RaisedUnstablePortalWarden = TEXT("UnstablePortalWarden");
+	static constexpr const TCHAR* RaisedTheReaper = TEXT("TheReaper");
+	static constexpr const TCHAR* RaisedPortalUnleashing = TEXT("PortalUnleashing");
 
 	/** Trick or Treat, for tests: the pair a trick raised that still stands. Issue #753, Group 3d-4a. */
 	TArray<ACataclysmEnemyCharacter*> TrickOrTreatPairStanding() const;
@@ -3432,8 +3435,17 @@ private:
 	/** The Corrupted Stalker, on the beat: counts the floor's seconds, raises it when due, and keeps its health. */
 	void StepTheCorruptedStalker();
 
-	/** The Corrupted Stalker itself: an authored entry's build, at the farthest cell or at the entrance. */
-	void RaiseTheCorruptedStalker();
+	/**
+	 * The Corrupted Stalker itself: an authored entry's build, at the farthest cell or at the entrance, or at `At` when
+	 * given, which is where a load puts the one standing at the save. Issue #753, Group 3d-4b.
+	 */
+	void RaiseTheCorruptedStalker(const FVector* At = nullptr);
+
+	/**
+	 * The Corrupted Stalker's share of its health and its potion charges, read from it, or false when none stands alive.
+	 * `OutCharges` is left empty when it holds no potions. The beat keeps them with this, and a save writes them. 3d-4b.
+	 */
+	bool CorruptedStalkerCarriesNow(float& OutShare, TArray<float>& OutCharges) const;
 
 	/** The Corrupted Stalker, on every death: its own is the dungeon's last of it. */
 	void NoteDeathForTheCorruptedStalker(const struct FCataclysmDeathNotice& Notice);

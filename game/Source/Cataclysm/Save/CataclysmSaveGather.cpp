@@ -194,10 +194,9 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			continue;
 		}
 
-		// NOR IS A CREATURE A FLOOR RULE MADE: the Reaper, an echo, a Plague Convergence wave, the
-		// Trick or Treat pair, an Unstable Portal's Warden. Each exists because of a rule's own state
-		// -- a clock, a count, a pair -- and that state is not saved, so the creature is not either.
-		// Written back it would be an ordinary creature of its kind, with a brain, that could be hurt
+		// NOR IS A CREATURE A FLOOR RULE MADE THAT THE LOAD MAKES AGAIN OR LEAVES OUT: a portal, which the rebuild
+		// places where the floor's seed puts it; the Corrupted Stalker, which the floor's rule state raises again where it
+		// stood (3d-4b); an echo, not brought back (QC of 3d-3). Written back it would be an ordinary creature of its kind, with a brain, that could be hurt
 		// and paid for. `Cataclysm.LoadCharacter` restores a floor since 2026-10-30 (#753); until then
 		// this said no path in play did. Issues #1820 and #41.
 		//

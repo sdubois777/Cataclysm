@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -6291,6 +6292,292 @@ bool FCataclysmSaveLoadRaisedDropTest::RunTest(const FString&)
 				}
 				TestTrue(TEXT("the raised creature's drop keeps its mark"), Marked->bDroppedByARaisedCreature);
 				TestFalse(TEXT("and the plain drop is not marked"), Plain->bDroppedByARaisedCreature);
+			});
+	});
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/** The Corrupted Stalker's build on one line: its entry, and each worn piece's base and rolled affixes. */
+	FString StalkerBuildLine(const ACataclysmCorruptedStalkerCharacter& Stalker)
+	{
+		FString Out = Stalker.EntryName();
+		for (const FCataclysmItem& Piece : Stalker.WornPieces())
+		{
+			Out += FString::Printf(TEXT(" | %s"), *Piece.Base.ToString());
+			for (const FCataclysmRolledAffix& Affix : Piece.Affixes)
+			{
+				Out += FString::Printf(TEXT(" %s/%d/%.4f"), *Affix.Affix.ToString(), Affix.Tier, Affix.Roll);
+			}
+		}
+		return Out;
+	}
+
+	/** Portal Unleashing's creatures standing, portal by portal, in the portals' order. */
+	TArray<int32> PortalCreaturesByPortal(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<int32> Counts;
+		for (const ACataclysmEnemyCharacter* Portal : Mode.VoidPortalsNow())
+		{
+			Counts.Add(Mode.AbominationsOf(Portal).Num());
+		}
+		return Counts;
+	}
+
+	FString CountsText(const TArray<int32>& Counts)
+	{
+		FString Out;
+		for (const int32 Count : Counts)
+		{
+			Out += FString::Printf(TEXT("%s%d"), Out.IsEmpty() ? TEXT("") : TEXT(","), Count);
+		}
+		return Out;
+	}
+}
+
+/**
+ * The Reaper standing at a save stands after the load, at the health it had, still unable to be hurt, and the floor's
+ * Reaper, so the beat does not raise a second. Until this a load removed it and the floor's clock raised a new one ten
+ * seconds later at the entrance. Issue #753, Group 3d-4b, ruled 2026-10-31. Prints "LOAD REAPER" and "LOAD REAPER HIT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadReaperTest,
+	"Cataclysm.SaveLoad.TheReaperStillStandsAndCannotBeHurtAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadReaperTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARaisedRoundTrip(*this, FName(Effects::TheReaperKey), TEXT("LOAD REAPER"),
+			[](ACataclysmDungeonGameMode& Mode)
+			{
+				RunTheBeatFor(Mode, Effects::TheReaperDelaySeconds + 1.0f);
+				return Mode.TheReaperOnTheFloor() != nullptr;
+			},
+			[](const ACataclysmDungeonGameMode& Mode)
+			{
+				TArray<ACataclysmEnemyCharacter*> Standing;
+				ACataclysmEnemyCharacter* Reaper = Mode.TheReaperOnTheFloor();
+				if (IsValid(Reaper) && !UCataclysmSkillEffects::IsDead(Reaper))
+				{
+					Standing.Add(Reaper);
+				}
+				return Standing;
+			},
+			// ITS RUNG, AND NOT ITS BEING UNABLE TO BE HURT, which the hit below reads.
+			[](const ACataclysmEnemyCharacter& One) { return One.RarityStep == Effects::TheReaperRung; },
+			[this](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				// A HIT FROM THE PLAYER, with nothing to evade it or shield from it, and nothing answered back.
+				ACataclysmEnemyCharacter* Reaper = Mode.TheReaperOnTheFloor();
+				ACataclysmPlayerCharacter* Player = ThePlayerOf(Mode);
+				UAbilitySystemComponent* Abilities = Reaper ? Reaper->GetAbilitySystemComponent() : nullptr;
+				float Before = -1.0f;
+				float After = -1.0f;
+				if (Abilities && Player)
+				{
+					Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+					Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+					Before = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+					FCataclysmHitDelivery NoRetaliation;
+					NoRetaliation.bCannotBeRetaliatedAgainst = true;
+					UCataclysmSkillEffects::ApplyHit(Player, Reaper, 100.0f, FGameplayTagContainer(), NoRetaliation);
+					After = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+				}
+
+				// AND THE FLOOR'S CLOCK RUN PAST THE REAPER'S ARRIVAL AGAIN.
+				RunTheBeatFor(Mode, Effects::TheReaperDelaySeconds + 1.0f);
+				const bool bTheSame = Reaper && Mode.TheReaperOnTheFloor() == Reaper;
+				AddInfo(FString::Printf(TEXT("LOAD REAPER HIT: its health %.1f before a hit of 100 and %.1f after; after %.0f s "
+											 "more %s"),
+										Before, After, Effects::TheReaperDelaySeconds + 1.0f,
+										bTheSame ? TEXT("the same Reaper") : TEXT("ANOTHER REAPER OR NONE")));
+				if (!TestTrue(TEXT("set-up: the Reaper and the player stand"), Abilities && Player))
+				{
+					return;
+				}
+				TestEqual(TEXT("a hit on the Reaper does no damage"), After, Before);
+				TestTrue(TEXT("and no second Reaper comes"), bTheSame);
+			});
+	});
+}
+
+/**
+ * The Corrupted Stalker standing at a save stands after the load at once, where it stood, with the build it wore and the
+ * health it had (Q2). Until this a load removed it, and it came again at the entrance thirty seconds later with the
+ * health the last beat kept. Its mana and cooldowns restart (D1). Issue #753, Group 3d-4b, ruled 2026-10-31. Prints
+ * "LOAD STALKER" and "LOAD STALKER PLACE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadStalkerTest,
+	"Cataclysm.SaveLoad.TheCorruptedStalkerStandsWhereItStoodAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadStalkerTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		FVector SavedAt = FVector::ZeroVector;
+		FString BuildSaved;
+		int32 PiecesSaved = 0;
+		return ARaisedRoundTrip(*this, FName(Effects::CorruptedStalkerKey), TEXT("LOAD STALKER"),
+			[&SavedAt, &BuildSaved, &PiecesSaved](ACataclysmDungeonGameMode& Mode)
+			{
+				RunTheBeatFor(Mode, Effects::CorruptedStalkerFirstFloorSeconds + 1.0f);
+				const ACataclysmCorruptedStalkerCharacter* Stalker = Mode.CorruptedStalkerOnTheFloor();
+				if (!Stalker)
+				{
+					return false;
+				}
+				SavedAt = Stalker->GetActorLocation();
+				BuildSaved = StalkerBuildLine(*Stalker);
+				PiecesSaved = Stalker->WornPieces().Num();
+				return true;
+			},
+			[](const ACataclysmDungeonGameMode& Mode)
+			{
+				TArray<ACataclysmEnemyCharacter*> Standing;
+				ACataclysmCorruptedStalkerCharacter* Stalker = Mode.CorruptedStalkerOnTheFloor();
+				if (IsValid(Stalker) && !UCataclysmSkillEffects::IsDead(Stalker))
+				{
+					Standing.Add(Stalker);
+				}
+				return Standing;
+			},
+			[](const ACataclysmEnemyCharacter& One) { return One.IsA<ACataclysmCorruptedStalkerCharacter>(); },
+			[this, &SavedAt, &BuildSaved, &PiecesSaved](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				const ACataclysmCorruptedStalkerCharacter* Stalker = Mode.CorruptedStalkerOnTheFloor();
+				const float FromSaved = Stalker ? FVector::Dist(Stalker->GetActorLocation(), SavedAt) : -1.0f;
+				const float SavedFromEntrance = FVector::Dist2D(SavedAt, Mode.CurrentFloor->EntranceWorld());
+				const FString Build = Stalker ? StalkerBuildLine(*Stalker) : FString(TEXT("NONE"));
+				AddInfo(FString::Printf(TEXT("LOAD STALKER PLACE: %.1f cm from where it stood, which was %.0f cm from the "
+											 "entrance; %d piece(s) worn at the save; the build %s"),
+										FromSaved, SavedFromEntrance, PiecesSaved,
+										Build == BuildSaved ? TEXT("the same") : TEXT("DIFFERENT")));
+				AddInfo(FString::Printf(TEXT("LOAD STALKER BUILD: saved [%s]; after [%s]"), *BuildSaved, *Build));
+				if (!TestNotNull(TEXT("set-up: the Stalker stands after the load"), Stalker))
+				{
+					return;
+				}
+				TestTrue(TEXT("CONTROL: it stood away from the entrance, where it would come again"),
+						 SavedFromEntrance > 500.0f);
+				TestTrue(TEXT("it stands where it stood"), FromSaved >= 0.0f && FromSaved < 1.0f);
+				TestTrue(TEXT("CONTROL: it wore pieces at the save"), PiecesSaved > 0);
+				TestEqual(TEXT("and wears the build it wore"), Build, BuildSaved);
+			});
+	});
+}
+
+/**
+ * A Corrupted Stalker slain before a save stays slain after the load: no floor raises it again in that dungeon. Group 2
+ * saves the mark, and until this no test read it across a load -- its round trip sets it false, and the rule's own test
+ * `ASlainCorruptedStalkerIsNotRaisedAgainInThatDungeon` has no load. Issue #753, Group 3d-4b. Prints "LOAD STALKER SLAIN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadSlainStalkerTest,
+	"Cataclysm.SaveLoad.ASlainCorruptedStalkerStaysSlainAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadSlainStalkerTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARoundTripOfRows(*this, {FName(Effects::CorruptedStalkerKey)},
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
+			{
+				const int32 Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]()
+				{
+					RunTheBeatFor(Mode, Effects::CorruptedStalkerFirstFloorSeconds + 1.0f);
+					return Mode.CorruptedStalkerOnTheFloor() != nullptr;
+				});
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 raises the Stalker"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				ACataclysmCorruptedStalkerCharacter* Stalker = Mode.CorruptedStalkerOnTheFloor();
+				UCataclysmSkillEffects::ReduceHealthDirectly(&Player, Stalker, 100000000.0f);
+				BeatOnce(Mode);
+				return TestTrue(TEXT("set-up: it died"), UCataclysmSkillEffects::IsDead(Stalker))
+					&& TestTrue(TEXT("set-up: and it is slain in this dungeon"), Mode.CorruptedStalkerSlainInThisDungeon())
+					&& ThePlayerIsAlive(*this, Player);
+			},
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				const bool bSlain = Mode.CorruptedStalkerSlainInThisDungeon();
+				RunTheBeatFor(Mode, Effects::CorruptedStalkerFollowSeconds + 1.0f);
+				const bool bRaised = Mode.CorruptedStalkerOnTheFloor() != nullptr;
+				AddInfo(FString::Printf(TEXT("LOAD STALKER SLAIN: %s (%s); %s, and after %.0f s %s"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+										bSlain ? TEXT("slain") : TEXT("NOT SLAIN"), Effects::CorruptedStalkerFollowSeconds + 1.0f,
+										bRaised ? TEXT("A STALKER STANDS") : TEXT("none stands")));
+				TestTrue(TEXT("the Stalker slain at the save stays slain"), bSlain);
+				TestFalse(TEXT("and no floor raises it again"), bRaised);
+			});
+	});
+}
+
+/**
+ * Portal Unleashing's creatures standing at a save stand after the load, each back with its own portal, which the rebuild
+ * places where the floor's seed puts it: Abominations paying nothing and not on the floor's list. Until this a load removed
+ * them and the portals sent new ones ten seconds later. Issue #753, Group 3d-4b, ruled 2026-10-31. Prints "LOAD PORTAL
+ * CREATURES" and "LOAD PORTALS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadPortalCreaturesTest,
+	"Cataclysm.SaveLoad.APortalsCreaturesStillStandAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadPortalCreaturesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		TArray<int32> ByPortalSaved;
+		return ARaisedRoundTrip(*this, FName(Effects::PortalUnleashingKey), TEXT("LOAD PORTAL CREATURES"),
+			[&ByPortalSaved](ACataclysmDungeonGameMode& Mode)
+			{
+				RunTheBeatFor(Mode, Effects::PortalUnleashingSecondsBetween + 1.0f);
+				ByPortalSaved = PortalCreaturesByPortal(Mode);
+				return true;
+			},
+			[](const ACataclysmDungeonGameMode& Mode)
+			{
+				TArray<ACataclysmEnemyCharacter*> Standing;
+				for (const ACataclysmEnemyCharacter* Portal : Mode.VoidPortalsNow())
+				{
+					Standing.Append(Mode.AbominationsOf(Portal));
+				}
+				return Standing;
+			},
+			[](const ACataclysmEnemyCharacter& One) { return One.bIsAnAbomination && !One.PaysForItsDeath(); },
+			[this, &ByPortalSaved](ACataclysmDungeonGameMode& Mode, int32)
+			{
+				int32 OnTheList = 0;
+				for (const ACataclysmEnemyCharacter* Portal : Mode.VoidPortalsNow())
+				{
+					for (ACataclysmEnemyCharacter* Sent : Mode.AbominationsOf(Portal))
+					{
+						OnTheList += Mode.FloorEnemies.Contains(Sent) ? 1 : 0;
+					}
+				}
+				const TArray<int32> ByPortal = PortalCreaturesByPortal(Mode);
+				AddInfo(FString::Printf(TEXT("LOAD PORTALS: %d portal(s); their creatures by portal [%s], at the save [%s]; %d "
+											 "on the floor's list"),
+										Mode.VoidPortalsNow().Num(), *CountsText(ByPortal), *CountsText(ByPortalSaved),
+										OnTheList));
+				TestEqual(TEXT("each portal's creatures as at the save"), CountsText(ByPortal), CountsText(ByPortalSaved));
+				TestEqual(TEXT("none is on the floor's list"), OnTheList, 0);
 			});
 	});
 }
