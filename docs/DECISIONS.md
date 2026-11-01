@@ -185,8 +185,8 @@ cause.**
 | Whole Unreal suite | 4493 / 0: the change adds no test |
 | Python | of record, with JUnit, and ruff |
 | R1 to R5, N1 | as registered above |
-| M1, the leaders test's choice reverted (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed)`, killing the first leader as before), prefix `Cataclysm.SaveLoad.` | the leaders test fails on "a leader killed after the load panics its group" only: in this order group 116's leader draws Horde Leader, as w128B and w128C measured twice. **THE PREDICTION RESTS ON THE ORDER'S DRAW**; if the change moves the objects' identifiers so the draw differs, the break passes and the proof is recorded as not proved, which would show the test passing by the roll |
-| M2, the escaped test's choice reverted (`&& !RalliesInstead(Candidate))` to `)`), same prefix | the escaped test fails on "set-up: creatures escaped" only, and stops there; the same rest on the order's draw |
+| M1, the leaders test's choice inverted, so it takes only a Horde Leader (`if (!Killed && !RalliesInstead(Candidate))` to `if (!Killed && RalliesInstead(Candidate))`), prefix the test's full name | the leaders test fails on **exactly one** of "set-up: a leader that is not a Horde Leader stands after the load" (when no leader draws Horde Leader) and "a leader killed after the load panics its group" (when one does: it rallies instead), and on nothing else. **INVERTED RATHER THAN REVERTED, ruled 2026-11-01:** reverting the choice fails only when the draw makes the first leader a Horde Leader, which depends on the tests run before (#2669), so it could pass by the roll; the inversion fails whatever the draw |
+| M2, the escaped test's choice inverted (`&& !RalliesInstead(Candidate))` to `&& RalliesInstead(Candidate))`), prefix the test's full name | the escaped test fails on exactly one of "set-up: a seed from 1 to 20 gives a group far from the entrance, led by no Horde Leader" (no such group on any seed) and "set-up: creatures escaped" (the Horde Leader's group rallies, so nobody flees), and stops there |
 
 ### Python proofs, run before window A
 
