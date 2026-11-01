@@ -7,7 +7,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
-#include "GameMapsSettings.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Player/CataclysmGameMode.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Components/Button.h"
@@ -254,8 +254,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectStartMapTest,
 bool FCataclysmCharacterSelectStartMapTest::RunTest(const FString&)
 {
 	const FString FrontEnd = ACataclysmGameMode::FrontEndMap;
-	const FString StartMap = UGameMapsSettings::GetGameDefaultMap();
 	const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *FrontEnd, *FPackageName::GetShortName(FrontEnd));
+
+	// THE START MAP AS THE ENGINE'S CONFIG HOLDS IT, the setting `UGameMapsSettings` reads; read here, because that class
+	// is in the EngineSettings module, which this module does not depend on.
+	FString StartMap;
+	GConfig->GetString(TEXT("/Script/EngineSettings.GameMapsSettings"), TEXT("GameDefaultMap"), StartMap, GEngineIni);
 	const UWorld* Level = LoadObject<UWorld>(nullptr, *ObjectPath);
 	const AWorldSettings* Settings = Level && Level->PersistentLevel ? Level->PersistentLevel->GetWorldSettings() : nullptr;
 	const UClass* GameMode = Settings ? Settings->DefaultGameMode.Get() : nullptr;
@@ -263,7 +267,7 @@ bool FCataclysmCharacterSelectStartMapTest::RunTest(const FString&)
 							*ObjectPath, Level ? TEXT("loads") : TEXT("DOES NOT LOAD"),
 							GameMode ? *GameMode->GetName() : TEXT("NONE")));
 
-	TestEqual(TEXT("the game's start map is the front end"), StartMap, FrontEnd);
+	TestEqual(TEXT("the game's start map is the front end"), StartMap, ObjectPath);
 	TestNotNull(TEXT("the front end's level loads"), Level);
 	TestTrue(TEXT("its game mode is the front end's"), GameMode == ACataclysmFrontEndGameMode::StaticClass());
 	return true;
