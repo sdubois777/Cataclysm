@@ -30,6 +30,48 @@ public:
 
 	virtual void StartPlay() override;
 
+	/** And, once the player has started, the character the select screen chose, if one is pending. Step 3a. */
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+
+	/** What `LoadThePendingCharacter` did. */
+	enum class EPendingLoad : uint8
+	{
+		NothingPending,
+		/** A character is pending, and the writer is not writing or no player's character stands yet. */
+		Waiting,
+		Loaded,
+		LoadedWithANewRun,
+		Refused,
+	};
+
+	/**
+	 * Load the character the select screen chose, when one is pending, the writer is writing, and the player's
+	 * character stands. Called from `StartPlay`, after the fresh run begins, and from `HandleStartingNewPlayer`; the
+	 * second of the two to find all three loads, so the order between them does not matter. Issue #753, select-screen
+	 * step 3a, ruled 2026-10-31.
+	 *
+	 * THE FRESH START IS LEFT AS IT WAS: `BeginSavingThisRun` begins a run with new identifiers, because the load needs a
+	 * writer that is writing, and this runs after it. The pending identifier is cleared BEFORE the load, so a refusal or a
+	 * crash cannot load it again.
+	 *
+	 * THE FRESH RUN'S SLOTS ARE DELETED AFTER THE LOAD, whatever it did: something between the fresh start and the load
+	 * may have written them (an item entering the inventory writes the character record), and no outcome keeps them, so
+	 * leaving them would list a nameless character. ONLY THE TWO NAMES NOTED BEFORE THE LOAD, and never the loaded
+	 * character's own slot: no name read after the load is deleted.
+	 *
+	 * A REFUSAL keeps its reason on the game instance and goes back to the select screen, which shows it. A new run begun
+	 * instead keeps its reason, logged.
+	 *
+	 * PUBLIC SO A TEST CAN CALL IT, as `BeginSavingThisRun` is.
+	 */
+	EPendingLoad LoadThePendingCharacter();
+
+	/** The level a refusal asked to go back to, for tests; travel itself does not run in an automation test. */
+	FString FrontEndRequested() const { return FrontEndRequest; }
+
+	/** The select screen's level. Made in step 3b. */
+	static constexpr const TCHAR* FrontEndMap = TEXT("/Game/Maps/L_FrontEnd");
+
 	/**
 	 * Whether `StartPlay` puts the sandbox's creatures in the world.
 	 *
@@ -1160,4 +1202,8 @@ public:
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Sandbox",
 			  meta = (ClampMin = "-1", ClampMax = "5"))
 	int32 TrainingDummyRarityStep = 0;
+
+private:
+	/** See `FrontEndRequested`. */
+	FString FrontEndRequest;
 };

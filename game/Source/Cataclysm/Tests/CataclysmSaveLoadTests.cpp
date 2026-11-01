@@ -42,6 +42,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
@@ -6919,6 +6920,217 @@ bool FCataclysmSaveLoadListTest::RunTest(const FString&)
 	// AND THE WRITER'S STAMP.
 	TestTrue(TEXT("the writer stamps the record with the time it writes it"), bStampNow);
 	TestEqual(TEXT("and that character is listed once"), WrittenCount, 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The character the select screen chose, loaded when its level begins
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** How many characters the save system lists. */
+	int32 CharactersListed()
+	{
+		return FCataclysmSaveLoad::SavedCharacters(UserIndex).Num();
+	}
+
+	/** A game mode in the scene's world, whose arrival load a test calls; `StartPlay` cannot run in a test. */
+	ACataclysmGameMode* AGameModeIn(FLoadScene& Scene)
+	{
+		return Scene.World->SpawnActor<ACataclysmGameMode>();
+	}
+}
+
+/**
+ * The character the select screen chose is loaded when the level it opened begins, after the fresh start, and the fresh
+ * run's slots are deleted: so a Continue leaves the number of characters unchanged even when something wrote the fresh
+ * slots first, which this forces. ONLY THOSE TWO: the loaded character's own slot and its run's are still there. And the
+ * choice is cleared before the load, so the level's next start loads nothing. Issue #753, select-screen step 3a, ruled
+ * 2026-10-31. Prints "ARRIVAL LOADED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadArrivalTest,
+	"Cataclysm.SaveLoad.ACharacterChosenOnTheSelectScreenIsLoadedWhenItsLevelBegins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadArrivalTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveACharacter(*this, /*bDies=*/false, Saved))
+	{
+		return false;
+	}
+	const int32 Before = CharactersListed();
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the arrival's world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE FRESH START, AND A WRITE OF ITS SLOTS BEFORE THE LOAD, which is what a Continue must not leave behind.
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	if (!TestTrue(TEXT("set-up: the fresh start's character slot was written"),
+				  UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex)))
+	{
+		return false;
+	}
+
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+	Scene.Instance->PendingCharacterId = Saved.CharacterId;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const ACataclysmGameMode::EPendingLoad Again = Mode->LoadThePendingCharacter();
+	const int32 After = CharactersListed();
+	const bool bFreshCharacterGone = !UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex);
+	const bool bFreshRunGone = !UGameplayStatics::DoesSaveGameExist(FreshRun, UserIndex);
+	const bool bOwnKept = UGameplayStatics::DoesSaveGameExist(Saved.CharacterSlot(), UserIndex);
+	const bool bOwnRunKept = UGameplayStatics::DoesSaveGameExist(Saved.RunSlot(), UserIndex);
+
+	AddInfo(FString::Printf(TEXT("ARRIVAL LOADED: outcome %d, then %d; characters listed %d before, %d after; the fresh "
+								 "character slot %s, the fresh run slot %s; the loaded character's slot %s, its run's %s"),
+							static_cast<int32>(Outcome), static_cast<int32>(Again), Before, After,
+							bFreshCharacterGone ? TEXT("gone") : TEXT("LEFT"), bFreshRunGone ? TEXT("gone") : TEXT("LEFT"),
+							bOwnKept ? TEXT("kept") : TEXT("DELETED"), bOwnRunKept ? TEXT("kept") : TEXT("DELETED")));
+
+	TestEqual(TEXT("the chosen character was loaded"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestEqual(TEXT("and the next start loads nothing, the choice cleared before the load"), static_cast<int32>(Again),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::NothingPending));
+	TestTrue(TEXT("the fresh character slot is gone"), bFreshCharacterGone);
+	TestTrue(TEXT("the fresh run slot is gone"), bFreshRunGone);
+	TestEqual(TEXT("a Continue leaves the number of characters unchanged"), After, Before);
+	TestTrue(TEXT("the loaded character's own slot still exists"), bOwnKept);
+	TestTrue(TEXT("and its run's slot"), bOwnRunKept);
+	return true;
+}
+
+/**
+ * A character the load refuses sends the player back to the select screen with the reason, which the game instance keeps
+ * for the screen; the choice is cleared; the fresh run's slots are deleted, the number of characters is unchanged, and
+ * the refused character's own slot is still there. The refused character is an unreadable slot at a fixed fixture
+ * identifier, 5E1EC7ED-0000-4C15-A000-000000000011, which a real character's random one will not be. Issue #753,
+ * select-screen step 3a. Prints "ARRIVAL REFUSED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadArrivalRefusedTest,
+	"Cataclysm.SaveLoad.ACharacterTheLoadRefusesSendsThePlayerBackWithWhy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadArrivalRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FGuid Refused(0x5E1EC7ED, 0x00004C15, 0xA0000000, 0x11);
+	const FString RefusedSlot = UCataclysmSavePartition::CharacterSlotName(Refused);
+	Delete(RefusedSlot);
+	ON_SCOPE_EXIT { Delete(RefusedSlot); };
+	if (!WriteText(*this, RefusedSlot, TEXT("this is not a save record")))
+	{
+		return false;
+	}
+	const int32 Before = CharactersListed();
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the arrival's world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestTrue(TEXT("set-up: the fresh start's character slot was written"),
+				  UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex))
+		|| !TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	Scene.Instance->PendingCharacterId = Refused;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const int32 After = CharactersListed();
+	const bool bFreshCharacterGone = !UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex);
+	const bool bFreshRunGone = !UGameplayStatics::DoesSaveGameExist(FreshRun, UserIndex);
+	const bool bRefusedKept = UGameplayStatics::DoesSaveGameExist(RefusedSlot, UserIndex);
+
+	AddInfo(FString::Printf(TEXT("ARRIVAL REFUSED: outcome %d; why '%s'; back to '%s'; pending %s; characters listed %d "
+								 "before, %d after; the fresh character slot %s, the fresh run slot %s; the refused "
+								 "character's slot %s"),
+							static_cast<int32>(Outcome), *Scene.Instance->LastLoadRefusal, *Mode->FrontEndRequested(),
+							Scene.Instance->PendingCharacterId.IsValid() ? TEXT("STILL SET") : TEXT("cleared"), Before, After,
+							bFreshCharacterGone ? TEXT("gone") : TEXT("LEFT"), bFreshRunGone ? TEXT("gone") : TEXT("LEFT"),
+							bRefusedKept ? TEXT("kept") : TEXT("DELETED")));
+
+	TestEqual(TEXT("the load was refused"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Refused));
+	TestFalse(TEXT("the refusal's reason is kept for the select screen"), Scene.Instance->LastLoadRefusal.IsEmpty());
+	TestEqual(TEXT("and the player is sent back to it"), Mode->FrontEndRequested(),
+			  FString(ACataclysmGameMode::FrontEndMap));
+	TestFalse(TEXT("the pending choice is cleared"), Scene.Instance->PendingCharacterId.IsValid());
+	TestTrue(TEXT("the fresh character slot is gone"), bFreshCharacterGone);
+	TestTrue(TEXT("the fresh run slot is gone"), bFreshRunGone);
+	TestEqual(TEXT("a Continue leaves the number of characters unchanged"), After, Before);
+	TestTrue(TEXT("the refused character's own slot still exists"), bRefusedKept);
+	return true;
+}
+
+/**
+ * A level that begins with no character chosen begins as it always has: the fresh run is left alone, still written to,
+ * and nothing is loaded or deleted. Issue #753, select-screen step 3a.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNothingPendingTest,
+	"Cataclysm.SaveLoad.ALevelBegunWithNothingChosenStartsFreshAsBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadNothingPendingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	TestEqual(TEXT("nothing chosen, nothing loaded"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::NothingPending));
+	TestEqual(TEXT("the fresh run is still the one written to"), Scene.Writer->RunSlotName(), FreshRun);
+	TestTrue(TEXT("and its character slot was not deleted"), UGameplayStatics::DoesSaveGameExist(FreshCharacter, UserIndex));
 	return true;
 }
 

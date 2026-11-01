@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Player/CataclysmPlayerController.h"
+#include "Blueprint/UserWidget.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
@@ -121,7 +122,8 @@ void ACataclysmPlayerController::BeginPlay()
 	ApplyPlayingInputMode();
 }
 
-void ACataclysmPlayerController::ApplyPlayingInputMode()
+void ACataclysmPlayerController::ApplyPlayingInputModeTo(APlayerController& Controller, UUserWidget* MenuToFocus,
+												   FString* OutAskedFor)
 {
 	// BOTH OPTIONS ARE LOAD-BEARING AND NEITHER IS TIDINESS.
 	//
@@ -132,9 +134,27 @@ void ACataclysmPlayerController::ApplyPlayingInputMode()
 	// the mouse, and a cursor hidden during that capture is a cursor
 	// `UpdateCachedDestination` cannot trace under -- which is click-to-move
 	// steering nowhere for as long as the button is held.
-	SetInputMode(FInputModeGameAndUI()
-					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
-					 .SetHideCursorDuringCapture(false));
+	FInputModeGameAndUI Mode = FInputModeGameAndUI()
+								   .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
+								   .SetHideCursorDuringCapture(false);
+
+	// AND A MENU FOCUSED, the character select screen's: the same mode, so its buttons take clicks as every other
+	// screen's do. Only a menu in a world has a widget to focus; one a test built has none. Select-screen step 3a.
+	if (MenuToFocus && MenuToFocus->GetWorld())
+	{
+		Mode.SetWidgetToFocus(MenuToFocus->TakeWidget());
+	}
+	Controller.SetInputMode(Mode);
+	if (OutAskedFor)
+	{
+		*OutAskedFor = MenuToFocus ? TEXT("Menu") : TEXT("Playing");
+	}
+}
+
+void ACataclysmPlayerController::ApplyPlayingInputMode()
+{
+	// THIS CONTROLLER'S, through the one function above.
+	ApplyPlayingInputModeTo(*this);
 }
 
 UCataclysmAbilitySystemComponent* ACataclysmPlayerController::GetCataclysmAbilitySystem() const

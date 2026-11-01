@@ -21,6 +21,10 @@
 #include "Engine/Engine.h"
 #include "HAL/IConsoleManager.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "Kismet/GameplayStatics.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveLoad.h"
+#include "Save/CataclysmSaveStorage.h"
 
 /**
  * Play at a difficulty tier without editing the game mode's default.
@@ -145,6 +149,91 @@ void ACataclysmGameMode::StartPlay()
 	// here, so that a test can reach it: StartPlay wants a player controller and
 	// a pawn and cannot be called from one.
 	BeginSavingThisRun();
+
+	// AND THE CHARACTER THE SELECT SCREEN CHOSE, if one is pending and the player has started. Select-screen step 3a.
+	LoadThePendingCharacter();
+}
+
+void ACataclysmGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+
+	// THE OTHER HALF: whichever of this and `StartPlay` comes second finds the writer writing and the character standing.
+	LoadThePendingCharacter();
+}
+
+ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
+{
+	UWorld* World = GetWorld();
+	UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+	if (!Instance || !Instance->PendingCharacterId.IsValid())
+	{
+		return EPendingLoad::NothingPending;
+	}
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	ACataclysmPlayerCharacter* Character = nullptr;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It && !Character; ++It)
+	{
+		Character = It->IsValid() ? Cast<ACataclysmPlayerCharacter>((*It)->GetPawn()) : nullptr;
+	}
+	if (!Writer || !Writer->IsWriting() || !Character)
+	{
+		return EPendingLoad::Waiting;
+	}
+
+	// THE FRESH RUN'S TWO SLOTS, NOTED BEFORE THE LOAD; the only names the clean-up below may delete.
+	const FString FreshRunSlot = Writer->RunSlotName();
+	const FString FreshCharacterSlot = Writer->CharacterSlotName();
+	const FGuid Chosen = Instance->PendingCharacterId;
+	Instance->PendingCharacterId.Invalidate(); // A pending load's: cleared before it runs.
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.
+
+	// THE FRESH SLOTS GO, whatever the load did. NEVER THE CHOSEN CHARACTER'S OWN SLOT, which no fresh identifier names;
+	// AND, AFTER A LOAD, NEVER WHAT THE WRITER NOW WRITES: were this ever run a second time, the names it noted would be
+	// the loaded ones. After a refusal the writer still writes the fresh pair, and those go.
+	const FString ChosenSlot = UCataclysmSavePartition::CharacterSlotName(Chosen);
+	const bool bTheWriterMovedOn = Report.Outcome != ECataclysmLoadOutcome::Refused;
+	for (const FString& Fresh : {FreshRunSlot, FreshCharacterSlot})
+	{
+		if (Fresh.IsEmpty() || Fresh == ChosenSlot
+			|| (bTheWriterMovedOn && (Fresh == Writer->RunSlotName() || Fresh == Writer->CharacterSlotName()))) // Never the writer's after a load.
+		{
+			continue;
+		}
+		const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Fresh) && FPlatformTime::Seconds() < GiveUpAt)
+		{
+			FPlatformProcess::Sleep(0.01f);
+		}
+		if (UGameplayStatics::DoesSaveGameExist(Fresh, UCataclysmSaveWriter::UserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Fresh, UCataclysmSaveWriter::UserIndex); // A pending load's: a fresh slot.
+		}
+	}
+
+	switch (Report.Outcome)
+	{
+		case ECataclysmLoadOutcome::Loaded:
+			UE_LOG(LogCataclysm, Log, TEXT("The select screen's character: %s"), *Report.Why);
+			return EPendingLoad::Loaded;
+		case ECataclysmLoadOutcome::LoadedWithANewRun:
+			Instance->LastLoadNotice = Report.Why;
+			UE_LOG(LogCataclysm, Warning, TEXT("The select screen's character: %s"), *Report.Why);
+			return EPendingLoad::LoadedWithANewRun;
+		default:
+			break;
+	}
+
+	// REFUSED: the reason kept for the select screen, and back to it. Not in an automation test, which cannot travel.
+	Instance->LastLoadRefusal = Report.Why; // A pending load's: the refusal kept for the screen.
+	UE_LOG(LogCataclysm, Warning, TEXT("The select screen's character was refused: %s"), *Report.Why);
+	FrontEndRequest = FrontEndMap;
+	if (!GIsAutomationTesting)
+	{
+		UGameplayStatics::OpenLevel(this, FName(FrontEndMap));
+	}
+	return EPendingLoad::Refused;
 }
 
 bool ACataclysmGameMode::BeginSavingThisRun()

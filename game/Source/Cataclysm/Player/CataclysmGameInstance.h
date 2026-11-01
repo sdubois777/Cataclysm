@@ -70,6 +70,19 @@ public:
 	UCataclysmEmpireRun* GetOrBeginEmpireRun();
 
 	/**
+	 * THE CHARACTER SELECT SCREEN'S HAND-OVER, which outlives the level travel between the screen and the game. Issue
+	 * #753, select-screen step 3a, ruled 2026-10-31.
+	 *
+	 * `PendingCharacterId`: the character Continue chose, loaded by `ACataclysmGameMode::LoadThePendingCharacter` when
+	 * the level it opened begins, and cleared before that load runs; invalid when nothing is pending, which is every
+	 * start but a Continue. `LastLoadRefusal`: why that load was refused, which the screen shows and clears.
+	 * `LastLoadNotice`: why it began a new run instead, kept and logged; the heads-up display shows it later (ruled).
+	 */
+	FGuid PendingCharacterId;
+	FString LastLoadRefusal;
+	FString LastLoadNotice;
+
+	/**
 	 * Throws away whatever run was in progress and starts a fresh one.
 	 *
 	 * @param Seed          what to seed it with. The same seed gives the same
