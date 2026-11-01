@@ -1756,7 +1756,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// Without it a leech row scoped to `Keyword.DoT.Bleed` was
 				// discarded on every tick. A hit carries none, so a hit is asked
 				// with the same tags as before.
-				if (!AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))
+				//
+				// NOT A TICK OF CONVERTED DAMAGE, WHICH NOBODY DEALT. Issue #2664, ruled by the coordinating session
+				// 2026-11-01. The Masochist's converted bleed is laid by the Masochist on itself, so its instigator is
+				// the character that took the blow; leeching from it paid part of stored damage back, and "Bleed damage
+				// you deal also leeches 10%-20% of its value as HP" read it as bleed the Masochist dealt. It is damage
+				// taken, deferred, and never damage dealt.
+				if (!Hit.bIsConvertedDamage && !AssetTags.HasTag(UCataclysmDamageCalculation::NoLeechTag()))
 				{
 					FGameplayTagContainer LeechTags = AssetTags;
 					LeechTags.AppendTags(Hit.DamageOverTimeTags);
@@ -1834,9 +1840,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// NOR A SHARE OF AN ALLY'S BLOW: its attacker struck the ally and not this character. Ruled 2026-10-15.
 				// NOR A POINT-BLANK SKILL'S SHARE STRUCK AT THIS ALLY, which raises no `first_hit_dealt` (R6) and so
 				// must not use that first hit up. Ruled 2026-10-15.
+				// NOR A TICK OF CONVERTED DAMAGE, which nobody struck. Issue #2664, ruled 2026-11-01: its instigator is
+				// the Masochist that took the blow, so recording it wrote the Masochist down as struck by itself.
 				UCataclysmAbilitySystemComponent* Struck =
 					bConsequenceOfADeath || bARowsAnswerToAnEvent || bExplosionAtAnAilmentsEnd || bShareOfAnAllysDamage
-						|| bAreaSkillShareOnAnAlly
+						|| bAreaSkillShareOnAnAlly || Hit.bIsConvertedDamage
 					? nullptr
 					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				if (Struck)
@@ -2500,6 +2508,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// blow and the same `AttackerOf` every other credit uses, so a
 				// minion's blow puts the minion in combat, not its summoner,
 				// unless the summoner holds Conduit.
+				//
+				// A TICK OF CONVERTED DAMAGE IS LEFT TO REACH THIS, though nobody dealt it (issue #2664). Its "dealer"
+				// is the Masochist that took it, which `NoteHitTaken` above has already put in combat, so this only
+				// says the same thing again. Ruled by the coordinating session 2026-11-01: left as it is.
 				if (UCataclysmAbilitySystemComponent* Dealer =
 						Cast<UCataclysmAbilitySystemComponent>(
 							UCataclysmTargeting::AbilitySystemOf(

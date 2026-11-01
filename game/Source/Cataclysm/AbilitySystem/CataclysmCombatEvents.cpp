@@ -146,8 +146,14 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	}
 
 	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
-	AActor* Attacker = AttackerOf(Context);
-	AActor* DealtBy = CombatEventsDealtBy(Context);
+	// A TICK OF CONVERTED DAMAGE NAMES NO ATTACKER AND NO DEALER. Issue #2664, ruled by the coordinating session
+	// 2026-11-01. The Masochist's converted bleed is laid by the Masochist on itself, so its context names the
+	// character that took the blow; it is damage taken, deferred, and nobody dealt it. So the last blow it records
+	// names nobody, and a Masochist it kills dies uncredited, as a death by an area skill's share on an ally does,
+	// rather than being credited with killing itself. The hit notice names nobody either.
+	const bool bNobodyDealtIt = Hit.bIsConvertedDamage;
+	AActor* Attacker = bNobodyDealtIt ? nullptr : AttackerOf(Context);
+	AActor* DealtBy = bNobodyDealtIt ? nullptr : CombatEventsDealtBy(Context);
 
 	// WHAT A DAMAGE-OVER-TIME TICK GRANTS IS WHERE ITS AILMENT IS, and gathering
 	// it costs a container, so it is gathered only for a tick that is either
