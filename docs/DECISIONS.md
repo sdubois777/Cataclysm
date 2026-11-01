@@ -17,9 +17,10 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN.** Another session held the build machine while this was written. Every
-  figure below is registered before its run, traced by hand from the code. The Unreal total and the Python figure are
-  placeholders until the run.
+- **COMPILED, AND NO UNREAL TEST RUN YET.** Every figure below is registered before its run, traced by hand from the
+  code. A compile on `93f3cc7b6`, with no lock, to find errors early: `Build: Succeeded - 42 actions, 39 files
+  compiled`, at the first attempt. Python of record on the same head: `7187 passed, 8 skipped in 223.00s`; JUnit tests
+  7195, failures 0, errors 0, skipped 8; ruff "All checks passed!".
 - **ONE EFFECT PER CONVERTED BLOW, NOT A POOL.** The brief first asked for successive conversions to add up in one
   pool; the coordinating session withdrew that on 2026-11-01, on the design's own words (R1).
 - **THE NEXT CHANGE IS NAMED HERE AND NOT BUILT: converted damage's total is fixed when it is converted** (R3). Today
@@ -182,8 +183,8 @@ and the gate's naming of it, which are unchanged.
 | Figure | Registered |
 |---|---|
 | The six new tests alone | 1 / 1 each, the six full names above. No other test name begins with any of them |
-| Whole Unreal suite | **PLACEHOLDER**: the base's last measured total plus the six tests above, registered when the window is booked. Every existing test passes as before, none having been changed |
-| Python | **PLACEHOLDER**: `development`'s figure of record, unchanged (no Python test added), with JUnit, and ruff clean |
+| Whole Unreal suite | 4475 / 0: window w125B's 4469 measured on `29aaa7111`, this branch's base, + 6. Every existing test passes as before, none having been changed |
+| Python | 7195 of record, with JUnit: 7187 passed, 8 skipped, failures 0, errors 0 (no Python test added), and ruff clean |
 | G1, the slot's skip in `RunningApplicationOf`: `if (IsConvertedDamageNotYetTaken(Active))` broken to `if (IsConvertedDamageNotYetTaken(nullptr))`, prefix `Cataclysm.DamageConversion.AnEnemysWeakerBleedDoesNotLengthenTheConvertedDamage` | that one test fails on two assertions only: "the enemy's bleed is an effect of its own: two bleeds run" (to be 2, but it was 1: the enemy's bleed only refreshed the converted one) and "the still Masochist took the 100 it converted and no more: 160.00" (the converted end moved to 8.2 s, eight ticks of 20). The set-up lines, "three of its ticks have landed, 60" and "reads as standing" included, pass |
 | G2, the removal's skip in `TagAndReplaceAnyExisting`: `if (!IsConvertedDamageNotYetTaken(Holder->GetActiveGameplayEffect(Handle)))` broken to `if (!IsConvertedDamageNotYetTaken(nullptr))`, prefix `Cataclysm.DamageConversion.AnEnemysStrongerBleedLeavesTheConvertedDamageRunning` | that one test fails on two assertions only: "the converted bleed still runs beside it" (to be 1, but it was 0: the enemy's bleed took it off) and "the still Masochist took the 100 it converted: 0.00". "and the enemy's bleed runs too" and "reads as standing" pass |
 | G3, the strongest-application branch: `if (!bIsConvertedDamage && Running.bFound && Running.Stated >= Stated)` broken to `if ((!bIsConvertedDamage \|\| Instigator == Target) && Running.bFound && Running.Stated >= Stated)`, prefix `Cataclysm.DamageConversion.ABlowConvertedDuringAnEnemysStrongerBleedIsStored` | that one test fails on two assertions only: "the converted blow runs as a bleed of its own" (to be 1, but it was 0: it only refreshed the enemy's) and "the still Masochist took the 100 it converted: 0.00". "and the enemy's bleed still runs beside it" passes, and so does "kept its count of movement, 2.0": the restart above the branch still skips a converted blow |
