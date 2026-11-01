@@ -7927,10 +7927,11 @@ bool FCataclysmSaveLoadTierTest::RunTest(const FString&)
 }
 
 /**
- * A record written before the character's tier existed loads at tier 1, the tier every character starts at: there is no
- * schema bump (ruled 2026-11-01), and `FJsonObjectConverter::JsonObjectToUStruct`, which `FCataclysmSaveStorage::FromJson`
- * calls with strict mode off, leaves a property whose key the JSON lacks at its default. THE FIXTURE IS WRITTEN BY HAND,
- * at the current schema version, with no tier key (ruled). Issue #1472. Prints "TIER BEFORE".
+ * A record written before the character's tier existed loads at tier 1, the tier every character starts at. Such a
+ * record is at schema version 3, and reading it runs `Migrate_3_to_4`, which writes tier 1 in (ruled 2026-11-01, the
+ * version bump replacing the first ruling's default). THE RECORD IS WRITTEN BY HAND, at version 3, with no tier key and
+ * almost nothing else: the smallest such record. `ACharacterFileFromBeforeTheTierMigratesToTierOne` runs the committed
+ * version 3 file through the same step and checks every other field is kept. Issue #1472. Prints "TIER BEFORE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierMissingTest,
 	"Cataclysm.SaveLoad.ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne",
@@ -7938,9 +7939,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTierMissingTest,
 
 bool FCataclysmSaveLoadTierMissingTest::RunTest(const FString&)
 {
-	const FString Json = FString::Printf(
-		TEXT("{ \"SchemaVersion\": %d, \"CharacterName\": \"Before the tier\", \"Level\": 7 }"),
-		UCataclysmCharacterSave::SchemaVersionNow);
+	// VERSION 3, THE LAST BEFORE THE TIER, so the read runs `Migrate_3_to_4`. Ruled 2026-11-01.
+	const FString Json = TEXT("{ \"SchemaVersion\": 3, \"CharacterName\": \"Before the tier\", \"Level\": 7 }");
 	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
 	FString Message;
 	const UCataclysmCharacterSave* Record = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(

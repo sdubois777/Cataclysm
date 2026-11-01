@@ -1090,6 +1090,12 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 4 SINCE 2026-11-01. The character carries its difficulty tier, issue #1472,
+	 * and `Migrate_3_to_4` writes tier 1 into a character written at 3, the tier
+	 * the design starts every character at. A VERSION AND NOT A DEFAULT, ruled
+	 * 2026-11-01: `game/Tests/SaveFixtures/README.md` lets a fixture gain a field
+	 * without one only while nothing can load a save, and #753 made saves load.
+	 *
 	 * 3 SINCE 2026-09-24. A character may spend in only one class tree for each
 	 * damage type, issue #2064, and a character written at 2 may hold points in
 	 * two or three trees of one; `Migrate_2_to_3` keeps one of them.
@@ -1098,7 +1104,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 3;
+	static constexpr int32 SchemaVersionNow = 4;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1126,10 +1132,9 @@ public:
 	/**
 	 * The character's difficulty tier, 1 to 8. Issue #1472. `ACataclysmPlayerState::GetDifficultyTier`.
 	 *
-	 * NOT A SCHEMA VERSION BUMP, for `UCataclysmRunSave::PartialDay`'s reason (ruled 2026-11-01): a record written before
-	 * the field has no key for it, `FJsonObjectConverter::JsonObjectToUStruct` -- called by `FCataclysmSaveStorage::FromJson`
-	 * with strict mode off -- reads only the keys the JSON has, and the property keeps this default, tier 1, which is
-	 * where the design starts every character.
+	 * VERSION 4 (ruled 2026-11-01, overriding the first ruling that it needed none): a record written before the field
+	 * is at version 3 and `Migrate_3_to_4` writes tier 1 into it, the tier the design starts every character at. The
+	 * default here is the same 1, so a version 4 record somehow missing the key reads the same.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 DifficultyTier = 1;

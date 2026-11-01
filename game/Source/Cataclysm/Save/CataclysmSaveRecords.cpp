@@ -229,6 +229,20 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before it carried a difficulty tier is at tier 1, where the design starts every character.
+	 * Issue #1472, ruled 2026-11-01.
+	 *
+	 * WRITTEN OUT RATHER THAN LEFT TO DEFAULT, for `Migrate_1_to_2`'s reason: a migrated record ought to describe itself
+	 * completely. A version 3 file has no tier key, so nothing is overwritten.
+	 */
+	bool Migrate_3_to_4(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("DifficultyTier"), 1); // A migration's: tier 1, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -238,6 +252,7 @@ namespace CataclysmCharacterSaveMigration
 	const FCataclysmSaveMigrationStep CharacterSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
+		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 	};
 }
 

@@ -395,6 +395,26 @@ file here is a file a player might have, and changing one means changing what
 an old build wrote -- which is a lie about history and defeats the whole point
 of committing them. Add a schema version and a migration step instead.
 
+**That happened with issue #753.** `78ad0fa81` (2026-10-31) loads a saved
+character and its run from their slots at the console, and the select screen's
+Continue loads
+one when its level begins, so the exception above no longer applies. Two things
+followed, ruled 2026-11-01:
+
+- **A slip, recorded rather than undone.** `Character_v3.json` gained
+  `LastWrittenUtc` in `59e5dd893` (#753, 2026-10-31), after `78ad0fa81`, with no
+  schema version and no note here. Under the rule above it needed a version and a
+  migration step. The file keeps the field.
+- **From issue #1472 on, a field added to a record takes a version.** The first
+  is `DifficultyTier`, the character's difficulty tier: the character record went
+  to version 4 on 2026-11-01, `Migrate_3_to_4` writes tier 1 into a version 3
+  file, and `Character_v4.json` is `Character_v3.json` at version 4 with
+  `"DifficultyTier": 2` added and nothing else changed. **2 and not 1**, because
+  1 is the field's default, which round-trips identically whether it was read or
+  not. `Character_v3.json` is now a migration input, not edited again;
+  `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne` runs it
+  through the step and checks every other field is kept.
+
 ## What is here
 
 | File | What it is |
@@ -403,6 +423,7 @@ of committing them. Add a schema version and a migration step instead.
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
+| `Character_v4.json` | The same character at version 4: version 3's contents, plus its difficulty tier, 2 |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
@@ -415,8 +436,8 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had two since
-(version 3 since 2026-09-24). Its header says more.
+none of them had a migration to run. The character record has had three since
+(version 4 since 2026-11-01). Its header says more.
 
 ## Two things to keep in mind when editing one
 
