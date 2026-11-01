@@ -5089,6 +5089,20 @@ namespace CataclysmSaveLoadTest
 		return INDEX_NONE;
 	}
 
+	/**
+	 * Whether a Morale Break leader carries Horde Leader, whose death rallies its group instead of panicking it
+	 * (`MoraleBreakAHordeLeaderRalliesItsGroupInstead`).
+	 *
+	 * WHICH CREATURE DRAWS IT IS NOT FIXED BY THE PINNED SEED: `ACataclysmEnemyCharacter::DrawModifiersForRarity` seeds
+	 * each creature's stream from its object's `GetUniqueID()` and the world's clock, so tests that run before change it.
+	 * Window w128C measured group 116's leader panicking its group when its test ran alone and rallying it when step 5's
+	 * tests ran first. So a test that needs a panic chooses a leader for which this is false. Ruled 2026-11-01.
+	 */
+	bool RalliesInstead(const ACataclysmEnemyCharacter* Leader)
+	{
+		return Leader && Leader->ModifierRows.Contains(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+	}
+
 	/** The living creatures of a Morale Break group. */
 	TArray<ACataclysmEnemyCharacter*> TheGroupOf(const ACataclysmDungeonGameMode& Mode, int32 Group)
 	{
@@ -5156,8 +5170,17 @@ bool FCataclysmSaveLoadMoraleLeadersTest::RunTest(const FString&)
 				BeatOnce(Mode);
 				const TArray<ACataclysmEnemyCharacter*> Leaders = Mode.MoraleLeadersNow();
 				const int32 PanickedBefore = Mode.MoraleBreakPanickedNow();
+				// A LEADER WHOSE DEATH PANICS ITS GROUP: not a Horde Leader, which rallies instead (`RalliesInstead`).
+				ACataclysmEnemyCharacter* Killed = nullptr;
+				for (ACataclysmEnemyCharacter* Candidate : Leaders)
+				{
+					if (!Killed && !RalliesInstead(Candidate)) // A Morale Break test's: a leader that panics its group.
+					{
+						Killed = Candidate;
+					}
+				}
 				int32 PanickedAfter = -1;
-				if (!Leaders.IsEmpty() && KillOnTheFloor(*this, Player, Leaders[0], TEXT("a leader after the load")))
+				if (Killed && KillOnTheFloor(*this, Player, Killed, TEXT("a leader after the load")))
 				{
 					BeatOnce(Mode);
 					PanickedAfter = Mode.MoraleBreakPanickedNow();
@@ -5168,7 +5191,7 @@ bool FCataclysmSaveLoadMoraleLeadersTest::RunTest(const FString&)
 										LeadersSaved, PanickedBefore, PanickedAfter));
 				TestEqual(TEXT("the leaders stand as leaders after the load"), Leaders.Num(), LeadersSaved);
 				TestEqual(TEXT("and nobody panics"), PanickedBefore, 0);
-				if (!Leaders.IsEmpty())
+				if (TestNotNull(TEXT("set-up: a leader that is not a Horde Leader stands after the load"), Killed))
 				{
 					TestTrue(TEXT("a leader killed after the load panics its group"), PanickedAfter > 0);
 				}
@@ -5213,7 +5236,8 @@ bool FCataclysmSaveLoadMoraleEscapedTest::RunTest(const FString&)
 							bFar = bFar && FVector::Dist2D(Member->GetActorLocation(), Entrance)
 								> Effects::MoraleBreakEscapeBeyondCm + 100.0f;
 						}
-						if (bFar && TheGroupOf(Mode, Candidate->PackGroup).Num() >= 2)
+						if (bFar && TheGroupOf(Mode, Candidate->PackGroup).Num() >= 2
+							&& !RalliesInstead(Candidate)) // A Morale Break test's: a far group whose leader panics it.
 						{
 							Leader = Candidate;
 							return true;
@@ -5221,7 +5245,8 @@ bool FCataclysmSaveLoadMoraleEscapedTest::RunTest(const FString&)
 					}
 					return false;
 				});
-				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a group far from the entrance"), Seed != INDEX_NONE)
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 gives a group far from the entrance, led by no Horde Leader"),
+							  Seed != INDEX_NONE)
 					|| !KillOnTheFloor(*this, Player, Leader, TEXT("the group's leader")))
 				{
 					return false;
