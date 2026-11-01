@@ -882,6 +882,17 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float InfectionBloomHealthLeft = -1.0f;
+
+	/**
+	 * Whether the Corrupted Stalker stood at the save, and where. A load raises it again at once, there, with the build
+	 * the floor's seed gives it and the health and potions the walk carries; its mana and cooldowns restart (D1). Issue
+	 * #753, Group 3d-4b, ruled 2026-10-31 (Q2).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerStanding = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector CorruptedStalkerLocation = FVector::ZeroVector;
 };
 
 /**

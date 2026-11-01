@@ -3028,6 +3028,36 @@ ACataclysmCorruptedStalkerCharacter* ACataclysmDungeonGameMode::CorruptedStalker
 	return CorruptedStalker.Get();
 }
 
+bool ACataclysmDungeonGameMode::CorruptedStalkerCarriesNow(float& OutShare, TArray<float>& OutCharges) const
+{
+	OutCharges.Reset();
+	const ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get();
+	const UAbilitySystemComponent* Abilities = Stalker ? Stalker->GetAbilitySystemComponent() : nullptr;
+	if (!Abilities)
+	{
+		return false;
+	}
+	const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (Maximum <= 0.0f || UCataclysmSkillEffects::IsDead(Stalker))
+	{
+		return false;
+	}
+	OutShare = FMath::Clamp(Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum,
+							0.0f, 1.0f);
+
+	// AND ITS POTIONS, which carry to the next floor with its health and do not refill on the stairs, as the player's do
+	// not. Ruled by the coordinating session, 2026-10-25.
+	if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(Abilities))
+	{
+		OutCharges.SetNum(UCataclysmPotions::SlotCount);
+		for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+		{
+			OutCharges[Slot] = Holder->GetPotionCharges(Slot);
+		}
+	}
+	return true;
+}
+
 FIntPoint ACataclysmDungeonGameMode::FarthestWalkableCellFrom(const FCataclysmFloorPlan& Plan, FIntPoint From)
 {
 	if (!Plan.IsFloor(From))
@@ -3056,28 +3086,17 @@ void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// WHILE IT STANDS, ITS HEALTH IS KEPT ON THE BEAT, so the next floor raises it with what it had.
-	if (const ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get())
+	// WHILE IT STANDS, ITS HEALTH AND POTIONS ARE KEPT ON THE BEAT, so the next floor raises it with what it had.
+	if (CorruptedStalker.Get())
 	{
-		if (const UAbilitySystemComponent* Abilities = Stalker->GetAbilitySystemComponent())
+		float Share = 1.0f;
+		TArray<float> Charges;
+		if (CorruptedStalkerCarriesNow(Share, Charges))
 		{
-			const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-			if (Maximum > 0.0f && !UCataclysmSkillEffects::IsDead(Stalker))
+			CorruptedStalkerHealthShare = Share;
+			if (!Charges.IsEmpty())
 			{
-				CorruptedStalkerHealthShare = FMath::Clamp(
-					Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum,
-					0.0f, 1.0f);
-
-				// AND ITS POTIONS, which carry to the next floor with its health and do not refill on the stairs, as
-				// the player's do not. Ruled by the coordinating session, 2026-10-25.
-				if (const UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(Abilities))
-				{
-					CorruptedStalkerPotionCharges.SetNum(UCataclysmPotions::SlotCount);
-					for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
-					{
-						CorruptedStalkerPotionCharges[Slot] = Holder->GetPotionCharges(Slot);
-					}
-				}
+				CorruptedStalkerPotionCharges = Charges;
 			}
 		}
 		return;
@@ -3098,7 +3117,7 @@ void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
 	RefreshFloorModifierPanel();
 }
 
-void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker()
+void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
@@ -3121,8 +3140,9 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker()
 		: FarthestWalkableCellFrom(CurrentFloor->GetPlan(), CurrentFloor->GetPlan().IsFloor(ThePlayersCell())
 																? ThePlayersCell() : Entrance);
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmCorruptedStalkerCharacter::StaticClass();
-	const FVector Where = CurrentFloor->WorldOfCell(Cell)
-		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+	// OR WHERE IT STOOD AT A SAVE, which a load gives. Issue #753, Group 3d-4b.
+	const FVector Where = At ? *At // A load's: where the Stalker stood.
+							 : CurrentFloor->WorldOfCell(Cell) + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	ACataclysmCorruptedStalkerCharacter* Stalker = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
@@ -15120,6 +15140,20 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 	Walk.bCorruptedStalkerSlain = bCorruptedStalkerSlain;
 	Walk.CorruptedStalkerHealthShare = CorruptedStalkerHealthShare;
 	Walk.CorruptedStalkerPotionCharges = CorruptedStalkerPotionCharges;
+	// AND, WHILE IT STANDS, ITS HEALTH AND POTIONS AS THEY ARE NOW and not as the last beat kept them, a quarter of a
+	// second before: a load raises it with these. Issue #753, Group 3d-4b.
+	{
+		float Share = 1.0f;
+		TArray<float> Charges;
+		if (CorruptedStalkerCarriesNow(Share, Charges))
+		{
+			Walk.CorruptedStalkerHealthShare = Share; // A save's: the Stalker's health now.
+			if (!Charges.IsEmpty())
+			{
+				Walk.CorruptedStalkerPotionCharges = Charges;
+			}
+		}
+	}
 	auto Saved = [](const TArray<FEchoOfTheDead>& Echoes)
 	{
 		TArray<FCataclysmSavedEcho> Out;
@@ -15441,6 +15475,22 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		{
 			UnstablePortalWardens.Add(&Creature); // A load's: a portal's Warden.
 		}
+		// 3d-4b: the Reaper, unable to be hurt and come, so the beat does not raise a second; a portal's creature, an
+		// Abomination paying nothing and not on the floor's list, from which the load is taken off again, in its portal's
+		// list, the portal rebuilt where the floor's seed puts it.
+		else if (Saved.RaisedBy == FName(RaisedTheReaper))
+		{
+			Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.
+			TheReaper = &Creature; // A load's: the Reaper.
+			bTheReaperRaised = true; // A load's: the Reaper has come.
+		}
+		else if (Saved.RaisedBy == FName(RaisedPortalUnleashing) && VoidPortals.IsValidIndex(Saved.RaisedGroup))
+		{
+			Creature.bIsAnAbomination = true;
+			Creature.bDiesUnpaid = true; // A load's: a portal's creature pays nothing.
+			VoidPortals[Saved.RaisedGroup].Sent.Add(&Creature); // A load's: a portal's creature.
+			FloorEnemies.Remove(&Creature); // A load's: a portal's creature off the floor's list.
+		}
 	}
 }
 
@@ -15534,6 +15584,20 @@ bool ACataclysmDungeonGameMode::RaisedByOf(const ACataclysmEnemyCharacter& Creat
 	{
 		OutTag = FName(RaisedUnstablePortalWarden);
 		return true;
+	}
+	if (TheReaper.Get() == Mutable)
+	{
+		OutTag = FName(RaisedTheReaper);
+		return true;
+	}
+	for (int32 Index = 0; Index < VoidPortals.Num(); ++Index)
+	{
+		if (In(VoidPortals[Index].Sent))
+		{
+			OutTag = FName(RaisedPortalUnleashing);
+			OutGroup = Index;
+			return true;
+		}
 	}
 	OutTag = NAME_None;
 	return false;
@@ -15737,6 +15801,15 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 	// PLAGUE CONVERGENCE: begun, and the disease stacks. Not the seconds to the next wave (D1). 3d-4a.
 	Out.bPlagueConvergenceBegun = Effects::PlagueConvergenceHasBegun(PlagueConvergenceSecondsOnFloor);
 	Out.PlagueConvergenceStacks = PlagueConvergenceStacks;
+
+	// THE CORRUPTED STALKER: whether it stands, and where. Its build is the floor seed's, its health and potions the
+	// walk's. 3d-4b.
+	if (const ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get();
+		IsValid(Stalker) && !UCataclysmSkillEffects::IsDead(Stalker))
+	{
+		Out.bCorruptedStalkerStanding = true;
+		Out.CorruptedStalkerLocation = Stalker->GetActorLocation();
+	}
 
 	// A STANDING INFECTION BLOOM: its spread and the health it has left. 3d-4a.
 	if (const ACataclysmEnemyCharacter* Bloom = InfectionBloomNow())
@@ -16064,6 +16137,15 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
 											   State.InfectionBloomHealthLeft); // A load's: the bloom's health.
 		}
+	}
+
+	// THE CORRUPTED STALKER STANDING AT THE SAVE, RAISED AGAIN AT ONCE WHERE IT STOOD (Q2), and come on this floor, so
+	// the beat does not raise a second. The walk, put back before this, holds that it has hunted and the health and
+	// potions it carries; the floor's seed gives the same build. Not one slain in this dungeon. 3d-4b.
+	if (State.bCorruptedStalkerStanding && !bCorruptedStalkerSlain && !CorruptedStalker.Get())
+	{
+		bCorruptedStalkerRaisedThisFloor = true;
+		RaiseTheCorruptedStalker(&State.CorruptedStalkerLocation); // A load's: the Stalker raised where it stood.
 	}
 	RefreshFloorModifierPanel();
 }
