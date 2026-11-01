@@ -13,7 +13,8 @@ stays open: its first acceptance criterion, a load at start-up, is met only when
 
 ### SAID FIRST
 
-- **NOT YET PASSED IN UNREAL.** Compiled once with no lock; the window is registered below.
+- **PASSED IN UNREAL, window w122, every figure as registered:** the new test, the whole suite at 4449 / 0, and P1-P4
+  each proved on exactly its registered tests and assertions.
 - **WHAT WAS MISSING, read in the code:** `UCataclysmCharacterSave` has had `CharacterName` and `Partition` fields since the
   record was built, and nothing in play wrote either. Every saved character held an empty name and the default partition
   (Standard, offline, not Solo Self-Found). A load kept a name only because the writer adopts the loaded record, which the
@@ -74,7 +75,38 @@ online chosen at creation and refused at 24; (5) deleting a character, with the 
 ### Run
 
 Compiled with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 74 actions, 64 files compiled`, at the
-first attempt (a new worktree, so everything was compiled).
+first attempt (a new worktree, so everything was compiled). The first Python of record, on 97bad675a, failed one test,
+`test_no_entry_is_dated_later_than_today`: this entry had been dated 2026-11-01, the UTC date, where the local date was
+2026-10-31. Commit 1df1f7f7b corrects that and three lines of the 3d-4b entry written the same way; compiled again with no
+lock, `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp`. Python of record on 1df1f7f7b: `7177
+passed, 8 skipped in 190.06s`, JUnit tests 7185, failures 0, errors 0, skipped 8; ruff "All checks passed!".
+
+Window w122, 2026-10-31 19:53 to 20:27 local, on 1df1f7f7b. Pre-checks measured at 19:53:32, all passing:
+`development`'s CI and Unreal runs succeeded on e21133d85, no run in progress or queued, the lock free, no build or editor
+process, no pull request open, no simulation process, 11337 MB free (needs 10240). Every figure as registered.
+
+| Figure | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The new test alone | `1 tests performed, 1 succeeded, 0 failed` |
+| Whole Unreal suite | `4449 tests performed, 4449 succeeded, 0 failed`; 43 skipped part of what they check (no Paragon art in a worktree); "4449 performed, gap 0" |
+| Python | `7177 passed, 8 skipped in 196.93s`; JUnit tests 7185, failures 0, errors 0, skipped 8; ruff exit 0 |
+| P1 | PROVED: "'the save wrote the name' to be "Vesper of the Ash", but it was" the empty name, "'the load put the name back' ..." and "'and the next write keeps both' to be true" only |
+| P2 | PROVED: "'the save wrote the partition' to be true", "'the load put the partition back' to be true" and "'and the next write keeps both' to be true" only; its line reading "lethality 0, population 0, shared" |
+| P3 | PROVED: "'the load put the name back' ..." and "'the load put the partition back' to be true" only; its line reading "the next write keeps both" |
+| P4 | PROVED, the two tests registered and no other: `ACharacterSavedDeadIsLoadedDead` on "the character is dead after the load", and after it "its death raised the death's own write" (0, not 6), "which was written before the load returned" and "standing up raised the write that says the death was paid for" (0, not 8); `ADeathInADungeonIsPaidForAfterALoad` on "the character is dead after the load", and after it "standing up ran the walk's days and charged the death's" (1, not 7), "the ordinary dungeon resolved on the death", "and the walk ended" (12, not -1) and "and the paid death was written" (4, not 8). The later assertions were allowed by the registration |
+
+Each proof's restored half: `61 tests performed, 61 succeeded, 0 failed`.
+
+The new test's line, from the whole suite's log:
+
+```
+LOAD IDENTITY: written 'Vesper of the Ash' (lethality 1, population 1, Solo Self-Found); Loaded (... day 0, 0 creatures, placed where it was saved); none set before the load, 'Vesper of the Ash' (lethality 1, population 1, Solo Self-Found) after it; the next write keeps both
+```
+
+THE WINDOW'S OWN ECHO OF THAT LINE WAS MISSING when the test ran alone: the runner's filter for the alone step still named
+the last window's four labels, a fault in the window script and not in the game. The line above is read from the suite's
+engine log, kept by the runner.
 
 ---
 
