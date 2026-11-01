@@ -158,6 +158,10 @@ SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
 #: The line `FCataclysmTestSaves` logs once per run: what the tests' save slots came to. Issue #2658.
 TEST_SAVES = re.compile(r"(Test saves: \d+ written and deleted, \d+ left behind[^\r\n]*)")
 
+#: That line's parts: N, M, and the names after M, which the C++ writes only when M > 0 -- the first ten, then
+#: "and K more" (`FCataclysmTestSaves::SummaryLine`). Read by `saves_failure`. Issue #2673.
+TEST_SAVES_PARTS = re.compile(r"Test saves: (\d+) written and deleted, (\d+) left behind(?:: (.+))?")
+
 #: The engine refusing to register a test, capturing the C++ class name.
 #:
 #: A REFUSED TEST DOES NOT RUN, IS NOT LISTED, AND IS NOT COUNTED, so the run
@@ -1000,6 +1004,40 @@ def test_saves_line(text: str) -> str:
     return found[-1] if found else "Test saves: (no line in the log; the clean-up's summary was not logged)"
 
 
+def saves_failure(tests: TestOutcome | None, saves_line: str) -> str | None:
+    """Why the run's save slots fail the `tests` command, or None when they do not. Issue #2673.
+
+    `saves_line` is what `test_saves_line` returned for the run's log. Two reasons, ruled 2026-11-01:
+
+    - **M > 0.** The tests left slots in `game/Saved/SaveGames` that were not there when the run started. Said with the
+      names the line gives. A narrow run (`--prefix`) is held to the same rule: its M counts what that subset left.
+    - **No line, from a run that performed at least one test.** The folder is taken at the first test's start, so such
+      a run should have logged one; without it the run has not shown that its tests' saves were deleted (window w129
+      logged none, from a clean-up whose summary hook never fired).
+
+    A RUN THAT PERFORMED NO TESTS OR CRASHED ALREADY FAILS FOR ITS OWN REASON, so a missing line adds nothing there and
+    None comes back: with no test started, nothing took the folder and nothing could log the line. Slots left behind
+    are still named for such a run, after its own reason, because they are on disk whatever stopped the run.
+
+    THIS READS NOTHING A GUARD PROOF READS. `prove_cpp_guard` judges its halves on `TestOutcome` alone, which
+    `parse_test_log` builds without looking at this line; only `exit_code_for`, which only `main` calls, uses this.
+    """
+    parts = TEST_SAVES_PARTS.fullmatch(saves_line)
+    if parts is None:
+        if tests is None or tests.crashed:
+            return None
+        return ("FAILED: the clean-up's summary was not logged, so the run has not shown its tests' saves were "
+                f"deleted. {tests.performed} tests were performed and the log holds no \"Test saves:\" line. "
+                "Issue #2673.")
+
+    left = int(parts.group(2))
+    if left == 0:
+        return None
+    names = parts.group(3) or "(the line names none)"
+    return (f"FAILED: the tests left {left} save slot{'' if left == 1 else 's'} behind in game/Saved/SaveGames: "
+            f"{names}. A run whose tests leave slots fails, a narrow one included; nothing was deleted. Issue #2673.")
+
+
 def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> None:
     """Write the original bytes back and make sure the file looks newer than the build.
 
@@ -1406,8 +1444,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(normalised)
 
 
-def exit_code_for(tests: TestOutcome | None) -> int:
-    """0 only when tests actually ran and every one of them passed.
+def exit_code_for(tests: TestOutcome | None, saves_line: str) -> int:
+    """0 only when tests actually ran, every one of them passed, and they left no save slot behind.
 
     NOTHING RAN IS A FAILURE, NOT A PASS, and that is the whole point of this
     function. `TestOutcome(None, (), ())` is what comes back when the log could
@@ -1415,6 +1453,10 @@ def exit_code_for(tests: TestOutcome | None) -> int:
     Zero tests performed is the same thing said differently. Reporting either as
     success is exactly the fault issue #436 was opened about, one level further
     in.
+
+    `saves_line` is the run's "Test saves:" line as `test_saves_line` read it.
+    REQUIRED, NOT DEFAULTED, so no caller can skip the save check by leaving it
+    out. `saves_failure` says when it fails the run. Issue #2673.
     """
     if tests is None or tests.performed is None or tests.performed == 0:
         return 1
@@ -1453,7 +1495,16 @@ def exit_code_for(tests: TestOutcome | None) -> int:
     if tests.refused_registration:
         return 1
 
-    return 1 if tests.any_failed else 0
+    if tests.any_failed:
+        return 1
+
+    # SAVE SLOTS LEFT BEHIND, OR NO LINE SAYING WHETHER ANY WERE, FAIL THE RUN
+    # THOUGH EVERY TEST PASSED. Issue #2673, ruled 2026-11-01: #2658 printed the
+    # line and left the exit code alone until a window had shown M = 0; window
+    # w129B showed it over the whole suite. Last, because every reason above
+    # says more about the run than this one does. The same category as a
+    # refused registration: every test passed and the run still is not clean.
+    return 1 if saves_failure(tests, saves_line) else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1507,15 +1558,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     tests = run_automation_tests(arguments.prefix)
     print(f"Tests: {tests.summary}")
-    # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result and never part of it: reported, not failed on (#2658, ruled
-    # 2026-11-01). Read again from the log the run left, as `run_automation_tests` read it.
-    print(test_saves_line(TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else ""))
+    # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result. Read again from the log the run left, as
+    # `run_automation_tests` read it. Printed since #2658; part of the exit code since #2673 (`saves_failure`).
+    saves_line = test_saves_line(TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else "")
+    print(saves_line)
     # THE INPUTS BESIDE THE ANSWER. Issue #1707. A prefix narrows the run and not
     # the tree, so with a prefix the gap is the tests outside it and the line
     # still says what the whole tree declares; the names are the useful part.
     print(declared_line(tests, declared_tests(), current_commit()))
 
-    code = exit_code_for(tests)
+    code = exit_code_for(tests, saves_line)
 
     # THE CONDITION USED TO BE "NON-ZERO AND NOTHING FAILED", which was the same
     # thing as "no results were read" until a refused registration became a
@@ -1528,6 +1580,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"No test results were read from {TEST_LOG}. Either the run did "
               f"not happen or its log could not be read. That is reported as a "
               f"failure rather than a pass on purpose; see issue #436.")
+
+    # AFTER THE NO-RESULTS REASON, which stays first: a run that performed no
+    # tests fails for that, and `saves_failure` adds a missing line to it only
+    # when tests were performed. Issue #2673.
+    failure = saves_failure(tests, saves_line)
+    if failure:
+        print(failure)
     return code
 
 

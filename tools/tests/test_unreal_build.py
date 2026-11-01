@@ -723,6 +723,12 @@ def test_the_test_prefix_and_target_can_be_chosen() -> None:
     assert parse_arguments(["tests", "--no-build"]).no_build
 
 
+#: A run's "Test saves:" line with nothing left behind, so the tests below
+#: measure the reasons they name and not the save check. That check has its own
+#: tests in `test_the_test_run_reports_its_save_slots.py`. Issue #2673.
+CLEAN_SAVES = "Test saves: 3 written and deleted, 0 left behind"
+
+
 def test_a_run_that_read_no_results_is_a_failure() -> None:
     """Nothing ran is not the same as nothing failed.
 
@@ -731,8 +737,8 @@ def test_a_run_that_read_no_results_is_a_failure() -> None:
     issue #436 one level further in, and reporting it as a pass would be the
     same mistake in a different place.
     """
-    assert exit_code_for(TestOutcome(None, (), ())) != 0
-    assert exit_code_for(None) != 0
+    assert exit_code_for(TestOutcome(None, (), ()), CLEAN_SAVES) != 0
+    assert exit_code_for(None, CLEAN_SAVES) != 0
 
 
 def test_a_run_that_performed_zero_tests_is_a_failure() -> None:
@@ -741,15 +747,15 @@ def test_a_run_that_performed_zero_tests_is_a_failure() -> None:
     A test prefix that matches nothing produces this: the run is real, the log
     is readable, and no test was executed.
     """
-    assert exit_code_for(TestOutcome(0, (), ())) != 0
+    assert exit_code_for(TestOutcome(0, (), ()), CLEAN_SAVES) != 0
 
 
 def test_a_failing_test_is_a_failure() -> None:
-    assert exit_code_for(TestOutcome(3, ("a", "b"), ("c",))) != 0
+    assert exit_code_for(TestOutcome(3, ("a", "b"), ("c",)), CLEAN_SAVES) != 0
 
 
 def test_a_clean_run_is_the_only_success() -> None:
-    assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ())) == 0
+    assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ()), CLEAN_SAVES) == 0
 
 
 def test_a_refused_registration_is_a_failure() -> None:
@@ -766,7 +772,7 @@ def test_a_refused_registration_is_a_failure() -> None:
     test.
     """
     assert exit_code_for(
-        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",))) != 0
+        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",)), CLEAN_SAVES) != 0
 
 
 def test_a_skipped_half_is_still_not_a_failure() -> None:
@@ -778,7 +784,7 @@ def test_a_skipped_half_is_still_not_a_failure() -> None:
     information at all.
     """
     assert exit_code_for(
-        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",))) == 0
+        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",)), CLEAN_SAVES) == 0
 
 
 # ---------------------------------------------------------------------------

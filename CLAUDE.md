@@ -93,6 +93,14 @@ That wrapper exits non-zero when the build fails, when a test fails, and when no
 test results could be read at all. Until issue #436 it had no entry point, so
 every invocation of it exited 0 having done nothing.
 
+**`tests` also exits non-zero when the tests left save slots behind**, a narrow
+`--prefix` run included: the run's `Test saves: N written and deleted, M left
+behind: <names>` line, printed after the `Tests:` line, has M above 0, and the
+message names the slots. **A run that performed tests and logged no such line
+fails as well**, because it has not shown its tests' saves were deleted. Until
+issue #2673 that line was reported only. Guard proofs (`prove_cpp_guard`) read
+test results only and are not affected.
+
 ```bash
 cd sim && python -m cataclysm_sim.scoring     # power model self-test
 cd sim && python verify_scoring_port.py       # compare against the real source
