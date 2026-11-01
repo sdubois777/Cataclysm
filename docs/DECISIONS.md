@@ -14,6 +14,10 @@ clean-up wrote after the run's last test started; `saves_failure`'s message); th
 
 ### SAID FIRST
 
+- **2 OF 5 NARROW RUNS LOST THE EXIT-TIME LINE AND PASSED.** Window w132, on 0539dfea6: `Cataclysm.SaveLoad.` and
+  `Cataclysm.Difficulty.` logged no "Test saves:" line after "Engine exit requested", and `tools/unreal_build.py` read
+  the line their last test's end had logged and exited 0. Under #2673's rule alone both would have failed, as w131's
+  run did. The whole suite passed 4500 / 0 with "Test saves: 713 written and deleted, 0 left behind"; P1 and P2 proved.
 - **THE ENGINE ENDS ABOUT 607 TESTS AT START-UP, BEFORE ANY REQUESTED TEST, AND THE CLEAN-UP LOGS A LINE AT EACH.**
   Window w132's first runner measured it on a one-test run: 610 "Test saves:" lines from the clean-up -- 607 at frame
   0, from 21:04:09.995 to 21:04:10.133, each "0 written and deleted, 0 left behind"; one from the test's own call; one
@@ -126,6 +130,32 @@ own two (SAID FIRST). That run kept its exit-time line. Nothing after it ran.
 (#1522): "1 failed, 7216 passed, 8 skipped". The new test's capture was flushed and read from the test's body, and the
 rule requires the capture's own reader to flush before it reads. **Changed:** the capture has a `Caught()` that flushes
 and returns the lines, and the test reads through it; no assertion changed.
+
+**Window w132, second runner, on 0539dfea6 (`fix/test-saves-line-per-test`), every step passed.** Pre-checks all
+passed at 14:14:35, 11,025 MB free; lock `dungeon-w132` taken, runner PID 30212 started at 14:14:49, lock released at
+its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| `Cataclysm.SaveStorage.EachTestsEndLogsTheRunsTestSavesLine` | 1 / 1; `Test saves: 1 written and deleted, 0 left behind`; start-up lines 607, after the last test started 2, exit-time 1; "TEST SAVES LINE: called at each test's end yes; returned 'Test saves: 1 written and deleted, 0 left behind'; logged 1 [...]; the slot gone" |
+| `Cataclysm.SaveStorage.` | 9 / 9; `Test saves: 5 written and deleted, 0 left behind`; start-up 607, after the last test started 1, exit-time 1 |
+| `Cataclysm.SaveLoad.` | 70 / 70; `Test saves: 115 written and deleted, 0 left behind`; start-up 607, after the last test started 2, **exit-time 0** |
+| `Cataclysm.Difficulty.` | 5 / 5; `Test saves: 0 written and deleted, 0 left behind`; start-up 607, after the last test started 2, **exit-time 0** |
+| `Cataclysm.CharacterSelect.` | 10 / 10; `Test saves: 0 written and deleted, 0 left behind`; start-up 607, after the last test started 1, exit-time 1 |
+| Narrow runs | "5 attempted, 2 lost the exit-time line" |
+| Whole suite | `Tests: 4500 tests performed, 4500 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 713 written and deleted, 0 left behind`; `Declared: 4500 tests in the tree at 0539dfea6; 4500 performed, gap 0`; exit 0; start-up lines 607, after the last test started 1, exit-time 1 |
+| Python | `7220 passed, 8 skipped in 205.22s`; JUnit tests=7228, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED: with the break in, 1 performed, 1 failed; restored, 1 / 1. The broken half's log fails "it logs one line" ("Expected ... to be 1, but it was 0") and "and the line logged is the line returned" only, and prints "logged 0 []" |
+| P2 | PROVED: with the break in, 1 performed, 1 failed; restored, 1 / 1. The broken half's log fails "the framework calls it at the end of each test" only, and prints "called at each test's end NO" |
+
+**Nothing else failed in either proof.** Each broken half's log holds, from the automation controller, the test's
+"Result={Fail}" line and the registered assertions only (3 error lines for P1, 2 for P2); each restored half holds
+none. Both halves of both proofs also hold the two `GameFeatureData` errors every run logs at engine start-up, before
+any test.
+
+**The suite's memory summary** read "tests=5107": 4500 requested tests and 607 start-up ones, which is the same count
+the start-up lines give.
 
 ---
 
