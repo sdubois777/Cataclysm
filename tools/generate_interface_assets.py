@@ -19,6 +19,13 @@ WHAT IT MAKES, under `/Game/Interface`:
                             walked, and which of them do nothing yet, issue #41
     WBP_SkillAssignment     which skill from the pool goes on which of the six
                             keys, issue #837 layer 4
+    WBP_CharacterSelect     the character select screen: the saved characters,
+                            Continue and New, issue #753
+
+AND ONE LEVEL, under `/Game/Maps`:
+
+    L_FrontEnd              the level the game opens on, which shows the
+                            character select screen, issue #753
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -685,6 +692,115 @@ def make_skill_assignment():
     log("created {}/{}".format(INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET))
 
 
+CHARACTER_SELECT_PARENT = "CataclysmCharacterSelectWidget"
+CHARACTER_SELECT_ASSET = "WBP_CharacterSelect"
+
+
+def make_character_select():
+    """The character select screen, issue #753 select-screen step 3b.
+
+    THE WHOLE SCREEN, in the front end's level, which shows nothing else: the
+    saved characters, newest first, one WBP_ChoiceButton each, filled at run
+    time by UCataclysmCharacterSelectWidget; why the last load was refused; and
+    a button for a new character.
+    """
+    parent = parent_class(CHARACTER_SELECT_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CHARACTER_SELECT_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CHARACTER_SELECT_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHARACTER_SELECT_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CHARACTER_SELECT_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Choose a character", size=30)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    # THE ROWS, a scroll box, because an account holds up to 24 characters and
+    # `fill_remaining_height` stops it at the space left. The scroll box IS the
+    # bound panel the rows are added to.
+    rows = add(blueprint, unreal.ScrollBox, "CharacterList", "Body")
+    fill_remaining_height(rows)
+
+    # A button holds one child, its label.
+    add(blueprint, unreal.Button, "NewButton", "Body")
+    new_label = add(blueprint, unreal.TextBlock, "NewLabel", "NewButton")
+    set_text(new_label, "New character", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CHARACTER_SELECT_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CHARACTER_SELECT_ASSET))
+
+
+MAPS_DIR = "/Game/Maps"
+FRONT_END_LEVEL = "L_FrontEnd"
+FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
+
+
+def make_front_end_map():
+    """L_FrontEnd, the level the game opens on, issue #753 select-screen step 3b.
+
+    MADE AS tools/generate_dungeon_map.py MAKES L_Dungeon, which is what shows
+    this works through the pythonscript commandlet: a new level, its world
+    settings naming its own game mode, saved. LEFT ALONE WHEN IT EXISTS, this
+    file's rule for every asset it makes.
+
+    A PLAYER START AND NOTHING ELSE. The front end's game mode starts the player
+    as a spectator and its controller shows the screen; the start gives the
+    spectator a place to be. NO LIGHT: nothing is drawn but the screen, and a
+    level with no static light writes no _BuiltData beside it, which
+    tools/tests/test_map_built_data_is_not_committed.py forbids.
+    """
+    path = "{}/{}".format(MAPS_DIR, FRONT_END_LEVEL)
+    if editor_assets.does_asset_exist(path):
+        log("{} already exists; left alone.".format(path))
+        return
+
+    game_mode = unreal.load_class(None, FRONT_END_GAME_MODE)
+    if game_mode is None:
+        raise SystemExit("Could not load {}. The C++ has to be compiled before "
+                         "this runs.".format(FRONT_END_GAME_MODE))
+
+    level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    if not level_subsystem.new_level(path):
+        raise SystemExit("Could not create the level at {}".format(path))
+
+    start = actor_subsystem.spawn_actor_from_class(
+        unreal.PlayerStart, unreal.Vector(0.0, 0.0, 200.0))
+    start.set_actor_label("PlayerStart")
+
+    world = unreal.get_editor_subsystem(
+        unreal.UnrealEditorSubsystem).get_editor_world()
+    settings = unreal.GameplayStatics.get_all_actors_of_class(
+        world, unreal.WorldSettings)
+    if not settings:
+        raise SystemExit("The level has no WorldSettings actor to set a game "
+                         "mode on")
+    settings[0].set_editor_property("default_game_mode", game_mode)
+
+    if not level_subsystem.save_current_level():
+        raise SystemExit("Could not save the level at {}".format(path))
+    log("created {} with the game mode {}".format(path, FRONT_END_GAME_MODE))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -697,7 +813,10 @@ def main():
     make_floor_modifier_panel()
     make_choice_panel()
     make_skill_assignment()
+    make_character_select()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
+    # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
+    make_front_end_map()
     log("done")
 
 

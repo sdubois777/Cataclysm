@@ -44,6 +44,9 @@ public:
 	/** The mode `UseTheMenuInputMode` last asked for, or empty. */
 	FString InputModeAskedFor() const { return AskedFor; }
 
+	/** The screen's asset, which a test loads. Select-screen step 3b. */
+	const TSoftClassPtr<UCataclysmCharacterSelectWidget>& SelectScreenAsset() const { return SelectScreenClass; }
+
 protected:
 	virtual void BeginPlay() override;
 
