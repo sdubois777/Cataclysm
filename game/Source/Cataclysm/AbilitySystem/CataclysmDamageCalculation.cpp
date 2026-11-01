@@ -899,9 +899,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		Damage *= FMath::Max(0.0f, Hit.NonCriticalDamagePercent) / 100.0f;
 	}
 
+	// A TICK OF CONVERTED DAMAGE MEETS NONE OF STEPS 2 TO 6, NOR THE SLASHING BONUS AT STEP 9. Ruled by the
+	// coordinating session 2026-11-01, and by the project owner the same day: "No: stored total is fixed". The blow
+	// met every defence below before The Breaking Point converted it, so meeting them again would mitigate it twice;
+	// and no "debuffs on you" or "damage over time taken" row changes it, Vessel Unbroken's suppression included. It
+	// still meets the temporary absorb, the mana a row puts first and the energy shield (6b to 8), which decide who
+	// pays and not how much. One flag, read at each step it skips. See `FCataclysmIncomingHit::bIsConvertedDamage`.
+	const bool bMeetsDefences = !Hit.bIsConvertedDamage;
+
 	// 2. Block. Applies to area damage too, and removes half rather than all.
 	// Not to a blow the defender cannot mitigate, which is never blocked.
-	if (Combat && !Hit.bCannotBeMitigated)
+	if (Combat && !Hit.bCannotBeMitigated && bMeetsDefences)
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
 											 : CataclysmPercentDraw::Draw();
@@ -962,7 +970,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// NOT FOR A BLOW THE DEFENDER CANNOT MITIGATE: neither its own armour nor
 	// what it takes from its summoner is applied, and nothing is recorded as
 	// removed by armour.
-	if (!Hit.bCannotBeMitigated && (Combat || ArmourFromSummoner > 0.0f))
+	if (!Hit.bCannotBeMitigated && bMeetsDefences && (Combat || ArmourFromSummoner > 0.0f))
 	{
 		// THE ATTACKER'S OWN STAT PLUS WHAT THE WEAPON IGNORES, clamped once at the
 		// end. Mirrors `Attacker.total_armor_ignored` in
@@ -1070,12 +1078,18 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		Hit.ResistancePenetration, ResistanceCapOf(Defender));
 	const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;
-	Damage *= 1.0f - Resist / 100.0f;
+	if (bMeetsDefences)
+	{
+		Damage *= 1.0f - Resist / 100.0f;
+	}
 
 	// 5. Flat damage reduction, capped. Until issue #644 this was the one step
 	// that read a defender's attribute straight into the arithmetic with nothing
 	// bounding it, so at 100 a character was exactly immune.
-	if (Combat)
+	//
+	// AND THIS BLOCK HOLDS STEP 6 TOO, `damage_taken`, the Nth hit's share, a hold's multiplier and the damage over
+	// time branch, so a converted tick skips all of them here, at one flag (see `bMeetsDefences` above).
+	if (Combat && bMeetsDefences)
 	{
 		// WHAT THE TWO DAMAGE REDUCTION LINES REMOVE, measured across both. Issue
 		// #1515, Nothing Wasted.
@@ -1402,7 +1416,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 9. Health takes the remainder.
-	if (Hit.bIsSlashing)
+	//
+	// NOT A TICK OF CONVERTED DAMAGE, whose causer is the converting character itself, so the sub-type read was its
+	// own weapon's. See `bMeetsDefences` above.
+	if (Hit.bIsSlashing && bMeetsDefences)
 	{
 		Damage *= 1.0f + SubtypeBonus / 100.0f;
 	}

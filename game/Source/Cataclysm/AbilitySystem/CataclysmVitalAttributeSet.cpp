@@ -506,6 +506,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const bool bConvertedDamage = Data.EffectSpec.GetSetByCallerMagnitude(
 					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 				const bool bPeriodicTick = Data.EffectSpec.GetPeriod() > 0.0f;
+				// AND THE SAME STAMP TELLS `Resolve` TO LEAVE THE TICK'S FIGURE AS IT IS: converted damage's total is
+				// fixed when it is converted, which the coordinating session and the project owner ruled 2026-11-01.
+				// See `FCataclysmIncomingHit::bIsConvertedDamage`.
+				Hit.bIsConvertedDamage = bConvertedDamage;
 				if (Hit.bIsBleed && bPeriodicTick && !bConvertedDamage)
 				{
 					if (UCataclysmAbilitySystemComponent* Carrier =

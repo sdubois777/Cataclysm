@@ -597,6 +597,20 @@ int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
 	for (const FActiveGameplayEffectHandle& Handle :
 		 AbilitySystem->GetActiveEffects(Query))
 	{
+		// NOT CONVERTED DAMAGE NOT YET TAKEN, WHOSE TOTAL IS FIXED WHEN IT IS CONVERTED. Ruled by the coordinating
+		// session 2026-11-01: an unbounded payout is a fault. Held, its expiry stood still while its period ran on, so
+		// a Masochist back above half health took the converted figure every second for as long as it stayed there.
+		// It runs its 5 seconds, as The Breaking Point says. The mark `Cleanse` and `ImmunityStep` keep it by.
+		const FActiveGameplayEffect* Holding = AbilitySystem->GetActiveGameplayEffect(Handle);
+		const float HeldStamp = Holding
+			? Holding->Spec.GetSetByCallerMagnitude(
+				  FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f)
+			: 0.0f;
+		if (HeldStamp > 0.0f)
+		{
+			continue;
+		}
+
 		// PUSHED FORWARD BY EXACTLY THE STEP, which is what makes the time
 		// remaining stand still rather than grow. The engine adds this to the
 		// effect's start time and re-arms its expiry.

@@ -1829,6 +1829,10 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
+**Converted damage's total is fixed when it is converted.** The blow met every defence the character has before The Breaking Point turned it into a bleed, so its ticks meet none of them again: not block, armour, resistance, damage reduction or damage taken. No "debuffs on you" or "damage over time taken" wording changes it either: Vessel Unbroken does not silence it, Vessel of Plagues, Wound Channeling, Symphony of Pain, Echoes of Agony and Doctrine Made Flesh neither raise nor lower it, and no duration stat lengthens it, because the node says "over 5 seconds". Ceaseless Penance does not hold it. It still counts as a bleed and a debuff for every condition that asks, and its ticks are still paid from the temporary absorb, the mana a row puts first and the energy shield, which decide who pays and not how much; immunities and the saves from a lethal blow meet it as they meet any damage. Decided by the project owner on 2026-11-01 ("No: stored total is fixed"), with the rest ruled by the coordinating session the same day.
+
+  
+
 **A damage over time effect deals a fixed amount per tick.** It is not a total handed out in instalments. A bleed that deals 20 damage per tick, ticks once per second and lasts 5 seconds deals 100 damage in total, and every one of those three numbers can be raised on its own.
 
   
