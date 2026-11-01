@@ -117,21 +117,30 @@ All in `game/Source/Cataclysm/Tests/CataclysmPlayerEffectsTests.cpp`, group `Cat
 
 ### Registered before the run
 
-Every Unreal figure is a prediction traced by hand from the code, made before any build of it. Registered on the
-branch `feat/the-player-sees-what-affects-them` at the commit that carries this entry, branched from `development` at
-`f091d674d`.
+Every Unreal figure is a prediction traced by hand from the code, made before any build of it. First registered on
+`feat/the-player-sees-what-affects-them` at `345591cfd`, on `development` at `f091d674d`, with the suite at 4506. MOVED,
+with no force push, onto `development` at `68af556f4` (#1472 merged as #2680) as
+`feat/the-player-sees-what-affects-them-1`, and registered again there at the commit that carries this sentence; the
+move's only conflict was this file's top, and `development` had touched none of this change's other files since
+`f091d674d`, by `git diff --stat`.
 
 | Figure | Registered |
 |---|---|
 | The seven new tests alone, by the prefix `Cataclysm.PlayerEffects.` | 7 / 7 |
-| Whole Unreal suite | 4506 / 0: `development`'s 4499, the coordinating session's base for `f091d674d` (window w130 measured 4499 on the #2669 change, merged as `2c007ddc9`; `f091d674d` changed Python and documents only, by `git show --stat`), + 7 |
+| Whole Unreal suite | 4511 / 0: `development`'s 4504 at `68af556f4`, the coordinating session's figure, + 7 |
 | Python | of record, with JUnit, and ruff |
 | E1, the debuff-root query emptied (`for (const FGameplayTag& Tag : UCataclysmDebuffs::TagsOn(AbilitySystem))` to `for (const FGameplayTag& Tag : FGameplayTagContainer())`), prefix `Cataclysm.PlayerEffects.ABleedIsListedAsADebuffWithItsSecondsLeft` | one failed assertion, "the bleed is the one entry" (0, expected 1), where the test returns; the control "before the bleed, nothing is listed" holds |
 | E2, the order reversed (`Entries = MoveTemp(Debuffs);` to `Entries = MoveTemp(Buffs); Buffs = MoveTemp(Debuffs);`), prefix `Cataclysm.PlayerEffects.ABuffIsListedAfterEveryDebuff` | two failed assertions: "the stagger, then the curse, then the buff" (reads "Commander, Staggered, Quarry") and "two debuffs, then one buff" (reads "B D D"); the control "the buff alone is listed, as a buff" holds |
 
+### A check before the window
+
+Not the window's evidence: the coordinating session ran the seven tests alone on `d746551fe` (the first branch, on
+`f091d674d`) under the prefix `Cataclysm.PlayerEffects.`, as a short check: 7 of 7 passed, with "Test saves: 0 written
+and deleted, 0 left behind". The move changed none of the C++ those tests read.
+
 ### Not verified
 
-- Nothing in this entry has been built or run in Unreal yet. The figures above are registrations.
+- No window has run yet: the whole Unreal suite and the two proofs are registrations.
 - What the list looks like on screen, which no automation test can see.
 
 ### Run
@@ -142,6 +151,11 @@ Compiled with `python tools/unreal_build.py build` on `345591cfd`, the lock free
 same head, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>`: `7217 passed, 8 skipped in 197.49s
 (0:03:17)`; JUnit tests 7225, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". This
 change adds no Python test, so the totals are `f091d674d`'s.
+
+AFTER THE MOVE, on `9f4c992e1` (on `68af556f4`): `python tools/unreal_build.py build` with the lock free printed `Build:
+the continuous integration runner holds the UnrealBuildTool mutex; waiting 60 seconds and retrying (2 of 5)` and then
+`Build: Succeeded - 43 actions, 40 files compiled`. Python of record: `7220 passed, 8 skipped in 202.85s (0:03:22)`;
+JUnit tests 7228, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!".
 
 ---
 
