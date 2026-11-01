@@ -144,7 +144,7 @@ R1 to R5 stand from w126: the code they break is unchanged (ruled).
 | Figure | Registered |
 |---|---|
 | The made test alone | 1 / 1, both its lines quoted |
-| Whole Unreal suite | 4474 / 0: the second case is in the same test, so the count is unchanged |
+| Whole Unreal suite | 4480 / 0: window converted-w1's 4475 on `development` (c7fd29c63, #2663 merged), + 5; the second case is in the same test. MOVED ONTO IT, as `feat/new-character-creator-1`, from 29aaa7111; the files R1 to R8 break and the four test files are identical before and after the move, by `git diff --quiet` |
 | Python | of record, with JUnit, and ruff |
 | R6, as above | the made test fails on "with nothing moved, its record was written at once, by the new trigger alone" only; its first case still passes, its record written through the inventory |
 | R7, as above | TWO TESTS: the triggers test on "'a character being created' writes the character record" only, and the made test on "with nothing moved, its record was written at once, by the new trigger alone" only |
