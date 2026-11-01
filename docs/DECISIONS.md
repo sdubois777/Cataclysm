@@ -24,6 +24,16 @@ Issue [#753](https://github.com/sdubois777/Cataclysm/issues/753): the last of th
   character's name and Diablo III for the word DELETE -- was NOT confirmed** (below).
 - **NO TEST SEES THE SCREEN DRAWN.** The tests drive the screen's logic with rows given; the screen as drawn, the
   confirmation appearing and Delete greying out, are on the owner's launch list.
+- **WHERE A TEST'S SAVES ARE, read from the engine (asked 2026-11-01, because R3's break deletes every `Character_` slot
+  in the folder).** No `[PlatformFeatures] SaveGameSystemModule` is set in the engine's or this project's ini files, so
+  `FWindowsPlatformFeaturesModule::GetSaveGameSystem` falls back to `FGenericSaveGameSystem`, whose
+  `GetSaveGamePath` is `FPaths::ProjectSavedDir()` + `SaveGames/<slot>.sav`; and `ProjectSavedDir` is the project's own
+  `Saved` folder unless the editor is started with `-saveddirsuffix` or a user folder, which `tools/unreal_build.py`
+  does not pass. So a run from worktree s5 writes to s5's `game/Saved/SaveGames`, never to a per-user folder: on
+  2026-11-01 each worktree that has run tests has its own `game/Saved/SaveGames`, and
+  `%LOCALAPPDATA%/Cataclysm/Saved/SaveGames` does not exist. **The on-disk test prints the resolved absolute path and
+  asserts, as set-up, that it is inside the project's folder and holds the fixture's file**; the path a run prints is
+  recorded here with window B.
 
 ### The genre, researched 2026-11-01
 

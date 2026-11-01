@@ -54,6 +54,8 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -7447,6 +7449,19 @@ bool FCataclysmSaveLoadDeleteOnDiskTest::RunTest(const FString&)
 							TEXT("2026-11-01T09:00:00.000Z"))
 		|| !WriteARun(RunB) || !WriteText(*this, CB + Infix + TEXT("1"), TEXT("a backup"))
 		|| !WriteText(*this, AccountFixture, TEXT("not deleted")) || !WriteText(*this, UnrelatedFixture, TEXT("not deleted")))
+	{
+		return false;
+	}
+
+	// WHERE THE SAVES ARE, printed and checked: this project's own Saved/SaveGames, the engine's generic save system's
+	// folder (`FGenericSaveGameSystem::GetSaveGamePath`), and not a folder another checkout or a game shares (ruled).
+	const FString SaveFolder = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("SaveGames"));
+	const FString ProjectFolder = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	const bool bFixtureThere = IFileManager::Get().FileSize(*((SaveFolder / CA) + TEXT(".sav"))) > 0;
+	AddInfo(FString::Printf(TEXT("DELETE ON DISK: the saves are in %s; the project is %s; the fixture's file %s there"),
+							*SaveFolder, *ProjectFolder, bFixtureThere ? TEXT("is") : TEXT("IS NOT")));
+	if (!TestTrue(TEXT("set-up: the saves are in this project's own folder, the fixture's file among them"),
+				  SaveFolder.StartsWith(ProjectFolder) && bFixtureThere))
 	{
 		return false;
 	}
