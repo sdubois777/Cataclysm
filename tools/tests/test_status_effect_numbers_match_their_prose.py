@@ -22,8 +22,8 @@ one without the other and this fails.
 
 Related: #363 and #588, both closed, which were the same shape for stun durations
 stated only in prose. #899, the eleven ailment affixes, which #904 blocks. #918,
-#919 and #920, the three mechanics these descriptions now state and which nothing
-implements yet.
+#919 and #920, the three mechanics these descriptions state. #918's movement gate
+is built, and its four seconds are pinned by test_bleed_moving_seconds_cap_matches_the_design.py.
 """
 
 from __future__ import annotations
@@ -254,8 +254,8 @@ def test_no_two_damage_over_time_effects_are_the_same_effect(rows) -> None:
 
     This checks the numbers only. The conditions that make each one situational
     -- bleed's movement gate, disease's spread on death, Necrosis's healing
-    denial -- are #918, #919 and #920, and no test can check them until they
-    exist.
+    denial -- are #918, #919 and #920, and are checked, where they are built,
+    by the automation tests rather than here.
     """
     shapes: dict[tuple[float, ...], list[str]] = {}
     for key in DAMAGE_OVER_TIME:
