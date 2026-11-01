@@ -522,6 +522,15 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 			Record.StartingDamageType = State->GetChosenDamageType();
 		}
 
+		// AND THE NAME AND PARTITION, since the select screen's first step (#753). Until then nothing in play wrote
+		// either, and every record held an empty name and the default mode. WRITTEN ONLY WHEN SET, for the creation
+		// choice's reason: the defaults would record a choice nobody made, and would empty a name a loaded record held.
+		if (State->HasIdentity())
+		{
+			Record.CharacterName = State->GetCharacterName(); // A save's: the character's name.
+			Record.Partition = State->GetPartition(); // A save's: the character's partition.
+		}
+
 		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
 		//
 		// WRITTEN UNCONDITIONALLY, UNLIKE THE CREATION CHOICE ABOVE, and the

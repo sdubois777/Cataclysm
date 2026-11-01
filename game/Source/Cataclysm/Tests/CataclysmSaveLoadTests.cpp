@@ -413,6 +413,113 @@ bool FCataclysmSaveLoadRoundTripTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A character's name and partition, set as the creator will set them, are written by the save, come back with a load, and
+ * are written again by the next save. Until this nothing in play wrote either, so every record held an empty name and the
+ * default mode, and the character select screen would have had nothing to list. Issue #753, select-screen step 1, ruled
+ * 2026-11-01. Prints "LOAD IDENTITY".
+ *
+ * THE CONTROL is the loading character before the load: it has no name or partition set.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadIdentityTest,
+	"Cataclysm.SaveLoad.ACharactersNameAndModeComeBackFromALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadIdentityTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	const FString Name = TEXT("Vesper of the Ash");
+	FCataclysmCharacterPartition Chosen;
+	Chosen.Lethality = ECataclysmLethality::Hardcore;
+	Chosen.Population = ECataclysmPopulation::Online;
+	Chosen.bSoloSelfFound = true;
+	auto Same = [&Chosen](const FCataclysmCharacterPartition& One)
+	{
+		return One.Lethality == Chosen.Lethality && One.Population == Chosen.Population
+			&& One.bSoloSelfFound == Chosen.bSoloSelfFound;
+	};
+	auto Text = [](const FCataclysmCharacterPartition& One)
+	{
+		return FString::Printf(TEXT("lethality %d, population %d, %s"), static_cast<int32>(One.Lethality),
+							   static_cast<int32>(One.Population), One.bSoloSelfFound ? TEXT("Solo Self-Found") : TEXT("shared"));
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString WrittenName;
+	FCataclysmCharacterPartition WrittenPartition;
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+		if (!TestNotNull(TEXT("set-up: an empire run was begun"), Scene.Instance->BeginEmpireRun(7)))
+		{
+			return false;
+		}
+
+		// AS THE CREATOR WILL SET THEM, and the save written with the trigger that writes both records before it returns.
+		Scene.State->SetIdentity(Name, Chosen);
+		Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		const UCataclysmCharacterSave* Written = Read<UCataclysmCharacterSave>(Saved.CharacterSlot());
+		if (!TestNotNull(TEXT("set-up: the character record was written"), Written))
+		{
+			return false;
+		}
+		WrittenName = Written->CharacterName;
+		WrittenPartition = Written->Partition;
+	}
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const bool bHadBefore = Scene.State->HasIdentity();
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
+																			 Saved.CharacterId);
+	const FString NameAfter = Scene.State->GetCharacterName();
+	const FCataclysmCharacterPartition PartitionAfter = Scene.State->GetPartition();
+
+	// THE NEXT WRITE, from the loaded character.
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	const UCataclysmCharacterSave* Rewritten = Read<UCataclysmCharacterSave>(Saved.CharacterSlot());
+	const bool bRewritten = Rewritten && Rewritten->CharacterName == Name && Same(Rewritten->Partition);
+
+	AddInfo(FString::Printf(TEXT("LOAD IDENTITY: written '%s' (%s); %s (%s); %s before the load, '%s' (%s) after it; the "
+								 "next write %s"),
+							*WrittenName, *Text(WrittenPartition), FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							bHadBefore ? TEXT("SET") : TEXT("none set"), *NameAfter, *Text(PartitionAfter),
+							bRewritten ? TEXT("keeps both") : TEXT("DOES NOT KEEP BOTH")));
+
+	TestEqual(TEXT("the save wrote the name"), WrittenName, Name);
+	TestTrue(TEXT("the save wrote the partition"), Same(WrittenPartition));
+	TestFalse(TEXT("CONTROL: the loading character had none set before the load"), bHadBefore);
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("the load put the name back"), NameAfter, Name);
+	TestTrue(TEXT("the load put the partition back"), Same(PartitionAfter));
+	TestTrue(TEXT("and the next write keeps both"), bRewritten);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // A run that cannot be read
 // ---------------------------------------------------------------------------
