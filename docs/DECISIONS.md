@@ -14,9 +14,12 @@ preview-only sphere route of `ACataclysmEnemyController::ChooseTarget`; the `Thr
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN.** Written while another session's window held the machine. Every figure under
-  "Registered before the run" is a prediction traced by hand from the code, and the totals are placeholders. Nothing
-  here is measured.
+- **COMPILED, AND NO UNREAL TEST HAS RUN YET.** Rebased with no force push onto `development` at `09323b971` (#2670,
+  select-screen step 5, which touches nothing in target choice or minions) as
+  `fix/a-minion-with-no-threat-is-never-sought-1`, the only conflict being this file's top. Compiled there with no
+  lock: `Build: Succeeded - 42 actions, 39 files compiled`. Python of record is under "Compiled, and Python of record".
+  Every Unreal figure under "Registered before the run" is a prediction traced by hand from the code, made before any
+  Unreal test ran.
 - **WHAT A PLAYER WOULD NOTICE: a monster no longer walks up to a trap and hits it.** A Skill Trap (and a Spike Trap)
   is passed over by every creature's search for the nearest, so a monster with only a trap in sight chooses nothing,
   and one with a trap 2 m off and the player 6 m off goes for the player. Area blows still hurt a trap. **Nothing else
@@ -154,10 +157,10 @@ found asserting that a creature chooses a Spike Trap or a Skill Trap.
 
 | Figure | Registered |
 |---|---|
-| Build | compiles `CataclysmMinion.cpp`, `CataclysmTargetCandidates.cpp`, `CataclysmEnemyController.cpp` (a comment), `CataclysmGadgetBehaviourTests.cpp` and `CataclysmCommandTests.cpp` (a comment), and what includes `CataclysmMinion.h` and `CataclysmDataRows.h` |
-| The group `Cataclysm.TargetChoice.` | `2 tests performed, 2 succeeded, 0 failed` |
-| Whole Unreal suite | PLACEHOLDER: the total last measured on `59d1c1d3c` + 2, 0 failed |
-| Python | PLACEHOLDER: the base's figure of record unchanged (no Python test added), with JUnit, and ruff clean |
+| Build, in the window | `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, the head having been compiled in this worktree as below and the window changing no source before the proofs |
+| Each new test alone | `1 tests performed, 1 succeeded, 0 failed`, for each of the two full names below |
+| Whole Unreal suite | **4495 / 0**: 4493, the coordinating session's figure for the last measured total of #2670, which merged as `09323b971`, this branch's base, + the 2 tests added here. Every existing test passes as before, none having been changed in what it asserts |
+| Python | the figure of record under "Compiled, and Python of record", unchanged (no Python test added), with JUnit, and ruff clean |
 | P1, the search: `\|\| MinionWhoseRowDrawsNoAttention(Candidate)` in `CataclysmTargetCandidates.cpp` broken to `\|\| (false && MinionWhoseRowDrawsNoAttention(Candidate))`, prefix `Cataclysm.TargetChoice.` | `2 tests performed, 1 succeeded, 1 failed`: `AMonsterDoesNotSeekATrapWhoseRowDrawsNobody`, on three assertions only: "the monster takes the bystander 6 m off, not the Spike Trap 2 m off", "the monster takes the bystander 6 m off, not the Skill Trap 2 m off" (each takes the trap), and "with only a trap in sight the monster chooses nothing" (it takes the trap). The controls and the two "Spawn marks…" lines pass. `EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone` passes |
 | P2, the threshold: `Minion->bDrawsNoAttention = Type->ThreatPercent <= 0.0f;` in `CataclysmMinion.cpp` broken to `Minion->bDrawsNoAttention = Type->ThreatPercent < 50.0f;`, prefix `Cataclysm.TargetChoice.` | `2 tests performed, 1 succeeded, 1 failed`: `EverythingThatDrawsAnyAttentionIsStillSoughtByDistanceAlone`, on six assertions only: "a Bolt Turret draws attention", "so does a Ballista", "and a Mote", and "the monster takes the Bolt Turret 2 m off, not the bystander 6 m off", "the monster takes the Ballista 2 m off", "the monster takes the Mote 2 m off" (each takes the bystander). The Imp's two lines and both controls pass. `AMonsterDoesNotSeekATrapWhoseRowDrawsNobody` passes, nought being below 50 |
 
@@ -166,9 +169,17 @@ runs through `tools/unreal_build.prove_cpp_guard` with `assert result.proved`, t
 **each broken half's log kept**, since the predictions are at the assertion. Each restored half must name no failure.
 Neither runs while a Python suite runs (issue #1630).
 
+### Compiled, and Python of record
+
+- **The compile**, `python tools/unreal_build.py build` on `f6ddf8f82` (the rebased branch before this section was
+  written), with no lock: `Build: Succeeded - 42 actions, 39 files compiled`. The line names no file; the five unity
+  objects that hold the five changed `.cpp` files (`Module.Cataclysm.4`, `.7`, `.9`, `.15` and `.22`) were each
+  written by that build, read from their modification times.
+- **Python**: PYTHON_PENDING.
+
 ### Not verified
 
-- **Nothing was compiled or run.** In particular, that `Place` yields a minion of the SkillTrap type depends on
+- **No Unreal test has run.** In particular, that `Place` yields a minion of the SkillTrap type depends on
   `DT_MinionTypes.uasset` holding that row, which `Cataclysm.Traps.TheSkillTrapRowIs…` asserts and this session did not
   run.
 - The engine's own headers were searched for a type named `FStation` under `Engine/Source/Runtime` only, not its
