@@ -17,6 +17,13 @@ Decisions made outside the Google Drive documents, newest first.
 ### SAID FIRST
 
 - **NOT YET RUN IN UNREAL.** Compiled with no lock; the window is registered below.
+- **NO AUTOMATION TEST SHOWS THAT EVERY READER OF THE TIER GETS IT.** Hits, minions and floors read the tier through
+  `ACataclysmGameMode::DifficultyTierIn`, which finds the world's authority game mode, and a world built by an automation
+  test has none and cannot be given one. The tests show the level's game mode takes the run's tier and that
+  `DifficultyTierFor` reads it from that mode; the world lookup between them is untested, the same limit
+  `DifficultyTierIn`'s own tests have had since 2026-08-16. The lookup in `UCataclysmGameInstance::BeginEmpireRun` that
+  finds the level's game mode is untested for the same reason. **For the owner's launch check:** a tier-3 character's
+  dungeon hits at tier 3.
 - **NOTHING IN PLAY RAISES THE TIER YET, ON PURPOSE.** No run can be won: the Cataclysm boss dungeon, the enemy capital
   and the loss condition do not exist. `RaiseDifficultyTierForAWin` is built and tested, and #1324 is the change that will
   call it when a run is won (ruled). Until then every character stays at the tier it has.
