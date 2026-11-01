@@ -137,11 +137,12 @@ bool FCataclysmCharacterSelectContinueTest::RunTest(const FString&)
 	Screen->StartNew(Instance);
 
 	AddInfo(FString::Printf(TEXT("SELECT CONTINUE: dungeon run -> %s, sandbox run -> %s, no run -> %s, unreadable %s (%s); "
-								 "Continue %s, handed %s, opened %s; New opened %s, pending %s"),
+								 "Continue %s, handed %s, opened %s; New asked for the new-character screen: %s, pending %s"),
 							*DungeonMap, *SandboxMap, *NoRunMap, bUnreadable ? TEXT("CONTINUED") : TEXT("refused"),
 							*UnreadableWhy, bContinued ? TEXT("went") : TEXT("REFUSED"),
 							Handed == InADungeon.CharacterId ? TEXT("the character") : TEXT("NOTHING"), *ContinueLevel,
-							*Screen->LevelRequested(), Instance->PendingCharacterId.IsValid() ? TEXT("STILL SET") : TEXT("none")));
+							Screen->NewCharacterRequested() ? TEXT("yes") : TEXT("NO"),
+							Instance->PendingCharacterId.IsValid() ? TEXT("STILL SET") : TEXT("none")));
 
 	TestTrue(TEXT("a run saved in a dungeon opens the dungeon level"),
 			 bDungeon && DungeonMap == UCataclysmCharacterSelectWidget::DungeonMap);
@@ -156,7 +157,9 @@ bool FCataclysmCharacterSelectContinueTest::RunTest(const FString&)
 	TestFalse(TEXT("Continue on an unreadable row is refused"), bUnreadableContinued);
 	TestFalse(TEXT("and the screen shows why"), Refusal.IsEmpty());
 	TestFalse(TEXT("New leaves nothing pending"), Instance->PendingCharacterId.IsValid());
-	TestEqual(TEXT("and opens the sandbox"), Screen->LevelRequested(), FString(UCataclysmCharacterSelectWidget::SandboxMap));
+	// RULED 2026-11-01, select-screen step 4a: New asks for the new-character screen, where it opened the sandbox ("and
+	// opens the sandbox", LevelRequested == SandboxMap) until the creator gained the choices locked at creation.
+	TestTrue(TEXT("and asks for the new-character screen"), Screen->NewCharacterRequested());
 	return true;
 }
 
@@ -270,6 +273,50 @@ bool FCataclysmCharacterSelectStartMapTest::RunTest(const FString&)
 	TestEqual(TEXT("the game's start map is the front end"), StartMap, ObjectPath);
 	TestNotNull(TEXT("the front end's level loads"), Level);
 	TestTrue(TEXT("its game mode is the front end's"), GameMode == ACataclysmFrontEndGameMode::StaticClass());
+	return true;
+}
+
+/**
+ * New is refused when the account holds 24 characters, "as one pool" (`docs/Cataclysm_GDD_v2.md`), counting an
+ * unreadable slot, which still holds one; with 23 it asks for the new-character screen. The rows are given, not read
+ * from the SaveGames folder, which holds other tests' saves (#2658). Issue #753, select-screen step 4a. Prints "NEW AT 24".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectNewAtTwentyFourTest,
+	"Cataclysm.CharacterSelect.NewIsRefusedWhenTheAccountHoldsTwentyFour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCharacterSelectNewAtTwentyFourTest::RunTest(const FString&)
+{
+	using namespace CataclysmCharacterSelectTest;
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	TArray<FCataclysmCharacterSummary> TwentyFour;
+	for (int32 Index = 0; Index < 23; ++Index)
+	{
+		TwentyFour.Add(ARow(TEXT("Held"), 1));
+	}
+	TwentyFour.Add(AnUnreadableRow());
+	TArray<FCataclysmCharacterSummary> TwentyThree = TwentyFour;
+	TwentyThree.Pop();
+
+	UCataclysmCharacterSelectWidget* Full = NewObject<UCataclysmCharacterSelectWidget>();
+	Full->SetRowsForTests(TwentyFour);
+	const bool bAtTwentyFour = Full->StartNew(Instance);
+	UCataclysmCharacterSelectWidget* Room = NewObject<UCataclysmCharacterSelectWidget>();
+	Room->SetRowsForTests(TwentyThree);
+	Instance->PendingCharacterId = FGuid::NewGuid();
+	const bool bAtTwentyThree = Room->StartNew(Instance);
+	AddInfo(FString::Printf(TEXT("NEW AT 24: with 24 (one unreadable) %s (%s); with 23 %s, the new-character screen %s"),
+							bAtTwentyFour ? TEXT("WENT") : TEXT("refused"), *Full->RefusalText(),
+							bAtTwentyThree ? TEXT("went") : TEXT("REFUSED"),
+							Room->NewCharacterRequested() ? TEXT("asked for") : TEXT("NOT ASKED FOR")));
+
+	TestFalse(TEXT("New is refused at 24 characters, an unreadable slot among them"), bAtTwentyFour);
+	TestTrue(TEXT("and says why"), Full->RefusalText().Contains(TEXT("24")));
+	TestFalse(TEXT("and asks for no new-character screen"), Full->NewCharacterRequested());
+	TestTrue(TEXT("with 23, New goes"), bAtTwentyThree);
+	TestTrue(TEXT("and asks for the new-character screen"), Room->NewCharacterRequested());
+	TestFalse(TEXT("with nothing pending"), Instance->PendingCharacterId.IsValid());
 	return true;
 }
 

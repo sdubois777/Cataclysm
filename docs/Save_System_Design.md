@@ -395,7 +395,7 @@ Two triggers, and both are needed:
 1. **On a clock**, so nothing is ever far from being written.
 2. **On events that matter, immediately.** A fight starting, a creature dying, the
    character's health falling through a threshold, changing floor, an item
-   entering or leaving the inventory.
+   entering or leaving the inventory, a character being created.
 
 The second is what makes the gap inside a fight near zero without writing
 constantly while a player walks around a city. **The interval and the health
@@ -411,6 +411,7 @@ threshold are tuning constants and only playing settles them.**
 | Health falling through the threshold | `UCataclysmSaveWriter::Tick`, sampling once a frame at half of maximum health. **Also a starting figure** |
 | Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds |
 | An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
+| A character being created | `ACataclysmGameMode::MakeThePendingCharacter`, once a character made on the front end's new-character screen has its name, partition and creation choice applied when its level begins. The character record and the run record, asynchronously, so the select screen lists it at once. Since select-screen step 4a (#753) |
 | The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
 | A death having been paid for | `ACataclysmPlayerCharacter::Revive`, last: after the dungeon is ended, the death's days are charged and the character stands. The run record only, asynchronously. Since 2026-10-30 (#753) |
 

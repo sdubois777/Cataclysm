@@ -133,7 +133,7 @@ public:
 	 *         there is no player state to record it on
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
-	bool Confirm();
+	virtual bool Confirm();
 
 	/**
 	 * Use these tables rather than the generated ones.

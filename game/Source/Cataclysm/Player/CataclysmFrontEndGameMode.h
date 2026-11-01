@@ -8,6 +8,7 @@
 #include "CataclysmFrontEndGameMode.generated.h"
 
 class UCataclysmCharacterSelectWidget;
+class UCataclysmNewCharacterWidget;
 
 /**
  * The game mode of the character select screen's level, `L_FrontEnd`. Issue #753, select-screen step 3a, ruled
@@ -32,7 +33,14 @@ class CATACLYSM_API ACataclysmFrontEndPlayerController : public APlayerControlle
 	GENERATED_BODY()
 
 public:
-	UCataclysmCharacterSelectWidget* SelectScreen() const { return Screen; }
+	/** The select screen when it is the one shown, or null. */
+	UCataclysmCharacterSelectWidget* SelectScreen() const;
+
+	/** The select screen, in place of whatever was shown, read again from the saves. */
+	void ShowTheSelectScreen();
+
+	/** The new-character screen, in place of the select screen. Select-screen step 4a; its asset is made in 4b. */
+	void ShowTheNewCharacterScreen();
 
 	/**
 	 * The menu's input mode, through the game's one function for it (`ACataclysmPlayerController::
@@ -55,9 +63,18 @@ protected:
 		TSoftClassPtr<UCataclysmCharacterSelectWidget>(FSoftObjectPath(
 			TEXT("/Game/Interface/WBP_CharacterSelect.WBP_CharacterSelect_C")));
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmNewCharacterWidget> NewCharacterScreenClass =
+		TSoftClassPtr<UCataclysmNewCharacterWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_NewCharacter.WBP_NewCharacter_C")));
+
 private:
+	/** Shows one screen, made from `ScreenClass`, in place of the one shown. */
+	void ShowOnly(UClass* ScreenClass, const FString& Path);
+
+	/** The screen shown: the select screen or the new-character screen. */
 	UPROPERTY()
-	TObjectPtr<UCataclysmCharacterSelectWidget> Screen;
+	TObjectPtr<UUserWidget> Shown;
 
 	FString AskedFor;
 };

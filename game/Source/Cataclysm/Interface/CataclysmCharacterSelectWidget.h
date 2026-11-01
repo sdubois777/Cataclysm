@@ -59,8 +59,20 @@ public:
 	 */
 	bool ContinueAt(int32 Index, UCataclysmGameInstance* Instance = nullptr);
 
-	/** A new character: nothing pending, and the sandbox opened, which is today's start. */
-	void StartNew(UCataclysmGameInstance* Instance = nullptr);
+	/**
+	 * A new character: refused when the account holds `MostCharacters`, counting an unreadable slot, which still holds one
+	 * of them; otherwise nothing pending, and the front end shows the new-character screen. Select-screen step 4a.
+	 */
+	bool StartNew(UCataclysmGameInstance* Instance = nullptr);
+
+	/** "An account holds 24 characters, as one pool", `docs/Cataclysm_GDD_v2.md`. Nothing raises it. */
+	static constexpr int32 MostCharacters = 24;
+
+	/** Whether an account listing this many characters may make another. */
+	static bool HasRoomForANewCharacter(int32 Listed) { return Listed < MostCharacters; } // The account's: 24 at most.
+
+	/** Whether the last New asked for the new-character screen. */
+	bool NewCharacterRequested() const { return bNewCharacterRequested; }
 
 	FString RefusalText() const { return Refusal; }
 
@@ -107,4 +119,5 @@ private:
 	TArray<FCataclysmCharacterSummary> Shown;
 	FString Refusal;
 	FString Requested;
+	bool bNewCharacterRequested = false;
 };

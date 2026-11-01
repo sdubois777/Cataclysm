@@ -8,6 +8,9 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
+#include "Interface/CataclysmCharacterSelectWidget.h"
+#include "Interface/CataclysmNewCharacterWidget.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
@@ -785,6 +788,124 @@ bool FCataclysmCreationSurvivesPossessionTest::RunTest(const FString&)
 	TestEqual(TEXT("and gave it the chosen damage type"), Slots->GetDamageType(),
 			  FString(TEXT("Demonic")));
 
+	return true;
+}
+
+/**
+ * A new character's name follows the rules ruled 2026-11-01, a judgement: trimmed at both ends; 2 to 16 characters;
+ * letters of any alphabet, Ö, Ł and Cyrillic among them; single spaces, apostrophes and hyphens only between two letters.
+ * A refusal names the rule that failed. Duplicates are not checked: the design lets two characters share a name. Issue
+ * #753, select-screen step 4a. Prints "NAME RULES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNewCharacterNameTest,
+	"Cataclysm.Creation.ANewCharactersNameFollowsTheRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNewCharacterNameTest::RunTest(const FString&)
+{
+	using FScreen = UCataclysmNewCharacterWidget;
+	FString Report;
+	auto Check = [this, &Report](const TCHAR* What, const FString& Typed, bool bAllowed, const TCHAR* WhyHolds,
+								 const FString& Becomes = FString())
+	{
+		FString Name;
+		FString Why;
+		const bool bResult = FScreen::NameIsAllowed(Typed, Name, Why);
+		Report += FString::Printf(TEXT("['%s' %s%s] "), *Typed, bResult ? TEXT("allowed as '") : TEXT("refused: "),
+								  bResult ? *(Name + TEXT("'")) : *Why);
+		TestEqual(What, bResult, bAllowed);
+		if (bAllowed && !Becomes.IsEmpty())
+		{
+			TestEqual(FString::Printf(TEXT("%s, trimmed"), What), Name, Becomes);
+		}
+		if (!bAllowed && WhyHolds)
+		{
+			TestTrue(FString::Printf(TEXT("%s, and the refusal says '%s'"), What, WhyHolds), Why.Contains(WhyHolds));
+		}
+	};
+
+	Check(TEXT("a plain name is allowed"), TEXT("Vesper"), true, nullptr);
+	Check(TEXT("letters of other alphabets are allowed"), TEXT("Öda Łuk"), true, nullptr);
+	Check(TEXT("Cyrillic letters are allowed"), TEXT("Жанна"), true, nullptr);
+	Check(TEXT("an apostrophe between letters is allowed"), TEXT("O'Rourke"), true, nullptr);
+	Check(TEXT("a hyphen between letters is allowed"), TEXT("Anne-Marie"), true, nullptr);
+	Check(TEXT("the spaces at either end are trimmed"), TEXT("  Ash  "), true, nullptr, TEXT("Ash"));
+	Check(TEXT("2 letters are allowed"), TEXT("Ab"), true, nullptr);
+	Check(TEXT("16 letters are allowed"), TEXT("Abcdefghijklmnop"), true, nullptr);
+	Check(TEXT("1 letter is refused"), TEXT("A"), false, TEXT("at least"));
+	Check(TEXT("17 letters are refused"), TEXT("Abcdefghijklmnopq"), false, TEXT("at most"));
+	Check(TEXT("a digit is refused"), TEXT("Ash2"), false, TEXT("letters"));
+	Check(TEXT("an underscore is refused"), TEXT("Ash_Vale"), false, TEXT("letters"));
+	Check(TEXT("a hyphen at the start is refused"), TEXT("-Ash"), false, TEXT("between two letters"));
+	Check(TEXT("two spaces together are refused"), TEXT("Ash  Vale"), false, TEXT("between two letters"));
+	Check(TEXT("an empty name is refused"), TEXT("   "), false, TEXT("at least"));
+	AddInfo(FString::Printf(TEXT("NAME RULES: %s"), *Report));
+	return true;
+}
+
+/**
+ * The new-character screen hands its character to the game instance at Confirm -- the name, trimmed; the lethality and
+ * the Solo Self-Found flag; offline; the weapon type and damage type -- and asks for the sandbox. It refuses a name the
+ * rules refuse, and refuses Online with the reason, ruled 2026-11-01. Issue #753, select-screen step 4a. Prints "NEW
+ * CHARACTER HANDED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNewCharacterHandOverTest,
+	"Cataclysm.Creation.TheNewCharacterScreenHandsTheCharacterOver",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNewCharacterHandOverTest::RunTest(const FString&)
+{
+	using namespace CataclysmCreationTest;
+
+	UDataTable* Skills = MakeWeaponSkillTable(*this);
+	UDataTable* Bases = MakeItemBaseTable(*this);
+	if (!Skills || !Bases)
+	{
+		return false;
+	}
+	UCataclysmNewCharacterWidget* Screen = NewObject<UCataclysmNewCharacterWidget>();
+	Screen->SetTables(Skills, Bases);
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+
+	TestTrue(TEXT("set-up: a Sword can be chosen"), Screen->ChooseWeaponType(FName(TEXT("Sword"))));
+	TestTrue(TEXT("set-up: and War"), Screen->ChooseDamageType(FName(TEXT("War"))));
+	Screen->SetName(TEXT("A"));
+	const bool bBadName = Screen->ConfirmInto(Instance);
+	const FString BadNameWhy = Screen->CreationRefusalText();
+	const bool bPendingAfterBadName = Instance->PendingCreation.bPending;
+
+	Screen->SetName(TEXT("  Vesper Ash "));
+	Screen->ChooseLethality(ECataclysmLethality::Hardcore);
+	Screen->SetSoloSelfFound(true);
+	const bool bOnline = Screen->ChoosePopulation(ECataclysmPopulation::Online);
+	const FString OnlineWhy = Screen->CreationRefusalText();
+	const bool bConfirmed = Screen->ConfirmInto(Instance);
+	const FCataclysmPendingCreation& Handed = Instance->PendingCreation;
+
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER HANDED: a bad name %s (%s); Online %s (%s); Confirm %s: pending %s, '%s', "
+								 "lethality %d, %s, population %d, %s and %s; asked for %s"),
+							bBadName ? TEXT("CONFIRMED") : TEXT("refused"), *BadNameWhy, bOnline ? TEXT("CHOSEN") : TEXT("refused"),
+							*OnlineWhy, bConfirmed ? TEXT("went") : TEXT("REFUSED"), Handed.bPending ? TEXT("yes") : TEXT("NO"),
+							*Handed.Name, static_cast<int32>(Handed.Partition.Lethality),
+							Handed.Partition.bSoloSelfFound ? TEXT("Solo Self-Found") : TEXT("shared"),
+							static_cast<int32>(Handed.Partition.Population), *Handed.WeaponType.ToString(),
+							*Handed.DamageType.ToString(), *Screen->LevelRequested()));
+
+	TestFalse(TEXT("a name the rules refuse cannot be confirmed"), bBadName);
+	TestFalse(TEXT("and says why"), BadNameWhy.IsEmpty());
+	TestFalse(TEXT("and hands nothing over"), bPendingAfterBadName);
+	TestFalse(TEXT("Online cannot be chosen"), bOnline);
+	TestEqual(TEXT("and says why"), OnlineWhy, FString(UCataclysmNewCharacterWidget::OnlineIsNotBuilt));
+	TestTrue(TEXT("Confirm goes"), bConfirmed);
+	TestTrue(TEXT("the new character is handed over"), Handed.bPending);
+	TestEqual(TEXT("its name, trimmed"), Handed.Name, FString(TEXT("Vesper Ash")));
+	TestEqual(TEXT("its lethality"), static_cast<int32>(Handed.Partition.Lethality),
+			  static_cast<int32>(ECataclysmLethality::Hardcore));
+	TestTrue(TEXT("its Solo Self-Found flag"), Handed.Partition.bSoloSelfFound);
+	TestEqual(TEXT("offline"), static_cast<int32>(Handed.Partition.Population), static_cast<int32>(ECataclysmPopulation::Offline));
+	TestEqual(TEXT("its weapon type"), Handed.WeaponType, FName(TEXT("Sword")));
+	TestEqual(TEXT("its damage type"), Handed.DamageType, FName(TEXT("War")));
+	TestEqual(TEXT("and the sandbox is asked for"), Screen->LevelRequested(), FString(UCataclysmCharacterSelectWidget::SandboxMap));
 	return true;
 }
 
