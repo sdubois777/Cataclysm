@@ -202,6 +202,22 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bIsBleed = false;
 
 	/**
+	 * A tick of converted damage not yet taken: the bleed the Masochist's The Breaking Point lays on its own
+	 * character, stamped with `UCataclysmSkillEffects::ConvertedDamageDataName`. Ruled by the coordinating session
+	 * 2026-11-01, and by the project owner the same day: "No: stored total is fixed".
+	 *
+	 * `Resolve` SKIPS STEPS 2 TO 6 AND THE SLASHING BONUS FOR IT. The blow was resolved against every defence
+	 * before it was converted, so meeting block, armour, resistance, damage reduction and damage taken again would
+	 * mitigate it twice; and no "debuffs on you" or "damage over time taken" row changes it, Vessel Unbroken's
+	 * suppression included. It still meets the temporary absorb, the mana a row puts first and the energy shield,
+	 * which decide who pays and not how much, and the immunities and saves after `Resolve`.
+	 *
+	 * FILLED BY `UCataclysmVitalAttributeSet` from the stamp, for a tick only.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsConvertedDamage = false;
+
+	/**
 	 * Which ailment a damage-over-time tick is: the tags under `Keyword.DoT` its effect grants, so
 	 * `Keyword.DoT.Bleed` for a bleed. Empty for a hit, and for a tick with no ailment (a ground zone's, a dungeon
 	 * hazard's). Ruled 2026-10-06.

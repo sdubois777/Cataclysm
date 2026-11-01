@@ -2857,8 +2857,14 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// makes a node lengthening an effect on the character worth something to a
 	// class paid per effect carried, and it matches how the attacker's own
 	// duration stat already behaves in `DamageOverTimeNumbers`.
+	//
+	// BUT NOT CONVERTED DAMAGE, WHOSE TOTAL IS FIXED WHEN IT IS CONVERTED. Ruled by the coordinating session
+	// 2026-11-01, on The Breaking Point's own words, "converts all damage you take into Bleeding over 5 seconds": a
+	// converted blow always runs its 5 seconds, so no duration stat adds a tick of the same size to it. Until then
+	// Vessel of Plagues' "Debuffs on you last 50% longer" made a blow of 100 take seven ticks of 20, 140. The owner
+	// ruled the same day that "debuffs on you" wording does not change converted damage: "No: stored total is fixed".
 	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(
-		FScalableFloat(UCataclysmDebuffs::DurationOn(
+		FScalableFloat(bIsConvertedDamage ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(
 			Defender, Numbers.DurationSeconds, AppliedTags)));
 	Effect->Period = FScalableFloat(Numbers.SecondsPerTick);
 

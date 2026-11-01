@@ -422,6 +422,10 @@ public:
 	 * its children, so `Keyword.DoT.Bleed` is held by naming `Keyword.DoT`, the
 	 * same parent rule `TagsOn` deliberately avoids and this one wants.
 	 *
+	 * BUT NOT CONVERTED DAMAGE NOT YET TAKEN, whose total is fixed when it is
+	 * converted (ruled 2026-11-01). Held, it would keep ticking for as long as
+	 * its carrier stayed above half health, with no bound.
+	 *
 	 * A CORPSE IS SKIPPED, the same guard every job on the per-character step
 	 * opens with: a creature is destroyed on the step after it dies, so there is
 	 * a real window in which a dead one still has an ability system.
