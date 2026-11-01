@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A test run whose engine log stops after its last test's events is counted from its "Test Completed" lines, against the engine's own list of the run's tests (#2679)
+
+**Affects:** `tools/unreal_build.py` (`TESTS_FOUND`, `FOUND_PATH`, `COMPLETED_PATH` and `performed_from_completed_lines`,
+new; `TestOutcome.counted_from_completed_lines`, new; `TestOutcome.summary`; `parse_test_log`); a new test file,
+`tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py`, and its fixture
+`tools/tests/w131_p3_cut_off_engine_log.txt`. **No C++ changed.** Issue
+[#2679](https://github.com/sdubois777/Cataclysm/issues/2679).
+
+### SAID FIRST
+
+- **WHY IT HAPPENS IS STILL NOT KNOWN.** The engine log sometimes stops right after the last test's events, before
+  "Automation Test Queue Empty N tests performed"; whether the process ends early or the log is not flushed is not
+  known. This change reads such a log correctly; it does not stop the log being cut off. Three runs on 2026-11-01 are in
+  the issue; window w131's proof P3 is the one whose log is kept.
+- **THE REAL LOG NOW READS AS WHAT HAPPENED.** `w131_P3_run1_first.log` (403,783 bytes, 2,961 lines, in the dungeon
+  session's scratchpad) read through `parse_test_log`: before, "unknown tests performed ... 1 failed", `crashed` True,
+  and the proof "NO MEASUREMENT"; now "1 tests performed (counted from their Test Completed lines: the log has no
+  queue-empty line, issue #2679), 0 succeeded, 1 failed: ACharacterFileFromBeforeTheTierMigratesToTierOne", `crashed`
+  False. The same reading for w131's P3 restored half and for its whole-suite log (4504 performed) is unchanged.
+
+### Rulings, 2026-11-01
+
+- **(a) The requested tests are the engine's own list for the run**, not the prefix and not the declared count: the
+  "Found N automation tests based on '<prefix>'" line and the N full test paths printed after it. **The last such
+  block** is the one read, in case a log ever holds two. **Count from the per-test lines only without the queue-empty
+  line, and only when every listed test has a "Test Completed" line after that block**; say so in the summary. A
+  restored half of a guard proof cut off the same way is read the same way.
+- **(b) A verbatim excerpt of the w131 P3 log as the fixture**, its header naming where the whole log is and its size.
+
+### What changes
+
+- **`performed_from_completed_lines(text)`** returns N, or None. N needs: a "Found N" block, its N path lines all
+  present and consecutive after it, N above 0, and every listed path among the `Path={...}` of the "Test Completed"
+  lines after the block. Anything else is None.
+- **`parse_test_log`** reads the queue-empty line first and calls that only when it is missing, setting
+  **`counted_from_completed_lines`**. `crashed` is unchanged (`performed` None or 0), so every reader of it --
+  `prove_cpp_guard`'s verdict, `exit_code_for`, `saves_failure`, `declared_line` -- gets the count with no change of
+  its own.
+- **`TestOutcome.summary`** says "(counted from their Test Completed lines: the log has no queue-empty line, issue
+  #2679)" beside the count; a guard proof's summary includes it through the half's summary.
+
+### Measured before the rule was written
+
+- Window w131's suite log (94b9ef912): "Found 4504 automation tests based on 'Cataclysm'", 4504 consecutive path lines,
+  4504 "Test Started", 4504 "Test Completed. Result=" lines, and the queue-empty line, one to one.
+- Its P3 broken half: "Found 1", one path, one "Test Completed", no queue-empty line.
+- The engine's 607 start-up smoke tests are in neither list and print no "Test Completed" line; they end at frame 0,
+  and the list is printed at frame 598.
+
+### Tests
+
+`tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py`, 12:
+
+- the real case: the fixture reads 1 performed, the one named failure, not crashed, the flag set and said;
+- made-up logs: cut off after the last events (counted); cut off during a test, before a listed test started, with a
+  list short of its count, with neither line nor list, and with a list of 0 (all still crashed); the queue-empty line
+  present (read first, the fallback not said); two lists, where only the last counts, both ways;
+- through `prove_cpp_guard`: the w131 P3 broken half with a complete restored half is PROVED, named, and says it was
+  counted; a restored half cut off the same way is PROVED too; a broken half cut off during its test is still NO
+  MEASUREMENT.
+
+### Proof
+
+`tools/prove_guard.py`, in a detached git worktree copy at b7e9dbf28, over the new file and
+`test_unreal_build.py`, `test_prove_guard.py` and `test_the_test_run_reports_its_save_slots.py`. Break:
+`performed = performed_from_completed_lines(text)` to `performed = None`. Predicted before the run: these five fail,
+and nothing else.
+
+`PROVED: 5 failed, 156 passed in 4.79s | restored: 161 passed in 2.58s`, `named_failures`:
+
+```
+tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py::test_window_w131s_proof_p3_reads_as_one_named_failure_and_not_a_crash
+tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py::test_a_log_cut_off_after_the_last_events_is_counted_from_its_completed_lines
+tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py::test_only_the_last_list_counts_when_a_log_holds_two
+tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py::test_a_proof_whose_broken_half_was_cut_off_after_its_events_is_proved
+tools/tests/test_a_cut_off_log_is_counted_from_its_completed_lines.py::test_a_proof_whose_restored_half_was_cut_off_after_its_events_is_proved_too
+```
+
+No Unreal window: Python only, and the cut-off log the issue is about is the fixture.
+
+---
+
 ## 2026-11-01 — The player sees what is affecting them: one list above the bars, debuffs first (#1591)
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmPlayerEffects.h` and `.cpp` (new: `FCataclysmPlayerEffect`,
