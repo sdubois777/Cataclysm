@@ -14,6 +14,8 @@ the file header in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsT
 
 ### SAID FIRST
 
+- **WINDOW w133B, ON 9beef760f, MEASURED EVERYTHING AS REGISTERED.** The two new tests alone 1 / 1; P1 PROVED, failing
+  exactly its three registered assertions; P2 PROVED, failing exactly its one. Record at the end.
 - **THE CONTROL ASSERTION IS REWORDED, AND w133B IS REGISTERED FOR IT.** Ruled 2026-11-01, option (b): a change must
   not ship a sentence it knows is false, and an assertion's name and a code comment are sentences. "CONTROL: the floor's
   start told the controller" became "CONTROL: StartPlay told the controller, so the record is read at all"; the printed
@@ -175,6 +177,21 @@ Compiled with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Ca
 | The two new tests alone | 1 / 1 each; "PANEL TOLD: before the blows (StartPlay's) 3 calls, the count ''; after 3 blows 6 calls, the count '3 of 20', floor 1, 1 rows" and the PANEL LINES line as in w133 |
 | P1 | the new test fails exactly THREE assertions: "the controller is told once for each landed blow" (0, expected 3); "and what it is told last is the brand count after the third blow" ("", expected "3 of 20"); "with the row among the rows it lists". "CONTROL: StartPlay told the controller, so the record is read at all" and "on the floor being walked" pass. Restored: 1 / 1 |
 | P2 | "the brand line carries the count it was told" only ("", expected "7 of 20"). Restored: 1 / 1 |
+
+**Window w133B, on 9beef760f, every step as registered.** Pre-checks all passed, 11,190 MB free; lock `dungeon-w133B`
+taken, runner PID 278624 started at 17:51:27, lock released at its last line. w133's proof logs were kept as
+`w133_P*_run*_w133.log` before this window wrote the same names.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| `EachBrandingBlowTellsThePanelTheNewCount` alone | 1 / 1; "PANEL TOLD: before the blows (StartPlay's) 3 calls, the count ''; after 3 blows 6 calls, the count '3 of 20', floor 1, 1 rows" |
+| `TheFloorPanelListsWhatItIsToldWithEachRowsCount` alone | 1 / 1; "PANEL LINES: 2 lines on floor 4; Brand 'Brand of the Aggressor' counting '7 of 20'; Starvation 'Starvation' counting ''" |
+| P1 | PROVED. Broken half: "the controller is told once for each landed blow" expected 3, was 0; "and what it is told last is the brand count after the third blow" expected "3 of 20", was empty; "with the row among the rows it lists" expected true -- the three registered, and no other; "PANEL TOLD: before the blows (StartPlay's) 3 calls, the count ''; after 3 blows 3 calls, the count '', floor 1, 0 rows". Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "the brand line carries the count it was told" expected "7 of 20", was empty -- only. Restored: 1 / 1 |
+
+**Nothing else failed:** 4 controller error lines in P1's broken half (Result={Fail} and the three), 2 in P2's
+(Result={Fail} and the one), none in either restored half, and every half printed "1 tests performed".
 
 ---
 
