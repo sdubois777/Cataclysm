@@ -14,6 +14,16 @@ the file header in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsT
 
 ### SAID FIRST
 
+- **THE CONTROL ASSERTION IS REWORDED, AND w133B IS REGISTERED FOR IT.** Ruled 2026-11-01, option (b): a change must
+  not ship a sentence it knows is false, and an assertion's name and a code comment are sentences. "CONTROL: the floor's
+  start told the controller" became "CONTROL: StartPlay told the controller, so the record is read at all"; the printed
+  line and two variable names say "before the blows (StartPlay's)"; a comment says `BuildFloor` tells the panel nothing.
+  **No check changed.** The narrow window w133B is registered below.
+- **IN PLAY, A NEW FLOOR'S ROWS DO REACH THE PANEL**, read 2026-11-01: `GoToFloor` (`CataclysmDungeonGameMode.cpp`
+  line 24490) calls `BuildFloor()` (line 24500) and then `ApplyFloorRulesKeepingHealth()` (line 24703), which calls
+  `ApplyFloorRulesToPlayer()` (line 10884), which calls `RefreshFloorModifierPanel()` (line 24322) with no return
+  before it. `BuildFloor` alone, as this test calls it, tells the panel nothing; that is not a gap in play, and no
+  issue was filed.
 - **WINDOW w133 PASSED, AND P1 FAILED ONE MORE ASSERTION THAN REGISTERED.** On 7a09ac553: the three tests alone 1 / 1
   each, the suite 4513 / 0 with "Test saves: 712 written and deleted, 0 left behind", Python 7232 passed, and P1 and P2
   PROVED. **P1 was registered to fail two assertions and failed three**: the third, "with the row among the rows it
@@ -76,7 +86,8 @@ Read 2026-11-01, not measured; the window measures it. **A landed blow reaches t
 - **No beat or tick:** the game mode's beat runs in `ACataclysmDungeonGameMode::Tick` and in
   `SetTimerForNextTick` timers; the three blows run one after another inside the test's one `RunTest` call, with no
   frame advanced between them, and the test never ticks the world.
-- **The count is taken after `BuildFloor` returns,** so whatever building the floor refreshes is not counted.
+- **The count is taken after `BuildFloor` returns, and `BuildFloor` refreshes nothing:** the calls counted before the
+  blows are `StartPlay`'s (window w133 measured 3, carrying no rows), and only the blows' calls are compared.
 
 **The test checks the floor rather than trusting it:** a set-up assertion that `FloorBrief.Modifiers` is exactly
 {Brand of the Aggressor}, and the per-blow count is exact, not "at least". If the window measures a count other than
@@ -85,8 +96,8 @@ Read 2026-11-01, not measured; the window measures it. **A landed blow reaches t
 ### Tests
 
 - `Cataclysm.DungeonModifierEffects.EachBrandingBlowTellsThePanelTheNewCount`, new ("PANEL TOLD"): the game's own
-  controller; a floor carrying Brand of the Aggressor alone; three landed blows. CONTROL: the floor's start told the
-  controller; the controller is told once for each landed blow (3); what it is told last is "3 of 20"; the row is
+  controller; a floor carrying Brand of the Aggressor alone; three landed blows. CONTROL: `StartPlay` told the
+  controller (worded "the floor's start" until w133B); the controller is told once for each landed blow (3); what it is told last is "3 of 20"; the row is
   among the rows; floor 1.
 - `Cataclysm.DungeonModifierEffects.TheFloorPanelListsWhatItIsToldWithEachRowsCount`, new ("PANEL LINES"): a panel
   made with `NewObject`, told Starvation and Brand on floor 4 with Brand's count "7 of 20": two lines, floor 4, each row
@@ -128,6 +139,42 @@ and the assertions above only (4 error lines for P1, 2 for P2); each restored ha
 
 **P1's second assertion read '' and not "0 of 20"**, the alternative the registration named: the last call before the
 blows carried no rows, so no count either.
+
+**Window w133B, registered** on the rewording's head: the build, the two new tests alone, then P1 and P2 by
+`prove_w133.py`, whose anchors are in the game code and untouched. **No whole suite and no Python in the window:** the
+coordinating session's judgement, 2026-11-01, that a whole suite is not needed for an assertion-name change; the suite
+stands from w133 on 7a09ac553. The whole diff since 7a09ac553 in `game/`, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` alone:
+
+```
++	// THE CALLS BEFORE THE BLOWS ARE `StartPlay`'S, NOT THE BRAND FLOOR'S. `BuildFloor` tells the panel nothing: in play
++	// `GoToFloor` builds the floor and then refreshes the panel through `ApplyFloorRulesKeepingHealth`, and this test
++	// calls `BuildFloor` alone. So what the controller holds here is `StartPlay`'s own floor, with no rows; window w133
++	// measured it, when P1's break left it the last call. Issue #1841.
+-	const int32 CallsAtTheFloor = Shown.Calls;
+-	const FString CountAtTheFloor = Shown.LiveCounts.FindRef(BrandOfTheAggressor);
++	const int32 CallsBeforeTheBlows = Shown.Calls;
++	const FString CountBeforeTheBlows = Shown.LiveCounts.FindRef(BrandOfTheAggressor);
+-	AddInfo(FString::Printf(TEXT("PANEL TOLD: at the floor %d calls, the count '%s'; after %d blows %d calls, the count "
+-								 "'%s', floor %d, %d rows"),
+-							CallsAtTheFloor, *CountAtTheFloor, Blows, Shown.Calls,
++	AddInfo(FString::Printf(TEXT("PANEL TOLD: before the blows (StartPlay's) %d calls, the count '%s'; after %d blows %d "
++								 "calls, the count '%s', floor %d, %d rows"),
++							CallsBeforeTheBlows, *CountBeforeTheBlows, Blows, Shown.Calls,
+-	TestTrue(TEXT("CONTROL: the floor's start told the controller, so the record is read at all"), CallsAtTheFloor > 0);
+-	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsAtTheFloor, Blows);
++	TestTrue(TEXT("CONTROL: StartPlay told the controller, so the record is read at all"), CallsBeforeTheBlows > 0);
++	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsBeforeTheBlows, Blows);
+```
+
+Compiled with no lock: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.36.cpp`. Python of record on it:
+`7232 passed, 8 skipped in 198.16s`; JUnit tests=7240, failures=0, errors=0, skipped=8; ruff `All checks passed!`.
+
+| Figure | Registered for w133B |
+|---|---|
+| The two new tests alone | 1 / 1 each; "PANEL TOLD: before the blows (StartPlay's) 3 calls, the count ''; after 3 blows 6 calls, the count '3 of 20', floor 1, 1 rows" and the PANEL LINES line as in w133 |
+| P1 | the new test fails exactly THREE assertions: "the controller is told once for each landed blow" (0, expected 3); "and what it is told last is the brand count after the third blow" ("", expected "3 of 20"); "with the row among the rows it lists". "CONTROL: StartPlay told the controller, so the record is read at all" and "on the floor being walked" pass. Restored: 1 / 1 |
+| P2 | "the brand line carries the count it was told" only ("", expected "7 of 20"). Restored: 1 / 1 |
 
 ---
 
