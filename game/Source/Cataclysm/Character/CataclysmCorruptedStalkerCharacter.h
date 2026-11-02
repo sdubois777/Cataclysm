@@ -201,7 +201,9 @@ public:
 	/** The pieces it wears, as items. What layer 3 drops from. */
 	const TArray<FCataclysmItem>& WornPieces() const { return Pieces; }
 
-private:
+protected:
+	// PROTECTED AND NOT PRIVATE since issue #2688 slice 2a, for `ACataclysmConsumptionDoubleCharacter`, which fills
+	// them from a player's build rather than from an entry.
 	UPROPERTY()
 	TArray<FCataclysmItem> Pieces;
 

@@ -14,6 +14,7 @@
 
 class UAbilitySystemComponent;
 class UDataTable;
+struct FCataclysmPlayerBuild;
 
 /**
  * Every place a character can wear one item.
@@ -511,10 +512,31 @@ public:
 	 * changed a helmet -- a player could swap a hat back and forth mid-fight and
 	 * never die. Only possession passes it.
 	 *
+	 * THE PLAYER'S NUMBERS ARE READ HERE AND APPLIED BY `RefreshAttributesAs`: this finds the owning pawn's player
+	 * state, takes its numbers (`FCataclysmPlayerBuild::NumbersOf`), and hands them over. Since issue #2688 slice 2a,
+	 * so the corrupted double is built by the same gatherer from a player's build rather than by a second copy of it.
+	 *
 	 * @return how many attributes were written.
 	 */
 	int32 RefreshAttributes(
 		UAbilitySystemComponent* AbilitySystem,
+		ECataclysmPoolFill PoolFill = ECataclysmPoolFill::LeaveAsTheyAre) const;
+
+	/**
+	 * What `RefreshAttributes` does, with the player's numbers handed in rather than read from a player state: the
+	 * items worn here, then the build's attribute points, its passive allocation counted up to the points it earned
+	 * with the class points these items grant, the floor's lines and a held buff's, and its class line at its level.
+	 * ONE GATHERER, TWO CALLERS (issue #1054, issue #2688 slice 2a): `RefreshAttributes`, with the live player state's
+	 * numbers or none, and `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`, with a player's build worn by
+	 * an equipment component that belongs to no actor.
+	 *
+	 * @param Build  the player's numbers, or null for none: then the console's class at the console's level, no
+	 *               attribute points and no passive tree, as a character with no player state has always been given
+	 * @return how many attributes were written.
+	 */
+	int32 RefreshAttributesAs(
+		UAbilitySystemComponent* AbilitySystem,
+		const FCataclysmPlayerBuild* Build,
 		ECataclysmPoolFill PoolFill = ECataclysmPoolFill::LeaveAsTheyAre) const;
 
 	/**

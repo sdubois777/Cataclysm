@@ -283,7 +283,12 @@ TArray<FCataclysmEnemyAbility> ACataclysmCorruptedStalkerCharacter::EnemyAbiliti
 			? UCataclysmSkillSlots::ManaCostAtLevel(Skill->ManaCost >= 0.0f ? Skill->ManaCost
 																			  : Numbers.ManaCostAtLevel100, 1)
 			: 0.0f;
-		bool bMay = bHoldsAPlayerBuild && Skill && Mana >= ManaCost && !IsRunningASkillIn(Slot);
+		// NOT A HELD SKILL WITH NO SHAPE, which no template runs: `UCataclysmWeaponSkills::TemplateFor` answers null and
+		// a cast grants the placeholder, so choosing it would spend a turn and its mana on nothing. Every War row but
+		// seven has no shape, and the corrupted double holds whatever a player held (issue #2688 slice 2a). Skipped,
+		// and nothing is built to make such a skill work for an enemy, under the standing order of no War work.
+		bool bMay = bHoldsAPlayerBuild && Skill && Skill->Shape != ECataclysmSkillShape::None && Mana >= ManaCost
+			&& !IsRunningASkillIn(Slot);
 		float Nearest = 0.0f;
 		float Farthest = Anywhere;
 		float Cooldown = Skill ? (Skill->Cooldown >= 0.0f ? Skill->Cooldown : Numbers.Cooldown) : 0.0f;

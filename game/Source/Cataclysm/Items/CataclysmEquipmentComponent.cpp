@@ -14,6 +14,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Character/CataclysmPlayerBuild.h"
 #include "Player/CataclysmPlayerState.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/DataTable.h"
@@ -920,6 +921,32 @@ TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
 int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	UAbilitySystemComponent* AbilitySystem, ECataclysmPoolFill PoolFill) const
 {
+	// THE PLAYER'S NUMBERS ARE FOUND THROUGH THE OWNING ACTOR rather than passed
+	// in, because this component is asked to refresh from several places and a
+	// parameter would have to be threaded through all of them. AND THE LEVEL
+	// COMES FROM THE SAME PLACE, for the same reason. This used to read
+	// `Cataclysm.PlayerLevel` directly, which cannot see a level the character
+	// has gained. Levelling up re-runs this, so it has to resolve at the level
+	// the character now is. `GetCharacterLevel` falls back to that console
+	// variable until a level is earned or loaded. Issue #50.
+	//
+	// READ HERE AND APPLIED IN `RefreshAttributesAs`, since issue #2688 slice 2a:
+	// the corrupted double hands that function a player's build instead, so the
+	// one place that gathers every source stays one (issue #1054).
+	if (const APawn* Pawn = Cast<APawn>(GetOwner()))
+	{
+		if (const ACataclysmPlayerState* State = Pawn->GetPlayerState<ACataclysmPlayerState>())
+		{
+			const FCataclysmPlayerBuild Numbers = FCataclysmPlayerBuild::NumbersOf(*State);
+			return RefreshAttributesAs(AbilitySystem, &Numbers, PoolFill);
+		}
+	}
+	return RefreshAttributesAs(AbilitySystem, nullptr, PoolFill);
+}
+
+int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
+	UAbilitySystemComponent* AbilitySystem, const FCataclysmPlayerBuild* Build, ECataclysmPoolFill PoolFill) const
+{
 	if (!AbilitySystem)
 	{
 		return 0;
@@ -1001,78 +1028,71 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	// attribute to zero, because a base override that is absent falls back to
 	// the class line and no class line names an attribute. Issue #50.
 	//
-	// FOUND THROUGH THE OWNING ACTOR rather than passed in, because this
-	// component is asked to refresh from several places and a parameter would
-	// have to be threaded through all of them.
-	// AND THE LEVEL COMES FROM THE SAME PLACE, for the same reason. This used to
-	// read `Cataclysm.PlayerLevel` directly, which cannot see a level the
-	// character has gained. Levelling up re-runs this, so it has to resolve at
-	// the level the character now is. `GetCharacterLevel` falls back to that
-	// console variable until a level is earned or loaded. Issue #50.
+	// THE BUILD'S, which `RefreshAttributes` reads off the owning pawn's player
+	// state or the corrupted double hands over (issue #2688 slice 2a); see
+	// `RefreshAttributes` for why the level is read there. With no build, the
+	// console's class at the console's level, as a character with no player
+	// state has always had.
 	int32 Level = UCataclysmPlayerClassStats::ChosenLevel();
-	if (const AActor* Owner = GetOwner())
+	FString ClassName = UCataclysmPlayerClassStats::ChosenClass();
+	if (Build)
 	{
-		if (const APawn* Pawn = Cast<APawn>(Owner))
-		{
-			if (const ACataclysmPlayerState* State =
-					Pawn->GetPlayerState<ACataclysmPlayerState>())
-			{
-				UCataclysmPlayerClassStats::MergeAttributeBases(
-					State->GetSpentAttributePoints(), Bases);
-				Level = State->GetCharacterLevel();
-
-				// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
-				//
-				// HERE, WHERE THE WORN ITEMS' MODIFIERS ALREADY ARE, because a
-				// passive node is another authored source of the same three
-				// buckets. Adding it anywhere else would mean a second place
-				// that has to be re-run whenever anything changes.
-				//
-				// THE DAMAGE TYPES THE WORN WEAPONS CARRY DECIDE WHICH TREES
-				// COUNT. Points in a tree no equipped weapon reaches stay spent
-				// and add nothing, which is the project owner's decision of
-				// 2026-08-25. Since issue #857 layer 1 the list is the worn
-				// weapons' own (`CarriedDamageTypesOf`), asked of this
-				// component's items so no pawn is needed; it was the creation
-				// type alone before.
-				//
-				// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
-				// which is that rule's sibling. The owner, 2026-10-09, accepted
-				// that when gear that granted class points comes off, the points
-				// stay spent and add nothing. So the tree is accumulated from a
-				// COPY of the allocation with the excess left out, last node
-				// first touched first (`ReducedToPointsEarned`). The copy is a
-				// local and is written nowhere: the player state keeps every
-				// point and every capstone choice, and wearing the gear again
-				// counts all of them on the next refresh with no other act.
-				//
-				// AN ALLOCATION PUT ON BY `SetPassiveAllocation` IS NOT REDUCED
-				// FOR BEING ABOVE THE LEVEL. Ruled 2026-10-10. That function
-				// records the points of the handed allocation the level and the
-				// bosses did not pay for, and the figure asked for below
-				// includes them. Points spent after it with points from gear
-				// are reduced as the paragraph above says.
-				//
-				// THE POINTS EARNED ARE ASKED OF THE PLAYER STATE WITH THE FIGURE
-				// SET ABOVE HANDED TO IT, so the level's and the bosses' points,
-				// and the points an allocation was handed with, are added up in
-				// one place. Not `PassivePointsAvailable()`:
-				// that reads the component of the pawn the player state holds,
-				// which is this one in play, and this line must not depend on
-				// that being so.
-				const TArray<FName> Carried =
-					CarriedDamageTypesOf(WornWeapons(), State->GetChosenDamageType());
-				const int32 PointsEarned = State->PassivePointsEarnedWith(
-					ClassPointsGrantedAtLastRefresh);
-				const FCataclysmPassiveAllocation Counted =
-					UCataclysmPassiveTree::ReducedToPointsEarned(
-						State->GetPassiveAllocation(), PointsEarned);
-				UCataclysmPassiveTree::AccumulateInto(
-					Modifiers, Counted,
-					UCataclysmPassiveTree::LoadNodeTable(),
-					UCataclysmPassiveTree::LoadEffectTable(), Carried);
-			}
-		}
+		UCataclysmPlayerClassStats::MergeAttributeBases(
+			Build->SpentAttributePoints, Bases);
+		Level = Build->Level;
+		ClassName = Build->ClassName;
+		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
+		//
+		// HERE, WHERE THE WORN ITEMS' MODIFIERS ALREADY ARE, because a
+		// passive node is another authored source of the same three
+		// buckets. Adding it anywhere else would mean a second place
+		// that has to be re-run whenever anything changes.
+		//
+		// THE DAMAGE TYPES THE WORN WEAPONS CARRY DECIDE WHICH TREES
+		// COUNT. Points in a tree no equipped weapon reaches stay spent
+		// and add nothing, which is the project owner's decision of
+		// 2026-08-25. Since issue #857 layer 1 the list is the worn
+		// weapons' own (`CarriedDamageTypesOf`), asked of this
+		// component's items so no pawn is needed; it was the creation
+		// type alone before.
+		//
+		// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
+		// which is that rule's sibling. The owner, 2026-10-09, accepted
+		// that when gear that granted class points comes off, the points
+		// stay spent and add nothing. So the tree is accumulated from a
+		// COPY of the allocation with the excess left out, last node
+		// first touched first (`ReducedToPointsEarned`). The copy is a
+		// local and is written nowhere: the player state keeps every
+		// point and every capstone choice, and wearing the gear again
+		// counts all of them on the next refresh with no other act.
+		//
+		// AN ALLOCATION PUT ON BY `SetPassiveAllocation` IS NOT REDUCED
+		// FOR BEING ABOVE THE LEVEL. Ruled 2026-10-10. That function
+		// records the points of the handed allocation the level and the
+		// bosses did not pay for, and the figure asked for below
+		// includes them. Points spent after it with points from gear
+		// are reduced as the paragraph above says.
+		//
+		// THE POINTS EARNED ARE THE BUILD'S POINTS APART FROM GEAR WITH THE
+		// FIGURE SET ABOVE ADDED, which is `ACataclysmPlayerState::
+		// PassivePointsEarnedWith` exactly: the level's and the bosses' points,
+		// and the points an allocation was handed with, are added up in the
+		// player state (`FCataclysmPlayerBuild::NumbersOf` asks it for them with
+		// no gear), and the gear's are this component's own reading. Not
+		// `PassivePointsAvailable()`: that reads the component of the pawn the
+		// player state holds, which is this one in play, and this line must not
+		// depend on that being so.
+		const TArray<FName> Carried =
+			CarriedDamageTypesOf(WornWeapons(), Build->CreationDamageType);
+		const int32 PointsEarned = Build->PassivePointsBesidesGear
+			+ FMath::Max(0, ClassPointsGrantedAtLastRefresh);
+		const FCataclysmPassiveAllocation Counted =
+			UCataclysmPassiveTree::ReducedToPointsEarned(
+				Build->PassiveAllocation, PointsEarned);
+		UCataclysmPassiveTree::AccumulateInto(
+			Modifiers, Counted,
+			UCataclysmPassiveTree::LoadNodeTable(),
+			UCataclysmPassiveTree::LoadEffectTable(), Carried);
 	}
 
 	// AND THE DUNGEON FLOOR BEING STOOD ON, since issue #41. Starvation takes a
@@ -1113,7 +1133,7 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	return UCataclysmPlayerClassStats::ApplyTo(
 		AbilitySystem,
 		UCataclysmPlayerClassStats::LoadTable(),
-		UCataclysmPlayerClassStats::ChosenClass(),
+		ClassName,
 		Level,
 		&Modifiers,
 		// WHAT THE CALLER ASKED FOR, AND THE DEFAULT IS TO LEAVE THEM ALONE.
