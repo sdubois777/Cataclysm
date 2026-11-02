@@ -1697,7 +1697,7 @@ bool FCataclysmCombatEventsGroundZoneSkill::RunTest(const FString&)
 	const int32 HitsBeforeBare = Heard.Hits.Num();
 	Bare->Sweep();
 	const int32 BareSweep = Heard.HitFrom(Caster.Actor, HitsBeforeBare, /*bDamageOverTime=*/true);
-	if (!TestTrue(TEXT("control set-up: its sweep's blow was announced"), BareSweepHit != INDEX_NONE))
+	if (!TestTrue(TEXT("control set-up: its sweep's blow was announced"), BareSweep != INDEX_NONE))
 	{
 		return false;
 	}
