@@ -89,6 +89,9 @@ public:
 	/** The designed name, for anything showing the player their own abilities. */
 	virtual FString DisplayedName() const override { return SkillName; }
 
+	/** The designed description, for the skill bar's pop-up. Issue #1193. */
+	virtual FString DisplayedDescription() const override { return SkillDescription; }
+
 	/** This skill's numbers, parsed from its Shape Params cell. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FCataclysmSkillShapeParams Params;

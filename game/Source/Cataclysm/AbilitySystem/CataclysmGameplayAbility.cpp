@@ -186,6 +186,11 @@ FString UCataclysmGameplayAbility::DisplayedName() const
 	return FString();
 }
 
+FString UCataclysmGameplayAbility::DisplayedDescription() const
+{
+	return FString();
+}
+
 float UCataclysmGameplayAbility::GetBaseCooldown() const
 {
 	// NO COOLDOWN FOR THE ULTIMATE OF A CHARACTER HOLDING MANA WEAVER'S TEN-PIECE BONUS, ruled 2026-10-14: "Your

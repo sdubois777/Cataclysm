@@ -122,6 +122,12 @@ public:
 	virtual FString DisplayedName() const;
 
 	/**
+	 * The designed description, for the skill bar's pop-up. Empty here, as `DisplayedName` is, and the skills that
+	 * carry a row's `SkillDescription` answer it. Issue #1193.
+	 */
+	virtual FString DisplayedDescription() const;
+
+	/**
 	 * Seconds before this ability can be used again. Negative means take the
 	 * slot's figure, which is what every designed skill does.
 	 *
