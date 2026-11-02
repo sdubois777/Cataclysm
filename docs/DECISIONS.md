@@ -29,9 +29,11 @@ the moved assertions below. Issue [#2688](https://github.com/sdubois777/Cataclys
 
 ### SAID FIRST
 
-- **NOT RUN IN UNREAL.** Compiled (`Build: Succeeded - 53 actions, 50 files compiled` for the code, then `Build:
-  Succeeded - 21 actions, 18 files compiled` for the tests, the four test files' objects written). The twelve tests,
-  the moved ones, the whole suite and five proofs are registered below for a window.
+- **PASSED IN WINDOW double-hunt-w1, ON `a6a54da9b`: 4552 OF 4552, AND P1-P5 PROVED AT EXACTLY 5, 1, 1, 4 AND 1
+  REGISTERED ASSERTIONS** (recorded under "Window double-hunt-w1" below). Compiled before the window (`Build:
+  Succeeded - 53 actions, 50 files compiled` for the code, then `Build: Succeeded - 21 actions, 18 files compiled` for
+  the tests, the four test files' objects written); every figure under "Registered before the run" was a prediction
+  made before the window.
 - **THE RUN RECORD TOOK A SCHEMA VERSION, 2, BECAUSE THE FIXTURES README SAYS SO, and the coordinating session ruled
   it on 2026-11-02 (option A).** `game/Tests/SaveFixtures/README.md`: once the game can load a save, "Add a schema
   version and a migration step instead" of editing a fixture. Saving the double's hunt mid-dungeon needs six new
@@ -244,6 +246,29 @@ count 1). The breaks were not compiled before registration.
 - A party (#56); the consumed outcome (#2693).
 - A crossing while the double already stands, and a second crossing while marked (the first build is kept); a
   character with two two-handed weapons captured.
+
+### Window double-hunt-w1, run 2026-11-02 by the coordinating session
+
+On `a6a54da9b`, branch `feat/consumption-double-hunts`, on `development` at `62b6b80bd`. Pre-checks at 14:08:29 all
+passed, 10,662 MB of physical memory free; the runner (started 14:08:40) took the lock as `double-hunt-w1` and released
+it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 | "15 tests performed, 15 succeeded, 0 failed" |
+| `Cataclysm.ConsumptionMark.` alone | 6 / 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther` alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| `Cataclysm.SaveRecords.` alone | 17 / 17 | "17 tests performed, 17 succeeded, 0 failed" |
+| Whole Unreal suite | 4552 / 0 | "4552 tests performed, 4552 succeeded, 0 failed"; "Declared: 4552 tests in the tree at a6a54da9b; 4552 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 201.90s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | 5 | PROVED; restored 1 of 1. Exactly: "the crossing captured a build", "holding every item worn after the equip" (0 against 3), "the boots that crossed among them" (0 against 1), "the record holds the build" (0 against 3), "and a fresh character loaded from it holds the build" (0 against 3) |
+| P2 | 1 | PROVED; restored 1 of 1. Exactly "no double on the floor the crossing was made on, seventy seconds in" |
+| P3 | 1 | PROVED; restored 1 of 1. Exactly "every worn item's residue is zero" (2 against 0) |
+| P4 | 4 | PROVED; restored 1 of 1. Exactly "the mark is cleared", "and the build with it", "the record written is unmarked", "and holds no build" (3 against 0) |
+| P5 | 1 | PROVED; restored 1 of 1. Exactly "the step writes 'has not hunted' into the walk" |
+
+No other assertion failed in any broken half.
 
 ---
 
