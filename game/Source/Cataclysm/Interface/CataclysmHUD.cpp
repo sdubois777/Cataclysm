@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmEmpireStatusBar.h"
 #include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -69,6 +70,14 @@ void ACataclysmHUD::DrawHUD()
 	if (UCataclysmPotions::Enabled())
 	{
 		DrawPotions();
+	}
+
+	// THE TOP LEFT, WHICH NOTHING ELSE ON THE DUNGEON SCREEN USES. Issue #49. It
+	// shrinks to stay clear of the creature panel at its narrowest; see
+	// `UCataclysmEmpireStatusBar::ScaleToFit`.
+	if (UCataclysmEmpireStatusBar::Enabled())
+	{
+		DrawEmpireStatusBar();
 	}
 
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
@@ -255,6 +264,24 @@ void ACataclysmHUD::DrawOutlinedText(const FString& Text,
 	}
 
 	DrawText(Text, Colour, Left, Top, Font, Sized);
+}
+
+void ACataclysmHUD::DrawEmpireStatusBar()
+{
+	// NOTHING WHILE NO RUN IS BOUND, ruling (c) of 2026-11-02: the line is empty then.
+	const FString Line = UCataclysmEmpireStatusBar::LineForWorld(this);
+	if (Line.IsEmpty())
+	{
+		return;
+	}
+
+	// MEASURED AT ITS OWN SIZE FIRST, so it can be shrunk to the room beside the creature panel before it is drawn.
+	const FBox2D AtBase = MeasureTextCentred(Line, 0.0f, 0.0f, UCataclysmEmpireStatusBar::BaseScale);
+	const float Scale = UCataclysmEmpireStatusBar::ScaleToFit(
+		static_cast<float>(AtBase.Max.X - AtBase.Min.X), static_cast<float>(Canvas->SizeX));
+
+	DrawOutlinedText(Line, UCataclysmCombatOverlay::ColourFromHex(UCataclysmEmpireStatusBar::TextHex),
+					 UCataclysmEmpireStatusBar::LeftPx, UCataclysmEmpireStatusBar::TopPx, Scale);
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
