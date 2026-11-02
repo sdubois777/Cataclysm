@@ -10,6 +10,7 @@
 #include "Character/CataclysmClassStats.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "CataclysmPlayerState.generated.h"
 
 class UDataTable;
@@ -353,13 +354,34 @@ public:
 	void MarkByConsumption() { bMarkedByConsumption = true; }
 
 	/**
-	 * Take the mark off.
+	 * Take the mark off, and the build captured with it.
 	 *
-	 * TWO CALLERS, AND NEITHER IS THE DOUBLE'S DEATH YET: `WearPastTheThreshold` taking back a mark it set for an equip
-	 * that then did not happen, and the tests. Killing the double, which is what clears a mark in play, arrives with
-	 * the double itself, #2688's second slice.
+	 * IN PLAY, KILLING THE DOUBLE IS WHAT CALLS THIS (O1): `ACataclysmDungeonGameMode`'s note of the double's death,
+	 * which also zeroes the residue on every worn item. The other callers: `WearPastTheThreshold` taking back a mark it
+	 * set for an equip that then did not happen, a load of an unmarked record, and the tests.
 	 */
-	void ClearConsumptionMark() { bMarkedByConsumption = false; }
+	void ClearConsumptionMark()
+	{
+		bMarkedByConsumption = false;
+		ConsumptionBuildHeld = FCataclysmPlayerBuild();
+	}
+
+	/**
+	 * The build captured when the character crossed the Consumption Threshold, which its corrupted double wears: the
+	 * owner's decision of 2026-11-02 (O4), "the double is the character as it was at the crossing". Issue #2688. Empty
+	 * until a crossing captures one; `ClearConsumptionMark` empties it. The character record keeps it (version 6).
+	 */
+	const FCataclysmPlayerBuild& ConsumptionBuild() const { return ConsumptionBuildHeld; }
+
+	/**
+	 * Whether a build is held: one with at least one worn item. A crossing needs worn residue, so a captured build
+	 * always holds an item. False for a character marked before version 6 of the record, whose double is then built
+	 * from the gear worn when it arrives.
+	 */
+	bool HoldsConsumptionBuild() const { return !ConsumptionBuildHeld.Worn.IsEmpty(); }
+
+	/** Keep a captured build. `ACataclysmPlayerCharacter::WearPastTheThreshold` is the one caller in play; a load is the other. */
+	void SetConsumptionBuild(const FCataclysmPlayerBuild& Build) { ConsumptionBuildHeld = Build; }
 
 	// ----------------------------------------------------------------------
 	// Passive points and where they went
@@ -814,6 +836,10 @@ protected:
 	/** See `IsMarkedByConsumption`. Issue #2688. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	bool bMarkedByConsumption = false;
+
+	/** See `ConsumptionBuild`. Issue #2688. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	FCataclysmPlayerBuild ConsumptionBuildHeld;
 
 	/**
 	 * REPLICATED, because the client draws the tree screen from it and the

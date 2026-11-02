@@ -33,8 +33,14 @@ void UCataclysmFloorModifierPanel::Redraw()
 {
 	if (HeadingLabel != nullptr)
 	{
+		// THE MODIFIERS ONLY: the corrupted double's line is no modifier. Issue #2688.
+		int32 Modifiers = 0;
+		for (const FCataclysmFloorModifierLine& Line : Lines)
+		{
+			Modifiers += Line.bIsTheConsumptionDouble ? 0 : 1;
+		}
 		HeadingLabel->SetText(FText::FromString(
-			UCataclysmFloorModifierPanelLayout::HeadingFor(FloorNumber, Lines.Num())));
+			UCataclysmFloorModifierPanelLayout::HeadingFor(FloorNumber, Modifiers)));
 	}
 
 	if (ModifierBox == nullptr)
@@ -47,7 +53,8 @@ void UCataclysmFloorModifierPanel::Redraw()
 
 	for (const FCataclysmFloorModifierLine& Line : Lines)
 	{
-		const bool bDim = Line.Built == ECataclysmModifierBuilt::NotBuilt || !Line.bIsARow;
+		const bool bDim = !Line.bIsTheConsumptionDouble
+			&& (Line.Built == ECataclysmModifierBuilt::NotBuilt || !Line.bIsARow);
 		AddRow(UCataclysmFloorModifierPanelLayout::NameLineFor(Line), NameFontSize, bDim);
 		if (!Line.Description.IsEmpty())
 		{

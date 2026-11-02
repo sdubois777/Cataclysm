@@ -177,6 +177,16 @@ public:
 	float WornResidue() const;
 
 	/**
+	 * Sets the residue on every worn item to zero, and announces the change when any held some. Issue #2688.
+	 * `docs/Cataclysm_GDD_v2.md`, "Worn Residue and Consumption": "If the player kills the double, residue is set to
+	 * zero on every equipped item. The character keeps its equipment and the run continues." What is carried keeps its
+	 * residue: only the equipped items are named. Killing the double is the one caller in play.
+	 *
+	 * @return how many worn items held residue and now hold none
+	 */
+	int32 ClearResidueOnEveryWornItem();
+
+	/**
 	 * The Consumption Threshold for a difficulty tier, held to tiers 1 to 8: the Worn Residue at or past which an
 	 * equip is to be confirmed first. The design document's table, one per tier, and
 	 * `tools/tests/test_the_consumption_threshold_is_the_designs.py` holds this and that table to one set of numbers.

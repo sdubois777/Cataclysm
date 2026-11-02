@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Character/CataclysmConsumptionDoubleCharacter.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Dungeon/CataclysmFloorObject.h"
 
@@ -44,6 +45,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
@@ -1349,6 +1351,10 @@ void ACataclysmDungeonGameMode::StartPlay()
 		PlaceAtEntrance(Controller->GetPawn());
 	}
 
+	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THE FIRST FLOOR, for the same reason: `GoToFloor` ran before there was a
+	// player state to read the mark from. Issue #2688.
+	NoteTheConsumptionDoubleAsAFloorIsEntered();
+
 	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
 	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
 	// Issue #41.
@@ -1843,9 +1849,12 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	// still reaches it. Issue #1308.
 	ACataclysmEnemyCharacter* Hunter = CorruptedStalker.Get();
 	const bool bKeepTheHunter = IsValid(Hunter) && !UCataclysmSkillEffects::IsDead(Hunter);
+	// AND A STANDING CORRUPTED DOUBLE, for the same reason: it belongs to no wave. Issue #2688.
+	ACataclysmEnemyCharacter* Double = DoubleHunt.Creature.Get();
+	const bool bKeepTheDouble = IsValid(Double) && !UCataclysmSkillEffects::IsDead(Double);
 	for (ACataclysmEnemyCharacter* Enemy : FloorEnemies)
 	{
-		if (bKeepTheHunter && Enemy == Hunter)
+		if ((bKeepTheHunter && Enemy == Hunter) || (bKeepTheDouble && Enemy == Double))
 		{
 			continue;
 		}
@@ -3050,10 +3059,10 @@ ACataclysmCorruptedStalkerCharacter* ACataclysmDungeonGameMode::CorruptedStalker
 	return CorruptedStalker.Get();
 }
 
-bool ACataclysmDungeonGameMode::CorruptedStalkerCarriesNow(float& OutShare, TArray<float>& OutCharges) const
+bool ACataclysmDungeonGameMode::CorruptedStalkerCarriesNow(const ACataclysmCorruptedStalkerCharacter* Stalker,
+															float& OutShare, TArray<float>& OutCharges)
 {
 	OutCharges.Reset();
-	const ACataclysmCorruptedStalkerCharacter* Stalker = CorruptedStalker.Get();
 	const UAbilitySystemComponent* Abilities = Stalker ? Stalker->GetAbilitySystemComponent() : nullptr;
 	if (!Abilities)
 	{
@@ -3113,7 +3122,7 @@ void ACataclysmDungeonGameMode::StepTheCorruptedStalker()
 	{
 		float Share = 1.0f;
 		TArray<float> Charges;
-		if (CorruptedStalkerCarriesNow(Share, Charges))
+		if (CorruptedStalkerCarriesNow(CorruptedStalker.Get(), Share, Charges))
 		{
 			CorruptedStalkerHealthShare = Share;
 			if (!Charges.IsEmpty())
@@ -3155,16 +3164,12 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 	const FCataclysmStalkerEntry& Entry = Entries[Stream.RandRange(0, Entries.Num() - 1)];
 
 	// THE FIRST FLOOR IT HUNTS: THE WALKABLE CELL FARTHEST FROM THE PLAYER, out of sight, the owner's answer of
-	// 2026-10-25. EVERY FLOOR AFTER: THE ENTRANCE, as if it took the stairs after them.
-	const FIntPoint Entrance = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
-	const FIntPoint Cell = bCorruptedStalkerHasHunted
-		? Entrance
-		: FarthestWalkableCellFrom(CurrentFloor->GetPlan(), CurrentFloor->GetPlan().IsFloor(ThePlayersCell())
-																? ThePlayersCell() : Entrance);
-	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmCorruptedStalkerCharacter::StaticClass();
+	// 2026-10-25. EVERY FLOOR AFTER: THE ENTRANCE, as if it took the stairs after them. `WhereAHunterArrives`.
+	FIntPoint Cell;
+	const FVector Arrives =
+		WhereAHunterArrives(bCorruptedStalkerHasHunted, ACataclysmCorruptedStalkerCharacter::StaticClass(), Cell);
 	// OR WHERE IT STOOD AT A SAVE, which a load gives. Issue #753, Group 3d-4b.
-	const FVector Where = At ? *At // A load's: where the Stalker stood.
-							 : CurrentFloor->WorldOfCell(Cell) + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+	const FVector Where = At ? *At : Arrives; // A load's: where the Stalker stood.
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	ACataclysmCorruptedStalkerCharacter* Stalker = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
@@ -3180,25 +3185,11 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 		return;
 	}
 
-	// WITH THE HEALTH IT CARRIED, on a floor after the first.
+	// WITH THE HEALTH AND THE POTION CHARGES IT CARRIED, on a floor after the first. The first floor it hunts leaves
+	// its slots as they start, full.
 	if (bCorruptedStalkerHasHunted)
 	{
-		if (UAbilitySystemComponent* Abilities = Stalker->GetAbilitySystemComponent())
-		{
-			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
-				Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
-					* FMath::Max(CorruptedStalkerHealthShare, 0.01f));
-		}
-
-		// AND THE POTION CHARGES IT CARRIED. The first floor it hunts leaves its slots as they start, full.
-		if (UCataclysmAbilitySystemComponent* Holder =
-				Cast<UCataclysmAbilitySystemComponent>(Stalker->GetAbilitySystemComponent()))
-		{
-			for (int32 Slot = 0; Slot < CorruptedStalkerPotionCharges.Num(); ++Slot)
-			{
-				Holder->SetPotionCharges(Slot, CorruptedStalkerPotionCharges[Slot]);
-			}
-		}
+		GiveAHunterWhatItCarried(*Stalker, CorruptedStalkerHealthShare, CorruptedStalkerPotionCharges);
 	}
 	Stalker->SightRadiusMultiplier = Effects::CorruptedStalkerSightMultiplier;
 	FloorEnemies.Add(Stalker);
@@ -3228,6 +3219,220 @@ void ACataclysmDungeonGameMode::NoteDeathForTheCorruptedStalker(const FCataclysm
 	{
 		const ACataclysmEnemyCharacter* Killed = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
 		UCataclysmPotions::NoteEnemyKilled(Stalker, Killed ? Killed->RarityStep : 0);
+	}
+}
+
+FVector ACataclysmDungeonGameMode::WhereAHunterArrives(bool bHasHunted, TSubclassOf<ACataclysmEnemyCharacter> Class,
+													   FIntPoint& OutCell) const
+{
+	const FIntPoint Entrance = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
+	OutCell = bHasHunted
+		? Entrance
+		: FarthestWalkableCellFrom(CurrentFloor->GetPlan(), CurrentFloor->GetPlan().IsFloor(ThePlayersCell())
+																? ThePlayersCell() : Entrance);
+	return CurrentFloor->WorldOfCell(OutCell) + FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+}
+
+void ACataclysmDungeonGameMode::GiveAHunterWhatItCarried(ACataclysmCorruptedStalkerCharacter& Hunter, float HealthShare,
+														 const TArray<float>& PotionCharges)
+{
+	if (UAbilitySystemComponent* Abilities = Hunter.GetAbilitySystemComponent())
+	{
+		Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				* FMath::Max(HealthShare, 0.01f));
+	}
+	if (UCataclysmAbilitySystemComponent* Holder =
+			Cast<UCataclysmAbilitySystemComponent>(Hunter.GetAbilitySystemComponent()))
+	{
+		for (int32 Slot = 0; Slot < PotionCharges.Num(); ++Slot)
+		{
+			Holder->SetPotionCharges(Slot, PotionCharges[Slot]);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The corrupted double. Issue #2688, slices 2b and 2c.
+// ---------------------------------------------------------------------------
+
+ACataclysmConsumptionDoubleCharacter* ACataclysmDungeonGameMode::ConsumptionDoubleOnTheFloor() const
+{
+	return DoubleHunt.Creature.Get();
+}
+
+bool ACataclysmDungeonGameMode::ThePlayerIsMarkedByConsumption() const
+{
+	// ONE PLAYER, the first controller's, as every floor rule reaches the player. Parties wait on #56.
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const ACataclysmPlayerState* State = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	return State && State->IsMarkedByConsumption();
+}
+
+void ACataclysmDungeonGameMode::NoteTheConsumptionDoubleAsAFloorIsEntered()
+{
+	// FROM THE MARK AS THE FLOOR IS ENTERED, AND NEVER AGAIN ON THIS FLOOR: a crossing made on this floor brings the
+	// double on the next one entered, never on this one (R2, ruled 2026-11-02).
+	const bool bBefore = bDoubleHuntsThisFloor;
+	bDoubleHuntsThisFloor = ThePlayerIsMarkedByConsumption(); // A floor entered's: the mark as it stands now.
+	if (bDoubleHuntsThisFloor != bBefore)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::ResetTheConsumptionDoubleHunt()
+{
+	DoubleHunt = FCataclysmDoubleHunt();
+}
+
+void ACataclysmDungeonGameMode::StepTheConsumptionDouble()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHILE IT STANDS, ITS HEALTH AND POTIONS ARE KEPT ON THE BEAT, so the next floor raises it with what it had.
+	if (ACataclysmConsumptionDoubleCharacter* Double = DoubleHunt.Creature.Get())
+	{
+		float Share = 1.0f;
+		TArray<float> Charges;
+		if (CorruptedStalkerCarriesNow(Double, Share, Charges))
+		{
+			DoubleHunt.HealthShare = Share;
+			if (!Charges.IsEmpty())
+			{
+				DoubleHunt.PotionCharges = Charges;
+			}
+		}
+		return;
+	}
+
+	// ONLY ON A FLOOR ENTERED MARKED, AND ONCE A FLOOR WHETHER OR NOT THE SPAWN SUCCEEDS, as the Stalker's.
+	if (!bDoubleHuntsThisFloor || DoubleHunt.bRaisedThisFloor)
+	{
+		return;
+	}
+	DoubleHunt.SecondsOnFloor += BeatSeconds;
+
+	// THE STALKER'S TIMINGS (J1, accepted 2026-11-02): sixty seconds into the first floor it hunts, thirty after.
+	if (!Effects::CorruptedStalkerIsDue(DoubleHunt.SecondsOnFloor, DoubleHunt.bHasHunted))
+	{
+		return;
+	}
+	DoubleHunt.bRaisedThisFloor = true;
+	RaiseTheConsumptionDouble();
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::RaiseTheConsumptionDouble(const FVector* At)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const ACataclysmPlayerState* State = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	const ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt() || !State)
+	{
+		return;
+	}
+
+	// THE CHARACTER AS IT WAS AT THE CROSSING (O4), captured then and saved with it. A character marked before the
+	// record kept builds holds none, and its double wears what the player wears now.
+	FCataclysmPlayerBuild Build;
+	if (State->HoldsConsumptionBuild())
+	{
+		Build = State->ConsumptionBuild(); // A double's: the build captured at the crossing.
+	}
+	else if (Player)
+	{
+		Build = FCataclysmPlayerBuild::Of(*Player); // A double's, for a character marked before version 6.
+	}
+	else
+	{
+		return;
+	}
+
+	// WHERE THE STALKER ARRIVES (J1), OR WHERE IT STOOD AT A SAVE, which a load gives.
+	FIntPoint Cell;
+	const FVector Arrives =
+		WhereAHunterArrives(DoubleHunt.bHasHunted, ACataclysmConsumptionDoubleCharacter::StaticClass(), Cell);
+	const FVector Where = At ? *At : Arrives; // A load's: where the double stood.
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmConsumptionDoubleCharacter* Double = World->SpawnActor<ACataclysmConsumptionDoubleCharacter>(
+		ACataclysmConsumptionDoubleCharacter::StaticClass(), Where, FRotator::ZeroRotator, SpawnParams);
+	if (!Double)
+	{
+		return;
+	}
+	Double->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+
+	// THE PLAYER'S OWN NUMBERS, WITH NO PER-TIER MULTIPLIER (R3, R4), its potions full and 50 Fervour (J5). NOT THE
+	// PLAYER'S FLOOR MODIFIERS OR HELD BUFFS (J7): a build holds none of them.
+	if (!Double->WearThePlayersBuild(Build))
+	{
+		Double->Destroy();
+		return;
+	}
+
+	// WITH THE HEALTH AND THE POTION CHARGES IT CARRIED, on a floor after the first it hunts.
+	if (DoubleHunt.bHasHunted)
+	{
+		GiveAHunterWhatItCarried(*Double, DoubleHunt.HealthShare, DoubleHunt.PotionCharges);
+	}
+	Double->SightRadiusMultiplier = Effects::CorruptedStalkerSightMultiplier;
+	FloorEnemies.Add(Double);
+	Double->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Double);
+	DoubleHunt.Creature = Double;
+	DoubleHunt.bHasHunted = true;
+	UE_LOG(LogCataclysm, Log, TEXT("The corrupted double arrives on floor %d at cell (%d, %d), wearing %d items at "
+								   "level %d"),
+		   FloorNumber, Cell.X, Cell.Y, Build.Worn.Num(), Build.Level);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForTheConsumptionDouble(const FCataclysmDeathNotice& Notice)
+{
+	// ITS OWN DEATH, HOWEVER IT CAME (J3): the floor rules that would end it outright already spare it, because it is a
+	// Corrupted Stalker -- Divine Wrath's beam and Epidemic's chain. ANY DOUBLE'S, not only the one this hunt holds.
+	if (Notice.Victim && Notice.Victim->IsA<ACataclysmConsumptionDoubleCharacter>())
+	{
+		// O1, THE OWNER'S DECISION OF 2026-11-02: ONLY KILLING THE DOUBLE CLEARS THE MARK. The design: "If the player
+		// kills the double, residue is set to zero on every equipped item. The character keeps its equipment and the
+		// run continues."
+		const UWorld* World = GetWorld();
+		const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		ACataclysmPlayerState* State = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+		if (UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr)
+		{
+			Equipment->ClearResidueOnEveryWornItem(); // The double's death's: worn residue to zero.
+		}
+		if (State)
+		{
+			State->ClearConsumptionMark(); // The double's death's: the mark and the build taken off.
+		}
+
+		// AND THE HUNT ENDS: a later crossing brings a fresh double a minute into a floor (J4).
+		ResetTheConsumptionDoubleHunt();
+		bDoubleHuntsThisFloor = false;
+
+		// AND THE CHARACTER RECORD IS WRITTEN, which a creature's death does not do: the inventory's trigger, the one
+		// the crossing writes the mark with.
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
+		RefreshFloorModifierPanel();
+		UE_LOG(LogCataclysm, Log, TEXT("The corrupted double died on floor %d: the mark is cleared and the worn "
+									   "residue is zero"), FloorNumber);
+		return;
+	}
+
+	// ITS KILLS REFILL ITS POTIONS, as the Stalker's do ("same as the player").
+	ACataclysmConsumptionDoubleCharacter* Double = DoubleHunt.Creature.Get();
+	if (Double && Notice.Killer == Double && Notice.Victim)
+	{
+		const ACataclysmEnemyCharacter* Killed = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+		UCataclysmPotions::NoteEnemyKilled(Double, Killed ? Killed->RarityStep : 0);
 	}
 }
 
@@ -15167,12 +15372,30 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 	{
 		float Share = 1.0f;
 		TArray<float> Charges;
-		if (CorruptedStalkerCarriesNow(Share, Charges))
+		if (CorruptedStalkerCarriesNow(CorruptedStalker.Get(), Share, Charges))
 		{
 			Walk.CorruptedStalkerHealthShare = Share; // A save's: the Stalker's health now.
 			if (!Charges.IsEmpty())
 			{
 				Walk.CorruptedStalkerPotionCharges = Charges;
+			}
+		}
+	}
+
+	// AND THE CORRUPTED DOUBLE'S HUNT, THE SAME WAY: its health and potions as they are now while it stands, or as the
+	// last beat kept them. Issue #2688, run record version 2.
+	Walk.bConsumptionDoubleHasHunted = DoubleHunt.bHasHunted;
+	Walk.ConsumptionDoubleHealthShare = DoubleHunt.HealthShare;
+	Walk.ConsumptionDoublePotionCharges = DoubleHunt.PotionCharges;
+	{
+		float Share = 1.0f;
+		TArray<float> Charges;
+		if (CorruptedStalkerCarriesNow(DoubleHunt.Creature.Get(), Share, Charges))
+		{
+			Walk.ConsumptionDoubleHealthShare = Share; // A save's: the double's health now.
+			if (!Charges.IsEmpty())
+			{
+				Walk.ConsumptionDoublePotionCharges = Charges;
 			}
 		}
 	}
@@ -15244,6 +15467,10 @@ void ACataclysmDungeonGameMode::RestoreWalkState(const FCataclysmSavedWalk& Walk
 	bCorruptedStalkerSlain = Walk.bCorruptedStalkerSlain;
 	CorruptedStalkerHealthShare = Walk.CorruptedStalkerHealthShare;
 	CorruptedStalkerPotionCharges = Walk.CorruptedStalkerPotionCharges;
+	// AND THE CORRUPTED DOUBLE'S HUNT. Issue #2688.
+	DoubleHunt.bHasHunted = Walk.bConsumptionDoubleHasHunted; // A load's: the double's hunt.
+	DoubleHunt.HealthShare = Walk.ConsumptionDoubleHealthShare;
+	DoubleHunt.PotionCharges = Walk.ConsumptionDoublePotionCharges;
 	auto Back = [](const TArray<FCataclysmSavedEcho>& Saved)
 	{
 		TArray<FEchoOfTheDead> Out;
@@ -15833,6 +16060,16 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 		Out.CorruptedStalkerLocation = Stalker->GetActorLocation();
 	}
 
+	// THE CORRUPTED DOUBLE: whether it hunts this floor, decided as the floor was entered (R2), and whether it stands,
+	// and where. Its build is the player state's, its health and potions the walk's. Issue #2688.
+	Out.bConsumptionDoubleHuntsThisFloor = bDoubleHuntsThisFloor;
+	if (const ACataclysmConsumptionDoubleCharacter* Double = DoubleHunt.Creature.Get();
+		IsValid(Double) && !UCataclysmSkillEffects::IsDead(Double))
+	{
+		Out.bConsumptionDoubleStanding = true;
+		Out.ConsumptionDoubleLocation = Double->GetActorLocation();
+	}
+
 	// A STANDING INFECTION BLOOM: its spread and the health it has left. 3d-4a.
 	if (const ACataclysmEnemyCharacter* Bloom = InfectionBloomNow())
 	{
@@ -16169,6 +16406,17 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 		bCorruptedStalkerRaisedThisFloor = true;
 		RaiseTheCorruptedStalker(&State.CorruptedStalkerLocation); // A load's: the Stalker raised where it stood.
 	}
+
+	// THE CORRUPTED DOUBLE'S FLAG AS THE SAVED FLOOR WAS ENTERED, which wins over the one `GoToFloor` just set from the
+	// mark: a crossing made on the saved floor brings the double on the next floor, never on this one (R2). AND ONE
+	// STANDING AT THE SAVE, RAISED AGAIN AT ONCE WHERE IT STOOD and come on this floor, so the beat raises no second:
+	// with the health and potions the walk put back, and the build the character record put back. Issue #2688.
+	bDoubleHuntsThisFloor = State.bConsumptionDoubleHuntsThisFloor; // A load's: the saved floor's flag.
+	if (State.bConsumptionDoubleStanding && !DoubleHunt.Creature.Get())
+	{
+		DoubleHunt.bRaisedThisFloor = true;
+		RaiseTheConsumptionDouble(&State.ConsumptionDoubleLocation); // A load's: the double raised where it stood.
+	}
 	RefreshFloorModifierPanel();
 }
 
@@ -16262,6 +16510,13 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	CorruptedStalkerSecondsOnFloor = 0.0f;
 	bCorruptedStalkerRaisedThisFloor = false;
 	CorruptedStalker.Reset();
+
+	// AND THE CORRUPTED DOUBLE'S HUNT, BUT NOT THE MARK: "Leaving alive is a reprieve rather than a solution -- residue
+	// is unchanged and the doubles return on the next dungeon" (R2, ruled 2026-11-02). The next dungeon entered while
+	// marked is hunted from its first floor, a minute in. A death comes through here too, so a player killed by the
+	// double keeps the mark and meets it again (O3). Issue #2688.
+	ResetTheConsumptionDoubleHunt();
+	bDoubleHuntsThisFloor = false;
 
 	// AND THE DUNGEON'S MODIFIERS GO WITH IT. `EnterEmpireDungeon` overwrites
 	// `TotalFloors`, `DungeonType` and `DungeonSubType` on the way in, so those
@@ -17002,6 +17257,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bCorruptedStalker = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::CorruptedStalkerKey))
 		&& !bCorruptedStalkerSlain;
+	// AND THE CORRUPTED DOUBLE, ON A FLOOR ENTERED MARKED OR WHILE IT STANDS. Not a row: it comes with the mark, on any
+	// floor of any dungeon. Issue #2688.
+	const bool bConsumptionDouble = bDoubleHuntsThisFloor || DoubleHunt.Creature.IsValid();
 	// AND BLOOD BOND, UNTIL THIS FLOOR HAS BONDED. Issues #1820 and #41.
 	const bool bBloodBond = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::BloodBondKey))
@@ -17195,7 +17453,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper && !bCorruptedStalker && !bBloodBond && !bPlagueConvergence && !bDivineWrath
+		&& !bTheReaper && !bCorruptedStalker && !bConsumptionDouble && !bBloodBond && !bPlagueConvergence
+		&& !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bHeavensQuake && !bCryptquake && FloorObstacleWarnings.IsEmpty()
@@ -17397,6 +17656,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bCorruptedStalker)
 	{
 		StepTheCorruptedStalker();
+	}
+
+	// AND THE CORRUPTED DOUBLE, THE SAME WAY. Issue #2688.
+	if (bConsumptionDouble)
+	{
+		StepTheConsumptionDouble();
 	}
 
 	// AND BLOOD BOND, WHICH READS WHERE THE CREATURES STAND. Issues #1820 and #41.
@@ -19034,6 +19299,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForSoulHarvest(Notice);
 	NoteDeathForChaosTouched(Notice);
 	NoteDeathForTheCorruptedStalker(Notice);
+	NoteDeathForTheConsumptionDouble(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
@@ -20714,6 +20980,13 @@ TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const
 	{
 		Listed.AddUnique(FName(UCataclysmDungeonModifierEffects::ThoseInTheDarkKey));
 	}
+
+	// AND THE CORRUPTED DOUBLE, ON A FLOOR IT HUNTS OR WHILE IT STANDS, LAST: not a row, and the panel says so by its
+	// own line (`UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey`). Issue #2688.
+	if (bDoubleHuntsThisFloor || DoubleHunt.Creature.IsValid())
+	{
+		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey));
+	}
 	return Listed;
 }
 
@@ -21503,6 +21776,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString::Printf(TEXT("corrupted stalker: hunts you from %.0f seconds into the floor"),
 							  bCorruptedStalkerHasHunted ? Effects::CorruptedStalkerFollowSeconds
 														 : Effects::CorruptedStalkerFirstFloorSeconds));
+	}
+
+	// AND THE CORRUPTED DOUBLE: when it comes, or that it is here and what killing it does. Issue #2688.
+	if (bDoubleHuntsThisFloor || DoubleHunt.Creature.IsValid())
+	{
+		Counting.Add(FName(UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey), DoubleHunt.Creature.IsValid()
+			? FString(TEXT("it is on this floor; killing it clears the mark and your worn residue"))
+			: FString::Printf(TEXT("it comes %.0f seconds into the floor"),
+							  DoubleHunt.bHasHunted ? Effects::CorruptedStalkerFollowSeconds
+													: Effects::CorruptedStalkerFirstFloorSeconds));
 	}
 
 	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.
@@ -23971,6 +24254,19 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			bCorruptedStalkerRaisedThisFloor = false;
 		}
 
+		// AND THE CORRUPTED DOUBLE'S, THE SAME WAY: one still standing on a Horde wave is kept, and otherwise its floor
+		// clock starts again. Whether it hunts this floor is not decided here, which leaving a dungeon also runs: see
+		// `NoteTheConsumptionDoubleAsAFloorIsEntered`. Issue #2688.
+		if (ACataclysmConsumptionDoubleCharacter* Double = DoubleHunt.Creature.Get())
+		{
+			CreaturesRaisedByARule.Add(Double);
+		}
+		else
+		{
+			DoubleHunt.SecondsOnFloor = 0.0f;
+			DoubleHunt.bRaisedThisFloor = false;
+		}
+
 		// AND BLOOD BOND LETS GO: a bond is this floor's. A Horde wave keeps its creatures, so
 		// an elite still bonded is made mortal again rather than left unable to die with
 		// nothing tying it to the player. Issues #1820 and #41.
@@ -24699,6 +24995,10 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// Issues #1820 and #41.
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
+
+	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THIS FLOOR, FROM THE MARK AS THE FLOOR IS ENTERED: a Horde wave too (J6, as
+	// the Stalker treats a wave). Here and not in `ApplyFloorRulesToPlayer`, which leaving a dungeon runs. Issue #2688.
+	NoteTheConsumptionDoubleAsAFloorIsEntered();
 
 	ApplyFloorRulesKeepingHealth();
 	DungeonGameModeRaiseFloorStart(GetWorld());

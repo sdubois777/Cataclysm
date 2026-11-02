@@ -16,6 +16,27 @@
 class ACataclysmDungeonFloor;
 class ACataclysmDungeonStairs;
 class ACataclysmEnemyCharacter;
+class ACataclysmConsumptionDoubleCharacter;
+class ACataclysmCorruptedStalkerCharacter;
+
+/**
+ * The corrupted double's hunt across a dungeon's floors: the Corrupted Stalker's seven fields, bundled. Issue #2688,
+ * slices 2b and 2c. `docs/Cataclysm_GDD_v2.md`, "What crossing it does".
+ *
+ * THE FLOOR'S: its seconds on the floor and whether it has come on it. THE DUNGEON'S: whether it has hunted an earlier
+ * floor, the share of its health and its potion charges it carries to the next floor, and the creature. Leaving a
+ * dungeon alive resets all of it but not the mark ("the doubles return on the next dungeon"); killing it resets it
+ * too, so a later crossing brings a fresh double a minute into a floor (J4, accepted 2026-11-02).
+ */
+struct FCataclysmDoubleHunt
+{
+	float SecondsOnFloor = 0.0f;
+	bool bRaisedThisFloor = false;
+	bool bHasHunted = false;
+	float HealthShare = 1.0f;
+	TArray<float> PotionCharges;
+	TWeakObjectPtr<ACataclysmConsumptionDoubleCharacter> Creature;
+};
 
 /**
  * Puts the player on a generated dungeon floor when play begins.
@@ -2263,6 +2284,27 @@ public:
 	/** Whether the Corrupted Stalker has been slain in this dungeon, after which no floor raises it again. */
 	bool CorruptedStalkerSlainInThisDungeon() const { return bCorruptedStalkerSlain; }
 
+	/** The corrupted double on this floor, or null. Issue #2688. */
+	ACataclysmConsumptionDoubleCharacter* ConsumptionDoubleOnTheFloor() const;
+
+	/**
+	 * Whether the corrupted double hunts this floor: the player was marked when this floor was entered. SET AS A FLOOR IS
+	 * ENTERED AND NEVER FROM THE LIVE MARK, so a crossing on a floor brings the double on the next floor entered and
+	 * never on the one it was made on (R2, ruled 2026-11-02). Set in `GoToFloor` (a Horde wave too) and in `StartPlay`;
+	 * not in `ApplyFloorRulesToPlayer`, which leaving a dungeon also runs. A load puts the saved flag back after the
+	 * floor is entered. Killing the double clears it.
+	 */
+	bool ConsumptionDoubleHuntsThisFloor() const { return bDoubleHuntsThisFloor; }
+
+	/** Whether the corrupted double has hunted an earlier floor of this dungeon, so it follows thirty seconds in. */
+	bool ConsumptionDoubleHasHunted() const { return DoubleHunt.bHasHunted; }
+
+	/**
+	 * Whether the player playing is marked by crossing the Consumption Threshold: the first player controller's player
+	 * state. ONE PLAYER: the design gives each marked player of a party a double, and parties wait on #56.
+	 */
+	bool ThePlayerIsMarkedByConsumption() const;
+
 	/**
 	 * The walkable cell farthest from `From` by walking, the first of them in cell order; `From` when the plan has
 	 * none other, or `From` is not walkable. Where the Corrupted Stalker arrives on the first floor it hunts.
@@ -3451,13 +3493,59 @@ private:
 	void RaiseTheCorruptedStalker(const FVector* At = nullptr);
 
 	/**
-	 * The Corrupted Stalker's share of its health and its potion charges, read from it, or false when none stands alive.
+	 * A hunter's share of its health and its potion charges, read from it, or false when it is null or not standing
+	 * alive. The Corrupted Stalker's and the corrupted double's (issue #2688).
 	 * `OutCharges` is left empty when it holds no potions. The beat keeps them with this, and a save writes them. 3d-4b.
 	 */
-	bool CorruptedStalkerCarriesNow(float& OutShare, TArray<float>& OutCharges) const;
+	static bool CorruptedStalkerCarriesNow(const ACataclysmCorruptedStalkerCharacter* Hunter, float& OutShare,
+										   TArray<float>& OutCharges);
 
 	/** The Corrupted Stalker, on every death: its own is the dungeon's last of it. */
 	void NoteDeathForTheCorruptedStalker(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Where a hunter -- the Corrupted Stalker or the corrupted double -- arrives: on the first floor it hunts, the walkable
+	 * cell farthest from the player, out of sight; on every floor after, the entrance, as if it took the stairs after
+	 * them. Standing at the height of `Class`. One function, so the two hunters cannot drift apart. `OutCell` is the cell.
+	 */
+	FVector WhereAHunterArrives(bool bHasHunted, TSubclassOf<ACataclysmEnemyCharacter> Class, FIntPoint& OutCell) const;
+
+	/**
+	 * A hunter raised on a floor after its first, given the share of its health and the potion charges it carried. The
+	 * Corrupted Stalker's and the corrupted double's. A share is never below 1%.
+	 */
+	static void GiveAHunterWhatItCarried(ACataclysmCorruptedStalkerCharacter& Hunter, float HealthShare,
+										 const TArray<float>& PotionCharges);
+
+	/**
+	 * The corrupted double, on the beat, while it hunts this floor or stands: counts the floor's seconds, raises it when
+	 * due (the Stalker's sixty seconds on the first floor it hunts and thirty after, J1), and keeps its health and
+	 * potions while it stands. Issue #2688.
+	 */
+	void StepTheConsumptionDouble();
+
+	/**
+	 * The corrupted double itself, wearing the build the player state captured at the crossing (O4), or, for a character
+	 * marked before the record kept builds, the build the player wears now. At the farthest cell or the entrance, as
+	 * the Stalker, or at `At` when given, which is where a load puts the one standing at the save.
+	 */
+	void RaiseTheConsumptionDouble(const FVector* At = nullptr);
+
+	/**
+	 * The corrupted double, on every death. ITS OWN DEATH, HOWEVER IT CAME (J3), CLEARS THE MARK (O1): the residue on
+	 * every worn item set to zero, the mark and the captured build taken off, the hunt reset, and the character record
+	 * written. Its kills refill its potions, as the Stalker's do.
+	 */
+	void NoteDeathForTheConsumptionDouble(const struct FCataclysmDeathNotice& Notice);
+
+	/** The double's hunt, all of it, back to where a dungeon begins: leaving a dungeon, and killing the double. */
+	void ResetTheConsumptionDoubleHunt();
+
+	/**
+	 * Sets `bDoubleHuntsThisFloor` from the mark, as a floor is entered, and redraws the floor panel when it changed.
+	 * `GoToFloor` and `StartPlay` are its callers.
+	 */
+	void NoteTheConsumptionDoubleAsAFloorIsEntered();
 
 	/** Blood Bond, on the beat: the first elite that notices the player takes the bond. */
 	void StepBloodBond(class ACataclysmPlayerCharacter* Player);
@@ -5475,6 +5563,12 @@ private:
 	/** The dungeon's: the Stalker's four potion slots' charges, carried to the next floor with its health. */
 	TArray<float> CorruptedStalkerPotionCharges;
 	TWeakObjectPtr<class ACataclysmCorruptedStalkerCharacter> CorruptedStalker;
+
+	/** The corrupted double's hunt. See `FCataclysmDoubleHunt`. Issue #2688. */
+	FCataclysmDoubleHunt DoubleHunt;
+
+	/** See `ConsumptionDoubleHuntsThisFloor`. The floor's, set as it is entered. */
+	bool bDoubleHuntsThisFloor = false;
 
 	/**
 	 * Blood Bond: the elite bonded on this floor, and whether this floor has bonded at all,

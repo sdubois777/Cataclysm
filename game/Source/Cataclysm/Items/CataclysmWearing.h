@@ -256,12 +256,20 @@ public:
 		int32 DifficultyTier = 0);
 
 	/**
+	 * What crossing the threshold does, in the design's words: `docs/Cataclysm_GDD_v2.md`, "What crossing it does",
+	 * its first two sentences word for word. Issue #2688 added it when the mark and the double became real.
+	 */
+	static constexpr const TCHAR* ThresholdConsequence =
+		TEXT("The character is marked. On entering the next dungeon floor, a corrupted double of the character is "
+			 "placed in the dungeon and hunts the player: same class, same level, same equipment, same skills.");
+
+	/**
 	 * The question asked before an equip crosses the threshold, in one line.
 	 *
-	 * IT STATES THE TOTAL AND THE THRESHOLD AND PROMISES NOTHING ELSE. Ruled
-	 * 2026-11-01: what crossing does to the character, the Consumption mark,
-	 * does not exist yet, and issue #2688, which builds it, adds the sentence
-	 * saying so in the design's words.
+	 * IT STATES THE TOTAL, THE THRESHOLD AND THE CONSEQUENCE, AND PROMISES NOTHING ELSE. Ruled 2026-11-01 that it
+	 * promises nothing that does not happen; the consequence, `ThresholdConsequence`, was added by issue #2688 once the
+	 * mark and the double that hunts a marked character existed. Being consumed is not mentioned: it does not exist
+	 * yet (#2693).
 	 */
 	static FString ThresholdQuestion(const FString& ItemName,
 									 const FCataclysmThresholdCrossing& Crossing);

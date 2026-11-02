@@ -48,6 +48,14 @@ struct CATACLYSM_API FCataclysmFloorModifierLine
 	bool bIsARow = false;
 
 	/**
+	 * Whether the line is the corrupted double's (`UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey`): not a
+	 * row and not a modifier, but the hunt a marked character brings to every floor. Issue #2688. Named plainly, not
+	 * dimmed, and not counted in the heading's modifiers.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	bool bIsTheConsumptionDouble = false;
+
+	/**
 	 * What this row is counting right now, e.g. "3 of 20", or empty for a row
 	 * that counts nothing.
 	 *
@@ -95,6 +103,15 @@ class CATACLYSM_API UCataclysmFloorModifierPanelLayout : public UObject
 	GENERATED_BODY()
 
 public:
+	/**
+	 * The key the dungeon game mode lists the corrupted double's line by, after the floor's rows, on a floor it hunts or
+	 * while it stands. Issue #2688. Not a row key: no row of the table is named this.
+	 */
+	static constexpr const TCHAR* ConsumptionDoubleKey = TEXT("Cataclysm_Consumption_Double");
+
+	/** What the corrupted double's line is named. */
+	static constexpr const TCHAR* ConsumptionDoubleName = TEXT("Hunted by your corrupted double");
+
 	/**
 	 * One line per modifier, in the order the floor carries them.
 	 *
