@@ -15,8 +15,10 @@ takes a new last parameter `BoundBy`, null by default, and `ACataclysmTether::Sk
 
 ### SAID FIRST
 
-- **BUILT, AND NO UNREAL TEST RUN YET.** Every Unreal figure below is a prediction traced by hand from the code. The
-  first build failed on a typo in the new zone test and was corrected; see "Run".
+- **PASSED IN WINDOW zone-skill-w1, ON `143e7d1c8`: 4515 OF 4515, G1 AND G2 PROVED, EACH FAILING EXACTLY ITS SIX
+  REGISTERED ASSERTIONS** (recorded under "Window zone-skill-w1" below). Every Unreal figure under "Registered before
+  the run" was a prediction traced by hand from the code, made before the window. The first build failed on a typo in
+  the new zone test and was corrected; see "Run".
 - **WHAT CHANGES IN PLAY.** A kill by a skill's zone or by a tether's burning line now carries the skill's tags to the
   killer's `kill` rows, as `FCataclysmDeathNotice::KillingSkillTags`. Before, both carried none. So "Melee kills
   restore 3%-6% of your maximum HP" (`Type.Melee`) now fires on a kill by the ground of a skill carrying `Type.Melee`,
@@ -173,7 +175,21 @@ Python of record on `37355d7ba`, `python -u -m pytest -p no:cacheprovider --juni
 skipped in 220.53s (0:03:40)`; JUnit tests 7240, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks
 passed!". This change adds and changes no Python test, so the totals are those of `development` at 97e557076.
 
-No Unreal test has run: the two new tests, the whole suite and G1-G2 are for the window.
+### Window zone-skill-w1, run 2026-11-01 by the coordinating session
+
+On `143e7d1c8`, branch `fix/zone-and-tether-name-their-skill-1`, on `development` at `97e557076`. Pre-checks at 18:13:18
+all passed, 11,301 MB of physical memory free, after the dungeon session's Python run had ended at 18:13:12; the runner
+(started 18:13:28) took the lock as `zone-skill-w1` and released it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `AGroundZonesSweepNamesTheSkillThatLeftIt` alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| `ATethersBurnNamesTheSkillThatBoundIt` alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole Unreal suite | 4515 / 0 | "4515 tests performed, 4515 succeeded, 0 failed"; "Declared: 4515 tests in the tree at 143e7d1c8; 4515 performed, gap 0"; "Test saves: 712 written and deleted, 0 left behind" |
+| Python | of record | "7232 passed, 8 skipped in 198.59s"; JUnit tests 7240, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| G1 | six assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed: AGroundZonesSweepNamesTheSkillThatLeftIt"; restored 1 of 1. The kept broken-half log has 7 controller error lines, the failed result and exactly the six registered: "the sweep names the skill that left the zone" ("None" against "Molten Trail"), "and points at that skill's tags", "which are its own, holding Type.Melee", "the kill names the skill that left the zone" ("None"), "and carries that skill's tags to the killer's rows", "which hold Type.Melee". Set-up and the control held |
+| G2 | six assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed: ATethersBurnNamesTheSkillThatBoundIt"; restored 1 of 1. The kept broken-half log has 7 controller error lines, the failed result and exactly the six registered: "the line's burn names the skill that bound it" ("None" against "Burning Line"), "and points at that skill's tags", "which are its own, holding Type.Ranged", "the kill names the skill that bound the line" ("None"), "and carries that skill's tags to the killer's rows", "which hold Type.Ranged". Set-up held |
 
 ---
 
