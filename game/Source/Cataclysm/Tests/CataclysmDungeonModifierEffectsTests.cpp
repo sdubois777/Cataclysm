@@ -90,6 +90,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
+#include "Interface/CataclysmFloorModifierPanel.h"
 #include "Interface/CataclysmGearPanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -141,9 +142,14 @@
  * `GetPawn` answers null. `CataclysmDroppedItemTests.cpp` records losing time
  * to exactly that.
  *
- * WHAT IS STILL NOT COVERED, said plainly: the floor panel. Showing it needs a
- * `ACataclysmPlayerController`, and these tests possess with a plain
- * `APlayerController`, so the panel call is skipped rather than checked.
+ * THE FLOOR PANEL, PARTLY COVERED SINCE ISSUE #1841. Showing it needs a
+ * `ACataclysmPlayerController`, and most tests here possess with a plain
+ * `APlayerController`, so their panel calls are skipped rather than checked.
+ * `EachBrandingBlowTellsThePanelTheNewCount` possesses with the game's own
+ * controller and reads what the game mode told it, at Brand of the Aggressor's
+ * one call of the 174; `TheFloorPanelListsWhatItIsToldWithEachRowsCount` checks
+ * the panel's lines. STILL NOT COVERED: the panel made by `CreateWidget` and put
+ * on the screen, which needs a local player that a test world does not have.
  */
 
 namespace CataclysmDungeonModifierEffectsTest
@@ -7532,6 +7538,146 @@ bool FCataclysmHellfireRollTest::RunTest(const FString& Parameters)
 // making a blow land for exactly nothing through the real pipeline is not
 // something these tests can arrange reliably.
 // ---------------------------------------------------------------------------
+
+/**
+ * Each landed blow on a Brand of the Aggressor floor tells the player's controller the new count, for the floor panel
+ * to draw. Issue #1841: nothing tested any link from the dungeon game mode to the panel, and deleting the call left
+ * every test passing.
+ *
+ * WHAT THIS COVERS: the game mode telling `ACataclysmPlayerController::ShowFloorModifiers`, read back through
+ * `FloorModifiersShown`, at ONE of the 174 places the game mode refreshes the panel -- Brand of the Aggressor's, the
+ * one the issue's closing check names. The panel's own lines are `TheFloorPanelListsWhatItIsToldWithEachRowsCount`'s.
+ * WHAT IT CANNOT SEE: the panel made by `CreateWidget` and put on the screen, which needs a local player, and a test
+ * world has none -- the limit the passive tree's tests record. Prints "PANEL TOLD".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrandTellsThePanelTest,
+	"Cataclysm.DungeonModifierEffects.EachBrandingBlowTellsThePanelTheNewCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBrandTellsThePanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	// THE GAME'S OWN CONTROLLER, which the game mode casts to before it tells anything.
+	const FPossessedPlayer Player(World, ACataclysmPlayerController::StaticClass());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Player.Controller);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !TestNotNull(TEXT("the player's controller is the game's own"), Controller))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	ACataclysmEnemyCharacter* Dummy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f), 10'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Dummy))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {BrandOfTheAggressor};
+	Mode->FloorNumber = 1;
+	// BRAND OF THE AGGRESSOR AND NO OTHER ROW, so no other rule refreshes the panel on these blows and the count below
+	// is the brand handler's alone. Read 2026-11-01: of the nine handlers `OnSomethingWasHit` calls, four refresh the
+	// panel -- Wasting Sickness and Holy Repercussions only on a floor carrying their row, Plague Convergence only
+	// for a blow its own creature lands on the player, and Brand of the Aggressor.
+	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor())
+		|| !TestTrue(FString::Printf(TEXT("set-up: the floor carries Brand of the Aggressor and no other row: %d rows"),
+									 Mode->FloorBrief.Modifiers.Num()),
+					 Mode->FloorBrief.Modifiers.Num() == 1
+						 && Mode->FloorBrief.Modifiers[0] == BrandOfTheAggressor))
+	{
+		return false;
+	}
+
+	// THE CALLS BEFORE THE BLOWS ARE `StartPlay`'S, NOT THE BRAND FLOOR'S. `BuildFloor` tells the panel nothing: in play
+	// `GoToFloor` builds the floor and then refreshes the panel through `ApplyFloorRulesKeepingHealth`, and this test
+	// calls `BuildFloor` alone. So what the controller holds here is `StartPlay`'s own floor, with no rows; window w133
+	// measured it, when P1's break left it the last call. Issue #1841.
+	const FCataclysmFloorModifiersShown& Shown = Controller->FloorModifiersShown();
+	const int32 CallsBeforeTheBlows = Shown.Calls;
+	const FString CountBeforeTheBlows = Shown.LiveCounts.FindRef(BrandOfTheAggressor);
+
+	constexpr int32 Blows = 3;
+	for (int32 Blow = 0; Blow < Blows; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("blow %d landed"), Blow + 1),
+					  UCataclysmSkillEffects::ApplyHit(Player.Character, Dummy, 50.0f) > 0.0f))
+		{
+			return false;
+		}
+	}
+
+	const FString Expected = FString::Printf(TEXT("%d of %d"), Blows, Effects::BrandStacksToErupt);
+	AddInfo(FString::Printf(TEXT("PANEL TOLD: before the blows (StartPlay's) %d calls, the count '%s'; after %d blows %d "
+								 "calls, the count '%s', floor %d, %d rows"),
+							CallsBeforeTheBlows, *CountBeforeTheBlows, Blows, Shown.Calls,
+							*Shown.LiveCounts.FindRef(BrandOfTheAggressor), Shown.FloorNumber, Shown.RowKeys.Num()));
+
+	TestTrue(TEXT("CONTROL: StartPlay told the controller, so the record is read at all"), CallsBeforeTheBlows > 0);
+	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsBeforeTheBlows, Blows);
+	TestEqual(TEXT("and what it is told last is the brand count after the third blow"),
+			  Shown.LiveCounts.FindRef(BrandOfTheAggressor), Expected);
+	TestTrue(TEXT("with the row among the rows it lists"), Shown.RowKeys.Contains(BrandOfTheAggressor));
+	TestEqual(TEXT("on the floor being walked"), Shown.FloorNumber, 1);
+	return true;
+}
+
+/**
+ * The floor panel lists one line for each row it is told, with each row's count beside it. Issue #1841: nothing
+ * tested the panel's own step either, from `SetFloorModifiers` to the lines it draws.
+ *
+ * MADE WITH `NewObject` AND NOT `CreateWidget`, for the passive tree's reason: `CreateWidget` needs a local player
+ * and a test world has none. No Blueprint, so nothing is drawn; `ShownLines` is what would be. Prints "PANEL LINES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPanelLinesTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelListsWhatItIsToldWithEachRowsCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPanelLinesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UCataclysmFloorModifierPanel* Panel = NewObject<UCataclysmFloorModifierPanel>(GetTransientPackage());
+	if (!TestNotNull(TEXT("a panel was made"), Panel))
+	{
+		return false;
+	}
+	TMap<FName, FString> Counts;
+	Counts.Add(BrandOfTheAggressor, TEXT("7 of 20"));
+	Panel->SetFloorModifiers({Starvation, BrandOfTheAggressor}, 4, Counts);
+
+	const TArray<FCataclysmFloorModifierLine>& Lines = Panel->ShownLines();
+	const FCataclysmFloorModifierLine* Brand = Lines.FindByPredicate(
+		[](const FCataclysmFloorModifierLine& Line) { return Line.RowKey == BrandOfTheAggressor; });
+	const FCataclysmFloorModifierLine* Hunger = Lines.FindByPredicate(
+		[](const FCataclysmFloorModifierLine& Line) { return Line.RowKey == Starvation; });
+	AddInfo(FString::Printf(TEXT("PANEL LINES: %d lines on floor %d; Brand '%s' counting '%s'; Starvation '%s' counting '%s'"),
+							Lines.Num(), Panel->ShownFloorNumber(), Brand ? *Brand->Name : TEXT("(none)"),
+							Brand ? *Brand->LiveCount : TEXT(""), Hunger ? *Hunger->Name : TEXT("(none)"),
+							Hunger ? *Hunger->LiveCount : TEXT("")));
+
+	TestEqual(TEXT("one line for each row it was told"), Lines.Num(), 2);
+	TestEqual(TEXT("on the floor it was told"), Panel->ShownFloorNumber(), 4);
+	if (!TestNotNull(TEXT("Brand of the Aggressor has a line"), Brand)
+		|| !TestNotNull(TEXT("and so does Starvation"), Hunger))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the brand line carries the count it was told"), Brand->LiveCount, FString(TEXT("7 of 20")));
+	TestTrue(TEXT("CONTROL: a row it was told no count for carries none"), Hunger->LiveCount.IsEmpty());
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrandCountTest,
 	"Cataclysm.DungeonModifierEffects.TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts",

@@ -15,6 +15,21 @@ class UCataclysmCharacterSheetWidget;
 class UCataclysmCityScreenWidget;
 class UCataclysmEmpireMapWidget;
 class UCataclysmFloorModifierPanel;
+
+/**
+ * What `ACataclysmPlayerController::ShowFloorModifiers` was last told, and how many times it has been told anything,
+ * for a test that cannot read the screen. Issue #1841.
+ *
+ * ONLY THE LAST CALL, so it never grows during play (ruled 2026-11-01). Set before the local-player check, because a
+ * test world has no local player and the panel is never made there.
+ */
+struct FCataclysmFloorModifiersShown
+{
+	TArray<FName> RowKeys;
+	int32 FloorNumber = 0;
+	TMap<FName, FString> LiveCounts;
+	int32 Calls = 0;
+};
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
 class UCataclysmPassiveTreeWidget;
@@ -80,6 +95,9 @@ public:
 	void ShowFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber,
 							const TMap<FName, FString>& LiveCounts =
 								TMap<FName, FString>());
+
+	/** What `ShowFloorModifiers` was last told, for a test that cannot read the screen. Issue #1841. */
+	const FCataclysmFloorModifiersShown& FloorModifiersShown() const { return LastFloorModifiersShown; }
 
 	/**
 	 * Put the game into the one input mode it plays in.
@@ -719,6 +737,9 @@ private:
 	 */
 	UPROPERTY()
 	TObjectPtr<UCataclysmFloorModifierPanel> FloorModifierPanel = nullptr;
+
+	/** See `FloorModifiersShown`. Issue #1841. */
+	FCataclysmFloorModifiersShown LastFloorModifiersShown;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

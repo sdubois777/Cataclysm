@@ -22218,7 +22218,7 @@ void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	// THE POINT. Nineteen blows out of twenty leave through that return, and they
 	// are exactly the blows a player has nothing else to read: the rule does
 	// nothing to them and the count is the only sign anything is building.
-	RefreshFloorModifierPanel();
+	RefreshFloorModifierPanel(); // Brand of the Aggressor's: the new count shown. Tested, issue #1841.
 
 	if (!Effects::BrandErupts(Before))
 	{
