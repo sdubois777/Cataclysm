@@ -21,7 +21,7 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
 
 ### SAID FIRST
 
-- **COMPILED, NOT RUN.** Phase 1 was written while another change's build-machine window held this machine and was not
+- **COMPILED; ONE GROUP RUN.** Phase 1 was written while another change's build-machine window held this machine and was not
   compiled. Phase 2, rebased onto `development` at `23d2333d6` (issue #340's minion attribute channel; the only conflict
   was this file's top), compiled it with `python tools/unreal_build.py build`: "Build: Succeeded - 44 actions, 41 files
   compiled", every one of the 41 unity files rebuilt, among them the seven that hold this change's `.cpp` files. Then
@@ -29,8 +29,8 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
   adaptive build: "Build: Succeeded - 15 actions, 12 files compiled: CataclysmCharacterSheetTests.cpp,
   CataclysmCharacterSheetLayout.cpp, CataclysmItemComparison.cpp, CataclysmInventoryWidget.cpp,
   CataclysmWeaponSlotsComponent.cpp, CataclysmItemComparisonTests.cpp, CataclysmEquipmentComponent.cpp, ...", and the
-  stand-in's in the build below. Nothing has been through the automation run, so every figure under "Registered before
-  the run" is still a prediction.
+  stand-in's in the build below. Only `Cataclysm.ItemComparison.` has been through the automation run (next bullet but
+  one), so every other figure under "Registered before the run" is still a prediction.
 - **ONE FAULT FOUND COMPILING AND REVIEWING, AND FIXED.** `ACataclysmComparisonStandIn`'s constructor called
   `AbilitySystem->SetIsReplicated(false)`. The class sets true, so a call asking for false runs the body, and in a
   constructor that body's ensure fires ("SetIsReplicatedByDefault is preferred during Component Construction";
@@ -39,7 +39,22 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
   (C2248 when tried), and the call is not needed: a component replicates only through its actor, whose `bReplicates` is
   false. The call is gone ("Build: Succeeded - 4 actions, 1 file compiled: CataclysmComparisonStandIn.cpp"). The other
   actors here that call `SetIsReplicated` in a constructor ask for the true the class already holds, so their bodies
-  never run. No other change to phase 1: the review below found nothing else to change.
+  never run. The review below found nothing else to change; the window found one more fault, next.
+- **THE WINDOW STOPPED ONCE, ON A PRODUCT FAULT THE TESTS ALSO HAD, AND IT IS FIXED.** Window item-comparison-w1 at
+  `6aa62dd6` stopped at its first step: `Cataclysm.ItemComparison.` alone performed 6, 4 succeeded, 2 failed -- the
+  helm's "the left column names what it would replace" and the two-handed weapon's "the heading names both". A
+  temporary `AddInfo` in both tests printed "NameOfItem=[] heading=[If worn, in place of Head_Helm:]" and
+  "heading=[If worn, in place of Weapon_Sword and Weapon_Dagger:]". `UCataclysmItemName::NameOf` names only an item
+  with a rarity, `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no enchantment, and
+  `HeadingFor` fell back to the row key -- which a player holding the starting weapon, such a piece, would have read.
+  `HeadingFor` now takes the whole name, else the base's `BaseName`, as the piece's inventory cell shows it
+  (`UCataclysmInventoryScreen::LabelFor`), and the row key only for a base the table does not hold. The two tests hold
+  the headings to "If worn, in place of Helm:" and "If worn, in place of Sword and Dagger:", and the helm's adds a
+  control that the plain helm has no whole name and a check that a piece with a rarity is called by its whole name.
+  Built ("Build: Succeeded - 7 actions, 4 files compiled: CataclysmItemComparison.cpp,
+  CataclysmItemComparisonTests.cpp, ...", each alone) and rerun with the coordinator's lock: "Tests: 6 tests performed, 6 succeeded, 0 failed", "Test saves: 0 written and
+  deleted, 0 left behind". Nothing else has run since; the registration below is unchanged, and P3's predicted "the
+  heading names both" still fails under its break, the heading then naming the sword alone.
 - **THE REVIEW, phase 2, read and not run.** `PreviewEquip` calls `Equip` itself on the live component, so the slot
   choice, a two-handed weapon over two held (both recorded, `Equip`'s `OutRemoved` then `OutAlsoRemoved`) and Both Hands
   Full (read by `Equip` off the live owner's ability system) are `Equip`'s own. `Equip` and `EquipInto` change only
@@ -164,15 +179,16 @@ with a spawned stand-in, on characters with no player state (no attribute points
 1. `Cataclysm.ItemComparison.AHelmIsComparedWithTheHelmItWouldReplace` ("ITEM COMPARISON: helm"): a plain helm worn, a
    helm with flat health hovered, both +10. CONTROL: a real equip on a second character raises maximum health by
    exactly `AffixValue(120, 0, 7, 1.0, 10)`. Compared in Head; the plain helm comes off; one change line, "Health: N to
-   M, up R" from the live and the really-worn figures; the heading names the helm; the right column is "Worn now:" and
-   the helm's own lines.
+   M, up R" from the live and the really-worn figures; the heading is "If worn, in place of Helm:", the plain helm
+   having no whole name (CONTROL), and a piece that has a rarity is called by its whole name; the right column is "Worn
+   now:" and the helm's own lines.
 2. `Cataclysm.ItemComparison.ARingIsComparedWithTheRingTheEquipActionWouldReplace`: three rings worn: Ring 4, as a real
    equip on a copy chooses (CONTROL), nothing comes off, "Compared with nothing: Ring 4 is empty." and "If worn in Ring
    4:". Eight worn: Ring 1, as a real equip chooses (CONTROL), and the ring that real equip takes off, marked by its
    residue.
 3. `Cataclysm.ItemComparison.ATwoHandedWeaponIsComparedWithBothWeaponsItWouldReplace`: a sword and a dagger worn, a
-   greatsword hovered: Weapon 1, the sword then the dagger come off, the heading names both, and the right column holds
-   both weapons' own lines.
+   greatsword hovered: Weapon 1, the sword then the dagger come off, the heading is "If worn, in place of Sword and
+   Dagger:", and the right column holds both weapons' own lines.
 4. `Cataclysm.ItemComparison.AskingChangesNothingWornAndAnnouncesNothing`: a helm of residue 1000 worn and boots of 1000
    with flat health hovered, which would cross tier 1's threshold (CONTROL). After the comparison: no slot changed, the
    Worn Residue, the change count and maximum health as they were, and no listener of `EquipmentChanged` called.
