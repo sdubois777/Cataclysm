@@ -205,14 +205,17 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 		const APawn* Pawn = GetOwningPlayerPawn();
 		const UCataclysmEquipmentComponent* Equipment =
 			Pawn ? Pawn->FindComponentByClass<UCataclysmEquipmentComponent>() : nullptr;
+		// AND THE CONSUMPTION MARK, only when the character carries it. Issue #2688.
+		const FString Mark = UCataclysmCharacterSheetLayout::ConsumptionMarkLine(State && State->IsMarkedByConsumption());
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Level %d   Difficulty tier %d   %s   %s"),
+			TEXT("Level %d   Difficulty tier %d   %s   %s%s%s"),
 			State ? State->GetCharacterLevel() : 0, ShownDifficultyTier(),
 			*UCataclysmCharacterSheetLayout::KillsLine(
 				State ? State->GetRunKills() : 0,
 				State ? State->GetLifetimeKills() : 0),
 			*UCataclysmCharacterSheetLayout::WornResidueLine(
-				Equipment ? Equipment->WornResidue() : 0.0f, ShownDifficultyTier()))));
+				Equipment ? Equipment->WornResidue() : 0.0f, ShownDifficultyTier()),
+			Mark.IsEmpty() ? TEXT("") : TEXT("   "), *Mark)));
 	}
 
 	if (PointsLabel)

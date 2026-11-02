@@ -2218,6 +2218,36 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		&Bases);
 }
 
+ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 CarriedSlot,
+																	 const FCataclysmItem* AskedAbout,
+																	 ECataclysmGearSlot& OutSlot)
+{
+	ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
+	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot).Crosses();
+	const bool bWasMarked = State && State->IsMarkedByConsumption();
+
+	// MARKED FIRST, so the character record the equip writes already holds it. See the header.
+	if (bCrosses && State) { State->MarkByConsumption(); } // The Consumption mark's: set before the equip writes.
+
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	const ECataclysmWearResult Result = AskedAbout
+		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went)
+		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true);
+	const bool bWorn = Result == ECataclysmWearResult::Worn || Result == ECataclysmWearResult::Swapped;
+	if (bWorn)
+	{
+		OutSlot = Went;
+	}
+
+	// AN EQUIP THAT DID NOT HAPPEN TAKES BACK THE MARK IT SET, and says so to the record as well.
+	if (bCrosses && State && !bWorn && !bWasMarked)
+	{
+		State->ClearConsumptionMark();
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
+	}
+	return Result;
+}
+
 void ACataclysmPlayerCharacter::OnEquipmentChanged()
 {
 	if (UCataclysmAbilitySystemComponent* ASC =
@@ -2911,11 +2941,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
 			// "confirm" IS THE YES THE INVENTORY SCREEN ASKS FOR before the Worn
 			// Residue crosses the Consumption Threshold. Issue #2687. Without it a
-			// crossing equip is refused here, as it is asked about there.
+			// crossing equip is refused here, as it is asked about there; with it,
+			// a crossing equip marks the character, as "Wear it" does (#2688).
 			const bool bConfirmed = Args.Num() > 1 && Args[1].Equals(TEXT("confirm"), ESearchCase::IgnoreCase);
-			const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
-				Character->GetInventory(), Character->GetEquipment(),
-				FCString::Atoi(*Args[0]), Slot, bConfirmed);
+			const ECataclysmWearResult Result = bConfirmed
+				? Character->WearPastTheThreshold(FCString::Atoi(*Args[0]), nullptr, Slot)
+				: UCataclysmWearing::WearFromCarried(Character->GetInventory(), Character->GetEquipment(),
+													 FCString::Atoi(*Args[0]), Slot);
 
 			Ar.Log(*UCataclysmWearing::Explain(Result));
 

@@ -21,6 +21,8 @@ struct FCataclysmDeathNotice;
 struct FCataclysmHitNotice;
 struct FCataclysmSkillUsedNotice;
 struct FCataclysmItem;
+enum class ECataclysmGearSlot : uint8;
+enum class ECataclysmWearResult : uint8;
 
 /**
  * The player pawn. Its ability system component lives on the player state, so
@@ -426,6 +428,25 @@ public:
 	 * replaced. Reading them is safe; reassigning them is not.
 	 */
 	UCataclysmInventoryComponent* GetInventory() const { return Inventory; }
+
+	/**
+	 * Put on an item the player has said yes to wearing past the Consumption Threshold, and mark the character when
+	 * the equip crosses it. Issues #2687 and #2688. The inventory screen's "Wear it" and `Cataclysm.Equip <slot>
+	 * confirm` both come here, so the mark has one place it is set.
+	 *
+	 * MARKED BEFORE THE EQUIP, NOT AFTER. Taking the item out of the bag and putting what came off back in each raise
+	 * the inventory's save trigger, and that writes the character record there and then. Marked afterwards, that record
+	 * would be written without the mark, and a player who quit at once would load unmarked: the escape the saved mark
+	 * exists to close (ruled 2026-11-02). An equip that then does not happen takes the mark back, unless the character
+	 * was marked already, and raises the trigger once more so the record says so too.
+	 *
+	 * ONLY A CROSSING MARKS: a yes on an equip that stays below the threshold, or was already past it, puts the item on
+	 * and marks nothing.
+	 *
+	 * @param AskedAbout  the item the question named, which the carried slot must still hold exactly; null for the
+	 *                    console's confirm, which named a slot and no item.
+	 */
+	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot);
 
 	/** What the character is wearing. Issue #828. */
 	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }

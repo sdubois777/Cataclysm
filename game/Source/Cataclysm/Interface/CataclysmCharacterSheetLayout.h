@@ -136,6 +136,12 @@ public:
 	 */
 	static FString WornResidueLine(float WornResidue, int32 DifficultyTier);
 
+	/**
+	 * "Marked: crossed the Consumption Threshold" for a marked character, and nothing for one that is not. Issue #2688.
+	 * IT SAYS WHAT HAPPENED AND PROMISES NOTHING: the double that hunts a marked character is #2688's second slice.
+	 */
+	static FString ConsumptionMarkLine(bool bMarked);
+
 	/** The five groups, in the order they are shown. */
 	static const TArray<ECataclysmSheetGroup>& Groups();
 

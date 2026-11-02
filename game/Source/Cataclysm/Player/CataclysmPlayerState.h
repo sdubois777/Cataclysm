@@ -339,6 +339,28 @@ public:
 	 */
 	int32 RaiseDifficultyTierForAWin();
 
+	/**
+	 * Whether the character is marked: it crossed its tier's Consumption Threshold with an equip it confirmed. Issue
+	 * #2688. `docs/Cataclysm_GDD_v2.md`, "What crossing it does": "The character is marked." The character record holds
+	 * it (ruled 2026-11-02).
+	 *
+	 * ONLY KILLING THE DOUBLE CLEARS IT, the owner's decision of 2026-11-02 (or being consumed, once that exists).
+	 * Falling back below the threshold does not: taking gear off, Purified Essence and Residue Protocols leave it set.
+	 */
+	bool IsMarkedByConsumption() const { return bMarkedByConsumption; }
+
+	/** Mark the character. `ACataclysmPlayerCharacter::WearPastTheThreshold` is the one caller in play; a load is the other. */
+	void MarkByConsumption() { bMarkedByConsumption = true; }
+
+	/**
+	 * Take the mark off.
+	 *
+	 * TWO CALLERS, AND NEITHER IS THE DOUBLE'S DEATH YET: `WearPastTheThreshold` taking back a mark it set for an equip
+	 * that then did not happen, and the tests. Killing the double, which is what clears a mark in play, arrives with
+	 * the double itself, #2688's second slice.
+	 */
+	void ClearConsumptionMark() { bMarkedByConsumption = false; }
+
 	// ----------------------------------------------------------------------
 	// Passive points and where they went
 	// ----------------------------------------------------------------------
@@ -788,6 +810,10 @@ protected:
 	/** See `GetDifficultyTier`. Issue #1472. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	int32 DifficultyTier = 1;
+
+	/** See `IsMarkedByConsumption`. Issue #2688. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	bool bMarkedByConsumption = false;
 
 	/**
 	 * REPLICATED, because the client draws the tree screen from it and the
