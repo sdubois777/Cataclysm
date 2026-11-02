@@ -256,6 +256,14 @@ public:
 	static float ThrallDamageMultiplierAgainst(const AActor* Striker, const AActor* Target);
 
 	/**
+	 * The type tags a thrall's minion damage is asked with: `Minion.Creature` and nothing else. Issue #340, ruled
+	 * 2026-11-02 by the coordinating session: a thrall counts as a summoned creature, so its commander's Spirit reaches
+	 * its blow and its explosion through `game/Data/MinionScaling.csv`, and Agility does not. Empty if the tag is not
+	 * registered, which reaches only the rows that name no tag -- what a thrall was asked with before.
+	 */
+	static FGameplayTagContainer ThrallMinionTags();
+
+	/**
 	 * Whether this character's resource pool has room to hold another thrall.
 	 *
 	 * THE STAFF'S SUBJUGATE: "holding a thrall reserves 30 Fervour, so your army

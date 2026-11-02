@@ -1489,14 +1489,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// The multiplier applied below is not: it comes from one stat that names
 	// minions and nothing else.
 	//
-	// THE THIRD CHANNEL IS STILL NOT BUILT. `game/Data/MinionScaling.csv` names
-	// one primary attribute per minion type and is read by nothing in the
-	// engine. Issue #898 carries it -- "three models of minion scaling
-	// disagree". It matches on `RequiresTag`, and the blocker this paragraph
-	// used to name -- a minion carried no gameplay tags -- is gone since issue
-	// #1833's deployable Part 1, which gives a minion its type row's Tags. What
-	// remains is building the channel itself. So two of the three channels work
-	// and the attribute one does not.
+	// THE THIRD CHANNEL ARRIVES THROUGH THE SAME MULTIPLIER, SINCE ISSUE #340.
+	// `game/Data/MinionScaling.csv` names one primary attribute per minion
+	// type -- Spirit for a `Minion.Creature`, Agility for a `Minion.Machine`,
+	// one percent a point -- and `UCataclysmPlayerClassStats::ApplyTo` records
+	// each row as an increase on the summoner's `minion_damage` line requiring
+	// the row's tag. Asking with this minion's own type tags, below, is what
+	// lets Spirit reach an imp and not a ballista. In the increased bucket, so
+	// it adds to gear's increased minion damage rather than multiplying it.
+	// All three channels now work.
 	//
 	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
 	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
@@ -1841,8 +1842,9 @@ ACataclysmGroundZone* ACataclysmMinion::LeaveChaosPool()
 		return nullptr;
 	}
 
-	// A SHARE OF ITS OWN BLOW, the figure settled when it was summoned and the one its explosion is priced from.
-	// A sweep is dealt as direct damage by the commander, so nothing of the commander's raises it after this.
+	// A SHARE OF ITS OWN BLOW, the figure settled when it was summoned. Its explosion takes its summoner's minion
+	// damage on top of that figure since issue #340 (`Explode`); this pool was not part of that ruling and still does
+	// not. A sweep is dealt as direct damage by the commander, so nothing of the commander's raises it after this.
 	const float PerSweep = OwnDamagePerHit * ChaosPoolPercentOfOwnBlow / 100.0f;
 	if (PerSweep <= 0.0f)
 	{
@@ -1876,11 +1878,23 @@ void ACataclysmMinion::Explode()
 	// until then the caller passed the summoning skill's damage percentage,
 	// which `ApplyHit` read against the summoner's weapon.
 	//
-	// THE SUMMONER'S INCREASED MINION DAMAGE IS IN THE BLOW ALREADY, because
-	// the blow this is a share of is the one `AttackTarget` deals, and that
-	// reads `minion_damage` fresh at every swing. Reading it again here would
-	// count it twice.
-	const float OwnBlow = OwnDamagePerHit;
+	// ITS BLOW AS DEALT, WITH THE SUMMONER'S MINION DAMAGE ON IT. Ruled
+	// 2026-11-02 by the coordinating session under the owner's delegation,
+	// issue #340: the explosion is a share of the blow `AttackTarget` deals, so
+	// it takes the same multiplier -- gear's increased minion damage, a "more"
+	// row, and the summoner's attribute through `game/Data/MinionScaling.csv` --
+	// asked with this minion's own type tags, as a thrall's explosion already
+	// was (`ThrallExplosionDamage`). THIS COMMENT USED TO SAY THE MULTIPLIER WAS
+	// "IN THE BLOW ALREADY", which was false: `OwnDamagePerHit` is the type
+	// row's figure raised by level and nothing else, and the multiplier is
+	// applied in `AttackTarget` to the swing alone, so it never reached here.
+	//
+	// READ ONCE, WITH NO TARGET, because an explosion has many. The part of
+	// minion damage conditioned on the enemy struck cannot apply, as for a
+	// thrall. `minion_explosion_damage`, Volatile's stat, is a separate
+	// multiplier below and is not read twice.
+	const float OwnBlow = OwnDamagePerHit
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);
 	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
 
 	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
@@ -2065,9 +2079,11 @@ float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* 
 	const float AttackDamage = Its
 		? Its->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
 		: 0.0f;
-	// NO TYPE TAGS, for the reason `UCataclysmCommand::ThrallDamageMultiplierAgainst` gives: a thrall carries none.
+	// AS A `Minion.Creature`, for the reason `UCataclysmCommand::ThrallDamageMultiplierAgainst` gives (issue #340,
+	// ruled 2026-11-02): its commander's Spirit reaches its explosion as it reaches its blow. Volatile's
+	// `minion_explosion_damage` is still asked with no tags; no row of it carries one.
 	const float OwnBlow = AttackDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), FGameplayTagContainer());
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags());
 	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
 		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
 }

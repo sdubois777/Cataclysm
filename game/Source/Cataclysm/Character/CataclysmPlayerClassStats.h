@@ -93,6 +93,18 @@ public:
 	 */
 	static const UDataTable* LoadAttributeTable();
 
+	/** What one attribute point is worth to a minion carrying a tag. Same workbook. */
+	static const TCHAR* MinionScalingAssetPath;
+
+	/**
+	 * The same, for `game/Data/MinionScaling.csv`. Issue #340.
+	 *
+	 * READ BY `ApplyTo`'S THIRD PASS, which turns each row into an increase on the
+	 * summoner's recorded minion stat line requiring the row's tag. Null, with a
+	 * warning, when the asset is missing, and then no attribute reaches a minion.
+	 */
+	static const UDataTable* LoadMinionScalingTable();
+
 	/**
 	 * Put a character's spent attribute points into a base-override map.
 	 *
