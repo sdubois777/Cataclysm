@@ -119,6 +119,51 @@ enum class ECataclysmWearResult : uint8
 	 * which destroys it -- the one thing this whole class exists to prevent.
 	 */
 	TheFloorRefusedIt	UMETA(DisplayName = "It could not be put on the floor"),
+
+	// ADDED AT THE END AGAIN, for issue #2687, so every value above keeps the
+	// number it had.
+
+	/**
+	 * Not put on, and nothing moved: wearing it would take the Worn Residue
+	 * from below this tier's Consumption Threshold to at or past it, and the
+	 * player has not yet said yes. `WearAfterConfirming` is how they do.
+	 */
+	WouldCrossConsumptionThreshold	UMETA(DisplayName = "Past the Consumption Threshold; not yet confirmed"),
+
+	/**
+	 * Not put on, and nothing moved: the carried slot no longer holds the item
+	 * the player was asked about, because the bag changed while the question
+	 * was open.
+	 */
+	NoLongerThere		UMETA(DisplayName = "It is no longer where it was"),
+};
+
+/**
+ * What putting one carried item on would do to the Worn Residue, against this
+ * tier's Consumption Threshold. Issue #2687.
+ */
+struct FCataclysmThresholdCrossing
+{
+	/** The Worn Residue now. */
+	float Now = 0.0f;
+
+	/** The Worn Residue once it is on, counting whatever would come off. */
+	float After = 0.0f;
+
+	/** This tier's Consumption Threshold. */
+	float Threshold = 0.0f;
+
+	/** The difficulty tier the threshold is for. */
+	int32 Tier = 1;
+
+	/**
+	 * Whether the player is asked: below the threshold now, and at or past it
+	 * once it is on. ONLY THE CROSSING ASKS, a reading of the design's "would
+	 * take Worn Residue to or past the threshold" ruled on 2026-11-01: a character
+	 * already past it is not asked again at every equip, and an equip that
+	 * brings it back below is never asked about.
+	 */
+	bool Crosses() const { return Now < Threshold && After >= Threshold; }
 };
 
 /**
@@ -160,13 +205,66 @@ public:
 	 * is refused before anything moves rather than half-done and rolled back:
 	 * a rollback has its own failure modes and this has one honest answer.
 	 *
+	 * ASKED FIRST WHEN IT WOULD CROSS THE CONSUMPTION THRESHOLD. Issue #2687.
+	 * Unless the player has already said yes, an item that would take the Worn
+	 * Residue from below this tier's threshold to at or past it is not put on,
+	 * and the answer is WouldCrossConsumptionThreshold with nothing moved. The
+	 * caller asks the player, and `WearAfterConfirming` puts it on. Every equip
+	 * the player chooses comes through here; see `EquipInto`'s header for the
+	 * ones that do not ask.
+	 *
 	 * @param OutSlot  where the item ended up. Untouched when nothing was worn.
+	 * @param bConfirmedPastThreshold  the player has said yes, so do not ask.
+	 * @param DifficultyTier  the tier whose threshold applies; 0 for the one
+	 *                        the equipment's world is played at.
 	 */
 	static ECataclysmWearResult WearFromCarried(
 		UCataclysmInventoryComponent* Inventory,
 		UCataclysmEquipmentComponent* Equipment,
 		int32 CarriedSlot,
-		ECataclysmGearSlot& OutSlot);
+		ECataclysmGearSlot& OutSlot,
+		bool bConfirmedPastThreshold = false,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * Put on the item the player was asked about and said yes to. Issue #2687.
+	 *
+	 * THE BAG MAY HAVE CHANGED WHILE THE QUESTION WAS OPEN, so the carried
+	 * slot is read again: when it no longer holds exactly `AskedAbout`, nothing
+	 * moves and the answer is NoLongerThere. A yes given about one item must
+	 * never put on another.
+	 */
+	static ECataclysmWearResult WearAfterConfirming(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		int32 CarriedSlot,
+		const FCataclysmItem& AskedAbout,
+		ECataclysmGearSlot& OutSlot,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * What putting on the item in a carried slot would do to the Worn Residue.
+	 * An empty slot answers the Worn Residue now for both totals, so it never
+	 * crosses. Issue #2687.
+	 *
+	 * @param DifficultyTier  as WearFromCarried's.
+	 */
+	static FCataclysmThresholdCrossing CrossingFor(
+		const UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		int32 CarriedSlot,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * The question asked before an equip crosses the threshold, in one line.
+	 *
+	 * IT STATES THE TOTAL AND THE THRESHOLD AND PROMISES NOTHING ELSE. Ruled
+	 * 2026-11-01: what crossing does to the character, the Consumption mark,
+	 * does not exist yet, and issue #2688, which builds it, adds the sentence
+	 * saying so in the design's words.
+	 */
+	static FString ThresholdQuestion(const FString& ItemName,
+									 const FCataclysmThresholdCrossing& Crossing);
 
 	/**
 	 * Take off what is worn in a gear slot and put it in the bag.

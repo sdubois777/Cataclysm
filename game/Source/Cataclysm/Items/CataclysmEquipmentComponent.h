@@ -183,6 +183,20 @@ public:
 	 */
 	static float ConsumptionThresholdFor(int32 DifficultyTier);
 
+	/**
+	 * The Worn Residue there would be if this item were put on the way `Equip` would put it on, counting whatever
+	 * that would take off. Issue #2687, the question asked before an equip crosses the Consumption Threshold.
+	 *
+	 * `Equip` ITSELF DECIDES, ON A COPY THAT IS PUT BACK. Which slot an item goes to and what comes off with it --
+	 * a two-handed weapon over two held ones, Both Hands Full -- is decided in `Equip` and `EquipInto`, and a second
+	 * copy of that rule written here for the question would one day disagree with the first. So the slots are
+	 * copied, `Equip` runs on them with nothing announced, the total is read, and the slots and the change count are
+	 * put back as they were. Nothing leaves the component, so nothing can be lost. Not const for that reason alone.
+	 *
+	 * An item `Equip` refuses changes nothing, so the answer is the Worn Residue now.
+	 */
+	float WornResidueIfEquipped(const FCataclysmItem& Item);
+
 	/** Every slot, in the enum's order. Always SlotCount long. */
 	const TArray<FCataclysmItem>& GetSlots() const { return Slots; }
 
@@ -275,6 +289,11 @@ public:
 	 * weapon in the other hand, because no loadout mixes the two; a two-handed
 	 * weapon in the other hand stays. A one-handed weapon put beside a
 	 * two-handed one takes it off, whichever hand holds it.
+	 *
+	 * AN EQUIP THE PLAYER CHOOSES GOES THROUGH `UCataclysmWearing::WearFromCarried`, NOT HERE. That is where the
+	 * player is asked before the Worn Residue crosses this tier's Consumption Threshold (issue #2687), and neither
+	 * this nor `Equip` asks. The callers that do not ask are the ones the player does not choose: the equips of
+	 * character creation, `RestoreWornGear` putting saved gear back, and the Corrupted Stalker dressing itself.
 	 */
 	ECataclysmEquipResult EquipInto(const FCataclysmItem& Item,
 									ECataclysmGearSlot Slot,
@@ -574,6 +593,9 @@ private:
 	 * session rather than the character.
 	 */
 	int32 Changes = 0;
+
+	/** While true, `AnnounceChange` changes nothing: `WornResidueIfEquipped` runs `Equip` on slots it puts back. */
+	bool bAnnouncingSilenced = false;
 
 	/**
 	 * One entry per slot, always SlotCount long, an empty item meaning nothing

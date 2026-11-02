@@ -217,6 +217,23 @@ public:
 	void ReportInventoryPress(ECataclysmWearResult Result) const;
 
 	/**
+	 * Asks, on the choice panel, before the item in this carried cell is put on past this tier's Consumption
+	 * Threshold, and puts it on only for "Wear it". Issue #2687. The answer goes through
+	 * `UCataclysmWearing::WearAfterConfirming`, so a cell that changed while the question was open puts nothing on.
+	 */
+	void AskBeforeWearing(class ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot);
+
+	/**
+	 * Whether the question `AskBeforeWearing` opened is on the screen. While it is, a press on the inventory screen
+	 * does nothing: the question names one carried cell, and a press that moved the item in it would leave the answer
+	 * about a different one. Issue #2687.
+	 */
+	bool WearingQuestionIsOpen() const;
+
+	/** The choice panel, created the first time it is needed; null, with the reason logged, when it cannot be. */
+	class UCataclysmChoicePanelWidget* EnsureChoicePanel();
+
+	/**
 	 * Says that a press on the inventory screen did nothing at all, and why.
 	 *
 	 * THE GAP THIS FILLS. `ReportInventoryPress` above only speaks once a press

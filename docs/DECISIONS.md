@@ -2,6 +2,161 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — An equip that would take the Worn Residue to or past this tier's Consumption Threshold is asked about first, on the choice panel (#2687)
+
+**Affects:** `ECataclysmWearResult::WouldCrossConsumptionThreshold` and `NoLongerThere`, `FCataclysmThresholdCrossing`,
+`UCataclysmWearing::WearAfterConfirming`, `CrossingFor` and `ThresholdQuestion`, new, and `WearFromCarried`'s two new
+parameters (`game/Source/Cataclysm/Items/CataclysmWearing.h`, `.cpp`); `UCataclysmEquipmentComponent::WornResidueIfEquipped`,
+new, and a comment on `EquipInto` (`CataclysmEquipmentComponent.h`, `.cpp`); `UCataclysmChoicePanelWidget::SetQuestion`,
+new (`game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h`, `.cpp`); `ACataclysmPlayerController::AskBeforeWearing`,
+`WearingQuestionIsOpen` and `EnsureChoicePanel`, new, and the two inventory press handlers
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h`, `.cpp`); the equip console command's confirm
+argument (`CataclysmPlayerCharacter.cpp`); four new tests in `CataclysmThresholdQuestionTests.cpp`. Issue
+[#2687](https://github.com/sdubois777/Cataclysm/issues/2687).
+
+### SAID FIRST
+
+- **RUN IN UNREAL, in windows w136 and w136b; every step as registered.** w136 stopped after the whole suite on a
+  fault in the runner, and w136b ran the steps it never reached. See Run.
+- **THE QUESTION PROMISES NOTHING ABOUT WHAT CROSSING DOES, BECAUSE NOTHING YET HAPPENS.** The design says the game
+  "states the resulting total and the consequence". This states the total and the threshold. The consequence -- the
+  mark, and the double that hunts the player -- is [#2688](https://github.com/sdubois777/Cataclysm/issues/2688), and
+  **#2688 must add the consequence sentence to `UCataclysmWearing::ThresholdQuestion`, in the design's words, when the
+  mark exists.** Ruled 2026-11-01 (Q2).
+- **NO TEST CAN SEE THE PANEL DRAWN OR CLICKED.** The tests read the rule, the words and the panel's keys and answer;
+  the controller's part -- opening the panel on a right press, and ignoring inventory presses while it is open -- is
+  checked by the owner's launch check below.
+- **For the owner's launch check:** with Worn Residue just below the threshold, right-click an item that takes it past:
+  the panel asks, "Keep it off" changes nothing, "Wear it" puts it on. And: clicking "Wear it" where the panel lies
+  over the carried grid does not also pick an item up. Whatever that answer is, the two guards below keep the
+  question about one item.
+
+### Rulings, 2026-11-01
+
+- **Q1, which paths ask: the paths the player chooses.** The design says "There is no path across the threshold that
+  does not show the warning first"; read as every equip the player chooses. Recorded as a reading. The paths, from a
+  sweep of `game/Source` outside the tests for `UCataclysmWearing::`, `->Equip(` and `EquipInto`:
+
+  | Path | Asks |
+  |---|---|
+  | A right press on a carried cell of the inventory screen (`RightPressOnTheInventoryScreen`, `WearFromCarried`) | yes, on the choice panel |
+  | The `Cataclysm.Equip` console command (`WearFromCarried`) | refused without `confirm`; `confirm` is the yes |
+  | Character creation's two equips (`CataclysmPlayerCharacter.cpp`, `Equipment->Equip`) | no: not the player's choice of item |
+  | Saved gear put back (`RestoreWornGear`, from `CataclysmSaveApply.cpp`) | no: it was worn when saved |
+  | The Corrupted Stalker dressing itself (`EquipInto`) | no: a creature, not the player |
+
+  There is no drag and drop (the screen is click-to-place, and a left press on a gear slot while holding something is
+  refused), no gamepad path and no stash. A left press only picks up, puts down or drops, and taking a piece off can
+  only lower the Worn Residue. `EquipInto`'s header now says that a player-chosen equip goes through `WearFromCarried`.
+- **Q2:** the words, above.
+- **Q3, only the crossing asks:** below the threshold now, and at or past it once the item is on (the design's "to or
+  past"). A character already past it is not asked at every equip, and an equip that brings it back below is never
+  asked about. Recorded as a reading.
+- **Q4, the choice panel is reused,** with a second entry point and no new asset, so no editor generator run. The
+  answer is called through a function that holds the controller by `TWeakObjectPtr` and does nothing when it is gone.
+- `Cataclysm.Equip <slot> confirm`, a developer's tool, takes an explicit yes.
+- Two proofs, P1 and P2, with their failing assertions registered.
+
+### What changes
+
+- **`UCataclysmEquipmentComponent::WornResidueIfEquipped(Item)`**: the Worn Residue once the item is on, counting
+  what would come off. `Equip` decides that, on the component's own slots with announcing silenced, and the slots and
+  the change count are then put back; a second copy of the slot rule written for the question would one day disagree
+  with the first.
+
+  **WHAT `Equip` AND `EquipInto` DO BESIDES WRITE THE SLOTS**, read from the code at a5b27c029 when the coordinator
+  asked before the window:
+
+  | What they do | Stopped by the silencing? | Undone by the restore? |
+  |---|---|---|
+  | Write `Slots`, through `PlaceInto` and `TakeOutOf` | no | yes: the whole array is copied back |
+  | `AnnounceChange`: raise `Changes` and broadcast `EquipmentChanged` | yes: it returns before either | `Changes` is copied back as well |
+  | Read the item base table (`LoadBaseTable`, `FindRow`), the candidate slots and `IsTwoHanded` | reads only | nothing to undo |
+  | Read Both Hands Full through `UCataclysmAbilitySystemComponent::StatForSkill`, a `const` function | reads only | nothing to undo |
+
+  **Everything else happens in the one listener**, `ACataclysmPlayerCharacter::OnEquipmentChanged`, bound at
+  `CataclysmPlayerCharacter.cpp` line 718. It is the only `EquipmentChanged` binding outside the tests. It refreshes
+  the attributes from what is worn (`RefreshAttributes`), hands back a second two-handed weapon
+  (`ReturnSecondTwoHandedWeapon`), refills the skill slots from the worn weapon (`FillAbilitySlotsFromWornWeapon`), and
+  changes the weapon meshes (`RefreshWeaponMeshes`).
+  None of it runs, because nothing is broadcast. Neither function grants an ability, applies a gameplay effect or
+  triggers a save. `Slots` is `UPROPERTY(SaveGame)` and is not replicated: the component has no `Replicated` property
+  and no `GetLifetimeReplicatedProps`. Three widgets poll `ChangeCount()`, and they see the restored count. The
+  question runs inside one call on the game thread, so no tick reads the slots in between.
+- **`UCataclysmWearing::CrossingFor`** reads the totals and the tier's threshold; **`WearFromCarried`** answers
+  `WouldCrossConsumptionThreshold`, moving nothing, unless `bConfirmedPastThreshold`. Asked after the room check, so
+  a player is never asked about an equip that would be refused anyway.
+- **`WearAfterConfirming`** is the yes. It reads the carried cell again and answers `NoLongerThere`, moving nothing,
+  when the cell no longer holds exactly the item asked about (every saved field compared).
+- **The controller** opens the question on the right press, titled "Past the Consumption Threshold", with "Wear it"
+  and "Keep it off"; while it is open, both inventory press handlers do nothing.
+
+### Tests
+
+- `Cataclysm.ThresholdQuestion.ACrossingEquipIsAskedAboutAndPutsNothingOnUntilConfirmed` ("THRESHOLD QUESTION"): a
+  helm of 1000 worn, boots of 1000 carried, tier 1 (1950). CONTROL: the crossing's totals. Asked, nothing moved; the
+  yes puts the boots on at 2000.
+- `Cataclysm.ThresholdQuestion.OnlyAnEquipThatCrossesTheThresholdIsAskedAbout`: below to below, not asked; a swap from
+  2000 to 100, not asked; 2000 and 100 more, not asked; 950 and 1000 more, to exactly 1950, asked; the tier 1 crossing
+  at tier 8, not asked.
+- `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther`: the words, with a name and
+  without one; a two-handed weapon of 300 over two one-handed ones of 800 would leave 300, and asking changed nothing
+  worn nor announced a change; a yes about boots of 1000 when the cell now holds boots of 999 is `NoLongerThere`.
+- `Cataclysm.ThresholdQuestion.AQuestionOnTheChoicePanelAnswersOnlyThroughItsYes`: the panel's title, prompt and two
+  keys; "Keep it off" calls nothing; "Wear it" calls once; showing a floor object ends a question.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4531 / 0: `development`'s 4527 (a5b27c029, #2691), + 4; a "Test saves:" line after the last test started, with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, the question never asked (`.Crosses())` to `.Crosses() && bConfirmedPastThreshold)` in `WearFromCarried`), prefix `Cataclysm.ThresholdQuestion.ACrossingEquipIsAskedAboutAndPutsNothingOnUntilConfirmed` | fails "a crossing equip is asked about", "and the boots are still carried", "and the Worn Residue is still 1000" and "a yes puts the boots on" (the boots already went on, so the yes finds the cell empty) only -- 4; the four CONTROL lines hold |
+| P2, every equip at or past the threshold asked about (`return Now < Threshold && After >= Threshold;` to `return After >= Threshold;`), prefix `Cataclysm.ThresholdQuestion.OnlyAnEquipThatCrossesTheThresholdIsAskedAbout` | fails "already past it and still past it: not asked" only; the swap from past to below still is not asked |
+
+### Run
+
+Python of record at the commit, before the window: at 8a3b7eb3f, 7234 passed, 8 skipped in 197.77s; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff All checks passed!.
+
+**Window w136, on ff9b9d78c, STOPPED after the whole suite, by a fault in the runner and not in a test.** Pre-checks all
+passed, 11,397 MB free; lock `dungeon-w136` taken, runner PID 322924 started at 20:53:04.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | 1 / 1 each, exit 0. "THRESHOLD QUESTION: now 1000, after 2000, threshold 1950; asked 'Wearing it would take your Worn Residue past this tier's Consumption Threshold, so it was not put on. Confirm to wear it.', yes 'Worn.'"; "500 worn, 500 more: not asked"; "a helm of 2000 swapped for one of 100: not asked"; "2000 worn, 100 more: not asked"; "950 worn, 1000 more: asked"; "1000 worn, 1000 more, tier 8: not asked" |
+| Whole suite | `Tests: 4531 tests performed, 4531 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 712 written and deleted, 0 left behind`; `Declared: 4531 tests in the tree at ff9b9d78c; 4531 performed, gap 0`; exit 0 |
+
+**Why it stopped.** After the suite the runner prints up to 24 informational "measured:" lines from the engine log. One
+of them is the name-rules test's "NAME RULES" line, which names 'Öda Łuk' and 'Жанна'. The runner's standard output
+was redirected to a file in cp1252, which has no 'Ł', so the runner died with `UnicodeEncodeError` and printed no last
+line. The Python suite, ruff, P1 and P2 never ran. Nothing was re-run; the lock was released and the branch re-attached.
+**Every runner built from this template had the fault.** Why w135, built the same way, did not hit it is not measured;
+it does not change the fix. **The template now sets its standard output to UTF-8** as the first line of `main()`, and the
+generator asserts that line among its steps, so every later runner built from it has it.
+
+**Window w136b, on the same head, ran only the steps w136 never reached**, the rule of necrosis-w2 and w131P3. Pre-checks
+all passed, 11,364 MB free; lock `dungeon-w136b` taken, runner PID 327344 started at 21:27:34, lock released at its last
+line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| Gate on w136's output | "w136 at this head: suite line found; 4 of 4 tests alone passed" |
+| Python | `7234 passed, 8 skipped in 199.77s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half, read from its kept log: "a crossing equip is asked about" expected true; "and the boots are still carried" expected not null; "and the Worn Residue is still 1000" expected 1000, was 2000; "a yes puts the boots on" expected true -- the four registered, and no other; the four CONTROL lines held; "THRESHOLD QUESTION: ... asked 'Worn.', yes 'It is no longer where it was when you were asked, so nothing was put on.'" Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "already past it and still past it: not asked" expected false -- only; "2000 worn, 100 more: asked", while the swap from 2000 to 100 still read "not asked". Restored: 1 / 1 |
+
+**Nothing else failed:** 5 controller error lines in P1's broken half (Result={Fail} and the four), 2 in P2's
+(Result={Fail} and the one), none in either restored half, and every half was counted at 1 test performed.
+
+**The silencing cannot be left on.** `WornResidueIfEquipped` sets `bAnnouncingSilenced` with a `TGuardValue` inside its
+own block around the `Equip` call (`CataclysmEquipmentComponent.cpp` line 212), so every early return inside `Equip` or
+`EquipInto` leaves the flag as it was; the slots and the change count are put back after the block.
+
+---
+
 ## 2026-11-01 — A skill box shows a pop-up naming the skill and describing it while the cursor is over it, drawn on the canvas (#1193)
 
 **Affects:** `UCataclysmGameplayAbility::DisplayedDescription`, new, and its two overrides

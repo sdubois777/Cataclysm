@@ -203,6 +203,27 @@ float UCataclysmEquipmentComponent::ConsumptionThresholdFor(int32 DifficultyTier
 	return ByTier[Tier - 1];
 }
 
+float UCataclysmEquipmentComponent::WornResidueIfEquipped(const FCataclysmItem& Item)
+{
+	const TArray<FCataclysmItem> SlotsBefore = Slots;
+	const int32 ChangesBefore = Changes;
+	float After = WornResidue();
+	{
+		TGuardValue<bool> Silenced(bAnnouncingSilenced, true);
+		FCataclysmItem First;
+		FCataclysmItem Second;
+		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+		const ECataclysmEquipResult Result = Equip(Item, First, Second, Went);
+		if (Result == ECataclysmEquipResult::Equipped || Result == ECataclysmEquipResult::Swapped)
+		{
+			After = WornResidue();
+		}
+	}
+	Slots = SlotsBefore;
+	Changes = ChangesBefore;
+	return After;
+}
+
 int32 UCataclysmEquipmentComponent::NumEquipped() const
 {
 	int32 Count = 0;
@@ -500,6 +521,11 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 
 void UCataclysmEquipmentComponent::AnnounceChange()
 {
+	if (bAnnouncingSilenced)
+	{
+		return; // WornResidueIfEquipped's: its slots are put back, so there is no change to announce.
+	}
+
 	// THE COUNT FIRST. A listener on the delegate may read ChangeCount while
 	// handling the broadcast, and it should see the change it is being told
 	// about rather than the one before it.

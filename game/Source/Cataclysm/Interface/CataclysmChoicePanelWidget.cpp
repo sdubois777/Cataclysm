@@ -13,9 +13,33 @@ const FName UCataclysmChoicePanelWidget::LeaveKey(TEXT("Leave"));
 
 void UCataclysmChoicePanelWidget::SetObject(ACataclysmFloorObject* Object)
 {
+	EndQuestion();
 	Shown = Object;
 	bLastActed = false;
 	Refresh();
+}
+
+void UCataclysmChoicePanelWidget::SetQuestion(const FString& Title, const FString& Prompt,
+											  const TArray<FCataclysmFloorObjectChoice>& Choices,
+											  const FString& LeaveLabel, TFunction<void(FName)> OnChosen)
+{
+	Shown = nullptr;
+	bLastActed = false;
+	bAsking = true;
+	TitleText = Title;
+	PromptText = Prompt;
+	QuestionChoices = Choices;
+	QuestionLeaveLabel = LeaveLabel;
+	QuestionAnswered = MoveTemp(OnChosen);
+	Refresh();
+}
+
+void UCataclysmChoicePanelWidget::EndQuestion()
+{
+	bAsking = false;
+	QuestionChoices.Reset();
+	QuestionLeaveLabel.Reset();
+	QuestionAnswered = nullptr;
 }
 
 void UCataclysmChoicePanelWidget::Refresh()
@@ -23,19 +47,29 @@ void UCataclysmChoicePanelWidget::Refresh()
 	Keys.Reset();
 	const ACataclysmFloorObject* Object = Shown.Get();
 
+	// A QUESTION'S WORDS, OR THE OBJECT'S. SetQuestion wrote the question's; an object's are read here.
+	if (!bAsking)
+	{
+		TitleText = Object ? Object->DisplayName : FString();
+		PromptText = Object ? Object->Prompt : FString();
+	}
+	const TArray<FCataclysmFloorObjectChoice>* Choices =
+		bAsking ? &QuestionChoices : (Object ? &Object->Choices : nullptr);
+	const FString LeaveLabel = bAsking ? QuestionLeaveLabel : FString(TEXT("Leave"));
+
 	if (TitleLabel)
 	{
-		TitleLabel->SetText(FText::FromString(Object ? Object->DisplayName : FString()));
+		TitleLabel->SetText(FText::FromString(TitleText));
 	}
 	if (PromptLabel)
 	{
-		PromptLabel->SetText(FText::FromString(Object ? Object->Prompt : FString()));
+		PromptLabel->SetText(FText::FromString(PromptText));
 	}
 
 	// THE KEYS ARE KEPT WHETHER OR NOT THERE ARE BUTTONS, so a test with no Blueprint reads what a player would see.
-	if (Object)
+	if (Choices)
 	{
-		for (const FCataclysmFloorObjectChoice& Choice : Object->Choices)
+		for (const FCataclysmFloorObjectChoice& Choice : *Choices)
 		{
 			Keys.Add(Choice.Key);
 		}
@@ -61,19 +95,32 @@ void UCataclysmChoicePanelWidget::Refresh()
 			ChoiceBox->AddChild(Button);
 		}
 	};
-	if (Object)
+	if (Choices)
 	{
-		for (const FCataclysmFloorObjectChoice& Choice : Object->Choices)
+		for (const FCataclysmFloorObjectChoice& Choice : *Choices)
 		{
 			AddButton(Choice.Key, Choice.Label, Choice.bAvailable);
 		}
 	}
-	AddButton(LeaveKey, TEXT("Leave"), /*bAvailable=*/true);
+	AddButton(LeaveKey, LeaveLabel, /*bAvailable=*/true);
 }
 
 void UCataclysmChoicePanelWidget::HandleChoiceClicked(FName Value)
 {
 	bLastActed = false;
+	if (bAsking)
+	{
+		// TAKEN BEFORE THE PANEL CLOSES, because closing ends the question; and called after it closes, so the answer
+		// may open another question on this same panel.
+		TFunction<void(FName)> Answered = MoveTemp(QuestionAnswered);
+		Close();
+		if (Value != LeaveKey && Answered)
+		{
+			bLastActed = true;
+			Answered(Value);
+		}
+		return;
+	}
 	ACataclysmFloorObject* Object = Shown.Get();
 	if (Value != LeaveKey && Object)
 	{
@@ -106,6 +153,7 @@ void UCataclysmChoicePanelWidget::ChooseForTests(FName ChoiceKey)
 
 void UCataclysmChoicePanelWidget::Close()
 {
+	EndQuestion();
 	if (IsInViewport())
 	{
 		RemoveFromParent();

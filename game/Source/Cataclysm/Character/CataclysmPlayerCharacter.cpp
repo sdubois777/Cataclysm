@@ -2880,7 +2880,8 @@ namespace CataclysmEquipConsole
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 	TEXT("Cataclysm.Equip"),
 	TEXT("Wear the item in a carried inventory slot, 0 to 47. Whatever comes "
-		 "off goes back into the bag."),
+		 "off goes back into the bag. Add confirm to wear it past the "
+		 "Consumption Threshold."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -2894,8 +2895,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 
 			if (Args.Num() < 1)
 			{
-				Ar.Log(TEXT("Cataclysm.Equip <carried slot 0 to 47>. "
-							"Cataclysm.ShowEquipment lists what is carried."));
+				Ar.Log(TEXT("Cataclysm.Equip <carried slot 0 to 47> [confirm]. "
+							"Cataclysm.ShowEquipment lists what is carried. confirm "
+							"puts it on past the Consumption Threshold."));
 				return;
 			}
 
@@ -2907,9 +2909,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEquip(
 			// not a thing to have. UCataclysmWearing is the one copy, and unlike
 			// a console command it can be tested.
 			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			// "confirm" IS THE YES THE INVENTORY SCREEN ASKS FOR before the Worn
+			// Residue crosses the Consumption Threshold. Issue #2687. Without it a
+			// crossing equip is refused here, as it is asked about there.
+			const bool bConfirmed = Args.Num() > 1 && Args[1].Equals(TEXT("confirm"), ESearchCase::IgnoreCase);
 			const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
 				Character->GetInventory(), Character->GetEquipment(),
-				FCString::Atoi(*Args[0]), Slot);
+				FCString::Atoi(*Args[0]), Slot, bConfirmed);
 
 			Ar.Log(*UCataclysmWearing::Explain(Result));
 
