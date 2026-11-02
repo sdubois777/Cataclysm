@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGroundEffect.h"
+// For the owner-then-skill answer `DamageTypeFor` gives. Issue #818.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -68,6 +71,30 @@ float UCataclysmGroundEffect::ScaleFor(float RadiusCm)
 	// Centimetres to metres, because User.Scale is documented across every
 	// system as "the ability's radius in centimetres divided by 100".
 	return FMath::Clamp(RadiusCm / 100.0f, MinimumScale, MaximumScale);
+}
+
+FName UCataclysmGroundEffect::DamageTypeFor(const AActor* Owner, const FGameplayTag& SkillElement)
+{
+	// THE OWNER FIRST. An enemy's own damage type is what its hits are resisted
+	// as, and ground drawn in a different colour would mislead in the one case
+	// where the colour tells the player something they can act on. The same
+	// order as the strike arc, the projectile body and the cast burst.
+	const FName FromOwner = UCataclysmSkillEffects::DamageTypeOf(Owner);
+	if (!FromOwner.IsNone())
+	{
+		return FromOwner;
+	}
+
+	if (!SkillElement.IsValid())
+	{
+		return NAME_None;
+	}
+
+	// DECODED THROUGH THE ONE DECODER rather than by splitting the tag here, for
+	// the reason `UCataclysmCastEffect::DamageTypeFor` gives.
+	FGameplayTagContainer JustThisOne;
+	JustThisOne.AddTag(SkillElement);
+	return UCataclysmDamageCalculation::DamageTypeFromTags(JustThisOne);
 }
 
 int32 UCataclysmGroundEffect::HowManyAlong(float LengthCm, float RadiusCm)
