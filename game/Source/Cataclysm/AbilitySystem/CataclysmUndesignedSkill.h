@@ -63,6 +63,9 @@ public:
 	 */
 	virtual FString DisplayedName() const override { return SkillName; }
 
+	/** The designed description, for the skill bar's pop-up: a skill with no numbers yet still has its words. Issue #1193. */
+	virtual FString DisplayedDescription() const override { return SkillDescription; }
+
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,

@@ -1162,4 +1162,129 @@ bool FCataclysmSkillBarEveryNthTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The pop-up over a box. Issue #1193.
+// ---------------------------------------------------------------------------
+
+/**
+ * A box carries the written description of the skill the weapon granted, for the pop-up. Issue #1193. The same
+ * instance-level read as `ABoxShowsTheNameOfTheSkillTheWeaponGranted`, for the same reason: the row's words are
+ * stamped on the granted instance, not on the class. Prints "SKILL POPUP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarGrantedDescriptionTest,
+	"Cataclysm.SkillBar.ABoxCarriesTheDescriptionOfTheSkillTheWeaponGranted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarGrantedDescriptionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	UCataclysmStrikeSkill* Granted =
+		Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+									 TEXT("Radius=4; Angle=360"), TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("a skill was granted"), Granted))
+	{
+		return false;
+	}
+	Granted->SkillName = TEXT("Riven Arc");
+	Granted->SkillDescription = TEXT("Swing in a wide arc that splits the ground.");
+
+	const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+	const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+	if (!TestNotNull(TEXT("the bar drew a box for the granted skill"), Box))
+	{
+		return false;
+	}
+	const TArray<FString> Lines = UCataclysmSkillBar::PopupLinesFor(*Box);
+	AddInfo(FString::Printf(TEXT("SKILL POPUP: name '%s'; description '%s'; %d lines [%s]"), *Box->Name, *Box->Description,
+							Lines.Num(), *FString::Join(Lines, TEXT(" | "))));
+
+	TestEqual(TEXT("CONTROL: the box shows the granted skill's name"), Box->Name, FString(TEXT("Riven Arc")));
+	TestEqual(TEXT("the box carries the granted skill's description"), Box->Description,
+			  FString(TEXT("Swing in a wide arc that splits the ground.")));
+	TestEqual(TEXT("and the pop-up shows the name, then the description"), Lines.Num(), 2);
+	return true;
+}
+
+/**
+ * The box under a point: a box's left and top edges are inside it, its right and bottom edges are not, and a point in
+ * the gap between two boxes is in none. Issue #1193. Read for the third of six boxes on a 1920 by 1080 screen.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarBoxUnderTest,
+	"Cataclysm.SkillBar.APointFindsTheBoxItIsInAndTheEdgesAreHalfOpen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarBoxUnderTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 Count = 6;
+	constexpr float Width = 1920.0f;
+	constexpr float Height = 1080.0f;
+	const float Size = UCataclysmSkillBar::BoxSizePx;
+	const FVector2D At = UCataclysmSkillBar::BoxOriginFor(2, Count, Width, Height);
+
+	auto Under = [&](float X, float Y) { return UCataclysmSkillBar::BoxUnder(FVector2D(X, Y), Count, Width, Height); };
+
+	TestEqual(TEXT("a point in the middle of the third box is in it"), Under(At.X + Size * 0.5f, At.Y + Size * 0.5f), 2);
+	TestEqual(TEXT("a point on its left and top edges is in it"), Under(At.X, At.Y), 2);
+	TestEqual(TEXT("a point on its right edge is not"), Under(At.X + Size, At.Y + Size * 0.5f), INDEX_NONE);
+	TestEqual(TEXT("nor one on its bottom edge"), Under(At.X + Size * 0.5f, At.Y + Size), INDEX_NONE);
+	TestEqual(TEXT("a point in the gap after it is in no box"),
+			  Under(At.X + Size + UCataclysmSkillBar::BoxGapPx * 0.5f, At.Y + Size * 0.5f), INDEX_NONE);
+	TestEqual(TEXT("and a point above the bar is in none"), Under(At.X + Size * 0.5f, At.Y - 1.0f), INDEX_NONE);
+	return true;
+}
+
+/**
+ * The pop-up's lines: the name, then the description wrapped at `PopupWrapChars` with words kept whole; a word longer
+ * than the width on a line of its own; a box with no description shows its name alone, and one with no name nothing.
+ * Issue #1193.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarPopupLinesTest,
+	"Cataclysm.SkillBar.ThePopupNamesTheSkillThenWrapsItsDescription",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarPopupLinesTest::RunTest(const FString& Parameters)
+{
+	FCataclysmSkillBarSlot Box;
+	Box.Name = TEXT("Sundering Arc");
+	Box.Description = TEXT("Swing your greataxe in a brutal horizontal arc that hits all enemies in a wide cone, "
+						   "dealing heavy damage to each.");
+	const TArray<FString> Lines = UCataclysmSkillBar::PopupLinesFor(Box);
+
+	TestTrue(TEXT("the name first"), Lines.Num() > 0 && Lines[0] == Box.Name);
+	bool bFits = true;
+	TArray<FString> Rejoined;
+	for (int32 Index = 1; Index < Lines.Num(); ++Index)
+	{
+		bFits = bFits && Lines[Index].Len() <= UCataclysmSkillBar::PopupWrapChars;
+		Rejoined.Add(Lines[Index]);
+	}
+	TestTrue(TEXT("the description takes more than one line"), Lines.Num() > 2);
+	TestTrue(TEXT("no line is wider than the width"), bFits);
+	TestEqual(TEXT("and the lines rejoined are the description, every word kept whole"),
+			  FString::Join(Rejoined, TEXT(" ")), Box.Description);
+
+	FCataclysmSkillBarSlot Long;
+	Long.Name = TEXT("Long");
+	Long.Description = FString::ChrN(UCataclysmSkillBar::PopupWrapChars + 12, TEXT('a')) + TEXT(" b");
+	const TArray<FString> LongLines = UCataclysmSkillBar::PopupLinesFor(Long);
+	TestEqual(TEXT("a word longer than the width is a line of its own, unbroken"), LongLines.Num(), 3);
+
+	FCataclysmSkillBarSlot Unwritten;
+	Unwritten.Name = TEXT("Special");
+	TestEqual(TEXT("a box with no description shows its name alone"),
+			  UCataclysmSkillBar::PopupLinesFor(Unwritten).Num(), 1);
+	TestEqual(TEXT("and a box with no name shows nothing"),
+			  UCataclysmSkillBar::PopupLinesFor(FCataclysmSkillBarSlot()).Num(), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

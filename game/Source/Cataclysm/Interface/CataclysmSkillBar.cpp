@@ -127,6 +127,49 @@ TArray<ECataclysmAbilitySlot> UCataclysmSkillBar::SlotsShown()
 	};
 }
 
+int32 UCataclysmSkillBar::BoxUnder(const FVector2D& Point, int32 Count, float ViewportWidth, float ViewportHeight)
+{
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FVector2D At = BoxOriginFor(Index, Count, ViewportWidth, ViewportHeight);
+		const bool bAcross = Point.X >= At.X && Point.X < At.X + BoxSizePx; // A pop-up's: a box's right edge is outside it.
+		const bool bDown = Point.Y >= At.Y && Point.Y < At.Y + BoxSizePx;
+		if (bAcross && bDown)
+		{
+			return Index;
+		}
+	}
+	return INDEX_NONE;
+}
+
+TArray<FString> UCataclysmSkillBar::PopupLinesFor(const FCataclysmSkillBarSlot& Slot)
+{
+	TArray<FString> Lines;
+	if (Slot.Name.IsEmpty())
+	{
+		return Lines;
+	}
+	Lines.Add(Slot.Name);
+
+	TArray<FString> Words;
+	Slot.Description.ParseIntoArrayWS(Words);
+	FString Line;
+	for (const FString& Word : Words)
+	{
+		if (!Line.IsEmpty() && Line.Len() + 1 + Word.Len() > PopupWrapChars)
+		{
+			Lines.Add(Line);
+			Line.Reset();
+		}
+		Line = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+	}
+	if (!Line.IsEmpty())
+	{
+		Lines.Add(Line);
+	}
+	return Lines;
+}
+
 float UCataclysmSkillBar::BarWidthFor(int32 Count)
 {
 	if (Count <= 0)
@@ -612,6 +655,7 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 
 		Box.bFilled = true;
 		Box.Name = Ability->DisplayedName();
+		Box.Description = Ability->DisplayedDescription(); // A pop-up's: the skill's written description. Issue #1193.
 		if (Box.Name.IsEmpty())
 		{
 			Box.Name = NameForEmptySlot(Slot);

@@ -576,6 +576,56 @@ void ACataclysmHUD::DrawSkillBar()
 							SkillBarNextUseScale);
 		}
 	}
+
+	// AND, WHILE THE CURSOR IS OVER A BOX, WHAT THAT SKILL IS AND DOES. Issue #1193. The cursor is shown throughout
+	// play (`ACataclysmPlayerController` sets `bShowMouseCursor`, and click-to-move reads `GetMousePosition` the same
+	// way), so the box under it is found each frame. Drawn last, so nothing on the bar covers it.
+	const APlayerController* Viewer = GetOwningPlayerController();
+	float MouseX = 0.0f;
+	float MouseY = 0.0f;
+	if (Viewer && Viewer->GetMousePosition(MouseX, MouseY))
+	{
+		const int32 Hovered = UCataclysmSkillBar::BoxUnder(FVector2D(MouseX, MouseY), Slots.Num(), Canvas->SizeX,
+														   Canvas->SizeY);
+		if (Slots.IsValidIndex(Hovered))
+		{
+			DrawSkillPopup(Slots[Hovered],
+						   UCataclysmSkillBar::BoxOriginFor(Hovered, Slots.Num(), Canvas->SizeX, Canvas->SizeY));
+		}
+	}
+}
+
+void ACataclysmHUD::DrawSkillPopup(const FCataclysmSkillBarSlot& Slot, const FVector2D& BoxOrigin)
+{
+	const TArray<FString> Lines = UCataclysmSkillBar::PopupLinesFor(Slot);
+	if (Lines.IsEmpty() || !Canvas)
+	{
+		return;
+	}
+
+	// MEASURED FIRST, so the backing fits the widest line and the pop-up can be kept on the screen.
+	float Widest = 0.0f;
+	float LineHeight = 0.0f;
+	for (const FString& Line : Lines)
+	{
+		const FBox2D Size = MeasureTextCentred(Line, 0.0f, 0.0f, SkillBarNameScale);
+		Widest = FMath::Max(Widest, Size.GetSize().X);
+		LineHeight = FMath::Max(LineHeight, Size.GetSize().Y);
+	}
+	const float Width = Widest + SkillPopupPaddingPx * 2.0f;
+	const float Height = Lines.Num() * LineHeight + (Lines.Num() - 1) * SkillPopupLineGapPx + SkillPopupPaddingPx * 2.0f;
+
+	// ABOVE THE BOX, clear of the Fervour and gadget lines drawn just over it, and held inside the screen's edges.
+	const float Left = FMath::Clamp(BoxOrigin.X, 0.0f, FMath::Max(0.0f, Canvas->SizeX - Width));
+	const float Top = FMath::Max(0.0f, BoxOrigin.Y - SkillPopupGapAboveBoxPx - Height);
+
+	DrawRect(UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex), Left, Top, Width, Height);
+	float Y = Top + SkillPopupPaddingPx;
+	for (const FString& Line : Lines)
+	{
+		DrawOutlinedText(Line, FLinearColor::White, Left + SkillPopupPaddingPx, Y, SkillBarNameScale);
+		Y += LineHeight + SkillPopupLineGapPx;
+	}
 }
 
 void ACataclysmHUD::DrawPlayerVitals()

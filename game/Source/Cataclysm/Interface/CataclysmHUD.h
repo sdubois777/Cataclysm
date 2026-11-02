@@ -145,6 +145,9 @@ private:
 	 */
 	void DrawSkillBar();
 
+	/** The pop-up over one box: its name and description, above the box. Issue #1193. */
+	void DrawSkillPopup(const struct FCataclysmSkillBarSlot& Slot, const FVector2D& BoxOrigin);
+
 	/**
 	 * The four potion slots, in the bottom-right corner. Issue #806. Each box
 	 * shows its key, a bar of its charges filled from the bottom, and the drinks
@@ -395,6 +398,11 @@ private:
 	/** How far above a box its "needs Fervour" words sit. Issue #1478. */
 	static constexpr float SkillBarFervourGapPx = 14.0f;
 	static constexpr float SkillBarNameScale = 1.0f;
+
+	/** The skill pop-up's padding inside its backing, the space between its lines, and how far above the box it sits. */
+	static constexpr float SkillPopupPaddingPx = 6.0f;
+	static constexpr float SkillPopupLineGapPx = 2.0f;
+	static constexpr float SkillPopupGapAboveBoxPx = 30.0f;
 
 	/**
 	 * Clear space above the boxes for the words saying every skill is locked,
