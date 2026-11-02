@@ -10,6 +10,7 @@
 #include "Character/CataclysmComparisonStandIn.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Interface/CataclysmItemTooltip.h"
@@ -224,8 +225,21 @@ FString UCataclysmItemComparison::HeadingFor(const FCataclysmComparisonResult& R
 	TArray<FString> Names;
 	for (const FCataclysmItem& Off : Result.Replaced)
 	{
-		// AN ITEM WHOSE BASE IS NOT IN THE TABLE HAS NO NAME TO GIVE, so it is called by its base.
-		const FString Name = UCataclysmItemName::NameOf(Off, BaseTable, AffixTable);
+		// ITS WHOLE NAME, AND ELSE ITS BASE'S OWN NAME, AS ITS INVENTORY CELL SHOWS IT. `NameOf` names only an item
+		// that has a rarity, and `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no
+		// enchantment -- the starting weapon is one -- so for such a piece it returns nothing. Until the item
+		// comparison window ran (issue #832) the heading then fell back to the row key, and read "If worn, in place
+		// of Weapon_Sword:" to the player. `UCataclysmInventoryScreen::LabelFor` calls a piece by its base's
+		// `BaseName`, "Sword", and so does this. The key only for a base the table does not hold.
+		FString Name = UCataclysmItemName::NameOf(Off, BaseTable, AffixTable);
+		if (Name.IsEmpty() && BaseTable)
+		{
+			if (const FCataclysmItemBaseRow* Row = BaseTable->FindRow<FCataclysmItemBaseRow>(
+					Off.Base, TEXT("UCataclysmItemComparison::HeadingFor"), /*bWarnIfMissing=*/false))
+			{
+				Name = Row->BaseName;
+			}
+		}
 		Names.Add(Name.IsEmpty() ? Off.Base.ToString() : Name);
 	}
 	return FString::Printf(TEXT("If worn, in place of %s:"), *FString::Join(Names, TEXT(" and ")));

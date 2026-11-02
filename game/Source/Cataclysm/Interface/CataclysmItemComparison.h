@@ -149,6 +149,10 @@ public:
 	/**
 	 * The line above the change lines: "If worn, in place of Iron Helm:", "If worn, in place of Sword and Dagger:", or
 	 * "If worn in Ring 4:" for a free slot.
+	 *
+	 * EACH PIECE BY THE NAME THE PLAYER SEES FOR IT: its whole name (`UCataclysmItemName::NameOf`), or, for a piece
+	 * with no rarity and so no whole name -- no affix and no enchantment, as the starting weapon is -- its base's
+	 * `BaseName`, as its inventory cell calls it. Never the row key while the base is in the table.
 	 */
 	static FString HeadingFor(const FCataclysmComparisonResult& Result, const UDataTable* BaseTable,
 							  const UDataTable* AffixTable);

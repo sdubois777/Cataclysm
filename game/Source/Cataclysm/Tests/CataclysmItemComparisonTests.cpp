@@ -162,11 +162,18 @@ namespace CataclysmItemComparisonTest
 							 TEXT("\n"));
 	}
 
-	/** An item's name, as the heading writes it. */
-	FString NameOfItem(const FCataclysmItem& Item)
+	/** An item's whole name, as its tooltip's first line writes it: empty for a piece with no rarity. */
+	FString WholeNameOf(const FCataclysmItem& Item)
 	{
 		return UCataclysmItemName::NameOf(Item, UCataclysmItemModifiers::LoadBaseTable(),
 										  UCataclysmDropRoll::LoadAffixTable());
+	}
+
+	/** The heading a comparison result is given, with the tables the tooltip reads. */
+	FString HeadingOf(const FCataclysmComparisonResult& Result)
+	{
+		return UCataclysmItemComparison::HeadingFor(Result, UCataclysmItemModifiers::LoadBaseTable(),
+													UCataclysmDropRoll::LoadAffixTable());
 	}
 }
 
@@ -232,8 +239,20 @@ bool FCataclysmItemComparisonHelmAgainstHelm::RunTest(const FString& Parameters)
 	FString Left;
 	FString Right;
 	ColumnsOf(Hovered, Result, Left, Right);
-	TestTrue(TEXT("the left column names what it would replace"),
-			 Left.Contains(FString::Printf(TEXT("If worn, in place of %s:"), *NameOfItem(Worn))));
+	// A PLAIN HELM HAS NO RARITY, so no whole name (`UCataclysmItemValues::RarityOf` takes no piece of no affix and no
+	// enchantment), and it is called by its base's name, "Helm", as its inventory cell calls it -- never "Head_Helm",
+	// which the heading said until the item comparison window ran it.
+	TestTrue(TEXT("CONTROL: the plain helm has no whole name"), WholeNameOf(Worn).IsEmpty());
+	TestEqual(TEXT("the heading calls the plain helm by its base's name"), HeadingOf(Result),
+			  FString(TEXT("If worn, in place of Helm:")));
+	TestTrue(TEXT("the left column names what it would replace"), Left.Contains(TEXT("If worn, in place of Helm:")));
+
+	// AND A PIECE THAT HAS A RARITY BY ITS WHOLE NAME: the hovered helm, one affix, put where the plain one was.
+	FCataclysmComparisonResult Named = Result;
+	Named.Replaced = {Hovered};
+	TestFalse(TEXT("CONTROL: the helm with an affix has a whole name"), WholeNameOf(Hovered).IsEmpty());
+	TestEqual(TEXT("a piece with a rarity is called by its whole name"), HeadingOf(Named),
+			  FString::Printf(TEXT("If worn, in place of %s:"), *WholeNameOf(Hovered)));
 	TestEqual(TEXT("the right column is the worn helm's own tooltip"), Right,
 			  FString(TEXT("Worn now:\n")) + OwnLinesOf(Worn));
 
@@ -368,9 +387,8 @@ bool FCataclysmItemComparisonTwoHandedAgainstBoth::RunTest(const FString& Parame
 	FString Left;
 	FString Right;
 	ColumnsOf(Greatsword, Result, Left, Right);
-	TestTrue(TEXT("the heading names both"),
-			 Left.Contains(FString::Printf(TEXT("If worn, in place of %s and %s:"), *NameOfItem(Sword),
-										   *NameOfItem(Dagger))));
+	// PLAIN WEAPONS, CALLED BY THEIR BASES' NAMES, as the helm in the first test is.
+	TestTrue(TEXT("the heading names both"), Left.Contains(TEXT("If worn, in place of Sword and Dagger:")));
 	TestEqual(TEXT("the worn column holds both weapons' own tooltips"), Right,
 			  FString(TEXT("Worn now:\n")) + OwnLinesOf(Sword) + TEXT("\n\n") + OwnLinesOf(Dagger));
 	return true;
