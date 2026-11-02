@@ -549,14 +549,31 @@ CATACLYSM_SHEET_TEST(FCataclysmSheetRowsShowTheComparedFigure,
 
 		const UAbilitySystemComponent* ASC = Character.AbilitySystem;
 
-		// CONTROLS: the three figures the sheet does not read straight off one attribute.
+		// CONTROLS: the three figures the sheet does not read straight off one attribute. EACH EXPECTED FIGURE IS READ
+		// OFF THE ATTRIBUTES, NOT WRITTEN AS A LITERAL: `Add` adds to what a set starts with, and the vital set starts
+		// maximum health and health at 100 (`UCataclysmVitalAttributeSet`'s constructor), so the 606 added makes 706.
+		// This control said 606 until the item comparison window ran it. Each also checks that the figure it picks
+		// differs from the figure a wrong reading would give, or the control could not tell them apart.
+		const float MaxHealth = ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Health = ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		TestTrue(TEXT("set-up: health is below its maximum, so the two figures differ"), Health < MaxHealth);
 		TestEqual(TEXT("CONTROL: a pool's figure is its maximum"),
-				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("max_health"), ASC), 606.0f, 0.01f);
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("max_health"), ASC), MaxHealth, 0.01f);
+
+		const float Typed = ASC->GetNumericAttribute(UCataclysmResistanceAttributeSet::GetWarResistanceAttribute());
+		const float Generic =
+			ASC->GetNumericAttribute(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute());
+		TestTrue(TEXT("set-up: both resistance shares are held"), Typed > 0.0f && Generic > 0.0f);
 		TestEqual(TEXT("CONTROL: a resistance's figure is both shares"),
-				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("resistance_war"), ASC), 55.0f, 0.01f);
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("resistance_war"), ASC), Typed + Generic, 0.01f);
+
+		const float Increases =
+			ASC->GetNumericAttribute(UCataclysmCombatAttributeSet::GetCooldownReductionAttribute());
+		const float Shown = UCataclysmCombatAttributeSet::DisplayedCooldownReduction(Increases);
+		TestFalse(TEXT("set-up: the shown percentage is not the sum of increases"),
+				  FMath::IsNearlyEqual(Shown, 100.0f * Increases, 0.01f));
 		TestEqual(TEXT("CONTROL: cooldown reduction's figure is the shown percentage"),
-				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("cooldown_reduction"), ASC),
-				  UCataclysmCombatAttributeSet::DisplayedCooldownReduction(0.25f), 0.01f);
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("cooldown_reduction"), ASC), Shown, 0.01f);
 
 		int32 Rows = 0;
 		int32 Misses = 0;
