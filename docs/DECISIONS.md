@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — The corrupted double's build: a player's own build worn by a Stalker-shaped creature, through the one stat gatherer (#2688, slice 2a)
+
+**Affects:** `FCataclysmPlayerBuild`, new (`game/Source/Cataclysm/Character/CataclysmPlayerBuild.h`, `.cpp`);
+`ACataclysmConsumptionDoubleCharacter`, new (`game/Source/Cataclysm/Character/CataclysmConsumptionDoubleCharacter.h`,
+`.cpp`); `UCataclysmEquipmentComponent::RefreshAttributesAs`, new, and `RefreshAttributes`, which now reads the player
+state and hands its numbers to it (`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h`, `.cpp`);
+`ACataclysmCorruptedStalkerCharacter::EnemyAbilities`, which skips a held skill with no shape, and its build members,
+now protected (`game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h`, `.cpp`); three new tests in
+`game/Source/Cataclysm/Tests/CataclysmConsumptionDoubleTests.cpp`. Issue
+[#2688](https://github.com/sdubois777/Cataclysm/issues/2688).
+
+### SAID FIRST
+
+- **NOTHING SPAWNS THE DOUBLE YET.** Slice 2a is the creature and how it wears a build, and nothing else. Its arrival on
+  the next floor (R2), the capture of the build at the crossing, the save, what its death does (O1: it clears the
+  mark), and the consequence sentence in the #2687 equip question are slices 2b and 2c. The equip question keeps its
+  words until the double can actually arrive.
+- **NOTHING CAPTURES A BUILD YET EITHER.** `FCataclysmPlayerBuild::Of` is the function the capture will call, and it is
+  tested here as the way a double is built from a live player.
+- **NOT RUN IN UNREAL.** Compiled; the three tests, the whole suite and the three proofs are registered below for a
+  window.
+
+### The owner's decision, 2026-11-02 (relayed by the coordinator)
+
+> "the corrupted double is the character AS IT WAS AT THE CROSSING, not as it is when the double arrives. The build is
+> captured when the confirmed equip crosses the threshold, in WearPastTheThreshold after the equip, and it is saved
+> with the character."
+
+**Slice 2a acts on it by shape only:** `FCataclysmPlayerBuild` is a `USTRUCT` whose every field is `SaveGame`, the worn
+items as the character record already writes them (`FCataclysmWornItem`) and plain values for the rest. **The capture
+in `ACataclysmPlayerCharacter::WearPastTheThreshold` and the build's field in the character record (schema version 6)
+are slice 2b's.**
+
+### What applies here of the 2026-11-02 decisions and rulings
+
+- **R3, the player's own numbers:** the items exactly as worn (rolls, affix tiers, gear levels, damage types), and the
+  character's own level, class, attribute points, passive allocation and skill choices. `PiecesAt` is never called, so
+  nothing is rolled again.
+- **R4, no per-tier multipliers:** `CorruptedStalkerHealthMultiplier` and `CorruptedStalkerDamageMultiplier` stay the
+  Stalker's; the double's `WearThePlayersBuild` does not call them.
+- **O2, no gear drops:** `ACataclysmConsumptionDoubleCharacter::DropWhatItWore` drops nothing. The rest of its death is
+  the Stalker's, inherited: it pays as the Boss rung (`RarityStepItPaysAs`) and `RandomGearDropsGiven` is 0, so
+  `UCataclysmDropSpawner::SpawnDropsFor` is called with a gear count of 0 and rolls only the Boss row's crafting
+  materials (5.0 expected, scaled by the player's loot quantity, at the Boss row's 300 magic find plus the player's).
+  Nothing else is dropped. The experience is separate, the Enemy Score at the Boss rung, granted beside the drop roll.
+- **No War work:** the brain skips a held skill whose row has no shape; nothing is built to make one work for an enemy.
+  **The plan's premise was wrong and is corrected here:** not every War row has an empty Shape. Of the 61 named War rows
+  in `game/Data/WeaponSkills.csv`, 54 have none and 7 have one: `War_Shield_Heavy` (Strike), `War_Warhammer_Movement`,
+  `War_Sword_Movement` and `War_Whip_Movement` (Movement), and `War_Crossbow_Special`, `War_Spear_Special` and
+  `War_Spear_Ultimate` (Deployable). Those seven are offered to the double like any shaped skill. Whether a Deployable
+  works for an enemy caster was not checked.
+
+### The extraction, and why (#1054)
+
+`UCataclysmEquipmentComponent::RefreshAttributes` is "THE ONE PLACE THAT KNOWS EVERY SOURCE, and it has to stay the
+only one" (#1054). A double built by copying its gathering would be a second place. So the body moved, unchanged in
+what it gathers and in what order, into `RefreshAttributesAs(AbilitySystem, const FCataclysmPlayerBuild* Build,
+PoolFill)`, and the only thing that changed is where the player's numbers come from:
+
+- **`RefreshAttributes`** finds the owning pawn's player state as before, takes its numbers with
+  `FCataclysmPlayerBuild::NumbersOf` (level, `ChosenClass()`, spent attribute points, creation damage type, passive
+  allocation, and `PassivePointsEarnedWith(0)`), and calls `RefreshAttributesAs` with them; with no player state it
+  passes null, which applies the console's class at the console's level with no attribute points and no tree, as
+  before.
+- **`ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`** puts the build's items on an equipment component that
+  belongs to no actor with `RestoreWornGear` (so two two-handed weapons a passive allowed stay as worn) and calls
+  `RefreshAttributesAs` with the build and `FillToMaximum`.
+- **The points earned are the same sum, in one place.** Before: `State->PassivePointsEarnedWith(ClassPoints)`, which is
+  `Available(level, bosses) + handed-with + Max(0, ClassPoints)`. Now: `Build->PassivePointsBesidesGear + Max(0,
+  ClassPoints)`, where the first term is `PassivePointsEarnedWith(0)`. The build holds the WHOLE allocation, not a
+  reduced copy, and the reduction (`ReducedToPointsEarned`) stays inside the gatherer for both callers, from the class
+  points the worn rows grant there. (The plan proposed reducing at capture; keeping it in the gatherer is what keeps
+  one place.)
+
+**Covered by the existing tests unchanged**, among them `Cataclysm.Passives.ClassPointsFromGear.*` (nine tests, among them the
+excess taken last-node-first, each row rounded down, a planted weapon's points, a switched-off slot, an allocation
+handed above the level), `Cataclysm.Passives.ACharacterArrivingInTheWorldGetsThePointsItHasAlreadySpent`,
+`Cataclysm.CharacterLevel.GainingALevelActuallyMakesTheCharacterStronger` among the eight `Cataclysm.CharacterLevel.`
+tests, `Cataclysm.Equipment.WearingAnItemRaisesTheAttributeAndRemovingItLowersIt`, and the 143 refreshes in
+`CataclysmEnchantmentEffectTests.cpp`. 305 calls to `RefreshAttributes(` stand in 10 existing test files (counted by grep, 2026-11-02); none was edited.
+
+**One behaviour the double gains by sharing the gatherer, and no test exercises it:** the worn rows' pool actions
+(issue #1815) are handed to the double's ability system (`SetPoolActions`), as they are to a player's. The Stalker's
+`WearTheBuild` never handed them.
+
+### The double
+
+`ACataclysmConsumptionDoubleCharacter : ACataclysmCorruptedStalkerCharacter`, so its brain, potions, Fervour decay
+exemption, Boss pay and every `bHoldsAPlayerBuild` guard are the Stalker's. `WearThePlayersBuild`: the items and the
+gatherer as above; Fervour 50; `bHoldsAPlayerBuild`; its pieces are the build's items in the build's order; its skills
+are `FillWithChoices(PoolFor(worn weapon types, InFillOrder(CarriedDamageTypesOf(worn weapons, creation type),
+creation type)), skill assignment)`, as a player's slots are filled; its basic attack is `BasicAttackFor` the first
+occupied weapon slot's type.
+
+**Fervour 50, copied from the Stalker, judged right for a player build.** Fervour is one bar every class shares
+(2026-08-25); the Masochist's former Anguish is that bar. `UCataclysmPlayerClassStats::ApplyTo` fills none of it, by
+design ("starts empty"), so without the 50 a double could not cast its Ultimate (50 Fervour) until it built Fervour in
+the fight. The owner's answer for the Stalker, "Start with enough Fervour", was given so it can cast the Ultimate once,
+and that reason holds for the double. Not checked: a Masochist double holding the Masochist's starting node would lose
+that Fervour on its first heal, a potion included, if the node's healing-empties rate reaches it through its stat line.
+
+**Left as the Stalker leaves them:** its basic attack carries no `Element.<type>` tag (a player's does, from the first
+carried type); `EntryName()` is empty (the "Hunted by" name is 2b's).
+
+### Tests
+
+In `game/Source/Cataclysm/Tests/CataclysmConsumptionDoubleTests.cpp`, a file of its own, because its helpers (a
+possessed player, a hand-made build, a drop count) are the double's and no existing file holds them. The prefix
+`Cataclysm.ConsumptionDouble.` selects these three and nothing else: no other registered name begins with
+`Cataclysm.ConsumptionDouble`.
+
+1. `Cataclysm.ConsumptionDouble.TheDoubleHoldsThePlayersOwnNumbersNotTheStalkers`: a possessed player at level 37,
+   with 16 attribute points, the Ravager's 13 spine points, and a Demonic Greataxe, a helm and a ring of known rolls,
+   is captured with `FCataclysmPlayerBuild::Of` and worn by a double at tier 1. Its maximum health, maximum mana,
+   armour and attack damage equal the player's; it starts at full health with 50 Fervour; every piece has the player's
+   base, gear level, affix tiers and rolls. CONTROLS: tier 1's reference level (12) is not 37, and a tier-1 Stalker
+   carries the 0.49 health multiplier.
+2. `Cataclysm.ConsumptionDouble.ItDropsNoGearAndPaysABossRung`: the Demonic entry's eighteen pieces on seed 11, worn by
+   a Stalker and, as a hand-made build, by a double. CONTROL: the Stalker's `DropWhatItWore` on that stream drops at
+   least one. The double's drops none, pays as the Boss rung, and gives 0 random gear.
+3. `Cataclysm.ConsumptionDouble.ItsBrainSkipsAHeldSkillWithNoShape`: a Greataxe carrying Demonic and War. CONTROL:
+   with no choice, the movement key holds `Demonic_Greataxe_Movement` and is offered. With
+   `War_Greataxe_Movement` chosen for it, the double holds that row, whose shape is None, and offers it nowhere (its
+   minimum range above its maximum).
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ConsumptionDouble.` alone | 3 / 3 |
+| Whole Unreal suite | 4540 / 0: `development`'s 4537 (180383c17, #2695), + 3 |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, the level taken from the tier's reference character, as the Stalker's is (in `CataclysmConsumptionDoubleCharacter.cpp`, `#include "Player/CataclysmPowerScore.h"` added and `HeldBuild.Level = UCataclysmPowerScore::ReferenceCharacter(1).Level;` added after `HeldBuild = Build;`), prefix `Cataclysm.ConsumptionDouble.TheDoubleHoldsThePlayersOwnNumbersNotTheStalkers` | fails "the double's maximum health is the player's", "the double's maximum mana is the player's" and "the double's armour is the player's" -- 3 -- and nothing else; the attack damage (no class line names it), full health, Fervour, every piece, set-up line and control hold |
+| P2, the override removed (the comment line in the double's `DropWhatItWore` replaced by `Super::DropWhatItWore(World, At, Stream);`), prefix `Cataclysm.ConsumptionDouble.ItDropsNoGearAndPaysABossRung` | fails "the double drops none of the gear it wore" only; the control and both pay lines hold |
+| P3, the no-shape skip removed (` && Skill->Shape != ECataclysmSkillShape::None` deleted in `EnemyAbilities`), prefix `Cataclysm.ConsumptionDouble.ItsBrainSkipsAHeldSkillWithNoShape` | fails "the skill with no shape is offered nowhere: ..." only; the control and every set-up line hold |
+
+Each break's anchor occurs once (`prove_d2688a.py --anchors-only`, P1 two anchors, P2 and P3 one each, every count 1).
+
+### Not tested
+
+- A double's worn rows' pool actions firing (above).
+- A double raised in a dungeon, fighting, or dying in play: nothing raises one until slice 2b.
+- The seven shaped War skills cast by a double; a Masochist double's Fervour after a heal.
+- A player wearing two two-handed weapons, or two one-handed ones, captured and worn by a double.
+
+---
+
 ## 2026-11-02 — A confirmed equip that crosses the Consumption Threshold marks the character, and the character record keeps the mark (#2688, slice 1)
 
 **Affects:** `ACataclysmPlayerState::IsMarkedByConsumption`, `MarkByConsumption` and `ClearConsumptionMark`, new
