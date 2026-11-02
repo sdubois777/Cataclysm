@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -57,6 +59,20 @@ namespace CataclysmSaveFixtures
 			return nullptr;
 		}
 		return Parsed;
+	}
+
+	/**
+	 * An empty `FCataclysmPlayerBuild` as the save writes one: what `Migrate_5_to_6` writes into a character record and
+	 * what a record holding no build writes back. Issue #2688. Built from the struct's defaults here, independently of
+	 * the step, so a test comparing a migrated record with it compares two things made apart.
+	 */
+	inline TSharedRef<FJsonObject> EmptyPlayerBuild()
+	{
+		const FCataclysmPlayerBuild None;
+		const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();
+		FJsonObjectConverter::UStructToJsonObject(FCataclysmPlayerBuild::StaticStruct(), &None, Out, CPF_SaveGame, 0,
+												  nullptr, EJsonObjectConversionFlags::SkipStandardizeCase);
+		return Out;
 	}
 
 	/** Text, parsed. Null when it is not a JSON object. */

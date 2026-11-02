@@ -171,7 +171,8 @@ bool FCataclysmThresholdQuestionWordsAndWhatComesOff::RunTest(const FString& Par
 {
 	using namespace CataclysmThresholdQuestionTest;
 
-	// THE WORDS: the total and the threshold, and no consequence yet (issue #2688 adds it).
+	// THE WORDS: the total and the threshold, and the consequence in the design's words, since issue #2688 made the
+	// mark and the double real.
 	FCataclysmThresholdCrossing Crossing;
 	Crossing.Now = 1000.0f;
 	Crossing.After = 2000.4f;
@@ -179,10 +180,14 @@ bool FCataclysmThresholdQuestionWordsAndWhatComesOff::RunTest(const FString& Par
 	TestEqual(TEXT("the question names the item, the total and the threshold"),
 			  UCataclysmWearing::ThresholdQuestion(TEXT("Iron Sabatons"), Crossing),
 			  FString(TEXT("Wearing Iron Sabatons brings your Worn Residue to 2000, past this tier's Consumption "
-						   "Threshold of 1950.")));
+						   "Threshold of 1950. The character is marked. On entering the next dungeon floor, a corrupted "
+						   "double of the character is placed in the dungeon and hunts the player: same class, same "
+						   "level, same equipment, same skills.")));
 	TestEqual(TEXT("and an item with no name is 'this'"), UCataclysmWearing::ThresholdQuestion(FString(), Crossing),
 			  FString(TEXT("Wearing this brings your Worn Residue to 2000, past this tier's Consumption Threshold of "
-						   "1950.")));
+						   "1950. The character is marked. On entering the next dungeon floor, a corrupted double of the "
+						   "character is placed in the dungeon and hunts the player: same class, same level, same "
+						   "equipment, same skills.")));
 
 	// WHAT COMES OFF IS SUBTRACTED: a two-handed weapon over two one-handed ones takes both off.
 	{
