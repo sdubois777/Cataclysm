@@ -40,10 +40,9 @@ nothing, and the generator refuses a summoning row that names no type.
 A minion now takes its own base health and damage from `game/Data/MinionTypes.csv`
 and raises both by its summoner's level, which is the second of the three channels
 the decision of 2026-08-06 allows. The third -- increased damage from one primary
-attribute declared per minion type -- is still not built, and issue #340 tracks
-it. `test_a_minion_takes_its_own_health_and_damage_from_its_type_row` guards the
-half that is built and `test_the_attribute_channel_is_recorded_as_still_missing`
-records the half that is not.
+attribute declared per minion type -- was built for issue #340 on 2026-11-02.
+`test_a_minion_takes_its_own_health_and_damage_from_its_type_row` guards the
+second and `test_the_attribute_channel_is_built` the third.
 """
 
 from __future__ import annotations
@@ -56,7 +55,6 @@ import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DESIGN_DOC = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
-DECISIONS = REPO_ROOT / "docs" / "DECISIONS.md"
 MINION_HEADER = (
     REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem" / "CataclysmMinion.h"
 )
@@ -70,15 +68,14 @@ def _without_comments(source: str) -> str:
     """C++ source with its comments removed, for a check that means "reads".
 
     A NAME IN A COMMENT IS NOT A READ. This file's attribute-channel test
-    asks whether any engine file reads `MinionScaling.csv`, and two files
-    name it in prose to say that nothing does. Searching the raw text would
-    answer "two readers" and report a gap closed that is wide open.
+    asks whether engine code loads and reads `MinionScaling.csv`, and several
+    files name it in prose. Searching the raw text would find a reader in a
+    comment that says the table is read, and pass with the read deleted.
 
     CRUDE ON PURPOSE. It does not understand strings that contain comment
-    markers, and it does not need to: the question is whether an identifier
-    appears outside prose, and a false ABSENCE here would be a test that
-    passes while the channel is built, which the failure message then asks
-    a reader to check.
+    markers, and it does not need to: the asset path it looks for contains
+    neither `//` nor `/*`, and a false ABSENCE here fails the test loudly
+    rather than passing it.
     """
     without_blocks = re.sub(r"/\*.*?\*/", " ", source, flags=re.S)
     return re.sub(r"//[^\n]*", " ", without_blocks)
@@ -311,60 +308,76 @@ def test_a_minion_takes_its_own_health_and_damage_from_its_type_row():
         f"base figures raised by the summoner's level.")
 
 
-def test_the_attribute_channel_is_recorded_as_still_missing():
-    """SAY WHAT DID NOT WORK. The third channel is not built.
+#: The asset the attribute channel loads, as the engine names it.
+MINION_SCALING_ASSET = "/Game/Data/DT_MinionScaling.DT_MinionScaling"
+
+#: The Unreal tests that exercise the channel, in
+#: `game/Source/Cataclysm/Tests/CataclysmMinionAttributeTests.cpp`. Named here
+#: so that deleting one is noticed by a run that does not build the engine.
+ATTRIBUTE_CHANNEL_TESTS = (
+    "Cataclysm.MinionStats.SpiritRaisesAnImpsBlowByOnePercentAPoint",
+    "Cataclysm.MinionStats.TheSummonersSpiritIsReadWithItsGearNotItsPointsAlone",
+    "Cataclysm.MinionStats.SpiritAndIncreasedMinionDamageAddRatherThanMultiply",
+    "Cataclysm.MinionStats.AgilityRaisesAMachineAndNotAnImp",
+    "Cataclysm.MinionStats.SpiritRaisesAThrallsBlowAndItsExplosionAndAgilityDoesNot",
+    "Cataclysm.MinionStats.TheMinionScalingTableGivesOneTagScopedIncreasePerRow",
+)
+
+
+def test_the_attribute_channel_is_built():
+    """The third channel, built for issue #340, guarded so it cannot go back quietly.
 
     The decision of 2026-08-06 (issue #209) allows a minion to reach its
     summoner through three things and no others: its side, its base health and
     damage raised by the summoner's level, and INCREASED DAMAGE FROM ONE PRIMARY
-    ATTRIBUTE DECLARED PER MINION TYPE. The second is built and the third is
-    not, so a minion's damage does not yet move when its summoner's primary
-    attribute does.
+    ATTRIBUTE DECLARED PER MINION TYPE. `game/Data/MinionScaling.csv` states the
+    third -- Spirit for a `Minion.Creature`, Agility for a `Minion.Machine`, one
+    percent a point -- and `UCataclysmPlayerClassStats::ApplyTo` turns each row
+    into a tag-scoped increase on the summoner's `minion_damage` line.
 
-    THIS ASSERTS THE GAP IS TRACKED, NOT THAT IT IS CLOSED.
+    WHAT THIS REPLACES. It was `test_the_attribute_channel_is_recorded_as_still_missing`,
+    a tripwire that passed while no engine code named the table and failed,
+    asking to be rewritten, the day one did. That day was 2026-11-02.
 
-    IT USED TO WATCH A CONSTANT AND THE CONSTANT HAS GONE. Until 2026-09-17 the
-    check was that `CataclysmMinion.h` still declared `DamagePercentOfSummoner`,
-    30% of the summoner's weapon damage, which a minion with no type row dealt.
-    Its own comment said "when the attribute channel lands and that fallback
-    goes, rewrite this test rather than deleting it". The fallback went first:
-    the project owner ruled it a bug, because a minion's blow carries the
-    minion's own numbers. The attribute channel is still unbuilt, so the gap
-    this test exists for is exactly as open as it was.
-
-    SO IT WATCHES THE TABLE INSTEAD. `game/Data/MinionScaling.csv` is the
-    channel's own data -- spirit for creatures, agility for machines, a share of
-    damage per point -- and nothing in the engine reads it. That is the gap,
-    stated as what it is: a table the game ships and ignores. The day something
-    reads it, this test fails and asks to be rewritten again, which is the
-    outcome it exists for.
+    WHAT IS CHECKED. That engine code outside the tests loads the table's asset
+    and reads its rows, in code rather than in a comment; and that the Unreal
+    tests which measure the channel still exist. The behaviour itself is
+    measured by those tests, which a Python run cannot execute; this keeps the
+    wiring and the tests from being deleted by a change that never builds.
     """
     scaling = WEAPON_SKILLS.parent / "MinionScaling.csv"
     assert scaling.is_file() and scaling.read_text(encoding="utf-8").strip(), (
-        f"{scaling.name} is missing or empty, so the attribute channel's own "
-        f"data has gone and this test can no longer tell whether the channel "
-        f"was built or abandoned. Issue #340 has the decision.")
+        f"{scaling.name} is missing or empty, so the attribute channel has no "
+        f"data to read. Issue #340.")
 
-    # CODE RATHER THAN COMMENTS, and the difference is the whole check. Two
-    # engine files NAME MinionScaling.csv in comments today, saying it is the
-    # channel nothing reads; a search of the raw text would call those two
-    # readers and report the gap closed while it is as open as ever.
     engine = REPO_ROOT / "game" / "Source"
-    readers = sorted(
-        path.relative_to(REPO_ROOT).as_posix()
+    code = {
+        path.relative_to(REPO_ROOT).as_posix(): _without_comments(
+            path.read_text(encoding="utf-8", errors="replace"))
         for path in engine.rglob("*.cpp")
-        if "/Tests/" not in path.as_posix()
-        and "MinionScaling" in _without_comments(
-            path.read_text(encoding="utf-8", errors="replace")))
-    if readers:
-        pytest.fail(
-            f"{', '.join(readers)} now names MinionScaling.csv, so the third "
-            f"channel -- increased damage from one primary attribute per minion "
-            f"type -- may be built. Rewrite this test to check what it does "
-            f"instead of recording a gap that has closed. Issue #340.")
-    assert "#209" in DECISIONS.read_text(encoding="utf-8"), (
-        "docs/DECISIONS.md does not record the minion reversal, so the reason "
-        "the code and the design disagree is written nowhere.")
+        if "/Tests/" not in path.as_posix()}
+
+    loaders = sorted(name for name, text in code.items()
+                     if MINION_SCALING_ASSET in text)
+    assert loaders, (
+        f"no engine file outside the tests names {MINION_SCALING_ASSET} in "
+        f"code, so nothing loads game/Data/MinionScaling.csv and a summoner's "
+        f"Spirit and Agility reach no minion. The third channel the decision "
+        f"of 2026-08-06 (issue #209) allows has gone. Issue #340.")
+
+    readers = sorted(name for name, text in code.items()
+                     if "FCataclysmMinionScalingRow" in text)
+    assert readers, (
+        "no engine file outside the tests reads FCataclysmMinionScalingRow in "
+        "code, so the table may be loaded but its rows are turned into "
+        "nothing. Issue #340.")
+
+    tests = (engine / "Cataclysm" / "Tests" / "CataclysmMinionAttributeTests.cpp")
+    text = tests.read_text(encoding="utf-8") if tests.is_file() else ""
+    missing = [name for name in ATTRIBUTE_CHANNEL_TESTS if f'"{name}"' not in text]
+    assert not missing, (
+        f"{tests.name} no longer registers {', '.join(missing)}, so nothing "
+        f"measures that part of the attribute channel. Issue #340.")
 
 
 def test_the_retired_rule_is_not_stated_as_current(section):

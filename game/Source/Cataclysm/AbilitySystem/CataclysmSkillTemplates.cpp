@@ -4705,10 +4705,11 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 			// stat to a minion.
 			//
 			// THAT STAT DOES NOT EXIST YET. The project owner asked for one on
-			// 2026-08-24 and it is #910, waiting on #340 alongside the four
-			// minion affixes: no minion stat has an attribute, and nothing
-			// reads MinionScaling.csv. So this is a recorded gap rather than
-			// an oversight, and the line below is deliberate. Issue #895.
+			// 2026-08-24 and it is #910. The attribute channel #340 built does
+			// not supply it: MinionScaling.csv scales a minion's damage and
+			// nothing else, so no attribute widens an explosion either. So this
+			// is a recorded gap rather than an oversight, and the line below is
+			// deliberate. Issue #895.
 			Oldest->Explode();
 		}
 	}

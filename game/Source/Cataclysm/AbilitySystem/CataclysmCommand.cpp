@@ -598,8 +598,11 @@ float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
  * same entry says "an attribute's contribution and an affix's contribution
  * add. They cannot multiply each other", and gives the reason: every
  * catastrophic minion scaling failure in the survey behind that decision was
- * multiplicative. The increases are still SUMMED before they multiply, so
- * when the attribute channel is built it lands in the same bucket and adds.
+ * multiplicative. The increases are still SUMMED before they multiply, and
+ * the attribute channel, built for issue #340, lands in the same bucket and
+ * adds: `UCataclysmPlayerClassStats::ApplyTo` records one increase per row of
+ * `game/Data/MinionScaling.csv` on this same stat line, each requiring its
+ * row's tag, so the type tags asked with here are what decide which reach.
  *
  * AND A "MORE" OR "LESS" ROW MULTIPLIES ON TOP, SINCE ISSUE #1833'S SMALL
  * ENGINE HALVES. "Your minions have 20%-50% less hp" is a More row, and
@@ -692,8 +695,13 @@ float UCataclysmCommand::SummonerMultiplierAgainst(const AActor* Summoner, const
  * The Third Pact's first option -- reaches a thrall too, and a change to the commander's
  * gear or passives reaches it at its next blow.
  *
- * NO TYPE TAGS. A thrall is a taken creature and carries none of `MinionTypes.csv`'s; every
- * row granting minion damage on 2026-10-02 carried no required tag, so each reaches it.
+ * ASKED AS A `Minion.Creature`, AND NOTHING ELSE. A thrall is a taken creature and carries none of
+ * `MinionTypes.csv`'s tags, so `ThrallMinionTags` stands in for them. Issue #340, ruled 2026-11-02 by the
+ * coordinating session under the owner's delegation: the owner's decision of 2026-09-16 makes the Ritualist
+ * tree's "minion" mean imps and thralls, so a thrall counts as a summoned creature and its commander's Spirit
+ * reaches its blow through `game/Data/MinionScaling.csv`, as it reaches an imp's. Until then it was asked with no
+ * tags at all, which every row granting minion damage on 2026-10-02 still reached, carrying none; a row requiring
+ * `Minion.Creature` reached nothing a thrall dealt.
  *
  * ONE FOR EVERYTHING THAT IS NOT A THRALL: a player, an unowned creature, and a summoned
  * minion, whose blow reads minion damage itself and does not come through `ApplyHit`.
@@ -706,8 +714,22 @@ float UCataclysmCommand::ThrallDamageMultiplierAgainst(const AActor* Striker, co
 	}
 	const AActor* Commander = CommanderOf(Striker);
 	return Commander
-		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, FGameplayTagContainer())
+		? SummonerMultiplierAgainst(Commander, TEXT("minion_damage"), Target, ThrallMinionTags())
 		: 1.0f;
+}
+
+FGameplayTagContainer UCataclysmCommand::ThrallMinionTags()
+{
+	// BUILT AT EACH CALL RATHER THAN HELD IN A STATIC, so a first call made before the tag table is ready cannot
+	// fix an empty container for the rest of the session. One tag lookup a blow is nothing.
+	FGameplayTagContainer Tags;
+	const FGameplayTag Creature = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Minion.Creature")), /*ErrorIfNotFound=*/false);
+	if (Creature.IsValid())
+	{
+		Tags.AddTag(Creature);
+	}
+	return Tags;
 }
 
 int32 UCataclysmCommand::ThrallCountOf(const AActor* Commander)
@@ -891,7 +913,9 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// whenever anything sets a creature's figures, and a rung raised later would drop it.
 	// Fixed at the take, as a summoned minion's health is fixed at its summoning; the
 	// owner's "minions update live rather than snapshotting" is recorded and not built.
-	// No type tags, for the reason `ThrallDamageMultiplierAgainst` gives.
+	// NO TYPE TAGS, UNLIKE ITS DAMAGE. Issue #340's ruling of 2026-11-02 made a thrall a `Minion.Creature` for minion
+	// damage, which is the only stat `game/Data/MinionScaling.csv` scales; its health was left as it was asked, with no
+	// tags, so a minion_health row requiring a tag does not reach a thrall. Not ruled either way.
 	if (ACataclysmEnemyCharacter* AsCreature = Cast<ACataclysmEnemyCharacter>(Taken))
 	{
 		AsCreature->SetCommanderHealthMultiplier(SummonerMultiplierFor(

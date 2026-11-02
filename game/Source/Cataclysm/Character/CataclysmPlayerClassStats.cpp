@@ -67,6 +67,9 @@ const TCHAR* UCataclysmPlayerClassStats::ClassStatsAssetPath =
 const TCHAR* UCataclysmPlayerClassStats::AttributesAssetPath =
 	TEXT("/Game/Data/DT_Attributes.DT_Attributes");
 
+const TCHAR* UCataclysmPlayerClassStats::MinionScalingAssetPath =
+	TEXT("/Game/Data/DT_MinionScaling.DT_MinionScaling");
+
 const FString UCataclysmPlayerClassStats::StartingClassName = TEXT("Ravager");
 
 namespace
@@ -172,6 +175,9 @@ namespace
 
 	/** The same, for the table saying what one attribute point is worth. */
 	TWeakObjectPtr<const UDataTable> CachedAttributes;
+
+	/** And for the one saying what an attribute point is worth to a minion. */
+	TWeakObjectPtr<const UDataTable> CachedMinionScaling;
 }
 
 const UDataTable* UCataclysmPlayerClassStats::LoadTable()
@@ -223,6 +229,31 @@ const UDataTable* UCataclysmPlayerClassStats::LoadAttributeTable()
 
 	const_cast<UDataTable*>(Table)->AddToRoot();
 	CachedAttributes = Table;
+	return Table;
+}
+
+const UDataTable* UCataclysmPlayerClassStats::LoadMinionScalingTable()
+{
+	if (CachedMinionScaling.IsValid())
+	{
+		return CachedMinionScaling.Get();
+	}
+
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, MinionScalingAssetPath);
+	if (!Table)
+	{
+		// LOUD, FOR THE REASON `LoadAttributeTable` GIVES. Without this table a
+		// summoner's Spirit and Agility reach no minion, and nothing else would
+		// say so: every minion simply deals its own figure. Issue #340.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s could not be loaded, so a summoner's attributes will raise "
+				 "no minion's damage. It is generated from the Minion Scaling "
+				 "sheet into game/Data/MinionScaling.csv."), MinionScalingAssetPath);
+		return nullptr;
+	}
+
+	const_cast<UDataTable*>(Table)->AddToRoot();
+	CachedMinionScaling = Table;
 	return Table;
 }
 
@@ -1917,11 +1948,14 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// game was discarded and never seen again.
 	TMap<FName, FCataclysmStatInputs> Inputs;
 
-	// RESOLVING ONE STAT, USED BY BOTH PASSES BELOW. `Extra` is a modifier the
-	// caller wants applied on top of whatever `Modifiers` holds for the stat,
-	// and is only ever what the character's attributes contribute.
+	// RESOLVING ONE STAT, USED BY ALL THREE PASSES BELOW. `Extras` are modifiers
+	// the caller wants applied on top of whatever `Modifiers` holds for the
+	// stat, and are only ever what the character's attributes contribute: one
+	// summed increase for a stat `game/Data/Attributes.csv` scales, or one
+	// tag-scoped increase per row of `game/Data/MinionScaling.csv` for a minion
+	// stat (issue #340), whose rows require different tags and cannot be summed.
 	const auto Resolve = [&](const FString& Stat,
-							 const FCataclysmStatModifier* Extra,
+							 TConstArrayView<FCataclysmStatModifier> Extras,
 							 FCataclysmStatBreakdown& OutBreakdown) -> float
 	{
 		// BaseFor falls back to the shared Default line when the class does not
@@ -1975,10 +2009,7 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 				ForStat = *Found;
 			}
 		}
-		if (Extra)
-		{
-			ForStat.Add(*Extra);
-		}
+		ForStat.Append(Extras.GetData(), Extras.Num());
 		if (ForStat.IsEmpty())
 		{
 			return Base;
@@ -2039,7 +2070,7 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		}
 
 		FCataclysmStatBreakdown Breakdown;
-		const float Value = Resolve(Name, nullptr, Breakdown);
+		const float Value = Resolve(Name, {}, Breakdown);
 		Attributes.SetIn(Name, Value);
 		AbilitySystem->SetNumericAttributeBase(*Attribute, Value);
 		++Written;
@@ -2074,7 +2105,11 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 
 		FCataclysmStatBreakdown Breakdown;
 		const float Value = Resolve(
-			Pair.Key, bAttributesApply ? &FromAttributes : nullptr, Breakdown);
+			Pair.Key,
+			bAttributesApply
+				? TConstArrayView<FCataclysmStatModifier>(&FromAttributes, 1)
+				: TConstArrayView<FCataclysmStatModifier>(),
+			Breakdown);
 
 		// THE ATTACK DAMAGE BRACKET IS REMEMBERED, and only that one. Issue
 		// #895. A finished attribute has its increases already applied and no
@@ -2124,6 +2159,18 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// `game/Data/MinionTypes.csv`, raised by its summoner's level. The summoner's
 	// gear adds increases to that figure rather than supplying one.
 	//
+	// AND THE SUMMONER'S ATTRIBUTES ADD THEIRS, SINCE ISSUE #340: the third of
+	// the three channels the decision of 2026-08-06 (issue #209) allows. Each
+	// row of `game/Data/MinionScaling.csv` naming the stat becomes one increase
+	// requiring the row's tag -- Spirit for a `Minion.Creature`, Agility for a
+	// `Minion.Machine`, one percent a point -- worked out from the RESOLVED
+	// attributes pass one wrote, so gear that increases Spirit raises a minion
+	// too. Ruled 2026-11-02 by the coordinating session under the owner's
+	// delegation: the resolved value and not the spent points, in the increased
+	// bucket beside gear's increased minion damage, adding to it rather than
+	// multiplying it. A minion asks with its own type tags, which is what keeps
+	// Agility off an imp; `UCataclysmStatPipeline::ModifierApplies` decides.
+	//
 	// AND `mana_on_hit` SINCE ISSUE #1791, which is not a minion's and is read
 	// for something else. The basic attack's mana on hit is its slot's own
 	// figure, so this stat has no value to hold either. What is recorded for it
@@ -2140,10 +2187,15 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// places need the same three names and were each keeping their own copy. It
 	// is `StatsWithNoAttribute()` now, and its header says what the exemption
 	// promises and what keeps the promise.
+	const UDataTable* MinionScalingTable = LoadMinionScalingTable();
 	for (const FString& Stat : StatsWithNoAttribute())
 	{
+		TArray<FCataclysmStatModifier> FromMinionScaling;
+		UCataclysmClassStats::MinionScalingModifiersForValues(
+			MinionScalingTable, Attributes, Stat, FromMinionScaling);
+
 		FCataclysmStatBreakdown Breakdown;
-		Resolve(Stat, nullptr, Breakdown);
+		Resolve(Stat, FromMinionScaling, Breakdown);
 	}
 
 	// AND THE INPUTS GO ACROSS, SO A SKILL CAN ASK AGAIN. Issue #943.

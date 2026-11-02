@@ -88,14 +88,15 @@ public:
 	 * type row, and `tools/generate_datatables.py` refuses a summoning row
 	 * that names no minion type.
 	 *
-	 * WHAT IS STILL MISSING IS THE ATTRIBUTE CHANNEL, the third of the three
-	 * routes the design allows from a summoner to its minion.
+	 * THE ATTRIBUTE CHANNEL IS BUILT, the third of the three routes the
+	 * design allows from a summoner to its minion. Issue #340.
 	 * `game/Data/MinionScaling.csv` states it -- spirit for creatures,
-	 * agility for machines, one percent of damage per point -- and no code in
-	 * the engine reads that table. **Issue #340 tracks that gap**, and
-	 * `test_the_attribute_channel_is_recorded_as_still_missing` in
-	 * `tools/tests/test_minion_damage.py` is what keeps it recorded now that
-	 * the constant it used to watch has gone.
+	 * agility for machines, one percent of damage per point -- and
+	 * `UCataclysmPlayerClassStats::ApplyTo` records each row as a tag-scoped
+	 * increase on the summoner's `minion_damage` line, which `AttackTarget`
+	 * and `Explode` read with this minion's type tags.
+	 * `test_the_attribute_channel_is_built` in
+	 * `tools/tests/test_minion_damage.py` keeps it from going back quietly.
 	 */
 
 	/**
@@ -865,6 +866,10 @@ public:
 	 * its blow times the share its type row states. Until then the caller
 	 * passed the skill's damage percentage, which was read against the
 	 * SUMMONER'S weapon -- the rule the owner corrected.
+	 *
+	 * ITS BLOW AS DEALT, SINCE ISSUE #340: the summoner's minion damage for this
+	 * minion's type tags, read once with no target, multiplies it. Ruled
+	 * 2026-11-02; the definition has the reasoning.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
 	void Explode();
@@ -919,7 +924,7 @@ public:
 	 *
 	 * ITS OWN BLOW IS A JUDGEMENT, approved 2026-10-28: its attack damage at death times its commander's increased
 	 * minion damage without a target. The part of minion damage conditioned on the enemy struck cannot apply, since an
-	 * explosion has no single target.
+	 * explosion has no single target. Asked as a `Minion.Creature` since issue #340, so Spirit reaches it.
 	 */
 	static float ThrallExplosionDamage(const AActor* Lost, const AActor* Commander);
 

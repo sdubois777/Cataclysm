@@ -173,6 +173,33 @@ public:
 										   const FString& Stat,
 										   FCataclysmStatModifier& OutModifier);
 
+	/**
+	 * What a summoner's RESOLVED attributes are worth to one minion stat, as one
+	 * tag-scoped increase per row of `game/Data/MinionScaling.csv`. Issue #340,
+	 * the third of the three channels the decision of 2026-08-06 (issue #209)
+	 * allows from a summoner to its minion.
+	 *
+	 * A ROW NAMES THE MINION'S STAT WITHOUT THE PREFIX: "damage" is the summoner's
+	 * recorded `minion_damage` line. Each row matching `Stat` adds one modifier in
+	 * the increased bucket, worth its percent per point times the attribute's
+	 * value, requiring the row's tag -- so Spirit reaches a minion carrying
+	 * `Minion.Creature` and Agility one carrying `Minion.Machine`, and neither
+	 * reaches the other. `UCataclysmStatPipeline::ModifierApplies` enforces that
+	 * when a minion asks with its own type tags.
+	 *
+	 * NOT ONE SUMMED MODIFIER, unlike `AttributeModifierForValues`, because the
+	 * rows require different tags and a sum could carry only one.
+	 *
+	 * NOTHING FOR AN ATTRIBUTE AT NOUGHT, so a character with no Spirit records no
+	 * minion damage line at all. A row whose tag is not registered is skipped and
+	 * warned of rather than turned into an unscoped increase that would reach
+	 * every minion.
+	 */
+	static void MinionScalingModifiersForValues(const UDataTable* MinionScalingTable,
+												const FCataclysmAttributeValues& Values,
+												const FString& Stat,
+												TArray<FCataclysmStatModifier>& OutModifiers);
+
 	/** Every stat any class or the default line names. */
 	static TArray<FString> StatsNamedByClasses(const UDataTable* ClassTable);
 

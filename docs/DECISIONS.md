@@ -2,6 +2,171 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A summoner's Spirit and Agility raise its minions' damage by tag, and an imp's explosion is a share of its blow as dealt (#340)
+
+**Affects:** `UCataclysmClassStats::MinionScalingModifiersForValues`, new (`game/Source/Cataclysm/Character/CataclysmClassStats.h`,
+`.cpp`); `UCataclysmPlayerClassStats::MinionScalingAssetPath` and `LoadMinionScalingTable`, new, and `ApplyTo`, whose
+`Resolve` takes a list of extra modifiers and whose third pass adds the table's rows (`CataclysmPlayerClassStats.h`,
+`.cpp`); `UCataclysmCommand::ThrallMinionTags`, new, read by `ThrallDamageMultiplierAgainst` (`CataclysmCommand.h`,
+`.cpp`); `ACataclysmMinion::Explode` and `ACataclysmMinion::ThrallExplosionDamage` (`CataclysmMinion.h`, `.cpp`);
+comments in `CataclysmSkillTemplates.cpp`; seven new tests in
+`game/Source/Cataclysm/Tests/CataclysmMinionAttributeTests.cpp`; `tools/tests/test_minion_damage.py`. Issue
+[#340](https://github.com/sdubois777/Cataclysm/issues/340).
+
+### SAID FIRST
+
+- **NOT RUN IN UNREAL.** Compiled (`Build: Succeeded - 50 actions, 47 files compiled`; the six changed `.cpp` files'
+  own objects -- `CataclysmClassStats.cpp.obj`, `CataclysmPlayerClassStats.cpp.obj`, `CataclysmCommand.cpp.obj`,
+  `CataclysmMinion.cpp.obj`, `CataclysmSkillTemplates.cpp.obj` and the new `CataclysmMinionAttributeTests.cpp.obj` --
+  written at 15:42, after every source edit). The seven tests, the whole suite and three proofs are registered below
+  for a window.
+- **IT MOVES BALANCE FOR EVERY SUMMONER WHO SPENDS SPIRIT OR AGILITY**, and for every imp explosion whose summoner
+  holds increased minion damage. Nothing changes for a summoner with neither attribute and no minion damage.
+- **For the owner's launch check:** a Ritualist with points in Spirit summons an imp; its blows grow by one per cent a
+  point of Spirit (gear that increases Spirit counts), and its explosion grows with them. Points in Agility leave the
+  imp alone.
+- **Two things this change leaves as they were, not ruled:** a minion's chaos pool (`ACataclysmMinion::LeaveChaosPool`)
+  is still a share of the type row's blow without the summoner's minion damage, and a thrall's minion health is still
+  asked with no type tags (`UCataclysmCommand::Subjugate`). Each comment says so.
+
+### The rulings, by the coordinating session under the owner's delegation, 2026-11-02
+
+- **(a) Ruling.** The figure is the summoner's RESOLVED attribute value, gear included -- the `FCataclysmAttributeValues`
+  `UCataclysmPlayerClassStats::ApplyTo` already holds after its first pass -- and not the spent points. It lands in the
+  increased bucket and is summed with gear's increased minion damage: it adds, it does not multiply.
+- **(b) Judgement.** A thrall counts as a `Minion.Creature`, so Spirit reaches its blow and its explosion. The reason:
+  the owner's decision of 2026-09-16 ("The ten Ritualist nodes that named an imp or a thrall say minion") makes the
+  Ritualist tree's "minion" mean imps and thralls.
+- **(c) Ruling.** The simulation does not change, because no simulation model computes a minion's damage. The search,
+  re-run on 2026-11-02 at `c3b4289a2`: `grep -rci minion sim/cataclysm_sim/*.py` finds the word in five modules only --
+  `affixes.py` (25 lines: the minion affixes, and `OFF_SHEET_STATS`, which lists `minion_damage`, `minion_health` and
+  `minion_attack_speed` as stats that belong to the minion and not to the character sheet), `enemy_abilities.py` (7:
+  skill parameter names and prose), `enemy_stats.py` (2: a capsule comment), `naming.py` (2: an affix's name) and
+  `player_damage.py` (1: its docstring, "minion damage cannot be a share of the player's hit until the player's hit is
+  a number"). `grep -rn -i "minion_damage\|MinionScaling" sim/ --include=*.py` outside `sim/tests` finds only
+  `affixes.py`. `character.py`, which models attributes, names no minion.
+- **(d) Ruling, new.** An imp's death explosion is a share of its blow AS DEALT: it carries the summoner's
+  `minion_damage` multiplier for the imp's own type tags -- gear's increases, a "more" row, and now the attribute --
+  exactly as a thrall's explosion already did (`ThrallExplosionDamage`). Volatile's `minion_explosion_damage` is
+  unchanged and is not read twice.
+
+### What changes
+
+- **ONE PLACE.** `ApplyTo`'s third pass resolves the stats no attribute exists for (`StatsWithNoAttribute`), recording
+  their modifiers for a minion to read. Each row of `game/Data/MinionScaling.csv` whose `Stat` with `minion_` before it
+  names that stat now adds one increase, `Source` Attribute, worth `PercentPerPoint` times the resolved attribute,
+  requiring the row's `RequiresTag`. Today: Spirit 1.0% a point for `Minion.Creature`, Agility 1.0% a point for
+  `Minion.Machine`, both on damage. An attribute at nought adds nothing; a row whose tag is not registered is skipped
+  with a warning rather than made unscoped.
+- **NOT ONE SUMMED MODIFIER**, unlike `AttributeModifierForValues`, because the two rows require different tags. That is
+  why `Resolve` now takes a list.
+- **EVERY READER ALREADY ASKS WITH TAGS.** `ACataclysmMinion::AttackTarget` asks
+  `UCataclysmCommand::SummonerMultiplierAgainst` with the minion's `TypeTags`, and
+  `UCataclysmStatPipeline::ModifierApplies` keeps a row whose required tag the minion does not carry out of the sum, so
+  Agility never reaches an imp. A thrall carries no type tags, so `ThrallMinionTags` (`Minion.Creature` alone) stands in
+  for them at its blow and its explosion; a thrall used to be asked with none, which reached every row naming no
+  tag and no row naming one.
+- **THE IMP'S EXPLOSION.** `Explode` multiplied the type row's figure, `OwnDamagePerHit`, by the share and by Volatile,
+  and its comment said the summoner's minion damage was "in the blow already". It was not: the multiplier is applied in
+  `AttackTarget` to the swing alone. It now reads `SummonerMultiplierFor(Summoner, "minion_damage", TypeTags)` once,
+  with no target, because an explosion has many -- the form `ThrallExplosionDamage` already used.
+- **TRAPS AND GADGETS ARE UNTOUCHED.** `TrapDamageNamingTrap` and `StatNamingTagAppliedTo` keep only rows naming
+  `Type.Trap` or `Type.Deployable` exactly (`HasTagExact`), and the new rows name a minion family. A machine is still
+  raised by Agility through the ordinary minion damage reading.
+- **NON-PLAYER SUMMONERS, BY READING.** An ordinary enemy is never given a stat line (`ApplyTo` has three callers: the
+  player character, the equipment component and the Corrupted Stalker), so its minions' multiplier stays 1.0. The
+  Corrupted Stalker's `WearTheBuild` passes no spent points, so its Spirit and Agility resolve to nought and add
+  nothing. The corrupted double wears a player's build through the equipment component, points included, so its
+  minions take its Spirit as the player's would -- a consequence of the earlier ruling that it wears the build.
+
+### Genre research
+
+Tried again on 2026-11-02 and refused: `lastepoch.fandom.com/wiki/Attributes` (HTTP 402), `www.poewiki.net/wiki/Minion`
+(an access-denied page), two `maxroll.gg/last-epoch/resources/...` guesses (HTTP 404), `www.lastepochtools.com/skills/`
+(HTTP 403). `poedb.tw/us/Minion` was readable and says nothing about how player modifiers or attributes reach a minion.
+**No research is recorded here.** What settles the shape is this project's own: the design document's "Each grants 1.0%
+increased minion damage per point" and "How scaling reaches a minion: by tag", and the survey recorded in "2026-08-06 —
+Minions have their own stats, and reach the summoner through three channels", which found every catastrophic minion
+scaling failure multiplicative and wrote "an attribute's contribution and an affix's contribution add". Rulings (a),
+(b) and (d) are judgements specific to this game.
+
+### Tests
+
+Seven new, in `CataclysmMinionAttributeTests.cpp`, every one driving the real `ApplyTo` with the spent points merged as
+base overrides (`MergeAttributeBases`), a Ritualist at level 20, pools left as they are. `Cataclysm.MinionStats.` held
+5 on `development` at `2bba2e4fa` (the ground-colour-w1 suite log's completed tests; `5faecd4ef` holds the same tree)
+and holds 12. An imp's own blow here is 10.5 + 10.5 x 20 = 220.5.
+
+1. `SpiritRaisesAnImpsBlowByOnePercentAPoint`: one imp, Spirit 0 then 40: 220.5 (control), then 308.7.
+2. `TheSummonersSpiritIsReadWithItsGearNotItsPointsAlone`: 40 points and 25% increased spirit resolve to 50 Spirit
+   (set-up line), and the blow is 330.75; read from the points it would be 308.7.
+3. `SpiritAndIncreasedMinionDamageAddRatherThanMultiply`: 40 Spirit and 25% increased minion damage: 220.5 x 1.65 =
+   363.825; multiplied it would be 385.875.
+4. `AgilityRaisesAMachineAndNotAnImp`: 30 Agility: the ballista's minion damage multiplier is 1.30 and its blow
+   (63 + 63 x 20) x 1.3 = 1719.9; the imp's multiplier is 1.00 and its blow 220.5.
+5. `SpiritRaisesAThrallsBlowAndItsExplosionAndAgilityDoesNot`: a thrall's blow before its commander has any attribute
+   is the control; with 40 Agility its blow and its explosion (300% of its attack damage) are unchanged; with 40 Spirit
+   both are 1.40 times; an unowned creature's blow is unchanged.
+6. `TheMinionScalingTableGivesOneTagScopedIncreasePerRow`: on the shipped table, Spirit 40 and Agility 30 give
+   `minion_damage` two increases from an attribute, one requiring `Minion.Creature` worth 40 and one requiring
+   `Minion.Machine` worth 30; `minion_health` gets none; with no Agility, one.
+7. `AnImpsExplosionIsAShareOfItsBlowAsDealt`, ruling (d), with gear rather than Spirit so the attribute channel cannot
+   reach it: two summoners 100 m apart; the control's imp explodes for 3 x 220.5 = 661.5, the one whose summoner holds
+   25% increased minion damage for 826.875.
+
+`tools/tests/test_minion_damage.py::test_the_attribute_channel_is_recorded_as_still_missing`, a tripwire that failed by
+design the day engine code named the table, is replaced by `test_the_attribute_channel_is_built`: a non-test `.cpp`
+names `/Game/Data/DT_MinionScaling.DT_MinionScaling` in code and one reads `FCataclysmMinionScalingRow` in code, and
+the six attribute tests above are registered in `CataclysmMinionAttributeTests.cpp`. PROVED with
+`tools/prove_guard.py`'s `break_and_run`, in a detached `git worktree add` copy at `c3b4289a2`, breaking
+`TEXT("/Game/Data/DT_MinionScaling.DT_MinionScaling");` to `TEXT("");` in `CataclysmPlayerClassStats.cpp` and running
+`python -m pytest tools/tests/test_minion_damage.py`: "PROVED: 1 failed, 18 passed in 0.66s | restored: 19 passed in
+0.10s", `named_failures` `['tools/tests/test_minion_damage.py::test_the_attribute_channel_is_built']`.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.MinionStats.` alone | 12 / 12: 5 at `2bba2e4fa`, + 7 |
+| Whole Unreal suite | 4562 / 0: `development`'s 4555 (`2bba2e4fa`, the tree `5faecd4ef` holds), + 7 |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| A, the attribute worth nothing (`Modifier.Value = Row->PercentPerPoint * Values.ValueIn(Row->Attribute);` to `Modifier.Value = 0.0f;`, in `CataclysmClassStats.cpp`), prefix `Cataclysm.MinionStats.` | 6 tests, 8 assertions: "forty Spirit raises its blow by forty per cent"; "fifty Spirit, not the forty points spent, raises the imp's blow by fifty per cent"; "forty Spirit and 25% increased minion damage add to 65% increased"; "thirty Agility multiplies a machine's minion damage by 1.30" and "and the ballista's blow is thirty per cent above its own figure"; "its commander's forty Spirit raises its blow by forty per cent" and "and its explosion by forty per cent"; "Spirit and Agility each give minion damage one increase" (that test then stops). Nothing else: every control, set-up and imp line holds, the explosion test passes, and the 5 older tests pass |
+| B, a thrall's blow asked with no tags (`Target, ThrallMinionTags())` to `Target, FGameplayTagContainer())`, in `CataclysmCommand.cpp`), prefix `Cataclysm.MinionStats.` | 1 test, 1 assertion: "its commander's forty Spirit raises its blow by forty per cent". Its explosion line holds, since `ThrallExplosionDamage` asks `ThrallMinionTags` itself |
+| C, the imp's explosion from the raw blow (`* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);` to `* 1.0f;`, in `CataclysmMinion.cpp`), prefix `Cataclysm.MinionStats.` | 1 test, 1 assertion: "with 25% increased minion damage it explodes for three of its blows as dealt, 25% more". Its control holds |
+
+Each break's anchor occurs once (`prove_m340.py --anchors-only`). The breaks were not compiled before registration.
+
+### Window minion-attributes-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `b07b9b193` (on `development` `5faecd4ef`),
+lock `minion-attributes-w1`, after the six pre-checks all passed (10,616 MB of physical memory free). Every registered
+figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's build of the same tree had compiled 47 files) |
+| `Cataclysm.MinionStats.` alone | 12 / 12 | "12 tests performed, 12 succeeded, 0 failed" |
+| Whole Unreal suite | 4562 / 0 | "4562 tests performed, 4562 succeeded, 0 failed"; "Declared: 4562 tests in the tree at b07b9b193; 4562 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 198.93s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 6 tests, 8 assertions | PROVED. The kept broken-half log fails exactly the eight registered assertions in the six registered tests, and nothing else; the restored half passed 12 of 12 |
+| B | 1 assertion | PROVED. Exactly "its commander's forty Spirit raises its blow by forty per cent" (140 expected, 100 read); restored 12 of 12 |
+| C | 1 assertion | PROVED. Exactly "with 25% increased minion damage it explodes for three of its blows as dealt, 25% more" (826.875 expected, 661.5 read); restored 12 of 12 |
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- A summoner that is a real player character, through `ACataclysmPlayerCharacter`'s refresh: the tests call `ApplyTo`
+  as both of the game's callers do, on a bare actor.
+- A Mote (a creature) and the other three machines: the tags are read from each type's row, and one of each family is
+  measured.
+- The Corrupted Stalker and the corrupted double summoning: read, not run.
+- A row with an unregistered tag: no such row exists, and its warning is not exercised.
+- The imp explosion's machine counterpart: a machine that explodes now carries Agility as well, by the same line; not
+  measured.
+
+---
+
 ## 2026-11-02 — A player's skill's own ground is drawn in the skill's damage type, and its damage stays untyped (#818)
 
 **Affects:** `UCataclysmGroundEffect::DamageTypeFor`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmGroundEffect.h`,

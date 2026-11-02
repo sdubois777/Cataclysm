@@ -213,6 +213,56 @@ bool UCataclysmClassStats::AttributeModifierForValues(
 	return true;
 }
 
+void UCataclysmClassStats::MinionScalingModifiersForValues(
+	const UDataTable* MinionScalingTable,
+	const FCataclysmAttributeValues& Values,
+	const FString& Stat,
+	TArray<FCataclysmStatModifier>& OutModifiers)
+{
+	if (!MinionScalingTable)
+	{
+		return;
+	}
+
+	for (const TPair<FName, uint8*>& Pair : MinionScalingTable->GetRowMap())
+	{
+		const auto* Row = reinterpret_cast<const FCataclysmMinionScalingRow*>(Pair.Value);
+		if (!(TEXT("minion_") + Row->Stat).Equals(Stat, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		// THE SAME BUCKET AND SOURCE AS EVERY OTHER ATTRIBUTE CONTRIBUTION, so it
+		// is summed with gear's increased minion damage rather than multiplying
+		// it. The design: "an attribute's contribution and an affix's
+		// contribution add. They cannot multiply each other". Issue #340, ruling
+		// (a) of 2026-11-02.
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::Attribute;
+		Modifier.Value = Row->PercentPerPoint * Values.ValueIn(Row->Attribute);
+		if (FMath::IsNearlyZero(Modifier.Value))
+		{
+			continue;
+		}
+
+		const FGameplayTag Required = FGameplayTag::RequestGameplayTag(
+			FName(*Row->RequiresTag), /*ErrorIfNotFound=*/false);
+		if (!Required.IsValid())
+		{
+			// SKIPPED, NOT UNSCOPED. An increase with no required tag reaches
+			// every minion, which is exactly what this table exists to prevent.
+			UE_LOG(LogCataclysm, Warning,
+				   TEXT("MinionScaling row %s requires the tag %s, which is not "
+						"registered, so it raises no minion."),
+				   *Pair.Key.ToString(), *Row->RequiresTag);
+			continue;
+		}
+		Modifier.RequiredTags.AddTag(Required);
+		OutModifiers.Add(Modifier);
+	}
+}
+
 TArray<FString> UCataclysmClassStats::StatsNamedByClasses(const UDataTable* ClassTable)
 {
 	TSet<FString> Seen;
