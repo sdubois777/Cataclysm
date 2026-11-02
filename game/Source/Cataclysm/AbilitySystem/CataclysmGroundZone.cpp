@@ -455,6 +455,13 @@ void ACataclysmGroundZone::Sweep()
 		// AND THE SKILL THAT LEFT IT, when one did, so the hit notice names it and a kill carries its tags to the
 		// killer's rows. Issue #1585, ruled 2026-11-01. It only names: `ApplyDirectDamage` reads it for the context.
 		Delivery.Skill = SkillThatLeftIt;
+		// AND, WHEN THAT SKILL HAS GONE, THE TAGS IT LEFT THE ZONE WITH, so the hit and a kill still carry them, with no
+		// skill name: the one-use grant `UCataclysmTriggeredSkill::Trigger` makes, removed after the use. Issue #2683,
+		// as a projectile whose firing skill has gone does (#2475). Identity only. Null while the skill is there, and
+		// for a zone no skill left, whose tags are empty.
+		Delivery.SkillTagsWithNoSkill = !SkillThatLeftIt.IsValid() && !SkillTagsItWasLeftWith.IsEmpty()
+			? &SkillTagsItWasLeftWith
+			: nullptr;
 		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log
@@ -514,11 +521,18 @@ void ACataclysmGroundZone::Sweep()
 
 		// AND THE AILMENT OF THE ZONE'S OWN DAMAGE TYPE, at that ailment's ordinary figures. Ruled 2026-10-06.
 		// A magnitude of one is one application at the row's own size, as a chance of up to a hundred gives.
+		//
+		// AND THE TAGS OF THE SKILL THAT LEFT THE ZONE, AND NO SKILL, so a kill by the ailment's ticks carries them.
+		// Issue #2683, ruled by the coordinating session 2026-11-01 (J2): a zone's own ailment carries tags only, no
+		// skill name. Identity only (J1): the ailment is priced as it was, with no skill. Null for a zone no skill
+		// left, whose tags are empty.
 		if (bEffects && !OwnAilment.IsNone())
 		{
 			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(OwnAilment.ToString()))
 			{
-				UCataclysmAilments::Apply(Source, Target, *Kind, /*Magnitude=*/1.0f);
+				UCataclysmAilments::Apply(Source, Target, *Kind, /*Magnitude=*/1.0f,
+					/*Skill=*/nullptr, /*DamageType=*/NAME_None, /*Seconds=*/0.0f,
+					/*SkillTagsWithNoSkill=*/SkillTagsItWasLeftWith.IsEmpty() ? nullptr : &SkillTagsItWasLeftWith);
 			}
 		}
 	};
