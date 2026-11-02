@@ -2,6 +2,104 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — An equip that would take the Worn Residue to or past this tier's Consumption Threshold is asked about first, on the choice panel (#2687)
+
+**Affects:** `ECataclysmWearResult::WouldCrossConsumptionThreshold` and `NoLongerThere`, `FCataclysmThresholdCrossing`,
+`UCataclysmWearing::WearAfterConfirming`, `CrossingFor` and `ThresholdQuestion`, new, and `WearFromCarried`'s two new
+parameters (`game/Source/Cataclysm/Items/CataclysmWearing.h`, `.cpp`); `UCataclysmEquipmentComponent::WornResidueIfEquipped`,
+new, and a comment on `EquipInto` (`CataclysmEquipmentComponent.h`, `.cpp`); `UCataclysmChoicePanelWidget::SetQuestion`,
+new (`game/Source/Cataclysm/Interface/CataclysmChoicePanelWidget.h`, `.cpp`); `ACataclysmPlayerController::AskBeforeWearing`,
+`WearingQuestionIsOpen` and `EnsureChoicePanel`, new, and the two inventory press handlers
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h`, `.cpp`); the equip console command's confirm
+argument (`CataclysmPlayerCharacter.cpp`); four new tests in `CataclysmThresholdQuestionTests.cpp`. Issue
+[#2687](https://github.com/sdubois777/Cataclysm/issues/2687).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **THE QUESTION PROMISES NOTHING ABOUT WHAT CROSSING DOES, BECAUSE NOTHING YET HAPPENS.** The design says the game
+  "states the resulting total and the consequence". This states the total and the threshold. The consequence -- the
+  mark, and the double that hunts the player -- is [#2688](https://github.com/sdubois777/Cataclysm/issues/2688), and
+  **#2688 must add the consequence sentence to `UCataclysmWearing::ThresholdQuestion`, in the design's words, when the
+  mark exists.** Ruled 2026-11-01 (Q2).
+- **NO TEST CAN SEE THE PANEL DRAWN OR CLICKED.** The tests read the rule, the words and the panel's keys and answer;
+  the controller's part -- opening the panel on a right press, and ignoring inventory presses while it is open -- is
+  checked by the owner's launch check below.
+- **For the owner's launch check:** with Worn Residue just below the threshold, right-click an item that takes it past:
+  the panel asks, "Keep it off" changes nothing, "Wear it" puts it on. And: clicking "Wear it" where the panel lies
+  over the carried grid does not also pick an item up. Whatever that answer is, the two guards below keep the
+  question about one item.
+
+### Rulings, 2026-11-01
+
+- **Q1, which paths ask: the paths the player chooses.** The design says "There is no path across the threshold that
+  does not show the warning first"; read as every equip the player chooses. Recorded as a reading. The paths, from a
+  sweep of `game/Source` outside the tests for `UCataclysmWearing::`, `->Equip(` and `EquipInto`:
+
+  | Path | Asks |
+  |---|---|
+  | A right press on a carried cell of the inventory screen (`RightPressOnTheInventoryScreen`, `WearFromCarried`) | yes, on the choice panel |
+  | The `Cataclysm.Equip` console command (`WearFromCarried`) | refused without `confirm`; `confirm` is the yes |
+  | Character creation's two equips (`CataclysmPlayerCharacter.cpp`, `Equipment->Equip`) | no: not the player's choice of item |
+  | Saved gear put back (`RestoreWornGear`, from `CataclysmSaveApply.cpp`) | no: it was worn when saved |
+  | The Corrupted Stalker dressing itself (`EquipInto`) | no: a creature, not the player |
+
+  There is no drag and drop (the screen is click-to-place, and a left press on a gear slot while holding something is
+  refused), no gamepad path and no stash. A left press only picks up, puts down or drops, and taking a piece off can
+  only lower the Worn Residue. `EquipInto`'s header now says that a player-chosen equip goes through `WearFromCarried`.
+- **Q2:** the words, above.
+- **Q3, only the crossing asks:** below the threshold now, and at or past it once the item is on (the design's "to or
+  past"). A character already past it is not asked at every equip, and an equip that brings it back below is never
+  asked about. Recorded as a reading.
+- **Q4, the choice panel is reused,** with a second entry point and no new asset, so no editor generator run. The
+  answer is called through a function that holds the controller by `TWeakObjectPtr` and does nothing when it is gone.
+- `Cataclysm.Equip <slot> confirm`, a developer's tool, takes an explicit yes.
+- Two proofs, P1 and P2, with their failing assertions registered.
+
+### What changes
+
+- **`UCataclysmEquipmentComponent::WornResidueIfEquipped(Item)`**: the Worn Residue once the item is on, counting
+  what would come off. `Equip` decides that, on the component's own slots with announcing silenced, and the slots and
+  the change count are then put back; a second copy of the slot rule written for the question would one day disagree
+  with the first.
+- **`UCataclysmWearing::CrossingFor`** reads the totals and the tier's threshold; **`WearFromCarried`** answers
+  `WouldCrossConsumptionThreshold`, moving nothing, unless `bConfirmedPastThreshold`. Asked after the room check, so
+  a player is never asked about an equip that would be refused anyway.
+- **`WearAfterConfirming`** is the yes. It reads the carried cell again and answers `NoLongerThere`, moving nothing,
+  when the cell no longer holds exactly the item asked about (every saved field compared).
+- **The controller** opens the question on the right press, titled "Past the Consumption Threshold", with "Wear it"
+  and "Keep it off"; while it is open, both inventory press handlers do nothing.
+
+### Tests
+
+- `Cataclysm.ThresholdQuestion.ACrossingEquipIsAskedAboutAndPutsNothingOnUntilConfirmed` ("THRESHOLD QUESTION"): a
+  helm of 1000 worn, boots of 1000 carried, tier 1 (1950). CONTROL: the crossing's totals. Asked, nothing moved; the
+  yes puts the boots on at 2000.
+- `Cataclysm.ThresholdQuestion.OnlyAnEquipThatCrossesTheThresholdIsAskedAbout`: below to below, not asked; a swap from
+  2000 to 100, not asked; 2000 and 100 more, not asked; 950 and 1000 more, to exactly 1950, asked; the tier 1 crossing
+  at tier 8, not asked.
+- `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther`: the words, with a name and
+  without one; a two-handed weapon of 300 over two one-handed ones of 800 would leave 300, and asking changed nothing
+  worn nor announced a change; a yes about boots of 1000 when the cell now holds boots of 999 is `NoLongerThere`.
+- `Cataclysm.ThresholdQuestion.AQuestionOnTheChoicePanelAnswersOnlyThroughItsYes`: the panel's title, prompt and two
+  keys; "Keep it off" calls nothing; "Wear it" calls once; showing a floor object ends a question.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The four new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4531 / 0: `development`'s 4527 (a5b27c029, #2691), + 4; a "Test saves:" line after the last test started, with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, the question never asked (`.Crosses())` to `.Crosses() && bConfirmedPastThreshold)` in `WearFromCarried`), prefix `Cataclysm.ThresholdQuestion.ACrossingEquipIsAskedAboutAndPutsNothingOnUntilConfirmed` | fails "a crossing equip is asked about", "and the boots are still carried", "and the Worn Residue is still 1000" and "a yes puts the boots on" (the boots already went on, so the yes finds the cell empty) only -- 4; the four CONTROL lines hold |
+| P2, every equip at or past the threshold asked about (`return Now < Threshold && After >= Threshold;` to `return After >= Threshold;`), prefix `Cataclysm.ThresholdQuestion.OnlyAnEquipThatCrossesTheThresholdIsAskedAbout` | fails "already past it and still past it: not asked" only; the swap from past to below still is not asked |
+
+### Run
+
+Python of record at the commit, before the window: at 8a3b7eb3f, 7234 passed, 8 skipped in 197.77s; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff All checks passed!.
+
+---
+
 ## 2026-11-01 — A skill box shows a pop-up naming the skill and describing it while the cursor is over it, drawn on the canvas (#1193)
 
 **Affects:** `UCataclysmGameplayAbility::DisplayedDescription`, new, and its two overrides
