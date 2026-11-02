@@ -15,6 +15,8 @@ now protected (`game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharact
 
 ### SAID FIRST
 
+- **PASSED IN WINDOW double-build-w1, ON `c6571f53c`: 4540 OF 4540 WITH THE ONE STAT GATHERER NOW SERVING BOTH
+  CALLERS, AND P1-P3 PROVED AT EXACTLY THEIR REGISTERED ASSERTIONS** (recorded under "Window double-build-w1" below).
 - **NOTHING SPAWNS THE DOUBLE YET.** Slice 2a is the creature and how it wears a build, and nothing else. Its arrival on
   the next floor (R2), the capture of the build at the crossing, the save, what its death does (O1: it clears the
   mark), and the consequence sentence in the #2687 equip question are slices 2b and 2c. The equip question keeps its
@@ -146,6 +148,23 @@ Each break's anchor occurs once (`prove_d2688a.py --anchors-only`, P1 two anchor
 - A double raised in a dungeon, fighting, or dying in play: nothing raises one until slice 2b.
 - The seven shaped War skills cast by a double; a Masochist double's Fervour after a heal.
 - A player wearing two two-handed weapons, or two one-handed ones, captured and worn by a double.
+
+### Window double-build-w1, run 2026-11-02 by the coordinating session
+
+On `c6571f53c`, branch `feat/consumption-double-build`, on `development` at `180383c17`. Pre-checks at 13:00:15 all
+passed, 10,532 MB of physical memory free; the runner (started 13:00:26) took the lock as `double-build-w1` and released
+it. Python of record before the window, at `c6571f53c`: `7234 passed, 8 skipped in 197.05s`; JUnit tests 7242, failures
+0, errors 0, skipped 8; ruff "All checks passed!".
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| The group `Cataclysm.ConsumptionDouble.` alone | 3 / 3 | "3 tests performed, 3 succeeded, 0 failed"; read as performed 3, succeeded 3, failed 0 |
+| Whole Unreal suite | 4540 / 0 | "4540 tests performed, 4540 succeeded, 0 failed"; "Declared: 4540 tests in the tree at c6571f53c; 4540 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind". Every existing caller of `RefreshAttributes` runs through `RefreshAttributesAs` here |
+| Python | of record | "7234 passed, 8 skipped in 200.91s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | three assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. The kept broken-half log fails exactly the three registered: maximum health (406.54 against 936.54), maximum mana (84 against 184) and armour (225.89 against 343.89). Attack damage held, as predicted |
+| P2 | one assertion | PROVED; restored 1 of 1. Exactly "the double drops none of the gear it wore" failed: 11 pieces against 0 |
+| P3 | one assertion | PROVED; restored 1 of 1. Exactly "the skill with no shape is offered nowhere: 1500 to 1000000 cm" failed |
 
 ---
 
