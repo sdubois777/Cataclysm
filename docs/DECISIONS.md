@@ -62,6 +62,26 @@ argument (`CataclysmPlayerCharacter.cpp`); four new tests in `CataclysmThreshold
   what would come off. `Equip` decides that, on the component's own slots with announcing silenced, and the slots and
   the change count are then put back; a second copy of the slot rule written for the question would one day disagree
   with the first.
+
+  **WHAT `Equip` AND `EquipInto` DO BESIDES WRITE THE SLOTS**, read from the code at a5b27c029 when the coordinator
+  asked before the window:
+
+  | What they do | Stopped by the silencing? | Undone by the restore? |
+  |---|---|---|
+  | Write `Slots`, through `PlaceInto` and `TakeOutOf` | no | yes: the whole array is copied back |
+  | `AnnounceChange`: raise `Changes` and broadcast `EquipmentChanged` | yes: it returns before either | `Changes` is copied back as well |
+  | Read the item base table (`LoadBaseTable`, `FindRow`), the candidate slots and `IsTwoHanded` | reads only | nothing to undo |
+  | Read Both Hands Full through `UCataclysmAbilitySystemComponent::StatForSkill`, a `const` function | reads only | nothing to undo |
+
+  **Everything else happens in the one listener**, `ACataclysmPlayerCharacter::OnEquipmentChanged`, bound at
+  `CataclysmPlayerCharacter.cpp` line 718. It is the only `EquipmentChanged` binding outside the tests. It refreshes
+  the attributes from what is worn (`RefreshAttributes`), hands back a second two-handed weapon
+  (`ReturnSecondTwoHandedWeapon`), refills the skill slots from the worn weapon (`FillAbilitySlotsFromWornWeapon`), and
+  changes the weapon meshes (`RefreshWeaponMeshes`).
+  None of it runs, because nothing is broadcast. Neither function grants an ability, applies a gameplay effect or
+  triggers a save. `Slots` is `UPROPERTY(SaveGame)` and is not replicated: the component has no `Replicated` property
+  and no `GetLifetimeReplicatedProps`. Three widgets poll `ChangeCount()`, and they see the restored count. The
+  question runs inside one call on the game thread, so no tick reads the slots in between.
 - **`UCataclysmWearing::CrossingFor`** reads the totals and the tier's threshold; **`WearFromCarried`** answers
   `WouldCrossConsumptionThreshold`, moving nothing, unless `bConfirmedPastThreshold`. Asked after the room check, so
   a player is never asked about an equip that would be refused anyway.
