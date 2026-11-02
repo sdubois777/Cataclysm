@@ -14,7 +14,10 @@ Issue [#1251](https://github.com/sdubois777/Cataclysm/issues/1251).
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **WINDOW w134 PASSED ON ITS RERUN, AND ITS FIRST RUNNER STOPPED ON THE RUNNER'S OWN CHECK.** On 18776b729: the
+  three tests alone 1 / 1, the suite 4518 / 0 with "Test saves: 714 written and deleted, 0 left behind", Python 7234
+  passed, P1 and P2 PROVED at exactly their registered assertions. The first runner stopped on a test that had passed,
+  because its check read one literal string and #2679's note sits inside it. Record at the end.
 - **SLICE 1 OF FOUR.** This computes and shows the figure. It does NOT ask the player to confirm an equip that crosses
   the threshold, does NOT mark the character or bring the corrupted double, and does NOT apply Residue Protocols or
   Purified Essence, none of which has a row. Each is filed as its own issue once this merges (ruled).
@@ -87,6 +90,37 @@ Moved onto d3685c250 (#2685) as `feat/worn-residue-on-sheet-1` with no conflict;
 lines before and after. Compiled there after the Unreal CI run on `development` finished: `Build: Succeeded - 42
 actions, 39 files compiled`. Python of record at 6843d0856: `7234 passed, 8 skipped in 215.81s`; JUnit tests=7242,
 failures=0, errors=0, skipped=8; ruff `All checks passed!`.
+
+**Window w134, first runner, on 18776b729, STOPPED on its own check, not on a failure.** The three tests alone each
+passed. The third, `TheStatusLineShowsWornResidueAgainstTheTiersThreshold`, read "Tests: 1 tests performed (counted
+from their Test Completed lines: the log has no queue-empty line, issue #2679), 1 succeeded, 0 failed | exit 0": its
+engine log had lost the queue-empty line, and #2679 counted it correctly -- the first time that reading was needed in
+a window. The runner's check of a test alone looked for the literal text "1 tests performed, 1 succeeded, 0 failed",
+which the note interrupts, so it stopped. **Fixed in the runner and in its generator (`make_w134.py`), ruled
+2026-11-01:** the check reads the three counts as numbers, `(\d+) tests performed.*?, (\d+) succeeded, (\d+) failed`,
+and requires exit 0 and (1, 1, 0); tried against five lines before the rerun, it accepted both passing forms and refused
+a failure, an unknown count and a count of 2. **The suite step needed no change:** it reads `unreal_build.py`'s exit
+code, not that text. The rerun was on the same head, so nothing was re-registered.
+
+**Window w134, rerun, on 18776b729, every step as registered.** Pre-checks all passed, 10,967 MB free; lock
+`dungeon-w134` taken, runner PID 328412 started at 18:51:18, lock released at its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| `WornResidueSumsTheWornItemsAndNotTheCarried` alone | 1 / 1; "WORN RESIDUE: worn 350.75; with 999 carried 350.75; with the ring taken off 320.50" |
+| `EachTierHasTheDesignsConsumptionThreshold` alone | 1 / 1 |
+| `TheStatusLineShowsWornResidueAgainstTheTiersThreshold` alone | 1 / 1; "RESIDUE LINE: 'Worn Residue 2150 of 2400 (tier 2)' \| 'Worn Residue 0 of 5600 (tier 8)' \| 'Worn Residue 6000 of 5600 (tier 8)'" |
+| Whole suite | `Tests: 4518 tests performed, 4518 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 714 written and deleted, 0 left behind`; `Declared: 4518 tests in the tree at 18776b729; 4518 performed, gap 0`; exit 0 |
+| Python | `7234 passed, 8 skipped in 200.14s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half: "the worn residue is the helm's, the ring's and the greatsword's once" expected 350.75, was 230.25; "and an item taken off stops counting" expected 320.5, was 200 -- the two registered, and no other; "a carried item adds nothing" held; "WORN RESIDUE: worn 230.25; with 999 carried 230.25; with the ring taken off 200.00". Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "tier 3's threshold" expected 2900, was 2901 -- only. Restored: 1 / 1 |
+
+**Nothing else failed:** 3 controller error lines in P1's broken half (Result={Fail} and the two), 2 in P2's
+(Result={Fail} and the one), none in either restored half, and every half printed "1 tests performed".
+
+**The `static_assert` beside the table compares its size with the literal 8**, the design's count of difficulty tiers,
+not with a number taken from the table: a table of seven or nine entries does not compile.
 
 ---
 
