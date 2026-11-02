@@ -2,6 +2,121 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A confirmed equip that crosses the Consumption Threshold marks the character, and the character record keeps the mark (#2688, slice 1)
+
+**Affects:** `ACataclysmPlayerState::IsMarkedByConsumption`, `MarkByConsumption` and `ClearConsumptionMark`, new
+(`game/Source/Cataclysm/Player/CataclysmPlayerState.h`); `ACataclysmPlayerCharacter::WearPastTheThreshold`, new, and the
+equip console command's confirm (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`, `.cpp`); the inventory
+question's "Wear it" (`game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`);
+`UCataclysmCharacterSave::bMarkedByConsumption`, schema version 5 and `Migrate_4_to_5`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`), the gather and the apply (`CataclysmSaveGather.cpp`,
+`CataclysmSaveApply.cpp`); `UCataclysmCharacterSheetLayout::ConsumptionMarkLine`, new, and the sheet's status line
+(`CataclysmCharacterSheetLayout.h`, `.cpp`, `CataclysmCharacterSheetWidget.cpp`); `game/Tests/SaveFixtures/Character_v5.json`,
+new, and the fixtures README; six new tests in `CataclysmConsumptionMarkTests.cpp`, and four moved assertions in
+`CataclysmSaveRecordTests.cpp`. Issue [#2688](https://github.com/sdubois777/Cataclysm/issues/2688).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **THE MARK DOES NOTHING YET BUT EXIST, AND THAT IS STATED WHERE THE PLAYER SEES IT.** The double that hunts a marked
+  character is slice 2. Until then the sheet says "Marked: crossed the Consumption Threshold", which is true, and the
+  #2687 question keeps its words: it gains the consequence sentence only when slice 2 makes the double real.
+- **A PLAYER KILLED BY THEIR DOUBLE IS NOT CONSUMED, BECAUSE NOTHING CAN END A RUN.** Filed as
+  [#2693](https://github.com/sdubois777/Cataclysm/issues/2693), waiting on
+  [#43](https://github.com/sdubois777/Cataclysm/issues/43) and the loss condition.
+- **For the owner's launch check:** confirm a crossing equip, open the character sheet, and read "Marked"; quit and
+  continue, and read it again.
+
+### The owner's decisions, 2026-11-02
+
+Relayed by the coordinator, answering the read-only proposal:
+
+- **O1:** "ONLY KILLING THE DOUBLE CLEARS THE MARK (or being consumed, once that exists). Falling back below the
+  threshold does not clear it."
+- **O2:** "THE DOUBLE DROPS NONE OF ITS GEAR. It pays the Boss rung's experience and materials, as the Stalker does."
+- **O3:** "BUILD THE DOUBLE NOW, WITHOUT THE CONSUMED OUTCOME. Until a run end exists, a player killed by their double
+  takes the ordinary dungeon death, keeps the mark, and meets the double again. File the consumed outcome against #43,
+  the loss condition."
+
+### The coordinator's rulings, 2026-11-02
+
+- **R1:** the mark is saved: the character record to schema version 5, a migration writing "not marked", a
+  `Character_v5.json` fixture and a README note, following #1472.
+- **R2** (slice 2): the double comes on the next floor entered after the mark is set, never the current one; outside a
+  dungeon, the next dungeon's first floor. It follows across floors as the Corrupted Stalker does, and the mark stays
+  until the double dies.
+- **R3** (slice 2): the double holds the player's own numbers, their level and their items' rolled values, with no
+  tier rescale and no re-roll.
+- **R4** (slice 2): the Corrupted Stalker's per-tier health and damage multipliers do not apply to it.
+- **No War work** (slice 2): the double's brain skips a War skill that does not work for an enemy caster, and nothing is
+  built to make it work.
+- **The order of marking and writing:** the mark is set BEFORE the equip, below.
+
+### What changes
+
+- **One place marks: `ACataclysmPlayerCharacter::WearPastTheThreshold`.** It reads `UCataclysmWearing::CrossingFor`,
+  then puts the item on through `WearAfterConfirming` (the inventory question's "Wear it") or `WearFromCarried`
+  confirmed (`Cataclysm.Equip <slot> confirm`). Only a crossing marks; a yes on an equip that stays below, or was
+  already past, puts the item on and marks nothing.
+- **MARKED BEFORE THE EQUIP, AND WHY.** Taking the item out of the bag, and putting what came off back in, each raise the
+  inventory's save trigger, and `UCataclysmSaveWriter::NoteTrigger` gathers the character record at that moment
+  (`UCataclysmSaveTriggers::WritesTheCharacterRecord` answers true for it). Marked afterwards, the record the equip
+  wrote would be unmarked, and a player who quit at once would load unmarked: the escape R1 exists to close. An equip
+  that then does not happen takes the mark back, unless the character was marked already, and raises the trigger once
+  more so the record says so. The writes to one slot run in launch order (`FCataclysmSaveStorage`'s write pipe), so
+  the last record written is the last one gathered.
+- **The save:** `bMarkedByConsumption`, written and read beside the difficulty tier; version 5; `Migrate_4_to_5` writes
+  false. `Character_v4.json` is now a migration input; `Character_v5.json` is it at version 5 with the mark true.
+- **The sheet:** "Marked: crossed the Consumption Threshold" after the Worn Residue line, for a marked character only.
+
+### Tests
+
+- `Cataclysm.ConsumptionMark.AConfirmedCrossingEquipMarksTheCharacter` ("CONSUMPTION MARK"): a helm of 1000 worn and
+  boots of 1000 carried, tier 1. CONTROL: unconfirmed, asked about and not marked. Confirmed: worn, and marked.
+- `Cataclysm.ConsumptionMark.OnlyACrossingMarksAndFallingBackBelowDoesNotClearIt`: a confirmed equip that stays below
+  does not mark; a yes about an item no longer in the cell is refused and leaves the character unmarked; after a
+  crossing, a swap back below the threshold leaves the mark (O1).
+- `Cataclysm.ConsumptionMark.TheEquipThatMarksWritesTheMarkIntoTheCharacterRecord` ("CONSUMPTION MARK WRITTEN"): with a
+  save writer and no other save between, the record the equip itself wrote holds the mark.
+- `Cataclysm.ConsumptionMark.TheMarkIsWrittenToTheCharacterRecordAndLoadsBack`: the death trigger writes the mark; a
+  fresh character loaded from the record is marked; an unmarked record loads unmarked over a marked character.
+- `Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked` ("MARK MIGRATED"): `Character_v4.json`
+  through the chain: the step writes false, the record arrives at the current version unmarked, and every other field
+  is kept.
+- `Cataclysm.ConsumptionMark.TheSheetSaysMarkedOnlyForAMarkedCharacter`.
+
+### Moved assertions, approved 2026-11-02
+
+In `CataclysmSaveRecordTests.cpp`, as #1472 moved them:
+
+1. `EveryFixtureHoldsEveryFieldItsRecordWrites`: the character entry reads `Character_v5.json`.
+2. `TheCommittedCharacterFileReadsIntoTheValuesItStates`: reads v5; "it says it is version 4" is now version 5; one
+   assertion is added, "the Consumption mark in the file".
+3. `TheCommittedCharacterFileKeepsItsWornGear`: reads v5.
+4. `ACharacterFileFromBeforeTheTierMigratesToTierOne`: its expected object also gains the mark key, false, because the
+   chain now runs on to version 5. Its assertions are unchanged.
+
+Every `SchemaVersion` comparison and `SameObject` call in the tests was swept; the other two migration tests compare
+named fields only.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The six new tests and the four moved, alone | 1 / 1 each |
+| Whole Unreal suite | 4537 / 0: `development`'s 4531 (db2330542, #2692), + 6; a "Test saves:" line after the last test started, with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, the mark never set (`if (bCrosses && State)` to `if (bCrosses && State && !bCrosses)` on the marking line), prefix `Cataclysm.ConsumptionMark.AConfirmedCrossingEquipMarksTheCharacter` | fails "the confirmed crossing marks the character" only; the two CONTROL lines hold |
+| P2, the mark never gathered (`State->IsMarkedByConsumption();` to `false;` on the gather line), prefix `Cataclysm.ConsumptionMark.TheMarkIsWrittenToTheCharacterRecordAndLoadsBack` | fails "the character record holds the mark" and "and a fresh character loaded from it is marked" only -- 2; "an unmarked record loads unmarked over a marked character" holds |
+| P3, marked after the equip instead of before (the marking line removed, and the same mark added after the `bWorn` line), prefix `Cataclysm.ConsumptionMark.TheEquipThatMarksWritesTheMarkIntoTheCharacterRecord` | fails "the record the equip wrote holds the mark" only; "set-up: and the character is marked" holds |
+
+### Run
+
+The first compile, at no lock: `Build: Succeeded - 52 actions, 49 files compiled`, with
+`CataclysmConsumptionMarkTests.cpp.obj` written. Committed at 7b9544798. Python of record there: 7234 passed, 8 skipped in 201.50s; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff All checks passed!.
+
+---
+
 ## 2026-11-01 — An equip that would take the Worn Residue to or past this tier's Consumption Threshold is asked about first, on the choice panel (#2687)
 
 **Affects:** `ECataclysmWearResult::WouldCrossConsumptionThreshold` and `NoLongerThere`, `FCataclysmThresholdCrossing`,
