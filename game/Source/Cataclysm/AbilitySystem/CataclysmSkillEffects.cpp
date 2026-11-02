@@ -25,6 +25,8 @@
 // For a line of creatures run through by one spear, which comes apart when any
 // one of them dies. The Spear's Skewer is the only thing that binds one.
 #include "AbilitySystem/CataclysmPinnedLine.h"
+// For the effect every run-time application is built as, which can carry a skill's tags without the skill. #2683.
+#include "AbilitySystem/CataclysmRuntimeEffect.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For how long a lasting harmful effect really runs on its target, which is
@@ -91,13 +93,20 @@ namespace
 	 * none. That is the ordinary way to build a gameplay effect at run time and
 	 * garbage collection is what clears them. The cheaper version was cheap
 	 * because it was wrong.
+	 *
+	 * AND IT IS A `UCataclysmRuntimeEffect`, A `UGameplayEffect` CARRYING ONE MORE FIELD. Issue #2683, the subclass
+	 * approved by the coordinating session 2026-11-01 (J4). The field is the tags of the skill a damage over time effect's
+	 * ticks are ticks of, for a tick whose skill has gone or that never had one; see the class. Every effect built here
+	 * is one, with that field empty unless `ApplyDamageOverTime` writes it, and the whole automation suite is the check
+	 * that nothing else changed. Effects built elsewhere, in `CataclysmGameplayAbility.cpp` and
+	 * `CataclysmEnemyModifiers.cpp`, stay the plain class.
 	 */
-	UGameplayEffect* MakeRuntimeEffect(const FString& Purpose)
+	UCataclysmRuntimeEffect* MakeRuntimeEffect(const FString& Purpose)
 	{
 		UObject* Outer = GetTransientPackage();
-		return NewObject<UGameplayEffect>(
+		return NewObject<UCataclysmRuntimeEffect>(
 			Outer,
-			MakeUniqueObjectName(Outer, UGameplayEffect::StaticClass(),
+			MakeUniqueObjectName(Outer, UCataclysmRuntimeEffect::StaticClass(),
 								 FName(*Purpose)));
 	}
 
@@ -1417,9 +1426,25 @@ const FGameplayTagContainer* UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill
 {
 	// MATCHED BY THE EFFECT, so a blow reaching the attribute set some other way while this one is applied, a tick laid
 	// at the death it causes, is not taken for it.
-	return BlowNamingNoSkillBeingApplied.Tags && Spec.Def.Get() == BlowNamingNoSkillBeingApplied.Effect
-		? BlowNamingNoSkillBeingApplied.Tags
-		: nullptr;
+	if (BlowNamingNoSkillBeingApplied.Tags && Spec.Def.Get() == BlowNamingNoSkillBeingApplied.Effect)
+	{
+		return BlowNamingNoSkillBeingApplied.Tags;
+	}
+
+	// AND A DAMAGE OVER TIME TICK CARRIES THEM ON ITS OWN EFFECT, which `ApplyDamageOverTime` wrote when it laid it.
+	// Issue #2683. A tick is executed from the running effect's own spec
+	// (`FActiveGameplayEffectsContainer::InternalExecutePeriodicGameplayEffect` hands `ActiveEffect.Spec` to
+	// `ExecuteActiveEffectsFrom`, whose callback data is that spec), so `Spec.Def` here is the effect that was laid.
+	// ONLY WHILE THE TICK NAMES NO SKILL THAT STILL EXISTS: a tick whose skill is still there names it, and its
+	// record and notices read the skill's own tags, so nothing is copied for it. The tags are identity only (J1).
+	if (const UCataclysmRuntimeEffect* Laid = Cast<UCataclysmRuntimeEffect>(Spec.Def.Get()))
+	{
+		if (!Laid->SkillTagsWithNoSkill.IsEmpty() && !Spec.GetContext().GetAbilityInstance_NotReplicated())
+		{
+			return &Laid->SkillTagsWithNoSkill;
+		}
+	}
+	return nullptr;
 }
 
 bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
@@ -2497,7 +2522,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	AActor* Instigator, AActor* Target, float DamagePerTick,
 	float DurationSeconds, const FGameplayTag& EffectTag,
 	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill,
-	FName DamageType, bool bIsConvertedDamage)
+	FName DamageType, bool bIsConvertedDamage, const FGameplayTagContainer* SkillTagsWithNoSkill)
 {
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
@@ -2843,10 +2868,28 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// `ApplyTagForDuration` ALREADY DID THIS, and it is why a character can carry
 	// three separate tagged effects and could not carry two burns. That function
 	// is where the shape below is copied from.
-	UGameplayEffect* Effect = MakeRuntimeEffect(
+	UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(
 		FString::Printf(TEXT("CataclysmDamageOverTime_%s"),
 						*EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+
+	// AND THE TAGS OF THE SKILL ITS TICKS ARE TICKS OF, KEPT ON THE EFFECT ITSELF, so a kill by a tick carries them to
+	// the killer's rows when no skill is named by then. Issue #2683. The tags handed in when there are any -- a buried
+	// weapon's burn, a ground zone's own ailment, a tether's or a projectile's burn whose skill has gone -- and
+	// otherwise the tags of the skill handed in, so a burn whose skill's grant is removed mid-burn keeps them.
+	//
+	// IDENTITY ONLY. Ruled by the coordinating session 2026-11-01 (J1). WRITTEN AFTER THE PRICING ABOVE AND READ BY
+	// NOTHING THAT PRICES: the caster's damage over time stats were asked above with a real skill's tags only
+	// (`AskedWith`), and tags without a skill never reach them. `SkillTagsOfABlowWithNoSkill` reads these for the record
+	// of the last blow and the hit notice, and only for a tick naming no skill that still exists.
+	if (SkillTagsWithNoSkill && !SkillTagsWithNoSkill->IsEmpty())
+	{
+		Effect->SkillTagsWithNoSkill = *SkillTagsWithNoSkill;
+	}
+	else if (const UCataclysmSkillTemplate* Laying = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		Effect->SkillTagsWithNoSkill = Laying->SkillTags;
+	}
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
 	// attacker's three stats above have decided what it deals and how often.
 	// Issue #1033. The other path is `ApplyTagForDuration`; both call this so
@@ -3581,7 +3624,8 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   float HitDamage,
 									   bool bScalesWithInstigator,
 									   bool bBurnIsDesigned, AActor* DealtBy,
-									   const UGameplayAbility* Skill)
+									   const UGameplayAbility* Skill,
+									   const FGameplayTagContainer* SkillTagsWithNoSkill)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
 	if (!Burn.bUsable)
@@ -3642,7 +3686,8 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 	return ApplyDamageOverTime(Instigator, Target,
 							   Burn.DamagePerTickAgainst(HitDamage),
 							   Burn.DurationSeconds, BurnTag(),
-							   bScalesWithInstigator, DealtBy, Skill);
+							   bScalesWithInstigator, DealtBy, Skill, /*DamageType=*/NAME_None,
+							   /*bIsConvertedDamage=*/false, SkillTagsWithNoSkill);
 }
 
 FGameplayTag UCataclysmSkillEffects::StunnedTag()

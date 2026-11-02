@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagContainer.h"
 #include "CataclysmTether.generated.h"
 
 class UGameplayAbility;
@@ -146,9 +147,18 @@ private:
 	 * BURN, not when it was bound.
 	 *
 	 * WEAK, because the line outlives the use: a skill whose grant is removed names nothing once its instance is gone.
-	 * Not a UPROPERTY, as `ACataclysmProjectile::FiringSkill` is not.
+	 * Not a UPROPERTY, as `ACataclysmProjectile::FiringSkill` is not. FOR THAT CASE THE LINE KEEPS THE SKILL'S TAGS,
+	 * `SkillTagsItWasBoundWith` (issue #2683).
 	 */
 	TWeakObjectPtr<const UGameplayAbility> SkillThatBoundIt;
+
+	/**
+	 * The tags of the skill that bound the line, or empty. Issue #2683, ruled by the coordinating session 2026-11-01.
+	 * Kept by `Bind` beside `SkillThatBoundIt`, and handed to the burn the line lays ONLY WHEN THAT SKILL HAS GONE, as
+	 * a projectile whose firing skill has gone hands its own (#2475): so a kill by the burn still carries them, with no
+	 * skill name. IDENTITY ONLY (J1): such a burn is priced with no skill, as it was before this.
+	 */
+	FGameplayTagContainer SkillTagsItWasBoundWith;
 
 	/** How far apart the two ends may get. `TetherLength`. */
 	float MaxSeparationCm = 0.0f;

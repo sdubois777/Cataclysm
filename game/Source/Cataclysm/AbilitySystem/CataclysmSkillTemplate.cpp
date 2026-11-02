@@ -3512,9 +3512,16 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 		/*bBurnsEveryone=*/false, HandedDamageType);
 
 	// AND THE SKILL THAT LEFT IT, which every sweep names. Issue #1585. Null for a zone no skill left.
+	// AND ITS TAGS, which the zone keeps for when the skill has gone and which its own ailment carries. Issue #2683.
+	// ONLY WHEN A SKILL LEFT IT: a minion's chaos pool is handed the minion's type tags to read its rows with, and no
+	// skill left it, so it keeps none.
 	if (Zone)
 	{
 		Zone->SkillThatLeftIt = LeftBy;
+		if (LeftBy)
+		{
+			Zone->SkillTagsItWasLeftWith = SkillTags;
+		}
 	}
 
 	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.

@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the tags of the skill that bound the line, kept for when it has gone. Issue #2683.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
@@ -79,6 +81,11 @@ ACataclysmTether* ACataclysmTether::Bind(AActor* Caster,
 
 	Line->Caster = Caster;
 	Line->SkillThatBoundIt = BoundBy;
+	// AND ITS TAGS, for when it has gone. Issue #2683.
+	if (const UCataclysmSkillTemplate* Binding = Cast<UCataclysmSkillTemplate>(BoundBy))
+	{
+		Line->SkillTagsItWasBoundWith = Binding->SkillTags;
+	}
 	Line->First = Pair[0];
 	Line->Second = Pair[1];
 	Line->MaxSeparationCm = MaxSeparationCm;
@@ -226,12 +233,18 @@ void ACataclysmTether::Check()
 		// AND THE SKILL THAT BOUND IT, so every tick names it and a kill is that skill's, and so the burn is priced
 		// with it as a projectile's is. Issue #1585, ruled 2026-11-01. See `SkillThatBoundIt` for what the pricing
 		// reads.
+		//
+		// AND, WHEN THAT SKILL HAS GONE, THE TAGS IT BOUND THE LINE WITH, so a kill by the burn still carries them, with
+		// no skill name. Issue #2683. Identity only: the burn is then priced with no skill (ruled 2026-11-01, J1).
+		const bool bSkillHasGone = !SkillThatBoundIt.IsValid() && !SkillTagsItWasBoundWith.IsEmpty();
 		if (UCataclysmSkillEffects::ApplyBurn(Caster.Get(), Touching,
 											  /*HitDamage=*/0.0f,
 											  /*bScalesWithInstigator=*/true,
 											  /*bBurnIsDesigned=*/true,
 											  /*DealtBy=*/nullptr,
-											  /*Skill=*/SkillThatBoundIt.Get()))
+											  /*Skill=*/SkillThatBoundIt.Get(),
+											  /*SkillTagsWithNoSkill=*/bSkillHasGone
+												  ? &SkillTagsItWasBoundWith : nullptr))
 		{
 			++LastCheckLit;
 		}

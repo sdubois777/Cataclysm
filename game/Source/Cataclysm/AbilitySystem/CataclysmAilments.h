@@ -352,12 +352,18 @@ public:
 	 *                   row's. The applier's increases to its duration still
 	 *                   apply. Issue #1833 group E part 1: "a 2-4 second slow".
 	 *                   The other shapes do not read it
+	 * @param SkillTagsWithNoSkill  the tags of the skill a damage-over-time ailment's ticks are ticks of, when no
+	 *                   skill object is handed in: a ground zone's own ailment, which carries its zone's skill's tags
+	 *                   and no skill name (ruled 2026-11-01, J2). Handed to
+	 *                   `UCataclysmSkillEffects::ApplyDamageOverTime`, which keeps them as identity only. Issue #2683.
+	 *                   The other shapes do not read it
 	 * @return whether anything was applied
 	 */
 	static bool Apply(AActor* Instigator, AActor* Target,
 					  const FCataclysmAilmentKind& Kind, float Magnitude,
 					  const UGameplayAbility* Skill = nullptr,
-					  FName DamageType = NAME_None, float Seconds = 0.0f);
+					  FName DamageType = NAME_None, float Seconds = 0.0f,
+					  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
 
 	/**
 	 * Lay Cripple's slow on `Target` AT A STATED STRENGTH, in per cent (30 is 30% slower), for `Seconds`. Ruled

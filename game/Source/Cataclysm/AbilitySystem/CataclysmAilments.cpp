@@ -600,7 +600,7 @@ namespace
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
 							   const UGameplayAbility* Skill, FName DamageType,
-							   float Seconds)
+							   float Seconds, const FGameplayTagContainer* SkillTagsWithNoSkill)
 {
 	if (Kind.Shape == EShape::Stun)
 	{
@@ -635,7 +635,8 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 			&& UCataclysmSkillEffects::ApplyDamageOverTime(Instigator, Target,
 				Row.FlatDamagePerTick * Scale, Row.DurationSeconds, Tag,
 				/*bScalesWithInstigator=*/true,
-				/*DealtBy=*/nullptr, Skill, DamageType);
+				/*DealtBy=*/nullptr, Skill, DamageType,
+				/*bIsConvertedDamage=*/false, SkillTagsWithNoSkill);
 
 	case EShape::StrongerWithMagnitude:
 		// NO DAMAGE TYPE, so it cuts the one generic resistance an enemy holds,

@@ -1551,7 +1551,8 @@ public:
 	 * `HandedDamageType` is what the zone's sweeps deal as; none leaves it to deal its owner's.
 	 * `AilmentOfType` is the damage type whose ailment the zone lays where the ailment row is worn.
 	 * `LeftBy` is the skill that left it, kept on the zone as `ACataclysmGroundZone::SkillThatLeftIt` so every sweep
-	 * names it (issue #1585), or null for a zone no skill left: a minion's chaos pool.
+	 * names it (issue #1585), or null for a zone no skill left: a minion's chaos pool. When it is given, the zone also
+	 * keeps `SkillTags` as `ACataclysmGroundZone::SkillTagsItWasLeftWith` (issue #2683).
 	 */
 	static ACataclysmGroundZone* LeaveAZoneFor(AActor* ZoneOwner, const FVector& Start, const FVector& End,
 											   float RadiusCm, float Seconds, float PerSweep,
