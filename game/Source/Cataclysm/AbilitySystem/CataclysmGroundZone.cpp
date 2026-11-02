@@ -459,9 +459,10 @@ void ACataclysmGroundZone::Sweep()
 		// skill name: the one-use grant `UCataclysmTriggeredSkill::Trigger` makes, removed after the use. Issue #2683,
 		// as a projectile whose firing skill has gone does (#2475). Identity only. Null while the skill is there, and
 		// for a zone no skill left, whose tags are empty.
-		Delivery.SkillTagsWithNoSkill = !SkillThatLeftIt.IsValid() && !SkillTagsItWasLeftWith.IsEmpty()
-			? &SkillTagsItWasLeftWith
-			: nullptr;
+		if (!SkillThatLeftIt.IsValid() && !SkillTagsItWasLeftWith.IsEmpty())
+		{
+			Delivery.SkillTagsWithNoSkill = &SkillTagsItWasLeftWith;
+		}
 		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log
