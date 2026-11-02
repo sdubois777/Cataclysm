@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — The floor panel's chain is tested: a Brand of the Aggressor blow tells the player's controller the new count, and the panel lists each row's count (#1841)
+
+**Affects:** `ACataclysmPlayerController::ShowFloorModifiers`, which now records what it was last told
+(`FCataclysmFloorModifiersShown`, `FloorModifiersShown`; `game/Source/Cataclysm/Player/CataclysmPlayerController.h`,
+`.cpp`); a trailing comment, and no code, on one `RefreshFloorModifierPanel()` call in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` and on one argument in
+`game/Source/Cataclysm/Interface/CataclysmFloorModifierPanel.cpp`, so each is a unique proof anchor; two new tests and
+the file header in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#1841](https://github.com/sdubois777/Cataclysm/issues/1841).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **ONE CALL SITE OF 174 IS TESTED.** The dungeon game mode refreshes the floor panel from 174 places; this tests Brand
+  of the Aggressor's, the one the issue's closing check names. Every refresh goes through `ShowFloorModifiers`, so
+  the record would see any of them, but only that one has a test.
+- **THE PANEL MADE AND PUT ON THE SCREEN STAYS UNCOVERED.** `ShowFloorModifiers` returns before `CreateWidget` unless
+  the controller is a local player controller, and a world built by `UWorld::CreateWorld` has no local player -- the
+  limit `CataclysmPassiveTreeTests.cpp` records for the passive tree, and a third obstacle the issue did not name
+  besides the plain controller and the missing game instance. **For the owner's launch list:** the floor panel updates
+  on screen when a Brand of the Aggressor hit lands.
+
+### Rulings, 2026-11-01
+
+- **Record in `ShowFloorModifiers`, small:** the last call's three arguments and a call count, set at the top before
+  the empty-floor return and the local-player check, so the record never grows during play; commented "for a test
+  that cannot read the screen", as the panel's `ShownLines` is. No hook that injects a panel.
+- **No new helper:** `FPossessedPlayer` already takes the controller class, and two tests already pass
+  `ACataclysmPlayerController::StaticClass()`; the new test does the same, and the helper and the tests on its default
+  are unchanged.
+- **Two proofs, P1 and P2,** with full-name prefixes. **P1 must not be able to pass by another refresh,** so the count
+  of calls in the new test was traced to the brand handler alone (below) and the test checks that too.
+
+### What changes
+
+- `ACataclysmPlayerController::ShowFloorModifiers` sets `LastFloorModifiersShown` -- the row keys, the floor number,
+  the live counts, and one more call -- first, and is otherwise unchanged. `FloorModifiersShown()` returns it.
+- Two trailing comments, `// Brand of the Aggressor's: the new count shown. Tested, issue #1841.` and `// A panel's:
+  what each row is counting. Tested, issue #1841.`, make the proof anchors unique: `RefreshFloorModifierPanel();`
+  appears 174 times in the game mode.
+- The test file's header no longer says the floor panel is not covered; it says which part is.
+
+### The calls the new test counts, and why only the brand handler makes them
+
+Read 2026-11-01, not measured; the window measures it. **A landed blow reaches the game mode only through
+`Events->OnHit` -> `OnSomethingWasHit`** (`CataclysmDungeonGameMode.cpp` line 1379; the file binds nothing else to
+`OnHit`), which calls nine handlers:
+
+| Handler | Refreshes the panel | Why it cannot on the test's blows |
+|---|---|---|
+| `NoteHitForWastingSickness` | yes | returns unless the floor carries Wasting Sickness |
+| `NoteHitForCarrionFeast` | no | |
+| `NoteHitForBrandOfTheAggressor` | yes | the one under test |
+| `NoteHitForContagiousTouch` | no | |
+| `NoteHitForHolyRepercussions` | yes | returns unless the floor carries Holy Repercussions |
+| `NoteHitForTheReaper` | no | |
+| `NoteHitForPlagueConvergence` | yes | returns unless one of its creatures struck the player; the test's player strikes a creature |
+| `NoteHitForMindShatteringIllusions` | no | |
+| `NoteHitForShadowyEnemies` | no | |
+
+**And nothing that is not a hit refreshes between the count taken and the third blow:**
+
+- **No death:** the creature has 10,000,000 health and each blow is `ApplyHit` at 50, so no death handler runs.
+- **No beat or tick:** the game mode's beat runs in `ACataclysmDungeonGameMode::Tick` and in
+  `SetTimerForNextTick` timers; the three blows run one after another inside the test's one `RunTest` call, with no
+  frame advanced between them, and the test never ticks the world.
+- **The count is taken after `BuildFloor` returns,** so whatever building the floor refreshes is not counted.
+
+**The test checks the floor rather than trusting it:** a set-up assertion that `FloorBrief.Modifiers` is exactly
+{Brand of the Aggressor}, and the per-blow count is exact, not "at least". If the window measures a count other than
+3 with nothing broken, there is a refresh this reading missed, and the window stops there.
+
+### Tests
+
+- `Cataclysm.DungeonModifierEffects.EachBrandingBlowTellsThePanelTheNewCount`, new ("PANEL TOLD"): the game's own
+  controller; a floor carrying Brand of the Aggressor alone; three landed blows. CONTROL: the floor's start told the
+  controller; the controller is told once for each landed blow (3); what it is told last is "3 of 20"; the row is
+  among the rows; floor 1.
+- `Cataclysm.DungeonModifierEffects.TheFloorPanelListsWhatItIsToldWithEachRowsCount`, new ("PANEL LINES"): a panel
+  made with `NewObject`, told Starvation and Brand on floor 4 with Brand's count "7 of 20": two lines, floor 4, each row
+  a line, Brand's count "7 of 20", and Starvation's none (CONTROL).
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The two new tests and `TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts` alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4513 / 0: `development`'s 4511 (6a187a440, #2682), + 2; a "Test saves:" line after the last test started, with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, the brand handler not refreshing (`RefreshFloorModifierPanel(); // Brand of the Aggressor's: ...` to `(void)0; // ...`), prefix `Cataclysm.DungeonModifierEffects.EachBrandingBlowTellsThePanelTheNewCount` | fails "the controller is told once for each landed blow" (0, expected 3) and "and what it is told last is the brand count after the third blow" (the floor's own "0 of 20", expected "3 of 20") only |
+| P2, the panel dropping the counts it is told (`LiveCounts); // A panel's: ...` to `TMap<FName, FString>()); // ...`), prefix `Cataclysm.DungeonModifierEffects.TheFloorPanelListsWhatItIsToldWithEachRowsCount` | fails "the brand line carries the count it was told" only: the line is there with no count |
+
+### Run
+
+Compiled at 46c85f78f with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 39 actions, 36 files
+compiled`, at the first attempt.
+
+---
+
 ## 2026-11-01 — A test run whose engine log stops after its last test's events is counted from its "Test Completed" lines, against the engine's own list of the run's tests (#2679)
 
 **Affects:** `tools/unreal_build.py` (`TESTS_FOUND`, `FOUND_PATH`, `COMPLETED_PATH` and `performed_from_completed_lines`,
