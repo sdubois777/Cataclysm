@@ -22,7 +22,8 @@ the Corrupted Stalker), `CorruptedStalkerCarriesNow` now static and taking the c
 `UCataclysmWearing::ThresholdConsequence`, new, and `ThresholdQuestion` (`Items/CataclysmWearing.h`, `.cpp`);
 `UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey` and the line's `bIsTheConsumptionDouble`
 (`Interface/CataclysmFloorModifierPanelLayout.h`, `.cpp`, `CataclysmFloorModifierPanel.cpp`);
-`game/Tests/SaveFixtures/Character_v6.json` and `Run_v2.json`, new, and the fixtures README; twelve new tests in
+`game/Tests/SaveFixtures/Character_v6.json` and `game/Tests/SaveFixtures/Run_v2.json`, new, and the fixtures
+README; twelve new tests in
 `game/Source/Cataclysm/Tests/CataclysmConsumptionDoubleTests.cpp`; `CataclysmSaveFixtures::EmptyPlayerBuild`, new; and
 the moved assertions below. Issue [#2688](https://github.com/sdubois777/Cataclysm/issues/2688).
 
