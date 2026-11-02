@@ -104,6 +104,32 @@ enum class ECataclysmEquipResult : uint8
 };
 
 /**
+ * What `Equip` would do with an item, found without doing it. Issue #832, the comparison a carried item's tooltip
+ * makes, and issue #2687's question before a crossing, which both ask it through
+ * `UCataclysmEquipmentComponent::PreviewEquip`.
+ *
+ * A PLAIN STRUCT AND NOT A USTRUCT: it is a return value read at once by C++ and never saved, replicated or shown to a
+ * Blueprint.
+ */
+struct FCataclysmEquipPreview
+{
+	/** Whether `Equip` would put it on. When false, nothing below is filled. */
+	bool bWearable = false;
+
+	/** Where it would go: the slot `Equip` reports in its `OutSlot`. `Count` when it would not go on. */
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+
+	/**
+	 * What would come off, in the order `Equip` reports it: its `OutRemoved`, then its `OutAlsoRemoved`. Empty when
+	 * nothing would. TWO ONLY FOR A WEAPON, a two-handed weapon over two held being the ordinary case.
+	 */
+	TArray<FCataclysmItem> Replaced;
+
+	/** Every slot as it would be afterwards, `SlotCount` long, in the enum's order. Empty when it would not go on. */
+	TArray<FCataclysmItem> SlotsAfter;
+};
+
+/**
  * What a character is wearing, and the one thing that makes gear matter.
  *
  * WHY THIS EXISTS. Issue #828. Before it, loot dropped, went into the 48-slot
@@ -176,6 +202,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Equipment")
 	float WornResidue() const;
 
+	/** `WornResidue`'s sum over any list of slots: every item in them that is an item. */
+	static float WornResidueOf(const TArray<FCataclysmItem>& WornSlots);
+
 	/**
 	 * Sets the residue on every worn item to zero, and announces the change when any held some. Issue #2688.
 	 * `docs/Cataclysm_GDD_v2.md`, "Worn Residue and Consumption": "If the player kills the double, residue is set to
@@ -198,15 +227,40 @@ public:
 	 * The Worn Residue there would be if this item were put on the way `Equip` would put it on, counting whatever
 	 * that would take off. Issue #2687, the question asked before an equip crosses the Consumption Threshold.
 	 *
-	 * `Equip` ITSELF DECIDES, ON A COPY THAT IS PUT BACK. Which slot an item goes to and what comes off with it --
-	 * a two-handed weapon over two held ones, Both Hands Full -- is decided in `Equip` and `EquipInto`, and a second
-	 * copy of that rule written here for the question would one day disagree with the first. So the slots are
-	 * copied, `Equip` runs on them with nothing announced, the total is read, and the slots and the change count are
-	 * put back as they were. Nothing leaves the component, so nothing can be lost. Not const for that reason alone.
+	 * `Equip` ITSELF DECIDES, THROUGH `PreviewEquip`, which runs it on slots it puts back; the total is read from the
+	 * slots it reports. Since issue #832 the tooltip's comparison asks the same function, so the two questions cannot
+	 * disagree about where an item goes. Not const, for `PreviewEquip`'s reason.
 	 *
 	 * An item `Equip` refuses changes nothing, so the answer is the Worn Residue now.
 	 */
 	float WornResidueIfEquipped(const FCataclysmItem& Item);
+
+	/**
+	 * What `Equip` would do with this item, found by running it and putting everything back. Issue #832, the tooltip's
+	 * comparison; `WornResidueIfEquipped` asks it too.
+	 *
+	 * `Equip` ITSELF DECIDES, ON A COPY THAT IS PUT BACK. Which slot an item goes to and what comes off with it -- the
+	 * first free ring slot or Ring1, a two-handed weapon over two held ones, Both Hands Full read off the owner's
+	 * ability system -- is decided in `Equip` and `EquipInto`, and a second copy of that rule written for a preview
+	 * would one day disagree with the first. So the slots are copied, `Equip` runs on them with nothing announced,
+	 * what went where and what came off are recorded, and the slots and the change count are put back as they were.
+	 * Nothing leaves the component, so nothing can be lost, and no listener hears of it. Not const for that reason
+	 * alone.
+	 *
+	 * NOT `UCataclysmWearing::WearFromCarried`'S REFUSALS: a full bag refusing a weapon that would take two off is the
+	 * wearer's rule, not `Equip`'s, and a preview of such an item still says what `Equip` would do.
+	 */
+	FCataclysmEquipPreview PreviewEquip(const FCataclysmItem& Item);
+
+	/**
+	 * The player's numbers `RefreshAttributes` reads before it gathers: the owning pawn's player state's, through
+	 * `FCataclysmPlayerBuild::NumbersOf`. Issue #832: the tooltip's comparison gathers a stand-in's stats through
+	 * `RefreshAttributesAs` with these, so it reads the player exactly as the live refresh does.
+	 *
+	 * @return false, leaving `OutNumbers` alone, when the owner is not a pawn with a player state; a refresh then
+	 *         gathers with no build
+	 */
+	bool PlayerNumbers(FCataclysmPlayerBuild& OutNumbers) const;
 
 	/** Every slot, in the enum's order. Always SlotCount long. */
 	const TArray<FCataclysmItem>& GetSlots() const { return Slots; }
@@ -626,7 +680,7 @@ private:
 	 */
 	int32 Changes = 0;
 
-	/** While true, `AnnounceChange` changes nothing: `WornResidueIfEquipped` runs `Equip` on slots it puts back. */
+	/** While true, `AnnounceChange` changes nothing: `PreviewEquip` runs `Equip` on slots it puts back. */
 	bool bAnnouncingSilenced = false;
 
 	/**

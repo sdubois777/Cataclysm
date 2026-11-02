@@ -7,6 +7,8 @@
 #include "Items/CataclysmEquipmentComponent.h"
 #include "CataclysmInventoryWidget.generated.h"
 
+class ACataclysmComparisonStandIn;
+class UAbilitySystemComponent;
 class UBorder;
 class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
@@ -111,9 +113,18 @@ public:
 	 * SAFE TO CALL WITH NO INVENTORY, which is what a pawn that is not the
 	 * player character has. Every cell then reads as empty rather than keeping
 	 * what the last pawn was carrying.
+	 *
+	 * THE EQUIPMENT IS NOT CONST SINCE ISSUE #832, because a carried item's
+	 * tooltip compares it with what wearing it would replace, and
+	 * `UCataclysmEquipmentComponent::PreviewEquip` finds that by running `Equip`
+	 * and putting everything back. Nothing worn changes and nothing is announced.
+	 *
+	 * @param Abilities  the character's ability system, for the floor's stat
+	 *                   lines the comparison copies; may be null
 	 */
 	void Refresh(const UCataclysmInventoryComponent* Inventory,
-				 const UCataclysmEquipmentComponent* Equipment);
+				 UCataclysmEquipmentComponent* Equipment,
+				 const UAbilitySystemComponent* Abilities = nullptr);
 
 	/**
 	 * Which carried slot the cursor is over, or INDEX_NONE.
@@ -172,6 +183,9 @@ protected:
 	virtual void NativeTick(const FGeometry& MyGeometry,
 							float InDeltaTime) override;
 
+	/** Destroys the comparison's stand-in, which lives only as long as the screen. Issue #832. */
+	virtual void NativeDestruct() override;
+
 private:
 	/** Builds the panel, the header and the 48 cells. Runs once. */
 	void BuildTree();
@@ -193,6 +207,22 @@ private:
 	int32 IndexOfCellUnderCursor(
 		const TArray<FCataclysmInventoryCellWidgets>& From,
 		const FVector2D& ViewportPoint) const;
+
+	/**
+	 * The actor a comparison gathers stats onto, spawned the first time one is
+	 * needed and kept until the screen goes. Issue #832. Null with no world.
+	 */
+	ACataclysmComparisonStandIn* StandInForComparing();
+
+	/**
+	 * A carried item's comparison tooltip: two columns of text on the panel's
+	 * colour. Issue #832.
+	 *
+	 * ITS OWN BACKGROUND, because a widget handed to `SetToolTip` is shown with
+	 * none: `UWidget::SetToolTip` wraps it in an `SToolTip` whose border image
+	 * is null, where a text tooltip gets Slate's own box.
+	 */
+	UWidget* MakeComparisonToolTip(const FString& Left, const FString& Right);
 
 	/** Builds the panel of worn gear into a column. Called from BuildTree. */
 	void BuildGearPanel(UVerticalBox* Into);
@@ -260,6 +290,10 @@ private:
 	 * lookups and a string join, so rebuilding them every frame would be a
 	 * lot of work for something that changes when the player picks
 	 * something up. Issue #733.
+	 *
+	 * AND WHEN WHAT IS WORN CHANGES, since issue #832: a carried item's tooltip
+	 * compares it with what is worn, so a change to either makes it stale. Never
+	 * every frame, which issue #1192 says why.
 	 */
 	int32 LastChangeCount = 0;
 
@@ -292,4 +326,7 @@ private:
 	 * cells with no tool tip.
 	 */
 	bool bGearToolTipsBuilt = false;
+
+	/** See `StandInForComparing`. Weak, because a level change destroys it with the world. */
+	TWeakObjectPtr<ACataclysmComparisonStandIn> ComparisonStandIn;
 };

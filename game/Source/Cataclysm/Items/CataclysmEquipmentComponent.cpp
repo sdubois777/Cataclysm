@@ -166,12 +166,17 @@ bool UCataclysmEquipmentComponent::SlotIsEmpty(ECataclysmGearSlot Slot) const
 
 float UCataclysmEquipmentComponent::WornResidue() const
 {
+	return WornResidueOf(Slots);
+}
+
+float UCataclysmEquipmentComponent::WornResidueOf(const TArray<FCataclysmItem>& WornSlots)
+{
 	float Worn = 0.0f;
-	for (int32 Index = 0; Index < Slots.Num(); ++Index) // Worn Residue's: every slot.
+	for (int32 Index = 0; Index < WornSlots.Num(); ++Index) // Worn Residue's: every slot.
 	{
-		if (!Slots[Index].Base.IsNone())
+		if (!WornSlots[Index].Base.IsNone())
 		{
-			Worn += Slots[Index].Residue;
+			Worn += WornSlots[Index].Residue;
 		}
 	}
 	return Worn;
@@ -226,23 +231,56 @@ float UCataclysmEquipmentComponent::ConsumptionThresholdFor(int32 DifficultyTier
 
 float UCataclysmEquipmentComponent::WornResidueIfEquipped(const FCataclysmItem& Item)
 {
+	// ONE PROBE FOR BOTH QUESTIONS, since issue #832: the tooltip's comparison and this one ask `PreviewEquip`.
+	const FCataclysmEquipPreview Preview = PreviewEquip(Item);
+	return Preview.bWearable ? WornResidueOf(Preview.SlotsAfter) : WornResidue();
+}
+
+FCataclysmEquipPreview UCataclysmEquipmentComponent::PreviewEquip(const FCataclysmItem& Item)
+{
+	FCataclysmEquipPreview Out;
 	const TArray<FCataclysmItem> SlotsBefore = Slots;
 	const int32 ChangesBefore = Changes;
-	float After = WornResidue();
 	{
 		TGuardValue<bool> Silenced(bAnnouncingSilenced, true);
-		FCataclysmItem First;
-		FCataclysmItem Second;
+		FCataclysmItem FirstOff;
+		FCataclysmItem SecondOff;
 		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-		const ECataclysmEquipResult Result = Equip(Item, First, Second, Went);
+		const ECataclysmEquipResult Result = Equip(Item, FirstOff, SecondOff, Went);
 		if (Result == ECataclysmEquipResult::Equipped || Result == ECataclysmEquipResult::Swapped)
 		{
-			After = WornResidue();
+			Out.bWearable = true;
+			Out.Slot = Went;
+			// BOTH, IN `Equip`'S ORDER: a two-handed weapon put on over two held weapons takes both off, and a
+			// comparison that named only the first would compare a greatsword against half of what it replaces.
+			if (!FirstOff.Base.IsNone())
+			{
+				Out.Replaced.Add(FirstOff);
+			}
+			if (!SecondOff.Base.IsNone())
+			{
+				Out.Replaced.Add(SecondOff);
+			}
+			Out.SlotsAfter = Slots;
 		}
 	}
+	// PUT BACK AS THEY WERE, the slots and the count, so nothing worn changed and nothing was announced.
 	Slots = SlotsBefore;
 	Changes = ChangesBefore;
-	return After;
+	return Out;
+}
+
+bool UCataclysmEquipmentComponent::PlayerNumbers(FCataclysmPlayerBuild& OutNumbers) const
+{
+	if (const APawn* Pawn = Cast<APawn>(GetOwner()))
+	{
+		if (const ACataclysmPlayerState* State = Pawn->GetPlayerState<ACataclysmPlayerState>())
+		{
+			OutNumbers = FCataclysmPlayerBuild::NumbersOf(*State);
+			return true;
+		}
+	}
+	return false;
 }
 
 int32 UCataclysmEquipmentComponent::NumEquipped() const
@@ -544,7 +582,7 @@ void UCataclysmEquipmentComponent::AnnounceChange()
 {
 	if (bAnnouncingSilenced)
 	{
-		return; // WornResidueIfEquipped's: its slots are put back, so there is no change to announce.
+		return; // PreviewEquip's: its slots are put back, so there is no change to announce.
 	}
 
 	// THE COUNT FIRST. A listener on the delegate may read ChangeCount while
@@ -952,14 +990,12 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	//
 	// READ HERE AND APPLIED IN `RefreshAttributesAs`, since issue #2688 slice 2a:
 	// the corrupted double hands that function a player's build instead, so the
-	// one place that gathers every source stays one (issue #1054).
-	if (const APawn* Pawn = Cast<APawn>(GetOwner()))
+	// one place that gathers every source stays one (issue #1054). `PlayerNumbers` reads them, since issue #832, so
+	// the tooltip's comparison reads the player the same way.
+	FCataclysmPlayerBuild Numbers;
+	if (PlayerNumbers(Numbers))
 	{
-		if (const ACataclysmPlayerState* State = Pawn->GetPlayerState<ACataclysmPlayerState>())
-		{
-			const FCataclysmPlayerBuild Numbers = FCataclysmPlayerBuild::NumbersOf(*State);
-			return RefreshAttributesAs(AbilitySystem, &Numbers, PoolFill);
-		}
+		return RefreshAttributesAs(AbilitySystem, &Numbers, PoolFill);
 	}
 	return RefreshAttributesAs(AbilitySystem, nullptr, PoolFill);
 }

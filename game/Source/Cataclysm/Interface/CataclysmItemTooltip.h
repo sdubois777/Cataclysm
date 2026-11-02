@@ -45,9 +45,10 @@ class UDataTable;
  * says. That is this file.
  *
  * WHAT IS NOT HERE. Comparing the hovered item against what is worn, which is
- * what Diablo and Last Epoch both put beside the tool tip. Equipment now exists
- * (issue #828) so it has become possible; it is issue #832 rather than this one,
- * because a comparison needs a second column and a rule for what "better" means.
+ * what Diablo and Last Epoch both put beside the tool tip. Issue #832 built it,
+ * in `UCataclysmItemComparison`: the character's totals that wearing the item
+ * would change, and the worn piece's own lines from `LinesFor` here as a second
+ * column. This file still says only what one item is.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmItemTooltip : public UBlueprintFunctionLibrary

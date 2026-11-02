@@ -180,6 +180,15 @@ public:
 	 */
 	static constexpr int32 HeaderFontPx = 16;
 
+	/**
+	 * The font size a carried item's comparison tooltip is drawn at. Issue #832.
+	 *
+	 * A JUDGEMENT, NOT A MEASUREMENT: smaller than the header, because the tooltip holds two columns of a dozen lines
+	 * or more, and fixed, because a tooltip is not laid out in the grid. Slate's own text tooltip, which every other
+	 * cell still shows, sets its own size; a widget tooltip has to state one.
+	 */
+	static constexpr int32 ComparisonFontPx = 12;
+
 	//~ What a cell says.
 
 	/**

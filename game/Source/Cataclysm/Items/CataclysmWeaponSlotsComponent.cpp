@@ -25,6 +25,69 @@ UCataclysmWeaponSlotsComponent::UCataclysmWeaponSlotsComponent()
 	DamageTypes.Add(TEXT("Demonic"));
 }
 
+FCataclysmWeaponSkill UCataclysmWeaponSlotsComponent::BasicAttackCarrying(const UDataTable* BaseTable,
+																		   const FString& WeaponType,
+																		   const FString& DamageType)
+{
+	FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(BaseTable, WeaponType);
+	if (Basic.Slot == ECataclysmAbilitySlot::None)
+	{
+		return Basic;
+	}
+
+	// THE ELEMENT TAG IS ADDED HERE BECAUSE ONLY THIS COMPONENT KNOWS IT.
+	// One Item Bases row serves a weapon across every damage type it can
+	// roll, so the row cannot state one; the equipped weapon's rolled type
+	// is what DamageTypes holds, the first of them, and `EquipWeaponTypes`
+	// hands it in. The tooltip's comparison hands in the type a set of weapons
+	// not yet worn would carry first (issue #832).
+	//
+	// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
+	// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
+	// skill in hand carries every tag a modifier requires, and every gear
+	// increase the design has is scoped to an element. Untagged, the basic
+	// attack would be the only one of the seven granted skills such an
+	// increase did not reach (Burning Wrath's was one until 2026-10-25),
+	// and it is the 100% weapon damage anchor the other six are percentages
+	// of. Nothing reports that: ModifierApplies simply returns false.
+	//
+	// ErrorIfNotFound is false so a damage type with no registered tag adds
+	// nothing rather than raising during equip, matching what
+	// CataclysmAbilitySlots::Tag and UCataclysmSkillTemplate::ElementTag do.
+	//
+	// ONE ELEMENT, THE FIRST CARRIED TYPE, since issue #837 layer 2: the
+	// creation type when it is carried. The design says the basic attack "is
+	// enhanced by all damage types present"; the owner ruled on 2026-10-25 that
+	// nothing should say "increased X damage", which the coordinating session
+	// read as making a tag per type moot (Q9). NOT A TAG PER TYPE, because what
+	// does read the tag is a skill's own scoped bonus -- Burning Wrath's more
+	// damage and Conflagration's increase to allies, each scoped to its own
+	// element by UCataclysmSelfBuffSkill::GrantIncrease and
+	// UCataclysmAuraSkill::HelpAlliesInside -- and a tag per type
+	// would let a two-type basic attack take both elements' bonuses. With one
+	// type carried this is the tag it always was.
+	if (!DamageType.IsEmpty())
+	{
+		const FGameplayTag Element =
+			UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(*FString::Printf(TEXT("Element.%s"), *DamageType)),
+				/*ErrorIfNotFound=*/false);
+		if (Element.IsValid())
+		{
+			Basic.Tags.AddTag(Element);
+		}
+		else
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("There is no Element.%s tag, so the %s's basic attack "
+					 "carries no element and no scoped gear modifier will "
+					 "reach it."),
+				*DamageType, *WeaponType);
+		}
+	}
+	return Basic;
+}
+
 UCataclysmAbilitySystemComponent* UCataclysmWeaponSlotsComponent::GetAbilitySystem() const
 {
 	// Through the interface rather than by searching the owner for a component.
@@ -265,60 +328,11 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
 		ItemBaseTable = UCataclysmItemModifiers::LoadBaseTable();
 	}
 
-	FCataclysmWeaponSkill Basic = UCataclysmWeaponSkills::BasicAttackFor(
-		ItemBaseTable, EquippedWeaponType);
+	// THE ELEMENT TAG IS ADDED IN `BasicAttackCarrying`, which says why, so the tooltip's comparison (issue #832)
+	// prices a basic attack with the tags this one is granted with.
+	const FCataclysmWeaponSkill Basic = BasicAttackCarrying(ItemBaseTable, EquippedWeaponType, GetDamageType());
 	if (Basic.Slot != ECataclysmAbilitySlot::None)
 	{
-		// THE ELEMENT TAG IS ADDED HERE BECAUSE ONLY THIS COMPONENT KNOWS IT.
-		// One Item Bases row serves a weapon across every damage type it can
-		// roll, so the row cannot state one; the equipped weapon's rolled type
-		// is what DamageTypes holds, the first of them.
-		//
-		// WITHOUT IT THE BASIC ATTACK IS THE ONE SLOT NO SCOPED MODIFIER
-		// REACHES. UCataclysmStatPipeline::ModifierApplies asks whether the
-		// skill in hand carries every tag a modifier requires, and every gear
-		// increase the design has is scoped to an element. Untagged, the basic
-		// attack would be the only one of the seven granted skills such an
-		// increase did not reach (Burning Wrath's was one until 2026-10-25),
-		// and it is the 100% weapon damage anchor the other six are percentages
-		// of. Nothing reports that: ModifierApplies simply returns false.
-		//
-		// ErrorIfNotFound is false so a damage type with no registered tag adds
-		// nothing rather than raising during equip, matching what
-		// CataclysmAbilitySlots::Tag and UCataclysmSkillTemplate::ElementTag do.
-		//
-		// ONE ELEMENT, THE FIRST CARRIED TYPE, since issue #837 layer 2: the
-		// creation type when it is carried. The design says the basic attack "is
-		// enhanced by all damage types present"; the owner ruled on 2026-10-25 that
-		// nothing should say "increased X damage", which the coordinating session
-		// read as making a tag per type moot (Q9). NOT A TAG PER TYPE, because what
-		// does read the tag is a skill's own scoped bonus -- Burning Wrath's more
-		// damage and Conflagration's increase to allies, each scoped to its own
-		// element by UCataclysmSelfBuffSkill::GrantIncrease and
-		// UCataclysmAuraSkill::HelpAlliesInside -- and a tag per type
-		// would let a two-type basic attack take both elements' bonuses. With one
-		// type carried this is the tag it always was.
-		const FString DamageType = GetDamageType();
-		if (!DamageType.IsEmpty())
-		{
-			const FGameplayTag Element =
-				UGameplayTagsManager::Get().RequestGameplayTag(
-					FName(*FString::Printf(TEXT("Element.%s"), *DamageType)),
-					/*ErrorIfNotFound=*/false);
-			if (Element.IsValid())
-			{
-				Basic.Tags.AddTag(Element);
-			}
-			else
-			{
-				UE_LOG(LogCataclysm, Warning,
-					TEXT("There is no Element.%s tag, so the %s's basic attack "
-						 "carries no element and no scoped gear modifier will "
-						 "reach it."),
-					*DamageType, *EquippedWeaponType);
-			}
-		}
-
 		AvailableSkills.Add(Basic);
 	}
 
