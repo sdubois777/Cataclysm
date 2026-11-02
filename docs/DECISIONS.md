@@ -21,9 +21,40 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN.** Written while another change's build-machine window held this machine, so nothing here
-  has been through the compiler or the automation run. Every figure under "Registered before the run" is a prediction,
-  and the base counts are left to be measured when the window for this change opens.
+- **COMPILED, NOT RUN.** Phase 1 was written while another change's build-machine window held this machine and was not
+  compiled. Phase 2, rebased onto `development` at `23d2333d6` (issue #340's minion attribute channel; the only conflict
+  was this file's top), compiled it with `python tools/unreal_build.py build`: "Build: Succeeded - 44 actions, 41 files
+  compiled", every one of the 41 unity files rebuilt, among them the seven that hold this change's `.cpp` files. Then
+  each changed and new `.cpp` was compiled alone, as a guard proof's break compiles it, by marking it changed for the
+  adaptive build: "Build: Succeeded - 15 actions, 12 files compiled: CataclysmCharacterSheetTests.cpp,
+  CataclysmCharacterSheetLayout.cpp, CataclysmItemComparison.cpp, CataclysmInventoryWidget.cpp,
+  CataclysmWeaponSlotsComponent.cpp, CataclysmItemComparisonTests.cpp, CataclysmEquipmentComponent.cpp, ...", and the
+  stand-in's in the build below. Nothing has been through the automation run, so every figure under "Registered before
+  the run" is still a prediction.
+- **ONE FAULT FOUND COMPILING AND REVIEWING, AND FIXED.** `ACataclysmComparisonStandIn`'s constructor called
+  `AbilitySystem->SetIsReplicated(false)`. The class sets true, so a call asking for false runs the body, and in a
+  constructor that body's ensure fires ("SetIsReplicatedByDefault is preferred during Component Construction";
+  `UActorComponent::SetIsReplicated` asserts `!NeedsInitialization()`) -- on the class default object at start-up and on
+  every stand-in spawned, which a test would report as an error. `SetIsReplicatedByDefault` is protected
+  (C2248 when tried), and the call is not needed: a component replicates only through its actor, whose `bReplicates` is
+  false. The call is gone ("Build: Succeeded - 4 actions, 1 file compiled: CataclysmComparisonStandIn.cpp"). The other
+  actors here that call `SetIsReplicated` in a constructor ask for the true the class already holds, so their bodies
+  never run. No other change to phase 1: the review below found nothing else to change.
+- **THE REVIEW, phase 2, read and not run.** `PreviewEquip` calls `Equip` itself on the live component, so the slot
+  choice, a two-handed weapon over two held (both recorded, `Equip`'s `OutRemoved` then `OutAlsoRemoved`) and Both Hands
+  Full (read by `Equip` off the live owner's ability system) are `Equip`'s own. `Equip` and `EquipInto` change only
+  `Slots` and announce only through `AnnounceChange`, which the preview silences and whose count it puts back, so no
+  listener runs: no skill is taken back or granted (`ACataclysmPlayerCharacter::OnEquipmentChanged` is the listener), no
+  save is triggered, and `UCataclysmWearing`'s threshold question is not asked (it is asked only by
+  `WearFromCarried`). The gathering writes to the stand-in's ability system and to an equipment component in the
+  transient package, never to the player's. The inventory widget rebuilds carried tooltips only when the bag's or the
+  worn gear's change count moves, and neither moves by asking. The stand-in is destroyed in `NativeDestruct`, which runs
+  when `ACataclysmPlayerController::Input_ToggleInventory` takes the screen off with `RemoveFromParent`; it is spawned
+  again on the next rebuild. ITS ABILITY SYSTEM CAN BE FOUND: `UCataclysmTargeting::AbilitySystemOf` asks
+  `UAbilitySystemGlobals::GetAbilitySystemComponentFromActor` with its default, which falls back to a component search.
+  Nothing reaches it to ask, read in the code rather than run: it has no collision, so no overlap finds it, and the
+  only walk over every actor outside the tests (`CataclysmDungeonGameMode.cpp`, the floor's placement) keeps pawns,
+  floor objects, ground zones and stairs, none of which it is.
 - **THE FIGURE THE PLANNER GAVE FOR THE HELM TEST WAS WRONG, AND WAS NOT USED.** "Health: N to N+120" assumes the flat
   health affix gives its top value, 120, on any piece; `UCataclysmItemValues::AffixValue` divides by the +10 multiplier
   before applying the piece's own, so 120 is its value at +10 only. Test 1 wears both helms at +10 and reads the rise
@@ -159,22 +190,27 @@ with a spawned stand-in, on characters with no player state (no attribute points
 
 ### Registered before the run
 
-The base counts are measured in the window, on the base this branch is rebased onto; the placeholders below are not
-numbers.
+THE BASE COUNTS ARE MEASURED, from the engine log of the last whole-suite run on the tree `development` holds at
+`23d2333d6` (issue #340's window, at `b07b9b19`, whose run performed 4562): its "Test Completed" lines whose `Path`
+starts with each prefix, all of them `Result={Success}`. The whole suite registered is that 4562 and the seven tests this
+branch adds by name.
 
 | Figure | Registered |
 |---|---|
 | `Cataclysm.ItemComparison.` alone | 6 / 6 (a new group) |
-| `Cataclysm.CharacterSheet.` alone | TO-BE-MEASURED base count, + 1, all passing |
-| `Cataclysm.ThresholdQuestion.` alone | TO-BE-MEASURED base count, unchanged, all passing (`WornResidueIfEquipped` now runs through `PreviewEquip`) |
-| Whole Unreal suite | TO-BE-MEASURED base total, + 7, 0 failed; a "Test saves:" line with 0 left behind |
+| `Cataclysm.CharacterSheet.` alone | 10 / 10: 9 completed in that log, + 1 |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4: 4 completed in that log, unchanged (`WornResidueIfEquipped` now runs through `PreviewEquip`) |
+| Whole Unreal suite | 4569 / 4569: 4562 + 7, 0 failed; a "Test saves:" line with 0 left behind |
 | Python | of record, with JUnit, and ruff, at the registration commit |
 | P1a, the preview leaves its slots in place (`Slots = SlotsBefore;` to `Slots = Out.SlotsAfter;`, in `CataclysmEquipmentComponent.cpp`), prefix `Cataclysm.ItemComparison.AskingChangesNothingWornAndAnnouncesNothing` | fails "no slot changed by asking" ("to be 0, but it was 1") and "and the Worn Residue is what it was" ("to be 1000.000000, but it was 2000.000000") -- 2 -- and nothing else; the change count, the listener and maximum health hold |
 | P1b, the same break, prefix `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther` | fails "and asking changed nothing worn" ("to be 1600.000000, but it was 300.000000") -- 1 -- and nothing else |
 | P2, every total listed (`if (NowText == WithText)` to `if (NowText == WithText && NowText.IsEmpty())`, in `CataclysmItemComparison.cpp`), prefix `Cataclysm.ItemComparison.` | fails, in `OnlyTheTotalsThatMoveAreListedAndEachSaysWhichWay`, "an unchanged total gives no line", "nor does a change too small to show" and "only the three that move are listed" ("to be 3, but it was 47"), and in `AHelmIsComparedWithTheHelmItWouldReplace` "one total changes" ("to be 1, but it was 47") -- 4 in 2 tests -- and nothing else |
 | P3, the second weapon not recorded (`Out.Replaced.Add(SecondOff);` to `(void)SecondOff;`, in `CataclysmEquipmentComponent.cpp`), prefix `Cataclysm.ItemComparison.` | fails, in `ATwoHandedWeaponIsComparedWithBothWeaponsItWouldReplace`, "both weapons would come off" ("to be 2, but it was 1"), "the heading names both" and "the worn column holds both weapons' own tooltips" -- 3 -- and nothing else |
 
-Each anchor occurs once in its file (counted with `grep -c` at registration). The breaks were not compiled. P2's break
+Each anchor occurs once in its file (counted with `grep -cF` at registration, and again by the window's proof script
+with `--anchors-only`). The breaks were not compiled; each broken file was compiled alone unbroken (above). Each
+predicted message was re-read against the test as it stands and the engine's own wording (`AutomationTest.cpp`:
+"Expected '%s' to be %d, but it was %d.", and for a float "... %f, but it was %f and outside tolerance %f."). P2's break
 is not `&& false`, so it cannot be refused as a constant condition.
 
 ### Not tested
