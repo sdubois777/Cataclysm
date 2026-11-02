@@ -19,8 +19,14 @@ ACataclysmComparisonStandIn::ACataclysmComparisonStandIn()
 	SetCanBeDamaged(false);
 
 	AbilitySystem = CreateDefaultSubobject<UCataclysmAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
-	// NOT REPLICATED, though the class is by default: what is gathered here never leaves this machine.
-	AbilitySystem->SetIsReplicated(false);
+	// NOT REPLICATED, AND NOTHING NEEDS SAYING TO THE COMPONENT FOR IT: a component replicates only through its actor,
+	// and `bReplicates` is false above, so what is gathered here never leaves this machine.
+	//
+	// NOT `AbilitySystem->SetIsReplicated(false)`, which this constructor called until it was compiled (issue #832
+	// phase 2). The class sets true, so a call asking for false runs the body, and in a constructor that body's
+	// ensure "SetIsReplicatedByDefault is preferred during Component Construction" fires (`UActorComponent::
+	// SetIsReplicated` asserts `!NeedsInitialization()`). `SetIsReplicatedByDefault` is protected. The other actors
+	// here that call `SetIsReplicated` ask for the true the class already holds, so their bodies never run.
 
 	// THE PLAYER STATE'S FIVE, AS DEFAULT SUBOBJECTS, so the component finds them when it initialises, as the player
 	// state's own component finds its five.
