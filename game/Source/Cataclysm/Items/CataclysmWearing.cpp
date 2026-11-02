@@ -446,10 +446,13 @@ FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
 FString UCataclysmWearing::ThresholdQuestion(const FString& ItemName,
 											 const FCataclysmThresholdCrossing& Crossing)
 {
+	// AND THE CONSEQUENCE, IN THE DESIGN'S WORDS, now that the double exists (issue #2688): `docs/Cataclysm_GDD_v2.md`,
+	// "What crossing it does", its first two sentences word for word. Nothing about being consumed, which does not
+	// exist yet (#2693).
 	return FString::Printf(
-		TEXT("Wearing %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d."),
+		TEXT("Wearing %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
 		ItemName.IsEmpty() ? TEXT("this") : *ItemName, FMath::RoundToInt(Crossing.After),
-		FMath::RoundToInt(Crossing.Threshold));
+		FMath::RoundToInt(Crossing.Threshold), ThresholdConsequence);
 }
 
 FString UCataclysmWearing::Explain(ECataclysmWearResult Result)

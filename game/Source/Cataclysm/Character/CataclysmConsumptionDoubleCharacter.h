@@ -22,9 +22,10 @@
  * - NONE OF ITS GEAR DROPS (O2, the owner's decision of 2026-11-02): it wears copies of the player's items, so a drop
  *   would duplicate them. It pays the Boss rung's experience and materials as the Stalker does.
  *
- * WHAT SLICE 2A DOES NOT DO: nothing raises it, nothing saves it, and its death clears nothing. The arrival on the next
- * floor, the capture at the crossing (the owner's decision of 2026-11-02: the double is the character as it was at the
- * crossing), the save and what its death does are slices 2b and 2c.
+ * RAISED BY `ACataclysmDungeonGameMode` (slices 2b and 2c): on the next floor entered after the mark, wearing the
+ * build captured at the crossing (the owner's decision of 2026-11-02, O4), and following across floors as the Stalker
+ * does. Its death clears the mark and zeroes the worn residue (O1). It is never saved as a creature; the floor's rule
+ * state raises it again after a load.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmConsumptionDoubleCharacter : public ACataclysmCorruptedStalkerCharacter

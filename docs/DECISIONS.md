@@ -2,6 +2,276 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — The corrupted double arrives on the next floor entered, hunts across floors, and its death clears the mark; the build is captured at the crossing and saved (#2688, slices 2b and 2c)
+
+**Affects:** `ACataclysmPlayerCharacter::WearPastTheThreshold`, which now captures the build
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`, `.cpp`); `ACataclysmPlayerState::ConsumptionBuild`,
+`HoldsConsumptionBuild` and `SetConsumptionBuild`, new, and `ClearConsumptionMark`, which now empties the build too
+(`game/Source/Cataclysm/Player/CataclysmPlayerState.h`); `FCataclysmPlayerBuild`, MOVED from
+`Character/CataclysmPlayerBuild.h` into `Save/CataclysmSaveRecords.h` (that header kept, including the new home);
+`UCataclysmCharacterSave::ConsumptionBuild`, schema version 6 and `Migrate_5_to_6`; `UCataclysmRunSave` schema
+version 2, its first migration `Migrate_1_to_2`, and three fields each on `FCataclysmSavedWalk` and
+`FCataclysmSavedFloorRuleState` (`CataclysmSaveRecords.h`, `.cpp`); the gather and the apply
+(`CataclysmSaveGather.cpp`, `CataclysmSaveApply.cpp`); `FCataclysmDoubleHunt`, new, and on `ACataclysmDungeonGameMode`
+the double's hunt, its step, raise and death note, `WhereAHunterArrives` and `GiveAHunterWhatItCarried` (shared with
+the Corrupted Stalker), `CorruptedStalkerCarriesNow` now static and taking the creature, and the hooks in `StartPlay`,
+`GoToFloor`, `ClearFloorEnemies`, `StepFloorRulesThatChange`, `OnSomethingDied`, `ApplyFloorRulesToPlayer`,
+`LeaveEmpireDungeon`, the panel's rows and counts, and the walk and floor rule state's save and restore
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`);
+`UCataclysmEquipmentComponent::ClearResidueOnEveryWornItem`, new (`Items/CataclysmEquipmentComponent.h`, `.cpp`);
+`UCataclysmWearing::ThresholdConsequence`, new, and `ThresholdQuestion` (`Items/CataclysmWearing.h`, `.cpp`);
+`UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey` and the line's `bIsTheConsumptionDouble`
+(`Interface/CataclysmFloorModifierPanelLayout.h`, `.cpp`, `CataclysmFloorModifierPanel.cpp`);
+`game/Tests/SaveFixtures/Character_v6.json` and `game/Tests/SaveFixtures/Run_v2.json`, new, and the fixtures
+README; twelve new tests in
+`game/Source/Cataclysm/Tests/CataclysmConsumptionDoubleTests.cpp`; `CataclysmSaveFixtures::EmptyPlayerBuild`, new; and
+the moved assertions below. Issue [#2688](https://github.com/sdubois777/Cataclysm/issues/2688).
+
+### SAID FIRST
+
+- **PASSED IN WINDOW double-hunt-w1, ON `a6a54da9b`: 4552 OF 4552, AND P1-P5 PROVED AT EXACTLY 5, 1, 1, 4 AND 1
+  REGISTERED ASSERTIONS** (recorded under "Window double-hunt-w1" below). Compiled before the window (`Build:
+  Succeeded - 53 actions, 50 files compiled` for the code, then `Build: Succeeded - 21 actions, 18 files compiled` for
+  the tests, the four test files' objects written); every figure under "Registered before the run" was a prediction
+  made before the window.
+- **THE RUN RECORD TOOK A SCHEMA VERSION, 2, BECAUSE THE FIXTURES README SAYS SO, and the coordinating session ruled
+  it on 2026-11-02 (option A).** `game/Tests/SaveFixtures/README.md`: once the game can load a save, "Add a schema
+  version and a migration step instead" of editing a fixture. Saving the double's hunt mid-dungeon needs six new
+  fields, so `Run_v1.json` could not gain them. The ruling's reason against leaving the hunt unsaved: "a player who
+  quits and reloads mid-floor gets the double back at full health at the farthest cell. That is a way to reset a
+  wounded double, which is the kind of escape the owner's decisions on the mark ruled out."
+- **A SLIP FOUND ON THE WAY, RECORDED AND NOT UNDONE:** `Run_v1.json` was edited thirteen times after saves could load
+  (`78ad0fa81`, 2026-10-30), by #753's dungeon-load slices, with no version. The README now lists the commits, as it
+  lists `LastWrittenUtc`'s.
+- **A PLAYER KILLED BY THEIR DOUBLE IS STILL NOT CONSUMED** (O3): the ordinary dungeon death, and the mark stays.
+  [#2693](https://github.com/sdubois777/Cataclysm/issues/2693) waits on
+  [#43](https://github.com/sdubois777/Cataclysm/issues/43).
+- **ONE PLAYER.** The design gives each marked player in a party a double present for the whole party; the game mode
+  reads the first player controller, as every floor rule does. Parties wait on
+  [#56](https://github.com/sdubois777/Cataclysm/issues/56).
+- **For the owner's launch check:** cross the threshold with a confirmed equip, take the stairs, and be hunted a
+  minute into the next floor by a copy of the character, named on the floor panel as "Hunted by your corrupted
+  double"; kill it, and read the character sheet: the Worn Residue is 0 and the "Marked" line is gone.
+
+### The owner's decisions, 2026-11-02
+
+Relayed by the coordinator (O1 to O3 are recorded in full under slice 1 below, O4 under slice 2a):
+
+- **O1:** "ONLY KILLING THE DOUBLE CLEARS THE MARK (or being consumed, once that exists). Falling back below the
+  threshold does not clear it."
+- **O2:** "THE DOUBLE DROPS NONE OF ITS GEAR." Done in slice 2a.
+- **O3:** "BUILD THE DOUBLE NOW, WITHOUT THE CONSUMED OUTCOME. Until a run end exists, a player killed by their double
+  takes the ordinary dungeon death, keeps the mark, and meets the double again."
+- **O4:** "the corrupted double is the character AS IT WAS AT THE CROSSING, not as it is when the double arrives. The
+  build is captured when the confirmed equip crosses the threshold, in WearPastTheThreshold after the equip, and it is
+  saved with the character."
+
+### The coordinator's rulings and the planner's judgements, accepted 2026-11-02
+
+- **R2:** the double comes on the next floor ENTERED after the mark is set, never the current floor; outside a dungeon,
+  the first floor of the next dungeon; it then follows across floors as the Stalker does; leaving a dungeon alive
+  resets the hunt but not the mark ("the doubles return on the next dungeon"). R3 and R4 were slice 2a's.
+- **J1:** the Stalker's timings and placement: 60 seconds into the first floor it hunts, at the walkable cell farthest
+  from the player; 30 seconds into each floor after, at the entrance; the Stalker's sight.
+- **J3:** any death of the double counts as killed. **Which rules would end it outright and already spare it,
+  verified by reading:** Divine Wrath's beam (`!Enemy->IsA<ACataclysmCorruptedStalkerCharacter>()`) and Epidemic's
+  chain (`Creature->IsA<ACataclysmCorruptedStalkerCharacter>()`); the double is a Corrupted Stalker, so both spare it.
+  Volatile Evolution's rung raise skips any creature holding a player build (`bHoldsAPlayerBuild`), which is not a kill.
+  Those three are every `IsA<ACataclysmCorruptedStalkerCharacter>` and `bHoldsAPlayerBuild` test in
+  `CataclysmDungeonGameMode.cpp`; no other kind of death was swept, and every other death counts.
+- **J4:** a kill resets the hunt, so a later crossing brings a fresh double a minute into a floor.
+- **J5:** potions full and 50 Fervour, as the Stalker: a first raise leaves the potion slots as they start, full, and
+  `WearThePlayersBuild` sets the Fervour (slice 2a).
+- **J6:** a Horde wave counts as a floor entered. **Verified by reading:** `BringTheNextWaveIn` goes through
+  `GoDownOneFloor` to `GoToFloor`, which sets the flag; `ClearFloorEnemies` keeps a standing double, and the floor's
+  reset in `ApplyFloorRulesToPlayer` keeps one that stands and restarts the floor's clock otherwise, as for the
+  Stalker. **No test runs a Horde wave with a double.**
+- **J7:** the player's floor modifiers and held buffs are not copied: a `FCataclysmPlayerBuild` holds neither.
+
+### What changes
+
+- **THE CAPTURE, AND ITS ORDER (O4).** `WearPastTheThreshold` still marks FIRST, before the equip, so the record the
+  equip writes holds the mark (slice 1's P3 proved that order). After the equip, when it crossed and was worn, it
+  captures `FCataclysmPlayerBuild::Of(*this)`, keeps it on the player state, and raises the inventory's save trigger
+  once more, so the LAST record written holds the mark and the build (writes to one slot run in launch order). This
+  is the simplest true order: the capture must follow the equip to hold the item that crossed, and the mark must
+  precede it. A quit in the moment between the two writes loads marked with no build, which is the fallback below.
+- **ONLY WHEN NO BUILD IS HELD (my judgement, not ruled).** A character already marked keeps the build of the crossing
+  that marked it; taking gear off and crossing again with weaker gear cannot weaken its double. A character marked
+  before version 6 holds none, and its next crossing captures one.
+- **THE SAVE.** `UCataclysmCharacterSave::ConsumptionBuild`, version 6; `Migrate_5_to_6` writes the whole empty build
+  in the shape the record writes it (from the struct's defaults, through `FJsonObjectConverter`, not from
+  `game/Data/`). The gather writes it always; the apply sets it only on a marked record, and `ClearConsumptionMark`
+  empties it. **A character marked at version 5 has no build, and its double is built from the gear worn when it
+  arrives** (`RaiseTheConsumptionDouble`).
+- **`FCataclysmPlayerBuild` MOVED INTO `CataclysmSaveRecords.h`**, unchanged: the character record holds one, and that
+  header could not include `CataclysmPlayerBuild.h`, which included it for `FCataclysmWornItem`. Its functions stay in
+  `CataclysmPlayerBuild.cpp`.
+- **WHETHER A FLOOR IS HUNTED IS DECIDED AS IT IS ENTERED (R2).** `bDoubleHuntsThisFloor` is set from the mark by
+  `NoteTheConsumptionDoubleAsAFloorIsEntered`, in `GoToFloor` before `ApplyFloorRulesKeepingHealth` (a Horde wave
+  too) and in `StartPlay` after the player exists; never in `ApplyFloorRulesToPlayer`, which `LeaveEmpireDungeon`
+  runs. A crossing on a floor therefore never brings the double on that floor. Set before the floor's rules apply,
+  so the panel drawn there already lists the double; redrawn when the flag changes.
+- **THE HUNT** is `FCataclysmDoubleHunt`, the Stalker's seven fields bundled. `StepTheConsumptionDouble` and
+  `RaiseTheConsumptionDouble` are new functions rather than parameterised Stalker ones, sharing `WhereAHunterArrives`,
+  `GiveAHunterWhatItCarried` and `CorruptedStalkerCarriesNow` (now static, taking the creature): the Stalker's raise
+  draws an authored entry on the floor's seed and the double's reads the player state, so one parameterised function
+  would branch on almost every line. The Stalker's behaviour is unchanged; its tests are unedited. The double is in
+  the beat's early-out list, kept by `ClearFloorEnemies`, kept or reset by the floor's reset, and reset with its flag
+  by `LeaveEmpireDungeon` (R2).
+- **THE PANEL.** On a hunted floor or while the double stands, the rows listed end with
+  `UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey`, which is no row; `LinesFor` names it "Hunted by your
+  corrupted double" with its count, "it comes 60 seconds into the floor" (30 on a floor after the first) or "it is on
+  this floor; killing it clears the mark and your worn residue". It is not dimmed, not marked "not a row", and **not
+  counted in the heading's modifiers** (my judgement). The panel tests of #1841 pass explicit keys and read no heading
+  from a game mode, so none moves.
+- **THE KILL (O1, J3, J4).** `NoteDeathForTheConsumptionDouble`: when the victim is any `ACataclysmConsumptionDoubleCharacter`
+  (not only the hunt's, my judgement), the first player's worn items' residue goes to zero
+  (`ClearResidueOnEveryWornItem`, which announces the change; carried items keep theirs, as the design names only
+  equipped ones), the mark and the build are cleared, the hunt and the floor's flag reset, the inventory's save trigger
+  is raised so the character record is written (a creature's death writes only the run record), and the panel is
+  redrawn. Its kills refill its potions, as the Stalker's do.
+- **OUTCOME B, NOTHING NEW (O3), verified:** the player's death in an empire dungeon goes through
+  `EndTheDungeonForADeath` to `LeaveEmpireDungeon`, which resets the hunt and leaves the mark; nothing on that path
+  touches the mark.
+- **THE HUNT ACROSS A SAVE (run record version 2).** The walk gains `bConsumptionDoubleHasHunted`,
+  `ConsumptionDoubleHealthShare` and `ConsumptionDoublePotionCharges`; the floor's rule state
+  `bConsumptionDoubleHuntsThisFloor`, `bConsumptionDoubleStanding` and `ConsumptionDoubleLocation`. A load enters the
+  floor (which sets the flag from the loaded mark), restores the walk, then the floor's rule state, whose saved flag
+  wins, and a double standing at the save is raised again at once where it stood, with the walk's health and potions.
+  The double itself is never saved as a creature: it is raised by a rule and is in none of `RaisedByOf`'s lists, so
+  the gather leaves it out, as it does the Stalker. `Migrate_1_to_2` writes the six defaults.
+- **THE QUESTION.** `ThresholdQuestion` appends `ThresholdConsequence`, the first two sentences of "What crossing it
+  does" word for word: "The character is marked. On entering the next dungeon floor, a corrupted double of the
+  character is placed in the dungeon and hunts the player: same class, same level, same equipment, same skills."
+  Nothing about being consumed.
+
+### Moved assertions
+
+Every `SchemaVersion` comparison, `SameObject` call and reader of a committed fixture in the tests was swept.
+
+1. `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther`: both expected questions
+   gain the consequence sentence: "... Threshold of 1950." becomes "... Threshold of 1950. The character is marked. On
+   entering the next dungeon floor, a corrupted double of the character is placed in the dungeon and hunts the
+   player: same class, same level, same equipment, same skills."
+2. `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`: the character entry reads `Character_v6.json`
+   (was v5) and the run entry `Run_v2.json` (was v1).
+3. `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`: reads v6; "it says it is version 5" is
+   now "it says it is version 6"; eleven assertions on the build are added, from "the build holds one worn item" to
+   "the build's points besides gear".
+4. `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`: reads v6.
+5. `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne`: its expected object also gains
+   `ConsumptionBuild`, the empty build, because the chain runs on to version 6. Its assertions are unchanged.
+6. `Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked`: the same, for the same reason.
+7. to 12. `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt`,
+   `AFileWithoutThePartOfADayStillLoads`, `TheCommittedRunFileKeepsTheSurgeSchedule`,
+   `AFileWithoutTheSurgeScheduleStillLoads`, `TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom` and
+   `AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`: each reads `Run_v2.json` (was `Run_v1.json`), and its refusal
+   messages name it. No run test compared a version number.
+
+### Tests
+
+Twelve new, in `CataclysmConsumptionDoubleTests.cpp`, beside slice 2a's three; `Cataclysm.ConsumptionDouble.` selects
+the fifteen and nothing else.
+
+1. `TheCrossingCapturesTheBuildAndTheCharacterRecordKeepsIt` ("DOUBLE BUILD CAPTURED"): with a save writer, a helm of
+   1000 worn and boots of 1000 put on with a yes. CONTROL: no build before. The build holds every item worn after the
+   equip, the boots among them; the record the crossing wrote holds the mark and the build; a fresh character loaded
+   from it holds the build.
+2. `ACharacterFileFromBeforeTheBuildMigratesWithNone` ("BUILD MIGRATED"): `Character_v5.json` through the chain: the
+   step writes the empty build, the record arrives at 6 with no worn item, still marked (CONTROL), every other field
+   kept.
+3. `ARunFileFromBeforeTheHuntMigratesWithNone` ("HUNT MIGRATED"): `Run_v1.json` through the chain: each of the six
+   keys written with its default, one assertion each; the record at 2; every other field kept.
+4. `TheDoubleComesOnTheNextFloorEnteredAndNeverOnTheFloorOfTheCrossing` ("DOUBLE ARRIVES"): the crossing on floor 2,
+   entered unmarked (CONTROL); no double seventy seconds in; on floor 3, none a beat before a minute, then the double,
+   wearing the captured build, on the monsters' side, with the Stalker's sight, within a cell of the farthest cell;
+   the panel's line before and after; a minute later the same one, and only one.
+5. `TheDoubleFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad` ("DOUBLE FOLLOWS"): at 40% on floor 2; on floor
+   3, none at first, the first gone with floor 2, the panel's "30 seconds", none a beat before thirty seconds, then
+   one at the entrance at 40%.
+6. `ACharacterMarkedBetweenDungeonsIsHuntedOnTheNextDungeonsFirstFloor` ("DOUBLE NEXT DUNGEON"): a dungeon left
+   (`LeaveEmpireDungeon`), the crossing, nothing hunting (CONTROL), the next dungeon's first floor entered as
+   `EnterEmpireDungeon` enters it (`GoToFloor(1)`), the double a minute in; left again alive: the mark kept, the hunt
+   reset, and the dungeon after not followed into at thirty seconds but hunted from a minute.
+7. `ADoubleAndACorruptedStalkerHuntOneFloorEachWithItsOwnState` ("DOUBLE AND STALKER"): both come on floor 2, two
+   creatures, at 30% and 70%; both follow onto floor 3 with their own shares; killing the double does not slay the
+   Stalker, which still stands and is still the floor's, while the double's hunt is over.
+8. `KillingTheDoubleZeroesTheWornResidueAndClearsTheMarkAndTheRecordSaysSo` ("DOUBLE KILLED"): every worn item's
+   residue zero; CONTROL: a carried ring keeps its 300; the equipment kept; the mark and the build cleared; the hunt
+   over and reset; the character record written then unmarked and holding no build.
+9. `APlayerKilledByTheDoubleStaysMarked` ("KILLED BY THE DOUBLE"): marked, holding the build, the worn residue
+   unchanged.
+10. `TheDoubleWearsTheBuildCapturedAtTheCrossingNotTheGearWornWhenItArrives` ("DOUBLE WEARS"): everything taken off
+    after the crossing (CONTROL: nothing worn); the double wears every captured item, their residue at least 2000;
+    then, with no build held and one ring worn, a double wearing the gear worn when it arrives.
+11. `TheHuntComesBackFromASaveWithTheDoubleWhereItStood` ("DOUBLE LOADED"): a double at 40% with a potion slot at 5;
+    `WalkStateNow` and `FloorRuleStateNow`; the dungeon left and the floor entered again (CONTROL: the saved double
+    went with it); `RestoreWalkState`, then `RestoreFloorRuleState`: the double stands at once within 1 cm of where it
+    stood, at 40%, the slot at 5, the floor hunted, and a minute later the same one, only one.
+12. `ALoadKeepsWhetherTheSavedFloorWasHunted` ("DOUBLE FLAG LOADED"): saved on the floor of the crossing (not hunted);
+    entered again marked, it would be hunted (CONTROL); after the restore it is not, and no double comes in seventy
+    seconds.
+
+The load tests call the game mode's save and restore functions directly, in `Cataclysm.LoadCharacter`'s order, and
+not through files; the files' half is the completeness test on `Run_v2.json` and test 3.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 |
+| `Cataclysm.ConsumptionMark.` alone | 6 / 6 |
+| `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther` alone | 1 / 1 |
+| `Cataclysm.SaveRecords.` alone (eleven of the twelve moved tests are in it) | 17 / 17 |
+| Whole Unreal suite | 4552 / 0: `development`'s 4540 (62b6b80bd, #2696), + 12; a "Test saves:" line with 0 left behind |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, the capture never runs (`if (bCrosses && bWorn && State && !State->HoldsConsumptionBuild())` gains `&& !bCrosses`, in `CataclysmPlayerCharacter.cpp`), prefix `Cataclysm.ConsumptionDouble.TheCrossingCapturesTheBuildAndTheCharacterRecordKeepsIt` | fails "the crossing captured a build", "holding every item worn after the equip", "the boots that crossed among them", "the record holds the build" and "and a fresh character loaded from it holds the build" -- 5 -- and nothing else; the CONTROL, the set-up lines and "the record holds the mark" hold |
+| P2, whether the double hunts read from the live mark on the beat instead of the flag set as the floor was entered (both reads in `CataclysmDungeonGameMode.cpp`: `const bool bConsumptionDouble = bDoubleHuntsThisFloor || ...` and `if (!bDoubleHuntsThisFloor || DoubleHunt.bRaisedThisFloor)`, each `bDoubleHuntsThisFloor` to `ThePlayerIsMarkedByConsumption()`), prefix `Cataclysm.ConsumptionDouble.TheDoubleComesOnTheNextFloorEnteredAndNeverOnTheFloorOfTheCrossing` | fails "no double on the floor the crossing was made on, seventy seconds in" only, and the test returns there; the CONTROL before it holds |
+| P3, the residue clear removed (`Equipment->ClearResidueOnEveryWornItem(); // ...` to `(void)Equipment;`), prefix `Cataclysm.ConsumptionDouble.KillingTheDoubleZeroesTheWornResidueAndClearsTheMarkAndTheRecordSaysSo` | fails "every worn item's residue is zero" only; the CONTROL, the mark, the build, the hunt and the record lines hold |
+| P4, the mark clear removed (`State->ClearConsumptionMark(); // ...` to `(void)State;`), the same prefix | fails "the mark is cleared", "and the build with it", "the record written is unmarked" and "and holds no build" -- 4 -- and nothing else |
+| P5, the run record's step stops writing one key (`(*Walk)->SetBoolField(TEXT("bConsumptionDoubleHasHunted"), false);` deleted, in `CataclysmSaveRecords.cpp`), prefix `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone` | fails "the step writes 'has not hunted' into the walk" only: the record reads the missing key as its default, so the round trip and the other five keys hold |
+
+Each break's anchor occurs once (`prove_d2688b.py --anchors-only`: P1, P3, P4 and P5 one anchor each, P2 two, every
+count 1). The breaks were not compiled before registration.
+
+### Not tested
+
+- A Horde wave with a double (J6, read, not run); a double raised on the dark floor a fall leads to.
+- A real load through `Cataclysm.LoadCharacter` and the slots, with a double standing; the tests call the restore
+  functions directly.
+- The double fighting: its brain, skills, potions and Ultimate against a player; a double killed by a floor rule or by
+  damage over time, which counts as killed (J3) and is not exercised.
+- The panel drawn on screen (a test world has no local player, #1841); the question drawn on the choice panel.
+- A party (#56); the consumed outcome (#2693).
+- A crossing while the double already stands, and a second crossing while marked (the first build is kept); a
+  character with two two-handed weapons captured.
+
+### Window double-hunt-w1, run 2026-11-02 by the coordinating session
+
+On `a6a54da9b`, branch `feat/consumption-double-hunts`, on `development` at `62b6b80bd`. Pre-checks at 14:08:29 all
+passed, 10,662 MB of physical memory free; the runner (started 14:08:40) took the lock as `double-hunt-w1` and released
+it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 | "15 tests performed, 15 succeeded, 0 failed" |
+| `Cataclysm.ConsumptionMark.` alone | 6 / 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther` alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| `Cataclysm.SaveRecords.` alone | 17 / 17 | "17 tests performed, 17 succeeded, 0 failed" |
+| Whole Unreal suite | 4552 / 0 | "4552 tests performed, 4552 succeeded, 0 failed"; "Declared: 4552 tests in the tree at a6a54da9b; 4552 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 201.90s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | 5 | PROVED; restored 1 of 1. Exactly: "the crossing captured a build", "holding every item worn after the equip" (0 against 3), "the boots that crossed among them" (0 against 1), "the record holds the build" (0 against 3), "and a fresh character loaded from it holds the build" (0 against 3) |
+| P2 | 1 | PROVED; restored 1 of 1. Exactly "no double on the floor the crossing was made on, seventy seconds in" |
+| P3 | 1 | PROVED; restored 1 of 1. Exactly "every worn item's residue is zero" (2 against 0) |
+| P4 | 4 | PROVED; restored 1 of 1. Exactly "the mark is cleared", "and the build with it", "the record written is unmarked", "and holds no build" (3 against 0) |
+| P5 | 1 | PROVED; restored 1 of 1. Exactly "the step writes 'has not hunted' into the walk" |
+
+No other assertion failed in any broken half.
+
+---
+
 ## 2026-11-02 — The corrupted double's build: a player's own build worn by a Stalker-shaped creature, through the one stat gatherer (#2688, slice 2a)
 
 **Affects:** `FCataclysmPlayerBuild`, new (`game/Source/Cataclysm/Character/CataclysmPlayerBuild.h`, `.cpp`);

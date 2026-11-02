@@ -17,6 +17,21 @@ TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor
 	{
 		FCataclysmFloorModifierLine Line;
 		Line.RowKey = Key;
+
+		// THE CORRUPTED DOUBLE'S LINE, WHICH IS NO ROW: named for what it is, with its count. Issue #2688.
+		if (Key == FName(ConsumptionDoubleKey))
+		{
+			Line.bIsTheConsumptionDouble = true;
+			Line.Built = ECataclysmModifierBuilt::Built;
+			Line.Name = ConsumptionDoubleName;
+			if (const FString* Counting = LiveCounts.Find(Key))
+			{
+				Line.LiveCount = *Counting;
+			}
+			Lines.Add(MoveTemp(Line));
+			continue;
+		}
+
 		Line.Built = UCataclysmDungeonModifierEffects::BuiltStateOf(Key);
 
 		const FCataclysmDungeonModifierRow* Row =
@@ -51,7 +66,11 @@ FString UCataclysmFloorModifierPanelLayout::NameLineFor(const FCataclysmFloorMod
 {
 	FString Named;
 
-	if (!Line.bIsARow)
+	if (Line.bIsTheConsumptionDouble)
+	{
+		Named = Line.Name; // The double's: no row, and not marked as a missing one. Issue #2688.
+	}
+	else if (!Line.bIsARow)
 	{
 		Named = FString::Printf(TEXT("%s (not a row of the dungeon modifier table)"),
 								*Line.Name);

@@ -38,7 +38,7 @@ FCataclysmPlayerBuild FCataclysmPlayerBuild::Of(const ACataclysmPlayerCharacter&
 		Build.ClassName = UCataclysmPlayerClassStats::ChosenClass();
 	}
 
-	// THE ITEMS AS THEY ARE, gathered as the character record gathers them, so a later slice saves exactly this.
+	// THE ITEMS AS THEY ARE, gathered as the character record gathers them, so the character record saves exactly this.
 	if (const UCataclysmEquipmentComponent* Equipment = Player.GetEquipment())
 	{
 		FCataclysmSaveGather::WornGearFrom(*Equipment, Build.Worn);

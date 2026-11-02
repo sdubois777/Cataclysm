@@ -130,7 +130,12 @@ namespace CataclysmSaveRecordTest
 	{
 		return {
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
-			// CHARACTER IS AT v4 SINCE 2026-11-01, when a character came to
+			// CHARACTER IS AT v6 AND RUN AT v2 SINCE 2026-11-02, when a character
+			// came to carry the build its corrupted double wears and a run the
+			// double's hunt (issue #2688); the character was at v5 from earlier
+			// that day, when it came to carry its Consumption mark. Run_v1.json
+			// and Character_v5.json are migration inputs now.
+			// CHARACTER WAS AT v4 FROM 2026-11-01, when a character came to
 			// carry its difficulty tier (issue #1472); at v3 from 2026-09-24,
 			// when a character became limited to one class tree per damage
 			// type (issue #2064); and at v2 from 2026-08-24, when the attribute
@@ -140,8 +145,8 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v5.json") },
-			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v1.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v6.json") },
+			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v2.json") },
 		};
 	}
 }
@@ -584,7 +589,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v5.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v6.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -597,14 +602,35 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v5.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v6.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 5"), Read->SchemaVersion, 5);
+	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
 	// TRUE AND NOT FALSE, the default, so a mark that was not read cannot pass. Issue #2688.
 	TestTrue(TEXT("the Consumption mark in the file"), Read->bMarkedByConsumption);
+	// AND THE BUILD CAPTURED AT THE CROSSING, VERSION 6, read back field by field with values the record's own fields
+	// do not hold (level 41 and not 42, Ferocity 9 and not 10, the Heavy key and not the Ultimate), so a build read
+	// from the record's fields instead of its own cannot pass. Issue #2688.
+	{
+		const FCataclysmPlayerBuild& Build = Read->ConsumptionBuild;
+		TestEqual(TEXT("the build holds one worn item"), Build.Worn.Num(), 1);
+		if (Build.Worn.Num() == 1)
+		{
+			TestTrue(TEXT("in the first weapon slot, read by name"), Build.Worn[0].Slot == ECataclysmGearSlot::Weapon1);
+			TestEqual(TEXT("the build's greatsword"), Build.Worn[0].Item.Base, FName(TEXT("Weapon_Greatsword")));
+			TestEqual(TEXT("with its residue"), Build.Worn[0].Item.Residue, 2.5f);
+		}
+		TestEqual(TEXT("the build's level"), Build.Level, 41);
+		TestEqual(TEXT("the build's class"), Build.ClassName, FString(TEXT("Masochist")));
+		TestEqual(TEXT("the build's ferocity"), Build.SpentAttributePoints.Ferocity, 9);
+		TestEqual(TEXT("the build's creation damage type"), Build.CreationDamageType, FName(TEXT("Void")));
+		TestTrue(TEXT("the build's chosen skill, on the Heavy key"),
+				 Build.SkillAssignment.Num() == 1 && Build.SkillAssignment[0].Slot == ECataclysmAbilitySlot::Heavy);
+		TestEqual(TEXT("the build's passive points"), Build.PassiveAllocation.Nodes.Num(), 1);
+		TestEqual(TEXT("the build's points besides gear"), Build.PassivePointsBesidesGear, 7);
+	}
 	// 2 AND NOT 1, the default, so a tier that was not read cannot pass. Issue #1472.
 	TestEqual(TEXT("the difficulty tier in the file"), Read->DifficultyTier, 2);
 	TestEqual(TEXT("the name in the file"), Read->CharacterName, FString(TEXT("Vesper")));
@@ -806,6 +832,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("DifficultyTier"), 1);
 	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false); // Since #2688: the chain runs on to version 5.
+	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // And on to 6.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -979,7 +1006,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -992,7 +1019,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v1.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v2.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1076,7 +1103,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1098,7 +1125,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v1.json no longer carries a PartialDay line to "
+		AddError(TEXT("Run_v2.json no longer carries a PartialDay line to "
 					  "remove, so this test would prove nothing. If the field "
 					  "was renamed, rename it here."));
 		return false;
@@ -1160,7 +1187,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1174,7 +1201,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v1.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v2.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1235,7 +1262,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1274,7 +1301,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 		if (!bRemoved)
 		{
 			AddError(FString::Printf(
-				TEXT("Run_v1.json no longer carries the line `%s`, so this test "
+				TEXT("Run_v2.json no longer carries the line `%s`, so this test "
 					 "would prove nothing. If the field was renamed or its value "
 					 "changed, change it here too."), *Line));
 			return false;
@@ -1343,7 +1370,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v5.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v6.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1355,7 +1382,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v5.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v6.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1508,7 +1535,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1521,7 +1548,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 										GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v1.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v2.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1548,7 +1575,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v2.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1570,7 +1597,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v1.json no longer carries the two dark floor lines to remove, so this test would prove "
+		AddError(TEXT("Run_v2.json no longer carries the two dark floor lines to remove, so this test would prove "
 					  "nothing. If a field was renamed, rename it here."));
 		return false;
 	}

@@ -422,6 +422,41 @@ followed, ruled 2026-11-01:
   `Character_v4.json` is now a migration input, not edited again;
   `Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked`
   runs it through the step and checks every other field is kept.
+- **The third is `ConsumptionBuild`, the build the corrupted double wears**
+  (issue #2688, the owner's decision of 2026-11-02 that the double is the
+  character as it was at the crossing): the character record went to version 6
+  on 2026-11-02, `Migrate_5_to_6` writes an empty build into a version 5 file,
+  and `Character_v6.json` is `Character_v5.json` at version 6 with a
+  `"ConsumptionBuild"` object added and nothing else changed. **The build is not
+  empty and differs from the record's own fields** -- level 41 and not 42,
+  Ferocity 9 and not 10, its chosen skill on the `Heavy` key and not the
+  `Ultimate`, one passive node and not two, `Void` and not `War` as its creation
+  type, 7 points besides gear -- so a build read from the record's own fields
+  instead of its own cannot pass. Its one worn item is the record's greatsword.
+  `Character_v5.json` is now a migration input, not edited again;
+  `Cataclysm.ConsumptionDouble.ACharacterFileFromBeforeTheBuildMigratesWithNone`
+  runs it through the step and checks every other field is kept.
+- **And the run record took its first version the same day, to 2**, for the
+  corrupted double's hunt (issue #2688, ruled 2026-11-02): three fields on
+  `Walk` (`bConsumptionDoubleHasHunted`, `ConsumptionDoubleHealthShare`,
+  `ConsumptionDoublePotionCharges`) and three on `Floor.RuleState`
+  (`bConsumptionDoubleHuntsThisFloor`, `bConsumptionDoubleStanding`,
+  `ConsumptionDoubleLocation`). `Migrate_1_to_2` writes their defaults into a
+  version 1 file, and `Run_v2.json` is `Run_v1.json` at version 2 with those six
+  keys added holding values that are not their defaults -- true, true, a share
+  of 0.625, charges of 12.5, 7.5, 2.5 and 0, and a location of (448.5, -96.25,
+  88) -- and nothing else changed. `Run_v1.json` is now a migration input, not
+  edited again; `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone`
+  runs it through the step and checks every other field is kept. Every test
+  that read `Run_v1.json` as the committed run file reads `Run_v2.json` now.
+- **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
+  `Run_v1.json` was edited thirteen times after saves could load
+  (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
+  with no schema version and no note here: `da0423c54`, `2082da17b`,
+  `904fe4f82`, `6a7cbaef0`, `4aa87ab3e`, `5aa622a56` and `1be88643c` on
+  2026-10-30, and `956c2d827`, `c4a41a50d`, `f674abb1a`, `9b225263a`,
+  `c968fed35` and `e21133d85` on 2026-10-31. Under the rule above each needed
+  a version and a migration step. The file keeps those fields.
 
 ## What is here
 
@@ -433,7 +468,9 @@ followed, ruled 2026-11-01:
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
 | `Character_v4.json` | The same character at version 4: version 3's contents, plus its difficulty tier, 2 |
 | `Character_v5.json` | The same character at version 5: version 4's contents, plus its Consumption mark, true |
+| `Character_v6.json` | The same character at version 6: version 5's contents, plus the build its corrupted double wears |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
+| `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -445,8 +482,9 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had three since
-(version 4 since 2026-11-01). Its header says more.
+none of them had a migration to run. The character record has had five since
+(version 6 since 2026-11-02), and the run record one (version 2 since
+2026-11-02). Its header says more.
 
 ## Two things to keep in mind when editing one
 

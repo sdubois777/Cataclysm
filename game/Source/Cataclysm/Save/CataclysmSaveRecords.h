@@ -570,6 +570,21 @@ struct CATACLYSM_API FCataclysmSavedWalk
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float MetresWalkedSinceCleanse = 0.0f;
+
+	/**
+	 * The corrupted double's hunt, the dungeon's half: whether it has hunted an earlier floor (so it follows thirty
+	 * seconds in, at the entrance), the share of its health it carries, and its four potion slots' charges. Issue #2688.
+	 * Without them a player could quit and load to raise a wounded double again at full health, a minute in, at the far
+	 * end of the floor (ruled 2026-11-02). RUN RECORD VERSION 2: `Migrate_1_to_2` writes these defaults.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleHasHunted = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ConsumptionDoubleHealthShare = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> ConsumptionDoublePotionCharges;
 };
 
 /**
@@ -893,6 +908,21 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	FVector CorruptedStalkerLocation = FVector::ZeroVector;
+
+	/**
+	 * The corrupted double's hunt, the floor's half: whether it hunts this floor (decided as the floor was entered, R2),
+	 * whether it stood at the save, and where. A load puts the flag back after the floor is entered, so a crossing made
+	 * on the saved floor still brings the double on the next one, and raises a standing double again at once where it
+	 * stood, with the health and potions the walk carries. Issue #2688. RUN RECORD VERSION 2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleHuntsThisFloor = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleStanding = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector ConsumptionDoubleLocation = FVector::ZeroVector;
 };
 
 /**
@@ -1059,6 +1089,88 @@ struct CATACLYSM_API FCataclysmWornItem
 	FCataclysmItem Item;
 };
 
+class ACataclysmPlayerCharacter;
+class ACataclysmPlayerState;
+
+/**
+ * A player character's build, as values: what it wears and every number of its own that its stat line is made from.
+ * Issue #2688, slice 2a, for the corrupted double that hunts a character past the Consumption Threshold.
+ *
+ * THE PLAYER'S OWN NUMBERS, ruled by the coordinating session on 2026-11-02 (R3): the worn items exactly as they are,
+ * with their rolled values and gear levels, and the character's own level, class, attribute points, passive points
+ * and skill choices. Nothing is rescaled to a tier and nothing is rolled again.
+ *
+ * SAVED WITH THE CHARACTER, the owner's decision of 2026-11-02 (O4): the double is the character as it was at the
+ * crossing, so `ACataclysmPlayerCharacter::WearPastTheThreshold` captures one after the crossing equip, the player
+ * state holds it beside the mark, and the character record keeps it (`UCataclysmCharacterSave::ConsumptionBuild`,
+ * schema version 6, slices 2b and 2c). Every field is `SaveGame`, the items as the record already writes them
+ * (`FCataclysmWornItem`), the rest plain values. DEFINED HERE AND NOT IN `Character/CataclysmPlayerBuild.h` because the
+ * character record holds one; its functions are in `CataclysmPlayerBuild.cpp`.
+ *
+ * THE WHOLE PASSIVE ALLOCATION, NOT A REDUCED COPY, with the points earned apart from gear beside it. What counts of the
+ * allocation is decided by `UCataclysmEquipmentComponent::RefreshAttributesAs`, the one place that gathers every stat
+ * source (issue #1054), from the class points the worn rows grant there; the player's own refresh decides it the same
+ * way from the same figures.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmPlayerBuild
+{
+	GENERATED_BODY()
+
+	/** Every worn item with the slot it is worn in. A two-handed weapon is one entry, in the first weapon slot. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmWornItem> Worn;
+
+	/** The character's level. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	int32 Level = 1;
+
+	/** A `ClassStats` class line: `UCataclysmPlayerClassStats::ChosenClass`, which is what a player's refresh applies. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FString ClassName;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FCataclysmAttributePoints SpentAttributePoints;
+
+	/** The damage type chosen at creation: what a weapon with no damage types counts as carrying, and the fill order's first. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FName CreationDamageType;
+
+	/** The player's chosen skills, as `ACataclysmPlayerState::GetSkillAssignment` holds them. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/** Every point spent in the passive trees, as the player state holds it. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FCataclysmPassiveAllocation PassiveAllocation;
+
+	/**
+	 * The passive points earned apart from gear: `ACataclysmPlayerState::PassivePointsEarnedWith(0)`, the level's, the
+	 * bosses' and those an allocation was handed with. The class points the worn rows grant are added where the build
+	 * is applied.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	int32 PassivePointsBesidesGear = 0;
+
+	/**
+	 * A live player character's build: its worn items, its state's numbers and its skill choices. What the capture at
+	 * the crossing calls. With no player state, the worn items alone, at
+	 * `UCataclysmPlayerClassStats::ChosenLevel` and `ChosenClass`, as a refresh without a state applies them.
+	 */
+	static FCataclysmPlayerBuild Of(const ACataclysmPlayerCharacter& Player);
+
+	/**
+	 * The numbers a player state holds, and no items and no skill choices: what
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` reads of the player before it gathers. One function, so the
+	 * player's refresh and a build taken from the player read the state in the same place.
+	 */
+	static FCataclysmPlayerBuild NumbersOf(const ACataclysmPlayerState& State);
+
+	/** `Worn` in the shape `UCataclysmEquipmentComponent::RestoreWornGear` takes. */
+	TArray<TPair<ECataclysmGearSlot, FCataclysmItem>> WornPairs() const;
+};
+
+
 /**
  * The character record: what belongs to one character and travels with it.
  *
@@ -1090,6 +1202,10 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 6 SINCE 2026-11-02. The character carries the build its corrupted double is made from, captured at the crossing
+	 * (`ConsumptionBuild`, issue #2688, the owner's decision O4), and `Migrate_5_to_6` writes an empty build into a
+	 * character written at 5: nothing captured one before the field existed.
+	 *
 	 * 5 SINCE 2026-11-02. The character carries its Consumption mark, issue #2688, and `Migrate_4_to_5` writes "not
 	 * marked" into a character written at 4: nothing could mark a character before the field existed.
 	 *
@@ -1107,7 +1223,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 5;
+	static constexpr int32 SchemaVersionNow = 6;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1149,6 +1265,17 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bMarkedByConsumption = false;
+
+	/**
+	 * The build the character had when it crossed the Consumption Threshold, which its corrupted double wears: the
+	 * owner's decision of 2026-11-02 (O4), "the double is the character as it was at the crossing". Issue #2688.
+	 * `ACataclysmPlayerState::ConsumptionBuild`. EMPTY (no worn items) for an unmarked character, and for a character
+	 * marked before the field existed, whose double is then built from the gear worn when it arrives.
+	 *
+	 * VERSION 6: a record written before the field is at version 5, and `Migrate_5_to_6` writes an empty build into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPlayerBuild ConsumptionBuild;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
@@ -1422,10 +1549,19 @@ class CATACLYSM_API UCataclysmRunSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 1;
+
+	/**
+	 * 2 SINCE 2026-11-02. The run carries the corrupted double's hunt (issue #2688): three fields on `Walk` and three on
+	 * `Floor.RuleState`, and `Migrate_1_to_2` writes their defaults into a run written at 1, where no double could
+	 * hunt. A VERSION AND NOT A DEFAULT, by `game/Tests/SaveFixtures/README.md`: saves load since #753, so a field added
+	 * to a record takes a version (ruled 2026-11-02). Until then it was 1, and the comments below that say a field
+	 * needed no bump were written while nothing loaded a save.
+	 */
+	static constexpr int32 SchemaVersionNow = 2;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FGuid RunId;

@@ -5,6 +5,7 @@
 #include "Cataclysm.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "JsonObjectConverter.h"
 
 // THE NAMES ARE WRITTEN OUT RATHER THAN TAKEN FROM THE CLASS. Same rule as the
 // slot names in UCataclysmSavePartition: these are how a record type is spoken
@@ -254,6 +255,30 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before it carried its crossing's build holds none: nothing captured one. Issue #2688, the
+	 * owner's decision of 2026-11-02 (O4). Written out, for `Migrate_3_to_4`'s reason, as the whole empty build in the
+	 * shape the record writes it, so the migrated file describes itself completely. A character marked at version 5
+	 * therefore has no build, and its double is built from the gear worn when it arrives.
+	 *
+	 * THE EMPTY BUILD IS WRITTEN FROM THE STRUCT'S DEFAULTS, NOT FROM `game/Data/`: section 5, rule 4.
+	 */
+	bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const FCataclysmPlayerBuild None;
+		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
+		if (!FJsonObjectConverter::UStructToJsonObject(FCataclysmPlayerBuild::StaticStruct(), &None, Empty,
+													   CPF_SaveGame, 0, nullptr,
+											   EJsonObjectConversionFlags::SkipStandardizeCase))
+		{
+			OutError = TEXT("could not write an empty build");
+			return false;
+		}
+		Record->SetObjectField(TEXT("ConsumptionBuild"), Empty); // A migration's: no build, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -265,6 +290,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
+		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 	};
 }
 
@@ -272,6 +298,52 @@ TArrayView<const FCataclysmSaveMigrationStep>
 UCataclysmCharacterSave::MigrationSteps() const
 {
 	return CataclysmCharacterSaveMigration::CharacterSteps;
+}
+
+namespace CataclysmRunSaveMigration
+{
+	/**
+	 * A run written before it carried the corrupted double's hunt holds none: no double could hunt. Issue #2688, ruled
+	 * 2026-11-02. Written out, for the character record's `Migrate_3_to_4` reason: a migrated record ought to describe
+	 * itself completely. Each half goes into its own object only where the file has one; a version 1 file always has
+	 * both, because the record has written `Walk` and `Floor.RuleState` since before saves loaded.
+	 */
+	bool Migrate_1_to_2(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Walk = nullptr;
+		if (Record->TryGetObjectField(TEXT("Walk"), Walk) && Walk && Walk->IsValid())
+		{
+			(*Walk)->SetBoolField(TEXT("bConsumptionDoubleHasHunted"), false); // A migration's: no hunt, written out.
+			(*Walk)->SetNumberField(TEXT("ConsumptionDoubleHealthShare"), 1.0);
+			(*Walk)->SetArrayField(TEXT("ConsumptionDoublePotionCharges"), TArray<TSharedPtr<FJsonValue>>());
+		}
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState && RuleState->IsValid())
+		{
+			(*RuleState)->SetBoolField(TEXT("bConsumptionDoubleHuntsThisFloor"), false); // A migration's: none.
+			(*RuleState)->SetBoolField(TEXT("bConsumptionDoubleStanding"), false);
+			const TSharedRef<FJsonObject> Origin = MakeShared<FJsonObject>();
+			Origin->SetNumberField(TEXT("X"), 0.0);
+			Origin->SetNumberField(TEXT("Y"), 0.0);
+			Origin->SetNumberField(TEXT("Z"), 0.0);
+			(*RuleState)->SetObjectField(TEXT("ConsumptionDoubleLocation"), Origin);
+		}
+		return true;
+	}
+
+	/** The chain, newest step last. */
+	const FCataclysmSaveMigrationStep RunSteps[] = {
+		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
+	};
+}
+
+TArrayView<const FCataclysmSaveMigrationStep>
+UCataclysmRunSave::MigrationSteps() const
+{
+	return CataclysmRunSaveMigration::RunSteps;
 }
 
 TArray<TSubclassOf<UCataclysmSaveRecord>> CataclysmSaveRecordClasses()

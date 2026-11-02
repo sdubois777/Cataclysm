@@ -534,6 +534,7 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		// AND THE DIFFICULTY TIER, ALWAYS: a character without one set is at tier 1, which is the truth. Issue #1472.
 		Record.DifficultyTier = State->GetDifficultyTier(); // A save's: the character's tier.
 		Record.bMarkedByConsumption = State->IsMarkedByConsumption(); // A save's: the Consumption mark. Issue #2688.
+		Record.ConsumptionBuild = State->ConsumptionBuild(); // A save's: the build captured at the crossing (O4).
 
 		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
 		//

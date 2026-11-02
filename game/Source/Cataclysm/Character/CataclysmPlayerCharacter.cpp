@@ -1,7 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmPlayerCharacter.h"
+
 #include "Cataclysm.h"
+#include "Character/CataclysmPlayerBuild.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmMovement.h"
@@ -2243,6 +2245,18 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 	if (bCrosses && State && !bWorn && !bWasMarked)
 	{
 		State->ClearConsumptionMark();
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
+	}
+
+	// AND THE BUILD THE DOUBLE WEARS, CAPTURED AFTER THE EQUIP, so it holds the item that crossed: the owner's decision
+	// of 2026-11-02 (O4), "the double is the character as it was at the crossing". The mark stays set first, above,
+	// so the record the equip wrote already holds it; the capture then writes the record again, so the last record
+	// written holds the mark AND the build (writes to one slot run in launch order). ONLY WHEN NONE IS HELD: a
+	// character already marked keeps the build of the crossing that marked it, so taking gear off and crossing again
+	// cannot weaken its double; a character marked before the record kept builds (version 6) gets one here.
+	if (bCrosses && bWorn && State && !State->HoldsConsumptionBuild())
+	{
+		State->SetConsumptionBuild(FCataclysmPlayerBuild::Of(*this)); // The capture's: after the equip (O4).
 		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
 	}
 	return Result;

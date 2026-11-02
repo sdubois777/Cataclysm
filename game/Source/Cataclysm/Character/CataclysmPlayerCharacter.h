@@ -443,6 +443,10 @@ public:
 	 * ONLY A CROSSING MARKS: a yes on an equip that stays below the threshold, or was already past it, puts the item on
 	 * and marks nothing.
 	 *
+	 * AND THE CROSSING CAPTURES THE BUILD THE DOUBLE WEARS, AFTER THE EQUIP (the owner's decision of 2026-11-02, O4: the
+	 * double is the character as it was at the crossing), keeps it on the player state beside the mark, and raises the
+	 * save trigger again so the character record holds both. Only when no build is held already. Issue #2688.
+	 *
 	 * @param AskedAbout  the item the question named, which the carried slot must still hold exactly; null for the
 	 *                    console's confirm, which named a slot and no item.
 	 */

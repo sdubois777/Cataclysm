@@ -177,6 +177,26 @@ float UCataclysmEquipmentComponent::WornResidue() const
 	return Worn;
 }
 
+int32 UCataclysmEquipmentComponent::ClearResidueOnEveryWornItem()
+{
+	int32 Cleared = 0;
+	for (FCataclysmItem& Worn : Slots) // The double's death's: every equipped item, none carried.
+	{
+		if (!Worn.Base.IsNone() && Worn.Residue != 0.0f)
+		{
+			Worn.Residue = 0.0f;
+			++Cleared;
+		}
+	}
+
+	// ANNOUNCED, so the sheet's Worn Residue line and a worn item's tooltip are drawn again from the new values.
+	if (Cleared > 0)
+	{
+		AnnounceChange();
+	}
+	return Cleared;
+}
+
 namespace CataclysmConsumptionThreshold
 {
 	/**

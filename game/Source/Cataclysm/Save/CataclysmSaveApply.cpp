@@ -673,6 +673,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.
 	{
 		State->MarkByConsumption();
+		State->SetConsumptionBuild(Record.ConsumptionBuild); // A load's: the build captured at the crossing (O4).
 	}
 	else
 	{
