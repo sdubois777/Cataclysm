@@ -13,7 +13,10 @@ new, and the end of `DrawSkillBar` (`CataclysmHUD.h`, `.cpp`); three new tests i
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **WINDOW w135, ON cc0a39e86, MEASURED EVERYTHING AS REGISTERED.** The three tests alone 1 / 1, the suite
+  4527 / 0 with "Test saves: 711 written and deleted, 0 left behind", Python 7234 passed, P1 and P2 PROVED at exactly
+  their registered assertions; P1's broken half was counted by #2679 when its log lost the queue-empty line. Record at
+  the end.
 - **THE ISSUE SAID THE BAR "CANNOT HAVE" A POP-UP UNTIL IT IS A WIDGET. THAT WAS A SESSION'S STATEMENT, NOT A RULING, AND
   IT IS NOT TRUE OF THE CANVAS.** The heads-up display knows each box's rectangle when it draws it, and the cursor's
   position through its owning player controller. Ruled 2026-11-01, option (B): the pop-up is drawn on the canvas now;
@@ -78,6 +81,28 @@ The first compile, at no lock, **failed** on one line: `CataclysmHUD.cpp(583,27)
 hides class member` -- a local named `Owner` in `DrawSkillBar` hid `AActor::Owner`. Renamed `Viewer`; the next compile:
 `Build: Succeeded - 4 actions, 1 file compiled: CataclysmHUD.cpp`, the other files having compiled in the first
 attempt. Committed at c84f1d020. Python of record there: `7234 passed, 8 skipped in 200.23s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!`. Moved onto 79e8f7712 (#2690) as `feat/skill-popup-1` with no conflict, the same 373 diff lines before and after (fe8820a2e); compiled there after the Unreal CI run on `development` finished: `Build: Succeeded - 44 actions, 41 files compiled`; Python of record at fe8820a2e: `7234 passed, 8 skipped in 219.46s`, JUnit tests=7242, failures=0, errors=0, skipped=8, ruff `All checks passed!`.
+
+**Window w135, on cc0a39e86 (`feat/skill-popup-1`), every step as registered.** Pre-checks all passed, 11,233 MB free;
+lock `dungeon-w135` taken, runner PID 264828 started at 20:08:29, lock released at its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| `ABoxCarriesTheDescriptionOfTheSkillTheWeaponGranted` alone | 1 / 1; "SKILL POPUP: name 'Riven Arc'; description 'Swing in a wide arc that splits the ground.'; 2 lines [Riven Arc \| Swing in a wide arc that splits the ground.]" |
+| `APointFindsTheBoxItIsInAndTheEdgesAreHalfOpen` alone | 1 / 1 |
+| `ThePopupNamesTheSkillThenWrapsItsDescription` alone | 1 / 1 |
+| Whole suite | `Tests: 4527 tests performed, 4527 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 711 written and deleted, 0 left behind`; `Declared: 4527 tests in the tree at cc0a39e86; 4527 performed, gap 0`; exit 0 |
+| Python | `7234 passed, 8 skipped in 199.49s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half: "the box carries the granted skill's description" expected "Swing in a wide arc that splits the ground.", was empty; "and the pop-up shows the name, then the description" expected 2, was 1 -- the two registered, and no other; the CONTROL on the name held; "SKILL POPUP: name 'Riven Arc'; description ''; 1 lines [Riven Arc]". Restored: 1 / 1, 2 lines |
+| P2 | PROVED. Broken half: "a point on its right edge is not" expected none (-1), was 2 -- only; the gap and the bottom edge still read none. Restored: 1 / 1 |
+
+**P1's broken half lost its queue-empty line, and #2679 counted it.** Its summary reads "1 tests performed (counted
+from their Test Completed lines: the log has no queue-empty line, issue #2679), 0 succeeded, 1 failed". Before #2679 the
+proof would have read NO MEASUREMENT and needed a follow-up window, as w131's P3 did; this is the first time the
+fallback saved one, and the second time it fired in a window (w134's first runner was the first).
+
+**Nothing else failed:** 3 controller error lines in P1's broken half (Result={Fail} and the two), 2 in P2's
+(Result={Fail} and the one), none in either restored half, and every half was counted at 1 test performed.
 
 ---
 
