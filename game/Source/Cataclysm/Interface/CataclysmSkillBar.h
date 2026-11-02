@@ -37,6 +37,13 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	FString Name;
 
 	/**
+	 * The granted skill's written description, from its row's `SkillDescription`, for the pop-up shown while the cursor
+	 * is over the box. Empty for a box with no skill. Issue #1193.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	FString Description;
+
+	/**
 	 * The key that fires it, short enough to fit in the box.
 	 *
 	 * READ FROM THE KEYS ACTUALLY BOUND rather than written down here, and that
@@ -247,6 +254,31 @@ public:
 
 	/** How wide the whole bar is, in pixels, for a given number of boxes. */
 	static float BarWidthFor(int32 Count);
+
+	// ----------------------------------------------------------------------
+	// The pop-up over a box. Issue #1193.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Which box a point on the screen lies in, or `INDEX_NONE`.
+	 *
+	 * HALF-OPEN: a box's left and top edges are inside it and its right and bottom edges are not, so a point on the line
+	 * between two touching boxes would belong to exactly one. The boxes have a gap between them, so a point on a right
+	 * edge lies in no box.
+	 */
+	static int32 BoxUnder(const FVector2D& Point, int32 Count, float ViewportWidth, float ViewportHeight);
+
+	/** How many characters a pop-up line holds before it wraps. Issue #1193, ruled 2026-11-01: a fixed width. */
+	static constexpr int32 PopupWrapChars = 48;
+
+	/**
+	 * The pop-up's lines: the box's name, then its description wrapped at `PopupWrapChars`. Issue #1193.
+	 *
+	 * THE WRAPPING RULE: words are kept whole and separated by single spaces; a line takes the next word while the line
+	 * with it is no longer than `PopupWrapChars`; a word longer than that is put on a line of its own, unbroken. A box
+	 * with no description shows its name alone, and a box with no name shows nothing.
+	 */
+	static TArray<FString> PopupLinesFor(const FCataclysmSkillBarSlot& Slot);
 
 	// ----------------------------------------------------------------------
 	// What a box says
