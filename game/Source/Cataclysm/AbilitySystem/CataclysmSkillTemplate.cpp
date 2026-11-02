@@ -31,6 +31,8 @@
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+// For the type a skill's own ground is drawn in. Issue #818.
+#include "AbilitySystem/CataclysmGroundEffect.h"
 // For a skill gadget's ground, priced for the gadget's age and stillness. Ruled 2026-10-16, stack 2.
 #include "AbilitySystem/CataclysmMinion.h"
 // For binding together the creatures one throw pinned, so that killing any of
@@ -3454,7 +3456,13 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 		/*HandedDamageType=*/bTheSkillsOwnGround ? FName() : DamageTypeName(),
 		/*AilmentOfType=*/DamageTypeName(),
 		// AND THIS SKILL, SO EVERY SWEEP NAMES IT. Issue #1585, ruled 2026-11-01: a kill by the zone is this skill's.
-		/*LeftBy=*/this);
+		/*LeftBy=*/this,
+		// AND THE SKILL'S OWN GROUND IS DRAWN IN THE SKILL'S TYPE, AND ONLY DRAWN. Issue #818, ruled by the
+		// coordinating session 2026-11-02: only ground a player's skill leaves changes colour. The owner first, then
+		// the skill, so a creature casting a player's skill still has its ground drawn in its own type. The damage
+		// type above stays unset for this ground: only an enemy's damage is typed (ruled 2026-08-12). A row's zone
+		// is drawn in the type it is handed above, as before, and is given nothing here.
+		/*DrawnAsType=*/bTheSkillsOwnGround ? UCataclysmGroundEffect::DamageTypeFor(Self, ElementTag()) : FName());
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's
 	// Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic
@@ -3495,7 +3503,8 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 	AActor* ZoneOwner, const FVector& Start, const FVector& End, float RadiusCm, float Seconds, float PerSweep,
-	const FGameplayTagContainer& SkillTags, FName HandedDamageType, FName AilmentOfType, const UGameplayAbility* LeftBy)
+	const FGameplayTagContainer& SkillTags, FName HandedDamageType, FName AilmentOfType, const UGameplayAbility* LeftBy,
+	FName DrawnAsType)
 {
 	if (!ZoneOwner)
 	{
@@ -3509,7 +3518,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
 		ZoneOwner, Start, End, RadiusCm,
 		Seconds * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerSweep,
-		/*bBurnsEveryone=*/false, HandedDamageType);
+		/*bBurnsEveryone=*/false, HandedDamageType, DrawnAsType);
 
 	// AND THE SKILL THAT LEFT IT, which every sweep names. Issue #1585. Null for a zone no skill left.
 	// AND ITS TAGS, which the zone keeps for when the skill has gone and which its own ailment carries. Issue #2683.

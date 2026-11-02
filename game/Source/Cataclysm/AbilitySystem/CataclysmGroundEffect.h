@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmGroundEffect.generated.h"
 
+class AActor;
 class UNiagaraComponent;
 
 /**
@@ -102,6 +104,31 @@ public:
 
 	/** The most copies one zone may draw. */
 	static constexpr int32 MostCopies = 8;
+
+	/**
+	 * Which of the eight damage types to draw a skill's own ground in, or None.
+	 * Issue #818.
+	 *
+	 * THE OWNER FIRST, THEN THE SKILL, which is the shape
+	 * `UCataclysmStrikeEffect::DamageTypeFor` established and
+	 * `UCataclysmProjectileEffect::DamageTypeFor` and
+	 * `UCataclysmCastEffect::DamageTypeFor` followed. An enemy's own type is what
+	 * its hits are resisted as, so a creature casting a player's skill -- the
+	 * Corrupted Stalker holding a player's build -- still has its ground drawn in
+	 * its own type, as before. A player's hits carry no type at all, so the
+	 * skill's own `Element.*` tag is what colours a player's ground.
+	 *
+	 * ONLY THE COLOUR. The answer goes to `ACataclysmGroundZone::DrawnAsType` and
+	 * never to `ACataclysmGroundZone::DamageType`: "only an enemy's damage is
+	 * typed" (2026-08-12, `UCataclysmSkillEffects::DamageTypeOf`) is unchanged, so
+	 * a player's ground still deals untyped damage.
+	 *
+	 * @param Owner         who leaves the ground
+	 * @param SkillElement  the skill's own `Element.*` tag, from
+	 *                      `UCataclysmSkillTemplate::ElementTag()`. An invalid
+	 *                      tag means the skill names no damage type.
+	 */
+	static FName DamageTypeFor(const AActor* Owner, const FGameplayTag& SkillElement);
 
 	/**
 	 * How many times a zone has asked to be drawn since the editor started.

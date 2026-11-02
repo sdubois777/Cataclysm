@@ -8,15 +8,25 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmGroundEffect.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameplayAbilitySpec.h"
 #include "GameplayTagContainer.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
@@ -147,6 +157,53 @@ namespace CataclysmEffectColourTest
 			Tags.AddTag(Tag);
 		}
 		return Tags;
+	}
+
+	/** The health every creature the ground tests make starts with: no sweep comes near it. */
+	constexpr float GroundColourCreatureHealth = 1'000'000.0f;
+
+	/**
+	 * A creature of the monsters' side with no armour, evasion, block or resistance, standing at `Where`, as
+	 * `Cataclysm.NoSkillDotTags.` makes one. A CHARACTER AND NOT A BARE ACTOR because a zone finds who is standing
+	 * in it by a pawn overlap, which a bare actor has nothing to answer with.
+	 *
+	 * WITH `DemonicResistance` above nought, it also holds the player's eight-figure resistance set with that
+	 * figure in its Demonic slot. No creature holds that set in play; it is here because it is the only defender a
+	 * typed blow and an untyped one reach differently, and that difference is what the ground test reads.
+	 */
+	static ACataclysmEnemyCharacter* GroundColourCreature(UWorld* World, const FVector& Where,
+														  float DemonicResistance)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		UAbilitySystemComponent* Its = Made ? Made->GetAbilitySystemComponent() : nullptr;
+		if (!Its)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetHealth(GroundColourCreatureHealth);
+		Made->SetArmour(0.0f);
+		Made->SetAttackDamage(0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), GroundColourCreatureHealth);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), GroundColourCreatureHealth);
+		if (DemonicResistance > 0.0f)
+		{
+			Its->AddAttributeSetSubobject(NewObject<UCataclysmResistanceAttributeSet>(Made));
+			Its->SetNumericAttributeBase(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+										 DemonicResistance);
+		}
+		return Made;
+	}
+
+	/** A creature's health now, or a negative figure when it has no ability system. */
+	static float GroundColourHealthOf(ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Its = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
 	}
 }
 
@@ -375,6 +432,230 @@ bool FCataclysmEnemyHitIsStillResistedByItsType::RunTest(const FString&)
 
 	TestEqual(TEXT("and the burst is drawn as the enemy's type, as before"),
 		UCataclysmImpactEffect::LastDamageTypeAsked, FName(TEXT("Demonic")));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The ground a skill leaves. Issue #818.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayersSkillGroundTakesTheSkillsColour,
+	"Cataclysm.Effects.APlayersSkillGroundIsDrawnInTheSkillsTypeAndItsDamageStaysUntyped",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayersSkillGroundTakesTheSkillsColour::RunTest(const FString&)
+{
+	using namespace CataclysmEffectColourTest;
+
+	// A DEMONIC STRIKE WHOSE ROW LEAVES GROUND, cast by a bare actor at the origin standing in for a player, as
+	// `Cataclysm.NoSkillDotTags.AGroundZonesOwnAilmentCarriesTheZonesSkillTagsAndNoNameAndABareZonesCarriesNone` casts
+	// one: an ability system, the combat and vital sets, a Demonic weapon slot and an attack damage of 100. A bare
+	// actor is untyped to `UCataclysmSkillEffects::DamageTypeOf`, exactly as a player is. ITS GROUND IS 3 M ACROSS THE
+	// ORIGIN, and two creatures stand in it 1.2 m either side of the caster along Y, outside the strike's 120 degree
+	// arc ahead: one resisting nothing, one holding 40 Demonic resistance in the player's eight-figure set.
+	const FScopedNoCriticalStrikes NoCrits;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	for (const TCHAR* Name : {TEXT("Element.Demonic"), TEXT("Item.Weapon.Greataxe"), TEXT("Type.Strike"),
+							  TEXT("Type.Melee")})
+	{
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the tag %s exists"), Name),
+				UGameplayTagsManager::Get().RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false).IsValid()))
+		{
+			return false;
+		}
+	}
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("set-up: a caster"), Caster))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* Casting = NewObject<UCataclysmAbilitySystemComponent>(Caster);
+	Casting->RegisterComponent();
+	Casting->AddAttributeSetSubobject(NewObject<UCataclysmCombatAttributeSet>(Caster));
+	Casting->AddAttributeSetSubobject(NewObject<UCataclysmVitalAttributeSet>(Caster));
+	Casting->InitAbilityActorInfo(Caster, Caster);
+	UCataclysmWeaponSlotsComponent* Slots = NewObject<UCataclysmWeaponSlotsComponent>(Caster);
+	Slots->RegisterComponent();
+	Slots->SetDamageType(TEXT("Demonic"));
+	Casting->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Plain = GroundColourCreature(World, FVector(0.0f, 120.0f, 0.0f), 0.0f);
+	ACataclysmEnemyCharacter* Resisting = GroundColourCreature(World, FVector(0.0f, -120.0f, 0.0f), 40.0f);
+	if (!TestNotNull(TEXT("set-up: a creature resisting nothing"), Plain)
+		|| !TestNotNull(TEXT("set-up: a creature resisting Demonic"), Resisting)
+		|| !TestTrue(TEXT("set-up: the caster is untyped, as a player is"),
+			UCataclysmSkillEffects::DamageTypeOf(Caster).IsNone()))
+	{
+		return false;
+	}
+
+	const FGameplayAbilitySpecHandle Handle =
+		Casting->GiveAbilityInSlot(UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::BasicAttack,
+								   /*Level=*/100, Caster);
+	FGameplayAbilitySpec* Spec = Casting->FindAbilitySpecFromHandle(Handle);
+	UCataclysmStrikeSkill* Strike = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a strike that leaves ground"), Strike))
+	{
+		return false;
+	}
+	Strike->SkillName = TEXT("Molten Trail");
+	Strike->SkillTags = FGameplayTagContainer();
+	for (const TCHAR* Name : {TEXT("Item.Weapon.Greataxe"), TEXT("Element.Demonic"), TEXT("Type.Strike"),
+							  TEXT("Type.Melee")})
+	{
+		Strike->SkillTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(FName(Name)));
+	}
+	Strike->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=2.4; Angle=120; MaxTargets=1; GroundRadius=3; GroundDuration=4; GroundPercent=25"));
+
+	// SET BACK BEFORE THE ACT, as the declaration says: otherwise this reads whatever drew before it.
+	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
+	if (!TestTrue(TEXT("set-up: the strike started"),
+			Casting->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+	TArray<ACataclysmGroundZone*> Zones;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Zones.Add(*It);
+	}
+	if (!TestEqual(TEXT("set-up: the strike left one zone"), Zones.Num(), 1)
+		|| !TestTrue(TEXT("set-up: the zone is the strike's own ground"), Zones[0]->SkillThatLeftIt.Get() == Strike))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Zone = Zones[0];
+
+	// THE WHOLE OF ISSUE #818 IN ONE ASSERTION. Before it the ground asked for None, from its owner, and
+	// `NS_Impact_Ground` kept its authored white. Asked inside `BeginPlay`, so this is the first drawing's colour.
+	TestEqual(TEXT("the skill's ground was asked to be drawn in the skill's own damage type"),
+		UCataclysmGroundEffect::LastDamageTypeAsked, FName(TEXT("Demonic")));
+	TestEqual(TEXT("the ground holds the skill's type as its own colour"), Zone->DrawnAsType, FName(TEXT("Demonic")));
+	TestEqual(TEXT("and every later drawing is in it too"), Zone->TypeItIsDrawnAs(), FName(TEXT("Demonic")));
+
+	// THE HALF THAT MUST NOT HAVE MOVED: ONLY AN ENEMY'S DAMAGE IS TYPED (ruled 2026-08-12). The colour is held apart
+	// from the damage type, which stays unset for a skill's own ground.
+	TestTrue(TEXT("the ground's damage type stays unset"), Zone->DamageType.IsNone());
+
+	// AND THE SWEEP SAYS SO WHERE IT COUNTS. An untyped blow meets no slot of the eight-figure set, so the creature
+	// resisting Demonic takes exactly what the one resisting nothing takes. Typed Demonic, it would take 60 percent.
+	const float PlainBefore = GroundColourHealthOf(Plain);
+	const float ResistingBefore = GroundColourHealthOf(Resisting);
+	Zone->Sweep();
+	const float PlainTook = PlainBefore - GroundColourHealthOf(Plain);
+	const float ResistingTook = ResistingBefore - GroundColourHealthOf(Resisting);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the sweep burned the creature resisting nothing (took %.3f)"),
+			PlainTook), PlainTook > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the creature resisting Demonic took as much: the ground's damage arrived untyped"),
+		ResistingTook, PlainTook, PlainTook * 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundColourOwnerThenSkill,
+	"Cataclysm.Effects.AGroundIsDrawnInItsOwnersTypeFirstAndThenItsSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundColourOwnerThenSkill::RunTest(const FString&)
+{
+	using namespace CataclysmEffectColourTest;
+
+	// `UCataclysmGroundEffect::DamageTypeFor`, the answer a skill's own ground is drawn in: the owner first, then the
+	// skill, the shape the bolt, the swing arc and the cast burst already use. A bare actor stands in for a player.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Player(World, 100.0f);
+	const FGameplayTag Demonic = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag War = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.War")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("set-up: Element.Demonic exists"), Demonic.IsValid())
+		|| !TestTrue(TEXT("set-up: Element.War exists"), War.IsValid()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a player's Demonic skill's ground is drawn as Demonic"),
+		UCataclysmGroundEffect::DamageTypeFor(Player.Actor, Demonic), FName(TEXT("Demonic")));
+	// AND A SKILL OF A DIFFERENT TYPE IS A DIFFERENT COLOUR, the half that would still fail if the answer were fixed.
+	TestEqual(TEXT("a player's War skill's ground is drawn as War"),
+		UCataclysmGroundEffect::DamageTypeFor(Player.Actor, War), FName(TEXT("War")));
+	TestEqual(TEXT("a skill naming no damage type names none"),
+		UCataclysmGroundEffect::DamageTypeFor(Player.Actor, FGameplayTag()), FName(NAME_None));
+
+	// THE OWNER WINS OVER THE SKILL. A creature casting a player's skill -- the Corrupted Stalker holding a player's
+	// build -- has its ground drawn in its own type, as it was before issue #818. The skill tag deliberately disagrees.
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(0.0f, 2'000.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: an enemy"), Enemy))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Enemy)) { Enemy->Destroy(); } };
+	Enemy->DamageType = FName(TEXT("Void"));
+	TestEqual(TEXT("an enemy's ground is drawn as the enemy's own type, whatever the skill"),
+		UCataclysmGroundEffect::DamageTypeFor(Enemy, Demonic), FName(TEXT("Void")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemysGroundKeepsTheEnemysColour,
+	"Cataclysm.Effects.AnEnemysGroundIsStillDrawnInTheEnemysType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemysGroundKeepsTheEnemysColour::RunTest(const FString&)
+{
+	using namespace CataclysmEffectColourTest;
+
+	// THE CONTROL. A creature's burning ground -- the Gatekeeper's Soulfall and the Hellhound's lane are made this way,
+	// by `ACataclysmGroundZone::Spawn` with no colour and no damage type -- is drawn in the creature's own type, as it
+	// was before issue #818, and is given no colour of its own.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: an enemy"), Enemy))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Enemy)) { Enemy->Destroy(); } };
+	Enemy->DamageType = FName(TEXT("Void"));
+
+	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+		Enemy, FVector(0.0f, 2'000.0f, 0.0f), /*RadiusCm=*/150.0f, /*Duration=*/4.0f, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("set-up: the enemy's ground"), Zone))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an enemy's ground is asked to be drawn in the enemy's own type"),
+		UCataclysmGroundEffect::LastDamageTypeAsked, FName(TEXT("Void")));
+	TestTrue(TEXT("and is given no colour of its own"), Zone->DrawnAsType.IsNone());
+	TestEqual(TEXT("so it is drawn in its owner's type"), Zone->TypeItIsDrawnAs(), FName(TEXT("Void")));
 
 	return true;
 }

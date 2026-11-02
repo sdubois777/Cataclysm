@@ -1556,11 +1556,15 @@ public:
 	 * `LeftBy` is the skill that left it, kept on the zone as `ACataclysmGroundZone::SkillThatLeftIt` so every sweep
 	 * names it (issue #1585), or null for a zone no skill left: a minion's chaos pool. When it is given, the zone also
 	 * keeps `SkillTags` as `ACataclysmGroundZone::SkillTagsItWasLeftWith` (issue #2683).
+	 * `DrawnAsType` is which element's colours the zone is drawn in, `ACataclysmGroundZone::DrawnAsType`, and nothing
+	 * else: it never types the damage. Given only for a skill's own ground (issue #818); none for every other caller,
+	 * which leaves the zone drawn as before, in its damage type or its owner's.
 	 */
 	static ACataclysmGroundZone* LeaveAZoneFor(AActor* ZoneOwner, const FVector& Start, const FVector& End,
 											   float RadiusCm, float Seconds, float PerSweep,
 											   const FGameplayTagContainer& SkillTags, FName HandedDamageType,
-											   FName AilmentOfType, const UGameplayAbility* LeftBy);
+											   FName AilmentOfType, const UGameplayAbility* LeftBy,
+											   FName DrawnAsType = NAME_None);
 
 protected:
 

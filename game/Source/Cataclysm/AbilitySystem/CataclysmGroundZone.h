@@ -86,12 +86,19 @@ public:
 	 *                        whose side it is on.
 	 * @param InDamageType    the type its damage is met by, or NAME_None for
 	 *                        its owner's. See `DamageType`.
+	 * @param InDrawnAsType   which element's colours to draw it in, or NAME_None
+	 *                        to draw it in its damage type's, or with neither
+	 *                        its owner's. See `DrawnAsType`. A skill's own ground
+	 *                        is given its skill's type here, and only here, so a
+	 *                        player's ground is drawn in its skill's colours while
+	 *                        its damage stays untyped. Issue #818.
 	 */
 	static ACataclysmGroundZone* SpawnAlong(AActor* Owner, const FVector& Start,
 											const FVector& End, float HalfWidthCm,
 											float Duration, float DamagePerTick,
 											bool bBurnsEveryone = false,
-											FName InDamageType = NAME_None);
+											FName InDamageType = NAME_None,
+											FName InDrawnAsType = NAME_None);
 
 	/**
 	 * Put one in the world that lasts until the player leaves the floor.
@@ -484,7 +491,17 @@ public:
 	 * the same request. `UCataclysmElementVisuals::ColoursFor` answers false for
 	 * NAME_None and leaves the system's authored white, and
 	 * `UCataclysmSkillEffects::DamageTypeOf` answers NAME_None for a player, so a
-	 * player's zone already drew white before this existed and still does.
+	 * player's zone drew white before this existed.
+	 *
+	 * A PLAYER'S SKILL'S OWN GROUND IS GIVEN ONE SINCE ISSUE #818, and that is the
+	 * case this field's "only the appearance" matters most for. The skill's type
+	 * comes here through `SpawnAlong`, from
+	 * `UCataclysmGroundEffect::DamageTypeFor` -- the owner first, then the skill --
+	 * and `DamageType` is left unset, so the ground is drawn in its skill's colours
+	 * and its damage stays untyped, as only an enemy's damage is typed (ruled
+	 * 2026-08-12). A zone a row gives a skill already drew in the skill's type,
+	 * through `DamageType`. A minion's chaos pool and every other zone a player
+	 * owns are unchanged.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	FName DrawnAsType;

@@ -2,6 +2,104 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A player's skill's own ground is drawn in the skill's damage type, and its damage stays untyped (#818)
+
+**Affects:** `UCataclysmGroundEffect::DamageTypeFor`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmGroundEffect.h`,
+`.cpp`); `ACataclysmGroundZone::SpawnAlong`, which takes `InDrawnAsType` and sets `DrawnAsType` before
+`FinishSpawning` (`CataclysmGroundZone.h`, `.cpp`); `UCataclysmSkillTemplate::LeaveAZoneFor`, which takes `DrawnAsType`
+(default none) and hands it on, and `UCataclysmSkillTemplate::LeaveZoneAlong`, which gives it for the skill's own ground
+(`CataclysmSkillTemplate.h`, `.cpp`); three new tests in `game/Source/Cataclysm/Tests/CataclysmEffectColourTests.cpp`.
+Issue [#818](https://github.com/sdubois777/Cataclysm/issues/818).
+
+### SAID FIRST
+
+- **NOT RUN IN UNREAL.** Compiled (`Build: Succeeded - 44 actions, 41 files compiled`; the four changed `.cpp` files'
+  own objects, `CataclysmEffectColourTests.cpp.obj`, `CataclysmGroundEffect.cpp.obj`, `CataclysmGroundZone.cpp.obj` and
+  `CataclysmSkillTemplate.cpp.obj`, written at 14:58 and the module linked at 14:59). The three tests, the whole suite
+  and two proofs are registered below for a window.
+- **DRAWING ONLY.** The skill's type goes to `ACataclysmGroundZone::DrawnAsType` and never to
+  `ACataclysmGroundZone::DamageType`, so "only an enemy's damage is typed" (ruled 2026-08-12,
+  `UCataclysmSkillEffects::DamageTypeOf`) still holds for a player's ground, and a test reads it from the damage.
+- **For the owner's launch check:** use a Demonic skill that leaves ground (Pyroclasm, Molten Cleave) and a War one,
+  and look at the patches: each is drawn in its skill's colours, where both were the authored white before.
+
+### The ruling, by the coordinating session, 2026-11-02
+
+"Only ground a PLAYER'S SKILL leaves changes colour in this change. A minion's or gadget's ground (e.g.
+`CataclysmMinion.cpp` ~1853 chaos pool) keeps its present behaviour."
+
+### What changes
+
+- **THE OWNER FIRST, THEN THE SKILL**, `UCataclysmGroundEffect::DamageTypeFor(Owner, SkillElement)`, the shape of
+  `UCataclysmStrikeEffect::DamageTypeFor`, `UCataclysmProjectileEffect::DamageTypeFor` and
+  `UCataclysmCastEffect::DamageTypeFor` (#803). A player is untyped, so its ground takes the skill's `Element.*` tag. A
+  creature casting a player's skill -- the Corrupted Stalker and the corrupted double hold a player's build and cast
+  through `UCataclysmTriggeredSkill::Trigger` -- has its ground drawn in its own type, exactly as before, because the
+  owner comes first; a skill-only answer would have changed that creature's colour, which the ruling forbids.
+- **SET BEFORE THE FIRST DRAWING.** `BeginPlay` draws inside `FinishSpawning`, so the colour is passed into
+  `SpawnAlong` and set beside `DamageType`, as `SpawnForTheFloor` already sets its own; set afterwards, the first
+  drawing would be white.
+- **ONLY THE SKILL'S OWN GROUND** (`bTheSkillsOwnGround`, from `LeaveGroundAt` and `LeaveGroundAlong`). A row's zone
+  (`LeaveRowZoneAt`) is given nothing new: it already drew in the skill's type through the damage type it is handed
+  (ruled 2026-10-06).
+
+### Every place a ground zone is spawned, and what each does now (read, 2026-11-02)
+
+| Spawner | Owner | Drawn in | Changed |
+|---|---|---|---|
+| `UCataclysmSkillTemplate::LeaveZoneAlong`, a skill's own ground (`LeaveGroundAt`, `LeaveGroundAlong`) | the caster | the caster's type if typed, else the skill's | **yes**: a player's was white |
+| the same, a row's zone (`LeaveRowZoneAt`) | the caster | the skill's type, handed as its damage type, which also types its damage (ruled 2026-10-06) | no |
+| `ACataclysmMinion::LeaveChaosPool` (`CataclysmMinion.cpp` ~1853), through `LeaveAZoneFor` | the summoner | Chaos, handed as its damage type | no |
+| `UCataclysmTimeLockRift` (`CataclysmTimeLockRift.cpp` ~235), `Spawn`, no damage | the wearer | the owner's: white for a player | no |
+| the Inferno Charge path (`CataclysmEnemyModifiers.cpp` ~1198), `SpawnAlong` | the creature | the creature's type | no |
+| the Gatekeeper's Soulfall ground (`CataclysmGatekeeperCharacter.cpp` ~488), `Spawn` | the Gatekeeper | its type | no |
+| the Hellhound's Hellrush lane (`CataclysmHellhoundCharacter.cpp` ~285), `SpawnAlong` | the Hellhound | its type | no |
+| dungeon floor rules (`CataclysmDungeonGameMode.cpp`): 34 `SpawnForTheFloor`, 6 `Spawn`, 1 `SpawnAlong` | the floor's hazard source | each row's colour or type, passed in | no |
+
+No skill gadget or skill trap spawns a zone itself: a gadget's or trap's use of a player's skill runs the player's skill
+template with the player as its avatar, so its ground is the player's skill's own ground and is drawn in the skill's
+type. That reading of "a gadget's ground" is mine; the ruling's example is the minion's chaos pool, which is unchanged.
+
+### Tests
+
+Three new, in `CataclysmEffectColourTests.cpp`; `Cataclysm.Effects.` held 52 on `development` at #2697 (the
+double-hunt-w1 suite log's completed tests) and holds 55.
+
+1. `Cataclysm.Effects.APlayersSkillGroundIsDrawnInTheSkillsTypeAndItsDamageStaysUntyped`: a bare actor (untyped, as a
+   player is) casts a Demonic Strike whose row leaves 3 m of ground, as `Cataclysm.NoSkillDotTags.` casts one; two
+   creatures stand in it, one resisting nothing and one holding 40 Demonic resistance in the player's eight-figure set.
+   The ground asked to be drawn as Demonic, holds Demonic as `DrawnAsType`, and `TypeItIsDrawnAs` answers Demonic; its
+   `DamageType` is unset; one sweep takes as much from the resisting creature as from the other (typed, it would take
+   60 percent).
+2. `Cataclysm.Effects.AGroundIsDrawnInItsOwnersTypeFirstAndThenItsSkills`: `DamageTypeFor` answers Demonic and War for
+   a player's Demonic and War skills, none for a skill naming no type, and Void for a Void enemy with a Demonic skill.
+3. `Cataclysm.Effects.AnEnemysGroundIsStillDrawnInTheEnemysType` (CONTROL): a Void enemy's ground made by
+   `ACataclysmGroundZone::Spawn` asks for Void, has no colour of its own, and is drawn in Void.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.Effects.` alone | 55 / 55 |
+| Whole Unreal suite | 4555 / 0: `development`'s 4552 (2fbc4947a, #2697), + 3 |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, the drawn type not set (`/*DrawnAsType=*/bTheSkillsOwnGround ? UCataclysmGroundEffect::DamageTypeFor(Self, ElementTag()) : FName());` to `/*DrawnAsType=*/FName());`, in `CataclysmSkillTemplate.cpp`), prefix `Cataclysm.Effects.APlayersSkillGroundIsDrawnInTheSkillsTypeAndItsDamageStaysUntyped` | fails "the skill's ground was asked to be drawn in the skill's own damage type", "the ground holds the skill's type as its own colour" and "and every later drawing is in it too" -- 3 -- and nothing else; the damage type and the sweep's lines hold |
+| P2, the damage type set as well (`/*HandedDamageType=*/bTheSkillsOwnGround ? FName() : DamageTypeName(),` to `/*HandedDamageType=*/DamageTypeName(),`, in `CataclysmSkillTemplate.cpp`), the same prefix | fails "the ground's damage type stays unset" and "and the creature resisting Demonic took as much: the ground's damage arrived untyped" -- 2 -- and nothing else; the three colour lines hold |
+
+Each break's anchor occurs once (`prove_g818.py --anchors-only`). The breaks were not compiled before registration.
+
+### Not tested
+
+- The colour as drawn on screen: under the automation run's `-nullrhi` no Niagara component is made, so only the
+  type asked for is read (`UCataclysmGroundEffect::LastDamageTypeAsked`). That is the owner's launch check above.
+- A long patch (`LeaveGroundAlong`) and a redraw: both go through the same `SpawnAlong` and `TypeItIsDrawnAs`, and
+  neither is exercised here.
+- A Corrupted Stalker or corrupted double casting a skill that leaves ground: covered at the function by test 2's
+  enemy line, not through a cast.
+- A skill gadget's or skill trap's use of a skill that leaves ground.
+
+---
+
 ## 2026-11-02 — The corrupted double arrives on the next floor entered, hunts across floors, and its death clears the mark; the build is captured at the crossing and saved (#2688, slices 2b and 2c)
 
 **Affects:** `ACataclysmPlayerCharacter::WearPastTheThreshold`, which now captures the build

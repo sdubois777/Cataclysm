@@ -56,7 +56,8 @@ ACataclysmGroundZone* ACataclysmGroundZone::Spawn(
 
 ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
-	float Duration, float DamagePerTick, bool bBurnsEveryone, FName InDamageType)
+	float Duration, float DamagePerTick, bool bBurnsEveryone, FName InDamageType,
+	FName InDrawnAsType)
 {
 	if (!IsValid(Owner) || HalfWidthCm <= 0.0f || Duration <= 0.0f)
 	{
@@ -114,6 +115,10 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	// BEFORE FinishSpawning, because `BeginPlay` draws the patch inside it and
 	// the type decides the colour of a patch with no `DrawnAsType`.
 	Zone->DamageType = InDamageType;
+	// AND ITS OWN COLOUR, BEFORE IT TOO, for the reason `SpawnForTheFloor` gives:
+	// set after `FinishSpawning`, the first drawing would be the owner's colour.
+	// A skill's own ground is given its skill's type here. Issue #818.
+	Zone->DrawnAsType = InDrawnAsType;
 
 	// AND NOW IT BEGINS PLAY, with everything above already set. This is the
 	// second half of the deferred spawn and the whole reason for it: `BeginPlay`
@@ -193,10 +198,12 @@ void ACataclysmGroundZone::BeginPlay()
 	// left.
 	//
 	// THE COLOUR COMES FROM THE ZONE IF IT WAS GIVEN ONE AND FROM THE OWNER
-	// OTHERWISE, and it is NAME_None for a player, so a zone a player leaves
-	// draws the system's authored white. That is issue #803 and not a fault
-	// here: a zone carries no skill tags of its own to read an Element.* tag
-	// from, unlike UCataclysmStrikeSkill which does.
+	// OTHERWISE, and the owner's is NAME_None for a player. A player's SKILL'S
+	// OWN GROUND is given one since issue #818: `UCataclysmSkillTemplate::
+	// LeaveZoneAlong` hands `SpawnAlong` the skill's type as `DrawnAsType`, so it
+	// draws in its skill's colours. Any other zone a player owns and nobody gave
+	// a colour or a damage type -- the Time Lock Rift a worn row places -- still
+	// draws the system's authored white.
 	//
 	// THIS SAID "THE COLOUR COMES FROM THE OWNER" UNTIL `DrawnAsType` EXISTED,
 	// and that was true of every zone in the game for as long as it was written.
