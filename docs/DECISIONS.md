@@ -16,7 +16,8 @@ argument (`CataclysmPlayerCharacter.cpp`); four new tests in `CataclysmThreshold
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **RUN IN UNREAL, in windows w136 and w136b; every step as registered.** w136 stopped after the whole suite on a
+  fault in the runner, and w136b ran the steps it never reached. See Run.
 - **THE QUESTION PROMISES NOTHING ABOUT WHAT CROSSING DOES, BECAUSE NOTHING YET HAPPENS.** The design says the game
   "states the resulting total and the consequence". This states the total and the threshold. The consequence -- the
   mark, and the double that hunts the player -- is [#2688](https://github.com/sdubois777/Cataclysm/issues/2688), and
@@ -117,6 +118,42 @@ argument (`CataclysmPlayerCharacter.cpp`); four new tests in `CataclysmThreshold
 ### Run
 
 Python of record at the commit, before the window: at 8a3b7eb3f, 7234 passed, 8 skipped in 197.77s; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff All checks passed!.
+
+**Window w136, on ff9b9d78c, STOPPED after the whole suite, by a fault in the runner and not in a test.** Pre-checks all
+passed, 11,397 MB free; lock `dungeon-w136` taken, runner PID 322924 started at 20:53:04.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| The four new tests alone | 1 / 1 each, exit 0. "THRESHOLD QUESTION: now 1000, after 2000, threshold 1950; asked 'Wearing it would take your Worn Residue past this tier's Consumption Threshold, so it was not put on. Confirm to wear it.', yes 'Worn.'"; "500 worn, 500 more: not asked"; "a helm of 2000 swapped for one of 100: not asked"; "2000 worn, 100 more: not asked"; "950 worn, 1000 more: asked"; "1000 worn, 1000 more, tier 8: not asked" |
+| Whole suite | `Tests: 4531 tests performed, 4531 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 712 written and deleted, 0 left behind`; `Declared: 4531 tests in the tree at ff9b9d78c; 4531 performed, gap 0`; exit 0 |
+
+**Why it stopped.** After the suite the runner prints up to 24 informational "measured:" lines from the engine log. One
+of them is the name-rules test's "NAME RULES" line, which names 'Öda Łuk' and 'Жанна'. The runner's standard output
+was redirected to a file in cp1252, which has no 'Ł', so the runner died with `UnicodeEncodeError` and printed no last
+line. The Python suite, ruff, P1 and P2 never ran. Nothing was re-run; the lock was released and the branch re-attached.
+**Every runner built from this template had the fault.** Why w135, built the same way, did not hit it is not measured;
+it does not change the fix. **The template now sets its standard output to UTF-8** as the first line of `main()`, and the
+generator asserts that line among its steps, so every later runner built from it has it.
+
+**Window w136b, on the same head, ran only the steps w136 never reached**, the rule of necrosis-w2 and w131P3. Pre-checks
+all passed, 11,364 MB free; lock `dungeon-w136b` taken, runner PID 327344 started at 21:27:34, lock released at its last
+line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| Gate on w136's output | "w136 at this head: suite line found; 4 of 4 tests alone passed" |
+| Python | `7234 passed, 8 skipped in 199.77s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half, read from its kept log: "a crossing equip is asked about" expected true; "and the boots are still carried" expected not null; "and the Worn Residue is still 1000" expected 1000, was 2000; "a yes puts the boots on" expected true -- the four registered, and no other; the four CONTROL lines held; "THRESHOLD QUESTION: ... asked 'Worn.', yes 'It is no longer where it was when you were asked, so nothing was put on.'" Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "already past it and still past it: not asked" expected false -- only; "2000 worn, 100 more: asked", while the swap from 2000 to 100 still read "not asked". Restored: 1 / 1 |
+
+**Nothing else failed:** 5 controller error lines in P1's broken half (Result={Fail} and the four), 2 in P2's
+(Result={Fail} and the one), none in either restored half, and every half was counted at 1 test performed.
+
+**The silencing cannot be left on.** `WornResidueIfEquipped` sets `bAnnouncingSilenced` with a `TGuardValue` inside its
+own block around the `Equip` call (`CataclysmEquipmentComponent.cpp` line 212), so every early return inside `Equip` or
+`EquipInto` leaves the flag as it was; the slots and the change count are put back after the block.
 
 ---
 
