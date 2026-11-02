@@ -1290,7 +1290,14 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FGuid CurrentRunId;
 
-	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
+	/**
+	 * Cataclysmic Residue the character is carrying. A cost, never a benefit.
+	 *
+	 * NOTHING WRITES THIS FIELD, AND NOTHING NEEDS TO. Worn Residue is derived from the equipped items, each of which
+	 * saves its own `FCataclysmItem::Residue` (`UCataclysmEquipmentComponent::WornResidue`, issue #1251). Kept rather than
+	 * removed, ruled 2026-11-01: removing a saved field now needs a character record version, by the rule in
+	 * `game/Tests/SaveFixtures/README.md`.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	float CataclysmicResidue = 0.0f;
 

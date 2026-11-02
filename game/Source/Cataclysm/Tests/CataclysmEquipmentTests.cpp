@@ -22,6 +22,7 @@
 #include "Engine/World.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -2408,6 +2409,95 @@ bool FCataclysmPlantedWeaponEruptionTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("the sword is out of the ground"), ACataclysmPlantedWeapon::HeldBy(Character.Actor));
 	TestEqual(TEXT("and the character holds the weapon's damage"), Character.AbilitySystem->GetNumericAttribute(Damage),
 			  Armed, 0.05f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Worn Residue and the Consumption Threshold. Issue #1251.
+// ---------------------------------------------------------------------------
+
+/**
+ * Worn Residue is the residue of the worn items summed: a carried item is not counted, a two-handed weapon is counted
+ * once, and an item taken off stops counting. `docs/Cataclysm_GDD_v2.md`, "Worn Residue and Consumption". Issue #1251.
+ *
+ * EVERY FIGURE IS EXACT IN BINARY, so the sums compare without a tolerance. A HELM IS WORN, because the helm's slot is
+ * the first the sum reads, and a sum that skipped its first slot is the narrow way it could be wrong. Prints
+ * "WORN RESIDUE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornResidueSumsTheWornItems,
+	"Cataclysm.Equipment.WornResidueSumsTheWornItemsAndNotTheCarried",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWornResidueSumsTheWornItems::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UCataclysmEquipmentComponent* Equipment = MakeEquipment();
+	UCataclysmInventoryComponent* Carried = NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("set-up: equipment"), Equipment) || !TestNotNull(TEXT("set-up: an inventory"), Carried))
+	{
+		return false;
+	}
+
+	FCataclysmItem Helm = Plain(HeadBase);
+	Helm.Residue = 120.5f;
+	FCataclysmItem Ring = Plain(RingBase);
+	Ring.Residue = 30.25f;
+	FCataclysmItem Greatsword = Plain(TwoHandedBase);
+	Greatsword.Residue = 200.0f;
+	FCataclysmItem InThePack = Plain(BootsBase);
+	InThePack.Residue = 999.0f;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	const bool bWorn =
+		Equipment->EquipInto(Helm, ECataclysmGearSlot::Head, Removed, AlsoRemoved) == ECataclysmEquipResult::Equipped
+		&& Equipment->EquipInto(Ring, ECataclysmGearSlot::Ring3, Removed, AlsoRemoved) == ECataclysmEquipResult::Equipped
+		&& Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved)
+			   == ECataclysmEquipResult::Equipped;
+	if (!TestTrue(TEXT("set-up: the helm, the ring and the greatsword were worn"), bWorn)
+		|| !TestTrue(TEXT("set-up: the greatsword fills one weapon slot and leaves the other empty"),
+					 Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon2)))
+	{
+		return false;
+	}
+
+	const float Worn = Equipment->WornResidue();
+	const bool bCarried = Carried->AddItem(InThePack) != INDEX_NONE;
+	const float WithAPackFull = Equipment->WornResidue();
+	FCataclysmItem TakenOff;
+	const bool bTakenOff = Equipment->Unequip(ECataclysmGearSlot::Ring3, TakenOff);
+	const float WithTheRingOff = Equipment->WornResidue();
+	AddInfo(FString::Printf(TEXT("WORN RESIDUE: worn %.2f; with 999 carried %.2f; with the ring taken off %.2f"), Worn,
+							WithAPackFull, WithTheRingOff));
+
+	TestEqual(TEXT("the worn residue is the helm's, the ring's and the greatsword's once"), Worn, 350.75f);
+	TestTrue(TEXT("set-up: the boots are carried"), bCarried && Carried->NumItems() == 1);
+	TestEqual(TEXT("a carried item adds nothing"), WithAPackFull, Worn);
+	TestTrue(TEXT("set-up: the ring came off"), bTakenOff);
+	TestEqual(TEXT("and an item taken off stops counting"), WithTheRingOff, 320.5f);
+	return true;
+}
+
+/**
+ * Each difficulty tier has the design document's Consumption Threshold, and a tier outside 1 to 8 is held to the
+ * nearest. `tools/tests/test_the_consumption_threshold_is_the_designs.py` holds the C++ table and the document's to one
+ * set of numbers; this checks what the function answers. Issue #1251.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumptionThresholdPerTier,
+	"Cataclysm.Equipment.EachTierHasTheDesignsConsumptionThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumptionThresholdPerTier::RunTest(const FString& Parameters)
+{
+	const float Design[] = {1950.0f, 2400.0f, 2900.0f, 3400.0f, 3950.0f, 4500.0f, 5050.0f, 5600.0f};
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		TestEqual(FString::Printf(TEXT("tier %d's threshold"), Tier),
+				  UCataclysmEquipmentComponent::ConsumptionThresholdFor(Tier), Design[Tier - 1]);
+	}
+	TestEqual(TEXT("below tier 1 reads tier 1's"), UCataclysmEquipmentComponent::ConsumptionThresholdFor(0), 1950.0f);
+	TestEqual(TEXT("above tier 8 reads tier 8's"), UCataclysmEquipmentComponent::ConsumptionThresholdFor(9), 5600.0f);
 	return true;
 }
 

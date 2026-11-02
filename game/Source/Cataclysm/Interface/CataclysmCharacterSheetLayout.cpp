@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmEquipmentComponent.h"
 
 namespace
 {
@@ -221,6 +222,13 @@ const TArray<FString>& UCataclysmCharacterSheetLayout::SheetStats()
 FString UCataclysmCharacterSheetLayout::KillsLine(int32 RunKills, int32 LifetimeKills)
 {
 	return FString::Printf(TEXT("Kills this run %d   Kills %d"), RunKills, LifetimeKills);
+}
+
+FString UCataclysmCharacterSheetLayout::WornResidueLine(float WornResidue, int32 DifficultyTier)
+{
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, 8);
+	return FString::Printf(TEXT("Worn Residue %d of %d (tier %d)"), FMath::RoundToInt(WornResidue),
+						   FMath::RoundToInt(UCataclysmEquipmentComponent::ConsumptionThresholdFor(Tier)), Tier);
 }
 
 int32 UCataclysmCharacterSheetLayout::SheetStatCount()
