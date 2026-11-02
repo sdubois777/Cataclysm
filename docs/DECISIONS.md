@@ -21,16 +21,17 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
 
 ### SAID FIRST
 
-- **COMPILED; ONE GROUP RUN.** Phase 1 was written while another change's build-machine window held this machine and was not
-  compiled. Phase 2, rebased onto `development` at `23d2333d6` (issue #340's minion attribute channel; the only conflict
-  was this file's top), compiled it with `python tools/unreal_build.py build`: "Build: Succeeded - 44 actions, 41 files
-  compiled", every one of the 41 unity files rebuilt, among them the seven that hold this change's `.cpp` files. Then
-  each changed and new `.cpp` was compiled alone, as a guard proof's break compiles it, by marking it changed for the
-  adaptive build: "Build: Succeeded - 15 actions, 12 files compiled: CataclysmCharacterSheetTests.cpp,
+- **COMPILED; TWO GROUPS RUN.** Phase 1 was written while another change's build-machine window held this machine and
+  was not compiled. Phase 2, rebased onto `development` at `23d2333d6` (issue #340's minion attribute channel; the only
+  conflict was this file's top), compiled it with `python tools/unreal_build.py build`: "Build: Succeeded - 44 actions,
+  41 files compiled", every one of the 41 unity files rebuilt, among them the seven that hold this change's `.cpp`
+  files. Then each changed and new `.cpp` was compiled alone, as a guard proof's break compiles it, by marking it
+  changed for the adaptive build: "Build: Succeeded - 15 actions, 12 files compiled: CataclysmCharacterSheetTests.cpp,
   CataclysmCharacterSheetLayout.cpp, CataclysmItemComparison.cpp, CataclysmInventoryWidget.cpp,
   CataclysmWeaponSlotsComponent.cpp, CataclysmItemComparisonTests.cpp, CataclysmEquipmentComponent.cpp, ...", and the
-  stand-in's in the build below. Only `Cataclysm.ItemComparison.` has been through the automation run (next bullet but
-  one), so every other figure under "Registered before the run" is still a prediction.
+  stand-in's in the build below. Only `Cataclysm.ItemComparison.` and `Cataclysm.CharacterSheet.` have been through the
+  automation run (the two window bullets below), so every other figure under "Registered before the run" is still a
+  prediction.
 - **ONE FAULT FOUND COMPILING AND REVIEWING, AND FIXED.** `ACataclysmComparisonStandIn`'s constructor called
   `AbilitySystem->SetIsReplicated(false)`. The class sets true, so a call asking for false runs the body, and in a
   constructor that body's ensure fires ("SetIsReplicatedByDefault is preferred during Component Construction";
@@ -52,9 +53,31 @@ tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one 
   the headings to "If worn, in place of Helm:" and "If worn, in place of Sword and Dagger:", and the helm's adds a
   control that the plain helm has no whole name and a check that a piece with a rarity is called by its whole name.
   Built ("Build: Succeeded - 7 actions, 4 files compiled: CataclysmItemComparison.cpp,
-  CataclysmItemComparisonTests.cpp, ...", each alone) and rerun with the coordinator's lock: "Tests: 6 tests performed, 6 succeeded, 0 failed", "Test saves: 0 written and
-  deleted, 0 left behind". Nothing else has run since; the registration below is unchanged, and P3's predicted "the
-  heading names both" still fails under its break, the heading then naming the sword alone.
+  CataclysmItemComparisonTests.cpp, ...", each alone) and rerun with the coordinator's lock: "Tests: 6 tests
+  performed, 6 succeeded, 0 failed", "Test saves: 0 written and deleted, 0 left behind". The registration below is
+  unchanged by it, and P3's predicted "the heading names both" still fails under its break, the heading then naming
+  the sword alone.
+- **THE WINDOW STOPPED A SECOND TIME, ON A TEST THAT ASSUMED A FIGURE, AND IT IS FIXED.** At `cef70c46` the window
+  passed `Cataclysm.ItemComparison.` alone (6 of 6) and stopped at `Cataclysm.CharacterSheet.` alone: 10 performed, 9
+  succeeded, 1 failed, `EveryRowShowsTheFigureAComparisonReads`: "Expected 'CONTROL: a pool's figure is its maximum'
+  to be 606.000000, but it was 706.000000". A temporary `AddInfo` printed, before the test's adds, "max 100 health 100
+  war 0 all 0 cdr 0", and after them "max 706 health 512 war 45 all 10 cdr 0.25 figure 706 row [512 of 706]": the
+  fixture's `Add` adds to what a set starts with, and the vital set starts maximum health and health at 100. So
+  `FigureFor` and the sheet were right and the test's 606 was assumed; its 55 and 0.25 held only because those
+  attributes start at nought. All three controls now read their expected figure off the attributes, each with a set-up
+  check that it differs from the figure a wrong reading would give. Rerun with the coordinator's lock:
+  `Cataclysm.CharacterSheet.` "Tests: 10 tests performed, 10 succeeded, 0 failed" and `Cataclysm.ItemComparison.`
+  "Tests: 6 tests performed, 6 succeeded, 0 failed", both "Test saves: 0 written and deleted, 0 left behind". Nothing
+  else has run since; the registration below is unchanged.
+- **EVERY FIXED NUMBER THE ADDED TESTS COMPARE AGAINST, CHECKED FOR THE SAME FAULT, read after the second stop.** In
+  `CataclysmItemComparisonTests.cpp`: the helm's rise is `AffixValue(120, 0, 7, 1.0, 10)` held against a real equip's
+  measured difference, and its change line is built from the measured figures; the residues (1000, 11) are set by the
+  tests themselves on the items they wear, and the threshold is `ConsumptionThresholdFor(1)`; the sword's hit is held
+  to the attack damage attribute as read; the slots, "Ring 4" and the headings' "Helm", "Sword" and "Dagger" are the
+  game's own wording for the items set up (`ItemBases.csv`'s `BaseName`), and the counts (one change line, one or two
+  pieces off, none off) follow from what is worn. The line-wording test's 606, 726, 1240, 5, 7.5, 50 and 60 are inputs
+  it hands to `ChangeLine`, not figures read from a character, and its "47" is only in the P2 prediction. None assumes
+  what a fixture starts with.
 - **THE REVIEW, phase 2, read and not run.** `PreviewEquip` calls `Equip` itself on the live component, so the slot
   choice, a two-handed weapon over two held (both recorded, `Equip`'s `OutRemoved` then `OutAlsoRemoved`) and Both Hands
   Full (read by `Equip` off the live owner's ability system) are `Equip`'s own. `Equip` and `EquipInto` change only
@@ -201,8 +224,9 @@ with a spawned stand-in, on characters with no player state (no attribute points
    the worn sword and of a character really wearing the greatsword, and its lines hold the hit's line.
 7. `Cataclysm.CharacterSheet.EveryRowShowsTheFigureAComparisonReads`: with health, armour, evasion, attack speed,
    cooldown reduction and War resistance (own and generic) set, every one of the 46 rows shows `FigureText` of
-   `FigureFor`; CONTROLS: a pool's figure is its maximum, a resistance's is both shares, cooldown reduction's the shown
-   percentage.
+   `FigureFor`; CONTROLS, each expected figure read off the attributes rather than written as a literal, each with a
+   set-up check that it differs from the figure a wrong reading would give: a pool's figure is its maximum, a
+   resistance's is both shares, cooldown reduction's the shown percentage.
 
 ### Registered before the run
 
