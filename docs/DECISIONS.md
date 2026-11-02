@@ -17,7 +17,8 @@ new, and the fixtures README; six new tests in `CataclysmConsumptionMarkTests.cp
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **RUN IN UNREAL, in windows w137 and w137b; every step as registered.** w137 stopped when the editor process ended
+  during its tenth test alone (#2694); a short check and w137b ran the rest. See Run.
 - **THE MARK DOES NOTHING YET BUT EXIST, AND THAT IS STATED WHERE THE PLAYER SEES IT.** The double that hunts a marked
   character is slice 2. Until then the sheet says "Marked: crossed the Consumption Threshold", which is true, and the
   #2687 question keeps its words: it gains the consequence sentence only when slice 2 makes the double real.
@@ -114,6 +115,36 @@ named fields only.
 
 The first compile, at no lock: `Build: Succeeded - 52 actions, 49 files compiled`, with
 `CataclysmConsumptionMarkTests.cpp.obj` written. Committed at 7b9544798. Python of record there: 7234 passed, 8 skipped in 201.50s; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff All checks passed!.
+
+**Window w137, on f75330ad6, STOPPED at the tenth test alone, because the editor process ended during the test.**
+Pre-checks all passed (10,817 MB free); lock `dungeon-w137`; runner PID 325556 started at 11:59:17. The build was up to
+date. Nine tests alone passed 1 / 1, the six new ones among them: "CONSUMPTION MARK: starting gear 0; asked 'Wearing it
+would take your Worn Residue past this tier's Consumption Threshold, so it was not put on. Confirm to wear it.'; yes
+'Worn.'; marked yes"; "CONSUMPTION MARK WRITTEN: record marked yes, at version 5"; "MARK MIGRATED: the step 1 (), wrote
+the key yes as false; the record at version 5, marked no; the rest kept". The tenth,
+`Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne`, read "unknown tests performed". Its engine log
+stops 66 ms after "Test Started" (19.02.29:494 to :560 UTC), with no "Test Completed", no crash folder, no Fatal,
+assertion or ensure line, and no Windows Application event within a minute of it. Filed as
+[#2694](https://github.com/sdubois777/Cataclysm/issues/2694), a different fault from #2679. **A short check**, that test
+alone again under lock `dungeon-w137-check`: `Tests: 1 tests performed, 1 succeeded, 0 failed`, and "TIER MIGRATED: the
+step 1 (), wrote the tier yes at 1; the record at version 5, tier 1; the rest kept". The coordinator accepted it as
+that test's result.
+
+**Window w137b, on the same head, ran the steps w137 never reached**, as w136b did. Pre-checks all passed (10,798 MB
+free); lock `dungeon-w137b`; runner PID 320376 started at 12:05:32; lock released at its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| Gate | "w137 at this head: found; 9 of 9 tests alone passed; the tenth's check passed" |
+| Whole suite | `Tests: 4537 tests performed, 4537 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 711 written and deleted, 0 left behind`; `Declared: 4537 tests in the tree at f75330ad6; 4537 performed, gap 0`; exit 0 |
+| Python | `7234 passed, 8 skipped in 200.31s`; JUnit tests=7242, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half: "the confirmed crossing marks the character" expected true -- only; the CONTROL lines held. Restored: 1 / 1 |
+| P2 | PROVED. Broken half: "the character record holds the mark" and "and a fresh character loaded from it is marked", each expected true -- the two registered; "an unmarked record loads unmarked over a marked character" held. Restored: 1 / 1 |
+| P3 | PROVED. Broken half: "the record the equip wrote holds the mark" expected true -- only; "set-up: and the character is marked" held. Restored: 1 / 1 |
+
+**Nothing else failed.** Controller error lines in the broken halves: 2 in P1 (Result={Fail} and the one), 3 in P2,
+and 2 in P3. Every restored half had 0, with Result={Success}.
 
 ---
 
