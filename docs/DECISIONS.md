@@ -15,8 +15,8 @@ takes a new last parameter `BoundBy`, null by default, and `ACataclysmTether::Sk
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN BUILT OR RUN YET.** Every Unreal figure below is a prediction traced by hand from the code.
-  The section "Run" is filled in once the build and the Python run of record have been made.
+- **BUILT, AND NO UNREAL TEST RUN YET.** Every Unreal figure below is a prediction traced by hand from the code. The
+  first build failed on a typo in the new zone test and was corrected; see "Run".
 - **WHAT CHANGES IN PLAY.** A kill by a skill's zone or by a tether's burning line now carries the skill's tags to the
   killer's `kill` rows, as `FCataclysmDeathNotice::KillingSkillTags`. Before, both carried none. So "Melee kills
   restore 3%-6% of your maximum HP" (`Type.Melee`) now fires on a kill by the ground of a skill carrying `Type.Melee`,
@@ -123,14 +123,17 @@ calculation rolls evasion for neither, so neither kill can be dodged.
 
 ### Registered before the run
 
-Registered on `fix/zone-and-tether-name-their-skill`, on `development` at 6a187a440.
+First registered on `fix/zone-and-tether-name-their-skill`, on `development` at 6a187a440. MOVED, with no force
+push, onto `development` at 97e557076 (#1841 merged as #2684) as `fix/zone-and-tether-name-their-skill-1`, and
+registered again there at the commit that carries this sentence. The move's only conflict was this file's top; #1841
+touched none of this change's other files.
 
 | Figure | Registered |
 |---|---|
 | Build | `Succeeded`, compiling the changed `.cpp` files and the unity files that hold them |
 | `Cataclysm.CombatEvents.AGroundZonesSweepNamesTheSkillThatLeftIt` alone, by its full name | 1 / 1 |
 | `Cataclysm.CombatEvents.ATethersBurnNamesTheSkillThatBoundIt` alone, by its full name | 1 / 1 |
-| Whole Unreal suite | the base's last measured total + 2, every test passing. The base is the coordinating session's figure, written here before the window (4513 if #1841 merges first, so 4515) |
+| Whole Unreal suite | 4515 / 0: `development`'s 4513 at 97e557076, the coordinating session's figure, + 2 |
 | Python | of record, with JUnit, and ruff. This change adds and changes no Python test, so the totals are the base's |
 | G1, the sweep names no skill (`Delivery.Skill = SkillThatLeftIt;` to `Delivery.Skill = nullptr;`, in `CataclysmGroundZone.cpp`), prefix `Cataclysm.CombatEvents.AGroundZonesSweepNamesTheSkillThatLeftIt` | six failed assertions and no other: "the sweep names the skill that left the zone" (reads "None"), "and points at that skill's tags", "which are its own, holding Type.Melee", "the kill names the skill that left the zone" (reads "None"), "and carries that skill's tags to the killer's rows", "which hold Type.Melee". Every set-up line and the control hold |
 | G2, the line's burn is laid with no skill (`/*Skill=*/SkillThatBoundIt.Get())` to `/*Skill=*/nullptr)`, in `CataclysmTether.cpp`), prefix `Cataclysm.CombatEvents.ATethersBurnNamesTheSkillThatBoundIt` | six failed assertions and no other: "the line's burn names the skill that bound it" (reads "None"), "and points at that skill's tags", "which are its own, holding Type.Ranged", "the kill names the skill that bound the line" (reads "None"), "and carries that skill's tags to the killer's rows", "which hold Type.Ranged". Every set-up line holds |
@@ -155,8 +158,22 @@ literals in the source on this branch; the run's own count is the figure.
 
 ### Run
 
-To be filled in: `python tools/unreal_build.py build`, and the Python run of record with JUnit, and ruff, once the
-coordinating session clears them.
+Compiled with `python tools/unreal_build.py build`, the lock free and no window held, after window w133 ended.
+
+- **THE FIRST BUILD FAILED**, on `eb223491d`: `Build: Failed - 39 actions, 36 files compiled`, with
+  `CataclysmCombatEventsTests.cpp(1700,72): error C2065: 'BareSweepHit': undeclared identifier` and the C2661 that
+  followed from it. A rename made while writing the zone test had changed the control's index on that one line. The
+  changed sources outside the test file compiled in that build. Corrected in `2c32049b9`, and the next build printed
+  `Build: Succeeded - 5 actions, 2 files compiled: CataclysmCombatEventsTests.cpp, Module.Cataclysm.14.cpp`.
+- **AFTER THE MOVE**, on `37355d7ba` (on 97e557076): `Build: the continuous integration runner holds the
+  UnrealBuildTool mutex; waiting 60 seconds and retrying (2 of 5).`, then `Build: Succeeded - 39 actions, 36 files
+  compiled`.
+
+Python of record on `37355d7ba`, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>`: `7232 passed, 8
+skipped in 220.53s (0:03:40)`; JUnit tests 7240, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks
+passed!". This change adds and changes no Python test, so the totals are those of `development` at 97e557076.
+
+No Unreal test has run: the two new tests, the whole suite and G1-G2 are for the window.
 
 ---
 
