@@ -2,6 +2,192 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A damage-over-time effect, and a zone's or a line's blow, carry a skill's tags without the skill, so a buried weapon's burn's kill is that skill's kill (#2683)
+
+**Affects:** `UCataclysmRuntimeEffect` (new, `game/Source/Cataclysm/AbilitySystem/CataclysmRuntimeEffect.h`), which
+`MakeRuntimeEffect` now builds, and `UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill`, `ApplyDamageOverTime` and
+`ApplyBurn`, each of the last two taking a new last parameter `SkillTagsWithNoSkill`, null by default
+(`CataclysmSkillEffects.h`, `.cpp`); `UCataclysmAilments::Apply`, the same new last parameter (`CataclysmAilments.h`,
+`.cpp`); the buried weapon's burn (`CataclysmBuriedWeapon.cpp`); `ACataclysmGroundZone::SkillTagsItWasLeftWith` (new),
+`Sweep` and its own ailment (`CataclysmGroundZone.h`, `.cpp`), set by `UCataclysmSkillTemplate::LeaveAZoneFor`
+(`CataclysmSkillTemplate.cpp`, comment in `.h`); `ACataclysmTether::SkillTagsItWasBoundWith` (new), `Bind` and `Check`
+(`CataclysmTether.h`, `.cpp`); the projectile's burn (`CataclysmProjectile.cpp`); comments only in
+`CataclysmCombatEvents.h`, `.cpp`; six tests in `game/Source/Cataclysm/Tests/CataclysmNoSkillDotTagsTests.cpp` (new).
+Issue [#2683](https://github.com/sdubois777/Cataclysm/issues/2683).
+
+### SAID FIRST
+
+- **NOT YET RUN IN A WINDOW. EVERY UNREAL FIGURE UNDER "REGISTERED BEFORE THE RUN" IS A PREDICTION TRACED BY HAND
+  FROM THE CODE.** The change compiles (see "Run"); no automation test of it has run.
+- **WHAT CHANGES IN PLAY.** A kill by any of these now carries the skill's tags to the killer's `kill` rows, as
+  `FCataclysmDeathNotice::KillingSkillTags`, and names no skill; each one's hit notices name the tags too. Before, all
+  of them carried none:
+  - a buried weapon's burn (its throwing skill's tags, as the leap's own kill has carried since #2465);
+  - a ground zone's own ailment (the tags of the skill that left the zone; ruling J2);
+  - a zone's sweep, a tether's burn and a projectile's burn, once the skill that made them has gone -- a one-use grant
+    removed after its use, as `UCataclysmTriggeredSkill` removes every one it makes;
+  - a burn or other damage over time whose skill goes while it runs (ruling J3).
+
+  So "Ranged kills have a 20%-40% chance to refund the skill cooldown" (`Type.Ranged`) now fires on a kill by
+  Harrower's buried axe's burn, and "Melee kills restore 3%-6% of your maximum HP" (`Type.Melee`) on a kill by the
+  own ailment of a zone a `Type.Melee` skill left. No test wears either row; see "Not tested".
+- **NO FIGURE CHANGES (J1).** The tags are written onto the effect after it has been priced, and nothing that prices
+  reads them. The skill-tags step of `ApplyDamageOverTime` (`AskedWith`) is still fed by a real skill only.
+- **EVERY EFFECT `MakeRuntimeEffect` BUILDS IS NOW THE NEW SUBCLASS (J4).** It overrides nothing and adds one field.
+  The whole automation suite is the check that nothing else changed.
+
+### Rulings, 2026-11-01 (coordinating session)
+
+- **J1.** Tags without a skill are identity only. They must not reach the burn's pricing: the skill-tags step stays fed
+  only by a real skill. Said in a comment where the tags are stamped (`ApplyDamageOverTime`), and at each caller.
+- **J2.** A zone's own ailment carries tags only, no skill name.
+- **J3.** The mid-burn fallback and the projectile's burn are included.
+- **J4.** The effect subclass is approved. Because every run-time effect becomes that class, the whole suite is the
+  check that nothing else changed. Confirm, and say how, that a periodic tick's `PostGameplayEffectExecute` sees the
+  active effect's own `Spec.Def`.
+
+### What changes
+
+- **Where the tags live.** A damage-over-time tick reaches the struck character's attribute set long after the call
+  that laid it returned, so the pointer `FCataclysmHitDelivery::SkillTagsWithNoSkill` hands an instant blow (#2475)
+  cannot serve it. The effect itself can: `UCataclysmRuntimeEffect`, a `UGameplayEffect` with one `UPROPERTY`,
+  `SkillTagsWithNoSkill`. `MakeRuntimeEffect` builds every effect as one; the field is empty unless
+  `ApplyDamageOverTime` writes it.
+- **What `ApplyDamageOverTime` writes**, right after building the effect and after every pricing step: the tags it was
+  handed when there are any; otherwise the tags of the `UCataclysmSkillTemplate` it was handed (the mid-burn
+  fallback, J3); otherwise nothing. An application that only refreshes a stronger running effect returns before this,
+  and the running effect keeps the tags it was laid with.
+- **What reads them.** `SkillTagsOfABlowWithNoSkill` gains a second branch, after the instant blow's: when the blow's
+  `Spec.Def` is a `UCataclysmRuntimeEffect` with tags, AND the blow's context names no skill instance that still
+  exists, it answers that effect's tags. So a tick whose skill is still there names the skill and its own tags, as
+  before, and nothing is copied onto the record of the last blow for it. `UCataclysmCombatEvents::NoteBlow` is
+  unchanged: it copies what that answers onto `FCataclysmLastBlow::SkillTagsWithNoSkill`, which `NoteDeath` points
+  `KillingSkillTags` at when no skill is named, and points the hit notice's `SkillTags` at it.
+- **The callers.**
+  - The buried weapon's burn passes `&Buried->SkillTags`, the tags the leap's hit already carries, with no skill.
+  - `LeaveAZoneFor` copies `SkillTags` onto the zone as `SkillTagsItWasLeftWith`, only when `LeftBy` is given. The
+    minion's chaos pool passes the minion's type tags and no skill, so it keeps none. A zone's sweep sets
+    `Delivery.SkillTagsWithNoSkill` to them when `SkillThatLeftIt` answers nothing and they are not empty. Its own
+    ailment passes them on every sweep, whether the skill is there or not, and no skill (J2); a zone no skill left
+    passes null.
+  - `ACataclysmTether::Bind` copies the binding skill's `SkillTags` as `SkillTagsItWasBoundWith`. `Check` passes them to
+    the burn only when `SkillThatBoundIt` answers nothing; the burn is then priced with no skill (J1), as a burn with no
+    skill was before #1585.
+  - The projectile's burn passes its own `SkillTags` when `FiringSkill` is stale, the rule its hit has followed since
+    #2475.
+
+### J4: how a tick sees its own effect
+
+Read in the engine source, `Engine/Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/`, at UE 5.8, on
+2026-11-01:
+
+- The timer a periodic effect sets calls `UAbilitySystemComponent::ExecutePeriodicEffect` with the active effect's
+  handle (`GameplayEffect.cpp` lines 4499 and 4646). `FActiveGameplayEffectsContainer::ExecutePeriodicGameplayEffect`
+  (line 3372) finds the active effect by handle and calls `InternalExecutePeriodicGameplayEffect(*ActiveEffect)`
+  (line 4762), which calls `ExecuteActiveEffectsFrom(ActiveEffect.Spec)` (line 3210).
+- `ExecuteActiveEffectsFrom` works on that spec by reference (`FGameplayEffectSpec& SpecToUse = Spec;`) and hands it to
+  `InternalExecuteMod` (line 4090), which builds `FGameplayEffectModCallbackData ExecuteData(Spec, ...)` (line 4107)
+  and calls `PostGameplayEffectExecute(ExecuteData)` (line 4128).
+- So `Data.EffectSpec` in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which `NoteBlow` reads, is the
+  active effect's own spec, and its `Def` is the effect `ApplyDamageOverTime` built: the spec the active effect holds is
+  a copy of the one `ApplyTypedSpec` built from that object.
+- `UCataclysmAbilitySystemComponent::ExecutePeriodicEffectsGrantingForTests`, which the tests use, calls the same
+  `ExecutePeriodicEffect` for each effect granting the tag, so the tests take the timer's path from that call on.
+- **G1 is the run's check of this.** It breaks only the second branch of `SkillTagsOfABlowWithNoSkill`, the one that
+  reads `Spec.Def`. If a tick's `Spec.Def` were not the laid effect, the five damage-over-time tests would fail in
+  the restored half too, and G1 would not prove.
+
+Nothing in `game/Source` asks a running effect's class (searched 2026-11-01: no `FGameplayEffectQuery::EffectDefinition`,
+no removal or count by effect class). The engine stacks effects by comparing `Spec.Def` pointers. Effects built
+outside `MakeRuntimeEffect`, in `CataclysmGameplayAbility.cpp` and `CataclysmEnemyModifiers.cpp`, stay the plain class.
+Every `UGameplayEffect` virtual is exported from its module (each carries `UE_API`), and so are its constructor and
+destructor in the generated header, so a subclass in this module links.
+
+### Tests
+
+Six, in a group of their own, `Cataclysm.NoSkillDotTags.`, in `CataclysmNoSkillDotTagsTests.cpp`. **NOT the group
+`Cataclysm.NoSkillBlowTags.` that was asked for:** that group, and a file named `CataclysmNoSkillBlowTagsTests.cpp`,
+already exist (#2475's two instant-blow tests), so that prefix could not select only this change's tests. The coordinating session accepted the new group on 2026-11-01, because the old one would also select #2475's two
+tests. The caster
+is a bare actor at the origin with a Demonic weapon slot and a weapon damage of 100; every creature has no armour,
+evasion, block or resistance and 1,000,000 health. A skill "goes" by `ClearAbility` on its grant, which marks its
+instance as garbage (`UAbilitySystemComponent::OnRemoveAbility`, `MarkAbilityAsGarbage`), so every weak pointer to it
+is stale at once; each such test asserts that at set-up, and that the zone or line outlived it. A kill is one tick (or
+sweep) at one point of health.
+
+1. `ABuriedWeaponsBurnCarriesTheThrowingSkillsTagsAndNoNameToItsTicksAndItsKill`: an axe with Harrower's tags and
+   `bInBurns` is buried 20 m north and leaps 4 m east, setting that enemy alight. Its tick names no skill and carries
+   `Type.Ranged`; its kill names no skill and carries `Type.Ranged` and `Slot.Special`. CONTROL: a burn laid by
+   `ApplyBurn` with no skill and no tags: its tick and its kill carry no tags.
+2. `AGroundZonesOwnAilmentCarriesTheZonesSkillTagsAndNoNameAndABareZonesCarriesNone`: the caster wears
+   `zone_applies_own_ailment` (a flat 1, by hand); a Demonic Strike "Molten Trail" (`Type.Melee`) leaves a zone whose
+   own ailment is Burn. One sweep sets the victim alight; the burn's tick and kill name no skill and carry
+   `Type.Melee`. CONTROL: a zone made by `Spawn` alone and given Burn by hand: its ailment's tick and kill carry none.
+3. `AZoneWhoseSkillHasGoneKeepsItsTagsOnItsSweepAndItsKill`: the same Strike's zone; the grant is removed; a sweep
+   names no skill and carries `Type.Melee`, and so does the next sweep's kill. A sweep is direct damage, so this is
+   the delivery's pointer, not the effect's field.
+4. `ALineWhoseSkillHasGoneKeepsItsTagsOnItsBurnAndItsKill`: the #1585 test's line, bound by "Burning Line"
+   (`Type.Ranged`); the grant is removed before the line checks; the burn's tick and kill name no skill and carry
+   `Type.Ranged`.
+5. `ABurnWhoseSkillGoesMidBurnKeepsItsTagsOnItsKill`: the same line checks while the skill is there; the first tick
+   names "Burning Line" (set-up); the grant is removed; the next tick and the kill name no skill and carry
+   `Type.Ranged`.
+6. `AShotWhoseSkillHasGoneKeepsItsTagsOnItsBurnsKill`: a burning shot fired with `ACataclysmProjectile::Fire` by a
+   granted skill "Ember Shot" (`Type.Ranged`); the grant is removed in flight; the shot is stepped onto a creature
+   3 m east and sets it alight; the burn's tick and kill name no skill and carry `Type.Ranged`.
+
+### Registered before the run
+
+Registered on `fix/dot-carries-skill-tags-without-the-skill-1`, on `development` at `4a43c8970` (#1251 merged as
+#2686), at the commit that carries this sentence. First written on `fix/dot-carries-skill-tags-without-the-skill`, on
+`development` at `d3685c250`, and moved with no force push; the move had no conflict, and #1251 touched none of this
+change's files. The base total, 4518, is the coordinating session's figure for `4a43c8970`.
+
+| Figure | Registered |
+|---|---|
+| Build | `Succeeded`, compiling the changed `.cpp` files, the new test file and the unity files that hold them, and `CataclysmRuntimeEffect.gen.cpp` |
+| `Cataclysm.NoSkillDotTags.` alone, by its prefix | 6 / 6 |
+| Whole Unreal suite | 4524 / 0: `development`'s 4518 at `4a43c8970` + 6 |
+| Python | of record, with JUnit, and ruff. This change adds and changes no Python test, so the totals are the base's |
+| G1, a tick's effect hands over no tags (`return &Laid->SkillTagsWithNoSkill;` to `return nullptr;`, in `CataclysmSkillEffects.cpp`), prefix `Cataclysm.NoSkillDotTags.` | 6 performed, 1 succeeded, 5 failed. 21 failed assertions and no other. In 1: "the buried weapon's burn's tick carries skill tags", "... tick carries Type.Ranged, the throwing skill's", "the buried weapon's burn's kill carries skill tags", "... kill carries Type.Ranged, which a ranged kill row reads", "... kill carries Slot.Special, the slot a cooldown refund clears". In 2: "the zone's own ailment's tick carries skill tags", "... tick carries Type.Melee, the zone's skill's", "the zone's own ailment's kill carries skill tags", "... kill carries Type.Melee, which a melee kill row reads". In 4: "the burn of a line whose skill has gone carries skill tags on its tick", "... carries Type.Ranged on its tick", "the kill by the burn of a line whose skill has gone carries skill tags", "... carries Type.Ranged, which a ranged kill row reads". In 5: "a tick after the skill went carries skill tags", "... carries Type.Ranged, the skill's", "the kill after the skill went carries skill tags", "... carries Type.Ranged, which a ranged kill row reads". In 6: the four "burn of a shot whose skill has gone" lines, the same shape as 4. Test 3, whose sweep is direct damage, passes. Every set-up line, every "names no skill" line and both controls hold |
+| G2, the buried weapon's burn is handed no tags (`/*SkillTagsWithNoSkill=*/&Buried->SkillTags);` to `/*SkillTagsWithNoSkill=*/nullptr);`, in `CataclysmBuriedWeapon.cpp`), prefix test 1's full name | 1 performed, 0 succeeded, 1 failed: test 1's five tag assertions listed under G1, and no other. Set-up, the "names no skill" lines and the control hold |
+| G3, a sweep whose skill has gone hands over no tags (`Delivery.SkillTagsWithNoSkill = &SkillTagsItWasLeftWith;` to `Delivery.SkillTagsWithNoSkill = nullptr;`, in `CataclysmGroundZone.cpp`), prefix test 3's full name | 1 performed, 0 succeeded, 1 failed, on four assertions and no other: "the sweep of a zone whose skill has gone carries skill tags", "... carries Type.Melee, the skill's", "the kill by a zone whose skill has gone carries skill tags", "... carries Type.Melee, which a melee kill row reads". Set-up and the "names no skill" lines hold |
+
+Each anchor occurs once in its file (`prove_t2683.py G1|G2|G3 --anchors-only`: anchor count 1). Each break keeps its
+file compiling: each replaces a pointer with `nullptr` where a pointer is expected. Prefix `Cataclysm.NoSkillDotTags.`
+selects the six name literals in the new file, and no other name literal in `game/Source` begins with it, case
+ignored; each full name selects one. Counts of name literals in the source; the run's own count is the figure.
+
+### Not tested
+
+- **The kill rows themselves.** The tests stop at `KillingSkillTags` and the hit notice's `SkillTags`. No test wears
+  "Ranged kills ... refund" or "Melee kills restore..." and kills with one of these.
+- **J1 as a figure.** No test asserts that a burn handed tags without a skill is priced the same as one with neither.
+  It is read from the code: the tags are written after `DamageOverTimeNumbers`, and `AskedWith` reads only `Skill`.
+- **A sweep that reaches its own owner**, the minion's chaos pool, a spread copy (laid with no skill, so it carries
+  nothing, as before), the burst of an ailment's remaining damage, and an application that only refreshes a running
+  effect (which keeps the running effect's tags). None changed on purpose; none is tested here.
+- **A tick of a skill that is still there** now also has its skill's tags copied onto its effect (one container copy
+  per application). Nothing reads that copy while the skill is there; the #1585 tests and every test naming a skill on
+  a tick are the check.
+
+### Run
+
+Compiled with `python tools/unreal_build.py build`, the lock free and no window held, after window w134 ended.
+
+- On `b58d18c00` (on `d3685c250`): `Build: Succeeded - 44 actions, 41 files compiled`, the first build of the change.
+  The unity objects holding the new test file and `CataclysmRuntimeEffect.gen.cpp` were written by it.
+- AFTER THE MOVE, on `20df804e0` (on `4a43c8970`): `Build: the continuous integration runner holds the UnrealBuildTool
+  mutex; waiting 60 seconds and retrying (2 of 5).`, the same at 3 of 5, then `Build: Succeeded - 44 actions, 41 files
+  compiled`.
+
+Python of record on `20df804e0` with this entry in the working tree, `python -u -m pytest -p no:cacheprovider
+--junit-xml=<scratchpad>`: `7234 passed, 8 skipped in 222.37s (0:03:42)`; JUnit tests 7242, failures 0, errors 0,
+skipped 8. `python -m ruff check .`: "All checks passed!". This change adds and changes no Python test, so the totals
+are those of `development` at `4a43c8970`.
+
+---
+
 ## 2026-11-01 — Worn Residue is summed from the worn items and shown on the character sheet against the Consumption Threshold of the tier being played (#1251, slice 1)
 
 **Affects:** `UCataclysmEquipmentComponent::WornResidue` and `ConsumptionThresholdFor`, new
