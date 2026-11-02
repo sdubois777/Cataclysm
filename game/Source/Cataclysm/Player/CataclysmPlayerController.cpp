@@ -14,6 +14,7 @@
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -1179,6 +1180,11 @@ void ACataclysmPlayerController::ReportInventoryPress(
 
 void ACataclysmPlayerController::PressOnTheInventoryScreen()
 {
+	if (WearingQuestionIsOpen())
+	{
+		return; // AskBeforeWearing's: the question names one cell, and nothing may move it until it is answered.
+	}
+
 	FVector2D Point = FVector2D::ZeroVector;
 	ACataclysmPlayerCharacter* Wearer = nullptr;
 	if (!InventoryPressTarget(Point, Wearer))
@@ -1246,6 +1252,11 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 
 void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 {
+	if (WearingQuestionIsOpen())
+	{
+		return; // AskBeforeWearing's: the question names one cell, and nothing may move it until it is answered.
+	}
+
 	FVector2D Point = FVector2D::ZeroVector;
 	ACataclysmPlayerCharacter* Wearer = nullptr;
 	if (!InventoryPressTarget(Point, Wearer))
@@ -1258,8 +1269,14 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 	if (Carried != INDEX_NONE)
 	{
 		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-		ReportInventoryPress(UCataclysmWearing::WearFromCarried(
-			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went));
+		const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
+			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
+		if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
+		{
+			AskBeforeWearing(Wearer, Carried);
+			return;
+		}
+		ReportInventoryPress(Result);
 		return;
 	}
 
@@ -1591,12 +1608,8 @@ void ACataclysmPlayerController::UpdatePendingObject()
 	PendingObject = nullptr;
 }
 
-void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
+UCataclysmChoicePanelWidget* ACataclysmPlayerController::EnsureChoicePanel()
 {
-	if (!IsValid(Object))
-	{
-		return;
-	}
 	if (!ChoicePanel)
 	{
 		UClass* PanelClass = ChoicePanelClass.LoadSynchronous();
@@ -1606,13 +1619,70 @@ void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
 				   TEXT("There is no choice panel to open: %s could not be loaded. Run  python "
 						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
 				   *ChoicePanelClass.ToString());
-			return;
+			return nullptr;
 		}
 		ChoicePanel = CreateWidget<UCataclysmChoicePanelWidget>(this, PanelClass);
-		if (!ChoicePanel)
+	}
+	return ChoicePanel;
+}
+
+bool ACataclysmPlayerController::WearingQuestionIsOpen() const
+{
+	return ChoicePanel && ChoicePanel->IsAskingAQuestion() && ChoicePanel->IsInViewport();
+}
+
+void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot)
+{
+	UCataclysmInventoryComponent* Bag = Wearer ? Wearer->GetInventory() : nullptr;
+	const FCataclysmItem* Carried = Bag ? Bag->ItemAt(CarriedSlot) : nullptr;
+	UCataclysmChoicePanelWidget* Panel = Carried ? EnsureChoicePanel() : nullptr;
+	if (!Panel)
+	{
+		return;
+	}
+
+	// A COPY, because the yes is about this item, and WearAfterConfirming compares the cell with it.
+	const FCataclysmItem AskedAbout = *Carried;
+	const FCataclysmThresholdCrossing Crossing =
+		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot);
+	const FString Name = UCataclysmItemName::NameOf(
+		AskedAbout, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable());
+
+	FCataclysmFloorObjectChoice WearIt;
+	WearIt.Key = FName(TEXT("WearPastTheThreshold"));
+	WearIt.Label = TEXT("Wear it");
+
+	// THE CONTROLLER IS HELD WEAKLY. The panel can outlive it across a level change, and an answer arriving then
+	// does nothing rather than reaching a controller that is gone.
+	const TWeakObjectPtr<ACataclysmPlayerController> Asker(this);
+	Panel->SetQuestion(
+		TEXT("Past the Consumption Threshold"), UCataclysmWearing::ThresholdQuestion(Name, Crossing), {WearIt},
+		TEXT("Keep it off"),
+		[Asker, CarriedSlot, AskedAbout](FName)
 		{
-			return;
-		}
+			ACataclysmPlayerController* Controller = Asker.Get();
+			ACataclysmPlayerCharacter* Now =
+				Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+			if (!Now)
+			{
+				return;
+			}
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			Controller->ReportInventoryPress(UCataclysmWearing::WearAfterConfirming(
+				Now->GetInventory(), Now->GetEquipment(), CarriedSlot, AskedAbout, Went));
+		});
+	if (!Panel->IsInViewport())
+	{
+		Panel->AddToViewport();
+	}
+	ApplyPlayingInputMode();
+}
+
+void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
+{
+	if (!IsValid(Object) || !EnsureChoicePanel())
+	{
+		return;
 	}
 
 	// NOTHING PAUSES, as no screen in the project pauses: the panel sits over the floor while the creatures go on.

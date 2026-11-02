@@ -9,12 +9,15 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Player/CataclysmGameMode.h"
 
 ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	UCataclysmInventoryComponent* Inventory,
 	UCataclysmEquipmentComponent* Equipment,
 	int32 CarriedSlot,
-	ECataclysmGearSlot& OutSlot)
+	ECataclysmGearSlot& OutSlot,
+	bool bConfirmedPastThreshold,
+	int32 DifficultyTier)
 {
 	if (!Inventory || !Equipment)
 	{
@@ -61,6 +64,14 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 		&& Equipment->WeaponsComingOffFor(bTwoHanded) > 1)
 	{
 		return ECataclysmWearResult::NoRoomInTheBag;
+	}
+
+	// ASKED AFTER THE ROOM, so a player is never asked about an equip that
+	// would then be refused anyway. Issue #2687.
+	if (!bConfirmedPastThreshold
+		&& CrossingFor(Inventory, Equipment, CarriedSlot, DifficultyTier).Crosses())
+	{
+		return ECataclysmWearResult::WouldCrossConsumptionThreshold;
 	}
 
 	Inventory->RemoveItemAt(CarriedSlot);
@@ -386,6 +397,61 @@ ECataclysmWearResult UCataclysmWearing::ReturnSecondTwoHandedWeapon(
 	return ECataclysmWearResult::Dropped;
 }
 
+ECataclysmWearResult UCataclysmWearing::WearAfterConfirming(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	int32 CarriedSlot,
+	const FCataclysmItem& AskedAbout,
+	ECataclysmGearSlot& OutSlot,
+	int32 DifficultyTier)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	// EVERY SAVED FIELD COMPARED, not the base alone: two helms of one base are
+	// two items, and the yes was given about one of them.
+	const FCataclysmItem* Now = Inventory->ItemAt(CarriedSlot);
+	if (!Now || !FCataclysmItem::StaticStruct()->CompareScriptStruct(Now, &AskedAbout, PPF_None))
+	{
+		return ECataclysmWearResult::NoLongerThere;
+	}
+	return WearFromCarried(Inventory, Equipment, CarriedSlot, OutSlot,
+						   /*bConfirmedPastThreshold=*/true, DifficultyTier);
+}
+
+FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
+	const UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	int32 CarriedSlot,
+	int32 DifficultyTier)
+{
+	FCataclysmThresholdCrossing Crossing;
+	Crossing.Tier = DifficultyTier > 0 ? DifficultyTier : ACataclysmGameMode::DifficultyTierIn(Equipment);
+	Crossing.Threshold = UCataclysmEquipmentComponent::ConsumptionThresholdFor(Crossing.Tier);
+	if (!Equipment)
+	{
+		return Crossing;
+	}
+	Crossing.Now = Equipment->WornResidue();
+	Crossing.After = Crossing.Now;
+	if (const FCataclysmItem* Carried = Inventory ? Inventory->ItemAt(CarriedSlot) : nullptr)
+	{
+		Crossing.After = Equipment->WornResidueIfEquipped(*Carried);
+	}
+	return Crossing;
+}
+
+FString UCataclysmWearing::ThresholdQuestion(const FString& ItemName,
+											 const FCataclysmThresholdCrossing& Crossing)
+{
+	return FString::Printf(
+		TEXT("Wearing %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d."),
+		ItemName.IsEmpty() ? TEXT("this") : *ItemName, FMath::RoundToInt(Crossing.After),
+		FMath::RoundToInt(Crossing.Threshold));
+}
+
 FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 {
 	switch (Result)
@@ -428,6 +494,13 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 	case ECataclysmWearResult::TheFloorRefusedIt:
 		return TEXT("It could not be put on the floor, so it is still in "
 					"the bag.");
+	case ECataclysmWearResult::WouldCrossConsumptionThreshold:
+		return TEXT("Wearing it would take your Worn Residue past this tier's "
+					"Consumption Threshold, so it was not put on. Confirm to "
+					"wear it.");
+	case ECataclysmWearResult::NoLongerThere:
+		return TEXT("It is no longer where it was when you were asked, so "
+					"nothing was put on.");
 	}
 	return FString();
 }

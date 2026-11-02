@@ -4,9 +4,9 @@
 
 #include "Blueprint/UserWidget.h"
 #include "CoreMinimal.h"
+#include "Dungeon/CataclysmFloorObject.h"
 #include "CataclysmChoicePanelWidget.generated.h"
 
-class ACataclysmFloorObject;
 class UCataclysmChoiceButton;
 class UPanelWidget;
 class UTextBlock;
@@ -20,6 +20,11 @@ class UTextBlock;
  *
  * A CHOICE IS THE DUNGEON GAME MODE'S, not this panel's: pressing one calls
  * `ACataclysmDungeonGameMode::ChooseAtFloorObject`, and the panel then closes. "Leave" closes it and chooses nothing.
+ *
+ * IT ALSO ASKS QUESTIONS THAT ARE NOT A FLOOR OBJECT'S, through `SetQuestion`: a title, a prompt, the buttons, the
+ * words on the button that chooses nothing, and what to call with the answer. The first is the question asked before
+ * an equip crosses the Consumption Threshold, issue #2687. The layout is the same Widget Blueprint's, so a question
+ * needs no new asset. One panel shows one thing: `SetObject` ends a question and `SetQuestion` ends an object's.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmChoicePanelWidget : public UUserWidget
@@ -32,6 +37,24 @@ public:
 
 	/** Which object's choices to show, and show them. */
 	void SetObject(ACataclysmFloorObject* Object);
+
+	/**
+	 * Ask a question that is not a floor object's. `OnChosen` is called with the key of the button pressed, after the
+	 * panel has closed, and is not called at all for the button that chooses nothing, which carries `LeaveKey` and
+	 * the words `LeaveLabel`. Issue #2687.
+	 *
+	 * WHAT `OnChosen` HOLDS MAY BE GONE BY THE TIME IT IS CALLED, a level change between the question and the answer
+	 * among the ways; a caller captures what it needs weakly and checks it.
+	 */
+	void SetQuestion(const FString& Title, const FString& Prompt, const TArray<FCataclysmFloorObjectChoice>& Choices,
+					 const FString& LeaveLabel, TFunction<void(FName)> OnChosen);
+
+	/** Whether a question set by `SetQuestion` is waiting for its answer. Closing the panel ends it unanswered. */
+	bool IsAskingAQuestion() const { return bAsking; }
+
+	/** The title and the prompt shown, for tests, which have no Blueprint and so no labels. */
+	const FString& ShownTitle() const { return TitleText; }
+	const FString& ShownPrompt() const { return PromptText; }
 
 	/** The object shown, or null once it is gone. */
 	ACataclysmFloorObject* ShownObject() const { return Shown.Get(); }
@@ -72,5 +95,16 @@ private:
 
 	TWeakObjectPtr<ACataclysmFloorObject> Shown;
 	TArray<FName> Keys;
+	FString TitleText;
+	FString PromptText;
+
+	/** A question's, while `bAsking`. */
+	bool bAsking = false;
+	TArray<FCataclysmFloorObjectChoice> QuestionChoices;
+	FString QuestionLeaveLabel;
+	TFunction<void(FName)> QuestionAnswered;
+
+	/** Forget the question, unanswered. */
+	void EndQuestion();
 	bool bLastActed = false;
 };
