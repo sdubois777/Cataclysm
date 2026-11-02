@@ -243,6 +243,17 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before it carried the Consumption mark is not marked: nothing could mark one. Issue #2688,
+	 * ruled 2026-11-02. Written out, for `Migrate_3_to_4`'s reason.
+	 */
+	bool Migrate_4_to_5(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetBoolField(TEXT("bMarkedByConsumption"), false); // A migration's: not marked, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -253,6 +264,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
+		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 	};
 }
 

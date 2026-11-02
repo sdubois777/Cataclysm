@@ -414,6 +414,14 @@ followed, ruled 2026-11-01:
   not. `Character_v3.json` is now a migration input, not edited again;
   `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne` runs it
   through the step and checks every other field is kept.
+- **The second is `bMarkedByConsumption`, the Consumption mark** (issue #2688):
+  the character record went to version 5 on 2026-11-02, `Migrate_4_to_5` writes
+  `false` into a version 4 file, and `Character_v5.json` is `Character_v4.json`
+  at version 5 with `"bMarkedByConsumption": true` added and nothing else
+  changed. **True and not false**, for the tier's reason: false is the default.
+  `Character_v4.json` is now a migration input, not edited again;
+  `Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked`
+  runs it through the step and checks every other field is kept.
 
 ## What is here
 
@@ -424,6 +432,7 @@ followed, ruled 2026-11-01:
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
 | `Character_v4.json` | The same character at version 4: version 3's contents, plus its difficulty tier, 2 |
+| `Character_v5.json` | The same character at version 5: version 4's contents, plus its Consumption mark, true |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |

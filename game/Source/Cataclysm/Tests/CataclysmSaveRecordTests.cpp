@@ -140,7 +140,7 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v4.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v5.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v1.json") },
 		};
 	}
@@ -584,7 +584,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v4.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v5.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -597,12 +597,14 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v4.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v5.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 4"), Read->SchemaVersion, 4);
+	TestEqual(TEXT("it says it is version 5"), Read->SchemaVersion, 5);
+	// TRUE AND NOT FALSE, the default, so a mark that was not read cannot pass. Issue #2688.
+	TestTrue(TEXT("the Consumption mark in the file"), Read->bMarkedByConsumption);
 	// 2 AND NOT 1, the default, so a tier that was not read cannot pass. Issue #1472.
 	TestEqual(TEXT("the difficulty tier in the file"), Read->DifficultyTier, 2);
 	TestEqual(TEXT("the name in the file"), Read->CharacterName, FString(TEXT("Vesper")));
@@ -803,6 +805,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("DifficultyTier"), 1);
+	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false); // Since #2688: the chain runs on to version 5.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1340,7 +1343,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v4.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v5.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1352,7 +1355,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v4.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v5.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

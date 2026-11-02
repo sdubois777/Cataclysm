@@ -1668,8 +1668,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 				return;
 			}
 			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-			Controller->ReportInventoryPress(UCataclysmWearing::WearAfterConfirming(
-				Now->GetInventory(), Now->GetEquipment(), CarriedSlot, AskedAbout, Went));
+			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went));
 		});
 	if (!Panel->IsInViewport())
 	{

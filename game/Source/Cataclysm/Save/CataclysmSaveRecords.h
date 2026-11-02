@@ -1090,6 +1090,9 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 5 SINCE 2026-11-02. The character carries its Consumption mark, issue #2688, and `Migrate_4_to_5` writes "not
+	 * marked" into a character written at 4: nothing could mark a character before the field existed.
+	 *
 	 * 4 SINCE 2026-11-01. The character carries its difficulty tier, issue #1472,
 	 * and `Migrate_3_to_4` writes tier 1 into a character written at 3, the tier
 	 * the design starts every character at. A VERSION AND NOT A DEFAULT, ruled
@@ -1104,7 +1107,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 4;
+	static constexpr int32 SchemaVersionNow = 5;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1138,6 +1141,14 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 DifficultyTier = 1;
+
+	/**
+	 * Whether the character is marked by crossing its tier's Consumption Threshold. Issue #2688.
+	 * `ACataclysmPlayerState::IsMarkedByConsumption`. VERSION 5: a record written before the field is at version 4, and
+	 * `Migrate_4_to_5` writes false into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bMarkedByConsumption = false;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the

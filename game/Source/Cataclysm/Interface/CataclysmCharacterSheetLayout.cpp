@@ -224,6 +224,11 @@ FString UCataclysmCharacterSheetLayout::KillsLine(int32 RunKills, int32 Lifetime
 	return FString::Printf(TEXT("Kills this run %d   Kills %d"), RunKills, LifetimeKills);
 }
 
+FString UCataclysmCharacterSheetLayout::ConsumptionMarkLine(bool bMarked)
+{
+	return bMarked ? FString(TEXT("Marked: crossed the Consumption Threshold")) : FString();
+}
+
 FString UCataclysmCharacterSheetLayout::WornResidueLine(float WornResidue, int32 DifficultyTier)
 {
 	const int32 Tier = FMath::Clamp(DifficultyTier, 1, 8);
