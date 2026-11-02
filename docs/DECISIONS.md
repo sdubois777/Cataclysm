@@ -17,8 +17,11 @@ Issue [#2683](https://github.com/sdubois777/Cataclysm/issues/2683).
 
 ### SAID FIRST
 
-- **NOT YET RUN IN A WINDOW. EVERY UNREAL FIGURE UNDER "REGISTERED BEFORE THE RUN" IS A PREDICTION TRACED BY HAND
-  FROM THE CODE.** The change compiles (see "Run"); no automation test of it has run.
+- **PASSED IN WINDOW skill-tags-w1, ON `8043273e7`: 4524 OF 4524 WITH EVERY RUNTIME EFFECT NOW A
+  `UCataclysmRuntimeEffect`, AND G1-G3 PROVED, FAILING EXACTLY 21, 5 AND 4 REGISTERED ASSERTIONS** (recorded under
+  "Window skill-tags-w1" below). Every Unreal figure under "Registered before the run" was a prediction traced by hand
+  from the code, made before the window. G1's result is also the run check of J4: a tick read the tags off the effect
+  that was laid.
 - **WHAT CHANGES IN PLAY.** A kill by any of these now carries the skill's tags to the killer's `kill` rows, as
   `FCataclysmDeathNotice::KillingSkillTags`, and names no skill; each one's hit notices name the tags too. Before, all
   of them carried none:
@@ -185,6 +188,24 @@ Python of record on `20df804e0` with this entry in the working tree, `python -u 
 --junit-xml=<scratchpad>`: `7234 passed, 8 skipped in 222.37s (0:03:42)`; JUnit tests 7242, failures 0, errors 0,
 skipped 8. `python -m ruff check .`: "All checks passed!". This change adds and changes no Python test, so the totals
 are those of `development` at `4a43c8970`.
+
+### Window skill-tags-w1, run 2026-11-01 by the coordinating session
+
+On `8043273e7`, branch `fix/dot-carries-skill-tags-without-the-skill-1`, on `development` at `4a43c8970`. Pre-checks at
+19:31:28 all passed, 11,225 MB of physical memory free, after the dungeon session's Python run had ended at 19:31:21;
+the runner (started 19:31:38) took the lock as `skill-tags-w1` and released it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| The group `Cataclysm.NoSkillDotTags.` alone | 6 / 6 | "6 tests performed, 6 succeeded, 0 failed"; read as performed 6, succeeded 6, failed 0 |
+| Whole Unreal suite | 4524 / 0 | "4524 tests performed, 4524 succeeded, 0 failed"; "Declared: 4524 tests in the tree at 8043273e7; 4524 performed, gap 0"; "Test saves: 711 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 196.90s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| G1 | 6 performed, 1 succeeded, 5 failed, 21 assertions | PROVED: "6 tests performed, 1 succeeded, 5 failed"; restored 6 of 6. The kept broken-half log fails exactly 21 assertions, every one a "carries skill tags" or "carries Type.X / Slot.Special" line: 5 for the buried weapon's burn, 4 each for the zone's own ailment, the line whose skill has gone, the burn whose skill went mid-burn and the shot whose skill has gone. The zone-sweep test passed, as predicted |
+| G2 | test 1, 5 assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. Exactly the buried weapon's burn's 5 tag assertions failed |
+| G3 | test 3, 4 assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed"; restored 1 of 1. Exactly the 4 tag assertions of the sweep and the kill of a zone whose skill has gone failed |
+
+No set-up assertion, "names no skill" assertion or control failed in any broken half.
 
 ---
 
