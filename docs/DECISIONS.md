@@ -88,6 +88,23 @@ double-hunt-w1 suite log's completed tests) and holds 55.
 
 Each break's anchor occurs once (`prove_g818.py --anchors-only`). The breaks were not compiled before registration.
 
+### Window ground-colour-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `2bba2e4fa` (on `development` `2fbc4947a`),
+lock `ground-colour-w1`, after the six pre-checks all passed (10,522 MB of physical memory free). Every registered
+figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's build of the same head had compiled 41 files) |
+| `Cataclysm.Effects.` alone | 55 / 55 | "55 tests performed, 55 succeeded, 0 failed" |
+| Whole Unreal suite | 4555 / 0 | "4555 tests performed, 4555 succeeded, 0 failed"; "Declared: 4555 tests in the tree at 2bba2e4fa; 4555 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 197.24s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | the 3 colour lines | PROVED. The kept broken-half log fails exactly "the skill's ground was asked to be drawn in the skill's own damage type", "the ground holds the skill's type as its own colour" and "and every later drawing is in it too", each "to be Demonic, but it was None"; the restored half passed 1 of 1 |
+| P2 | the 2 damage lines | PROVED. The kept broken-half log fails exactly "the ground's damage type stays unset" and "and the creature resisting Demonic took as much: the ground's damage arrived untyped" ("to be 25.000000, but it was 15.000000"); the restored half passed 1 of 1 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - The colour as drawn on screen: under the automation run's `-nullrhi` no Niagara component is made, so only the
