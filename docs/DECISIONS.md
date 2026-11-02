@@ -14,7 +14,15 @@ the file header in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsT
 
 ### SAID FIRST
 
-- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **WINDOW w133 PASSED, AND P1 FAILED ONE MORE ASSERTION THAN REGISTERED.** On 7a09ac553: the three tests alone 1 / 1
+  each, the suite 4513 / 0 with "Test saves: 712 written and deleted, 0 left behind", Python 7232 passed, and P1 and P2
+  PROVED. **P1 was registered to fail two assertions and failed three**: the third, "with the row among the rows it
+  lists", failed because the calls counted before the blows carry NO rows. They are not the Brand floor's: `BuildFloor`
+  calls no panel refresh, and the three calls come from `StartPlay` (`ApplyFloorRulesKeepingHealth`), before the test
+  builds its floor. So with the brand refresh broken, the last thing the controller was told is `StartPlay`'s empty
+  list. **The CONTROL assertion's wording is therefore inexact**: "the floor's start told the controller" is true of
+  `StartPlay`'s calls and not of the Brand floor. The proof still holds -- the test failed with the break in and
+  passed with it out -- and the count of 3 is measured, not assumed. Record below.
 - **ONE CALL SITE OF 174 IS TESTED.** The dungeon game mode refreshes the floor panel from 174 places; this tests Brand
   of the Aggressor's, the one the issue's closing check names. Every refresh goes through `ShowFloorModifiers`, so
   the record would see any of them, but only that one has a test.
@@ -98,6 +106,28 @@ Read 2026-11-01, not measured; the window measures it. **A landed blow reaches t
 
 Compiled at 46c85f78f with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 39 actions, 36 files
 compiled`, at the first attempt.
+
+**Window w133, on 7a09ac553 (`feat/floor-panel-tested-1`), every step passed.** Pre-checks all passed at 17:21 after
+waiting for a CI run on `development`, 11,095 MB free; lock `dungeon-w133` taken, runner PID 318500 started at
+17:21:44, lock released at its last line.
+
+| Step | Measured |
+|---|---|
+| Build | `Build: Succeeded - target already up to date, 0 actions, nothing compiled` |
+| `EachBrandingBlowTellsThePanelTheNewCount` alone | 1 / 1; "PANEL TOLD: at the floor 3 calls, the count ''; after 3 blows 6 calls, the count '3 of 20', floor 1, 1 rows" -- exactly 3 calls for 3 blows |
+| `TheFloorPanelListsWhatItIsToldWithEachRowsCount` alone | 1 / 1; "PANEL LINES: 2 lines on floor 4; Brand 'Brand of the Aggressor' counting '7 of 20'; Starvation 'Starvation' counting ''" |
+| `TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts` alone | 1 / 1 |
+| Whole suite | `Tests: 4513 tests performed, 4513 succeeded, 0 failed` (43 skipped part of what they check); `Test saves: 712 written and deleted, 0 left behind`; `Declared: 4513 tests in the tree at 7a09ac553; 4513 performed, gap 0`; exit 0 |
+| Python | `7232 passed, 8 skipped in 199.39s`; JUnit tests=7240, failures=0, errors=0, skipped=8; ruff `All checks passed!` |
+| P1 | PROVED. Broken half: "Expected 'the controller is told once for each landed blow' to be 3, but it was 0", "Expected 'and what it is told last is the brand count after the third blow' to be "3 of 20", but it was """, and **unregistered**, "Expected 'with the row among the rows it lists' to be true"; "PANEL TOLD: at the floor 3 calls, the count ''; after 3 blows 3 calls, the count '', floor 1, 0 rows". Restored: 1 / 1, "after 3 blows 6 calls, the count '3 of 20', floor 1, 1 rows" |
+| P2 | PROVED. Broken half: "Expected 'the brand line carries the count it was told' to be "7 of 20", but it was """ only; "PANEL LINES: ... Brand 'Brand of the Aggressor' counting ''". Restored: 1 / 1, counting '7 of 20' |
+
+**Nothing else failed.** Each broken half's log holds, from the automation controller, the test's "Result={Fail}" line
+and the assertions above only (4 error lines for P1, 2 for P2); each restored half holds none; every half printed
+"1 tests performed".
+
+**P1's second assertion read '' and not "0 of 20"**, the alternative the registration named: the last call before the
+blows carried no rows, so no count either.
 
 ---
 
