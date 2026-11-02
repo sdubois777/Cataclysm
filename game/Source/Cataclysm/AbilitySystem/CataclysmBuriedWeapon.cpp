@@ -117,11 +117,18 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// armour stopped dead still burns, because armour answers whether the blow
 	// hurt rather than whether it landed. `Dealt` cannot be used to ask this --
 	// it is the figure that was SENT, and it is positive for an evaded blow.
+	//
+	// AND THE THROWING SKILL'S TAGS, AS THE LEAP'S HIT CARRIES THEM, so a kill by a tick of this burn carries them as
+	// the leap's own kill does, and no skill name. Issue #2683, under #2465's ruling N1 (a). Identity only: the burn is
+	// priced as it was, with no skill (ruled 2026-11-01, J1).
 	if (Buried->bBurns && !Resolved.bEvaded)
 	{
 		UCataclysmSkillEffects::ApplyBurn(Credited, NextHost, Dealt,
 										  /*bScalesWithInstigator=*/true,
-										  /*bBurnIsDesigned=*/true);
+										  /*bBurnIsDesigned=*/true,
+										  /*DealtBy=*/nullptr,
+										  /*Skill=*/nullptr,
+										  /*SkillTagsWithNoSkill=*/&Buried->SkillTags);
 	}
 
 	// AND THE FERVOUR THE LANDING EARNS WHOEVER THREW THE AXE. Issue #1515, the

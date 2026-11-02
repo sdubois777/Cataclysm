@@ -398,14 +398,24 @@ public:
 	 *
 	 * WEAK, as `ACataclysmProjectile::FiringSkill` is, because the zone outlives the use that left it. A skill whose
 	 * grant is removed -- the one-use grant `UCataclysmTriggeredSkill::Trigger` makes, a gadget's cast among them --
-	 * names nothing once its instance is gone. UNLIKE A PROJECTILE, a zone keeps no copy of the skill's tags for that
-	 * case (`FCataclysmHitDelivery::SkillTagsWithNoSkill`); that is not part of #1585. Not a UPROPERTY, as
-	 * `FCataclysmHitDelivery::Skill` is not: nothing reflects it.
+	 * names nothing once its instance is gone. FOR THAT CASE THE ZONE KEEPS THE SKILL'S TAGS, `SkillTagsItWasLeftWith`,
+	 * as a projectile keeps its own (issue #2683). Not a UPROPERTY, as `FCataclysmHitDelivery::Skill` is not: nothing
+	 * reflects it.
 	 *
 	 * IT ONLY NAMES. `UCataclysmSkillEffects::ApplyDirectDamage` reads a delivery's skill to label the effect's
 	 * context and for nothing else, so a sweep deals what it dealt before.
 	 */
 	TWeakObjectPtr<const UGameplayAbility> SkillThatLeftIt;
+
+	/**
+	 * The tags of the skill that left this zone, or empty. Issue #2683, ruled by the coordinating session 2026-11-01.
+	 * SET BY `UCataclysmSkillTemplate::LeaveAZoneFor` beside `SkillThatLeftIt`, and empty for a zone no skill left.
+	 *
+	 * TWO READERS, BOTH IDENTITY ONLY (J1): a sweep whose skill has gone hands them to its blow as
+	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`, so its hit and its kill still carry them; and the zone's own
+	 * ailment carries them on every sweep, with no skill name (J2), so a kill by that ailment's ticks carries them.
+	 */
+	FGameplayTagContainer SkillTagsItWasLeftWith;
 
 	/**
 	 * The floor rule this zone burns for, or None. Issue #2074. Zones of one rule that

@@ -740,13 +740,18 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		// "every Nth attack" row. Issue #1833, phase 2. Its own copy, because
 		// the skill's flag belongs to the next use by the time a slow shot
 		// lands.
+		//
+		// AND, FOR A SHOT WHOSE FIRING SKILL HAS GONE, THE TAGS IT WAS FIRED WITH, as its hit carries them (#2475), so
+		// a kill by the burn's ticks carries them too, with no skill name. Issue #2683, ruled 2026-11-01 (J3). Identity
+		// only (J1): such a burn is priced with no skill, as it was before this.
 		if (bBurns && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
 		{
 			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,
 											  /*bBurnIsDesigned=*/true,
 											  /*DealtBy=*/nullptr,
-											  /*Skill=*/FiringSkill.Get());
+											  /*Skill=*/FiringSkill.Get(),
+											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr);
 		}
 
 		// AND THE FERVOUR THIS ENEMY EARNS THE FIRER, when the shot landed.

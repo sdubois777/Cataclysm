@@ -69,7 +69,9 @@ struct CATACLYSM_API FCataclysmHitNotice
 	 * AND FOR A BLOW THAT NAMES NO SKILL OBJECT BUT IS A BLOW OF A SKILL, the tags its delivery named
 	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`): a buried weapon's leap, and a shot whose firing skill has gone,
 	 * with no skill name. #2475, under #2465's ruling N1. That pointer is the delivery's, valid while the notice is
-	 * handed out, as every pointer here is.
+	 * handed out, as every pointer here is. AND FOR A DAMAGE OVER TIME TICK NAMING NO SKILL THAT STILL EXISTS, the tags
+	 * its own effect carries (`UCataclysmRuntimeEffect::SkillTagsWithNoSkill`): a buried weapon's burn, a ground zone's
+	 * own ailment, a burn whose skill has gone. Issue #2683.
 	 */
 	const FGameplayTagContainer* SkillTags = nullptr;
 
@@ -216,6 +218,8 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * whose firing skill has gone (#2475), the tags of the skill it was a blow of, which the victim's record of its last
 	 * blow keeps
 	 * (`FCataclysmLastBlow::SkillTagsWithNoSkill`), with no skill name. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
+	 * AND THE SAME FOR A LAST BLOW THAT WAS A DAMAGE OVER TIME TICK NAMING NO SKILL THAT STILL EXISTS, whose effect
+	 * carried its skill's tags: a buried weapon's burn, a ground zone's own ailment, a burn whose skill has gone. #2683.
 	 */
 	const FGameplayTagContainer* KillingSkillTags = nullptr;
 
@@ -367,7 +371,8 @@ struct CATACLYSM_API FCataclysmLastBlow
 	/**
 	 * For a blow that named no skill object, the tags of the skill it was a blow of, copied from
 	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`: a buried weapon's leap's throwing skill's, or the tags a shot whose
-	 * firing skill has gone was fired with (#2475). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
+	 * firing skill has gone was fired with (#2475). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)). AND, for a damage over time
+	 * tick naming no skill that still exists, the tags its effect carried (`UCataclysmRuntimeEffect`, issue #2683). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
 	 * ordinary hit costs no allocation here. The death notice's `KillingSkillTags` points at it when no skill is named.
 	 */
 	FGameplayTagContainer SkillTagsWithNoSkill;

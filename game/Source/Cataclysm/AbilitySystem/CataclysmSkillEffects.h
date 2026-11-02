@@ -741,11 +741,12 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	TWeakObjectPtr<AActor> CastBy;
 
 	/**
-	 * The tags of the skill this blow is a blow of, FOR A BLOW THAT NAMES NO SKILL OBJECT. TWO WRITERS: a buried weapon's
+	 * The tags of the skill this blow is a blow of, FOR A BLOW THAT NAMES NO SKILL OBJECT. THREE WRITERS: a buried weapon's
 	 * leap, whose throwing use ended long before it (`UCataclysmBuriedWeapon::LeapFromDying`, with its own `SkillTags`);
 	 * and a projectile whose firing skill has gone since it was fired, a trap's rack axe landing after the trap's one-use
 	 * grant was removed (`ACataclysmProjectile::HitOne` and `StrikeTheWearerInItsBlast`, with the projectile's own
-	 * `SkillTags`, and only when `FiringSkill` is stale). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)): "a leap's kill carries
+	 * `SkillTags`, and only when `FiringSkill` is stale); AND, SINCE ISSUE #2683, a ground zone's sweep whose skill has
+	 * gone (`ACataclysmGroundZone::SkillTagsItWasLeftWith`). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)): "a leap's kill carries
 	 * the throwing skill's tags", as a cast's blow's kill carries its skill's; and #2475 under the same N1.
 	 * `ApplyDirectDamage` hands them, for this blow's effect alone, to `UCataclysmCombatEvents::NoteBlow`, which keeps a
 	 * copy on the struck character's record of its last blow, which the death notice names as
@@ -1128,6 +1129,10 @@ public:
 	 * ANSWERED ONLY WHILE `ApplyDirectDamage` APPLIES THAT BLOW'S OWN EFFECT, matched by the effect, so a blow dealt from
 	 * inside it, an explosion at the death it causes, answers its own delivery's, null. Read by
 	 * `UCataclysmCombatEvents::NoteBlow`, for the record of the last blow and for the hit notice.
+	 *
+	 * AND, FOR A DAMAGE OVER TIME TICK, THE TAGS ITS OWN EFFECT CARRIES (`UCataclysmRuntimeEffect::SkillTagsWithNoSkill`,
+	 * written by `ApplyDamageOverTime`) when the tick names no skill that still exists. Issue #2683. Valid while that
+	 * effect is: for the whole of the tick.
 	 */
 	static const FGameplayTagContainer* SkillTagsOfABlowWithNoSkill(const FGameplayEffectSpec& Spec);
 
@@ -1347,13 +1352,17 @@ public:
 	 * @param Skill    the skill that applied it, when a skill did. Carried on
 	 *                 the effect context so the notice of every tick can name
 	 *                 it; see `FCataclysmHitDelivery::Skill`. Issue #41, slice 4
+	 * @param SkillTagsWithNoSkill  the tags of the skill the burn is a burn of, when no skill object is handed in: a
+	 *                 buried weapon's, and a tether's or a projectile's whose skill has gone. Kept on the effect for
+	 *                 its ticks' kills, and IDENTITY ONLY; see `ApplyDamageOverTime`. Issue #2683
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
 						  bool bScalesWithInstigator = true,
 						  bool bBurnIsDesigned = false,
 						  AActor* DealtBy = nullptr,
-						  const UGameplayAbility* Skill = nullptr);
+						  const UGameplayAbility* Skill = nullptr,
+						  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
 
 	/**
 	 * A percentage-of-normal stat read as a plain multiplier.
@@ -1799,6 +1808,12 @@ public:
 	 *                     instigator's. A dungeon floor rule passes its row's,
 	 *                     because its instigator is the floor's shared hazard
 	 *                     source. Issue #1924
+	 * @param SkillTagsWithNoSkill  the tags of the skill this effect's ticks are ticks of, when no skill object is
+	 *                     handed in, or null. Issue #2683. Copied onto the effect (`UCataclysmRuntimeEffect`), so a
+	 *                     tick's kill carries them to the killer's rows as `KillingSkillTags`, and its hit notice
+	 *                     names them. When null, the tags of `Skill` are kept there instead, so a burn whose skill
+	 *                     goes mid-burn keeps them. IDENTITY ONLY, ruled 2026-11-01 (J1): nothing that prices the
+	 *                     effect reads them, and only `Skill` reaches the caster's stats
 	 */
 	static bool ApplyDamageOverTime(AActor* Instigator, AActor* Target,
 									float DamagePerTick, float DurationSeconds,
@@ -1807,7 +1822,8 @@ public:
 									AActor* DealtBy = nullptr,
 									const UGameplayAbility* Skill = nullptr,
 									FName DamageType = NAME_None,
-									bool bIsConvertedDamage = false);
+									bool bIsConvertedDamage = false,
+									const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
 
 	/**
 	 * Apply a share of the target's current health as damage over time. Void
