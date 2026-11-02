@@ -128,6 +128,14 @@ public:
 	 */
 	static FString KillsLine(int32 RunKills, int32 LifetimeKills);
 
+	/**
+	 * Worn Residue against the Consumption Threshold of the tier being played, as the sheet's status line shows it:
+	 * "Worn Residue 2150 of 2400 (tier 2)". Issue #1251. The design asks for the sum at all times; THE THRESHOLD BESIDE
+	 * IT is the coordinating session's judgement (2026-11-01), which the owner can change at the launch check: the sum
+	 * alone does not say how near the character is to being consumed.
+	 */
+	static FString WornResidueLine(float WornResidue, int32 DifficultyTier);
+
 	/** The five groups, in the order they are shown. */
 	static const TArray<ECataclysmSheetGroup>& Groups();
 

@@ -6,6 +6,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 
@@ -198,12 +199,20 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 	{
 		// AND THE KILLS, which are counts rather than stats and so are not
 		// lines of the sheet's stat list. Issue #1833, the kill counter.
+		// AND WORN RESIDUE AGAINST THE TIER'S THRESHOLD, from the worn items as they are now: it is computed, never
+		// stored. Issue #1251. Rewritten whenever the sheet is, which is when it opens and after an attribute is spent;
+		// the sheet does not listen to equipment changes, so an equip made while it stays open shows at the next open.
+		const APawn* Pawn = GetOwningPlayerPawn();
+		const UCataclysmEquipmentComponent* Equipment =
+			Pawn ? Pawn->FindComponentByClass<UCataclysmEquipmentComponent>() : nullptr;
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Level %d   Difficulty tier %d   %s"),
+			TEXT("Level %d   Difficulty tier %d   %s   %s"),
 			State ? State->GetCharacterLevel() : 0, ShownDifficultyTier(),
 			*UCataclysmCharacterSheetLayout::KillsLine(
 				State ? State->GetRunKills() : 0,
-				State ? State->GetLifetimeKills() : 0))));
+				State ? State->GetLifetimeKills() : 0),
+			*UCataclysmCharacterSheetLayout::WornResidueLine(
+				Equipment ? Equipment->WornResidue() : 0.0f, ShownDifficultyTier()))));
 	}
 
 	if (PointsLabel)

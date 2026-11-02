@@ -163,6 +163,46 @@ bool UCataclysmEquipmentComponent::SlotIsEmpty(ECataclysmGearSlot Slot) const
 	return EquippedAt(Slot) == nullptr;
 }
 
+float UCataclysmEquipmentComponent::WornResidue() const
+{
+	float Worn = 0.0f;
+	for (int32 Index = 0; Index < Slots.Num(); ++Index) // Worn Residue's: every slot.
+	{
+		if (!Slots[Index].Base.IsNone())
+		{
+			Worn += Slots[Index].Residue;
+		}
+	}
+	return Worn;
+}
+
+namespace CataclysmConsumptionThreshold
+{
+	/**
+	 * `docs/Cataclysm_GDD_v2.md`, "The Consumption Threshold, one per difficulty tier", tier 1 first. Derived there, not
+	 * chosen; `tools/tests/test_the_consumption_threshold_is_the_designs.py` reads these lines and that table and fails
+	 * when they differ. One per line, so a change to one tier is a change to one line. Issue #1251.
+	 */
+	constexpr float ByTier[] = {
+		1950.0f, // tier 1
+		2400.0f, // tier 2
+		2900.0f, // tier 3
+		3400.0f, // tier 4
+		3950.0f, // tier 5
+		4500.0f, // tier 6
+		5050.0f, // tier 7
+		5600.0f, // tier 8
+	};
+	static_assert(UE_ARRAY_COUNT(ByTier) == 8, "one Consumption Threshold for each of the eight difficulty tiers");
+}
+
+float UCataclysmEquipmentComponent::ConsumptionThresholdFor(int32 DifficultyTier)
+{
+	using namespace CataclysmConsumptionThreshold;
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, static_cast<int32>(UE_ARRAY_COUNT(ByTier)));
+	return ByTier[Tier - 1];
+}
+
 int32 UCataclysmEquipmentComponent::NumEquipped() const
 {
 	int32 Count = 0;

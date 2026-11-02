@@ -164,6 +164,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Equipment")
 	int32 NumEquipped() const;
 
+	/**
+	 * Worn Residue: the Cataclysmic Residue on every item worn, summed. Issue #1251.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, "Worn Residue and Consumption": "the sum of the residue on every item the character
+	 * currently has equipped. It is a property of the character, it changes whenever equipment changes". So it is
+	 * COMPUTED, never stored: a carried item is not counted, and a two-handed weapon, which fills one slot and leaves
+	 * the other empty, is counted once.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Equipment")
+	float WornResidue() const;
+
+	/**
+	 * The Consumption Threshold for a difficulty tier, held to tiers 1 to 8: the Worn Residue at or past which an
+	 * equip is to be confirmed first. The design document's table, one per tier, and
+	 * `tools/tests/test_the_consumption_threshold_is_the_designs.py` holds this and that table to one set of numbers.
+	 * Issue #1251.
+	 */
+	static float ConsumptionThresholdFor(int32 DifficultyTier);
+
 	/** Every slot, in the enum's order. Always SlotCount long. */
 	const TArray<FCataclysmItem>& GetSlots() const { return Slots; }
 

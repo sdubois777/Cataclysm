@@ -497,4 +497,27 @@ CATACLYSM_SHEET_TEST(FCataclysmSheetGroupsTest,
 	return true;
 }
 
+/**
+ * The character sheet's status line shows Worn Residue against the Consumption Threshold of the tier being played.
+ * Issue #1251. Read through `UCataclysmCharacterSheetLayout::WornResidueLine`, the text the sheet writes, not from a
+ * drawn widget. The threshold beside the sum is the coordinating session's judgement of 2026-11-01. Prints
+ * "RESIDUE LINE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSheetShowsWornResidue,
+	"Cataclysm.CharacterSheet.TheStatusLineShowsWornResidueAgainstTheTiersThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSheetShowsWornResidue::RunTest(const FString& Parameters)
+{
+	const FString AtTwo = UCataclysmCharacterSheetLayout::WornResidueLine(2150.4f, 2);
+	const FString AtEight = UCataclysmCharacterSheetLayout::WornResidueLine(0.0f, 8);
+	const FString PastEight = UCataclysmCharacterSheetLayout::WornResidueLine(6000.0f, 12);
+	AddInfo(FString::Printf(TEXT("RESIDUE LINE: '%s' | '%s' | '%s'"), *AtTwo, *AtEight, *PastEight));
+
+	TestEqual(TEXT("the sum, tier 2's threshold and the tier"), AtTwo, FString(TEXT("Worn Residue 2150 of 2400 (tier 2)")));
+	TestEqual(TEXT("nothing worn reads nought"), AtEight, FString(TEXT("Worn Residue 0 of 5600 (tier 8)")));
+	TestEqual(TEXT("a tier past 8 is shown as 8"), PastEight, FString(TEXT("Worn Residue 6000 of 5600 (tier 8)")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
