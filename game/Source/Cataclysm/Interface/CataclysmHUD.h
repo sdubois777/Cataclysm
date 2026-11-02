@@ -116,7 +116,8 @@ public:
 
 private:
 	/**
-	 * The player's own health and mana, and its energy shield when it has one.
+	 * The player's own health and mana, and its energy shield when it has one. Above them, the list of what is
+	 * affecting the player that `UCataclysmPlayerEffects` builds: debuffs in red, then buffs in white. Issue #1591.
 	 */
 	void DrawPlayerVitals();
 

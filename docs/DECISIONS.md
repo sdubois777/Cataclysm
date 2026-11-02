@@ -2,6 +2,180 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — The player sees what is affecting them: one list above the bars, debuffs first (#1591)
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmPlayerEffects.h` and `.cpp` (new: `FCataclysmPlayerEffect`,
+`UCataclysmPlayerEffects::EntriesFor`, `TextFor`, `ShownFrom`, `NameForTag`); `ACataclysmHUD::DrawPlayerVitals`
+(`game/Source/Cataclysm/Interface/CataclysmHUD.cpp`, `.h`), whose fourteen hand-wired texts are replaced by the list;
+`ACataclysmDungeonGameMode::NihilsEmbraceShownNow` (new, `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`.cpp`); two comments in `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` that said where the HUD drew the
+held buff and the delayed damage; seven tests in `game/Source/Cataclysm/Tests/CataclysmPlayerEffectsTests.cpp` (new).
+Issue [#1591](https://github.com/sdubois777/Cataclysm/issues/1591).
+
+### SAID FIRST
+
+- **PASSED IN WINDOW effects-list-w1, ON `80554917b`: 4511 OF 4511, E1 AND E2 PROVED, EVERY PREDICTION HELD AT THE
+  ASSERTION** (recorded under "Window effects-list-w1" below).
+- **No automation test can see the screen**, so the list is tested and the drawing is not. `AHUD::PostRender` checks
+  `FApp::CanEverRender()` and the test command passes `-nullrhi`, so `DrawHUD` never runs under test (the wall
+  `ACataclysmHUD`'s own class comment records). What is drawn, in which colour and where, is unverified until somebody
+  plays a build.
+- **No existing assertion changed.** No automation test asserts on what `DrawPlayerVitals` draws, and no Python test
+  reads it: searched for `DrawPlayerVitals`, `TextFor(Pawn)` and each of the fourteen function names under `tools/`,
+  `sim/` and `game/Source/Cataclysm/Tests/`. The overlay's text functions are untouched, so every test that pins their
+  words (`CataclysmCombatOverlayTests.cpp`, `CataclysmDebuffWordsTests.cpp`, `CataclysmWitheringTests.cpp`) still
+  reads the same words.
+- **Four things the player sees do change, by the rulings below**, and none is pinned by a test: the old texts are in
+  a new order; a text about a tag now ends with that tag's seconds left when a timed effect grants it ("Crippled 3s");
+  the debuffs are red; and the lines read top down, the last sitting where the first used to.
+
+### The rulings, 2026-11-01 (coordinating session; the owner may change them at the launch check after 2026-11-16)
+
+1. **One function library, `UCataclysmPlayerEffects`**, with `EntriesFor(Actor)` returning entries of a name, whether
+   it is a debuff, its stacks (0 = does not stack) and its seconds left (-1 = untimed), and `TextFor(entry)` giving
+   "Bleed 3s", "Forced March 4/5", "Withering 3/10", the seconds rounded up. **One field the ruling did not list was
+   added, `MaxStacks`**, because "Forced March 4/5" needs a cap and the entry is data for the UMG port (#650), which
+   should not parse words apart. 0 means no cap is shown; a count with no cap reads "x3".
+2. **It lists** every tag under the debuff roots (`UCataclysmDebuffs::TagsOn`), the crowd control states
+   `State.KnockedDown`, `State.Pinned` and `State.Staggered`, and every `Status.Buff` tag, each named from
+   `UCataclysmAilments::Kinds()` or the tag's last segment; **everything the hand-wired lines showed**, by calling the
+   same `UCataclysmCombatOverlay` function, so the words cannot drift; Forced March's stacks, and The Nihil's Embrace's
+   loss and reward through one new game-mode getter.
+3. **One place.** The HUD draws this list in place of the hand-wired lines, bottom left above the bars, debuffs first
+   in red, then buffs in white, at most 8 lines and then "+N more". Nothing is shown twice. Polled each frame. The line
+   above the skill bar is unchanged.
+4. **No hover tooltip** (that waits for UMG, #650). The player's own skill buffs, which are `Status.Buff` tags, are
+   listed after the debuffs.
+
+### Research
+
+| Game | What the source says | Source |
+|---|---|---|
+| Path of Exile | Buffs "have a green border and are shown in one row at the upper left corner"; debuffs "have a red border and are shown in separate row below"; a charge shows its time left and, below it, how many charges | [poedb.tw/Effect](https://poedb.tw/Effect) (the community wiki text; `poewiki.net` and the fandom wiki refuse this tool) |
+| Path of Exile 2 | A player asks for bleed and poison to be "more visible", and for the buff bar not to be "hidden behind enemy Boss Bars" | [forum thread 3769253](https://www.pathofexile.com/forum/view-thread/3769253), Dracodine#3738, 2025-04-21 (a player) |
+| Last Epoch | A proposal: a retreating outline, "green for buffs, red for debuffs", for the time left, and a stack count in the corner; replies say a second row appears above when one is full, and that showing seconds over the icon was planned | [forum.lastepoch.com/t/15301](https://forum.lastepoch.com/t/15301), Sarno, 2019-06-25 to 2019-07-17 (this session did not confirm whether the replying account is staff) |
+| Last Epoch | "it would be nice if there were buff timers on the UI" | [forum.lastepoch.com/t/buff-timers/18695](https://forum.lastepoch.com/t/buff-timers/18695), Khroop, 2020-04-02 (a player; no staff reply) |
+| Diablo IV | Stacking buffs "fall off our visible buff rows over persistent buffs"; "the bar is over loaded"; a "second Buff bar for sure helped" | [us.forums.blizzard.com/en/d4/t/too-many-buff-icons/222785](https://us.forums.blizzard.com/en/d4/t/too-many-buff-icons/222785), three players, 2025-05-16 |
+
+**What the research settles:** debuffs are kept apart from buffs; each entry shows its time left and its stacks; a
+colour marks each kind (red for harm in both Path of Exile and the Last Epoch proposal); and a list has a limit, with
+Diablo IV's players showing what an unmanaged limit costs -- the thing the player most needs is pushed off. **What it
+cannot settle, and is labelled as judgement:** the position, the cap, the colours, the names, the order.
+
+### Judgements (the writing session's, under the rulings)
+
+- **Order inside the debuffs:** what stops the player acting first (Feared, Stunned, Knocked Down, Pinned, Staggered),
+  then what is taking health (each damage over time by tag name, Forced March, "Owed N"), then the rest (Maddened,
+  Crippled, Weakened, Shredded, Withering N/10, Withered, Touch of Nothing N, Negated -- the order the old lines had --
+  then every other named debuff by tag name, then The Nihil's Embrace's loss). **Inside the buffs:** the held buff,
+  the immunities, the kept stacks, The Nihil's Embrace's reward, then every `Status.Buff` tag by name. Ordering tags by
+  name keeps an entry in its place while others come and go. **"Owed" is a debuff** because it is damage still to come.
+- **The cap is 8 lines, then a ninth, "+N more", drawn white.** Eight lines over four bars is about as tall as the
+  bottom left can take. At exactly eight nothing is left out and no count line is drawn.
+- **Colours:** debuffs `FF6B5B`, a red that reads on a dark floor; buffs white, as every line above the bars was.
+- **Names:** an ailment's own name where `Kinds()` has its tag ("Void Splinter"); else the tag's last segment with a
+  space before each capital that follows a lower-case letter ("Knocked Down", "Abyssal Aura"). `Keyword.DoT.Generic`
+  therefore reads "Generic". Forced March reads "Forced March N/5"; The Nihil's Embrace reads "Nihil's Embrace -N%
+  resistances" while it has taken any, and "Nihil's Embrace +10% resistances Ns" while its reward runs.
+- **A text about a tag gains the tag's seconds left**: Feared, Stunned, Maddened, Crippled, Weakened, Shredded,
+  Withering, Withered and Touch of Nothing are each read with the tag behind them, and the longest-lasting effect
+  granting it gives the seconds. The texts that already carry seconds (the held buff, the immunities) and those with no
+  tag (Negated, kept stacks, Owed) are carried as they are.
+- **Stacks of a tag** are the stack counts of the effects granting it, added, or the tag's count where no effect is
+  behind it; one is shown as no count.
+- **Read top down**, the last line where the first of the old texts was, so the list reads in its own order.
+- **Forced March's stacks are worked out here as `StepForcedMarch` works them out** -- the floor brief carries the row
+  and `ForcedMarchStacksAfter(SecondsSinceMoved())` -- because both inputs are public; the ruling allowed one new
+  getter, and The Nihil's Embrace needed it, its applied figures being private.
+
+### Not listed yet
+
+Every other floor rule that keeps its state on the dungeon game mode: Death's Embrace's stacks, Contagious Touch's,
+Wasting Sickness's, Mortal Decay's slow, Starvation's and Dehydration's per-floor maxima, the Edicts, and the rest. Each
+needs its own reading and is later work. A client in a multiplayer game would see no floor rule at all, because the
+game mode exists only where the game has authority; the game has no multiplayer today.
+
+### Tests
+
+All in `game/Source/Cataclysm/Tests/CataclysmPlayerEffectsTests.cpp`, group `Cataclysm.PlayerEffects.`:
+
+- `NothingAppliedListsNothing`: the control the others lean on -- a fresh player lists nothing, the screen shows no
+  line, and no actor lists nothing.
+- `ABleedIsListedAsADebuffWithItsSecondsLeft`: a real bleed by `ApplyDamageOverTime`, 1 a tick for 4 seconds; CONTROL
+  first, nothing listed. The one entry is named "Bleed", a debuff, with seconds left, and its text is "Bleed Ns", N the
+  seconds rounded up; 1.5 seconds later it has 1.5 seconds less.
+- `ACrowdControlStateIsListed`: a knockdown laid for 2 seconds by `ApplyTagForDuration`, and a pin as a bare tag:
+  "Knocked Down Ns" first, a debuff with seconds left, then "Pinned" with no time; the pin taken off, it goes.
+- `ABuffIsListedAfterEveryDebuff`: `Status.Buff.Commander` put on first (CONTROL: listed alone, as a buff), then
+  `Status.Debuff.Quarry` and `State.Staggered`: "Staggered, Quarry, Commander", kinds "D D B".
+- `PastEightTheRestAreCountedAsMore`: ten named curses no text names and one buff, eleven entries (SET-UP); shown
+  "Abyssal Aura, Battle Cry, Beguiling, Contagion, Echoing, Final Curse, Haunting, Infernal Brand, +3 more", kinds
+  "D D D D D D D D B"; three curses taken off, eight lines and no count line: the boundary, reached.
+- `WitheringIsListedInTheOverlaysOwnWords`: three Withering stacks and the status as a bare tag; SET-UP: the overlay's
+  `WitheringTextFor` says "Withering 3/10"; the list's whole text is that, once, as a debuff.
+- `ForcedMarchStacksAreReadThroughTheList`: a dungeon game mode; the player moves and then stands 4.5 seconds.
+  CONTROL: on a floor without the row nothing is listed; with it, "Forced March 2/5", a debuff; 10 seconds more,
+  "Forced March 5/5"; moving again, nothing.
+
+### Registered before the run
+
+Every Unreal figure is a prediction traced by hand from the code, made before any build of it. First registered on
+`feat/the-player-sees-what-affects-them` at `345591cfd`, on `development` at `f091d674d`, with the suite at 4506. MOVED,
+with no force push, onto `development` at `68af556f4` (#1472 merged as #2680) as
+`feat/the-player-sees-what-affects-them-1`, and registered again there at the commit that carries this sentence; the
+move's only conflict was this file's top, and `development` had touched none of this change's other files since
+`f091d674d`, by `git diff --stat`.
+
+| Figure | Registered |
+|---|---|
+| The seven new tests alone, by the prefix `Cataclysm.PlayerEffects.` | 7 / 7 |
+| Whole Unreal suite | 4511 / 0: `development`'s 4504 at `68af556f4`, the coordinating session's figure, + 7 |
+| Python | of record, with JUnit, and ruff |
+| E1, the debuff-root query emptied (`for (const FGameplayTag& Tag : UCataclysmDebuffs::TagsOn(AbilitySystem))` to `for (const FGameplayTag& Tag : FGameplayTagContainer())`), prefix `Cataclysm.PlayerEffects.ABleedIsListedAsADebuffWithItsSecondsLeft` | one failed assertion, "the bleed is the one entry" (0, expected 1), where the test returns; the control "before the bleed, nothing is listed" holds |
+| E2, the order reversed (`Entries = MoveTemp(Debuffs);` to `Entries = MoveTemp(Buffs); Buffs = MoveTemp(Debuffs);`), prefix `Cataclysm.PlayerEffects.ABuffIsListedAfterEveryDebuff` | two failed assertions: "the stagger, then the curse, then the buff" (reads "Commander, Staggered, Quarry") and "two debuffs, then one buff" (reads "B D D"); the control "the buff alone is listed, as a buff" holds |
+
+### A check before the window
+
+Not the window's evidence: the coordinating session ran the seven tests alone on `d746551fe` (the first branch, on
+`f091d674d`) under the prefix `Cataclysm.PlayerEffects.`, as a short check: 7 of 7 passed, with "Test saves: 0 written
+and deleted, 0 left behind". The move changed none of the C++ those tests read.
+
+### Window effects-list-w1, run 2026-11-01 by the coordinating session
+
+On `80554917b`, branch `feat/the-player-sees-what-affects-them-1`, on `development` at `68af556f4`. Pre-checks at
+16:35:43 all passed, 11,133 MB of physical memory free, after the dungeon session's Python run had ended at 16:35:39;
+the runner (started 16:35:55) took the lock as `effects-list-w1` and released it.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| The seven new tests, prefix `Cataclysm.PlayerEffects.` | 7 / 7 | "7 tests performed, 7 succeeded, 0 failed" |
+| Whole Unreal suite | 4511 / 0 | "4511 tests performed, 4511 succeeded, 0 failed"; "Declared: 4511 tests in the tree at 80554917b; 4511 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7220 passed, 8 skipped in 199.31s"; JUnit tests 7228, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| E1 | one assertion | PROVED: "1 tests performed, 0 succeeded, 1 failed: ABleedIsListedAsADebuffWithItsSecondsLeft"; restored 1 of 1. The kept broken-half log fails exactly "Expected 'the bleed is the one entry' to be 1, but it was 0." and no other assertion |
+| E2 | two assertions | PROVED: "1 tests performed, 0 succeeded, 1 failed: ABuffIsListedAfterEveryDebuff"; restored 1 of 1. The kept broken-half log fails exactly "the stagger, then the curse, then the buff" ("Commander, Staggered, Quarry" against "Staggered, Quarry, Commander") and "two debuffs, then one buff" ("B D D" against "D D B"), and no other assertion |
+
+### Not verified
+
+- What the list looks like on screen, which no automation test can see: on the owner's launch check after 2026-11-16,
+  with the position, the colours and the cap, which the owner may change.
+
+### Run
+
+Compiled with `python tools/unreal_build.py build` on `345591cfd`, the lock free and no window held: `Build: Succeeded -
+43 actions, 40 files compiled`, at the first attempt; the two unity files holding the new `.cpp` files
+(`Module.Cataclysm.10.cpp.obj`, `Module.Cataclysm.26.cpp.obj`) were written by that build. Python of record on the
+same head, `python -u -m pytest -p no:cacheprovider --junit-xml=<scratchpad>`: `7217 passed, 8 skipped in 197.49s
+(0:03:17)`; JUnit tests 7225, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!". This
+change adds no Python test, so the totals are `f091d674d`'s.
+
+AFTER THE MOVE, on `9f4c992e1` (on `68af556f4`): `python tools/unreal_build.py build` with the lock free printed `Build:
+the continuous integration runner holds the UnrealBuildTool mutex; waiting 60 seconds and retrying (2 of 5)` and then
+`Build: Succeeded - 43 actions, 40 files compiled`. Python of record: `7220 passed, 8 skipped in 202.85s (0:03:22)`;
+JUnit tests 7228, failures 0, errors 0, skipped 8. `python -m ruff check .`: "All checks passed!".
+
+---
+
 ## 2026-11-01 — A character carries its own difficulty tier: its runs begin at it, every level is fought at the run's, and a won run will raise it (#1472)
 
 **Affects:** `ACataclysmPlayerState` (`GetDifficultyTier`, `SetDifficultyTier`, `RaiseDifficultyTierForAWin`;

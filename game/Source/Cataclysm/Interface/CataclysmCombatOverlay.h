@@ -612,8 +612,8 @@ public:
 	 * THE SECONDS ARE ROUNDED UP, a judgement: a buff just laid reads "30s", and one in its last second reads "1s"
 	 * and never "0s" while it is still held.
 	 *
-	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, which `ACataclysmHUD` draws text by text, and last on a creature's
-	 * status line, where it is empty today because no creature wears a row.
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, as an entry of `UCataclysmPlayerEffects` (issue #1591), and last on a
+	 * creature's status line, where it is empty today because no creature wears a row.
 	 */
 	static FString HeldBuffTextFor(const AActor* Actor);
 
@@ -681,8 +681,8 @@ public:
 	 * AS OF THE LAST DRAIN, which is a quarter of a second ago at most in play: the store is drained on the
 	 * regeneration step, and this reads what that step left.
 	 *
-	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, after the kept stacks' text, and last on a creature's status line,
-	 * where it is empty today because no creature wears a row.
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, among the debuffs of `UCataclysmPlayerEffects` (issue #1591), and last
+	 * on a creature's status line, where it is empty today because no creature wears a row.
 	 */
 	static FString OwedTextFor(const AActor* Actor);
 

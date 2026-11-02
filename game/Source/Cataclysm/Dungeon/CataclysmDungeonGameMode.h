@@ -2634,6 +2634,15 @@ public:
 	 */
 	static ACataclysmDungeonGameMode* InWorld(UWorld* World);
 
+	/**
+	 * The Nihil's Embrace as the last beat applied it, for the list of what is affecting the player (issue #1591):
+	 * the resistance its walking has taken off, the resistance its cleanse's reward adds, both in per cent, and the
+	 * seconds that reward has left, nought while none runs. Read from the fields `StepNihilsEmbrace` writes, so the
+	 * list says what the character's stat line holds and not a second working of it.
+	 */
+	void NihilsEmbraceShownNow(float& OutResistanceLessPercent, float& OutResistanceMorePercent,
+							   float& OutRewardSecondsLeft) const;
+
 	/** Famished Beasts, for the panel and tests: the drops eaten on this floor. Issues #1820 and #41. */
 	int32 FamishedBeastsDropsEatenNow() const { return FamishedBeastsFloor == FloorNumber ? FamishedBeastsDropsEaten : 0; }
 
