@@ -136,6 +136,24 @@ the six attribute tests above are registered in `CataclysmMinionAttributeTests.c
 
 Each break's anchor occurs once (`prove_m340.py --anchors-only`). The breaks were not compiled before registration.
 
+### Window minion-attributes-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `b07b9b193` (on `development` `5faecd4ef`),
+lock `minion-attributes-w1`, after the six pre-checks all passed (10,616 MB of physical memory free). Every registered
+figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's build of the same tree had compiled 47 files) |
+| `Cataclysm.MinionStats.` alone | 12 / 12 | "12 tests performed, 12 succeeded, 0 failed" |
+| Whole Unreal suite | 4562 / 0 | "4562 tests performed, 4562 succeeded, 0 failed"; "Declared: 4562 tests in the tree at b07b9b193; 4562 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 198.93s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 6 tests, 8 assertions | PROVED. The kept broken-half log fails exactly the eight registered assertions in the six registered tests, and nothing else; the restored half passed 12 of 12 |
+| B | 1 assertion | PROVED. Exactly "its commander's forty Spirit raises its blow by forty per cent" (140 expected, 100 read); restored 12 of 12 |
+| C | 1 assertion | PROVED. Exactly "with 25% increased minion damage it explodes for three of its blows as dealt, 25% more" (826.875 expected, 661.5 read); restored 12 of 12 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - A summoner that is a real player character, through `ACataclysmPlayerCharacter`'s refresh: the tests call `ApplyTo`
