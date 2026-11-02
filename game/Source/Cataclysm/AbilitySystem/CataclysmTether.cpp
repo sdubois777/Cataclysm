@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
+// For the skill that bound it, which every burn the line lays carries. Issue #1585.
+#include "Abilities/GameplayAbility.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -26,7 +28,8 @@ ACataclysmTether* ACataclysmTether::Bind(AActor* Caster,
 										 const TArray<AActor*>& Pair,
 										 float MaxSeparationCm,
 										 float DurationSeconds,
-										 float LineHalfWidthCm)
+										 float LineHalfWidthCm,
+										 const UGameplayAbility* BoundBy)
 {
 	if (!IsValid(Caster) || Pair.Num() != 2 || MaxSeparationCm <= 0.0f
 		|| DurationSeconds <= 0.0f)
@@ -75,6 +78,7 @@ ACataclysmTether* ACataclysmTether::Bind(AActor* Caster,
 	}
 
 	Line->Caster = Caster;
+	Line->SkillThatBoundIt = BoundBy;
 	Line->First = Pair[0];
 	Line->Second = Pair[1];
 	Line->MaxSeparationCm = MaxSeparationCm;
@@ -218,10 +222,16 @@ void ACataclysmTether::Check()
 		// that is the truth -- nothing struck anybody, and burn has been a flat
 		// 25 a second since 2026-08-24 -- so without that decision the line
 		// would light nobody at all.
+		//
+		// AND THE SKILL THAT BOUND IT, so every tick names it and a kill is that skill's, and so the burn is priced
+		// with it as a projectile's is. Issue #1585, ruled 2026-11-01. See `SkillThatBoundIt` for what the pricing
+		// reads.
 		if (UCataclysmSkillEffects::ApplyBurn(Caster.Get(), Touching,
 											  /*HitDamage=*/0.0f,
 											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true))
+											  /*bBurnIsDesigned=*/true,
+											  /*DealtBy=*/nullptr,
+											  /*Skill=*/SkillThatBoundIt.Get()))
 		{
 			++LastCheckLit;
 		}

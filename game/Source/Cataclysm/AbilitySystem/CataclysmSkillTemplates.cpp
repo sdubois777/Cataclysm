@@ -1317,8 +1317,10 @@ ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
 		return nullptr;
 	}
 
+	// AND THIS SKILL, which every burn the line lays names and is priced with. Issue #1585, ruled 2026-11-01.
 	Tethered = ACataclysmTether::Bind(Caster, Found, Params.TetherLengthCm,
-									  Params.TetherDuration, ScaledRadiusCm());
+									  Params.TetherDuration, ScaledRadiusCm(),
+									  /*BoundBy=*/this);
 	return Tethered;
 }
 

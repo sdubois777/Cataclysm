@@ -3452,7 +3452,9 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 		// A ROW'S ZONE IS HANDED THE SKILL'S DAMAGE TYPE BY NAME. Ruled 2026-10-06. A skill's own ground is
 		// left without one, as it was before this, and deals its owner's.
 		/*HandedDamageType=*/bTheSkillsOwnGround ? FName() : DamageTypeName(),
-		/*AilmentOfType=*/DamageTypeName());
+		/*AilmentOfType=*/DamageTypeName(),
+		// AND THIS SKILL, SO EVERY SWEEP NAMES IT. Issue #1585, ruled 2026-11-01: a kill by the zone is this skill's.
+		/*LeftBy=*/this);
 
 	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's
 	// Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic
@@ -3493,7 +3495,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 	AActor* ZoneOwner, const FVector& Start, const FVector& End, float RadiusCm, float Seconds, float PerSweep,
-	const FGameplayTagContainer& SkillTags, FName HandedDamageType, FName AilmentOfType)
+	const FGameplayTagContainer& SkillTags, FName HandedDamageType, FName AilmentOfType, const UGameplayAbility* LeftBy)
 {
 	if (!ZoneOwner)
 	{
@@ -3508,6 +3510,12 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 		ZoneOwner, Start, End, RadiusCm,
 		Seconds * PersistentAreaDurationMultiplier(AbilitySystem, SkillTags), PerSweep,
 		/*bBurnsEveryone=*/false, HandedDamageType);
+
+	// AND THE SKILL THAT LEFT IT, which every sweep names. Issue #1585. Null for a zone no skill left.
+	if (Zone)
+	{
+		Zone->SkillThatLeftIt = LeftBy;
+	}
 
 	// AND WHAT A ROW ADDS TO EVERY SWEEP: more for each enemy inside, and a slow. Ruled 2026-10-06.
 	if (const UCataclysmAbilitySystemComponent* ZoneAsking =

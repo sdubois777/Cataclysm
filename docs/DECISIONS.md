@@ -2,6 +2,164 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — A ground zone's sweep and a tether's burn name the skill that made them, so a kill by either is that skill's kill (#1585)
+
+**Affects:** `ACataclysmGroundZone::SkillThatLeftIt` (new, `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h`)
+and `ACataclysmGroundZone::Sweep` (`CataclysmGroundZone.cpp`); `UCataclysmSkillTemplate::LeaveAZoneFor`, which takes a
+new last parameter `LeftBy` (`CataclysmSkillTemplate.h`, `.cpp`), and its two callers, `LeaveZoneAlong` (passes the
+skill) and `ACataclysmMinion::LeaveChaosPool` (passes null, `CataclysmMinion.cpp`); `ACataclysmTether::Bind`, which
+takes a new last parameter `BoundBy`, null by default, and `ACataclysmTether::SkillThatBoundIt` (new) and `Check`
+(`CataclysmTether.h`, `.cpp`); `UCataclysmProjectileSkill::BindTether`, which passes the skill
+(`CataclysmSkillTemplates.cpp`); two tests in `game/Source/Cataclysm/Tests/CataclysmCombatEventsTests.cpp`. Issue
+[#1585](https://github.com/sdubois777/Cataclysm/issues/1585).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN YET.** Every Unreal figure below is a prediction traced by hand from the code.
+  The section "Run" is filled in once the build and the Python run of record have been made.
+- **WHAT CHANGES IN PLAY.** A kill by a skill's zone or by a tether's burning line now carries the skill's tags to the
+  killer's `kill` rows, as `FCataclysmDeathNotice::KillingSkillTags`. Before, both carried none. So "Melee kills
+  restore 3%-6% of your maximum HP" (`Type.Melee`) now fires on a kill by the ground of a skill carrying `Type.Melee`,
+  and "Ranged kills have a 20%-40% chance to refund the skill cooldown" (`Type.Ranged`) on a kill by Tether's line,
+  whose row carries `Type.Ranged`. No test wears either row; see "Not tested".
+- **THE ZONE ONLY NAMES. THE TETHER'S BURN IS ALSO PRICED WITH THE SKILL**, by ruling Q3. What that changes in a
+  burn's figure is under "Q3" below: nothing for a Tether the caster casts in a fight with no "every Nth attack" or
+  rolled no-damage row; something in two narrow cases.
+- **OUT OF THIS CHANGE, by ruling Q2:** the buried weapon's burn and a zone's own ailment, both
+  [#2683](https://github.com/sdubois777/Cataclysm/issues/2683). Also not done, and not ruled: a zone or a line whose
+  skill's grant is removed names nothing once that instance is gone. Every use made through
+  `UCataclysmTriggeredSkill::Trigger` is such a grant: a gadget's or minion's cast in the caster's name, and Echo
+  Chamber's and Wild Magic's repeats. A projectile keeps the skill's tags for that case since #2475 (`FCataclysmHitDelivery::SkillTagsWithNoSkill`);
+  a zone and a tether keep none.
+
+### Rulings, 2026-11-01 (coordinating session)
+
+- **Q1.** A kill by a zone's hit or a tether's burn counts as that skill's kill: its tags reach `KillingSkillTags`.
+  This follows the owner's ruling of 2026-09-14 that a kill finished by damage over time is credited to the character,
+  and the fact that a burn a skill lays directly already carries its tags.
+- **Q2.** The buried weapon's burn and the zone's own ailment are out of this change: #2683.
+- **Q3.** The tether accepts the burn-pricing side effects of being given its skill, as the projectile does. This
+  entry says exactly what changes in a tether burn's figure, with the reasoning, and whether any test pins one.
+
+### What changes
+
+- **The zone.** `SkillThatLeftIt` is a weak pointer, not a `UPROPERTY`, as `ACataclysmProjectile::FiringSkill` is.
+  `LeaveAZoneFor` sets it from `LeftBy` right after `SpawnAlong`. Every zone a skill or a row leaves passes through
+  there: `LeaveGroundAlong` (and so `LeaveGroundAt`) and `LeaveRowZoneAt` both call `LeaveZoneAlong`, which passes
+  `this`. The minion's chaos pool passes null: a minion's death leaves it, not a skill. A zone made by `Spawn`,
+  `SpawnAlong` or `SpawnForTheFloor` alone (a creature's, a floor rule's) is never given one. `Sweep` puts it on the
+  delivery as `Delivery.Skill`.
+- **Naming a zone's skill changes no figure.** `ApplyDirectDamage` reads `Delivery.Skill` once, to call
+  `FGameplayEffectContext::SetAbility`. The only other read of `Delivery.Skill` in `CataclysmSkillEffects.cpp` is in
+  `ApplyHit`, which a sweep does not call. `ApplyTypedSpec` does not read it.
+- **Where the named skill is read.** The hit notice (`FCataclysmHitNotice::SkillName`, `SkillTags`). The player's
+  `hit_dealt`, `first_hit_dealt` and `critical_strike` events are not raised for it:
+  `ACataclysmPlayerCharacter::OnSomethingWasHit` returns on a damage-over-time blow, and a sweep's delivery is one
+  (`bIsDamageOverTime`), as is every tick of a burn. The death notice (`KillingSkillName`, `KillingSkillTags`): the
+  `kill` event takes `KillingSkillTags`. Follow Through, the only reader of `KillingSkillName`, refuses a death by
+  damage over time (`UCataclysmFollowThrough::IsOwnMeleeKill`), so it repeats nothing for either.
+- **The tether.** `Bind` stores `BoundBy` as `SkillThatBoundIt`. `BindTether` passes `this`. `Check` passes it to
+  `ApplyBurn` as its last argument. `BoundBy` defaults to null, so the two tests that bind a line by hand
+  (`ATetherSetsAlightWhatStandsOnTheLine`, `ATetherDragsBothEndsBackOnAFloor`) are unchanged and their lines still
+  name no skill.
+
+### Q3: what being given its skill changes in a tether burn's figure
+
+`ApplyBurn` hands the skill to `UCataclysmSkillEffects::ApplyDamageOverTime`, which reads it three times when the
+burn is laid, plus `SetAbility` for the name. Read at `development` 6a187a440:
+
+1. **`bThisUseDealsNoDamage`** (the check right after the first refusal). The burn is refused while the skill's
+   current use deals no damage: the Nth attack of a worn "every Nth attack" row, a use a worn row rolled to deal no
+   damage, or a use a row turned onto its own user. The line lays its burn when it checks, so this is the skill's
+   LATEST use, not the one that bound the line. A line bound by a no-damage use lights nobody until the skill is used
+   again with damage. A line bound by a damaging use stops lighting while a later use of the same skill deals none.
+   Before this change the line lit whatever the use was. Reasoning: this is the same read the projectile's burn makes
+   (`ACataclysmProjectile` passes `FiringSkill.Get()` to `ApplyBurn`, and `ApplyDamageOverTime` reads the flag live).
+   It also matches the ruling of 2026-09-24 (#1833, phase 2) that such a use deals "none at all, its burn included".
+2. **The skill's tags** (`AskedWith`). The caster's `dot_damage`, `dot_duration` and `dot_frequency` are asked with
+   the skill's tags beside the burn's own `Keyword.DoT.Burn`. **No figure changes today.** Measured in `game/Data` on
+   2026-11-01: every row on those three stats requires either no tag or a `Keyword.DoT.*` tag. That is 8 rows in
+   `EnchantmentEffects.csv` and 4 in `PassiveEffects.csv`, and the 3 affixes, the Effigy's implicit, the efficacy
+   attribute and the 3 class lines carry no tag requirement. The burn's own tag was already asked. A later row scoped
+   to one of Tether's tags (`Item.Weapon.Whip, Element.Demonic, Type.Projectile, Keyword.CC, Type.AOE.Persistent,
+   Keyword.DoT.Burn, Type.Ranged, Slot.Special`) would reach the line's burn, as it reaches the bolt's.
+3. **Withered Touch** (`bCastByAMinion`). Before, the curse cut every line burn of a cursed caster, because there was
+   no skill to ask. Now it is left off while the skill's instance names a minion in `FreeRepeatCastBy`. Only
+   `UCataclysmTriggeredSkill::Trigger` sets that field, when it is given a `CastBy`. Its two callers that give one are
+   in `ACataclysmMinion`: a gadget or minion casting the skill in the caster's name. That one-use grant is removed when its use ends (`SetRemoveAbilityOnEnd`).
+   After that the line names no skill and the curse applies again. For a Tether the caster casts itself,
+   `FreeRepeatCastBy` is never set, and the curse applies as before. Reasoning: the same rule the projectile's burn
+   and `ApplyHit` follow, that the curse is on the player and not on the minion.
+
+**When the skill's instance is gone,** all three revert to the behaviour of a burn with no skill.
+
+**No test pins a tether burn's figure.** Searched every file under `game/Source/Cataclysm/Tests/`, `tools/tests/` and
+`sim/tests/` for `Tether`. `ATetherSetsAlightWhatStandsOnTheLine` asserts that one bystander is lit and carries the
+burn tag. `ATetherDragsTwoEnemiesBackWithinItsLength` and `ATetherDragsBothEndsBackOnAFloor` assert positions. The
+gadget-copy tests use Tether as a recorded skill name. No Python test reads `CataclysmTether.cpp` or `.h`.
+
+### Tests
+
+In `game/Source/Cataclysm/Tests/CataclysmCombatEventsTests.cpp`, group `Cataclysm.CombatEvents.`. Both drive the real
+path: a skill is granted and named as its row would name it, and nothing calls a notice function by hand.
+
+- `AGroundZonesSweepNamesTheSkillThatLeftIt`: a Strike "Molten Trail" (`Type.Melee` among its tags,
+  `GroundRadius=3; GroundDuration=4; GroundPercent=25`) is activated by a bare armed actor. SET-UP: it left one zone,
+  which deals damage and keeps the skill. One `Sweep()`: the hit notice is on the victim 1 m away, an area blow, names
+  "Molten Trail" and points at its tags, which hold `Type.Melee`. The victim left 1 health, a second `Sweep()` kills
+  it: the death is the caster's, by damage over time, names "Molten Trail", and its `KillingSkillTags` hold
+  `Type.Melee`. CONTROL: a zone made by `ACataclysmGroundZone::Spawn` 20 m away keeps no skill, and its sweep's notice
+  names none and points at no tags.
+- `ATethersBurnNamesTheSkillThatBoundIt`: a projectile skill "Burning Line" (`Type.Ranged` among its tags,
+  `TetherTargets=2; TetherLength=5; TetherDuration=8; Radius=1.5`) binds a line through `BindTether`. The two ends
+  stand 3 m from the caster along X and along Y. A third creature stands 1.2 m off the line's middle, on the far side,
+  3.32 m from the caster, so the nearest-first search binds the two ends (SET-UP asserts it). `Check()` lights the
+  third creature; one tick by `ExecutePeriodicEffectsGrantingForTests` names "Burning Line" and points at its tags,
+  which hold `Type.Ranged`. Left 1 health, the next tick kills it: the death is the caster's, by damage over time,
+  names "Burning Line", and its `KillingSkillTags` hold `Type.Ranged`.
+
+Creatures stand at least 2 m apart. A zone's sweep is an area blow and a burn's tick is damage over time; the damage
+calculation rolls evasion for neither, so neither kill can be dodged.
+
+### Registered before the run
+
+Registered on `fix/zone-and-tether-name-their-skill`, on `development` at 6a187a440.
+
+| Figure | Registered |
+|---|---|
+| Build | `Succeeded`, compiling the changed `.cpp` files and the unity files that hold them |
+| `Cataclysm.CombatEvents.AGroundZonesSweepNamesTheSkillThatLeftIt` alone, by its full name | 1 / 1 |
+| `Cataclysm.CombatEvents.ATethersBurnNamesTheSkillThatBoundIt` alone, by its full name | 1 / 1 |
+| Whole Unreal suite | the base's last measured total + 2, every test passing. The base is the coordinating session's figure, written here before the window (4513 if #1841 merges first, so 4515) |
+| Python | of record, with JUnit, and ruff. This change adds and changes no Python test, so the totals are the base's |
+| G1, the sweep names no skill (`Delivery.Skill = SkillThatLeftIt;` to `Delivery.Skill = nullptr;`, in `CataclysmGroundZone.cpp`), prefix `Cataclysm.CombatEvents.AGroundZonesSweepNamesTheSkillThatLeftIt` | six failed assertions and no other: "the sweep names the skill that left the zone" (reads "None"), "and points at that skill's tags", "which are its own, holding Type.Melee", "the kill names the skill that left the zone" (reads "None"), "and carries that skill's tags to the killer's rows", "which hold Type.Melee". Every set-up line and the control hold |
+| G2, the line's burn is laid with no skill (`/*Skill=*/SkillThatBoundIt.Get())` to `/*Skill=*/nullptr)`, in `CataclysmTether.cpp`), prefix `Cataclysm.CombatEvents.ATethersBurnNamesTheSkillThatBoundIt` | six failed assertions and no other: "the line's burn names the skill that bound it" (reads "None"), "and points at that skill's tags", "which are its own, holding Type.Ranged", "the kill names the skill that bound the line" (reads "None"), "and carries that skill's tags to the killer's rows", "which hold Type.Ranged". Every set-up line holds |
+
+Each anchor occurs once in its file (`prove_z1585.py G1 --anchors-only` and `G2 --anchors-only`: anchor count 1). Each
+break keeps its file compiling: `TWeakObjectPtr` takes `nullptr` through its constructor from `TYPE_OF_NULLPTR`, and
+`ApplyBurn`'s last parameter is a plain pointer. Prefix `Cataclysm.CombatEvents.` selects 26 tests, all in this file,
+and each full name above selects one: no other registered name begins with it. Both counts are of the name
+literals in the source on this branch; the run's own count is the figure.
+
+### Not tested
+
+- **The two kill rows themselves.** The tests stop at `KillingSkillTags`, which is what
+  `ACataclysmPlayerCharacter::OnSomethingDied` hands to `ActOnEvent("kill", ...)`. No test wears "Melee kills
+  restore..." or "Ranged kills ... refund" and kills with a zone or a line.
+- **Q3's reads 1 and 3 on the line.** No test makes the skill's latest use deal no damage, and none casts Tether
+  through a gadget under Withered Touch. Read 2 changes no figure today.
+- **A zone or line whose skill's grant has been removed**, which names nothing: unchanged, and not tested here.
+- **The minion's chaos pool**, which still names nothing; unchanged, and not tested here.
+- **A sweep that reaches its own owner** ("Persistent AOE zones also damage you"): its blow now names the skill too,
+  and so does the owner's death by it. Not tested.
+
+### Run
+
+To be filled in: `python tools/unreal_build.py build`, and the Python run of record with JUnit, and ruff, once the
+coordinating session clears them.
+
+---
+
 ## 2026-11-01 — The floor panel's chain is tested: a Brand of the Aggressor blow tells the player's controller the new count, and the panel lists each row's count (#1841)
 
 **Affects:** `ACataclysmPlayerController::ShowFloorModifiers`, which now records what it was last told

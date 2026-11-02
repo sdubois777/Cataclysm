@@ -6,6 +6,8 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmTether.generated.h"
 
+class UGameplayAbility;
+
 /**
  * A burning line holding two creatures within a stated distance of each other.
  *
@@ -79,10 +81,15 @@ public:
 	 * @param DurationSeconds   how long the line holds. `TetherDuration`
 	 * @param LineHalfWidthCm   how close something must come to the line to be
 	 *                          set alight by it. The skill's own `Radius`
+	 * @param BoundBy           the skill that bound it, or null. Every burn the
+	 *                          line lays names it and is priced with it, as a
+	 *                          projectile's burn is with its firing skill.
+	 *                          Issue #1585
 	 */
 	static ACataclysmTether* Bind(AActor* Caster, const TArray<AActor*>& Pair,
 								  float MaxSeparationCm, float DurationSeconds,
-								  float LineHalfWidthCm);
+								  float LineHalfWidthCm,
+								  const UGameplayAbility* BoundBy = nullptr);
 
 	/**
 	 * One measurement of the line: drag if it is stretched, burn what touches it.
@@ -126,6 +133,22 @@ private:
 	/** Whose skill made it. The burn is credited to this character. */
 	UPROPERTY()
 	TWeakObjectPtr<AActor> Caster;
+
+	/**
+	 * The skill that bound it, or none. Issue #1585, ruled 2026-11-01: handed to every burn the line lays, so each
+	 * tick names the skill and a kill by the burn carries the skill's tags to the caster's rows.
+	 *
+	 * AND SO THE BURN IS PRICED WITH THE SKILL, as a projectile's burn is with its firing skill (ruled the same day,
+	 * Q3). `UCataclysmSkillEffects::ApplyDamageOverTime` reads three things off it when the burn is laid: it lays
+	 * nothing while the skill's current use deals no damage (`bThisUseDealsNoDamage`), it asks the caster's damage
+	 * over time rows with the skill's tags as well as the burn's, and it leaves Withered Touch off a burn whose
+	 * skill's current use names a minion in `FreeRepeatCastBy`. All three are the skill's state WHEN THE LINE LAYS THE
+	 * BURN, not when it was bound.
+	 *
+	 * WEAK, because the line outlives the use: a skill whose grant is removed names nothing once its instance is gone.
+	 * Not a UPROPERTY, as `ACataclysmProjectile::FiringSkill` is not.
+	 */
+	TWeakObjectPtr<const UGameplayAbility> SkillThatBoundIt;
 
 	/** How far apart the two ends may get. `TetherLength`. */
 	float MaxSeparationCm = 0.0f;

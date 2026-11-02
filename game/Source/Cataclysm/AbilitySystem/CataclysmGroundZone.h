@@ -9,6 +9,7 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmGroundZone.generated.h"
 
+class UGameplayAbility;
 class UNiagaraComponent;
 
 /**
@@ -385,6 +386,26 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float FirstSweepDamage = -1.0f;
+
+	/**
+	 * The skill that left this zone, or none. Issue #1585. Given to every sweep's blow, so its hit notice names the
+	 * skill and a kill it makes carries the skill's tags to the killer's rows: ruled 2026-11-01 by the coordinating
+	 * session, after the owner's ruling of 2026-09-14 that a kill finished by damage over time is the character's.
+	 *
+	 * SET BY `UCataclysmSkillTemplate::LeaveAZoneFor`, through which every zone a skill or a row leaves passes. A zone
+	 * made by `Spawn`, `SpawnAlong` or `SpawnForTheFloor` alone -- a creature's, a floor rule's -- names none, and
+	 * neither does a minion's chaos pool, which no skill left.
+	 *
+	 * WEAK, as `ACataclysmProjectile::FiringSkill` is, because the zone outlives the use that left it. A skill whose
+	 * grant is removed -- the one-use grant `UCataclysmTriggeredSkill::Trigger` makes, a gadget's cast among them --
+	 * names nothing once its instance is gone. UNLIKE A PROJECTILE, a zone keeps no copy of the skill's tags for that
+	 * case (`FCataclysmHitDelivery::SkillTagsWithNoSkill`); that is not part of #1585. Not a UPROPERTY, as
+	 * `FCataclysmHitDelivery::Skill` is not: nothing reflects it.
+	 *
+	 * IT ONLY NAMES. `UCataclysmSkillEffects::ApplyDirectDamage` reads a delivery's skill to label the effect's
+	 * context and for nothing else, so a sweep deals what it dealt before.
+	 */
+	TWeakObjectPtr<const UGameplayAbility> SkillThatLeftIt;
 
 	/**
 	 * The floor rule this zone burns for, or None. Issue #2074. Zones of one rule that

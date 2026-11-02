@@ -1852,7 +1852,9 @@ ACataclysmGroundZone* ACataclysmMinion::LeaveChaosPool()
 	static const FName Chaos(TEXT("Chaos"));
 	return UCataclysmSkillTemplate::LeaveAZoneFor(
 		Summoner, GetActorLocation(), GetActorLocation(), ChaosPoolRadiusCm, ChaosPoolSeconds, PerSweep,
-		TypeTags, /*HandedDamageType=*/Chaos, /*AilmentOfType=*/Chaos);
+		TypeTags, /*HandedDamageType=*/Chaos, /*AilmentOfType=*/Chaos,
+		// NO SKILL LEFT IT: the minion's death did, so its sweeps name none, as before issue #1585.
+		/*LeftBy=*/nullptr);
 }
 
 bool ACataclysmMinion::ExplodesOnDeath() const
