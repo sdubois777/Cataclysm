@@ -2,6 +2,94 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-01 — Worn Residue is summed from the worn items and shown on the character sheet against the Consumption Threshold of the tier being played (#1251, slice 1)
+
+**Affects:** `UCataclysmEquipmentComponent::WornResidue` and `ConsumptionThresholdFor`, new
+(`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h`, `.cpp`); `UCataclysmCharacterSheetLayout::WornResidueLine`,
+new, and the character sheet's status line (`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h`, `.cpp`,
+`CataclysmCharacterSheetWidget.cpp`); a comment on `UCataclysmCharacterSave::CataclysmicResidue`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); two new tests in `CataclysmEquipmentTests.cpp` and one in
+`CataclysmCharacterSheetTests.cpp`; a new Python check, `tools/tests/test_the_consumption_threshold_is_the_designs.py`.
+Issue [#1251](https://github.com/sdubois777/Cataclysm/issues/1251).
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The window is registered below.
+- **SLICE 1 OF FOUR.** This computes and shows the figure. It does NOT ask the player to confirm an equip that crosses
+  the threshold, does NOT mark the character or bring the corrupted double, and does NOT apply Residue Protocols or
+  Purified Essence, none of which has a row. Each is filed as its own issue once this merges (ruled).
+- **THE THRESHOLD BESIDE THE SUM IS THE COORDINATING SESSION'S JUDGEMENT** (2026-11-01), which the owner can change at
+  the launch check: the design asks for the sum "at all times", and the sum alone does not say how near the character
+  is to being consumed.
+- **THE SHEET DOES NOT LISTEN TO EQUIPMENT CHANGES.** Its status line is rewritten when the sheet opens and after an
+  attribute point is spent, so an equip made while the sheet stays open shows at the next open. Worn Residue itself is
+  computed each time, never stored.
+
+### What the design settles, and what is a reading
+
+`docs/Cataclysm_GDD_v2.md`, "Worn Residue and Consumption": Worn Residue is "the sum of the residue on every item the
+character currently has equipped", "changes whenever equipment changes", and "is shown on the character sheet at all
+times". The Consumption Threshold is one per difficulty tier, 1,950 to 5,600, "for the tier being played". **Read
+rather than ruled:** a two-handed weapon fills one slot and leaves the other empty (`UCataclysmEquipmentComponent`'s
+own header), so a sum over the slots counts it once; and "the tier being played" is the tier
+`ACataclysmGameMode::DifficultyTierIn` answers, which #1472 sets from the run.
+
+### Rulings, 2026-11-01
+
+- Slice 1 is the sum, the eight thresholds held to the design by a Python check, and the sheet line.
+- **`UCataclysmCharacterSave::CataclysmicResidue` is LEFT, and commented:** nothing writes it, because Worn Residue is
+  derived from the equipped items, each of which saves its own residue; removing a saved field now needs a character
+  record version, by `game/Tests/SaveFixtures/README.md`.
+- The sheet shows "Worn Residue N of T (tier K)".
+- Two proofs, P1 and P2, P2's break one entry of the table.
+
+### What changes
+
+- **`UCataclysmEquipmentComponent::WornResidue()`** sums `FCataclysmItem::Residue` over the worn slots that hold an item.
+- **`UCataclysmEquipmentComponent::ConsumptionThresholdFor(Tier)`** reads a table of eight, one per line, tier 1 first,
+  the tier held to 1 to 8.
+- **`UCataclysmCharacterSheetLayout::WornResidueLine(Worn, Tier)`** writes "Worn Residue N of T (tier K)", the sum and
+  the threshold rounded to whole numbers, the tier held to 1 to 8; the sheet's status line ends with it, read for
+  `ShownDifficultyTier()`.
+
+### Tests
+
+- `Cataclysm.Equipment.WornResidueSumsTheWornItemsAndNotTheCarried` ("WORN RESIDUE"): a helm (120.5, the first slot
+  the sum reads), a ring (30.25) and a two-handed greatsword (200) worn; boots (999) carried in an inventory. 350.75
+  worn; unchanged with the boots carried; 320.5 with the ring taken off.
+- `Cataclysm.Equipment.EachTierHasTheDesignsConsumptionThreshold`: each of the eight tiers' threshold, and tiers 0 and 9
+  held to 1 and 8.
+- `Cataclysm.CharacterSheet.TheStatusLineShowsWornResidueAgainstTheTiersThreshold` ("RESIDUE LINE"), through the
+  layout's text function: "Worn Residue 2150 of 2400 (tier 2)", "Worn Residue 0 of 5600 (tier 8)", and tier 12 shown as 8.
+- `tools/tests/test_the_consumption_threshold_is_the_designs.py`, two tests: the design's table and the C++ table hold
+  the same eight numbers, and a CONTROL that a changed tier reads as different. **Proved** with `tools/prove_guard.py`
+  in a detached git worktree copy at 25cb44198, tier 3's `2900.0f` changed to `2901.0f`, predicted to fail the first
+  only: `PROVED: 1 failed, 1 passed in 0.13s | restored: 2 passed in 0.05s`, named_failures
+  `tools/tests/test_the_consumption_threshold_is_the_designs.py::test_the_design_and_the_game_hold_the_same_eight_thresholds`.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| The three new tests alone | 1 / 1 each, their lines quoted |
+| Whole Unreal suite | 4518 / 0: `development`'s 4515 (d3685c250, #2685), + 3; a "Test saves:" line after the last test started, with 0 left behind |
+| Python | of record, with JUnit, and ruff |
+| P1, the sum skipping the first slot (`for (int32 Index = 0; Index < Slots.Num(); ++Index) // Worn Residue's: every slot.` to `Index = 1`), prefix `Cataclysm.Equipment.WornResidueSumsTheWornItemsAndNotTheCarried` | fails "the worn residue is the helm's, the ring's and the greatsword's once" (230.25, expected 350.75) and "and an item taken off stops counting" (200, expected 320.5) only; "a carried item adds nothing" still holds |
+| P2, tier 3's threshold off by one (`2900.0f, // tier 3` to `2901.0f, // tier 3`), prefix `Cataclysm.Equipment.EachTierHasTheDesignsConsumptionThreshold` | fails "tier 3's threshold" only |
+
+### Run
+
+Compiled at 25cb44198 with `python tools/unreal_build.py build` and no lock: `Build: Succeeded - 40 actions, 37 files
+compiled`, at the first attempt. Python of record there: `7234 passed, 8 skipped in 201.98s`; JUnit tests=7242,
+failures=0, errors=0, skipped=8; ruff `All checks passed!`.
+
+Moved onto d3685c250 (#2685) as `feat/worn-residue-on-sheet-1` with no conflict; this change's own diff is the same 368
+lines before and after. Compiled there after the Unreal CI run on `development` finished: `Build: Succeeded - 42
+actions, 39 files compiled`. Python of record at 6843d0856: `7234 passed, 8 skipped in 215.81s`; JUnit tests=7242,
+failures=0, errors=0, skipped=8; ruff `All checks passed!`.
+
+---
+
 ## 2026-11-01 — A ground zone's sweep and a tether's burn name the skill that made them, so a kill by either is that skill's kill (#1585)
 
 **Affects:** `ACataclysmGroundZone::SkillThatLeftIt` (new, `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h`)
