@@ -7600,9 +7600,13 @@ bool FCataclysmBrandTellsThePanelTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE CALLS BEFORE THE BLOWS ARE `StartPlay`'S, NOT THE BRAND FLOOR'S. `BuildFloor` tells the panel nothing: in play
+	// `GoToFloor` builds the floor and then refreshes the panel through `ApplyFloorRulesKeepingHealth`, and this test
+	// calls `BuildFloor` alone. So what the controller holds here is `StartPlay`'s own floor, with no rows; window w133
+	// measured it, when P1's break left it the last call. Issue #1841.
 	const FCataclysmFloorModifiersShown& Shown = Controller->FloorModifiersShown();
-	const int32 CallsAtTheFloor = Shown.Calls;
-	const FString CountAtTheFloor = Shown.LiveCounts.FindRef(BrandOfTheAggressor);
+	const int32 CallsBeforeTheBlows = Shown.Calls;
+	const FString CountBeforeTheBlows = Shown.LiveCounts.FindRef(BrandOfTheAggressor);
 
 	constexpr int32 Blows = 3;
 	for (int32 Blow = 0; Blow < Blows; ++Blow)
@@ -7615,13 +7619,13 @@ bool FCataclysmBrandTellsThePanelTest::RunTest(const FString& Parameters)
 	}
 
 	const FString Expected = FString::Printf(TEXT("%d of %d"), Blows, Effects::BrandStacksToErupt);
-	AddInfo(FString::Printf(TEXT("PANEL TOLD: at the floor %d calls, the count '%s'; after %d blows %d calls, the count "
-								 "'%s', floor %d, %d rows"),
-							CallsAtTheFloor, *CountAtTheFloor, Blows, Shown.Calls,
+	AddInfo(FString::Printf(TEXT("PANEL TOLD: before the blows (StartPlay's) %d calls, the count '%s'; after %d blows %d "
+								 "calls, the count '%s', floor %d, %d rows"),
+							CallsBeforeTheBlows, *CountBeforeTheBlows, Blows, Shown.Calls,
 							*Shown.LiveCounts.FindRef(BrandOfTheAggressor), Shown.FloorNumber, Shown.RowKeys.Num()));
 
-	TestTrue(TEXT("CONTROL: the floor's start told the controller, so the record is read at all"), CallsAtTheFloor > 0);
-	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsAtTheFloor, Blows);
+	TestTrue(TEXT("CONTROL: StartPlay told the controller, so the record is read at all"), CallsBeforeTheBlows > 0);
+	TestEqual(TEXT("the controller is told once for each landed blow"), Shown.Calls - CallsBeforeTheBlows, Blows);
 	TestEqual(TEXT("and what it is told last is the brand count after the third blow"),
 			  Shown.LiveCounts.FindRef(BrandOfTheAggressor), Expected);
 	TestTrue(TEXT("with the row among the rows it lists"), Shown.RowKeys.Contains(BrandOfTheAggressor));
