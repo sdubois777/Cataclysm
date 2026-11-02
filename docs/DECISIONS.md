@@ -20,7 +20,10 @@ Issue [#1251](https://github.com/sdubois777/Cataclysm/issues/1251).
   because its check read one literal string and #2679's note sits inside it. Record at the end.
 - **SLICE 1 OF FOUR.** This computes and shows the figure. It does NOT ask the player to confirm an equip that crosses
   the threshold, does NOT mark the character or bring the corrupted double, and does NOT apply Residue Protocols or
-  Purified Essence, none of which has a row. Each is filed as its own issue once this merges (ruled).
+  Purified Essence, which no game code reads: Purified Essence and its "CR Cleanse (Partial)" operation are rows in
+  `game/Data/CraftingMaterials.csv`, and Residue Protocols is an empire node (`docs/Empire_Skill_Tree_Keystones.md`:
+  "Ignore 5% of Cataclysmic Residue per point when crafting"). **Corrected after w134:** this line said "none of
+  which has a row", which was false. Each is filed as its own issue once this merges (ruled).
 - **THE THRESHOLD BESIDE THE SUM IS THE COORDINATING SESSION'S JUDGEMENT** (2026-11-01), which the owner can change at
   the launch check: the design asks for the sum "at all times", and the sum alone does not say how near the character
   is to being consumed.
