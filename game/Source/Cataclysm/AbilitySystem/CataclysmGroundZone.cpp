@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+// For the skill that left it, which every sweep's blow carries. Issue #1585.
+#include "Abilities/GameplayAbility.h"
 // THE FIRST FILE UNDER AbilitySystem/ TO INCLUDE A Dungeon/ HEADER: none of the 12 in
 // Dungeon/ was included by any file here before issue #2074. It is here because the record
 // of which floor rule last burned whom lives on the floor hazard source, the one owner every
@@ -450,6 +452,9 @@ void ACataclysmGroundZone::Sweep()
 		// owner passed below is then the floor's shared hazard source, which
 		// carries none. Issue #1924.
 		Delivery.DamageType = DamageType;
+		// AND THE SKILL THAT LEFT IT, when one did, so the hit notice names it and a kill carries its tags to the
+		// killer's rows. Issue #1585, ruled 2026-11-01. It only names: `ApplyDirectDamage` reads it for the context.
+		Delivery.Skill = SkillThatLeftIt;
 		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log

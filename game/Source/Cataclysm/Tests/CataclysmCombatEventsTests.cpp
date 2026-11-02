@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the zone a skill leaves and the line a skill binds, whose blows and burns name it. Issue #1585.
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -20,9 +22,12 @@
 // file's announcement and a passive row both read.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Engine/World.h"
+// For finding the zone a skill left.
+#include "EngineUtils.h"
 #include "GameplayTagsManager.h"
 #include "HAL/PlatformTime.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -1559,6 +1564,270 @@ bool FCataclysmCombatEventsProjectileSkill::RunTest(const FString&)
 			  Heard.Hits[Blow].SkillName.ToString(), FString(TEXT("Hurled Ember")));
 	TestTrue(TEXT("and pointing at that skill's own tags"),
 			 Heard.HitSkillTags[Blow].HasTagExact(TagNamed(TEXT("Type.Projectile"))));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsGroundZoneSkill,
+	"Cataclysm.CombatEvents.AGroundZonesSweepNamesTheSkillThatLeftIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCombatEventsGroundZoneSkill::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// A ZONE OUTLIVES THE SKILL THAT LEFT IT, as a projectile does, so the skill travels with it. Issue #1585, ruled
+	// 2026-11-01 by the coordinating session: a kill by a zone's sweep is that skill's kill, its tags reaching the
+	// killer's rows as `KillingSkillTags` -- "Melee kills restore 3%-6% of your maximum HP" reads `Type.Melee` there.
+	//
+	// THE REAL PATH: a Strike whose row leaves ground is activated, and the zone it left through
+	// `UCataclysmSkillTemplate::LeaveAZoneFor` is swept. A world built for a test never runs the zone's timer, so the
+	// sweep is called by hand, as `CataclysmAoeStrikesAlliesTests.cpp` calls it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Caster = MakeArmed(World);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("a caster"), Caster.Actor))
+	{
+		return false;
+	}
+
+	const FGameplayTag Melee = TagNamed(TEXT("Type.Melee"));
+	if (!TestTrue(TEXT("set-up: Type.Melee is in the vocabulary"), Melee.IsValid()))
+	{
+		return false;
+	}
+
+	// ONE METRE IN FRONT, where the strike reaches and the ground it leaves under the caster covers, with health
+	// enough to outlast the strike and the first sweep.
+	ACataclysmEnemyCharacter* Victim =
+		SpawnCreatureAt(World, FVector(1.0f * M, 0.0f, 0.0f), 1000000.0f);
+	UCataclysmAbilitySystemComponent* VictimSystem = SystemOf(Victim);
+	if (!TestNotNull(TEXT("set-up: a victim with an ability system"), VictimSystem))
+	{
+		return false;
+	}
+
+	FGameplayAbilitySpecHandle Handle;
+	UCataclysmStrikeSkill* Trail = GrantNamedSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::BasicAttack, TEXT("Molten Trail"),
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Strike, Type.Melee"),
+		TEXT("Radius=2.4; Angle=120; MaxTargets=1; GroundRadius=3; GroundDuration=4; GroundPercent=25"), Handle);
+	if (!TestNotNull(TEXT("set-up: a strike that leaves ground"), Trail))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	if (!TestTrue(TEXT("set-up: the strike started"),
+				  Caster.AbilitySystem->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+
+	TArray<ACataclysmGroundZone*> Zones;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Zones.Add(*It);
+	}
+	if (!TestEqual(TEXT("set-up: the strike left one zone"), Zones.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Zone = Zones[0];
+	TestTrue(TEXT("set-up: the zone deals damage"), Zone->DamagePerTick > 0.0f);
+	TestTrue(TEXT("set-up: the zone keeps the skill that left it"), Zone->SkillThatLeftIt.Get() == Trail);
+
+	// ONE SWEEP: its hit notice names the skill and points at its tags.
+	const int32 HitsBeforeSweep = Heard.Hits.Num();
+	Zone->Sweep();
+	const int32 SweepHit = Heard.HitFrom(Caster.Actor, HitsBeforeSweep, /*bDamageOverTime=*/true);
+	if (!TestTrue(TEXT("set-up: the sweep's blow was announced"), SweepHit != INDEX_NONE))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: on the victim"), Heard.Hits[SweepHit].Target == Victim);
+	TestTrue(TEXT("set-up: as an area blow"), Heard.Hits[SweepHit].bArea);
+	TestEqual(TEXT("the sweep names the skill that left the zone"),
+			  Heard.Hits[SweepHit].SkillName.ToString(), FString(TEXT("Molten Trail")));
+	TestTrue(TEXT("and points at that skill's tags"), Heard.HitHadSkillTags[SweepHit]);
+	TestTrue(TEXT("which are its own, holding Type.Melee"), Heard.HitSkillTags[SweepHit].HasTagExact(Melee));
+
+	// AND A KILL BY THE NEXT SWEEP CARRIES THE SKILL'S TAGS, which is what the killer's rows read. One point of
+	// health left, so the sweep kills; a sweep is area damage over time, which nothing evades.
+	VictimSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	const int32 DeathsBeforeKill = Heard.Deaths.Num();
+	Zone->Sweep();
+	if (!TestTrue(TEXT("set-up: the second sweep killed the victim"), UCataclysmSkillEffects::IsDead(Victim))
+		|| !TestEqual(TEXT("set-up: and one death was announced"), Heard.Deaths.Num(), DeathsBeforeKill + 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the death is credited to the caster"), Heard.Deaths.Last().Killer == Caster.Actor);
+	TestTrue(TEXT("set-up: and says damage over time"), Heard.Deaths.Last().bByDamageOverTime);
+	TestEqual(TEXT("the kill names the skill that left the zone"),
+			  Heard.Deaths.Last().KillingSkillName.ToString(), FString(TEXT("Molten Trail")));
+	TestTrue(TEXT("and carries that skill's tags to the killer's rows"), Heard.DeathHadSkillTags.Last());
+	TestTrue(TEXT("which hold Type.Melee"), Heard.DeathSkillTags.Last().HasTagExact(Melee));
+
+	// CONTROL: A ZONE NO SKILL LEFT NAMES NOTHING. `ACataclysmGroundZone::Spawn` alone is how a creature's zone and a
+	// floor rule's are made. Twenty metres along Y, clear of the skill's ground and of the strike's cone.
+	ACataclysmEnemyCharacter* Bystander =
+		SpawnCreatureAt(World, FVector(0.0f, 20.0f * M, 0.0f), 1000000.0f);
+	ACataclysmGroundZone* Bare = ACataclysmGroundZone::Spawn(
+		Caster.Actor, FVector(0.0f, 20.0f * M, 0.0f), /*RadiusCm=*/1.5f * M, /*Duration=*/4.0f,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("control set-up: a bystander"), Bystander)
+		|| !TestNotNull(TEXT("control set-up: a zone no skill left"), Bare))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control set-up: it keeps no skill"), Bare->SkillThatLeftIt.Get() == nullptr);
+	const int32 HitsBeforeBare = Heard.Hits.Num();
+	Bare->Sweep();
+	const int32 BareSweep = Heard.HitFrom(Caster.Actor, HitsBeforeBare, /*bDamageOverTime=*/true);
+	if (!TestTrue(TEXT("control set-up: its sweep's blow was announced"), BareSweep != INDEX_NONE))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control set-up: on the bystander"), Heard.Hits[BareSweep].Target == Bystander);
+	TestTrue(TEXT("control: a zone no skill left names no skill"), Heard.Hits[BareSweep].SkillName.IsNone());
+	TestFalse(TEXT("control: and points at no skill's tags"), Heard.HitHadSkillTags[BareSweep]);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsTetherSkill,
+	"Cataclysm.CombatEvents.ATethersBurnNamesTheSkillThatBoundIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCombatEventsTetherSkill::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// A TETHER OUTLIVES THE SKILL THAT BOUND IT, and the burn its line lays on whatever touches it carries that skill.
+	// Issue #1585, ruled 2026-11-01: a kill by the line's burn is the skill's kill, its tags reaching the killer's
+	// rows -- the Whip's Tether carries `Type.Ranged`, which "Ranged kills have a 20%-40% chance to refund the skill
+	// cooldown" reads.
+	//
+	// THE REAL PATH: `UCataclysmProjectileSkill::BindTether`, which the skill's activation calls, binds the two
+	// nearest enemies; `ACataclysmTether::Check` lights what touches the line; and one tick of that burn is run with
+	// `ExecutePeriodicEffectsGrantingForTests`. Neither timer runs in a test world, as the issue says.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Caster = MakeArmed(World);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("a caster"), Caster.Actor))
+	{
+		return false;
+	}
+
+	const FGameplayTag Ranged = TagNamed(TEXT("Type.Ranged"));
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("set-up: Type.Ranged is in the vocabulary"), Ranged.IsValid())
+		|| !TestTrue(TEXT("set-up: and the burn's tag"), Burn.IsValid()))
+	{
+		return false;
+	}
+
+	// THE TWO ENDS THREE METRES FROM THE CASTER, ONE ALONG X AND ONE ALONG Y, so the search binds them: it answers
+	// nearest first. THE ONE WHO TOUCHES THE LINE stands 1.2 m off its middle, on the far side from the caster, so it
+	// is within the line's 1.5 m and further from the caster (3.32 m) than either end. Every creature is more than
+	// 2 m from every other, and the ends are 4.24 m apart, inside the five metres, so the check drags nobody.
+	ACataclysmEnemyCharacter* OneEnd = SpawnCreatureAt(World, FVector(3.0f * M, 0.0f, 0.0f), 1000000.0f);
+	ACataclysmEnemyCharacter* OtherEnd = SpawnCreatureAt(World, FVector(0.0f, 3.0f * M, 0.0f), 1000000.0f);
+	ACataclysmEnemyCharacter* Touching = SpawnCreatureAt(World, FVector(2.35f * M, 2.35f * M, 0.0f), 1000000.0f);
+	UCataclysmAbilitySystemComponent* TouchingSystem = SystemOf(Touching);
+	if (!TestNotNull(TEXT("set-up: one end"), OneEnd)
+		|| !TestNotNull(TEXT("set-up: the other end"), OtherEnd)
+		|| !TestNotNull(TEXT("set-up: one touching the line, with an ability system"), TouchingSystem))
+	{
+		return false;
+	}
+
+	FGameplayAbilitySpecHandle Handle;
+	UCataclysmProjectileSkill* Lash = GrantNamedSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Burning Line"),
+		TEXT("Item.Weapon.Whip, Element.Demonic, Type.Projectile, Type.Ranged"),
+		TEXT("Range=12; Radius=1.5; Speed=2000; TetherTargets=2; TetherLength=5; TetherDuration=8"), Handle);
+	if (!TestNotNull(TEXT("set-up: a skill that binds a tether"), Lash))
+	{
+		return false;
+	}
+
+	ACataclysmTether* Line = Lash->BindTether(Caster.Actor);
+	if (!TestNotNull(TEXT("set-up: the skill bound a line"), Line))
+	{
+		return false;
+	}
+	const bool bBoundTheEnds = (Line->First.Get() == OneEnd && Line->Second.Get() == OtherEnd)
+		|| (Line->First.Get() == OtherEnd && Line->Second.Get() == OneEnd);
+	if (!TestTrue(TEXT("set-up: between the two ends"), bBoundTheEnds))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	Line->Check();
+	if (!TestEqual(TEXT("set-up: the check set one alight"), Line->LastCheckLit, 1)
+		|| !TestTrue(TEXT("set-up: the one touching the line"), UCataclysmSkillEffects::HasTag(Touching, Burn)))
+	{
+		return false;
+	}
+
+	// ONE TICK OF THE LINE'S BURN: its notice names the skill and points at its tags.
+	const int32 HitsBeforeTick = Heard.Hits.Num();
+	if (!TestEqual(TEXT("set-up: one burn ran a tick"),
+				   TouchingSystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1)
+		|| !TestEqual(TEXT("set-up: and one tick was announced"), Heard.Hits.Num(), HitsBeforeTick + 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: on the one touching the line"), Heard.Hits.Last().Target == Touching);
+	TestTrue(TEXT("set-up: as damage over time"), Heard.Hits.Last().bDamageOverTime);
+	TestEqual(TEXT("the line's burn names the skill that bound it"),
+			  Heard.Hits.Last().SkillName.ToString(), FString(TEXT("Burning Line")));
+	TestTrue(TEXT("and points at that skill's tags"), Heard.HitHadSkillTags.Last());
+	TestTrue(TEXT("which are its own, holding Type.Ranged"), Heard.HitSkillTags.Last().HasTagExact(Ranged));
+
+	// AND A KILL BY THE NEXT TICK CARRIES THE SKILL'S TAGS. One point of health left.
+	TouchingSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	const int32 DeathsBeforeKill = Heard.Deaths.Num();
+	TestEqual(TEXT("set-up: the burn ran a second tick"),
+			  TouchingSystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1);
+	if (!TestTrue(TEXT("set-up: the second tick killed it"), UCataclysmSkillEffects::IsDead(Touching))
+		|| !TestEqual(TEXT("set-up: and one death was announced"), Heard.Deaths.Num(), DeathsBeforeKill + 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the death is credited to the caster"), Heard.Deaths.Last().Killer == Caster.Actor);
+	TestTrue(TEXT("set-up: and says damage over time"), Heard.Deaths.Last().bByDamageOverTime);
+	TestEqual(TEXT("the kill names the skill that bound the line"),
+			  Heard.Deaths.Last().KillingSkillName.ToString(), FString(TEXT("Burning Line")));
+	TestTrue(TEXT("and carries that skill's tags to the killer's rows"), Heard.DeathHadSkillTags.Last());
+	TestTrue(TEXT("which hold Type.Ranged"), Heard.DeathSkillTags.Last().HasTagExact(Ranged));
 
 	return true;
 }
