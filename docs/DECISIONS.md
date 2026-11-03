@@ -170,6 +170,29 @@ The engine words a failed `TestEqual` "Expected '<what>' to be <expected>, but i
 Each break's anchor occurs once in `CataclysmEmpireStatusBar.cpp`, counted with Python's `str.count` on the
 committed file. The breaks were not compiled before registration.
 
+### Window status-bar-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `440e77ef9` (on `development` `502bfeed5`),
+lock `status-bar-w1`, after the six pre-checks all passed (11,933 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file, alone and in its unity file) |
+| `Cataclysm.EmpireStatusBar.` alone | 8 / 8 | "8 tests performed, 8 succeeded, 0 failed" |
+| Whole Unreal suite | 4577 / 4577 | "4577 tests performed, 4577 succeeded, 0 failed"; "Declared: 4577 tests in the tree at 440e77ef9; 4577 performed, gap 0"; "Test saves: 712 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 186.67s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 6 in 2 tests | PROVED. The kept broken-half log fails exactly the six registered assertions and nothing else. The three unpredicted world figures read: "and the distinct standing cities they stand on" 6 expected, 13 read; the world's line "13 dungeons standing \| surge in 90 days \| 6 cities at risk" expected, "... 13 cities at risk" read (and the same at 87 days). Restored 8 of 8 |
+| B | 1 | PROVED. Exactly "a fallen city with a dungeon still on it is not at risk" (2 expected, 3 read); restored 8 of 8 |
+| C | 6 in 2 tests | PROVED. Exactly the six registered, with the registered figures (8 expected and 11 read; 0 and 11; 87 and 90); restored 8 of 8 |
+| D | 1 | PROVED. Exactly "another city at risk is a change" (to be false); restored 8 of 8 |
+
+"Test saves: 712" here against 713 in the three windows before it on the same day is not explained by this branch,
+which writes no save: the count is of saves the suite's tests wrote and deleted, and 0 were left behind, which is the
+figure the run is held to.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - The draw itself, `ACataclysmHUD::DrawEmpireStatusBar`, including that it keeps its line between changes: no
