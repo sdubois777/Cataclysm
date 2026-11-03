@@ -17,6 +17,15 @@ namespace
 	{
 		return FName(*FString::Printf(TEXT("City%d"), CityId));
 	}
+
+	/**
+	 * The name the Cataclysm boss dungeon's button carries. No city's name can be
+	 * it, so `CityForButton` answers `INDEX_NONE` for it. Issue #1324 slice 6c.
+	 */
+	FName CataclysmDungeonButtonName()
+	{
+		return FName(TEXT("CataclysmBossDungeon"));
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +153,31 @@ void UCataclysmEmpireMapWidget::BuildCities()
 
 		CityButtons.Add(Button);
 	}
+
+	// THE CATACLYSM BOSS DUNGEON'S BOX, made now with the cities and hidden until
+	// the run has one standing, so opening it needs no widget made mid-run. The
+	// same button class, the same two handlers, and the same placement rules as a
+	// city's. Issue #1324 slice 6c.
+	if (UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityHovered);
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityClicked);
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+		Button->SetVisibility(ESlateVisibility::Collapsed);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(MapCanvas->AddChild(Button)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		CataclysmDungeonButton = Button;
+	}
 }
 
 void UCataclysmEmpireMapWidget::PlaceCities()
@@ -195,6 +229,54 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 			/*bChosen*/ Mark == ECataclysmCityMark::Exposed,
 			/*bAvailable*/ Mark != ECataclysmCityMark::Fallen);
 	}
+
+	PlaceCataclysmDungeon(Scale);
+}
+
+void UCataclysmEmpireMapWidget::PlaceCataclysmDungeon(float Scale)
+{
+	if (CataclysmDungeonButton == nullptr)
+	{
+		return;
+	}
+
+	// NO LABEL, NO BOX: before the run has opened it, and after it has been
+	// cleared. See `UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel`.
+	const FString Label =
+		UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel(ShownRun());
+	if (Label.IsEmpty())
+	{
+		CataclysmDungeonButton->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	if (UCanvasPanelSlot* Placement =
+			Cast<UCanvasPanelSlot>(CataclysmDungeonButton->Slot))
+	{
+		Placement->SetPosition(
+			UCataclysmEmpireMapLayout::CataclysmDungeonMarkerPosition(Scale));
+		Placement->SetSize(
+			UCataclysmEmpireMapLayout::CataclysmDungeonMarkerSize(Scale));
+	}
+
+	CataclysmDungeonButton->SetLabelScale(Scale);
+
+	// CHOSEN, SO IT READS BRIGHT, as an exposed city does: it is the dungeon the
+	// whole run has been working towards, and it should not read as a plain
+	// sealed city in a corner.
+	CataclysmDungeonButton->SetChoice(CataclysmDungeonButtonName(),
+									  FText::FromString(Label),
+									  /*bChosen*/ true, /*bAvailable*/ true);
+	CataclysmDungeonButton->SetVisibility(ESlateVisibility::Visible);
+}
+
+void UCataclysmEmpireMapWidget::WriteCataclysmDungeonDetail()
+{
+	if (DetailLabel != nullptr)
+	{
+		DetailLabel->SetText(FText::FromString(
+			UCataclysmEmpireMapLayout::CataclysmDungeonBrief(ShownRun())));
+	}
 }
 
 void UCataclysmEmpireMapWidget::WriteStatus()
@@ -223,15 +305,23 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// slice 5, and it lives on the layout class because a headless test
 		// cannot read a label. See `UCataclysmEmpireMapLayout::ProgressLine`.
 		//
+		// AND, ON ITS END, THE CATACLYSMS FINISHED AND WHAT OPENS THE BOSS
+		// DUNGEON, or that it is open, since issue #1324 slice 6c. The dungeons
+		// standing count it: it stands, on no city. AND ONE DUNGEON IS SINGULAR,
+		// which it was not until then: with the boss standing the empty-board
+		// surge does not fire, so a board holding the boss alone is a state a
+		// player now sits in, and it read "1 dungeons standing".
+		//
 		// AND THE DAYS A WALK OWES, after the day they will be added to, since
 		// 2026-10-24: nothing resolves while the player is inside a dungeon, so
 		// the day shown does not move during a walk. Empty outside one. See
 		// `UCataclysmEmpireMapLayout::DaysOwedLine`.
 		const FString Owed = UCataclysmEmpireMapLayout::DaysOwedLine(Run);
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d%s   %d cities lost of 24   %d dungeons standing   %s"),
+			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s"),
 			Run->Day(), Owed.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Owed),
 			Run->Map->FallenCityCount(), Run->DungeonCount(),
+			Run->DungeonCount() == 1 ? TEXT("") : TEXT("s"),
 			*UCataclysmEmpireMapLayout::ProgressLine(Run))));
 	}
 
@@ -255,7 +345,9 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		//
 		// OR WHAT THE PLAYER'S LAST DEATH COST, while it is the most recent of the
 		// three, since 2026-11-02 (issue #41). `LatestEventLine` chooses; see
-		// `UCataclysmEmpireMapLayout::LastDeathLine`.
+		// `UCataclysmEmpireMapLayout::LastDeathLine`. OR THE DAY THE CATACLYSM
+		// BOSS DUNGEON OPENED, while that is the most recent, since issue #1324
+		// slice 6c.
 		const FString LastHit = UCataclysmEmpireMapLayout::LatestEventLine(Run);
 
 		SurgeLabel->SetText(FText::FromString(FString::Printf(
@@ -276,6 +368,13 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 {
 	if (DetailLabel == nullptr)
 	{
+		return;
+	}
+
+	// THE BOSS DUNGEON'S BOX, which is no city's. Issue #1324 slice 6c.
+	if (Value == CataclysmDungeonButtonName())
+	{
+		WriteCataclysmDungeonDetail();
 		return;
 	}
 
@@ -333,6 +432,17 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 
 void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 {
+	// THE BOSS DUNGEON'S BOX SAYS WHAT IT IS AND OPENS NOTHING. It has no city
+	// screen, and nothing walks a dungeon from this map -- there is no travel
+	// between the empire and a dungeon level, issue #48 -- so a press does what
+	// the cursor does: the brief, which ends by naming the command that walks it,
+	// `Cataclysm.EnterDungeon <id>`, with its identifier. Issue #1324 slice 6c.
+	if (Value == CataclysmDungeonButtonName())
+	{
+		WriteCataclysmDungeonDetail();
+		return;
+	}
+
 	const int32 CityId = CityForButton(Value);
 	const UCataclysmEmpireRun* Run = ShownRun();
 

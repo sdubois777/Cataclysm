@@ -103,6 +103,11 @@ FCataclysmEmpireStatusFacts UCataclysmEmpireStatusBar::FactsOf(const UCataclysmE
 	}
 
 	Facts.bRunBound = true;
+
+	// THE CATACLYSM BOSS DUNGEON IS ONE OF THEM once the run has opened it: it stands, on no city, so "4 dungeons
+	// standing" is still true with it in the four. It puts no city at risk -- `CitiesAtRiskIn` finds no city for it --
+	// which is also true: it never bites one. Read again for issue #1324 slice 6c (2026-11-03) and left as it was;
+	// `Cataclysm.BossOnTheMap.TheStatusBarCountsTheBossAsStandingAndPutsNoCityAtRisk` holds both.
 	Facts.DungeonsStanding = Run->DungeonCount();
 	Facts.DaysToNextSurge = DaysToNextSurgeIn(Run);
 	Facts.DaysOwed = Run->DaysOwed();

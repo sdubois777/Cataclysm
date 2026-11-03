@@ -2,6 +2,281 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-03 — The empire map shows the Cataclysm boss dungeon: a box of its own on no city, the Cataclysms finished on the status line, and its opening as the latest event (#1324 slice 6c)
+
+**Affects:** `UCataclysmEmpireMapLayout::ProgressLine` and `LatestEventLine`, changed, and
+`CataclysmDungeonMarkerWidthPx`, `CataclysmDungeonMarkerHeightPx`, `CataclysmDungeonMarkerPosition`,
+`CataclysmDungeonMarkerSize`, `CataclysmDungeonMarkerLabel`, `CataclysmDungeonBrief` and
+`CataclysmDungeonOpenedLine`, new (`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h`, `.cpp`);
+`UCataclysmEmpireMapWidget::BuildCities`, `PlaceCities`, `WriteStatus`, `HandleCityHovered` and `HandleCityClicked`,
+changed, `CataclysmDungeonButton`, `PlaceCataclysmDungeon` and `WriteCataclysmDungeonDetail`, new, and the class
+comment (`game/Source/Cataclysm/Interface/CataclysmEmpireMapWidget.h`, `.cpp`); a comment in
+`UCataclysmEmpireStatusBar::FactsOf` (`game/Source/Cataclysm/Interface/CataclysmEmpireStatusBar.cpp`);
+`game/Source/Cataclysm/Tests/CataclysmBossOnTheMapTests.cpp`, new; one moved assertion in
+`game/Source/Cataclysm/Tests/CataclysmEmpireScreenTests.cpp`; `game/README.md`. And, in a commit of its own, the
+refusal `Cataclysm.LoadCharacter` gives for a run saved inside a dungeon (`game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`),
+a comment in `ACataclysmDungeonGameMode::EnterEmpireDungeon`, and
+`tools/tests/test_a_message_names_only_registered_console_commands.py`, new. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 6c, built on slice 6b (the second entry below) and
+rebased onto slice 6d (the entry below).
+
+### SAID FIRST
+
+- **COMPILED, NOT RUN.** Phase 1 was written with no build; phase 2 (2026-11-03) rebased it onto `development`
+  483c64710, which holds slices 6b and 6d, and compiled it: phase 1's code as it stood, in the unity build ("Build:
+  Succeeded - 30 actions, 27 files compiled", with no error); then, with the review's fixes, every changed `.cpp`
+  compiled alone (the branch reset to `development` so they were uncommitted: "23 actions, 20 files compiled", the
+  seven files named in the build log), and the unity files regenerated ("12 actions, 9 files compiled:
+  Module.Cataclysm.14.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.11.cpp, Module.Cataclysm.21.cpp, ...,
+  Module.Cataclysm.38.cpp", among them the five that hold the seven). No automation test and no guard proof has run:
+  every Unreal figure below is registered for a window.
+- **THE MARKER IS NOT ENTERED FROM THE MAP, BECAUSE NOTHING IS.** The owner's decision describes a marker "the player
+  enters from"; this map enters no dungeon at all -- a city's box opens the city screen, and there is no travel between
+  the empire and a dungeon level (issue [#48](https://github.com/sdubois777/Cataclysm/issues/48)). So pressing the
+  boss's box writes what it is into the line under the map and opens nothing, and the boss is entered the way every
+  dungeon is today: `Cataclysm.EnterDungeon <id>` in a dungeon level. **The line says so**, with the dungeon's
+  identifier, since phase 2's review: phase 1's line did not say what walks it. No travel was invented.
+- **A MESSAGE NAMED A COMMAND THAT DOES NOT EXIST, AND IS CORRECTED.** The 6b entry (the second below) calls the command
+  `Cataclysm.WalkDungeon`, and so did the refusal `Cataclysm.LoadCharacter` gives a run saved inside an empire dungeon
+  and loaded in a level with no dungeon: "load it in a dungeon level, where Cataclysm.WalkDungeon works". No command of
+  that name is registered; the one is `Cataclysm.EnterDungeon` (`CataclysmPlayerCharacter.cpp`). The message and a
+  comment in `EnterEmpireDungeon` now say `Cataclysm.EnterDungeon`; the 6b entry is history and keeps its word. Ruled by
+  the coordinating session; see "The command a message names" below.
+- **ONE WORDING FIX BESIDE IT**: the map's status label read "1 dungeons standing". With the boss standing the
+  empty-board surge does not fire, so the boss alone on the board is a state a player now sits in; it reads "1 dungeon
+  standing". The widget's labels cannot be read by a headless test, so that one is not tested.
+
+### The decision
+
+- **The project owner, 2026-11-02, verbatim: "On no city (Recommended)".** Once a run has earned the Cataclysm boss
+  dungeon it sits on no city: the empire map shows a Cataclysm boss dungeon marker the player enters from, it never
+  bites a city, and a Last Stand later moves it to the Pillar
+  ([#43](https://github.com/sdubois777/Cataclysm/issues/43), not this slice).
+
+### What the player sees
+
+1. **The status line** (`ProgressLine`, on the end of the map's status label) counts the Cataclysms finished of those
+   the run faces and says when the boss opens: "4 dungeons cleared, 7 quest objectives, 1 of 5 Cataclysms finished;
+   the boss dungeon opens when 3 are finished". "0 of 1 Cataclysm finished; the boss dungeon opens when 1 is
+   finished" at tier 1. Once it opens: "...; the Cataclysm boss dungeon is open"; once it has been cleared: "...; the
+   Cataclysm boss dungeon has been cleared".
+2. **A box of its own** in the top left corner of the map panel, once it has opened: "Cataclysm boss: 137 floors",
+   drawn bright as an exposed city is. The cursor on it, or a press, writes into the line under the map: "The
+   Cataclysm boss dungeon (Death, Horde): 137 floors, 12 of them added by ordinary dungeons defeated. Every ordinary
+   dungeon defeated adds a floor. It stands on no city and never resolves. To walk it, type Cataclysm.EnterDungeon 31
+   in a dungeon level; nothing enters a dungeon from this map yet." Hidden before it opens and after it has been
+   cleared.
+3. **The latest event** on the surge line: "Day 214: the Cataclysm boss dungeon opened." while nothing later has
+   happened.
+4. **The heads-up status bar** (#49) is unchanged: "4 dungeons standing" counts the boss, which stands, and "cities at
+   risk" does not, because it bites none. Both read true; a test holds both.
+
+### Judgements of the writing session
+
+- **WHERE A THING ON NO CITY GOES: THE PANEL'S TOP LEFT CORNER.** The map is a diamond of 25 boxes centred in the
+  panel, so its corners are empty. The box is two cities wide (344 at a scale of one) and one tall (48), a margin (24,
+  unscaled, as `ScaleToFit`'s is) in from the top and the left, and scaled with the cities. It covers no city on any
+  panel the diamond fits in: the diamond is fitted inside the same margins, so its top row starts no higher than the
+  box's top, and that row holds only the Outpost in the middle, whose box begins three cells (564 scaled pixels) right
+  of the diamond's left edge, where the boss's box ends at most 344 right of it; the next row starts 68 below the top
+  one, where the box is 48 tall. A test checks every city on four panels. **Phase 1 said "at any scale `ScaleToFit`
+  gives", which is wider than that**: on a panel too small for the diamond the scale is held at `SmallestScale`, the
+  diamond spills past the margins and the corner is not empty. A sweep of a Python copy of `ScaleToFit` and
+  `PositionFor` over panels from 100 to 4,000 pixels wide and 100 to 3,000 tall, in steps of 7, found 73 panels where
+  the box covers a city, every one held at `SmallestScale`, none wider than 233 or taller than 128. The header says so.
+- **ONE MORE CHOICE BUTTON ON THE SAME CANVAS**, made with the cities and collapsed until the run has a boss standing,
+  with the same two handlers: the name it carries, `CataclysmBossDungeon`, is no city's, and both handlers answer it
+  first. No `BindWidget` was added, so `WBP_EmpireMap`, which the generator never rewrites, needs nothing.
+- **THE DENOMINATOR IS CATACLYSMS, NOT OBJECTIVES.** `ProgressLine`'s comment said no denominator could be shown until
+  issue #1357 landed, and `Cataclysm.EmpireScreen.TheScreenSaysWhatThePlayerHasClearedAndEarned` failed on any " of ".
+  For objectives that still holds -- each Cataclysm asks for its own count (10, 5, 10, 5, 5, 10, 8, 5), so "7 of 8 quest
+  objectives" would add counts belonging to different Cataclysms -- but #1357 had landed, and Cataclysms finished
+  (`CataclysmsComplete`) of those faced is a fraction the run knows. The test's assertion now holds that the line has
+  exactly one " of ", the Cataclysms'; that is the one moved assertion.
+- **"HAS BEEN CLEARED" IS SAID ONLY BECAUSE ONLY A CLEAR REMOVES IT.** `RemoveDungeon`'s callers were read: a resolve
+  (never reached for a kind that does not resolve), a city's fall and a city upgrade (both ask `DungeonsOn` a real
+  city, which never lists it), and `ClearDungeon`. A Last Stand moving it (#43) keeps it standing.
+- **MET AND NOT OPENED** is unreachable in play -- the clear that meets the requirement opens it -- but a run record
+  from before version 4 migrates unopened (`Migrate_3_to_4`) and can hold its requirement met. The line then says "the
+  boss dungeon opens on the next quest dungeon cleared", which is when `OpenCataclysmDungeonIfEarned` next runs.
+- **THE SAME DAY: A DEATH, THEN THE OPENING, THEN A HIT OR A MOVE.** A hit and a fall's move of day D happen while day
+  D is advanced, and nothing resolves while the player is inside (2026-10-24), so they come before any walk begun on
+  day D; the opening's day is `Day()` when the walk's quest clear was credited, before that walk's owed days run, so
+  it comes after them. A death costs at least five days on top of its walk's, so no opening shares a day with a death
+  before it; a death can share the opening's day only from a later walk that owed no whole day. So each same-day tie
+  shows the later event: the opening over a hit or move, a death over the opening. The death's existing tie with a hit
+  (2026-11-02) is unchanged.
+- **THE BRIEF'S WORDS**: the Cataclysm by `UCataclysmRoster::NameFor`, the name `Describe` already prints (so The Void
+  reads "Void"); the sub-type by `SubTypeName`; either left out when it says nothing. The floors added are the
+  dungeon's floors less its roll, which is every ordinary dungeon defeated this run; none reads "as it rolled", one is
+  singular. The box carries the depth because it is the one figure about it that changes.
+- **THE OPENING'S LINE STAYS AFTER THE BOSS IS CLEARED**, as a hit's line stays after its dungeon has left: it is
+  history, and `bCataclysmDungeonOpened` outlives the dungeon.
+
+### Tests
+
+**Unreal, `Cataclysm.BossOnTheMap.`**, a new group, five tests in `CataclysmBossOnTheMapTests.cpp` (headless; quest
+dungeons built by hand and cleared through `ClearDungeon`, as `Cataclysm.EarnedBoss.` does; the screen's words read
+from `UCataclysmEmpireMapLayout`, because a headless widget's labels are null):
+
+1. `TheProgressLineCountsTheCataclysmsFinishedAndSaysWhenTheBossOpens` ("BOSS PROGRESS"): tier 5, seed 5 (set-up: five
+   faced, three needed, nothing cleared). The whole line fresh, after one finished (both counts plural: every
+   Cataclysm asks for five or more), the end after two; before it opens no box label, no brief, no opening line, and
+   the latest event names no boss; "is open" on the clear that finishes the third; "has been cleared" once
+   `ClearDungeon` takes it, and the box hidden again. Tier 1, seed 7: "0 of 1 Cataclysm finished; the boss dungeon
+   opens when 1 is finished". Tier 3, seed 3, two met by hand: "opens on the next quest dungeon cleared", then "is
+   open" after one quest clear.
+2. `TheMarkerSaysHowDeepItIsWhoSentItAndThatItNeverResolves` ("BOSS MARKER"): three tier 1 runs at seed 11, day 4,
+   with three ordinary dungeons defeated before the opening and one after (four added), one before (one), and none.
+   The box's label; the brief's Cataclysm, sub-type, "4 of them added by ordinary dungeons defeated", "1 of them added
+   by an ordinary dungeon defeated", "as it rolled", that it stands on no city and never resolves, and -- added in
+   phase 2 -- that it ends "To walk it, type Cataclysm.EnterDungeon <its identifier> in a dungeon level; nothing enters
+   a dungeon from this map yet." and that `IConsoleManager` finds `Cataclysm.EnterDungeon`. Null runs say nothing.
+3. `TheMarkerSitsInTheEmptyCornerAndItsLabelFits` ("BOSS BOX"): at a scale of one, 344 by 48 centred at (196, 48); on
+   the city overlap test's three panels and the owner's measured 1852 by 528, inside the panel and clear of all 25
+   cities (100 placements). Then "Cataclysm boss: 8888 floors" measured at the designed 16 points plus 16 pixels of
+   padding, narrower than the box -- skipped with `ReportSkippedHalf`, and saying so, when there is no Slate renderer,
+   the condition `Cataclysm.EmpireScreen.EveryCityLabelMeasuresNarrowerThanItsBox` skips on. **What the window will
+   print**: that condition did not hold in the base run -- the city-label test measured, printing 'the widest label is
+   "Sanctuary 100%", filling 98% of its box at full size', and is not among its 47 skipped halves -- so this half
+   should measure too and print 'BOSS BOX: "Cataclysm boss: 8888 floors" needs N pixels of 344', with no skip line. At
+   the city test's rate (about 10.9 pixels a character) N is about 310, so it should pass; if it ever skips, the
+   `Tests:` line names it and the skipped halves read 48.
+4. `TheOpeningIsTheLatestEventUntilSomethingLaterHappens` ("BOSS EVENT"): tier 1, seed 11, day 4 (set-up). The hit of
+   day 3 before (CONTROL); "Day 4: the Cataclysm boss dungeon opened."; shown over the hit of day 3 and of day 4,
+   replaced by a hit on day 5; shown over a move on day 4, replaced by one on day 6; shown over a death on day 2,
+   replaced by a death on day 4; still shown after the boss is cleared. The fields are set by hand, as
+   `Cataclysm.DeathCost.TheEmpireScreenShowsTheDeathWhileItIsTheLatestAndTheHitOnceOneIsLater` sets them.
+5. `TheStatusBarCountsTheBossAsStandingAndPutsNoCityAtRisk` ("BOSS BAR"): tier 1, seed 11, day 4. Opening it adds one
+   dungeon standing and no city at risk; with every other dungeon cleared the bar reads "1 dungeon standing | ..." and
+   "... | 0 cities at risk".
+
+**Changed in `Cataclysm.EmpireScreen.`**: `TheScreenSaysWhatThePlayerHasClearedAndEarned`'s four expected lines gain
+the tier 1 clause ", 0 of 1 Cataclysm finished; the boss dungeon opens when 1 is finished" (`Begin(7)` is tier 1, and
+its counters set by hand finish no Cataclysm, which only a quest clear does), and its no-" of " assertion is the
+exactly-one assertion above.
+
+**Every assertion that compares with a fixed number or relies on a starting state**, audited in phase 2 against the
+code it reaches (windows on 2026-11-02 stopped twice on exactly this):
+
+| Test | Fixed number or starting state | Where it comes from | Held by |
+|---|---|---|---|
+| 1 | tier 5 faces 5, needs 3; tier 3 faces 3, needs 2 | `ActiveFor` truncates a permutation of the eight to `ActiveCountFor`'s clamp; `CataclysmsRequiredFor` is `(N + 1) / 2` | set-up assertions that stop the test |
+| 1 | nothing cleared, nothing earned, no boss | `Begin`'s zeroes | set-up assertions; no day is advanced in this test |
+| 1 | "%d dungeons cleared, %d quest objectives" after one finished, both plural | `FinishOne` clears exactly `QuestObjectivesFor` quest dungeons (10, 5, 10, 5, 5, 10, 8, 5: never fewer than five), each raising both counters by one; the five drawn are distinct, so one `FinishOne` finishes one | the count is read from `QuestObjectivesFor`, not written down |
+| 1 | tier 1 seed 7 "0 of 1 ... opens when 1 is finished" | `ActiveCountFor(1)` is 1 and a fresh run finished none | -- (fixed by the code) |
+| 2 | 4 added, 1 added, none | `BasicDungeonsCleared` from `Begin`'s 0, raised by each hand clear of a Basic dungeon and by nothing else; `CataclysmFloorsPerOrdinaryDungeon` is 1 (`CataclysmSurge.h`) | the 4 and the boss's depth are set-up assertions; the depth itself is read from the run |
+| 2 | the brief ends with this boss's `DungeonId` | read from the run | -- |
+| 2, 4, 5 | tier 1 seed 11 opens the boss on finishing `ActiveCataclysms[0]` | one Cataclysm faced, requirement 1 | `TestNotNull` on the boss, a set-up that stops the test |
+| 3 | 344, 48, (196, 48), 100 placements | 2 x 172; 48; 24 + 172 and 24 + 24; 25 cities (`Map->Build`, radius 3) x 4 panels | -- (fixed by the code; the 100 is asserted) |
+| 3 | the label fits | the font, measured | skipped and saying so without a renderer (above) |
+| 4 | day 4; the opening on day 4 | four `AdvanceDays` from `Begin`'s day 0; `SpawnedDay` is `Day()` | both asserted as set-up |
+| 4 | the hit, move and death days | written by hand before each comparison, after the four days' own are put aside | -- |
+| 4 | "Day 5: a dungeon hit ", "Day 6: a Quest dungeon moved", "Day 4: you died in the dungeon." | `LastHitLine` with `bLastHitWasAQuestTimer` false and `LastMoveDay` 0; `LastMoveDay` 6 above the hit's 3; `LastDeathLine` with the name given | -- |
+| 5 | one more standing, no more at risk; "1 dungeon standing", "0 cities at risk" | the hand clears add and remove their own dungeon, so the board before the last quest clear is the board the four days left; the boss's `CityId` is `INDEX_NONE`, which `CitiesAtRiskIn` finds no city for | "the boss stands alone" (`DungeonCount() == 1`) asserted as set-up |
+| `EmpireScreen` | `Begin(7)` is tier 1, so one faced and none finished | `Begin`'s default tier is 1; its counters are set by hand and `QuestObjectivesByCataclysm` is not | -- (fixed by the code) |
+
+No assertion compares with a count of tests, of cities beyond the 25, or of anything a surge rolls.
+
+### The command a message names
+
+Ruled by the coordinating session and built in a commit of its own. `Cataclysm.LoadCharacter`'s refusal
+for a run saved inside an empire dungeon, loaded in a level with no dungeon, now reads "... load it in a dungeon level,
+where Cataclysm.EnterDungeon works"; it said `Cataclysm.WalkDungeon`, which no code has ever registered.
+`Cataclysm.SaveLoad.` checks that refusal only for "has no dungeon to enter it in", so no Unreal test changes.
+
+`tools/tests/test_a_message_names_only_registered_console_commands.py`, new, holds that every `Cataclysm.` name in a
+string literal inside an `Ar.Log`, `Ar.Logf`, `Refused` or `FString::Printf` call in the game's non-test C++ is the
+first argument of an `FAutoConsoleCommand...`, `FAutoConsoleVariable...` or `TAutoConsoleVariable<...>` declaration.
+On 2026-11-03 it read 25 mentions of 19 names against 138 registered, and it fails if either count collapses or if
+the corrected refusal or the boss dungeon's line stops being scanned. `UE_LOG` is left out because one names the
+configuration section `/Script/Cataclysm.CataclysmPlayerController`. Proved with `prove_guard` in a detached `git
+worktree add` copy at 4269f8c96, putting "Cataclysm.WalkDungeon" back into the refusal: "PROVED: 2 failed in 2.43s |
+restored: 2 passed in 0.33s", `named_failures` both of the file's tests, `proved` True. (The scan was widened to
+`FString::Printf` after that proof; the break it proved is still inside a `Refused` call.)
+
+### For slice 6e: what this changes in `WriteStatus`
+
+Slice 6e (another branch) adds `LastRunWonLine` and changes `UCataclysmEmpireMapWidget::WriteStatus`. This branch
+changes that function in two places and nowhere else, so 6e can merge after it:
+
+1. **The `StatusLabel` block**: seven comment lines inserted -- a paragraph of six beginning "AND, ON ITS END, THE
+   CATACLYSMS FINISHED AND WHAT OPENS THE BOSS", then a line holding only `//` -- after the `//` line that follows the
+   paragraph ending "See `UCataclysmEmpireMapLayout::ProgressLine`.", so they sit before the paragraph beginning "AND
+   THE DAYS A WALK OWES"; in the `Printf`, the
+   format's `%d dungeons standing` becomes `%d dungeon%s standing`, and one argument line,
+   `Run->DungeonCount() == 1 ? TEXT("") : TEXT("s"),`, is added after `Run->Map->FallenCityCount(), Run->DungeonCount(),`.
+   The progress text is still `*UCataclysmEmpireMapLayout::ProgressLine(Run)`, last.
+2. **The `SurgeLabel` block**: the comment line "// `UCataclysmEmpireMapLayout::LastDeathLine`." becomes three lines
+   ending "OR THE DAY THE CATACLYSM BOSS DUNGEON OPENED, while that is the most recent, since issue #1324 slice 6c."
+   No code changes there: `LatestEventLine(Run)` is still the call, and the opening is chosen inside it.
+
+### Registered before the run
+
+Base counts are "Test Completed" lines, counted by prefix ignoring case, in the whole-suite engine log of slice 6d's
+window at its registration commit e4dc26009, whose game tree is `development` 483c64710's (4652 performed, 4652
+succeeded, 47 skipped halves, 720 test saves written and deleted, 0 left behind). Every prefix ends in a dot; the only
+group sharing a stem is `Cataclysm.EarnedBossSave.`, which `Cataclysm.EarnedBoss.` does not take.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.BossOnTheMap.` alone | 5 / 5, a new group: 0 at the base, + 5 by name. No other group begins with that prefix |
+| `Cataclysm.EmpireScreen.` alone | 14 / 14, measured (14 at the base; phase 1's 14 was a static count and agrees); one changed, none added |
+| `Cataclysm.EmpireStatusBar.` alone | 8 / 8, measured; none changed, the bar's code is untouched but for a comment |
+| `Cataclysm.DeathCost.` alone | 9 / 9, measured; none changed. Its two `LatestEventLine` assertions open no boss, so the new branch is not reached |
+| `Cataclysm.EarnedBoss.` alone | 4 / 4, measured; none changed |
+| `Cataclysm.EarnedBossSave.` alone | 3 / 3, measured; none changed |
+| `Cataclysm.SaveLoad.` alone | 75 / 75, measured; none changed. It reaches the corrected refusal and checks it by "has no dungeon to enter it in" |
+| Whole Unreal suite | 4657 performed (4652 + 5 by name), 4657 succeeded, 0 failed; 47 skipped halves, none added (above); 0 test saves left behind (the new tests write none) |
+| Python | of record in the window, at the registration commit, with a JUnit file. This branch adds 2 tests, both in the new file |
+| P1, the opening loses a same-day tie with a hit (`OpenedDay >= Run->LastHitDay` to `OpenedDay > Run->LastHitDay`, in `CataclysmEmpireMapLayout.cpp`'s `LatestEventLine`), prefix `Cataclysm.BossOnTheMap.` | 1 test, 1 assertion, in `TheOpeningIsTheLatestEventUntilSomethingLaterHappens`: "Expected 'on the same day as the last hit the opening is shown' to be "Day 4: the Cataclysm boss dungeon opened.", but it was "Day 4: a dungeon hit Outpost (-3,0) and left."" (`TestEqual` on two strings in this engine version, `AutomationTest.cpp` line 2167; city 0 is the first the lattice walk names, row -3, column 0, an Outpost). Every other case sets the hit to day 3 or 5. "5 performed, 4 succeeded, 1 failed" |
+| P2, "is open" and "has been cleared" swapped (`Run->FindCataclysmDungeon() != nullptr` to `Run->FindCataclysmDungeon() == nullptr`, in `ProgressLine`), prefix `Cataclysm.BossOnTheMap.` | 1 test, 3 assertions, all in `TheProgressLineCountsTheCataclysmsFinishedAndSaysWhenTheBossOpens`: "Expected 'on the clear that finishes the third the line says the boss is open' to be true.", "Expected 'once it has been cleared the line says so' to be true." and "Expected 'and the next quest clear does open it' to be true.". "5 performed, 4 succeeded, 1 failed" |
+| P3, no floors counted as added (`Boss->Floors - Run->CataclysmDungeonBaseFloors` to `Run->CataclysmDungeonBaseFloors - Boss->Floors`, in `CataclysmDungeonBrief`; the difference goes below nought and is held at none), prefix `Cataclysm.BossOnTheMap.` | 1 test, 2 assertions, in `TheMarkerSaysHowDeepItIsWhoSentItAndThatItNeverResolves`: "Expected 'and says four of its floors were added by ordinary dungeons defeated' to be true." and "Expected 'one floor added is singular' to be true.". The none-added run still reads "as it rolled", and the brief still ends with the command. "5 performed, 4 succeeded, 1 failed" |
+| P4, the brief names the old command (`To walk it, type Cataclysm.EnterDungeon %d` to `To walk it, type Cataclysm.WalkDungeon %d`, in `CataclysmDungeonBrief`), prefix `Cataclysm.BossOnTheMap.` | 1 test, 1 assertion, in `TheMarkerSaysHowDeepItIsWhoSentItAndThatItNeverResolves`: "Expected 'and ends by naming the command that walks it, with its identifier' to be true.". "and that command is registered" asks the console for the right name and passes. "5 performed, 4 succeeded, 1 failed" |
+
+Each anchor occurs once in `CataclysmEmpireMapLayout.cpp`, checked by `prove_q6c.py --anchors-only` at the
+registration commit. The breaks were not compiled.
+
+### Window boss-map-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `e9b2a9221` (on `development`
+`483c64710`), lock `boss-map-w1`, after the six pre-checks all passed (11,830 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The seven groups alone | each at its registered count | every one "0 failed": BossOnTheMap. 5, EmpireScreen. 14, EmpireStatusBar. 8, DeathCost. 9, EarnedBoss. 4, EarnedBossSave. 3, SaveLoad. 75 |
+| Whole Unreal suite | 4657, 47 skipped halves | "4657 tests performed, 4657 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4657 tests in the tree at e9b2a9221; 4657 performed, gap 0"; "Test saves: 721 written and deleted, 0 left behind" |
+| The box's font-measured half | measured, not skipped | measured: "BOSS BOX: 100 city placements checked against the box" and "BOSS BOX: "Cataclysm boss: 8888 floors" needs 285 pixels of 344" |
+| Python | of record | "7340 passed, 9 skipped in 197.10s"; JUnit tests 7349, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 | PROVED. Exactly "on the same day as the last hit the opening is shown", reading "Day 4: a dungeon hit Outpost (-3,0) and left." as predicted; restored 5 of 5 |
+| P2 | 3 | PROVED. Exactly "on the clear that finishes the third the line says the boss is open", "once it has been cleared the line says so" and "and the next quest clear does open it"; restored 5 of 5 |
+| P3 | 2 | PROVED. Exactly "and says four of its floors were added by ordinary dungeons defeated" and "one floor added is singular"; restored 5 of 5 |
+| P4 | 1 | PROVED. Exactly "and ends by naming the command that walks it, with its identifier"; restored 5 of 5 |
+
+The test-save count is 721 against 720 at the base (`e4dc26009`); this branch writes no save, the cause of the one-save
+difference is not established, and 0 were left behind, which is the figure the run is held to.
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **Anything in Unreal at run time**: compiled (above), not run.
+- **The map while it stays open**: it redraws when it is opened and when the day or the panel's size changes, so a
+  boss opened, deepened or cleared by a walk that owed no whole day appears on the next opening rather than at once,
+  if the map was left open across the leaving. Left as the cities' marks and the status line have always been.
+- **The box on screen**: whether it is legible, bright, clickable or in the corner it is placed in. `-nullrhi` draws
+  nothing and a headless widget has no canvas, so no button is built in a test; `PlaceCataclysmDungeon`,
+  `WriteCataclysmDungeonDetail` and the two handlers' boss branches are covered only through the layout functions they
+  call. **Somebody has to look.**
+- **"1 dungeon standing" on the map's own status label**: the label is a `BindWidget`, null in a test.
+- **Entering the boss from the map**: there is no travel from the map (#48).
+- **A restored run's marker**: it is read from the fields slice 6b's save test restores, and was not exercised here.
+- **The simulation**: nothing changed; the model has no screen.
+
+---
+
 ## 2026-11-03 — The last floor of the Cataclysm boss dungeon places the Cataclysm Boss, and its stairs stay sealed until it dies (#1324 slice 6d)
 
 **Affects:** on `ACataclysmDungeonGameMode`, `CataclysmBossRung`, `CataclysmBossSealKey`, `IsTheCataclysmBossFloor`,
@@ -254,6 +529,7 @@ Only this section was added after the tested commit.
 - A dungeon one floor deep, which has no boss at all (`BossAtTheExit`), and the dark floor: no boss floor by
   construction, not tested.
 - Anything on screen: the panel line is read through `LinesFor` and `NameLineFor`, not drawn.
+
 ---
 
 ## 2026-11-02 — The Cataclysm boss dungeon opens when earned, stands on no city, never resolves, is never a Siege, and grows with every ordinary dungeon defeated; the run record keeps it at version 4 (#1324 slice 6b)

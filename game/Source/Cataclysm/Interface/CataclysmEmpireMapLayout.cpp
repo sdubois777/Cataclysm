@@ -3,6 +3,8 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
+#include "Empire/CataclysmSurge.h"
 
 int32 UCataclysmEmpireMapLayout::CellsAcross()
 {
@@ -151,7 +153,43 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 		: FString::Printf(TEXT("%d quest objective%s"), Objectives,
 						  Objectives == 1 ? TEXT("") : TEXT("s"));
 
-	return FString::Printf(TEXT("%s, %s"), *ClearedPart, *ObjectivePart);
+	// HOW FAR THE PLAYER IS FROM THE CATACLYSM BOSS DUNGEON, since issue #1324
+	// slice 6c: the Cataclysms finished of those the run faces, and then what
+	// opens it or that it has opened. Nothing when the run faces none, which no
+	// begun run does: `Begin` always draws at least one.
+	const int32 Facing = Run->ActiveCataclysms.Num();
+	if (Facing <= 0)
+	{
+		return FString::Printf(TEXT("%s, %s"), *ClearedPart, *ObjectivePart);
+	}
+
+	const int32 Finished = Run->CataclysmsComplete();
+	const int32 Needed = Run->CataclysmDungeonRequirement();
+
+	FString BossPart;
+	if (Run->bCataclysmDungeonOpened)
+	{
+		// ONLY A CLEAR TAKES IT OFF THE BOARD. `RemoveDungeon`'s other callers are
+		// a resolve, which it never reaches, a city's fall and a city upgrade,
+		// which both ask `DungeonsOn` a real city and never list it.
+		BossPart = Run->FindCataclysmDungeon() != nullptr
+			? FString(TEXT("the Cataclysm boss dungeon is open"))
+			: FString(TEXT("the Cataclysm boss dungeon has been cleared"));
+	}
+	else if (Finished >= Needed)
+	{
+		// MET AND NOT OPENED: a run record from before version 4. See the header.
+		BossPart = TEXT("the boss dungeon opens on the next quest dungeon cleared");
+	}
+	else
+	{
+		BossPart = FString::Printf(TEXT("the boss dungeon opens when %d %s finished"),
+								   Needed, Needed == 1 ? TEXT("is") : TEXT("are"));
+	}
+
+	return FString::Printf(TEXT("%s, %s, %d of %d Cataclysm%s finished; %s"),
+						   *ClearedPart, *ObjectivePart, Finished, Facing,
+						   Facing == 1 ? TEXT("") : TEXT("s"), *BossPart);
 }
 
 FString UCataclysmEmpireMapLayout::DaysOwedLine(const UCataclysmEmpireRun* Run)
@@ -266,9 +304,14 @@ FString UCataclysmEmpireMapLayout::LastDeathLine(const UCataclysmEmpireRun* Run)
 
 FString UCataclysmEmpireMapLayout::LatestEventLine(const UCataclysmEmpireRun* Run)
 {
-	// THE DEATH WHILE NOTHING THE HIT LINE COVERS IS MORE RECENT; on the same day, the death. See the header.
+	// THE DAY THE BOSS DUNGEON OPENED, or 0 while it has not, so a run without one compares as it did before issue
+	// #1324 slice 6c: no death or hit is on a day below 0.
+	const int32 OpenedDay = Run != nullptr && Run->bCataclysmDungeonOpened ? Run->CataclysmDungeonOpenedDay : 0;
+
+	// THE DEATH WHILE NOTHING ELSE WITH A LINE IS MORE RECENT; on the same day, the death. See the header.
 	if (Run != nullptr && Run->LastDeathDay > 0
-		&& Run->LastDeathDay >= Run->LastHitDay && Run->LastDeathDay >= Run->LastMoveDay)
+		&& Run->LastDeathDay >= Run->LastHitDay && Run->LastDeathDay >= Run->LastMoveDay
+		&& Run->LastDeathDay >= OpenedDay)
 	{
 		const FString Death = LastDeathLine(Run);
 		if (!Death.IsEmpty())
@@ -276,5 +319,108 @@ FString UCataclysmEmpireMapLayout::LatestEventLine(const UCataclysmEmpireRun* Ru
 			return Death;
 		}
 	}
+
+	// THEN THE OPENING WHILE NO HIT OR MOVE IS MORE RECENT; on the same day, the opening, which came after them.
+	if (Run != nullptr && Run->bCataclysmDungeonOpened
+		&& OpenedDay >= Run->LastHitDay && OpenedDay >= Run->LastMoveDay)
+	{
+		const FString Opened = CataclysmDungeonOpenedLine(Run);
+		if (!Opened.IsEmpty())
+		{
+			return Opened;
+		}
+	}
 	return LastHitLine(Run);
+}
+
+// ---------------------------------------------------------------------------
+// The Cataclysm boss dungeon, which stands on no city -- issue #1324 slice 6c
+// ---------------------------------------------------------------------------
+
+FVector2D UCataclysmEmpireMapLayout::CataclysmDungeonMarkerPosition(float Scale)
+{
+	// THE CENTRE, A MARGIN IN FROM THE TOP AND THE LEFT. The margin is not scaled, as `ScaleToFit`'s is not, so the
+	// marker and the diamond keep the same clear edge. See the header for why no city can be under it.
+	const FVector2D Size = CataclysmDungeonMarkerSize(Scale);
+	return FVector2D(FitMarginPx, FitMarginPx) + Size * 0.5;
+}
+
+FVector2D UCataclysmEmpireMapLayout::CataclysmDungeonMarkerSize(float Scale)
+{
+	return FVector2D(CataclysmDungeonMarkerWidthPx * Scale, CataclysmDungeonMarkerHeightPx * Scale);
+}
+
+FString UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel(const UCataclysmEmpireRun* Run)
+{
+	const FCataclysmDungeon* Boss = Run != nullptr && Run->Map != nullptr ? Run->FindCataclysmDungeon() : nullptr;
+	if (Boss == nullptr)
+	{
+		return FString();
+	}
+
+	// THE DEPTH ON THE BOX, because it is the one figure about it that changes: every ordinary dungeon defeated adds
+	// a floor. One floor is not a depth a boss rolls, but a dungeon built by hand can have it.
+	return FString::Printf(TEXT("Cataclysm boss: %d floor%s"), Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"));
+}
+
+FString UCataclysmEmpireMapLayout::CataclysmDungeonBrief(const UCataclysmEmpireRun* Run)
+{
+	const FCataclysmDungeon* Boss = Run != nullptr && Run->Map != nullptr ? Run->FindCataclysmDungeon() : nullptr;
+	if (Boss == nullptr)
+	{
+		return FString();
+	}
+
+	// WHO SENT IT AND WHAT KIND IT IS, each left out when it says nothing: `None` has no Cataclysm to name and a
+	// dungeon with no sub-type has none to show.
+	TArray<FString> Marks;
+	if (Boss->Cataclysm != ECataclysmType::None)
+	{
+		Marks.Add(UCataclysmRoster::NameFor(Boss->Cataclysm).ToString());
+	}
+	const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Boss->SubType);
+	if (!SubType.IsEmpty())
+	{
+		Marks.Add(SubType);
+	}
+	const FString Marked = Marks.IsEmpty()
+		? FString()
+		: FString::Printf(TEXT(" (%s)"), *FString::Join(Marks, TEXT(", ")));
+
+	// THE FLOORS THE ORDINARY DUNGEONS ADDED, which are the dungeon's floors less the ones it rolled. Never below
+	// none, whatever a hand-built run holds.
+	const int32 Added = FMath::Max(0, Boss->Floors - Run->CataclysmDungeonBaseFloors);
+	FString AddedPart;
+	if (Added == 0)
+	{
+		AddedPart = TEXT("as it rolled");
+	}
+	else if (Added == 1)
+	{
+		AddedPart = TEXT("1 of them added by an ordinary dungeon defeated");
+	}
+	else
+	{
+		AddedPart = FString::Printf(TEXT("%d of them added by ordinary dungeons defeated"), Added);
+	}
+
+	// AND HOW TO WALK IT, because pressing its box cannot: nothing enters a dungeon from this map (issue #48), so the
+	// line names the console command that does, with this dungeon's identifier. `Cataclysm.EnterDungeon` is the one
+	// registered in `CataclysmPlayerCharacter.cpp`; `test_a_message_names_only_registered_console_commands.py` holds
+	// that every `Cataclysm.` name in a message here is registered.
+	return FString::Printf(
+		TEXT("The Cataclysm boss dungeon%s: %d floor%s, %s. Every ordinary dungeon defeated adds a floor. It stands on "
+			 "no city and never resolves. To walk it, type Cataclysm.EnterDungeon %d in a dungeon level; nothing "
+			 "enters a dungeon from this map yet."),
+		*Marked, Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"), *AddedPart, Boss->DungeonId);
+}
+
+FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run)
+{
+	if (Run == nullptr || Run->Map == nullptr || !Run->bCataclysmDungeonOpened)
+	{
+		return FString();
+	}
+
+	return FString::Printf(TEXT("Day %d: the Cataclysm boss dungeon opened."), Run->CataclysmDungeonOpenedDay);
 }

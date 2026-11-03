@@ -228,9 +228,10 @@ by `git add` with no error and no warning. Guarded by
   (Recommended)"), where it never bites a city and no timer runs out on it, as
   deep as its roll plus every ordinary dungeon defeated in the run, before it
   opened and after. **No run is won yet** -- beating it is slice 6e of issue
-  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324), and the map
-  marker for it is slice 6c. This said the enemy capital and the loss condition
-  were missing until then; the owner had answered both on 2026-09-06.
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324). The empire map
+  shows it, since 2026-11-03 (slice 6c; below). This said the enemy capital and
+  the loss condition were missing until then; the owner had answered both on
+  2026-09-06.
 
   **Every dungeon a surge creates has a sub-type, and six of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring
@@ -390,6 +391,19 @@ by `git add` with no error and no warning. Guarded by
   countdown and how far the Cataclysm is from the Pillar (issue
   [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
   `Cataclysm.EmpireMap` opens it.
+
+  **The Cataclysm boss dungeon has a box of its own on the map**, since
+  2026-11-03, because it stands on no city: once the run has opened it, the
+  map panel's top left corner, where the diamond has no city, says "Cataclysm
+  boss: 137 floors", and the cursor on it says who sent it, how many of its
+  floors the ordinary dungeons defeated added, and that it never resolves. The
+  status line counts the Cataclysms finished against the number that opens it,
+  "1 of 5 Cataclysms finished; the boss dungeon opens when 3 are finished", and
+  the opening is the screen's latest event until something later happens.
+  Pressing the box opens nothing: there is no travel from the map (below), and
+  `Cataclysm.EnterDungeon <id>` walks it like any other dungeon, which its line
+  says, with the identifier (issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6c).
 
   **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
   the city is worth, the dungeons standing on it soonest to bite first, what it
