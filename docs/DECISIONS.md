@@ -22,8 +22,10 @@ Python test, `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`. Issue
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Every Unreal
-  figure below is registered for a window and none is measured.
+- **COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use and was not compiled. Phase 2
+  compiled it -- both modules, every changed `.cpp` alone and in the unity file that holds it -- and it compiled as
+  written; phase 2 changed nothing in it but the ruling's date. Every Unreal figure below is registered for window
+  cataclysm-draw-w1 and none is measured; the base counts it rests on are measured (see "Registered before the run").
 - **THE SIMULATION NEEDED NO CHANGE.** It already keeps one order per character: `cataclysm_order_for` in
   `sim/cataclysm_sim/engine.py` draws from the campaign's seed alone ("THE SEED IS THE CHARACTER"), and
   `sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` holds the same seed to the same Cataclysms
@@ -129,7 +131,7 @@ Six new in `CataclysmCataclysmDrawTests.cpp`; `Cataclysm.CataclysmDraw.` is a ne
 else. The first three begin runs through `UCataclysmGameInstance::BeginACharactersEmpireRun` on a game instance with
 no world, each naming its tier. **No assertion compares with a list of names written out**: the orders quoted were
 worked out by a Python copy of `FRandomStream` (in the new Python test), not by the game, and each test prints the
-real ones.
+real ones. Phase 2 checked that copy line by line against the engine's source (the assertion audit, below).
 
 1. `TwoRunsOfOneCharacterAtOneTierFaceTheSameCataclysmsInOrder` ("SAME TIER"): character seed 24681357, tier 3, run
    seeds 11 and 12: the first run faces `ActiveFor(24681357, 3)`; the second faces the first's list, by name and in
@@ -174,29 +176,107 @@ and no other number in it; the v7 file is the v6 file plus the key; `Migrate_6_t
 hand over the character's seed and `BeginForCharacter` draws from it; the seeds the Unreal tests chose draw what their
 comments say under the Python copy of the generator; and the copy's orders are permutations.
 
+### Phase 2: rebased, compiled, and reviewed a second time
+
+- **REBASED** from `ec2319181` onto `development` `b897f4a69`, which added #761's crowd and #745's hit reactions. One
+  conflict, this file, resolved by keeping every entry with this one first. Neither change touched the save records,
+  the empire run or the game instance; the one file both changed, `CataclysmGameMode.cpp`, differs on `development`
+  only in an imp-spawning log line.
+- **COMPILED**, `python tools/unreal_build.py build`, each line read: the branch as committed, "Build: Succeeded - 61
+  actions, 54 files compiled"; then with the branch's changes made uncommitted (`git reset --mixed` to `development`,
+  and back afterwards, `git status` clean), so the adaptive unity build compiled each changed file on its own, "Build:
+  Succeeded - 63 actions, 58 files compiled", which wrote the twelve changed `.cpp` files' own objects; then with the
+  makefile moved aside so it was regenerated, the unity files holding them, "Build: Succeeded - 11 actions, 6 files
+  compiled: Module.Cataclysm.30.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.17.cpp, Module.Cataclysm.12.cpp,
+  Module.Cataclysm.29.cpp, Module.Cataclysm.15.cpp". `CataclysmEmpire` builds each of its fifteen `.cpp` files alone,
+  with no unity file, so `CataclysmEmpireRun.cpp`'s own object is its build. No compile error was found.
+- **EVERY CALL SITE THAT BEGINS A RUN**, searched again in `game/Source` outside the tests for `BeginEmpireRun(`,
+  `BeginACharactersEmpireRun(`, `BeginForCharacter(`, `GetOrBeginEmpireRun(`, `->Begin(`, `.Begin(` and `EmpireRunFor(`
+  with `bStartIfNone` true, and in `game/Content` for the three function names (none): the table above is complete.
+  A new character (`MakeThePendingCharacter`) and a loaded character's new run (`CharacterAndRun`) face their own draw;
+  a resumed run (`RunInto`: `Begin(0, ...)`, then the record's `ActiveCataclysms` written over it) faces the list it was
+  saved with; `Cataclysm.EmpireBegin` faces its typed seed's; `Cataclysm.EmpireMap`, `Cataclysm.EmpireAdvance` and
+  `Cataclysm.EnterDungeon`, through `EmpireRunFor(World, true)` and `GetOrBeginEmpireRun`, face the clock seed's.
+- **THE FNV-1a, RECOMPUTED APART FROM THE PYTHON TEST**, from the C++: words `A`, `B`, `C`, `D`, each shifted 24, 16, 8
+  and 0, offset basis 2166136261, prime 16777619, then `& 0x7FFFFFFF`; and `FGuid::Parse`'s 32-digit form, which
+  `Guid.cpp` reads as `A` the first eight digits, `B` the next eight, and so on. The committed identifier gives
+  **1412640493**, the zero identifier **1768495365** and `FGuid(1, 2, 3, 4)` **1069075193**: the three pins. FNV-1a of
+  the byte "a" is 0xE40C292C, its published value.
+- **THE SAVE RULES**: the README's paragraph, table row and count of character migrations (six) are there;
+  `Character_v6.json` is unedited; `Character_v7.json` is it at version 7 with the one key, after `ConsumptionBuild`
+  (key order read). The version sweep found what phase 1 found: the load's `IsNewerThanThisBuild` and the writer read
+  `SchemaVersionNow`; the literal character versions in tests are the fixture tests' 7 and the hand-written version 3
+  record; the run and example records' literals are untouched.
+- **A 0 SEED IS A SEED EVERYWHERE.** The readers of `CataclysmOrderSeed` are the gather (which asks
+  `HasCataclysmOrderSeed`, a flag, never the value), the apply (which sets it) and `CharacterAndRun` (which draws from
+  it). Nothing compares it with 0. Phase 1's judgement, that a character which never drew one is written with its
+  identifier's seed, stands: the writer sets `CharacterId` before it gathers (`CataclysmSaveWriter.cpp`), so the seed
+  is the identifier's on every write.
+- **ONE FIX**: phase 1 dated the ruling 2026-11-03 here, in seven source comments, in the fixtures README and in the
+  Python test; it was made on 2026-11-02, local time. Corrected in its own commit.
+
+### Phase 2: every assertion that compares with a fixed number or a starting state
+
+- **THE GENERATOR COPY, LINE BY LINE** against `Engine/Source/Runtime/Core/Public/Math/RandomStream.h`:
+  `Initialize(int32)` sets `Seed = uint32(InSeed)`; every fraction first mutates the seed, `Seed * 196314165U +
+  907633515U`; `GetFraction` is the float whose bits are `0x3F800000U | (Seed >> 9)`, less 1.0f; `RandHelper(A)` is
+  `TruncToInt(GetFraction() * float(A))`; `RandRange(Min, Max)` is `Min + RandHelper(Max - Min + 1)`. And
+  `CataclysmRoster.cpp`: `MixedSeed` is `(uint32(Seed) + uint32(Salt) * 2654435769) * 2654435761 + 2654435769`,
+  `OrderSalt` is 1, the roster is Demonic, Death, War, Pestilence, Famine, Celestial, Chaos, Void, and the shuffle swaps
+  each index from 7 down to 1 with `RandRange(0, Index)`. The copy does each of these. Its arithmetic is the engine's:
+  the fraction less one is exact; the product of a 23-bit fraction and a whole number up to 8 is exact in a double, so
+  rounding it once to single precision is the float product; `int()` truncates a non-negative number as `TruncToInt`
+  does. A second copy written in phase 2 with single-precision arithmetic throughout agrees on every seed the tests use.
+- **WHAT THE COPIES DRAW**, each seed's first four: 24681357 Demonic, Pestilence, War, Chaos; 11 Death, Chaos, Void,
+  Demonic; 12 War, Famine, Demonic, Pestilence; 5 Void, Chaos, War, Celestial; 7 Celestial, Death, Void, Pestilence;
+  8 Void, Demonic, Death, Chaos.
+- **THE NEW TESTS' FIXED NUMBERS.** Test 1's "three Cataclysms" and test 2's three and four are `ActiveCountFor`'s
+  clamp of the tier the test names. Test 1's CONTROL (11's list is not 12's) and test 3's "the two characters face
+  different Cataclysms" (7's is not 8's) hold by the draws above, and are fixed, not chance. 1412640493, 975318642,
+  1768495365 and 1069075193 are recomputed above or stated by the committed file. Test 4's "the chain migrates" needs
+  `Character_v6.json` at 6 with no seed key, which the Python test checks.
+- **THE STARTING STATES.** Test 7's "no seed before" reads a fresh `ACataclysmPlayerState` that `MakeScene` spawns, and
+  its outcome and death write are the ones `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` already passes on. Test
+  8's seed and tier are written into the record by the test, and its "no run named" path is
+  `ARunThatCannotBeReadStartsANewOneAndSaysSo`'s; a load writes nothing (`BeginRun` and `AdoptLoaded` only set the
+  writer's state), so the second load reads the same record as the first.
+- **THE MOVED ASSERTIONS.** The three migration tests expect 1412640493 because every committed character file holds
+  the one identifier, which the Python test checks. Every other character test that writes a record at
+  `SchemaVersionNow` (enchantment, restore and load tests) leaves the seed at 0, and none compares a Cataclysm list:
+  outside the eight new tests, no test in `game/Source` reads `ActiveCataclysms` after a load or a creation.
+- **P1 IS CHANCE; P2 AND P3 ARE FIXED.** P1's broken half draws each load's run from the clock, so its count is not
+  determined: see its row. P2 involves no draw. Every seed P3 reads is written into the tests, so its outcome is
+  determined by the draws above, and that outcome is the one registered.
+
 ### Registered before the run
 
 The engine words a failed `TestTrue` "Expected '<what>' to be true.", `TestFalse` "Expected '<what>' to be false." and
 `TestEqual` on whole numbers "Expected '<what>' to be <expected>, but it was <actual>."
-(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`). **The group counts are counted from name literals in
-this branch's source, not measured**; the whole-suite base is measured: 4610 performed by window click-move-w1 at
-`f939a69ee`, whose tree differs from this branch's base, `development` `ec2319181`, only in `docs/DECISIONS.md`. Each
-prefix ends in a dot and no other group shares it.
+(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`, read again in phase 2). **Every base count is measured**:
+"Test Completed" lines counted by prefix, ignoring case, in the whole-suite engine log of window hit-reaction-w1 at
+`8ffc80d27`, whose `game` tree is `development` `b897f4a69`'s, this branch's base (the two differ only in this file);
+that run performed 4632, with 47 skipped halves and 0 test saves left behind. Each prefix ends in a dot: without it
+`Cataclysm.EmpireRun` also takes `Cataclysm.EmpireRunTier` (73 rather than 68). No group in that log begins
+`Cataclysm.CataclysmDraw`.
 
 | Figure | Registered |
 |---|---|
-| `Cataclysm.CataclysmDraw.` alone | 6 / 6: none at the base, + 6 |
-| `Cataclysm.SaveLoad.` alone | 75 / 75: 73 at the base by name literals, + 2 |
-| `Cataclysm.SaveRecords.` alone | 17 / 17: 17 at the base (measured at window death-cost-w1), none added; three move |
-| `Cataclysm.ConsumptionMark.` alone | 6 / 6 by name literals, none added; one moves |
-| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 (measured at death-cost-w1), none added; one moves |
-| Whole Unreal suite | TO-BE-MEASURED: 4610 at the base, + 8 by name, so 4618 expected |
+| `Cataclysm.CataclysmDraw.` alone | 6 / 6: none at the base, + 6 by name |
+| `Cataclysm.SaveLoad.` alone | 75 / 75: 73 at the base, + 2 by name |
+| `Cataclysm.SaveRecords.` alone | 17 / 17: 17 at the base, none added; four change (three read `Character_v7.json`; the version 3 migration expects the seed) |
+| `Cataclysm.ConsumptionMark.` alone | 6 / 6: 6 at the base, none added; one changes |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15: 15 at the base, none added; one changes |
+| `Cataclysm.DeathCost.` alone | 9 / 9: 9 at the base, none added or changed; its runs begin through `Begin`, which now calls `BeginForCharacter` |
+| `Cataclysm.EmpireRun.` alone | 68 / 68: 68 at the base, none added or changed; the same reason |
+| `Cataclysm.EmpireRunTier.` alone | 5 / 5: 5 at the base, none added or changed; its runs begin through `BeginEmpireRun`, which now calls `BeginACharactersEmpireRun` |
+| Whole Unreal suite | 4640 performed, 4640 succeeded, 0 failed: 4632 at the base + 8 by name; 47 skipped halves, as at the base (none of the eight reports one); 0 test saves left behind; declared 4640, gap 0 |
 | Python | of record, with JUnit, and ruff, at the registration commit |
-| P1, a loaded character's new run drawn from the clock again (`BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed,` to `BeginACharactersEmpireRun(Seed, Seed,`, in `CataclysmSaveLoad.cpp`), prefix `Cataclysm.SaveLoad.` | 1 test, 3 assertions, all in `ALoadedCharactersNewRunFacesItsOwnDrawEveryTime`, each "to be true": "load 1: the new run faces the character's draw, by name and in order", "load 2: the new run faces the character's draw, by name and in order" and "the second load's run faces the same Cataclysms as the first's, by name and in order". **Each can pass by chance**, about once in 336: a clock-drawn tier 3 list that happens to be seed 7's, or two that happen to match. "holds the seed its record keeps" passes (the load still sets it); the other 74 pass |
-| P2, the migration writes 0 (`UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier)); // A migration's` to `0); // A migration's`, in `CataclysmSaveRecords.cpp`), prefix `Cataclysm.CataclysmDraw.` | 1 test, 5 assertions, all in `ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed`: "the step writes the seed the identifier gives into the file" (to be true), "a character from before the draw holds the seed its identifier gives" (to be 1412640493, but it was 0), "which is what CataclysmOrderSeedFor gives the identifier it read" (to be 1412640493, but it was 0), "CONTROL: and it is not 0, the field's default" (to be true) and "and every other field is kept" (to be true). "a second load gives the same seed" passes (0 and 0). The other five pass. Outside the prefix it would also fail "and every other field is kept" in the three moved migration tests |
-| P3, every run drawn from its own seed (`UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier);` to `UCataclysmRoster::ActiveFor(InSeed, InDifficultyTier);`, in `CataclysmEmpireRun.cpp`), prefix `Cataclysm.CataclysmDraw.` | 3 tests, 6 assertions, each "to be true": in test 1 "the first run faces the character's draw, by name and in order" and "the second run faces the same Cataclysms as the first, by name and in order"; in test 2 "the tier 4 run's first three are the tier 3 run's, by name and in order"; in test 3 "the character of seed 7 faces its own draw", "the character of seed 8 faces its own draw" and "the two characters face different Cataclysms". Test 1's CONTROL and test 2's "and the one added ... is not one the tier 3 run faced" pass (the copy: seed 12's fourth is Pestilence, not in seed 11's three). Tests 4 to 6 pass. **The second assertion of test 1 and test 2's rest on test 1's CONTROL holding; the other four on the Python copy of the generator** (seed 11's list is not 24681357's; seed 5's is neither 7's nor 8's) |
+| P1, a loaded character's new run drawn from the clock again (`BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed,` to `BeginACharactersEmpireRun(Seed, Seed,`, in `CataclysmSaveLoad.cpp`), prefix `Cataclysm.SaveLoad.` | 1 test, 3 assertions, all in `ALoadedCharactersNewRunFacesItsOwnDrawEveryTime`, each "to be true": "load 1: the new run faces the character's draw, by name and in order", "load 2: the new run faces the character's draw, by name and in order" and "the second load's run faces the same Cataclysms as the first's, by name and in order". "holds the seed its record keeps" passes (the load still sets it); the other 74 pass. **CHANCE, NOT FIXED**: each load's list comes from a clock seed, and each of the three passes when a clock-drawn tier 3 list happens to be seed 7's, or the two loads' happen to match, about once in 336 (8 x 7 x 6). So the run shows exactly these three with probability (335/336) x (334/336), about 0.991, and the test passes whole -- the proof unproved -- only when both loads draw seed 7's list, about once in 113,000. One or two failed assertions here is that chance, not another fault |
+| P2, the migration writes 0 (`UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier)); // A migration's` to `0); // A migration's`, in `CataclysmSaveRecords.cpp`), prefix `Cataclysm.CataclysmDraw.` | 1 test, 5 assertions, all in `ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed`: "the step writes the seed the identifier gives into the file" (to be true), "a character from before the draw holds the seed its identifier gives" (to be 1412640493, but it was 0), "which is what CataclysmOrderSeedFor gives the identifier it read" (to be 1412640493, but it was 0), "CONTROL: and it is not 0, the field's default" (to be true) and "and every other field is kept" (to be true). "a second load gives the same seed" passes (0 and 0). The other five tests pass. Fixed: no draw reaches it. Outside the prefix it would also fail "and every other field is kept" in the three moved migration tests |
+| P3, every run drawn from its own seed (`UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier);` to `UCataclysmRoster::ActiveFor(InSeed, InDifficultyTier);`, in `CataclysmEmpireRun.cpp`), prefix `Cataclysm.CataclysmDraw.` | 3 tests, 6 assertions, each "to be true": in test 1 "the first run faces the character's draw, by name and in order" (11's three against 24681357's) and "the second run faces the same Cataclysms as the first, by name and in order" (12's against 11's); in test 2 "the tier 4 run's first three are the tier 3 run's, by name and in order" (12's against 11's); in test 3 "the character of seed 7 faces its own draw" (5's against 7's), "the character of seed 8 faces its own draw" (5's against 8's) and "the two characters face different Cataclysms" (5's against 5's). Test 1's CONTROL (11's against 12's) and test 2's "and the one added, at the end, is not one the tier 3 run faced" (12's fourth, Pestilence, against Death, Chaos, Void) pass. Tests 4 to 6 pass. **FIXED, NOT CHANCE**: every seed is written into the tests, so the outcome is the draws listed in the audit above |
 
-Each anchor occurs once in its file, counted by the phase 1 proof script. The breaks were not compiled.
+Each anchor occurs exactly once in its file, counted by `prove_n6a.py --anchors-only` at the registration commit. Each
+break's file was compiled alone in phase 2, as a proof's build compiles it.
 
 ### Proofs run in phase 1 (Python only)
 
@@ -212,7 +292,7 @@ With `tools/prove_guard.py` in this worktree, which no other process uses, again
 
 ### Not tested
 
-- **Nothing in Unreal has run**, and nothing has compiled (SAID FIRST).
+- **Nothing in Unreal has run.** It compiled in phase 2 (SAID FIRST); no test or proof has been run by the engine.
 - **A won run.** Nothing in play wins one yet (#1324's slice 6), so "a run at tier T+1 faces the tier-T list plus one"
   is tested by beginning runs at T and T+1 for one seed, not by winning.
 - **The fresh start's character**, whose first run a console command begins from the clock, then whose record is
@@ -220,8 +300,9 @@ With `tools/prove_guard.py` in this worktree, which no other process uses, again
   exercised by a test.
 - **A run saved before this change and resumed** keeps the clock-drawn list it was saved with (`RunInto`); only its
   next new run follows the character. Read, not run.
-- **Whether the Python copy of `FRandomStream` matches the engine.** It picked the seeds and predicts four of P3's six
-  failures; the Unreal tests' own CONTROL lines and info lines measure the real generator.
+- **Whether the Python copy of `FRandomStream` matches the engine, by measurement.** Phase 2 checked it line by line
+  against the engine's source and a second copy agrees with it, but only the window's info lines ("SAME TIER", "TIER
+  HIGHER", "TWO CHARACTERS") print what the engine draws. P3's six predicted failures rest on it.
 
 ---
 
