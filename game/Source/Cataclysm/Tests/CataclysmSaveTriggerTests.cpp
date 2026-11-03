@@ -118,8 +118,10 @@ bool FCataclysmSaveRecordsAreWrittenForTheRightReasons::RunTest(const FString&)
 		// to reach it; and a death is written whole.
 		// RULED 2026-11-01, select-screen step 4a: a character being created writes its record too, so it is listed at
 		// once; the set was InventoryChanged and CharacterDied only.
+		// SINCE 2026-11-03, issue #1324 slice 6e: a won run writes it too, after the tier is raised.
 		const bool bCharacter = Trigger == ECataclysmSaveTrigger::InventoryChanged
-			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated;
+			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated
+			|| Trigger == ECataclysmSaveTrigger::RunWon;
 		TestEqual(FString::Printf(TEXT("'%s' writes the character record"),
 					FTriggers::NameOf(Trigger)),
 			FTriggers::WritesTheCharacterRecord(Trigger), bCharacter);

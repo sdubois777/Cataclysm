@@ -414,4 +414,25 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run);
+
+	// ----------------------------------------------------------------------
+	// The win of the run before this one -- issue #1324 slice 6e
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The win of the run before this one, as one line: "Run won on day 380 at tier 3 against Death. +10 passive
+	 * points. This run faces 4 Cataclysms." Issue #1324 slice 6e, ruled by the coordinating session on 2026-11-02
+	 * (R7: the next run begins at once, "with a win line"); the words are the session's that built it.
+	 *
+	 * READ FROM THE FOUR FIELDS THE NEW RUN CARRIES, `UCataclysmEmpireRun::LastRunWonDay` and the three beside it,
+	 * which `UCataclysmGameInstance::BeginTheRunAfterAWin` writes, and from the run's own list of Cataclysms.
+	 *
+	 * PLAIN AND LITERALLY TRUE. A boss the character had defeated before paid nothing, and the line says so rather
+	 * than "+0". At tier 8 no ninth Cataclysm is added, and the line says the run faces the same eight.
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one whose run before it was not won all answer
+	 *            an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString LastRunWonLine(const UCataclysmEmpireRun* Run);
 };

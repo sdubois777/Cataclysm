@@ -496,6 +496,23 @@ followed, ruled 2026-11-01:
   `Cataclysm.EarnedBossSave.ARunFileFromBeforeTheBossDungeonMigratesUnopened` runs
   it through the step and checks every other field is kept. Every test that read
   `Run_v3.json` as the committed run file reads `Run_v4.json` now.
+- **The run record went to version 5 on 2026-11-03**, for the win of the run
+  before it (issue #1324 slice 6e): a won run is replaced at once by the
+  character's next run, one tier higher, which carries a line saying the last one
+  was won. Four fields after `CataclysmDungeonBaseFloors` -- `LastRunWonDay`,
+  `LastRunWonTier`, `LastRunWonCataclysm` and `LastRunWonPassivePoints`.
+  `Migrate_4_to_5` writes "not won" into a version 4 file (day 0, tier 0, `None`,
+  0 points), and `Run_v5.json` is `Run_v4.json` at version 5 with those four keys
+  added holding 381, 3, `War` and 10 and nothing else changed. **None holds its
+  default**, and the four differ from one another. 381 is used nowhere else in the
+  file; 3 and 10 are, and 10 is the only figure a first win pays. **The fixture
+  describes a state play reaches**: the run is at tier 4 facing Demonic, Death,
+  War and Pestilence, so the run before it was at tier 3, and the third Cataclysm
+  of that character's draw is War, whose boss the win paid for (the coordinating
+  session's ruling R4). `Run_v4.json` is now a migration input, not edited again;
+  `Cataclysm.WinningTheRun.ARunFileFromBeforeTheWinLineMigratesWithNone` runs it
+  through the step and checks every other field is kept. Every test that read
+  `Run_v4.json` as the committed run file reads `Run_v5.json` now.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -521,6 +538,7 @@ followed, ruled 2026-11-01:
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
 | `Run_v4.json` | The same run at version 4: version 3's contents, plus its Cataclysm boss dungeon, opened on day 109 at 137 floors |
+| `Run_v5.json` | The same run at version 5: version 4's contents, plus the win of the run before it, on day 381 at tier 3 against War, for 10 passive points |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -533,8 +551,8 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had six since
-(version 7 since 2026-11-02), and the run record three (version 4 since
-2026-11-02). Its header says more.
+(version 7 since 2026-11-02), and the run record four (version 5 since
+2026-11-03). Its header says more.
 
 ## Two things to keep in mind when editing one
 

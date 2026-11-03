@@ -348,7 +348,16 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// `UCataclysmEmpireMapLayout::LastDeathLine`. OR THE DAY THE CATACLYSM
 		// BOSS DUNGEON OPENED, while that is the most recent, since issue #1324
 		// slice 6c.
-		const FString LastHit = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+		FString LastHit = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+
+		// AND THE WIN OF THE RUN BEFORE THIS ONE, FIRST, for as long as this run lasts: the run this map shows began
+		// at once after it, one tier higher (issue #1324 slice 6e). Empty when the run before was not won. See
+		// `UCataclysmEmpireMapLayout::LastRunWonLine`.
+		const FString Won = UCataclysmEmpireMapLayout::LastRunWonLine(Run);
+		if (!Won.IsEmpty())
+		{
+			LastHit = LastHit.IsEmpty() ? Won : FString::Printf(TEXT("%s   %s"), *Won, *LastHit);
+		}
 
 		SurgeLabel->SetText(FText::FromString(FString::Printf(
 			TEXT("%s   Next surge in %.0f days, bringing %d.%s%s"),

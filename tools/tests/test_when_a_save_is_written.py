@@ -112,7 +112,7 @@ def test_only_the_character_dying_is_written_before_the_frame_ends() -> None:
     # creature dying, which reads most like death.
     others = ("Clock", "FightStarted", "CreatureDied", "HealthCrossedThreshold",
               "ChangedFloor", "InventoryChanged", "AccountChanged", "DeathProcessed",
-              "CharacterCreated")
+              "CharacterCreated", "RunWon")
     for other in others:
         assert other not in body, (
             f"MustBeWrittenBeforeTheFrameEnds mentions {other}. Section 6: "

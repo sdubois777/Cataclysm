@@ -82,6 +82,21 @@ enum class ECataclysmSaveTrigger : uint8
 	 * character record and the run record.
 	 */
 	CharacterCreated = 9,
+
+	/**
+	 * A run was won: the Cataclysm boss dungeon cleared, the first-kill passive points paid, the character's tier
+	 * raised and its next run begun (`UCataclysmGameInstance::BeginTheRunAfterAWin`, which raises it last). Issue
+	 * #1324 slice 6e, ruled 2026-11-02.
+	 *
+	 * WHY IT EXISTS. The coordinating session's comment of 2026-11-01 on #1324: the tier is raised "before the
+	 * character record is written". Nothing else a win does raises a trigger -- the clock's write does not write the
+	 * character record -- so without this the raised tier, the boss defeated and the new run waited for the next item
+	 * or death, and a player who quit first came back to the run that was won, at the old tier. Raised once, after all
+	 * of it, so each record is written once and holds the win.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, of the character record and the run record, as `CharacterCreated` is.
+	 */
+	RunWon = 10,
 };
 
 /**
@@ -138,7 +153,8 @@ public:
 	/**
 	 * Whether this trigger writes the character record.
 	 *
-	 * THE INVENTORY AND DEATH, AND NOTHING ELSE. What a character is carrying
+	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01) and
+	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.
@@ -152,6 +168,10 @@ public:
 	 * when several creatures die together. A death must be written whatever else happened; the processing write must
 	 * replace the unpaid death on disk, and a trigger raised on the way out of the dungeon in the same frame would
 	 * otherwise stop it. Issue #753, the start-up step.
+	 *
+	 * AND A WON RUN, since issue #1324 slice 6e (2026-11-03), for the processing write's reason: it replaces the won
+	 * run's record with the next run's in the same slot, and a run record written earlier in the frame -- a creature
+	 * dying, a floor changing -- would otherwise leave the won run on disk until the next write, for a load to resume.
 	 */
 	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 

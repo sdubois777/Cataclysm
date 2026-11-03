@@ -227,11 +227,15 @@ by `git add` with no error and no warning. Guarded by
   puts the boss on the board on no city (the owner, verbatim, "On no city
   (Recommended)"), where it never bites a city and no timer runs out on it, as
   deep as its roll plus every ordinary dungeon defeated in the run, before it
-  opened and after. **No run is won yet** -- beating it is slice 6e of issue
-  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324). The empire map
-  shows it, since 2026-11-03 (slice 6c; below). This said the enemy capital and
-  the loss condition were missing until then; the owner had answered both on
-  2026-09-06.
+  opened and after. **Beating it wins the run**, since slice 6e of issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) (2026-11-03): the
+  character is paid the first-kill 10 passive points for its draw's Cataclysm at
+  that tier, its tier rises by one (held at 8) before its record is written, the
+  walk's owed days are not run, and its next run begins at once against the won
+  run's Cataclysms and one more, with a line on the map saying the last run was
+  won. This said no run was won yet. The empire map shows the boss, since
+  2026-11-03 (slice 6c; below). This said the enemy capital and the loss
+  condition were missing until then; the owner had answered both on 2026-09-06.
 
   **Every dungeon a surge creates has a sub-type, and six of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring

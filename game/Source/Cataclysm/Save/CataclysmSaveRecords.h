@@ -1605,8 +1605,12 @@ public:
 	 * 4 SINCE 2026-11-02. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
 	 * day it opened and the floors it rolled, `bCataclysmDungeonOpened` to `CataclysmDungeonBaseFloors`, and
 	 * `Migrate_3_to_4` writes a boss not yet opened into a run written at 3.
+	 *
+	 * 5 SINCE 2026-11-03. The run carries the win of the run before it (issue #1324 slice 6e): the day, the tier, the
+	 * Cataclysm and the passive points, `LastRunWonDay` to `LastRunWonPassivePoints`, and `Migrate_4_to_5` writes "the
+	 * run before this one was not won" into a run written at 4.
 	 */
-	static constexpr int32 SchemaVersionNow = 4;
+	static constexpr int32 SchemaVersionNow = 5;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1947,6 +1951,27 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 CataclysmDungeonBaseFloors = 0;
+
+	/**
+	 * The run before this one, when it was won: the day it was won, the tier it was played at, the Cataclysm whose boss
+	 * the win was paid for, and the passive points that paid. `UCataclysmEmpireRun::LastRunWonDay` and the three beside
+	 * it; issue #1324 slice 6e, 2026-11-03. A SCHEMA VERSION, 5: `Migrate_4_to_5` writes "not won" -- 0, 0, `None` and
+	 * 0 -- into a run written at 4, which is what such a run carried, since no run could be won before.
+	 *
+	 * WHY A RUN RECORD CARRIES THE RUN BEFORE IT. A won run is replaced by the next one at once, in the same slot, and
+	 * the next one shows the win line on its map; without these a player who quit after the win would lose the line.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonTier = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmType LastRunWonCataclysm = ECataclysmType::None;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonPassivePoints = 0;
 
 	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
 	//

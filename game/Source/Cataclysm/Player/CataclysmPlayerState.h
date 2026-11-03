@@ -334,9 +334,9 @@ public:
 	/**
 	 * A won run's raise: one tier higher, held at the highest. Returns the new tier.
 	 *
-	 * NOTHING IN PLAY CALLS THIS YET, ON PURPOSE. No run can be won: the Cataclysm boss dungeon, the enemy capital and
-	 * the loss condition do not exist, and #1324 is the change that will make a won run call this (ruled 2026-11-01).
-	 * Tests are its only callers until then.
+	 * A WON RUN CALLS THIS, since issue #1324 slice 6e (2026-11-03): `UCataclysmGameInstance::BeginTheRunAfterAWin`,
+	 * before the character record is written, as ruled on 2026-11-01. **This said nothing in play called it yet,
+	 * because no run could be won, and that tests were its only callers.**
 	 */
 	int32 RaiseDifficultyTierForAWin();
 
@@ -535,11 +535,13 @@ public:
 	 * unique Cataclysm boss for the FIRST time: 10 bonus passive points", so a
 	 * boss killed again grants nothing and this answers false.
 	 *
-	 * NOTHING CALLS IT YET. There is no unique Cataclysm boss in the game: the
-	 * rarity exists in `game/Data/EnemyRarities.csv` with a spawn weight of zero
-	 * and no named boss entity exists at all. `Cataclysm.DefeatCataclysmBoss` is
-	 * how the award is exercised until one does, which is the same arrangement
-	 * `Cataclysm.GrantExperience` had before a kill granted any.
+	 * A WON RUN CALLS IT, since issue #1324 slice 6e (2026-11-03):
+	 * `UCataclysmGameInstance::BeginTheRunAfterAWin`, naming the boss of the
+	 * Cataclysm the character's draw puts at the won run's tier
+	 * (`UCataclysmRoster::NameFor`), by the coordinating session's ruling R4.
+	 * **This said nothing called it yet**, because no unique Cataclysm boss
+	 * existed in the game; `Cataclysm.DefeatCataclysmBoss` still records one by
+	 * any name, at the console.
 	 *
 	 * @return whether this was the first defeat, and so whether ten points were
 	 *         earned by it

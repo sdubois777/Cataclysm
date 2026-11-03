@@ -45,6 +45,11 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::CharacterCreated: // A trigger's: a new character writes its record.
 			return true;
 
+		// A WON RUN, after its tier was raised, so the record holds the tier the next run is played at. Issue #1324
+		// slice 6e.
+		case ECataclysmSaveTrigger::RunWon: // A trigger's: a won run writes the character record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -52,7 +57,10 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 
 bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger)
 {
-	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed;
+	// AND A WON RUN, since issue #1324 slice 6e: its write replaces the won run's record with the next run's, and a
+	// run record written earlier in the same frame would otherwise leave the won run on disk to be loaded again.
+	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
+		|| Trigger == ECataclysmSaveTrigger::RunWon;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
@@ -116,6 +124,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::AccountChanged:         return TEXT("the account record changing");
 		case ECataclysmSaveTrigger::DeathProcessed:         return TEXT("a death having been paid for");
 		case ECataclysmSaveTrigger::CharacterCreated:       return TEXT("a character being created");
+		case ECataclysmSaveTrigger::RunWon:                 return TEXT("a run being won");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -143,5 +152,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::AccountChanged,
 		ECataclysmSaveTrigger::DeathProcessed,
 		ECataclysmSaveTrigger::CharacterCreated,
+		ECataclysmSaveTrigger::RunWon,
 	};
 }
