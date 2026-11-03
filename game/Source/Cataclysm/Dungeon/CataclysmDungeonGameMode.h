@@ -386,7 +386,10 @@ public:
 	 * `ApplySoulHarvestFigures` re-applies the damage and resistance with bFreshBlock false, which keeps the health
 	 * where it is. NOTHING IS FORGOTTEN: the creature is the void's boss again, and the attack damage the void gave
 	 * (`NothingIsForgottenDamageGiven`) is added back; `ApplyNothingIsForgottenFigures` is NOT called, because it adds
-	 * the void's health to a maximum that already holds it.
+	 * the void's health to a maximum that already holds it. THE CATACLYSM BOSS, issue #1324 slice 6d: on
+	 * `IsTheCataclysmBossFloor`, the saved Gatekeeper at `CataclysmBossRung` whose record does not say it rose from the
+	 * dead is the floor's boss again, so the stairs stay sealed under it; one that rose (Dead Rising, Divine Resurgence)
+	 * is not, as it is not in play.
 	 */
 	void RestoreCreatureRoles(ACataclysmEnemyCharacter& Creature, const struct FCataclysmSavedCreature& Saved);
 

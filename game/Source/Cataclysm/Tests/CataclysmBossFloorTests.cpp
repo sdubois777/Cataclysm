@@ -15,13 +15,16 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmDungeonKind.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -34,7 +37,12 @@
  *
  * EVERY FIXTURE'S STARTING STATE, AND WHERE IT COMES FROM:
  * - the run is `UCataclysmEmpireRun::Begin(1)` and one `AdvanceDay`, as the Heavenly Core's tests build theirs, and a
- *   dungeon of it is taken and rewritten: its depth, its kind, its sub-type, and no modifiers, so its floors draw none;
+ *   dungeon of it is taken and rewritten: its depth, its kind, its sub-type, and no modifiers, so its floors draw none.
+ *   ONE DUNGEON IS ENOUGH: a test that walks two kinds rewrites the same one twice, so no test needs the opening wave
+ *   to have put more than one dungeon that is not a Cow Level on the board;
+ * - except the test of the earned boss dungeon, which clears the run's quests by hand until
+ *   `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` opens the real one (issue #1324 slice 6b) -- on no city, 100
+ *   to 150 floors deep -- and then takes its modifiers off and makes it plain, for the same reason;
  * - `EnemyScale` is 0, so the population places the boss at the exit and nothing else
  *   (`FCataclysmFloorPopulator::Populate` places the boss before it asks the density for anything);
  * - the player is a possessed `ACataclysmPlayerCharacter` at the world's origin, with no gear.
@@ -66,18 +74,17 @@ namespace CataclysmBossFloorTest
 	};
 
 	/**
-	 * Takes the `Skip`-th dungeon of the run that is not a Cow Level, makes it `Floors` deep, of this kind and
-	 * sub-type and carrying no modifiers, and enters it. Answers its identifier, or `INDEX_NONE`.
+	 * Takes the first dungeon of the run that is not a Cow Level, makes it `Floors` deep, of this kind and sub-type and
+	 * carrying no modifiers, and enters it. Answers its identifier, or `INDEX_NONE`. A second call takes the same
+	 * dungeon again, so one dungeon on the board is all any test here needs.
 	 */
 	int32 EnterBossFloorDungeon(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, UCataclysmEmpireRun* Run,
-								int32 Floors, ECataclysmDungeonType Type, ECataclysmDungeonSubType SubType,
-								int32 Skip = 0)
+								int32 Floors, ECataclysmDungeonType Type, ECataclysmDungeonSubType SubType)
 	{
 		int32 Chosen = INDEX_NONE;
-		int32 Passed = 0;
 		for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
 		{
-			if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel && Passed++ >= Skip)
+			if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
 			{
 				Chosen = Index;
 			}
@@ -173,6 +180,36 @@ namespace CataclysmBossFloorTest
 		}
 		return Out;
 	}
+
+	/**
+	 * Opens the run's real Cataclysm boss dungeon the way play does, through `UCataclysmEmpireRun::ClearDungeon`: as
+	 * many Quest dungeons of the first active Cataclysm as it asks for, built by hand on the map's first city and
+	 * cleared, as `Cataclysm.EarnedBoss.` does. A run at difficulty tier 1 faces one Cataclysm and needs it finished.
+	 * Answers the boss dungeon's index in `Dungeons`, or `INDEX_NONE`.
+	 */
+	int32 OpenTheEarnedBossDungeon(UCataclysmEmpireRun& Run)
+	{
+		if (Run.ActiveCataclysms.IsEmpty() || Run.Map == nullptr || Run.Map->Cities.IsEmpty())
+		{
+			return INDEX_NONE;
+		}
+		const ECataclysmType Sender = Run.ActiveCataclysms[0];
+		const int32 Needed = UCataclysmRoster::QuestObjectivesFor(Sender);
+		for (int32 Cleared = 0; Cleared < Needed; ++Cleared)
+		{
+			FCataclysmDungeon Quest;
+			Quest.DungeonId = Run.NextDungeonId++;
+			Quest.Type = ECataclysmDungeonType::Quest;
+			Quest.Cataclysm = Sender;
+			Quest.CityId = Run.Map->Cities[0].CityId;
+			Run.Dungeons.Add(Quest);
+			Run.ClearDungeon(Quest.DungeonId);
+		}
+		return Run.Dungeons.IndexOfByPredicate([](const FCataclysmDungeon& Standing)
+		{
+			return Standing.Type == ECataclysmDungeonType::Cataclysm;
+		});
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -262,8 +299,8 @@ bool FCataclysmBossFloorRungTest::RunTest(const FString& Parameters)
 
 	// THE CONTROL OF ANOTHER KIND: THE LAST FLOOR OF AN ELITE QUEST DUNGEON.
 	Mode->LeaveEmpireDungeon();
-	if (EnterBossFloorDungeon(*this, Mode, Scene.Run, 2, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Elite,
-							  /*Skip=*/1) == INDEX_NONE)
+	if (EnterBossFloorDungeon(*this, Mode, Scene.Run, 2, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Elite)
+		== INDEX_NONE)
 	{
 		return false;
 	}
@@ -447,6 +484,215 @@ bool FCataclysmBossFloorSealByAnotherCauseTest::RunTest(const FString& Parameter
 
 	Mode->HandleStairsTaken();
 	TestNull(TEXT("and taking the stairs clears the dungeon"), Scene.Run->FindDungeon(DungeonId));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The earned boss dungeon itself
+// ---------------------------------------------------------------------------
+
+/**
+ * The real Cataclysm boss dungeon, opened by the quest clears that earn it (issue #1324 slice 6b), on no city and 100
+ * to 150 floors deep: its last floor places the Cataclysm Boss and is sealed until it dies, and its first is not. The
+ * tests above rewrite an ordinary dungeon into the Cataclysm kind; this one walks the dungeon the run itself opened.
+ * Its rolled sub-type and modifiers are taken off, as the others' are, so no floor rule and no Horde wave decides what
+ * stands at the exit.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossFloorEarnedDungeonTest,
+	"Cataclysm.BossFloor.TheEarnedBossDungeonsLastFloorHoldsTheCataclysmBossUntilItDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBossFloorEarnedDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmBossFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FBossFloorPlayer Player(World);
+	const FBossFloorScene Scene = MakeBossFloorScene(World);
+	ACataclysmDungeonGameMode* Mode = Scene.Mode;
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const int32 Index = OpenTheEarnedBossDungeon(*Scene.Run);
+	if (!TestTrue(TEXT("set-up: the quests cleared opened the Cataclysm boss dungeon"), Index != INDEX_NONE))
+	{
+		return false;
+	}
+	FCataclysmDungeon& Earned = Scene.Run->Dungeons[Index];
+	TestEqual(TEXT("set-up: it is the earned one, standing on no city"), Earned.CityId, INDEX_NONE);
+	const int32 Floors = Earned.Floors;
+	if (!TestTrue(FString::Printf(TEXT("set-up: it is as deep as its roll, 100 or more (it is %d)"), Floors),
+				  Floors >= 100))
+	{
+		return false;
+	}
+	Earned.SubType = ECataclysmDungeonSubType::None;
+	Earned.Modifiers.Reset();
+	Earned.ModifierScore = 0.0f;
+	const int32 DungeonId = Earned.DungeonId;
+	if (!TestTrue(TEXT("set-up: the boss dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	const FName Seal(ACataclysmDungeonGameMode::CataclysmBossSealKey);
+
+	// ITS FIRST FLOOR: NOTHING OF THE BOSS'S.
+	TestFalse(TEXT("CONTROL: the earned boss dungeon's first floor is not the Cataclysm Boss's floor"),
+			  Mode->IsTheCataclysmBossFloor());
+	TestNull(TEXT("CONTROL: and no Cataclysm Boss is recorded there"), Mode->CataclysmBossNow());
+	TestFalse(TEXT("CONTROL: and the boss seals none of its stairs"), Mode->StairsSealedBy().Contains(Seal));
+
+	// ITS LAST FLOOR: THE CATACLYSM BOSS, AND THE STAIRS SEALED BY IT.
+	if (!TestTrue(TEXT("set-up: its last floor was reached"), Mode->GoToFloor(Floors))
+		|| !TestTrue(TEXT("set-up: and is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the earned boss dungeon's last floor is the Cataclysm Boss's floor"), Mode->IsTheCataclysmBossFloor());
+	ACataclysmEnemyCharacter* Boss = BossFloorGatekeeper(Mode);
+	if (!TestNotNull(TEXT("its exit holds a Gatekeeper"), Boss))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at the Cataclysm Boss rung, 5"), Boss->RarityStep, 5);
+	TestTrue(TEXT("and it is the Cataclysm Boss the floor records"), Mode->CataclysmBossNow() == Boss);
+	if (!TestTrue(TEXT("while it stands the earned boss dungeon's last stairs are sealed by it alone"),
+				  Mode->StairsSealedBy() == TArray<FName>({Seal})))
+	{
+		return false;
+	}
+	Mode->HandleStairsTaken();
+	if (!TestNotNull(TEXT("so taking them does not clear the boss dungeon"), Scene.Run->FindCataclysmDungeon()))
+	{
+		return false;
+	}
+
+	// IT DIES, AND THE WAY OUT IS OPEN.
+	ReadyTheBossToDie(Boss);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	if (!TestTrue(TEXT("set-up: the player's blow killed the Cataclysm Boss"), UCataclysmSkillEffects::IsDead(Boss)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("once it is dead nothing seals the earned boss dungeon's last stairs"), Mode->StairsSealedBy().IsEmpty());
+	Mode->HandleStairsTaken();
+	TestNull(TEXT("and taking them clears the boss dungeon"), Scene.Run->FindCataclysmDungeon());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A load
+// ---------------------------------------------------------------------------
+
+/**
+ * A load finds the Cataclysm Boss again, and does not take a risen one for it.
+ *
+ * A LOAD REBUILDS THE FLOOR AND THEN REPLACES ITS CREATURES WITH THE SAVED ONES: the rebuilt boss is destroyed, and
+ * `RestoreCreatureRoles` is handed each saved creature with its record (`CataclysmSaveLoad::RelinkTheCreatures`).
+ * This test does those two steps by hand, as `Cataclysm.SaveLoad.` does for the other roles the call restores. The
+ * saved Gatekeeper at the Cataclysm Boss rung is the boss again and seals the stairs. A Gatekeeper at that rung whose
+ * record says it rose from the dead -- Dead Rising and Divine Resurgence both raise a fallen creature at the rung it
+ * died at and mark it so, and the save keeps the mark -- is NOT: the boss it rose from is dead, and its death opened the
+ * stairs for good.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossFloorLoadTest,
+	"Cataclysm.BossFloor.ALoadFindsTheSavedCataclysmBossAndNotOneThatRoseFromTheDead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBossFloorLoadTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmBossFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FBossFloorPlayer Player(World);
+	const FBossFloorScene Scene = MakeBossFloorScene(World);
+	ACataclysmDungeonGameMode* Mode = Scene.Mode;
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	if (EnterBossFloorDungeon(*this, Mode, Scene.Run, 2, ECataclysmDungeonType::Cataclysm,
+							  ECataclysmDungeonSubType::None) == INDEX_NONE)
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: and is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Rebuilt = Mode->CataclysmBossNow();
+	if (!TestNotNull(TEXT("set-up: the rebuilt floor's Cataclysm Boss stands"), Rebuilt))
+	{
+		return false;
+	}
+	const FName Seal(ACataclysmDungeonGameMode::CataclysmBossSealKey);
+
+	// THE LOAD DESTROYS THE REBUILT FLOOR'S CREATURES, which raises no death notice.
+	Rebuilt->Destroy();
+	if (!TestNull(TEXT("set-up: with the rebuilt boss destroyed no Cataclysm Boss stands"), Mode->CataclysmBossNow()))
+	{
+		return false;
+	}
+
+	const auto SpawnGatekeeperAtTheBossRung = [World](const FVector& Where) -> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+			ACataclysmGatekeeperCharacter::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+		if (Gatekeeper)
+		{
+			Gatekeeper->SetRarityStep(ACataclysmDungeonGameMode::CataclysmBossRung);
+		}
+		return Gatekeeper;
+	};
+
+	// CONTROL: A GATEKEEPER AT THE BOSS RUNG THAT ROSE FROM THE DEAD.
+	ACataclysmEnemyCharacter* Risen = SpawnGatekeeperAtTheBossRung(FVector(-800.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a risen Gatekeeper was put back"), Risen))
+	{
+		return false;
+	}
+	FCataclysmSavedCreature RisenRecord;
+	RisenRecord.RarityStep = ACataclysmDungeonGameMode::CataclysmBossRung;
+	RisenRecord.bRisenFromTheDead = true;
+	Mode->RestoreCreatureRoles(*Risen, RisenRecord);
+	TestNull(TEXT("CONTROL: a Gatekeeper at the Cataclysm Boss rung that rose from the dead is not taken for the boss"),
+			 Mode->CataclysmBossNow());
+	TestFalse(TEXT("CONTROL: so it seals nothing"), Mode->StairsSealedBy().Contains(Seal));
+
+	// THE SAVED BOSS.
+	ACataclysmEnemyCharacter* Saved = SpawnGatekeeperAtTheBossRung(FVector(800.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: the saved Cataclysm Boss was put back"), Saved))
+	{
+		return false;
+	}
+	FCataclysmSavedCreature BossRecord;
+	BossRecord.RarityStep = ACataclysmDungeonGameMode::CataclysmBossRung;
+	Mode->RestoreCreatureRoles(*Saved, BossRecord);
+	TestTrue(TEXT("the saved Gatekeeper at the Cataclysm Boss rung is the floor's Cataclysm Boss again"),
+			 Mode->CataclysmBossNow() == Saved);
+	TestTrue(TEXT("and it seals the stairs again, alone"), Mode->StairsSealedBy() == TArray<FName>({Seal}));
+	TestEqual(TEXT("and the floor panel says it stands"), BossFloorPanelLine(Mode),
+			  FString(TEXT("The Cataclysm Boss (it stands; the stairs are sealed until it dies)")));
 	return true;
 }
 

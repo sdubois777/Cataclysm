@@ -15638,7 +15638,11 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 	// AND THE CATACLYSM BOSS, which the rebuild placed and the load destroyed: the saved Gatekeeper at the Cataclysm Boss
 	// rung that did not rise from the dead, which only the population places. Without it a load would open the stairs
 	// under a boss still standing. A boss dead when the floor was saved has no record, so the stairs stay open. Issue
-	// #1324 slice 6d. NO SAVED FIELD IS ADDED: the record's class and rung already say it.
+	// #1324 slice 6d. NO SAVED FIELD IS ADDED: the record's class and rung already say it, and its `bRisenFromTheDead`
+	// says the rest -- Dead Rising and Divine Resurgence raise a fallen boss at rung 5 and mark it,
+	// `FCataclysmSaveGather::CreatureFrom` writes the mark, and a risen one does not seal in play either. Royal Guard's
+	// guards, a Demon Prince and a Plague Lord are held to Herald, and the rules that raise a standing creature's rung
+	// stop at Herald, so the population's boss is the one Gatekeeper at rung 5 that rose from nothing.
 	if (IsTheCataclysmBossFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>()
 		&& Saved.RarityStep == CataclysmBossRung && !Saved.bRisenFromTheDead)
 	{
