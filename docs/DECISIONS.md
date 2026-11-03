@@ -318,6 +318,34 @@ false.", `TestTrue` "... to be true.", and the float `TestEqual` "Expected '<wha
 <actual> and outside tolerance <tolerance>." -- so P1's and P2's "to be X, but it was Y" are the start of the line
 rather than the whole of it. The breaks were not compiled before registration.
 
+### Window enemy-hit-timing-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `f549bccb4` (on `development` `49e0403d1`),
+lock `enemy-hit-timing-w1`, after the six pre-checks all passed (12,081 MB of physical memory free). Every registered
+figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.EnemyHitTiming.` alone | 14 / 14 | "14 tests performed, 14 succeeded, 0 failed. 1 skipped part of what they check: Cataclysm.EnemyHitTiming.TheWardensBlowWaitsForASwingThatHasNotStartedYet" |
+| `Cataclysm.AI.` alone | 51 / 51 | "51 tests performed, 51 succeeded, 0 failed" (2 skipped halves, as at the base) |
+| `Cataclysm.EchoesHeld.` alone | 4 / 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| `Cataclysm.DungeonModifierEffects.EchoesOfThePast` alone | 2 / 2 | "2 tests performed, 2 succeeded, 0 failed" |
+| `Cataclysm.CompelHeld.` alone | 4 / 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| Whole Unreal suite | 4600 / 0 | "4600 tests performed, 4600 succeeded, 0 failed. 44 skipped part of what they check"; "Declared: 4600 tests in the tree at f549bccb4; 4600 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7250 passed, 8 skipped in 193.49s"; JUnit tests 7258, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | 2 | PROVED. The kept broken-half log fails exactly "its swing's moment comes and nothing is landed" (to be false) and "and the target is untouched" (1000000 expected, 999900 read); restored 1 of 1 |
+| P2 | 4 | PROVED. Exactly "due when the clip strikes, divided by the rate it plays at" (0.331 expected, 0 read), "a hundredth of a second before it is due, nothing lands", "and the target is untouched" (1000000 expected, 999900 read) and "a hundredth of a second after, it lands"; restored 1 of 1 |
+| P3 | 2 | PROVED. Exactly "the swing connects with nothing" and "and the target that walked out is untouched" (1000000 expected, 999900 read); restored 1 of 1 |
+| P4 | 2 | PROVED. Exactly "and lands when the swing connects" and "on a target that walked out of reach in the gap" (both to be true); restored 1 of 1 |
+
+The test-save count is 719 against 720 at the base (`1765f8ede`); this branch writes no save, and 0 were left behind,
+which is the figure the run is held to. The count moved by one before between two windows whose branches wrote no save
+(713 at `cb32de836`, then 712 at `440e77ef9`, both 2026-11-02), so a one-save difference is not read as a change this
+branch made; its cause is not known.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **THE TIMING BY EYE.** Whether the health bar now drops as each weapon visibly arrives can only be judged in play with
