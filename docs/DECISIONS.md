@@ -412,6 +412,24 @@ Read one by one against the code they reach:
 - **THE PYTHON** asserts the same shapes: the requirement is asserted before it is used, the depth counts start from a
   fresh `Simulation`'s 0, and the 2,000 days' CONTROL is the model's own resolve count.
 
+### Window boss-opens-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `fa271e158` (on `development`
+`32b56c2bb`), lock `boss-opens-w1`, after the six pre-checks all passed (11,740 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 11 groups alone | each at its registered count | every one "0 failed": EarnedBoss. 4, EarnedBossSave. 3, Surge. 54, SaveRecords. 17, DeathCost. 9, ConsumptionDouble. 15, EmpireRun. 68, Roster. 11, SaveApply. 24, CataclysmDraw. 6, EmpireStatusBar. 8 |
+| Whole Unreal suite | 4647 | "4647 tests performed, 4647 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4647 tests in the tree at fa271e158; 4647 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7334 passed, 9 skipped in 198.56s"; JUnit tests 7343, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 test, 3 | PROVED. Exactly "the Cataclysm kind bars the Siege" (3 expected, 0 read), "a Cataclysm dungeon never rolls a Siege" (0 expected, 1622 read) and "no boss dungeon built is a Siege" (0 expected, 160 read); restored 4 of 4 |
+| P2 | 1 test, 4 | PROVED. Exactly "an ordinary dungeon defeated after it opened adds a floor" (150 expected, 149 read), "and a day to its walk", "and to the clock's copy of its floors" and "a quest dungeon defeated after it opened adds no floor"; restored 4 of 4 |
+| P3 | 1 test, 2 | PROVED. Exactly "with the floors it rolled" (128 expected, 0 read) and "and as deep as it was" (132 expected, 4 read); restored 3 of 3 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal at run time**: compiled in phase 2, not run (above). `TNumericLimits` is not used;
