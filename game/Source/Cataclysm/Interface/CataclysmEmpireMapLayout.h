@@ -241,6 +241,42 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString ProgressLine(const UCataclysmEmpireRun* Run);
 
+	// ----------------------------------------------------------------------
+	// The empire upgrade point bank -- issue #52, the first slice
+	// ----------------------------------------------------------------------
+
+	/**
+	 * A number of empire upgrade points as the screen shows it: ROUNDED DOWN TO A TENTH, "12.5", "0.3", "1.0".
+	 *
+	 * DOWN AND NOT TO THE NEAREST, so the screen never shows a point the bank does not hold: the bank keeps fractions
+	 * (ruled 2026-11-03), and a figure rounded up could promise a tree node that cannot yet be bought. A TENTH AND NOT A
+	 * WHOLE POINT, because an ordinary dungeon is worth 1 point times the share of the population living, so most
+	 * awards are below one and a whole-point figure would show most clears earning nothing.
+	 *
+	 * ARITHMETIC NOISE BELOW A MILLIONTH IS FORGIVEN before rounding, so three awards of a third that add up to
+	 * 0.99999999 in binary read "1.0" and not "0.9". Negative points, which nothing produces, read as 0.0.
+	 */
+	static FString EmpirePointsText(double Points);
+
+	/**
+	 * The bank, and what the last dungeon cleared added to it: "12.5 empire points banked (+0.5 from the last
+	 * dungeon defeated)", or without the bracket when the last clear awarded nothing -- or when none has this session,
+	 * since the run does not save its last award.
+	 */
+	static FString EmpirePointsLine(double Banked, double LastAwarded);
+
+	/**
+	 * What the empire screen's status line says about the bank, for the character playing in a world: `EmpirePointsLine`
+	 * of its partition's bank (`UCataclysmGameInstance::AccountFor`) and the run's last award.
+	 *
+	 * "Solo Self-Found: empire points are not banked yet" for a Solo Self-Found character, whose points belong in its
+	 * own character record, which this slice does not write. Empty with no game instance of this project's, no
+	 * character playing, or an account record that would not read.
+	 *
+	 * NOT CONST ON THE GAME INSTANCE: the first ask reads the bank from its slot and holds it from then on.
+	 */
+	static FString EmpirePointsLineIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run);
+
 	/**
 	 * The days a walk under way has spent and the empire has not yet run, as a line: "3 days pass when you
 	 * leave", "1 day passes when you leave", or empty when none are owed.

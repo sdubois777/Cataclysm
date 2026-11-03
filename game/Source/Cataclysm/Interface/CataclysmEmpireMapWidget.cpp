@@ -316,13 +316,19 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// 2026-10-24: nothing resolves while the player is inside a dungeon, so
 		// the day shown does not move during a walk. Empty outside one. See
 		// `UCataclysmEmpireMapLayout::DaysOwedLine`.
+		//
+		// AND THE EMPIRE UPGRADE POINT BANK OF THE CHARACTER PLAYING, LAST, with what the last dungeon defeated added to
+		// it, since issue #52's first slice: "12.5 empire points banked (+0.5 from the last dungeon defeated)". Empty
+		// with no character playing. See `UCataclysmEmpireMapLayout::EmpirePointsLineIn`.
 		const FString Owed = UCataclysmEmpireMapLayout::DaysOwedLine(Run);
+		const FString Bank = UCataclysmEmpireMapLayout::EmpirePointsLineIn(this, Run);
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s"),
+			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s%s%s"),
 			Run->Day(), Owed.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Owed),
 			Run->Map->FallenCityCount(), Run->DungeonCount(),
 			Run->DungeonCount() == 1 ? TEXT("") : TEXT("s"),
-			*UCataclysmEmpireMapLayout::ProgressLine(Run))));
+			*UCataclysmEmpireMapLayout::ProgressLine(Run),
+			Bank.IsEmpty() ? TEXT("") : TEXT("   "), *Bank)));
 	}
 
 	if (SurgeLabel)

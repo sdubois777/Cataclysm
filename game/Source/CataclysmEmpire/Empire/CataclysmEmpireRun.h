@@ -1339,6 +1339,71 @@ public:
 	bool ClearDungeon(int32 DungeonId);
 
 	// ----------------------------------------------------------------------
+	// Empire upgrade points a defeat earns -- issue #52, the first slice
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The base empire upgrade points each kind of dungeon is worth when defeated, before the population scales them.
+	 *
+	 * THE SIMULATION'S TUNED VALUES, `TuningConfig.empire_points_per_dungeon` in `sim/cataclysm_sim/config.py`: an
+	 * ordinary dungeon 1, a Quest dungeon 3, a Fallen City 5 and the Cataclysm boss dungeon 25. The design leaves them
+	 * open -- `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: "The base points per dungeon type are tuning values and
+	 * are not fixed here" -- and the coordinating session ruled on 2026-11-03, under the owner's delegation of unstated
+	 * numbers, that the game takes the model's. `tools/tests/test_empire_points_port.py` holds the two copies equal.
+	 *
+	 * DOUBLES, because the award they make is a fraction and the bank it goes into keeps the fraction.
+	 */
+	static constexpr double BasicDungeonEmpirePoints = 1.0;
+	static constexpr double QuestDungeonEmpirePoints = 3.0;
+	static constexpr double FallenCityEmpirePoints = 5.0;
+	static constexpr double CataclysmDungeonEmpirePoints = 25.0;
+
+	/** The base points of one kind of dungeon: one of the four constants above. */
+	static double EmpirePointsBaseFor(ECataclysmDungeonType Type);
+
+	/**
+	 * What defeating a dungeon of this kind is worth with this much of the empire's population living.
+	 *
+	 * THE OWNER'S RULING OF 2026-09-06, `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: "points awarded = base points
+	 * for the dungeon type x (living population / total maximum population)". Linear, no floor and no cap, every kind
+	 * of dungeon, the Cataclysm boss included. A port of `Simulation._finish_current`'s
+	 * `base * self.empire.population_frac()`.
+	 *
+	 * THE DENOMINATOR IS AT LEAST ONE, as `World.population_frac` holds it (`max(1.0, max_population())`), so an empire
+	 * with no population at all is worth nothing rather than a division by zero.
+	 *
+	 * @param LivingPopulation the people in every city still standing, `UCataclysmEmpireMap::TotalPopulation`
+	 * @param MaxPopulation    what every city would hold intact, fallen or not, `UCataclysmEmpireMap::TotalMaxPopulation`
+	 */
+	static double EmpirePointsFor(ECataclysmDungeonType Type, double LivingPopulation, double MaxPopulation);
+
+	/**
+	 * The share of the empire's population living now: every standing city's people over what every city, fallen or
+	 * not, would hold intact. 0 with no map.
+	 *
+	 * THE DENOMINATOR COUNTS EVERY CITY, FALLEN OR NOT, so losing a city moves the share down instead of quietly
+	 * rebasing it -- the design's words, and `UCataclysmEmpireMap::TotalMaxPopulation`'s.
+	 */
+	double LivingPopulationShare() const;
+
+	/**
+	 * What the last call to `ClearDungeon` awarded in empire upgrade points: 0 when that call cleared nothing, and 0
+	 * before any.
+	 *
+	 * MEASURED AT THE DEFEAT, in `ClearDungeon`, after the dungeon leaves the map and before a Fallen City retaken by
+	 * it gives its city back half its people -- the order `Simulation._finish_current` awards in, and the design's:
+	 * "The multiplier is measured at the instant each dungeon is defeated". A dungeon that RESOLVES -- hits its city --
+	 * never reaches `ClearDungeon`, so it awards nothing and leaves this as it was.
+	 *
+	 * THE RUN DOES NOT BANK IT. The points belong to the account, across runs, and this module may not reach the save
+	 * records; `ACataclysmDungeonGameMode::ClearEmpireDungeon` reads this straight after the clear and banks it into
+	 * the account record (`UCataclysmGameInstance::BankEmpirePoints`). NOT SAVED with the run: a loaded run reads 0
+	 * here until its next clear, and the empire screen then shows the bank without the last award.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	double LastEmpirePointsAwarded = 0.0;
+
+	// ----------------------------------------------------------------------
 	// A death inside a dungeon -- issue #41
 	// ----------------------------------------------------------------------
 

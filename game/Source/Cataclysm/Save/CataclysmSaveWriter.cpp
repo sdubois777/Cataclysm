@@ -157,11 +157,13 @@ bool UCataclysmSaveWriter::NoteTrigger(ECataclysmSaveTrigger Trigger)
 		bStartedAnything |= WriteTheCharacterRecord(Trigger);
 	}
 
-	// THE ACCOUNT RECORD IS NOT WRITTEN HERE, AND THE REASON IS NOT THAT IT IS
-	// FORGOTTEN. `UCataclysmSaveTriggers::WritesTheAccountRecord` answers true
-	// for exactly one trigger, and nothing raises that trigger, because nothing
-	// in the game changes an account record: there are no banked empire upgrade
-	// points and no stash. The rule is built and has nothing to act on yet.
+	// THE ACCOUNT RECORD, ONLY WHEN IT CHANGED. `UCataclysmSaveTriggers::WritesTheAccountRecord` answers true for
+	// exactly one trigger, and since issue #52 a defeated dungeon raises it after banking its empire upgrade points
+	// (`ACataclysmDungeonGameMode::ClearEmpireDungeon`). This said nothing raised it until then.
+	if (UCataclysmSaveTriggers::WritesTheAccountRecord(Trigger))
+	{
+		bStartedAnything |= WriteTheAccountRecord(Trigger);
+	}
 
 	// AND THE CLOCK IS RESET BY ANY WRITE, not only by its own. A run record
 	// written because a creature died is as current as one written by the
@@ -314,6 +316,24 @@ bool UCataclysmSaveWriter::WriteTheCharacterRecord(ECataclysmSaveTrigger Trigger
 	}
 
 	return Write(LastCharacter, CharacterSlotName(), Trigger);
+}
+
+bool UCataclysmSaveWriter::WriteTheAccountRecord(ECataclysmSaveTrigger Trigger)
+{
+	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(GetWorld());
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->HeldAccount.Get() : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+
+	// THE SLOT OF THE PARTITION THE RECORD NAMES, which is the one it was read from or made for
+	// (`UCataclysmGameInstance::AccountFor`). An account record is never a Solo Self-Found character's.
+	FCataclysmCharacterPartition Partition;
+	Partition.Lethality = Account->Lethality;
+	Partition.Population = Account->Population;
+	Partition.bSoloSelfFound = false;
+	return Write(Account, UCataclysmGameInstance::AccountSlotFor(Partition), Trigger);
 }
 
 bool UCataclysmSaveWriter::Write(const UCataclysmSaveRecord* Record,

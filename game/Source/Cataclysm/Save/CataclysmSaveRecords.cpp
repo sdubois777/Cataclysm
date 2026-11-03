@@ -438,6 +438,44 @@ UCataclysmRunSave::MigrationSteps() const
 	return CataclysmRunSaveMigration::RunSteps;
 }
 
+namespace CataclysmAccountSaveMigration
+{
+	/**
+	 * An account written when the banked points were a whole number keeps the same number of points. Issue #52,
+	 * 2026-11-03: `EmpireUpgradePoints` became a double so that a fraction of a point is banked rather than rounded
+	 * away. A whole number is already a number the double reads, so the value is written back unchanged; written out,
+	 * for the character record's `Migrate_3_to_4` reason, so the migrated file states its bank. A version 1 file
+	 * without the key banked nothing, and gets 0.
+	 *
+	 * A KEY HOLDING SOMETHING THAT IS NOT A NUMBER IS REFUSED rather than read as 0: that would empty a bank somebody
+	 * edited by hand without saying so.
+	 */
+	bool Migrate_1_to_2(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Banked = 0.0;
+		if (Record->HasField(TEXT("EmpireUpgradePoints"))
+			&& !Record->TryGetNumberField(TEXT("EmpireUpgradePoints"), Banked))
+		{
+			OutError = TEXT("EmpireUpgradePoints holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("EmpireUpgradePoints"), Banked); // A migration's: the same points, written out.
+		return true;
+	}
+
+	/** The chain, newest step last. */
+	const FCataclysmSaveMigrationStep AccountSteps[] = {
+		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
+	};
+}
+
+TArrayView<const FCataclysmSaveMigrationStep>
+UCataclysmAccountSave::MigrationSteps() const
+{
+	return CataclysmAccountSaveMigration::AccountSteps;
+}
+
 TArray<TSubclassOf<UCataclysmSaveRecord>> CataclysmSaveRecordClasses()
 {
 	return {

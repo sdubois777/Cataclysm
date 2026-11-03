@@ -9,6 +9,7 @@
 #include "CataclysmGameInstance.generated.h"
 
 class ACataclysmPlayerState;
+class UCataclysmAccountSave;
 class UCataclysmEmpireRun;
 class UCataclysmSaveWriter;
 
@@ -247,4 +248,72 @@ public:
 	 */
 	static UCataclysmEmpireRun* EmpireRunFor(const UObject* WorldContext,
 											 bool bStartIfNone = false);
+
+	// ----------------------------------------------------------------------
+	// The empire upgrade point bank -- issue #52, the first slice
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The account record the bank is held in: the one partition's record last asked for, or null before any was.
+	 *
+	 * THE BANK BELONGS TO THE ACCOUNT, NOT THE RUN. `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: the points
+	 * "persist through all runs -- including failed ones", and "An empire upgrade point earned by a character is earned
+	 * into that character's lethality mode" -- one balance per lethality mode and population, which is what an account
+	 * record is (`UCataclysmSavePartition`). HELD HERE because a game instance outlives every level, as the run does.
+	 * The save writer writes it on `ECataclysmSaveTrigger::AccountChanged`.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmAccountSave> HeldAccount;
+
+	/**
+	 * The account slots `AccountFor` refused this session -- a record that would not read, or one naming another
+	 * partition -- so each is read and logged once and then refused without either. The empire screen asks at every
+	 * refresh of its status line. Issue #52, found reviewing the first slice, 2026-11-03.
+	 */
+	TSet<FString> RefusedAccountSlots;
+
+	/**
+	 * The slot a partition's account record is read from and written to: `UCataclysmSavePartition::AccountSlotName`,
+	 * empty for a Solo Self-Found character.
+	 *
+	 * **WHILE AN AUTOMATION TEST RUNS IT ENDS IN `AutomationTestSlotSuffix`.** An account slot is named for its
+	 * partition, not for a generated identifier as a character's and a run's are, so a test that clears a dungeon would
+	 * otherwise read and rewrite the player's own bank in `game/Saved/SaveGames`. With the suffix the slot did not
+	 * exist before the test, so `FCataclysmTestSaves` deletes it when the test ends. Issue #52, 2026-11-03.
+	 */
+	static FString AccountSlotFor(const FCataclysmCharacterPartition& Partition);
+
+	/** What `AccountSlotFor` appends while an automation test runs. */
+	static const TCHAR* AutomationTestSlotSuffix;
+
+	/**
+	 * The account record of a partition, held from then on: the held one when it is that partition's, otherwise read
+	 * from its slot, and made fresh -- at the current version, holding nothing -- when the slot is empty.
+	 *
+	 * NULL FOR A SOLO SELF-FOUND CHARACTER, which has no account record: its points belong in its own character record
+	 * (`UCataclysmCharacterSave::PrivateEmpireUpgradePoints`), and THIS SLICE DOES NOT BANK THEM. Issue #52.
+	 *
+	 * NULL WHEN THE SLOT HOLDS A RECORD THAT WOULD NOT READ, or one naming another partition, and that is logged: a
+	 * fresh record banked into would be written over the file and empty the bank it held. Logged ONCE: the slot is
+	 * remembered in `RefusedAccountSlots`, and every later ask this session is refused without reading it.
+	 */
+	UCataclysmAccountSave* AccountFor(const FCataclysmCharacterPartition& Partition);
+
+	/**
+	 * Adds points to a partition's bank, keeping the fraction. Answers the record banked into, or null when nothing
+	 * was banked -- a Solo Self-Found character, or an account record that would not read (see `AccountFor`).
+	 *
+	 * IT DOES NOT WRITE THE RECORD. The caller raises `ECataclysmSaveTrigger::AccountChanged`, which the save writer
+	 * answers by writing `HeldAccount` (`UCataclysmSaveWriter::NoteTrigger`).
+	 */
+	UCataclysmAccountSave* BankEmpirePoints(const FCataclysmCharacterPartition& Partition, double Points);
+
+	/**
+	 * The partition of the character being played in a world: the first player character's player state's. False,
+	 * and nothing written, when there is no world, no player character or no player state.
+	 */
+	static bool PlayingPartition(const UObject* WorldContext, FCataclysmCharacterPartition& OutPartition);
+
+	/** The world's game instance, when it is this project's; null otherwise. */
+	static UCataclysmGameInstance* In(const UObject* WorldContext);
 };

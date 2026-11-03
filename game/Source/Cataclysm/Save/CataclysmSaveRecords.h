@@ -1013,7 +1013,13 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * `docs/Empire_Development_Tree_Final.json` but nothing in the game reads it
  * yet, and guessing at the allocation's shape now would cost a migration later
  * for a field that had never held anything. The banked points are here because
- * an integer cannot be got wrong.
+ * the game banks them: a defeated dungeon's award, since issue #52's first slice.
+ *
+ * VERSION 2 SINCE 2026-11-03. `EmpireUpgradePoints` was a whole number and is a
+ * double, because an award is a fraction -- an ordinary dungeon is worth 1 point
+ * times the share of the population living -- and the coordinating session ruled
+ * that fractions are banked rather than rounded away. `Migrate_1_to_2` writes a
+ * version 1 file's whole number back as the same number. Issue #52.
  */
 UCLASS(BlueprintType)
 class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
@@ -1022,10 +1028,11 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 1;
+	static constexpr int32 SchemaVersionNow = 2;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	ECataclysmLethality Lethality = ECataclysmLethality::Standard;
@@ -1040,9 +1047,17 @@ public:
 	 * "Difficulty Options": a point earned by a character is earned into that
 	 * character's lethality mode, and is shared with every other character in the
 	 * same mode and population.
+	 *
+	 * A FRACTION IS KEPT, NOT ROUNDED AWAY: ruled by the coordinating session on
+	 * 2026-11-03 under the owner's delegation of unstated numbers. Rounding each
+	 * award down would erase most ordinary dungeons' awards, which are 1 point
+	 * times a population share below one. The empire screen shows it rounded down
+	 * to a tenth (`UCataclysmEmpireMapLayout::EmpirePointsText`). Spending it is the
+	 * empire upgrade tree's, which is not built. RECORD VERSION 2; it was an
+	 * `int32` at version 1. Issue #52.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
-	int32 EmpireUpgradePoints = 0;
+	double EmpireUpgradePoints = 0.0;
 
 	/**
 	 * The characters belonging to this partition, by identifier.
