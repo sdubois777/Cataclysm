@@ -56,6 +56,14 @@ struct CATACLYSM_API FCataclysmFloorModifierLine
 	bool bIsTheConsumptionDouble = false;
 
 	/**
+	 * Whether the line is the Cataclysm Boss's (`UCataclysmFloorModifierPanelLayout::CataclysmBossKey`): not a row and
+	 * not a modifier, but the boss on the last floor of the Cataclysm boss dungeon and whether it seals the stairs.
+	 * Issue #1324 slice 6d. Named plainly, not dimmed, and not counted in the heading's modifiers, as the double's.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	bool bIsTheCataclysmBoss = false;
+
+	/**
 	 * What this row is counting right now, e.g. "3 of 20", or empty for a row
 	 * that counts nothing.
 	 *
@@ -111,6 +119,16 @@ public:
 
 	/** What the corrupted double's line is named. */
 	static constexpr const TCHAR* ConsumptionDoubleName = TEXT("Hunted by your corrupted double");
+
+	/**
+	 * The key the dungeon game mode lists the Cataclysm Boss's line by, after the floor's rows, on the last floor of the
+	 * Cataclysm boss dungeon. Issue #1324 slice 6d. Not a row key, and the same text as
+	 * `ACataclysmDungeonGameMode::CataclysmBossSealKey`, which `StairsSealedBy` names while the boss stands.
+	 */
+	static constexpr const TCHAR* CataclysmBossKey = TEXT("Cataclysm_Boss");
+
+	/** What the Cataclysm Boss's line is named. */
+	static constexpr const TCHAR* CataclysmBossName = TEXT("The Cataclysm Boss");
 
 	/**
 	 * One line per modifier, in the order the floor carries them.

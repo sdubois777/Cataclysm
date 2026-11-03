@@ -1962,6 +1962,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	MarchOfProgressCommander = nullptr;
 	bMarchOfProgressCommanderSlain = false;
 
+	// AND THE LAST FLOOR'S CATACLYSM BOSS IS FORGOTTEN, for the Commander's reason: it is recorded below, as the
+	// population places it, and a Horde wave records its own. Issue #1324 slice 6d.
+	ForgetTheCataclysmBoss();
+
 	// AND INFERNAL SEALS' BEARERS AND PIECES: each floor's stairs are sealed afresh. Issues #1820 and #41.
 	InfernalSealBearers.Reset();
 	InfernalSealBearerGave.Reset();
@@ -2283,9 +2287,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			// AND ITS MODIFIERS FROM THE SAME SEED AND PLACE, under a salt of their own. Issue #2669.
 			TGuardValue<int32> ModifiersFromTheFloor(
 				ModifierSeedNow, ModifierSeedForPlacement(PlacementIndex, ModifiersFromTheFloorSalt));
+			// AND THE CATACLYSM BOSS PUT ON ITS RUNG RATHER THAN DRAWN, on the last floor of the Cataclysm boss dungeon.
+			// Issue #1324 slice 6d. Every other placement draws, as before.
+			const int32 PlacedRung = PopulationRungFor(Placement);
 			if (ACataclysmEnemyCharacter* Enemy =
-					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
+					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, PlacedRung))
 			{
+				if (PlacedRung == CataclysmBossRung)
+				{
+					NoteTheCataclysmBoss(Enemy);
+				}
+
 				// ON THE DARK FLOOR EACH CREATURE THE FLOOR PLACES IS ONE RUNG HIGHER THAN IT WAS DRAWN, held to Herald.
 				// Here, as it is placed and before any rule below chooses among the floor's creatures by rung.
 				// Issues #1820 and #41, ruled 2026-10-09.
@@ -2703,11 +2715,19 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		TGuardValue<int32> ModifiersFromTheFloor(
 			ModifierSeedNow, ModifierSeedForPlacement(WavePlacement, ModifiersFromTheFloorSalt));
 
+		// THE CATACLYSM BOSS ON ITS RUNG, when the last wave of a Cataclysm boss dungeon brings it, as an ordinary floor
+		// puts it there. Issue #1324 slice 6d.
+		const int32 PlacedRung = PopulationRungFor(WaveStillToArrive[Index]);
+
 		// ONE THAT FAILS TO SPAWN IS DROPPED RATHER THAN TRIED AGAIN, which is
 		// what putting a whole floor down at once has always done with one.
 		if (ACataclysmEnemyCharacter* Enemy = SpawnPlacedCreature(
-				WaveStillToArrive[Index], ArrivingSightRadiusMultiplier))
+				WaveStillToArrive[Index], ArrivingSightRadiusMultiplier, PlacedRung))
 		{
+			if (PlacedRung == CataclysmBossRung)
+			{
+				NoteTheCataclysmBoss(Enemy);
+			}
 			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
@@ -5026,6 +5046,65 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::HeavenlyCoreNow() const
 bool ACataclysmDungeonGameMode::HeavenlyCoreSealsTheStairs() const
 {
 	return HeavenlyCoreStands() && IsOnTheLastFloor();
+}
+
+bool ACataclysmDungeonGameMode::IsTheCataclysmBossFloor() const
+{
+	// THE BOUND DUNGEON'S KIND, ITS LAST FLOOR, AND A BOSS AT THE EXIT. `IsOnTheLastFloor` answers no with no dungeon
+	// bound and on the dark floor; the brief answers no boss on a dungeon of one floor, which has no bottom to put one on
+	// (`FCataclysmDungeonFloorRules::BossAtTheExit`). Issue #1324 slice 6d.
+	return DungeonType == ECataclysmDungeonType::Cataclysm && IsOnTheLastFloor() && FloorBrief.bBossAtTheExit;
+}
+
+int32 ACataclysmDungeonGameMode::PopulationRungFor(const FCataclysmEnemyPlacement& Placement) const
+{
+	// "A CATACLYSM BOSS IS PLACED, NOT DRAWN" (`docs/Cataclysm_GDD_v2.md` section VIII): its weight is 0, so no draw can
+	// give it, and the last floor of the Cataclysm boss dungeon puts its boss on that rung. Issue #1324 slice 6d.
+	return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsTheCataclysmBossFloor()
+		? CataclysmBossRung
+		: UCataclysmEnemyRarity::RollTheRarity;
+}
+
+void ACataclysmDungeonGameMode::NoteTheCataclysmBoss(ACataclysmEnemyCharacter* Boss)
+{
+	CataclysmBoss = Boss;
+	bCataclysmBossPlaced = Boss != nullptr;
+	UE_LOG(LogCataclysm, Log, TEXT("Cataclysm boss dungeon: the Cataclysm Boss %s stands on floor %d; the way out is "
+								   "sealed until it dies"),
+		   Boss ? *Boss->GetName() : TEXT("(none)"), FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::ForgetTheCataclysmBoss()
+{
+	CataclysmBoss = nullptr;
+	bCataclysmBossPlaced = false;
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::CataclysmBossNow() const
+{
+	ACataclysmEnemyCharacter* Boss = CataclysmBoss.Get();
+	return IsValid(Boss) && !UCataclysmSkillEffects::IsDead(Boss) ? Boss : nullptr;
+}
+
+bool ACataclysmDungeonGameMode::CataclysmBossSealsTheStairs() const
+{
+	// ON ITS FLOOR, WHILE IT STANDS, AND ON NOTHING ELSE. A floor whose boss could not be placed is not sealed: a seal
+	// nothing can lift would leave the dungeon unbeatable.
+	return IsTheCataclysmBossFloor() && CataclysmBossNow() != nullptr;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForTheCataclysmBoss(const FCataclysmDeathNotice& Notice)
+{
+	// ANY DEATH, WHOEVER DEALT IT: the player, a minion, a floor rule, its own retaliation or nothing on record. Ruling
+	// R5 names no killer and neither does this. The seal opens by itself, because `CataclysmBossNow` reads the creature;
+	// this only tells the panel now rather than on its next refresh.
+	if (Notice.Victim == nullptr || Notice.Victim != CataclysmBoss.Get())
+	{
+		return;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Cataclysm boss dungeon: the Cataclysm Boss died on floor %d; the stairs are open"),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
 }
 
 float ACataclysmDungeonGameMode::EdictStrengthHere() const
@@ -14988,6 +15067,12 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(HeavenlyCoreSealKey));
 	}
+	// AND THE CATACLYSM BOSS, which seals the last floor of the Cataclysm boss dungeon while it stands. Issue #1324
+	// slice 6d, ruling R5 of 2026-11-02.
+	if (CataclysmBossSealsTheStairs())
+	{
+		Sealing.Add(FName(CataclysmBossSealKey));
+	}
 	return Sealing;
 }
 
@@ -15550,6 +15635,20 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 											   Abilities->GetNumericAttribute(Damage) + NothingIsForgottenDamageGiven);
 		}
 	}
+	// AND THE CATACLYSM BOSS, which the rebuild placed and the load destroyed: the saved Gatekeeper at the Cataclysm Boss
+	// rung that did not rise from the dead, which only the population places. Without it a load would open the stairs
+	// under a boss still standing. A boss dead when the floor was saved has no record, so the stairs stay open. Issue
+	// #1324 slice 6d. NO SAVED FIELD IS ADDED: the record's class and rung already say it, and its `bRisenFromTheDead`
+	// says the rest -- Dead Rising and Divine Resurgence raise a fallen boss at rung 5 and mark it,
+	// `FCataclysmSaveGather::CreatureFrom` writes the mark, and a risen one does not seal in play either. Royal Guard's
+	// guards, a Demon Prince and a Plague Lord are held to Herald, and the rules that raise a standing creature's rung
+	// stop at Herald, so the population's boss is the one Gatekeeper at rung 5 that rose from nothing.
+	if (IsTheCataclysmBossFloor() && Creature.IsA<ACataclysmGatekeeperCharacter>()
+		&& Saved.RarityStep == CataclysmBossRung && !Saved.bRisenFromTheDead)
+	{
+		NoteTheCataclysmBoss(&Creature);
+	}
+
 	// AND A CLOSED SOUL CHAINS GATE'S BEARER, back on its gate, which then has bearers again. Issue #753, Group 3c-1.
 	if (Saved.SoulChainsGate != INDEX_NONE)
 	{
@@ -16554,6 +16653,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBlooms();
 	ForgetTheSpires();
 	ForgetTheHeavenlyCore();
+	// AND THE CATACLYSM BOSS'S RECORD, which belongs to the floor left. Issue #1324 slice 6d.
+	ForgetTheCataclysmBoss();
 
 	// AND PESTILENT EMPOWERMENT'S BEACONS AND THE COUNT CARRIED BETWEEN FLOORS, beside Echoes' reset:
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
@@ -19303,6 +19404,8 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForChaosTouched(Notice);
 	NoteDeathForTheCorruptedStalker(Notice);
 	NoteDeathForTheConsumptionDouble(Notice);
+	// AND THE CATACLYSM BOSS, WHOEVER KILLED IT: the stairs it sealed are open. Issue #1324 slice 6d.
+	NoteDeathForTheCataclysmBoss(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
@@ -20990,6 +21093,13 @@ TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const
 	{
 		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::ConsumptionDoubleKey));
 	}
+
+	// AND THE CATACLYSM BOSS, ON THE LAST FLOOR OF THE CATACLYSM BOSS DUNGEON, LAST: not a row, named by its own line
+	// (`UCataclysmFloorModifierPanelLayout::CataclysmBossKey`) with whether it still seals the stairs. Issue #1324 slice 6d.
+	if (IsTheCataclysmBossFloor())
+	{
+		Listed.AddUnique(FName(UCataclysmFloorModifierPanelLayout::CataclysmBossKey));
+	}
 	return Listed;
 }
 
@@ -21789,6 +21899,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString::Printf(TEXT("it comes %.0f seconds into the floor"),
 							  DoubleHunt.bHasHunted ? Effects::CorruptedStalkerFollowSeconds
 													: Effects::CorruptedStalkerFirstFloorSeconds));
+	}
+
+	// AND THE CATACLYSM BOSS: that it stands and seals the stairs, or that it is dead and they are open. A Horde wave has
+	// no stairs, and its last wave is not over while the boss lives (`ShouldTheNextWaveArrive`). Issue #1324 slice 6d.
+	if (IsTheCataclysmBossFloor())
+	{
+		Counting.Add(FName(UCataclysmFloorModifierPanelLayout::CataclysmBossKey),
+			CataclysmBossNow() != nullptr
+				? FString(FloorBrief.bWaveWalksIn ? TEXT("it stands; the dungeon is not beaten while it lives")
+												   : TEXT("it stands; the stairs are sealed until it dies"))
+				: bCataclysmBossPlaced
+				? FString(TEXT("slain; the way out is open"))
+				: FString(TEXT("none could be placed; the way out is open")));
 	}
 
 	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.
