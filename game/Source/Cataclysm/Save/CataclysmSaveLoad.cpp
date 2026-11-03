@@ -198,7 +198,7 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		{
 			return Refused(FString::Printf(
 				TEXT("the run was saved inside empire dungeon %d, and this level has no dungeon to enter it in: load "
-					 "it in a dungeon level, where Cataclysm.WalkDungeon works"), SavedDungeon));
+					 "it in a dungeon level, where Cataclysm.EnterDungeon works"), SavedDungeon));
 		}
 		if (DungeonMode->EmpireDungeonId != INDEX_NONE)
 		{
