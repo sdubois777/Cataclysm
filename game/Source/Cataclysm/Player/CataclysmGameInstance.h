@@ -8,7 +8,9 @@
 #include "Save/CataclysmSavePartition.h"
 #include "CataclysmGameInstance.generated.h"
 
+class ACataclysmPlayerState;
 class UCataclysmEmpireRun;
+class UCataclysmSaveWriter;
 
 /**
  * A character made on the front end's new-character screen, waiting for the level its Confirm opened to begin: the name
@@ -154,9 +156,10 @@ public:
 	 * character's run, and a loaded character's new run, are begun with the
 	 * character's tier passed in. With no tier passed -- a console command, a
 	 * test -- this falls back to `ACataclysmGameMode::DifficultyTierIn` as
-	 * before. A won run's raise exists (`RaiseDifficultyTierForAWin`) and nothing
-	 * in play calls it until #1324 makes a run winnable. Once begun, the level's
-	 * game mode takes the run's tier (`TakeTheRunsTier`).
+	 * before. A won run's raise (`RaiseDifficultyTierForAWin`) is called by
+	 * `BeginTheRunAfterAWin` below, since issue #1324 slice 6e; **this said
+	 * nothing in play called it until #1324 made a run winnable.** Once begun,
+	 * the level's game mode takes the run's tier (`TakeTheRunsTier`).
 	 *
 	 * IT ALSO FILLS THE RUN'S MODIFIER POOL, which is the one thing a run cannot
 	 * do for itself: `DT_DungeonModifiers` has a row type in this module and
@@ -188,6 +191,47 @@ public:
 		ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 		int32 LethalityRung = 0,
 		int32 DifficultyTier = 0);
+
+	/**
+	 * The character's half of a won run, and its next run. Issue #1324 slice 6e, ruled by the coordinating session on
+	 * 2026-11-02 under the owner's delegation.
+	 *
+	 * CALLED BY `ACataclysmDungeonGameMode::ClearEmpireDungeon` when the clear it credited won the run this instance
+	 * holds (`UCataclysmEmpireRun::bWon`), after the walk was left -- which ran none of its owed days, since a win
+	 * drops them (R6). Does nothing, and answers null, when this instance holds no run or one that is not won.
+	 *
+	 * IN THIS ORDER, and the order is the point of it:
+	 *
+	 *   1. WHAT WAS WON is read off the won run before anything replaces it: its tier, the day it was won, its
+	 *      surge mode and lethality.
+	 *   2. THE CHARACTER'S DRAW. A character that never drew a Cataclysm order seed -- the fresh start's nameless one,
+	 *      one a test stands up -- is given the seed its identifier gives (`UCataclysmCharacterSave::
+	 *      CataclysmOrderSeedFor` of `Writer`'s character), which is the seed its record is written with anyway.
+	 *   3. THE FIRST-KILL PASSIVE POINTS (R4): a win at tier T pays for the boss of the T-th Cataclysm in that draw,
+	 *      `UCataclysmRoster::OrderFor(seed)[T-1]`, through `ACataclysmPlayerState::RecordCataclysmBossDefeat`, which
+	 *      pays 10 the first time and nothing for a boss defeated before. Eight wins at tiers 1 to 8 pay 80.
+	 *   4. THE TIER, ONE HIGHER, held at 8 (`RaiseDifficultyTierForAWin`). BEFORE ANY RECORD IS WRITTEN: the
+	 *      coordinating session's comment of 2026-11-01 on #1324.
+	 *   5. THIS RUN'S KILLS START AGAIN at nought, since the run they counted is over (a judgement of the session that
+	 *      built it).
+	 *   6. THE NEXT RUN, AT ONCE (R7): `BeginACharactersEmpireRun` with a clock seed, the character's order seed, the
+	 *      won run's surge mode and lethality, and the new tier -- so it faces the won run's Cataclysms and one more
+	 *      (`docs/Cataclysm_GDD_v2.md`, Ending a Run: "Only defeating the boss dungeon adds a Cataclysm to the next
+	 *      run."). At tier 8 the tier holds, and the next run faces the same eight. It carries the win line
+	 *      (`UCataclysmEmpireRun::NoteLastRunWon`).
+	 *   7. WRITTEN ONCE, after all of it: `ECataclysmSaveTrigger::RunWon`, which writes the character record and the
+	 *      run record. The run record goes to the slot the writer already writes, which the won run held.
+	 *
+	 * HERE AND NOT IN THE EMPIRE RUN, because the character, its draw, its tier and the save writer are this module's,
+	 * and `CataclysmEmpire` must not depend on it. HERE AND NOT IN THE GAME MODE, because this is the one door into a
+	 * run (`BeginACharactersEmpireRun`), and the run is the instance's to replace.
+	 *
+	 * @param Winner the player state of the character that won.
+	 * @param Writer the world's save writer, or null: then nothing is written and a character with no seed is given
+	 *               the zero identifier's.
+	 * @return the run begun, or null when nothing was done.
+	 */
+	UCataclysmEmpireRun* BeginTheRunAfterAWin(ACataclysmPlayerState& Winner, UCataclysmSaveWriter* Writer);
 
 	/**
 	 * The run belonging to the game instance a world is part of, or null.

@@ -435,6 +435,25 @@ rule.
 
   
 
+**Defeating the boss dungeon wins the run, and the same character's next run
+begins at once.** Clearing the Cataclysm boss dungeon is the win. The character
+is paid the first-kill passive points of section XII for the boss of the
+Cataclysm its draw adds at the tier won — the third Cataclysm for a win at tier
+3 — ten the first time and nothing for a boss it has already defeated, so eight
+wins at tiers 1 to 8 pay the 80 that section counts. Its tier rises by one, and
+it is written at the new tier. The days the walk to the boss still owed are not
+run: the empire that was won is done with. The next run begins straight away at
+the new tier, facing the won run's Cataclysms and the next one in the draw, with
+a line on its map saying the last run was won. Ruled by the coordinating
+session on 2026-11-02 under the project owner's delegation; `docs/DECISIONS.md`
+has the rulings. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324). Tier 8 is the top
+of the ladder — "The whole climb is eight campaigns", section XII — and the
+tier is held there (issue #1472), so a win at tier 8 keeps the character at
+tier 8 and its next run faces the same eight.
+
+  
+
 **What is kept is everything held outside the run.** The character and its gear
 and levels, the empire upgrade tree of its lethality mode, the account's gold and
 the shared stash all survive. That is what makes the empire upgrade tree the

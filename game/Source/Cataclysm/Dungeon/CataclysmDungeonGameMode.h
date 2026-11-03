@@ -421,6 +421,11 @@ public:
 	 * THE CLEAR IS CREDITED BEFORE THE WALK'S DAYS RUN. `LeaveEmpireDungeon` runs them after it, the owner's
 	 * decision of 2026-10-24.
 	 *
+	 * AND CLEARING THE CATACLYSM'S OWN DUNGEON WINS THE RUN, since issue #1324 slice 6e (2026-11-03): the clear marks
+	 * the run won and drops the walk's owed days, so leaving runs none, and then
+	 * `UCataclysmGameInstance::BeginTheRunAfterAWin` pays the first-kill passive points, raises the character's tier,
+	 * begins the next run at once and writes both records, in that order.
+	 *
 	 * @return whether there was a dungeon to clear
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")

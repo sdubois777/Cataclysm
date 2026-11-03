@@ -2,6 +2,287 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-03 — Clearing the Cataclysm boss dungeon wins the run: the first-kill points for the draw's Cataclysm at that tier, the tier one higher before anything is written, no owed day run, and the next run begun at once with a win line; the run record keeps the line at version 5 (#1324 slice 6e)
+
+**Affects:** `UCataclysmEmpireRun::bWon`, `WonDay`, `LastRunWonDay`, `LastRunWonTier`, `LastRunWonCataclysm`,
+`LastRunWonPassivePoints` and `NoteLastRunWon`, new; `ClearDungeon` and `Begin`; the class comment and the comments on
+`ClearDungeon` and `SettleDaysOwed` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`);
+`UCataclysmGameInstance::BeginTheRunAfterAWin`, new, and `BeginEmpireRun`'s comment
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.h`, `.cpp`); `ACataclysmDungeonGameMode::ClearEmpireDungeon`
+(`CataclysmDungeonGameMode.h`, `.cpp`); the comments on `ACataclysmPlayerState::RaiseDifficultyTierForAWin` and
+`RecordCataclysmBossDefeat` (`CataclysmPlayerState.h`); `ECataclysmSaveTrigger::RunWon`, new, with
+`WritesTheCharacterRecord`, `WritesEvenIfTheRunWasWrittenThisFrame`, `NameOf` and `Every`
+(`game/Source/Cataclysm/Save/CataclysmSaveTriggers.h`, `.cpp`); `UCataclysmSaveWriter::HoldsTheCharacter`, new
+(`CataclysmSaveWriter.h`); `UCataclysmRunSave` schema version 5, four fields and `Migrate_4_to_5`
+(`CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather::ProgressFrom` and `FCataclysmSaveApply::RunInto`;
+`UCataclysmEmpireMapLayout::LastRunWonLine`, new, and two lines of `UCataclysmEmpireMapWidget::WriteStatus`
+(`game/Source/Cataclysm/Interface/`); `game/Tests/SaveFixtures/Run_v5.json`, new, and `game/Tests/SaveFixtures/README.md`;
+twelve new Unreal tests and the moved assertions below; `tools/tests/test_clearing_the_boss_dungeon_wins_the_run.py`,
+new, `tools/tests/test_when_a_save_is_written.py` and `tools/tests/test_surge_port.py`; `docs/Cataclysm_GDD_v2.md` (a
+paragraph under Ending a Run);
+`game/README.md`. Issue [#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 6e.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use, with no Unreal build,
+  test or lock. It is written on slice 6b's branch (`fa271e158`), which is in its test window and not merged; a later
+  phase moves it onto `development`. Every Unreal figure below is registered, none measured.
+- **THE SIMULATION RUNS THE OWED DAYS AFTER A WIN AND THE GAME DOES NOT.** `Simulation._settle_owed` says "A WIN OR A
+  LOSS DOES NOT STOP THEM", so a campaign ends on the day it ended before 2026-10-24; the ruling R6 says the game runs
+  none. The model is not changed: see "The model compared".
+- **TIER 8: THE DOCUMENTS SETTLE WHAT A WIN THERE DOES, AND ONE QUESTION IS LEFT.** A win at tier 8 keeps the character
+  at 8 and its next run faces the same eight. What the documents do not say is whether finishing the eighth campaign
+  marks anything more -- a climb completed, an ending -- and nothing here builds one. A question for the owner.
+
+### The design
+
+- Section II, Game Start, the paragraph led by "**A character's first Cataclysm is selected when the character is
+  created, and it stays selected.**": "The run ends when the player defeats the Cataclysm boss dungeon or loses the
+  capital."
+- Section II, Ending a Run, the paragraph led by "**A run ending never costs the character.**": "In every one of them
+  the same character plays the next run".
+- The paragraph led by "**What a failed run costs is the run: the empire and the tier.**": "Only defeating the boss
+  dungeon adds a Cataclysm to the next run."
+- The paragraph led by "**The same tier means the same Cataclysms, by name and not only by count.**" (slice 6a builds
+  it; this slice's next run is begun through it).
+- Section XII, Character Leveling, the paragraph led by "The max level is 100.": "Defeating a unique Cataclysm boss for
+  the first time: 10 bonus passive points."
+- The paragraph led by "**Reaching the 230 passive point budget requires killing every unique Cataclysm boss once, and
+  that is deliberate.**": "Levelling to 100 gives 150 — one a level plus five every ten levels — and the boss kills give
+  the other 80."
+- Section XII, The Experience Curve, the paragraph led by "**The whole climb is eight campaigns, one at each difficulty
+  tier.**": "A run is played at a fixed tier, so a player does not move up the tiers inside a run; they finish a
+  campaign and start the next one higher."
+
+No formula or mechanic is proposed, so no genre research applies: what a win pays and raises is the design's, and the
+order of the steps is the coordinating session's.
+
+### The rulings, verbatim
+
+The coordinating session, 2026-11-02, under the owner's delegation (issue #1324's comments of that day, which one
+comment dated 2026-11-03 in error and a later one corrected):
+
+- **R4**: "a win at tier T pays the first-kill 10 passive points for the boss of the character's Order[T-1] -- the T-th
+  Cataclysm in the character's draw (slice 6a keeps that draw fixed: UCataclysmRoster::OrderFor(the character's
+  CataclysmOrderSeed)). Eight wins at tiers 1-8 pay 80. A second win over a boss already defeated pays nothing
+  (DefeatedCataclysmBosses exists -- verify; RecordCataclysmBossDefeat exists -- verify)."
+- **R5** (built in slice 6d, a separate branch): "the last floor's stairs stay sealed until the Cataclysm Boss dies.
+  YOUR slice: clearing the Cataclysm-type dungeon (taking its last floor's stairs, through the same path that clears any
+  dungeon -- UCataclysmEmpireRun::ClearDungeon) is the win."
+- **R6**: "the walk's owed days are NOT run after a win."
+- **R7**: "the next run begins at once, same character, tier+1 (RaiseDifficultyTierForAWin -- exists, called only by
+  tests: verify and use it), facing its draw plus one (6a's BeginForCharacter), carrying a win line onto the new run's
+  map, e.g. "Run won on day 380 at tier 3 against Death. +10 passive points. This run faces 4 Cataclysms." (wording
+  yours; say "+0" or omit the points when the boss was already defeated; plain and literally true)."
+- **R8**: "a Last Stand while the boss dungeon is open is #43's; do not build it. Death inside the boss dungeon:
+  unchanged."
+- **ORDER** (the comment of 2026-11-01): "the tier is raised BEFORE the character record is written."
+
+Verified as asked: `ACataclysmPlayerState::DefeatedCataclysmBosses` and `RecordCataclysmBossDefeat` exist (the latter
+answers false for a boss already recorded, and nothing in play called it); `RaiseDifficultyTierForAWin` exists, holds the
+tier at `HighestDifficultyTier`, 8, and only `Cataclysm.SaveLoad.ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt`
+called it. A boss is named by `UCataclysmRoster::NameFor`, the spelling the passive tree's own tests already record
+("Demonic", "War").
+
+### The order of effects on a win
+
+1. `ACataclysmDungeonGameMode::ClearEmpireDungeon` calls `UCataclysmEmpireRun::ClearDungeon` on the bound dungeon. It
+   comes off the board and the clock and counts as a dungeon cleared, as any does. LAST in `ClearDungeon`, as
+   `Simulation._finish_current` sets `won` last: for the Cataclysm kind, `bWon`, `WonDay` (the run's day plus the days
+   the walk owed, as a death's day is counted) and `OwedDays = 0`.
+2. `LeaveEmpireDungeon`, as after every clear: `SettleDaysOwed` finds none owed, so no day runs (R6); the clock is told
+   the player left; the walk's rules end.
+3. The run is won and the game instance holds it, so `UCataclysmGameInstance::BeginTheRunAfterAWin(player state, the
+   world's writer)`:
+   1. reads the won run's tier, win day, surge mode and lethality;
+   2. a character with no Cataclysm order seed is given the seed its identifier gives (the one its record is written
+      with anyway);
+   3. pays the first-kill points (R4): `RecordCataclysmBossDefeat(NameFor(OrderFor(seed)[T-1]))`, 10 or 0;
+   4. raises the tier (`RaiseDifficultyTierForAWin`, held at 8), before anything is written (ORDER);
+   5. sets this run's kills back to 0;
+   6. begins the next run (R7): `BeginACharactersEmpireRun` with a clock seed, the character's seed, the won run's mode
+      and lethality, the new tier, so it faces the won run's list and the next of the draw; notes the win line on it;
+   7. raises `ECataclysmSaveTrigger::RunWon` once: the character record (new tier, boss defeated) and the run record
+      (the next run, with its line), into the slots the writer already writes.
+
+A run handed to the game mode through `SetEmpireRunForTests`, with no game instance of this project's class, is marked
+won and nothing else happens. R8: a death in the boss dungeon is unchanged (`EndTheDungeonForADeath` returns for the
+Cataclysm kind); no Last Stand is built.
+
+### Tier 8
+
+The documents settle it, read together: the ladder ends at 8 ("The whole climb is eight campaigns, one at each
+difficulty tier"; Game Start: "so the player will eventually face all eight simultaneously"); a run's end is followed by
+the same character's next run whatever ended it ("In every one of them the same character plays the next run"); and the
+tier is held at 8 by `RaiseDifficultyTierForAWin` (issue #1472, merged). So a win at tier 8 pays the first-kill points
+for the eighth Cataclysm of the draw the first time, keeps the character at tier 8, and begins a run that faces the same
+eight in the same order; its line says "This run faces the same 8 Cataclysms: tier 8 is the highest." A second tier 8
+win pays nothing. **Left open, for the owner:** whether finishing the eighth campaign should mean more than that.
+
+### Judgements of the writing session
+
+- **THE WIN IS THE EMPIRE'S FLAG AND THE CHARACTER'S STEPS ARE THE GAME INSTANCE'S.** `CataclysmEmpire` must not depend
+  on `Cataclysm`, so the run only marks itself won; the game instance is the one door into a run and owns the
+  replacement. The game mode, which has the world, finds the player state and the writer and hands them over.
+- **THE SAME RUN SLOT.** The next run's record replaces the won run's in the slot the writer already writes; the
+  character record's `CurrentRunId` stays right and no slot is left behind for a delete to miss. Every field of the run
+  record is gathered on every write, so nothing of the won run carries into the next record.
+- **`RunWon` WRITES WHATEVER WROTE THIS FRAME**, as a death and its processing do: otherwise a run record written earlier
+  in the frame -- a creature dying, a floor changing -- would leave the won run on disk for a load to resume.
+- **NOT SAVED: `bWon` AND `WonDay`.** No record of a won run is written in play: the next run replaces it before the
+  write. The win line the next run carries is saved.
+- **THE WIN DAY IS THE DAY THE WALK HAD REACHED**, the run's day plus the days owed, the rule a death's day already
+  follows.
+- **THE RUN'S KILLS START AGAIN AT NOUGHT**; the lifetime count is kept.
+- **THE WORDS OF THE LINE**: "Run won on day D at tier T against C. +10 passive points. This run faces N Cataclysms.";
+  for a boss defeated before, "C's boss was defeated before, so no passive points." rather than "+0"; at tier 8, "This
+  run faces the same 8 Cataclysms: tier 8 is the highest."; The Void keeps its article. The map shows it before the
+  latest-event line, for the whole of the new run.
+- **A CHARACTER WITH NO SEED** -- the fresh start's nameless one, one a test stands up -- is given its identifier's seed
+  at the win, so the boss paid for and the next run agree with what its record says. Its first run, begun by a console
+  command from the clock (slice 6a), may have faced a different list, so that one win can pay for a Cataclysm the run
+  did not face.
+
+### The model compared
+
+`Simulation._finish_current` counts the clear (cleared, floors, power, materials, the empire points), deepens the boss
+for an ordinary clear, retakes, counts a quest objective, then sets `won`, then removes the dungeon; `_walk_day` then
+calls `_settle_owed`, which runs the owed days; `run` stops on `won`. The game counts the clear the same way and sets the
+win last too. **Where they differ:** (1) the model runs the walk's owed days after a win and the game does not (R6), so
+the model's `survived_days` and any city lost in those days are counted after a win the game would not have; (2) the
+model's campaign ends at the win, and the game begins the next run at once -- a campaign in the model is one run at one
+tier, and tier progression is swept separately; (3) the model has no passive points, so R4 has no counterpart. Not
+changed in the model: (1) would move every measured figure dated before it for days after a win nobody plays, and the
+model was not asked to change.
+
+### The save, version 5
+
+Four fields on `UCataclysmRunSave` after `CataclysmDungeonBaseFloors` -- `LastRunWonDay`, `LastRunWonTier`,
+`LastRunWonCataclysm`, `LastRunWonPassivePoints` -- gathered by `ProgressFrom` and put back by `RunInto` (through
+`NoteLastRunWon`). `Migrate_4_to_5` writes 0, 0, `"None"` and 0. `Run_v5.json` is `Run_v4.json` at version 5 with the
+four keys holding 381, 3, `War` and 10 (none a default; checked by the new Python test to differ in nothing else); the
+file's run is at tier 4 facing Demonic, Death, War and Pestilence, so a win at tier 3 paid for War, the third.
+`Run_v4.json` is unedited and now a migration input. The character record gains nothing: the tier and the bosses
+defeated were saved already.
+
+Moved assertions (swept with `Run_v`, `RunSave::SchemaVersionNow`, `SchemaVersion, `, `SchemaVersion\": ` and
+`MigrationSteps()` in `game/Source` and `tools/tests`):
+
+1. `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` and the six other `SaveRecords` tests that read the
+   committed run file: `Run_v5.json` (was v4), messages included. Assertions unchanged.
+2. `Cataclysm.DeathCost.ARunFileFromBeforeTheDeathLineMigratesWithNone`,
+   `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone` and
+   `Cataclysm.EarnedBossSave.ARunFileFromBeforeTheBossDungeonMigratesUnopened`: each expected object gains the four "not
+   won" keys, because the chain runs on to version 5.
+3. `Cataclysm.DeathCost.TheCommittedRunFileReadsIntoTheDeathItStates` and
+   `Cataclysm.EarnedBossSave.TheCommittedRunFileReadsIntoTheBossDungeonItStates`: read `Run_v5.json` and assert version 5
+   (were `Run_v4.json`, version 4); their values are the same in both files.
+4. `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`: the triggers that write the character record
+   gain `RunWon`. `EveryTriggerIsInTheListThisFileAnswersFor` passes with `RunWon` in `Every()` and named.
+
+The literal versions left in tests are the example and character records', and a `"SchemaVersion": 99` run.
+
+5. `tools/tests/test_surge_port.py::TestWhatClearingADungeonCounts::test_both_count_one_objective_per_quest_dungeon_and_no_other_kind`
+   asserted `ClearDungeon` never names the Cataclysm kind, saying beating it "is the win condition, which is slice 6e".
+   Found by running the Python tests that read `CataclysmEmpireRun.cpp`. It now asserts the kind is named once, in a
+   block that sets `bWon` and counts no objective and no clear, and its comment says what it used to assert.
+
+### Tests
+
+**Unreal, `Cataclysm.BossClearedWins.`**, a new group, two in `CataclysmEmpireRunTests.cpp` (no world; the boss opened
+at tier 1, seed 9, by its Cataclysm's quest dungeons cleared by hand on day 2):
+
+1. `ClearingTheBossDungeonWinsTheRunAndRunsNoneOfTheWalksOwedDays` ("BOSS CLEARED WINS"): walked with four days owed,
+   the clear wins on day 6, owes 0, settles 0 days, stays on day 2, counts one more clear, leaves the board. CONTROL: an
+   ordinary dungeon walked the same way on the same seed wins nothing, still owes 4 and settles 4.
+2. `ABegunRunIsNotWonAndCarriesOnlyTheWinLineItIsGiven` ("BOSS CLEARED BEGIN").
+
+**Unreal, `Cataclysm.WinningTheRun.`**, a new group, ten in `CataclysmWinningTheRunTests.cpp`. The scene is the save/load
+tests' dungeon scene with the writer on test-made slots, deleted on every way out; the character's seed is 24681357; each
+run is begun through `BeginACharactersEmpireRun`, given a day, emptied, and the boss placed by hand on no city, three
+floors, a day a floor; it is entered with `EnterEmpireDungeon` (owing one day) and cleared with `ClearEmpireDungeon`.
+
+3. `AWonRunRaisesTheTierBeforeTheCharacterRecordIsWritten` ("WIN WRITTEN"): written at tier 3 first (CONTROL); after
+   the win the record built and the one on disk hold 4 and the boss; the last trigger is `RunWon`; the run record on
+   disk is the next run's (tier 4, four Cataclysms, the line: the won run's day, 3, the draw's third, 10).
+4. `TheFirstWinOverABossPaysTenAndASecondWinOverItPaysNothing` ("WIN POINTS"): +10 for the third of the draw; a second
+   tier 3 win +0, one boss, a line saying why; CONTROL a tier 4 win +10 for the fourth.
+5. `TheNextRunBeginsAtOnceATierHigherFacingTheWonRunsCataclysmsAndOneMore` ("WIN NEXT RUN"): a new run, tier 4, day 0,
+   not won, the won run's three in order then one not among them, equal to `ActiveFor(seed, 4)`; nothing bound; kills 1
+   then 0.
+6. `AWinAtTierEightStaysAtTierEightAndFacesTheSameEight` ("WIN AT EIGHT").
+7. `AWinRunsNoneOfTheWalksOwedDays` ("WIN OWED DAYS"): CONTROL an ordinary walk owing 4 runs them (day 1 to 5); the boss
+   walk owing 4 wins on day 9 and the won run stays on day 5, owing 0.
+8. `LeavingTheBossDungeonUnclearedWinsNothing` ("WIN NOT CLEARED"): same run, not won, the boss standing, the 3 owed
+   days run (day 4), tier 3, no boss, no line, no `RunWon`; CONTROL cleared afterwards, tier 4.
+9. `TheNewRunsMapCarriesTheWinLine` ("WIN LINE"): three lines written out in full (the R7 example word for word; a
+   boss defeated before; tier 8 against The Void), none for a fresh run, a run not begun, or no run; then a real win's
+   line on the next run.
+10. `AWinLineSurvivesTheRecordItsJsonAndARestore` ("WIN SAVED"), 11. `ARunFileFromBeforeTheWinLineMigratesWithNone`
+    ("WIN MIGRATED"), 12. `TheCommittedRunFileReadsIntoTheWinLineItStates` ("WIN FILE": 5, 381, 3, War, 10).
+
+**Starting states read, not assumed.** Day 1 is `AdvanceDay` on a run begun at 0; one owed day on entering is
+`SpendFloorTimeInTheEmpire` at the boss's `WalkDaysPerFloor`, 3 days over 3 floors; `PartialDay` starts at 0 in a new
+clock and every spend here is whole. The empire tests' day 2 is two `AdvanceDays`, asserted. The tier and the seed are
+set by the tests; the draw's third, fourth and eighth are asked of `OrderFor` at run time. Tier 1 opens the boss on one
+Cataclysm's count (`CataclysmsRequiredFor(1)` is 1), which `Cataclysm.EarnedBossSave.` already relies on.
+
+**Python**, `tools/tests/test_clearing_the_boss_dungeon_wins_the_run.py`, seven, all on code with comments removed: the
+points, the raise, the next run and the write in that order; R4's `OrderFor(OrderSeed)` and `Order[TierWon - 1]`; the
+win set last in `ClearDungeon` with the owed days dropped; the game mode hands on after the clear and the leaving; the
+trigger writes the character record, writes whatever wrote this frame, and is listed; `Run_v5.json` is `Run_v4.json`
+plus the four keys and describes a reachable state; version 5 and `Migrate_4_to_5`.
+`tools/tests/test_when_a_save_is_written.py` adds `RunWon` to the triggers that may not be synchronous.
+
+### Registered before the run
+
+**THE BASE COUNTS ARE PHASE 1'S STATIC COUNTS** of `IMPLEMENT_SIMPLE_AUTOMATION_TEST` by group in this tree, not
+measured; slice 6b's own figures are registered and not yet measured either. Phase 2 measures them.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.WinningTheRun.` alone | 10 / 10, a new group: none at the base, + 10 by name |
+| `Cataclysm.BossClearedWins.` alone | 2 / 2, a new group: none at the base, + 2 by name |
+| `Cataclysm.SaveRecords.`, `Cataclysm.DeathCost.`, `Cataclysm.ConsumptionDouble.`, `Cataclysm.EarnedBossSave.` | each at its base count, 0 failed; moved assertions only, none added |
+| `Cataclysm.SaveTriggers.` alone | 6 / 6 (static); one changed |
+| `Cataclysm.EmpireRun.`, `Cataclysm.EarnedBoss.`, `Cataclysm.SaveLoad.`, `Cataclysm.CataclysmDraw.` | each at its base count, 0 failed; none changed |
+| Whole Unreal suite | the base's measured total + 12 by name, 0 failed; the skipped halves as at the base (none added); 0 test saves left behind (the new tests delete every slot they write) |
+| P1, the records written before the raise (in `CataclysmGameInstance.cpp`, `\tconst int32 TierNow = Winner.RaiseDifficultyTierForAWin(); // A won run's: one tier higher, before the write.` gains the line `\tWriter->NoteTrigger(ECataclysmSaveTrigger::RunWon);` above it, and `\t\tWriter->NoteTrigger(ECataclysmSaveTrigger::RunWon); // A won run's: written once, after the raise.` becomes `\t\t;`), prefix `Cataclysm.WinningTheRun.` | "10 performed, 9 succeeded, 1 failed": `AWonRunRaisesTheTierBeforeTheCharacterRecordIsWritten`, 8 assertions: "Expected 'the character record the win built holds the raised tier' to be 4, but it was 3.", "... 'and the one on disk' to be 4, but it was 3.", "... 'the run record on disk is the next run's, at tier 4' to be 4, but it was 3.", "... 'facing four Cataclysms' to be 4, but it was 3.", "... 'carrying the win's day' to be 2, but it was 0.", "... 'its tier' to be 3, but it was 0.", "... 'its Cataclysm' to be 3, but it was 0." and "... 'and its points' to be 10, but it was 0." The last trigger is still `RunWon` and the boss is still recorded, so those two pass |
+| P2, the owed days run after a win (in `CataclysmEmpireRun.cpp`, `\t\tOwedDays = 0; // A win's: the walk's owed days are not run.` to `\t\t; // A win's: the walk's owed days are not run.`), prefix `Cataclysm.BossClearedWins.` | "2 performed, 1 succeeded, 1 failed": `ClearingTheBossDungeonWinsTheRunAndRunsNoneOfTheWalksOwedDays`, 3 assertions: "Expected 'the walk owes nothing once it is won' to be 0, but it was 4.", "... 'so leaving runs none of its days' to be 0, but it was 4." and "... 'and the run's day stays where it was' to be 2, but it was 6." The win day is worked out before the line, so "on day 6" passes |
+| P3, every win pays for the first of the draw (in `CataclysmGameInstance.cpp`, `Order.IsValidIndex(TierWon - 1) ? Order[TierWon - 1] : ECataclysmType::None;` to `Order.IsValidIndex(TierWon - 1) ? Order[0] : ECataclysmType::None;`), prefix `Cataclysm.WinningTheRun.` | "10 performed, 6 succeeded, 4 failed", 7 assertions: in `AWonRunRaises...` "with the boss the win paid for among those defeated" (to be true) and "Expected 'its Cataclysm' to be 3, but it was 1."; in `TheFirstWinOverABoss...` "for the boss of the third Cataclysm of the character's draw, and only it" (to be true), "Expected 'CONTROL: a win at tier 4 pays ten again' to be 10, but it was 0." and "CONTROL: for the boss of the fourth, beside the third" (to be true); in `AWinAtTierEight...` "the win paid for the eighth Cataclysm's boss" (to be true); in `TheNewRunsMapCarriesTheWinLine` "the next run's map carries the win's line" (the line names the first of the draw, not the third) |
+
+Each anchor occurs once in its file (counted by a script at the registration commit). **The 3 and 1 in P1's and P3's
+"its Cataclysm" are `ECataclysmType` values for War and Demonic, the third and first of seed 24681357's draw by the
+Python copy of `FRandomStream` that slice 6a checked line by line against the engine; slice 6a's own P3 proved six
+predictions resting on that copy, but no run has printed this seed's names.** If the copy is wrong the two numbers move and the
+counts do not. The breaks were not compiled.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py` in this worktree, which no other process used, against the new Python test file, each anchor
+counted once first; all three PROVED as predicted:
+
+- P1's break: "PROVED: 1 failed, 6 passed in 0.09s | restored: 7 passed in 0.05s",
+  `test_a_won_run_raises_the_tier_before_it_writes_the_records`.
+- P2's break: "PROVED: 1 failed, 6 passed in 0.09s | restored: 7 passed in 0.05s",
+  `test_clearing_the_cataclysm_kind_wins_last_and_drops_the_owed_days`.
+- P3's break: "PROVED: 1 failed, 6 passed in 0.09s | restored: 7 passed in 0.05s",
+  `test_the_win_pays_for_the_tiers_cataclysm_in_the_characters_draw`.
+
+### Not tested
+
+- **Anything in Unreal**: not compiled, not run (above).
+- **The stairs of the boss's last floor reaching the clear**: R5's seal is slice 6d's, on its own branch; these tests
+  call `ClearEmpireDungeon` as the stairs do.
+- **The map widget's label**: a headless widget's labels are null; `LastRunWonLine` is tested, the two lines of
+  `WriteStatus` that show it are read, not run.
+- **A load after a win**: the records the win writes are read back from the slots, and the run record's line survives
+  JSON and `RunInto`; the game's own load of them is not run.
+- **The game mode taking the new run's tier during play** (`TakeTheRunsTier` through `BeginACharactersEmpireRun`): a
+  test world has no authority game mode, as #1472 recorded.
+
+---
+
 ## 2026-11-03 — The empire map shows the Cataclysm boss dungeon: a box of its own on no city, the Cataclysms finished on the status line, and its opening as the latest event (#1324 slice 6c)
 
 **Affects:** `UCataclysmEmpireMapLayout::ProgressLine` and `LatestEventLine`, changed, and

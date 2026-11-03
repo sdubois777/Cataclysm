@@ -408,11 +408,27 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before it carried the win of the run before it carries none: no run could be won until issue #1324
+	 * slice 6e, 2026-11-03. Written out, for `Migrate_1_to_2`'s reason, as the four fields' defaults: day 0, tier 0,
+	 * no Cataclysm and no points, which the empire screen reads as no win line.
+	 */
+	bool Migrate_4_to_5(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("LastRunWonDay"), 0); // A migration's: the run before was not won, written out.
+		Record->SetNumberField(TEXT("LastRunWonTier"), 0);
+		Record->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
+		Record->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
+		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 	};
 }
 

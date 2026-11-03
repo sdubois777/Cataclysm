@@ -70,6 +70,15 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	CataclysmDungeonOpenedDay = 0;
 	CataclysmDungeonBaseFloors = 0;
 
+	// AND IT IS NOT WON, AND CARRIES NO WIN LINE: the caller that begins the run after a win notes the last one's
+	// afterwards (`NoteLastRunWon`), so a fresh run begun any other way says nothing about one. Issue #1324 slice 6e.
+	bWon = false;
+	WonDay = 0;
+	LastRunWonDay = 0;
+	LastRunWonTier = 0;
+	LastRunWonCataclysm = ECataclysmType::None;
+	LastRunWonPassivePoints = 0;
+
 	Stream.Initialize(InSeed);
 
 	// WHICH CATACLYSMS THIS CHARACTER FACES. How many comes from the difficulty
@@ -1644,7 +1653,38 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		}
 	}
 
+	// AND CLEARING THE CATACLYSM'S OWN DUNGEON WINS THE RUN. Issue #1324 slice 6e, ruled by the coordinating session on
+	// 2026-11-02: clearing the boss dungeon, through this function as every dungeon is cleared, is the win.
+	// `docs/Cataclysm_GDD_v2.md`, Game Start: "The run ends when the player defeats the Cataclysm boss dungeon or loses
+	// the capital."
+	//
+	// LAST, after every count above, as `Simulation._finish_current` sets `won` after it has counted the clear. So the
+	// boss is a dungeon cleared like any other before it is a win.
+	//
+	// THE DAY IS THE DAY THE WALK HAD REACHED, the run's day and the days the walk owed, as a death's day is
+	// (`ACataclysmDungeonGameMode::EndTheDungeonForADeath`): the run's own day does not move while the player is inside.
+	//
+	// AND THE OWED DAYS ARE DROPPED, NOT RUN: the ruling's R6, "the walk's owed days are not run after a win". The run
+	// is over, and the character's next run begins at once (`UCataclysmGameInstance::BeginTheRunAfterAWin`), so a day
+	// run here would only let a won empire lose cities afterwards. `SettleDaysOwed`, which leaving runs next, then
+	// finds none. **THE SIMULATION DIFFERS**: `Simulation._settle_owed` runs them after a win, so that a campaign
+	// ends on the day it ended before 2026-10-24.
+	if (Kind == ECataclysmDungeonType::Cataclysm)
+	{
+		bWon = true;
+		WonDay = Day() + OwedDays;
+		OwedDays = 0; // A win's: the walk's owed days are not run.
+	}
+
 	return true;
+}
+
+void UCataclysmEmpireRun::NoteLastRunWon(int32 InDay, int32 InTier, ECataclysmType InCataclysm, int32 InPassivePoints)
+{
+	LastRunWonDay = InDay;
+	LastRunWonTier = InTier;
+	LastRunWonCataclysm = InCataclysm;
+	LastRunWonPassivePoints = InPassivePoints;
 }
 
 bool UCataclysmEmpireRun::RemoveDungeon(int32 DungeonId)

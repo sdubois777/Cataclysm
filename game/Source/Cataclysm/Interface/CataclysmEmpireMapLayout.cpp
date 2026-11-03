@@ -424,3 +424,33 @@ FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEm
 
 	return FString::Printf(TEXT("Day %d: the Cataclysm boss dungeon opened."), Run->CataclysmDungeonOpenedDay);
 }
+
+FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)
+{
+	// NOTHING TO SAY: no run, a run that has not begun, or no win before it. Day 0 is what `Begin` writes, and no run
+	// is won on day 0: the first wave lands on day 1. Issue #1324 slice 6e.
+	if (Run == nullptr || Run->Clock == nullptr || Run->LastRunWonDay <= 0)
+	{
+		return FString();
+	}
+
+	// THE CATACLYSM AS THE DESIGN NAMES IT: "The Void" with its article, the other seven by their names.
+	const FString Against = Run->LastRunWonCataclysm == ECataclysmType::Void
+		? FString(TEXT("The Void"))
+		: UCataclysmRoster::NameFor(Run->LastRunWonCataclysm).ToString();
+
+	// THE POINTS, OR WHY THERE WERE NONE: a boss defeated before pays nothing (ruling R4).
+	const FString PointsPart = Run->LastRunWonPassivePoints > 0
+		? FString::Printf(TEXT("+%d passive points."), Run->LastRunWonPassivePoints)
+		: FString::Printf(TEXT("%s's boss was defeated before, so no passive points."), *Against);
+
+	// WHAT THIS RUN FACES. One more than the won run, except at the top of the ladder, where it is the same eight.
+	const int32 Faces = Run->ActiveCataclysms.Num();
+	const FString FacesPart = Faces <= Run->LastRunWonTier
+		? FString::Printf(TEXT("This run faces the same %d Cataclysms: tier %d is the highest."), Faces,
+						  Run->LastRunWonTier)
+		: FString::Printf(TEXT("This run faces %d Cataclysm%s."), Faces, Faces == 1 ? TEXT("") : TEXT("s"));
+
+	return FString::Printf(TEXT("Run won on day %d at tier %d against %s. %s %s"), Run->LastRunWonDay,
+						   Run->LastRunWonTier, *Against, *PointsPart, *FacesPart);
+}

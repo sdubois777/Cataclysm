@@ -2,12 +2,19 @@
 
 #include "Player/CataclysmGameInstance.h"
 
+#include "Cataclysm.h"
+#include "Character/CataclysmPassivePoints.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Misc/DateTime.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveTriggers.h"
+#include "Save/CataclysmSaveWriter.h"
 
 UCataclysmEmpireRun* UCataclysmGameInstance::GetOrBeginEmpireRun()
 {
@@ -93,6 +100,73 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginACharactersEmpireRun(
 	}
 
 	return EmpireRun;
+}
+
+UCataclysmEmpireRun* UCataclysmGameInstance::BeginTheRunAfterAWin(ACataclysmPlayerState& Winner,
+																  UCataclysmSaveWriter* Writer)
+{
+	// ONLY A WON RUN. A clear that did not win, or no run at all, does nothing here. Issue #1324 slice 6e.
+	const UCataclysmEmpireRun* Won = EmpireRun.Get();
+	if (Won == nullptr || !Won->bWon)
+	{
+		return nullptr;
+	}
+
+	// 1. WHAT WAS WON, READ BEFORE THE NEXT RUN REPLACES IT. `BeginACharactersEmpireRun` below makes a new run object,
+	// and `Won` is not read after it.
+	const int32 TierWon = FMath::Clamp(Won->DifficultyTier, ACataclysmGameMode::LowestDifficultyTier,
+									   ACataclysmGameMode::HighestDifficultyTier);
+	const int32 WonDay = Won->WonDay;
+	const ECataclysmSurgeMode Mode = Won->Surges != nullptr ? Won->Surges->Mode : ECataclysmSurgeMode::Static;
+	const int32 LethalityRung = Won->Surges != nullptr ? Won->Surges->LethalityRung : 0;
+
+	// 2. THE CHARACTER'S DRAW. One that never drew a seed is given the seed its identifier gives, the seed its record is
+	// written with in any case (`FCataclysmSaveGather::CharacterFrom`), so the boss paid for and the next run agree
+	// with what the record says from now on. A judgement of the session that built it.
+	if (!Winner.HasCataclysmOrderSeed())
+	{
+		const FGuid Identifier = Writer != nullptr ? Writer->HoldsTheCharacter() : FGuid();
+		Winner.SetCataclysmOrderSeed(UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier));
+	}
+	const int32 OrderSeed = Winner.GetCataclysmOrderSeed();
+
+	// 3. THE FIRST-KILL PASSIVE POINTS, FOR THE BOSS OF THE TIER-TH CATACLYSM IN THE CHARACTER'S DRAW. The coordinating
+	// session's ruling R4 of 2026-11-02: a win at tier T pays the first-kill 10 for `OrderFor(seed)[T-1]`. Eight wins at
+	// tiers 1 to 8 pay 80, the design's budget: "Levelling to 100 gives 150 ... and the boss kills give the other 80"
+	// (`docs/Cataclysm_GDD_v2.md`, section XII). A boss defeated before pays nothing.
+	const TArray<ECataclysmType> Order = UCataclysmRoster::OrderFor(OrderSeed);
+	const ECataclysmType Against = Order.IsValidIndex(TierWon - 1) ? Order[TierWon - 1] : ECataclysmType::None;
+	const bool bFirstDefeat = Winner.RecordCataclysmBossDefeat(UCataclysmRoster::NameFor(Against));
+	const int32 PassivePoints = bFirstDefeat ? UCataclysmPassivePoints::PerFirstBossKill : 0;
+
+	// 4. THE TIER, ONE HIGHER, AND BEFORE ANY RECORD IS WRITTEN: the coordinating session's comment of 2026-11-01 on
+	// #1324, "before the character record is written". Held at 8 (`RaiseDifficultyTierForAWin`).
+	const int32 TierNow = Winner.RaiseDifficultyTierForAWin(); // A won run's: one tier higher, before the write.
+
+	// 5. THIS RUN'S KILLS START AGAIN, since the run they counted is over. The character's lifetime count is kept.
+	Winner.RestoreRunKills(0);
+
+	// 6. THE NEXT RUN, AT ONCE: the ruling R7. A new run's chance from the clock, as a loaded character's new run takes
+	// it (`FCataclysmSaveLoad::CharacterAndRun`); its Cataclysms from the character's draw at the new tier, so it faces
+	// the won run's and one more, or at tier 8 the same eight.
+	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
+	UCataclysmEmpireRun* Next = BeginACharactersEmpireRun(Seed, OrderSeed, Mode, LethalityRung, TierNow);
+	Next->NoteLastRunWon(WonDay, TierWon, Against, PassivePoints);
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Run won on day %d at tier %d against %s: %d passive points. The next run is at tier %d, facing %d "
+				"Cataclysms."),
+		   WonDay, TierWon, *UCataclysmRoster::NameFor(Against).ToString(), PassivePoints, TierNow,
+		   Next->ActiveCataclysms.Num());
+
+	// 7. WRITTEN ONCE, AFTER ALL OF IT: the character record at the new tier with the boss defeated, and the run record
+	// of the next run, carrying the win line.
+	if (Writer != nullptr)
+	{
+		Writer->NoteTrigger(ECataclysmSaveTrigger::RunWon); // A won run's: written once, after the raise.
+	}
+
+	return Next;
 }
 
 UCataclysmEmpireRun* UCataclysmGameInstance::EmpireRunFor(

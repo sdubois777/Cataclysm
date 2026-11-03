@@ -879,6 +879,12 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	Expected->SetBoolField(TEXT("bCataclysmDungeonOpened"), false);
 	Expected->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
 	Expected->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);
+	// AND THE "NOT WON" `Migrate_4_to_5` WRITES, because the chain runs on to version 5 since 2026-11-03 (issue #1324
+	// slice 6e).
+	Expected->SetNumberField(TEXT("LastRunWonDay"), 0);
+	Expected->SetNumberField(TEXT("LastRunWonTier"), 0);
+	Expected->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
+	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

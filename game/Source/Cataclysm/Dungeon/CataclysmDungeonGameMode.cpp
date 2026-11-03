@@ -24791,6 +24791,26 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 
 	LeaveEmpireDungeon();
 
+	// AND A CLEAR THAT WON THE RUN -- the Cataclysm's own dungeon, cleared -- ENDS IT, after the walk is left, which ran
+	// none of its owed days: a win drops them (`UCataclysmEmpireRun::ClearDungeon`). The character's half -- the
+	// first-kill passive points, the tier one higher, the next run begun at once, and the one write of both records,
+	// in that order -- is the game instance's, the one door into a run. Issue #1324 slice 6e, ruled by the coordinating
+	// session on 2026-11-02 (R4, R6, R7).
+	//
+	// NOT WITHOUT A GAME INSTANCE OF THIS PROJECT'S CLASS: a run handed over through `SetEmpireRunForTests` is still
+	// marked won, and nothing else happens, since there is nowhere to begin the next run.
+	if (bCleared && Run->bWon)
+	{
+		UWorld* World = GetWorld();
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		ACataclysmPlayerState* Winner = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+		if (Winner != nullptr && Instance != nullptr && Instance->EmpireRun == Run)
+		{
+			Instance->BeginTheRunAfterAWin(*Winner, UCataclysmSaveWriter::In(World));
+		}
+	}
+
 	return bCleared;
 }
 

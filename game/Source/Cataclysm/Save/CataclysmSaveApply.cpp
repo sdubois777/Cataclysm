@@ -626,6 +626,10 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.bCataclysmDungeonOpened = Record.bCataclysmDungeonOpened;
 	Run.CataclysmDungeonOpenedDay = Record.CataclysmDungeonOpenedDay;
 	Run.CataclysmDungeonBaseFloors = Record.CataclysmDungeonBaseFloors;
+	// THE WIN OF THE RUN BEFORE THIS ONE, since run record version 5 (issue #1324 slice 6e, 2026-11-03), so a restored
+	// run still shows the win line it began with. `NoteLastRunWon` is the one writer of the four.
+	Run.NoteLastRunWon(Record.LastRunWonDay, Record.LastRunWonTier, Record.LastRunWonCataclysm,
+					   Record.LastRunWonPassivePoints);
 	Run.ActiveCataclysms = Record.ActiveCataclysms;
 
 	OutWhy.Reset();

@@ -1,0 +1,553 @@
+{
+	"SchemaVersion": 5,
+	"RunId": "1D3F5A7B9C0E2468ACE013579BDF2468",
+	"Day": 118,
+	"PartialDay": 0.25,
+	"DaysOwed": 13,
+	"CityUpgradeSlots": 3,
+	"CurrentDungeonId": 3,
+	"SurgeMode": "Both",
+	"SurgeLethalityRung": 2,
+	"SurgeIndex": 7,
+	"SurgesFired": 9,
+	"NextSurgeDay": 122.5,
+	"RandomStreamSeed": 1743984213,
+	"RunKills": 1234,
+	"Dungeons": [
+		{
+			"DungeonId": 3,
+			"Type": "Basic",
+			"SubType": "Siege",
+			"Cataclysm": "Demonic",
+			"CityId": 7,
+			"CityTier": "Outpost",
+			"Floors": 12,
+			"UpgradeFloors": 0,
+			"HollowFrom": 16,
+			"ResolveDays": 33.5,
+			"WalkDays": 12.0,
+			"Bosses": 4,
+			"DefenceDamage": 125.0,
+			"PopulationDamage": 312.5,
+			"SpawnedDay": 96,
+			"Modifiers": [
+				"Demonic_Infernal_Rain",
+				"Demonic_Blood_Altar"
+			],
+			"ModifierScore": 25.0
+		}
+	],
+	"DungeonTimers": [
+		{
+			"DungeonId": 3,
+			"Floors": 12,
+			"DaysUntilResolve": 11.25,
+			"ResolveDays": 33.5,
+			"TimesResolved": 2
+		}
+	],
+	"Cities": [
+		{
+			"CityId": 0,
+			"MaxDefence": 25000.0,
+			"MaxPopulation": 150000.0,
+			"Defence": 25000.0,
+			"Population": 148500.0,
+			"bFallen": false,
+			"bDoomed": false,
+			"bErased": false,
+			"VoidStacks": 0,
+			"LeftEdict": "None",
+			"LeftEdictUntilDay": 0,
+			"Upgrades": [
+				{
+					"RowName": "Architect_This_city_repairs_5_defense_every_7_d",
+					"Effect": "HealDefenceEvery",
+					"Value": 0.25,
+					"IntervalDays": 7.0,
+					"Tier": 1,
+					"bOneTimeUse": false,
+					"NextTriggerDay": 122
+				}
+			]
+		},
+		{
+			"CityId": 7,
+			"MaxDefence": 1000.0,
+			"MaxPopulation": 5000.0,
+			"Defence": 0.0,
+			"Population": 1250.0,
+			"bFallen": true,
+			"bDoomed": true,
+			"bErased": false,
+			"VoidStacks": 4,
+			"LeftEdict": "Celestial_Edict_of_Silence",
+			"LeftEdictUntilDay": 140,
+			"Upgrades": [
+				{
+					"RowName": "Architect_Restore_citys_defenses_by_50",
+					"Effect": "RestoreDefence",
+					"Value": 0.5,
+					"IntervalDays": 0.0,
+					"Tier": 1,
+					"bOneTimeUse": true,
+					"NextTriggerDay": 0
+				}
+			]
+		}
+	],
+	"Characters": [
+		"5C0B1A4E5B7F4D2E9A3C6F81D24E7B03"
+	],
+	"Floor": {
+		"Dungeon": "Hell_On_Earth",
+		"Floor": 6,
+		"bOnTheDarkFloor": true,
+		"DarkFloorFellFrom": 5,
+		"Creatures": [
+			{
+				"ArchetypeRow": "Brute",
+				"RarityStep": 4,
+				"ModifierRows": [
+					"Demonic_Hellfire_Aura"
+				],
+				"Location": {
+					"X": 1250.5,
+					"Y": -640.25,
+					"Z": 96
+				},
+				"Yaw": 135.5,
+				"Health": 812.25,
+				"MaxHealth": 4000,
+				"EnergyShield": 0,
+				"MaxEnergyShield": 0,
+				"bRisenFromTheDead": true,
+				"bCommandedByThePlayer": false,
+				"bSecondSelf": false,
+				"ReservedFervour": 0,
+				"CommanderHealthMultiplier": 1,
+				"SoulHarvestSouls": 2,
+				"SoulHarvestHealthAdded": 15.5,
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 42.5,
+				"StartingHealth": 400,
+				"Armour": 120,
+				"PlacedDamageMultiplier": 0.75,
+				"SightRadiusMultiplier": 30,
+				"FloorRealityRow": "Demonic_Hellfire_Aura",
+				"SoulChainsGate": 1,
+				"FloorSection": 1,
+				"bIsPlaguebearer": true,
+				"bQuarantineReleased": false,
+				"FamishedDropsEaten": 2,
+				"FamishedHealthAdded": 37.5,
+				"PackGroup": 3,
+				"PackMiddleCell": {
+					"X": 12,
+					"Y": 7
+				},
+				"bIsMoraleLeader": true,
+				"bIsPanicked": false,
+				"bPlagueHarbinger": true,
+				"HarbingerPatches": [
+					{
+						"Location": {
+							"X": 400.5,
+							"Y": -250.25,
+							"Z": 96
+						},
+						"Burn": 7.5
+					}
+				],
+				"HarbingerLastPatchAt": {
+					"X": 400.5,
+					"Y": -250.25,
+					"Z": 96
+				},
+				"bHarbingerHasLaidAPatch": true,
+				"GrimTotemsDamageMultiplier": 0.75,
+				"RaisedBy": "ChaosSpawn",
+				"RaisedGroup": 0,
+				"CarrionFeederOwnMaxHealth": 0
+			},
+			{
+				"ArchetypeRow": "AbyssalWarden",
+				"RarityStep": 0,
+				"ModifierRows": [],
+				"Location": {
+					"X": 900,
+					"Y": -120,
+					"Z": 96
+				},
+				"Yaw": 0,
+				"Health": 240,
+				"MaxHealth": 600,
+				"EnergyShield": 60.5,
+				"MaxEnergyShield": 121,
+				"bRisenFromTheDead": false,
+				"bCommandedByThePlayer": true,
+				"bSecondSelf": true,
+				"ReservedFervour": 30,
+				"CommanderHealthMultiplier": 1.25,
+				"SoulHarvestSouls": 0,
+				"SoulHarvestHealthAdded": 0,
+				"bFedByNothingIsForgotten": false,
+				"AttackDamage": 18,
+				"StartingHealth": 250,
+				"Armour": 0,
+				"PlacedDamageMultiplier": 1,
+				"SightRadiusMultiplier": 1,
+				"FloorRealityRow": "None",
+				"SoulChainsGate": -1,
+				"FloorSection": -1,
+				"bIsPlaguebearer": false,
+				"bQuarantineReleased": true,
+				"FamishedDropsEaten": 0,
+				"FamishedHealthAdded": 0,
+				"PackGroup": -1,
+				"PackMiddleCell": {
+					"X": -1,
+					"Y": -1
+				},
+				"bIsMoraleLeader": false,
+				"bIsPanicked": true,
+				"bPlagueHarbinger": false,
+				"HarbingerPatches": [],
+				"HarbingerLastPatchAt": {
+					"X": 0,
+					"Y": 0,
+					"Z": 0
+				},
+				"bHarbingerHasLaidAPatch": false,
+				"GrimTotemsDamageMultiplier": 1,
+				"RaisedBy": "None",
+				"RaisedGroup": -1,
+				"CarrionFeederOwnMaxHealth": 412.5
+			}
+		],
+		"GroundItems": [
+			{
+				"Item": {
+					"Base": "Circlet",
+					"GearLevel": 0,
+					"DamageTypes": [],
+					"Affixes": [],
+					"EnchantmentCount": 1,
+					"Enchantments": [
+						{
+							"Positive": "Positive_Additional_100_300_crit_multiplier",
+							"Negative": "Negative_You_have_no_armor",
+							"PositiveRoll": 0.25,
+							"NegativeRoll": 0.625
+						}
+					],
+					"Sockets": 0,
+					"Residue": 2.5,
+					"Kills": 0,
+					"bMadeAtCreation": false
+				},
+				"Material": "None",
+				"MaterialQuantity": 0,
+				"Location": {
+					"X": 1100,
+					"Y": -500,
+					"Z": 96
+				},
+				"bDroppedByARaisedCreature": true
+			}
+		],
+		"UsedObjects": [
+			{
+				"Rule": "War_Battlefield_Relics",
+				"Index": 1,
+				"Choice": "Activate"
+			},
+			{
+				"Rule": "Celestial_Forced_Tithes",
+				"Index": 0,
+				"Choice": "Refuse"
+			}
+		],
+		"Choices": {
+			"bTitheAngelsDue": true,
+			"PactOffer": [
+				0,
+				2,
+				4
+			],
+			"bDivineGateOpened": false,
+			"bWarBannerHeld": true,
+			"WarBannerHeldSeconds": 42.5,
+			"bRealityGiftTaken": true,
+			"bRealityChamberRewardGiven": true,
+			"RealityChamberRewardRolls": 3,
+			"RealityChamberRewardDrops": 2,
+			"RealityChamberRewardExtraDrops": 1,
+			"bRealityChamberRiftDisarmed": true
+		},
+		"RuleState": {
+			"bHeavenlyCoreDestroyed": true,
+			"bQuarantineBroken": true,
+			"QuarantinePatches": [
+				{
+					"Location": {
+						"X": 1200.5,
+						"Y": -700.25,
+						"Z": 96
+					},
+					"Burn": 12.5
+				}
+			],
+			"bInfectionBloomDestroyed": true,
+			"AbyssalRiftState": 2,
+			"VeinsDestroyed": [
+				0,
+				2
+			],
+			"InfestedVeinsDestroyed": 2,
+			"bInfestedVeinsGuardiansCame": false,
+			"BeaconsDestroyed": [
+				1
+			],
+			"BeaconsCounted": [
+				0
+			],
+			"Coffins": [
+				{
+					"Deaths": 3,
+					"bLordCame": false
+				},
+				{
+					"Deaths": 8,
+					"bLordCame": true
+				}
+			],
+			"StatuesWoken": [
+				0
+			],
+			"SoulChainsGatesOpen": [
+				0
+			],
+			"WarzoneSecondsHeld": [
+				0,
+				12.5
+			],
+			"WarzoneCaptured": [
+				0
+			],
+			"bLabrynthSaved": true,
+			"LabrynthGatesOpen": [
+				1,
+				2
+			],
+			"GatedShortcutStreamSeed": 123456789,
+			"VoidParasiteStacks": 3,
+			"bEchoesStruck": true,
+			"PlaguebearerStacks": 4,
+			"bPlaguebearerChosen": true,
+			"bPlaguebearerFallen": false,
+			"FamishedBeastsDropsEaten": 5,
+			"bMoraleBreakSaved": true,
+			"PackGroupsPlaced": 6,
+			"MoraleGroups": [
+				{
+					"Group": 3,
+					"Middle": {
+						"X": 12,
+						"Y": 7
+					},
+					"bLeaderRallies": false,
+					"bFallen": true,
+					"bFlightOver": true,
+					"bReturned": false,
+					"Escaped": [
+						{
+							"Kind": "Imp",
+							"Rung": 1
+						}
+					]
+				}
+			],
+			"CarrionFeastStacks": 2,
+			"PandoraWaves": [
+				{
+					"At": {
+						"X": 640.5,
+						"Y": 320.25,
+						"Z": 96
+					},
+					"Came": 2
+				}
+			],
+			"CarrionCarcasses": [
+				{
+					"X": 820.5,
+					"Y": -140.25,
+					"Z": 96
+				}
+			],
+			"bPlagueConvergenceBegun": true,
+			"PlagueConvergenceStacks": 3,
+			"InfectionBloomPatchPoints": [
+				{
+					"X": 400.5,
+					"Y": 260.25,
+					"Z": 96
+				}
+			],
+			"InfectionBloomHealthLeft": 37.5,
+			"bCorruptedStalkerStanding": true,
+			"CorruptedStalkerLocation": {
+				"X": -320.5,
+				"Y": 610.25,
+				"Z": 96
+			},
+			"bConsumptionDoubleHuntsThisFloor": true,
+			"bConsumptionDoubleStanding": true,
+			"ConsumptionDoubleLocation": {
+				"X": 448.5,
+				"Y": -96.25,
+				"Z": 88
+			}
+		},
+		"Characters": [
+			{
+				"CharacterId": "5C0B1A4E5B7F4D2E9A3C6F81D24E7B03",
+				"Location": {
+					"X": 1000,
+					"Y": -600,
+					"Z": 96
+				},
+				"Yaw": -45,
+				"Health": 318.75,
+				"Mana": 82.5,
+				"EnergyShield": 25,
+				"PotionCharges": [
+					30,
+					20,
+					10,
+					0
+				],
+				"PotionsDrunk": 2,
+				"ClassResource": 35.5
+			}
+		]
+	},
+	"Walk": {
+		"MarchOfProgressCommandersKilled": 2,
+		"PactBuffNow": 1,
+		"PactBuffNext": 3,
+		"PactCurseCounts": [
+			1,
+			0,
+			2,
+			0,
+			0
+		],
+		"PactsTaken": 3,
+		"BloodDebtPaid": 1,
+		"BloodPriceStacks": 2,
+		"InfernalBeaconStacks": 1,
+		"AbyssalRiftSuccesses": 1,
+		"RawSewageStacks": 3,
+		"PestilentBeaconsLeftStanding": 2,
+		"WastingSicknessStacks": 1,
+		"StarvationCurseMovementStacks": 2,
+		"StarvationCurseHealthStacks": 1,
+		"ChaosTouchedStacks": [
+			1,
+			0,
+			0,
+			2,
+			0,
+			0,
+			0,
+			1
+		],
+		"NothingIsForgottenHealth": 120,
+		"NothingIsForgottenDamage": 30,
+		"NothingIsForgottenHealthGiven": 40,
+		"NothingIsForgottenDamageGiven": 10,
+		"TrickOrTreatPickups": 2,
+		"TrickOrTreatRaised": 1,
+		"EchoChamberCopiesMade": 4,
+		"EchoChamberHitsOnThePlayer": 2,
+		"WildMagicTriggered": 5,
+		"WildMagicLast": "Chaos_Bolt",
+		"SoulHarvestGiven": 6,
+		"bCorruptedStalkerHasHunted": true,
+		"bCorruptedStalkerSlain": false,
+		"CorruptedStalkerHealthShare": 0.75,
+		"CorruptedStalkerPotionCharges": [
+			30,
+			20,
+			10,
+			0
+		],
+		"EchoesThisFloor": [
+			{
+				"Kind": "Brute",
+				"Rung": 1,
+				"Attack": 0
+			}
+		],
+		"EchoesFromLastFloor": [
+			{
+				"Kind": "Hellhound",
+				"Rung": 0,
+				"Attack": -2
+			}
+		],
+		"MetresWalkedSinceCleanse": 42.5,
+		"bConsumptionDoubleHasHunted": true,
+		"ConsumptionDoubleHealthShare": 0.625,
+		"ConsumptionDoublePotionCharges": [
+			12.5,
+			7.5,
+			2.5,
+			0
+		]
+	},
+	"QuestObjectives": 3,
+	"QuestObjectivesByCataclysm": {
+		"demonic": 2
+	},
+	"BasicDungeonsCleared": 11,
+	"DungeonsCleared": 14,
+	"DungeonsDetonated": 5,
+	"QuestHits": 2,
+	"SurgesFromEmptyBoard": 4,
+	"NextDungeonId": 41,
+	"LastHitDay": 37,
+	"LastHitCityId": 9,
+	"bLastHitWasAQuestTimer": true,
+	"LastMoveDay": 35,
+	"LastMoveFromCityId": 6,
+	"LastMoveToCityId": 12,
+	"LastDeathDay": 103,
+	"LastDeathDungeonName": "the Siege dungeon on Outpost (-3,0)",
+	"LastDeathWalkDays": 19,
+	"LastDeathDaysCost": 15,
+	"LastDeathFallenCityIds": [
+		17,
+		23
+	],
+	"bCataclysmDungeonOpened": true,
+	"CataclysmDungeonOpenedDay": 109,
+	"CataclysmDungeonBaseFloors": 137,
+	"LastRunWonDay": 381,
+	"LastRunWonTier": 3,
+	"LastRunWonCataclysm": "War",
+	"LastRunWonPassivePoints": 10,
+	"DifficultyTier": 4,
+	"ActiveCataclysms": [
+		"Demonic",
+		"Death",
+		"War",
+		"Pestilence"
+	],
+	"LastSurgeDay": 96,
+	"CataclysmStreamSeed": 1357924680,
+	"ModifierStreamSeed": -246813579,
+	"CorruptedStalkerSeed": 864209753
+}

@@ -2107,15 +2107,33 @@ class TestWhatClearingADungeonCounts:
             "ClearDungeon no longer guards QuestObjectives on the kind being "
             "Quest, so any dungeon beaten would count towards the win")
 
-        # AND NO OTHER KIND IS TREATED AS PROGRESS. `Cataclysm` has no meaning
-        # in this function at all, and `FallenCity` has exactly one -- retaking
-        # the city, which slice 2 added and which is not a tally.
-        assert "ECataclysmDungeonType::Cataclysm" not in game, (
-            "ClearDungeon now mentions the Cataclysm boss dungeon. Beating it "
-            "is the win condition, which is slice 6e, and it is neither an "
-            "ordinary clear nor a quest objective. Opening and deepening it "
-            "since slice 6b go through OpenCataclysmDungeonIfEarned and "
-            "DeepenCataclysmDungeon, which name the kind themselves")
+        # AND NO OTHER KIND IS TREATED AS PROGRESS. `Cataclysm` has exactly one
+        # meaning in this function -- winning the run, since slice 6e
+        # (2026-11-03) -- and `FallenCity` has exactly one -- retaking the city,
+        # which slice 2 added and which is not a tally.
+        #
+        # THIS SAID `Cataclysm` HAD NO MEANING HERE AT ALL and asserted the name
+        # was absent, until slice 6e made beating the boss the win. The win is
+        # still neither an ordinary clear nor a quest objective, which is what
+        # the count of one and the block's contents below hold.
+        cataclysm_uses = game.count("ECataclysmDungeonType::Cataclysm")
+
+        assert cataclysm_uses == 1, (
+            f"ClearDungeon names the Cataclysm kind {cataclysm_uses} times. "
+            "It should name it once, to win the run (slice 6e); opening and "
+            "deepening the boss since slice 6b go through "
+            "OpenCataclysmDungeonIfEarned and DeepenCataclysmDungeon, which "
+            "name the kind themselves")
+
+        win = game[game.index("ECataclysmDungeonType::Cataclysm"):]
+        win = win[:win.index("}")]
+
+        assert "bWon = true;" in win, (
+            "ClearDungeon names the Cataclysm kind for something other than "
+            "the win")
+        assert "Objectives" not in win and "Cleared" not in win, (
+            "beating the Cataclysm boss dungeon is counted as progress "
+            "towards the win it is")
 
         fallen_uses = game.count("ECataclysmDungeonType::FallenCity")
 

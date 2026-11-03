@@ -82,6 +82,13 @@ public:
 	 */
 	void AdoptLoaded(UCataclysmRunSave* Run, UCataclysmCharacterSave* Character);
 
+	/**
+	 * The character the writer writes, whose identifier names its slot; invalid until `BeginRun`. A won run reads it
+	 * for a character that never drew a Cataclysm order seed, which the record is written with the seed this
+	 * identifier gives (`UCataclysmGameInstance::BeginTheRunAfterAWin`, issue #1324 slice 6e).
+	 */
+	const FGuid& HoldsTheCharacter() const { return CharacterId; }
+
 	/** The dungeon name and the floor number the writer holds, which a load compares with the record's floor. */
 	FName HoldsTheDungeon() const { return Dungeon; }
 	int32 HoldsTheFloor() const { return Floor; }

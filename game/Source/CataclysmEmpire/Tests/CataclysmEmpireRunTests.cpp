@@ -8640,4 +8640,196 @@ bool FCataclysmEarnedBossNoSiegeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Clearing the boss dungeon wins the run -- issue #1324 slice 6e
+// ---------------------------------------------------------------------------
+
+/**
+ * Clearing the Cataclysm boss dungeon wins the run, and the walk's owed days are not run. Issue #1324 slice 6e, ruled
+ * by the coordinating session on 2026-11-02 under the owner's delegation: clearing the Cataclysm-type dungeon, through
+ * `ClearDungeon` as any dungeon is cleared, is the win (R5's half that is this slice's), and "the walk's owed days are
+ * NOT run after a win" (R6).
+ *
+ * `Cataclysm.BossClearedWins.` IS A NEW GROUP and selects these and nothing else. The character's half of a win -- the
+ * first-kill passive points, the tier one higher, the next run -- is `Cataclysm.WinningTheRun.`, in the `Cataclysm`
+ * module, because this module may not reach the character.
+ *
+ * NO WORLD AND NO ACTOR. The boss is opened as a tier 1 run opens it, by its one Cataclysm's quest dungeons cleared
+ * by hand through `ClearDungeon`, which is what `Cataclysm.EarnedBoss.` does. A walk is the clock told the player is
+ * inside, and floor time spent while it is (`SpendFloorTime`), which is what the dungeon game mode does on each floor.
+ */
+namespace CataclysmBossClearedWinsTest
+{
+	/** A tier 1 run on this seed, on day 2, with its one Cataclysm's quest dungeons cleared by hand, which opens the
+	 *  boss. The quest dungeons draw nothing; the opening draws the boss's depth and sub-type. */
+	UCataclysmEmpireRun* MakeRunWithItsBossOpen(int32 Seed)
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 1);
+		Run->AdvanceDays(2);
+
+		const ECataclysmType Only = Run->ActiveCataclysms.Num() > 0
+			? Run->ActiveCataclysms[0] : ECataclysmType::None;
+		for (int32 Index = 0; Index < UCataclysmRoster::QuestObjectivesFor(Only); ++Index)
+		{
+			FCataclysmDungeon Quest;
+			Quest.DungeonId = Run->NextDungeonId++;
+			Quest.Type = ECataclysmDungeonType::Quest;
+			Quest.Cataclysm = Only;
+			Quest.CityId = Run->Map->Cities[0].CityId;
+			Run->Dungeons.Add(Quest);
+			Run->ClearDungeon(Quest.DungeonId);
+		}
+		return Run;
+	}
+
+	/** An ordinary dungeon built by hand on the map's first city, standing and not yet cleared. It draws nothing. */
+	int32 PlaceAnOrdinaryOneByHand(UCataclysmEmpireRun& Run)
+	{
+		FCataclysmDungeon Ordinary;
+		Ordinary.DungeonId = Run.NextDungeonId++;
+		Ordinary.Type = ECataclysmDungeonType::Basic;
+		Ordinary.CityId = Run.Map->Cities[0].CityId;
+		Run.Dungeons.Add(Ordinary);
+		return Ordinary.DungeonId;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossClearedWinsTest,
+	"Cataclysm.BossClearedWins.ClearingTheBossDungeonWinsTheRunAndRunsNoneOfTheWalksOwedDays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A tier 1 run at seed 9 opens its boss on day 2; the player walks into it and spends four days of floors, which the
+ * walk owes; clearing it wins the run on day 6, the day the walk had reached, and the four days are dropped: leaving
+ * runs none and the run's day stays at 2. It counts as one dungeon cleared and leaves the board.
+ *
+ * CONTROL: a second run from the same seed walks an ordinary dungeon for the same four days instead, and clearing it
+ * wins nothing and leaves the four days owed, which leaving then runs. Prints "BOSS CLEARED WINS".
+ */
+bool FCataclysmBossClearedWinsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmBossClearedWinsTest;
+
+	UCataclysmEmpireRun* Won = MakeRunWithItsBossOpen(/* Seed */ 9);
+	const FCataclysmDungeon* Boss = Won->FindCataclysmDungeon();
+	if (!TestNotNull(TEXT("set-up: the tier 1 run opened its boss"), Boss)
+		|| !TestEqual(TEXT("set-up: on day 2"), Won->Day(), 2)
+		|| !TestFalse(TEXT("set-up: and is not won"), Won->bWon))
+	{
+		return false;
+	}
+	const int32 BossId = Boss->DungeonId;
+
+	Won->Clock->EnterDungeon(BossId);
+	Won->SpendFloorTime(4.0f);
+	if (!TestEqual(TEXT("set-up: the walk owes four days"), Won->DaysOwed(), 4)
+		|| !TestTrue(TEXT("set-up: and is under way"), Won->IsAWalkUnderWay()))
+	{
+		return false;
+	}
+	const int32 ClearedBefore = Won->DungeonsCleared;
+
+	const bool bCleared = Won->ClearDungeon(BossId);
+	const int32 OwedAfterTheClear = Won->DaysOwed();
+	const TArray<FCataclysmDayReport> Settled = Won->SettleDaysOwed();
+
+	// THE CONTROL: the same seed, an ordinary dungeon walked for the same four days.
+	UCataclysmEmpireRun* Control = MakeRunWithItsBossOpen(/* Seed */ 9);
+	const int32 OrdinaryId = PlaceAnOrdinaryOneByHand(*Control);
+	Control->Clock->EnterDungeon(OrdinaryId);
+	Control->SpendFloorTime(4.0f);
+	const int32 ControlDayBefore = Control->Day();
+	const bool bControlCleared = Control->ClearDungeon(OrdinaryId);
+	const int32 ControlOwedAfterTheClear = Control->DaysOwed();
+	const TArray<FCataclysmDayReport> ControlSettled = Control->SettleDaysOwed();
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS CLEARED WINS: boss %d cleared %s, won %s on day %d; owed %d after the clear, %d days run on "
+			 "leaving, the run's day %d; dungeons cleared %d to %d; the boss %s. CONTROL: an ordinary dungeon cleared "
+			 "%s, won %s, owed %d after the clear, %d days run on leaving, day %d to %d"),
+		BossId, bCleared ? TEXT("yes") : TEXT("NO"), Won->bWon ? TEXT("yes") : TEXT("no"), Won->WonDay,
+		OwedAfterTheClear, Settled.Num(), Won->Day(), ClearedBefore, Won->DungeonsCleared,
+		Won->FindCataclysmDungeon() ? TEXT("STILL STANDS") : TEXT("is gone"),
+		bControlCleared ? TEXT("yes") : TEXT("NO"), Control->bWon ? TEXT("YES") : TEXT("no"), ControlOwedAfterTheClear,
+		ControlSettled.Num(), ControlDayBefore, Control->Day()));
+
+	TestTrue(TEXT("the boss dungeon was there to clear"), bCleared);
+	TestTrue(TEXT("clearing it wins the run"), Won->bWon);
+	TestEqual(TEXT("on day 6, the day the walk had reached"), Won->WonDay, 6);
+	TestEqual(TEXT("the walk owes nothing once it is won"), OwedAfterTheClear, 0);
+	TestEqual(TEXT("so leaving runs none of its days"), Settled.Num(), 0);
+	TestEqual(TEXT("and the run's day stays where it was"), Won->Day(), 2);
+	TestEqual(TEXT("the boss counts as one dungeon cleared"), Won->DungeonsCleared, ClearedBefore + 1);
+	TestNull(TEXT("and leaves the board"), Won->FindCataclysmDungeon());
+	TestFalse(TEXT("and the clock no longer holds a walk"), Won->IsAWalkUnderWay());
+
+	TestTrue(TEXT("CONTROL: the ordinary dungeon was there to clear"), bControlCleared);
+	TestFalse(TEXT("CONTROL: clearing an ordinary dungeon wins nothing"), Control->bWon);
+	TestEqual(TEXT("CONTROL: and no win day"), Control->WonDay, 0);
+	TestEqual(TEXT("CONTROL: its walk still owes its four days after the clear"), ControlOwedAfterTheClear, 4);
+	TestEqual(TEXT("CONTROL: and leaving runs all four"), ControlSettled.Num(), 4);
+	TestEqual(TEXT("CONTROL: so the run's day moves by four"), Control->Day(), ControlDayBefore + 4);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossClearedWinsBeginTest,
+	"Cataclysm.BossClearedWins.ABegunRunIsNotWonAndCarriesOnlyTheWinLineItIsGiven",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A won run that carries a win line of its own, begun again, is not won and carries no line; the four figures of a
+ * line are then exactly what `NoteLastRunWon` is given. So a run begun any way but after a win says nothing about one.
+ * Prints "BOSS CLEARED BEGIN".
+ */
+bool FCataclysmBossClearedWinsBeginTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmBossClearedWinsTest;
+
+	UCataclysmEmpireRun* Run = MakeRunWithItsBossOpen(/* Seed */ 9);
+	const FCataclysmDungeon* Boss = Run->FindCataclysmDungeon();
+	if (!TestNotNull(TEXT("set-up: the run opened its boss"), Boss))
+	{
+		return false;
+	}
+	Run->ClearDungeon(Boss->DungeonId);
+	Run->NoteLastRunWon(381, 3, ECataclysmType::War, 10);
+	if (!TestTrue(TEXT("set-up: the run is won"), Run->bWon)
+		|| !TestEqual(TEXT("set-up: and carries a win line"), Run->LastRunWonDay, 381))
+	{
+		return false;
+	}
+
+	Run->Begin(/* Seed */ 10, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 2);
+	const bool bWonAfterBegin = Run->bWon;
+	const int32 WonDayAfterBegin = Run->WonDay;
+	const int32 LineDayAfterBegin = Run->LastRunWonDay;
+	const int32 LineTierAfterBegin = Run->LastRunWonTier;
+	const ECataclysmType LineCataclysmAfterBegin = Run->LastRunWonCataclysm;
+	const int32 LinePointsAfterBegin = Run->LastRunWonPassivePoints;
+
+	Run->NoteLastRunWon(77, 1, ECataclysmType::Death, 0);
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS CLEARED BEGIN: after Begin won %s on day %d, line day %d tier %d Cataclysm %d points %d; noted day "
+			 "%d tier %d Cataclysm %d points %d"),
+		bWonAfterBegin ? TEXT("YES") : TEXT("no"), WonDayAfterBegin, LineDayAfterBegin, LineTierAfterBegin,
+		static_cast<int32>(LineCataclysmAfterBegin), LinePointsAfterBegin, Run->LastRunWonDay, Run->LastRunWonTier,
+		static_cast<int32>(Run->LastRunWonCataclysm), Run->LastRunWonPassivePoints));
+
+	TestFalse(TEXT("a run begun again is not won"), bWonAfterBegin);
+	TestEqual(TEXT("and has no win day"), WonDayAfterBegin, 0);
+	TestEqual(TEXT("and carries no win line: no day"), LineDayAfterBegin, 0);
+	TestEqual(TEXT("no tier"), LineTierAfterBegin, 0);
+	TestEqual(TEXT("no Cataclysm"), static_cast<int32>(LineCataclysmAfterBegin),
+			  static_cast<int32>(ECataclysmType::None));
+	TestEqual(TEXT("no points"), LinePointsAfterBegin, 0);
+	TestEqual(TEXT("the line noted has the day given"), Run->LastRunWonDay, 77);
+	TestEqual(TEXT("the tier given"), Run->LastRunWonTier, 1);
+	TestEqual(TEXT("the Cataclysm given"), static_cast<int32>(Run->LastRunWonCataclysm),
+			  static_cast<int32>(ECataclysmType::Death));
+	TestEqual(TEXT("and the points given"), Run->LastRunWonPassivePoints, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

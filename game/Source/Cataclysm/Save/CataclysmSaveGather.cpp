@@ -401,6 +401,12 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	Record.bCataclysmDungeonOpened = Run.bCataclysmDungeonOpened;
 	Record.CataclysmDungeonOpenedDay = Run.CataclysmDungeonOpenedDay;
 	Record.CataclysmDungeonBaseFloors = Run.CataclysmDungeonBaseFloors;
+	// THE WIN OF THE RUN BEFORE THIS ONE, since run record version 5 (issue #1324 slice 6e, 2026-11-03), for the line
+	// the new run's map shows.
+	Record.LastRunWonDay = Run.LastRunWonDay;
+	Record.LastRunWonTier = Run.LastRunWonTier;
+	Record.LastRunWonCataclysm = Run.LastRunWonCataclysm;
+	Record.LastRunWonPassivePoints = Run.LastRunWonPassivePoints;
 
 	return true;
 }

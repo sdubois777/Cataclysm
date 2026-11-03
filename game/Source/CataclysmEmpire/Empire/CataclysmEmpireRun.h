@@ -282,8 +282,12 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *     the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active Cataclysms
  *     finished, rounded up -- and since issue #1324 slice 6b (2026-11-02) it
  *     ACTS on the answer: the quest clear that meets it opens the Cataclysm boss
- *     dungeon, on no city (`OpenCataclysmDungeonIfEarned`). What it still does
- *     not do is set a won state when that dungeon is defeated; that is slice 6e.
+ *     dungeon, on no city (`OpenCataclysmDungeonIfEarned`), and since slice 6e
+ *     clearing it sets a won state (`bWon`). What it does not do is the
+ *     character's half of a win -- the passive points, the tier, the next run --
+ *     which `UCataclysmGameInstance::BeginTheRunAfterAWin` does in the
+ *     `Cataclysm` module. **Until slice 6e this said it did not set a won
+ *     state when that dungeon was defeated.**
  *     **This paragraph used to say the enemy capital did not exist and neither
  *     did the loss condition, as two open design gaps.** The project owner
  *     answered both on 2026-09-06 (issue #1324): the enemy capital "is just the
@@ -1057,6 +1061,71 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CataclysmDungeonBaseFloors = 0;
 
+	// ----------------------------------------------------------------------
+	// Winning the run -- issue #1324 slice 6e
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether the player has won this run: a dungeon of the Cataclysm kind was cleared through `ClearDungeon`, the
+	 * one way every dungeon is cleared. Issue #1324 slice 6e, ruled by the coordinating session on 2026-11-02.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, Game Start: "The run ends when the player defeats the Cataclysm boss dungeon or
+	 * loses the capital." A port of `Simulation.won`, which `_finish_current` sets on the same clear and for every
+	 * dungeon of the kind, so a Last Stand cleared (issue #43) will win here as it does there.
+	 *
+	 * WHAT A WIN DOES TO THE CHARACTER IS NOT THIS MODULE'S. The first-kill passive points, the tier raised and the
+	 * next run begun belong to the character, which this module may not reach:
+	 * `UCataclysmGameInstance::BeginTheRunAfterAWin` reads this flag and does them, called by
+	 * `ACataclysmDungeonGameMode::ClearEmpireDungeon` after the walk is left. This module does the one part that is
+	 * the run's: the walk's owed days are dropped, not run (`ClearDungeon`).
+	 *
+	 * NOT SAVED, a judgement of the session that built it: in play the won run is replaced by the next one before
+	 * anything is written, so no record of a won run is ever written. `Begin` clears it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bWon = false;
+
+	/**
+	 * The day the run was won: the day the walk that won it had reached, the run's day and the days that walk owed,
+	 * counted the way `LastDeathDay` counts a death's day. 0 until it is won. Not saved, with `bWon`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 WonDay = 0;
+
+	/**
+	 * The run before this one, when it was won: the day it was won, the tier it was played at, the Cataclysm whose
+	 * boss the win was paid for, and the passive points that paid -- 10, or 0 when the character had defeated that
+	 * boss before. All four are 0 or `None` when the run before this one was not won, or there was none: `Begin`
+	 * clears them and only `NoteLastRunWon` sets them.
+	 *
+	 * WHY THE NEW RUN CARRIES THEM. The coordinating session ruled on 2026-11-02 (R7) that the next run begins at once,
+	 * one tier higher, "with a win line", and the won run is gone by then. `UCataclysmEmpireMapLayout::LastRunWonLine`
+	 * turns them into that line on the new run's map.
+	 *
+	 * SAVED, all four, since run record version 5, so a player who quits after the win still reads the line.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonDay = 0;
+
+	/** The tier the won run was played at, 1 to 8; 0 when the run before this one was not won. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonTier = 0;
+
+	/** The Cataclysm whose boss the win was paid for: the character's draw at that tier. `None` when not won. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	ECataclysmType LastRunWonCataclysm = ECataclysmType::None;
+
+	/** The passive points the win paid: 10 for that boss's first defeat, 0 for a boss defeated before. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonPassivePoints = 0;
+
+	/**
+	 * Keeps the four figures above, all at once, replacing whatever they held. `UCataclysmGameInstance::
+	 * BeginTheRunAfterAWin` is the caller, on the run it has just begun, with what it worked out; nothing here works
+	 * any of them out again. Issue #1324 slice 6e.
+	 */
+	void NoteLastRunWon(int32 Day, int32 Tier, ECataclysmType Cataclysm, int32 PassivePoints);
+
 	/**
 	 * How deep the Cataclysm boss dungeon is: its rolled floors plus one for
 	 * every ordinary dungeon defeated this run, those before it opened and those
@@ -1152,6 +1221,10 @@ public:
 	 * dungeon goes through. That call comes AFTER a clear has been credited, so the clear counts first and the
 	 * days run second, as the owner ruled on 2026-10-24: "Clear counts, city still falls". On a death it comes
 	 * after the death's resolve and before the death's own days.
+	 *
+	 * A WIN OWES NONE. Clearing a dungeon of the Cataclysm kind drops the days its walk owed (`ClearDungeon`), so
+	 * this runs nothing after a win: the walk's owed days are not run, the coordinating session's ruling R6 of
+	 * 2026-11-02 (issue #1324 slice 6e).
 	 *
 	 * CALLED BEFORE THE CLOCK IS TOLD THE PLAYER HAS LEFT, so the dungeon walked keeps its timer paused and a Hollow
 	 * walked keeps its floors through these days, which were spent inside it. A cleared dungeon is off the clock
@@ -1250,9 +1323,15 @@ public:
 	 * GROWS.** A Quest clear that meets the requirement opens it
 	 * (`OpenCataclysmDungeonIfEarned`, last in the Quest branch), and an
 	 * ordinary clear deepens a boss already standing by a floor
-	 * (`DeepenCataclysmDungeon`). Issue #1324 slice 6b. Clearing the boss
-	 * itself counts as a dungeon cleared and nothing else here; winning the run
-	 * by it is slice 6e.
+	 * (`DeepenCataclysmDungeon`). Issue #1324 slice 6b.
+	 *
+	 * **AND CLEARING A DUNGEON OF THE CATACLYSM KIND WINS THE RUN**, since slice
+	 * 6e (2026-11-03): last, after everything above, as `Simulation._finish_current`
+	 * sets `won` last, it sets `bWon` and `WonDay` and drops the days the walk
+	 * owed, which a win does not run (the coordinating session's ruling R6).
+	 * **This said clearing the boss counted as a dungeon cleared and nothing
+	 * else, and that winning by it was slice 6e.** It still counts as a dungeon
+	 * cleared, and nothing else here changes for it.
 	 *
 	 * @return whether it was there to clear.
 	 */
