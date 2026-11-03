@@ -311,6 +311,27 @@ With `tools/prove_guard.py` in this worktree, which no other process uses, again
 - PY2, the game's Fallen City base answering `BasicDungeonEmpirePoints` (P2's break): "PROVED: 1 failed, 4 passed in
   0.11s | restored: 5 passed in 0.08s", the failure `test_every_base_is_reached_by_the_game`.
 
+### Window empire-points-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `0da52fa77` (on `development`
+`7887021fd`), lock `empire-points-w1`, after the six pre-checks all passed (11,543 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 16 groups alone | each at its registered count | every one "0 failed": EmpirePoints. 16, EmpireRun. 68, SaveRecords. 17, SaveStorage. 9, SaveMigration. 8, SaveWriter. 25, SaveTriggers. 6, SaveLoad. 75, SavePartition. 4, WinningTheRun. 11, BossClearedWins. 2, BossOnTheMap. 5, BossFloor. 5, DungeonMode. 46, DeathCost. 9, EmpireScreen. 14 |
+| Whole Unreal suite | 4700, 47 skipped halves, 0 left behind | "4700 tests performed, 4700 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4700 tests in the tree at 0da52fa77; 4700 performed, gap 0"; "Test saves: 733 written and deleted, 0 left behind" (719 at the base: the tests that clear a dungeon now write and delete an `_AutomationTest` account slot) |
+| Python | of record | "7352 passed, 9 skipped in 191.17s"; JUnit tests 7361, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 4 tests, 7 | PROVED. Exactly the seven registered, the bank reading 0.0 where 1.0 was expected; restored 16 of 16 |
+| P2 | 2 tests, 2 | PROVED. Exactly "a Fallen City at full population awards its base, 5" and "the award is the share before the retake" (4.959016 expected, 0.991803 read); restored 16 of 16 |
+| P3 | 6 tests, 10 | PROVED. Exactly the ten registered (the screen reading 3.0 for 1.0, the Fallen City 5.000000 for 4.959016); restored 16 of 16 |
+| P4 | 1 test, 1 | PROVED. Exactly the expected-message count: "names another partition" not found once; restored 16 of 16 |
+| P5 | 1 test, 2 | PROVED. Exactly "and the account banked it, 25" and "and wrote it to its slot"; restored 16 of 16 |
+| P6 | 1 test, 1 | PROVED. Exactly "the win's write is still the last trigger" (10 expected, 7 read); restored 16 of 16 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Nothing in Unreal has run.** It compiles; see SAID FIRST and "Compiled".
