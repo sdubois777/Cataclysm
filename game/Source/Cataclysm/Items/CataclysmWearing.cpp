@@ -74,6 +74,10 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 		return ECataclysmWearResult::WouldCrossConsumptionThreshold;
 	}
 
+	// READ BEFORE THE SLOT IS EMPTIED, so the answer is about the item being
+	// worn and not about whatever lands in its slot afterwards. Issue #878.
+	const bool bWearingWhatIsHeld = Inventory->HeldSlot() == CarriedSlot;
+
 	Inventory->RemoveItemAt(CarriedSlot);
 
 	FCataclysmItem First;
@@ -88,6 +92,21 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 		// still free because nothing has been put there.
 		Inventory->AddItem(Item);
 		return ECataclysmWearResult::CannotBeWorn;
+	}
+
+	// WEARING THE HELD ITEM ENDS THE HOLD. Ruled 2026-11-02 under issue #878.
+	// The hold is a slot number and not the item, so left in place it would
+	// pass to whatever lands in that slot next -- and what came off below
+	// lands exactly there whenever no lower slot is free, being put in the
+	// first free slot. The player would then see a piece they never
+	// picked up drawn on the pointer, and the next press would move it.
+	// Every wear the player chooses -- the right button's, the one asked about
+	// first (WearAfterConfirming) and the Cataclysm.Equip command's -- comes
+	// through here, so this is the one place that covers them all. Wearing a different item leaves the
+	// hold where it is: that item is still in its slot.
+	if (bWearingWhatIsHeld)
+	{
+		ReleaseHeld(Inventory);
 	}
 
 	bool bAnythingCameOff = false;

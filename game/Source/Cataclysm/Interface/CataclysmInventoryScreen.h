@@ -7,7 +7,30 @@
 #include "CataclysmInventoryScreen.generated.h"
 
 struct FCataclysmCarriedSlot;
+class UCataclysmInventoryComponent;
 class UDataTable;
+
+/**
+ * How one carried cell is drawn. Issue #878.
+ *
+ * THREE AND NOT TWO, because a held item does not leave its slot. Before this,
+ * a cell was either empty or full, and the slot an item had been picked up from
+ * was full -- so the grid looked exactly the same whether something was on the
+ * cursor or not. `UCataclysmInventoryComponent::HeldSlot` says why the item
+ * stays where it is.
+ */
+UENUM()
+enum class ECataclysmCellLook : uint8
+{
+	/** Nothing in the slot. */
+	Empty,
+
+	/** Something in the slot, and it is not on the cursor. */
+	Full,
+
+	/** Something in the slot that is on the cursor: drawn as the place it was lifted from. */
+	Lifted,
+};
 
 /**
  * Every judgement the carried inventory screen makes, outside the widget.
@@ -265,10 +288,11 @@ public:
 	 * the grid looks identical whether something is held or not and a player
 	 * who pressed once could not tell. Issue #853.
 	 *
-	 * THIS IS A STAND-IN FOR DRAWING IT UNDER THE CURSOR, which is what
-	 * docs/Inventory_Screen_Design.md describes and what the genre does. That
-	 * needs a widget following the mouse and cannot be checked by any test
-	 * here, because the automation command passes -nullrhi.
+	 * IT BEGAN AS A STAND-IN FOR DRAWING IT UNDER THE CURSOR, and it stays
+	 * now that the item is drawn there (issue #878, HeldSlotToDraw below). The
+	 * line says by name what the drawn cell says only as a short label and a
+	 * colour, and it is the one of the two a test can read: the drawing cannot
+	 * be checked here, because the automation command passes -nullrhi.
 	 *
 	 * @param HeldName  what is on the cursor, from LabelFor. Empty when
 	 *                  nothing is held, which says nothing rather than saying
@@ -276,6 +300,92 @@ public:
 	 */
 	static FString HeaderTextFor(int32 Used, int32 Capacity,
 								 const FString& HeldName = FString());
+
+	//~ What is on the cursor. Issue #878.
+
+	/**
+	 * Which carried slot is drawn under the cursor, or INDEX_NONE for none.
+	 *
+	 * NOTHING IS DRAWN UNLESS SOMETHING IS HELD AND THE HELD SLOT HOLDS
+	 * SOMETHING. The second half is not a formality. The hold is a slot number,
+	 * and a slot can be emptied without the hold being let go of: a stack of a
+	 * material spent to nothing (`RemoveMaterial`), the bag emptied whole
+	 * (`RemoveEverything`) or replaced (`RestoreSlots`). An empty frame
+	 * following the mouse would say the player is holding a thing they are
+	 * not. Wearing the held item is not one of these: since issue #878
+	 * `UCataclysmWearing::WearFromCarried` lets go of it.
+	 *
+	 * @return the held slot when it holds something, otherwise INDEX_NONE,
+	 *         including for a null inventory
+	 */
+	static int32 HeldSlotToDraw(const UCataclysmInventoryComponent* Inventory);
+
+	/**
+	 * How a carried cell is drawn: empty, full, or lifted onto the cursor.
+	 *
+	 * LIFTED APPLIES TO EXACTLY ONE CELL, the held slot, and only while it
+	 * holds something. Put the item down, or let go of it by closing the
+	 * screen, and the cell is full again (or empty, if it went elsewhere).
+	 *
+	 * @return Empty for a null inventory and for an index outside the bag, so a
+	 *         caller can draw every cell without asking first
+	 */
+	static ECataclysmCellLook CellLookFor(
+		const UCataclysmInventoryComponent* Inventory, int32 SlotIndex);
+
+	/**
+	 * How much of its frame's colour a lifted cell keeps.
+	 *
+	 * A JUDGEMENT, NOT A MEASUREMENT, and play should settle it. Low enough that
+	 * a lifted cell cannot be mistaken for a full one at a glance; high enough
+	 * that the item's rarity and the frame's thickness can still be made out,
+	 * so the player can see where the item came from and where a press puts it
+	 * back. Without its frame a lifted cell would look like an empty one, which
+	 * it is not: the item is still in it, and a save taken now writes it there.
+	 */
+	static constexpr float LiftedFrameOpacity = 0.35f;
+
+	/**
+	 * The frame colour a cell is drawn in, given the colour of what it holds.
+	 *
+	 * A LIFTED CELL KEEPS ITS COLOUR AND ITS THICKNESS AND IS DIMMED: the same
+	 * hue, at LiftedFrameOpacity of the alpha it had. A full or an empty cell is
+	 * drawn in the colour it was given.
+	 *
+	 * @param ItemColour  what ColourFor gives for the slot
+	 */
+	static FLinearColor FrameColourFor(const FLinearColor& ItemColour,
+									   ECataclysmCellLook Look);
+
+	/**
+	 * What a cell's label or count shows, given what it would show when full.
+	 *
+	 * NOTHING ON A LIFTED CELL. The name is on the cursor now; drawing it in the
+	 * grid as well is exactly what made the grid look untouched. Everything
+	 * else shows what it was given.
+	 */
+	static FString TextShownFor(const FString& Text, ECataclysmCellLook Look);
+
+	/**
+	 * Where the top left corner of the item drawn under the cursor goes, in
+	 * the same space as the cursor position given.
+	 *
+	 * CENTRED ON THE CURSOR. A press puts the item down in the cell under the
+	 * cursor, so an item drawn centred on it sits over the cell it will land
+	 * in, which is the question a player holding something is asking. A
+	 * JUDGEMENT: one search found nothing published about where Path of Exile,
+	 * Last Epoch or Diablo draw a held item relative to the pointer, so it is
+	 * not read off the genre. `docs/DECISIONS.md` says so.
+	 *
+	 * NOT CLAMPED TO THE SCREEN. The design does not ask for it, and an item
+	 * kept on screen while the cursor went on would stop marking the point a
+	 * press acts on. At the very edge half of it is off screen, which is where
+	 * the cursor is.
+	 *
+	 * @param CellPx  the size a cell is drawn at, from CellSizeFor; a negative
+	 *                size is treated as nought
+	 */
+	static FVector2D HeldItemTopLeftFor(const FVector2D& Cursor, float CellPx);
 
 	//~ Colours. Six-digit hex, the same form UCataclysmCombatOverlay uses.
 

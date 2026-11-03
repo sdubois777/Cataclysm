@@ -2,6 +2,235 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A held item is drawn under the cursor, and the slot it came from is drawn as lifted (#878)
+
+**Affects:** `ECataclysmCellLook`, new, and `UCataclysmInventoryScreen::HeldSlotToDraw`, `CellLookFor`,
+`FrameColourFor`, `TextShownFor`, `HeldItemTopLeftFor` and `LiftedFrameOpacity`, new, with the `HeaderTextFor`
+comment brought up to date (`game/Source/Cataclysm/Interface/CataclysmInventoryScreen.h`, `.cpp`);
+`UCataclysmInventoryWidget::MakeCell`, `RefreshHeldItem`, `PlaceHeldItem` and `HeldCell`, new, with `BuildCell` now
+placing a cell `MakeCell` built, and `BuildTree`, `NativeTick` and `Refresh` calling them
+(`game/Source/Cataclysm/Interface/CataclysmInventoryWidget.h`, `.cpp`); `UCataclysmWearing::WearFromCarried`, which
+now lets go of the item it wears when that item is the held one (`game/Source/Cataclysm/Items/CataclysmWearing.h`,
+`.cpp`); two paragraphs, "What a held item looks like" and "Wearing the held item lets go of it", in
+`docs/Inventory_Screen_Design.md`; five new tests in
+`game/Source/Cataclysm/Tests/CataclysmHeldItemTests.cpp`; one new Python test and five names added to an existing
+one in `tools/tests/test_the_inventory_screen_draws_the_designed_grid.py`. Issue
+[#878](https://github.com/sdubois777/Cataclysm/issues/878), split out of
+[#853](https://github.com/sdubois777/Cataclysm/issues/853).
+
+### SAID FIRST
+
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written while another change's build-machine window held this
+  machine. Phase 2 (2026-11-02) rebased it onto `development` at `38ca41fcd`, built the ruling below, compiled every
+  changed and new `.cpp` alone and then in its regenerated unity file, reviewed phase 1, and audited every assertion
+  that compares against a fixed number or relies on a starting state. Every Unreal figure under "Registered before
+  the run" is a prediction.
+- **A RULING ADDED IN PHASE 2: WEARING THE HELD ITEM ENDS THE HOLD.** Before it, a right click on the held item wore
+  it and left the hold on its slot; what came off the body lands in the first free slot, usually that same one, so
+  the new drawing would have shown a piece the player never picked up on the pointer, and the next left click would
+  have moved it. See "The ruling" below.
+- **WHAT THE PLAYER SEES.** With the inventory open (I), a left click on a carried item puts a copy of its cell --
+  the same rarity colour, frame thickness, short name and stack count -- under the mouse pointer, centred on it, and
+  it follows the mouse everywhere on screen, over the panels and off them. The cell it came from turns faint: its
+  frame stays at its rarity's thickness in the same colour at about a third of the strength, and its name and count
+  disappear. A second left click puts the item down (or exchanges it) and both go back to normal; closing the
+  screen, or wearing the held item with a right click, lets go of it the same way. The header still reads
+  "Carried    N / 48        holding <name>". Taking a worn piece off with a left click shows the same, on the bag
+  cell it landed in.
+
+### The ruling, by the coordinating session, 2026-11-02 (under the owner's delegation)
+
+- **Wearing the held item ends the hold.** Built in `UCataclysmWearing::WearFromCarried`, which reads whether the
+  slot it wears from is the held one before emptying it, and lets go only once the item is on the body. It is the
+  narrowest place that covers every way the held slot's item can be worn: the right button
+  (`ACataclysmPlayerController::RightPressOnTheInventoryScreen`) calls it, the "Wear it" answer to the threshold
+  question calls it through `ACataclysmPlayerCharacter::WearPastTheThreshold` and `WearAfterConfirming`, and so does
+  the `Cataclysm.Equip` console command; the only other code that empties a carried slot is `DropCarried`, which
+  already lets go of the slot it drops. Wearing a different item keeps the hold, because the held item has not moved. A refused wear keeps the hold
+  too, as every refusal in that function changes nothing.
+
+### The judgements, and what research settled
+
+- **Centred on the pointer: a judgement, not read off the genre.** One web search and one wiki page (blocked) found
+  nothing published on where Path of Exile, Last Epoch or Diablo place a held item relative to the pointer, so this
+  is not presented as their convention. The reason for it is this game's own rule: a press puts the item down in the
+  cell under the pointer (`CarriedSlotUnderCursor`), so an item centred there sits over the cell it will land in.
+  The pointer position is read and converted exactly as a press is (`GetMousePosition`, then
+  `USlateBlueprintLibrary::ScreenToWidgetAbsolute`), so the drawing and the press agree on where the pointer is.
+- **Not clamped to the screen.** The design does not ask for it, and an item held on screen while the pointer went
+  on would stop marking the point a press acts on.
+- **The lifted cell: frame kept, dimmed to `LiftedFrameOpacity` 0.35 of its alpha, no name or count.** A judgement.
+  It must not read as full -- that the grid looked identical whether or not anything was held is the issue -- and it
+  must not read as empty, because the item is still in that slot (`UCataclysmInventoryComponent::HeldSlot` says
+  why) and a press there puts it back. Hiding the text is the plainest difference from a full cell; keeping the
+  frame's hue and thickness is the plainest difference from an empty one, whose frame is the grey `EmptyCellHex` at
+  1 pixel. The cell keeps its tool tip, which still truly describes what is in it.
+- **The drawn item is not translucent.** It hides the cell beneath it, whose own tool tip still shows: every widget
+  of the drawn item is `SelfHitTestInvisible`, so the cell under the pointer is still the one hovered.
+- **The "holding" line stays**, as the brief asked and the design does not contradict: it names the item in full
+  where the drawn cell shows only the base's short name.
+
+### What changes
+
+- **Which slot is drawn on the cursor**, `HeldSlotToDraw`: the held slot when it holds something, otherwise
+  `INDEX_NONE` (no inventory, nothing held, or a hold left on a slot emptied under it -- a material stack spent to
+  nothing by `RemoveMaterial`, the bag emptied by `RemoveEverything` or replaced by `RestoreSlots`; none of those
+  touches the hold). Wearing the held item no longer reaches that state, since the ruling.
+- **How each carried cell looks**, `CellLookFor`: `Empty` for an empty slot, an index outside the bag or no
+  inventory; `Lifted` for the held slot; `Full` otherwise. `FrameColourFor` dims a lifted frame's alpha and leaves
+  the rest; `TextShownFor` blanks a lifted cell's label and count.
+- **Where the item goes**, `HeldItemTopLeftFor`: the pointer less half a cell each way; a negative cell is nought.
+- **The widget.** `BuildCell` is split: `MakeCell` builds a cell's six widgets and `BuildCell` places one in a
+  grid. `BuildTree` builds one more cell, `HeldCell`, with every widget `SelfHitTestInvisible`, adds it to the root
+  overlay last, pinned top left, at render opacity 0. Each frame `Refresh` writes the carried cells' lifted look
+  (colour and text, which it already wrote every frame) and `RefreshHeldItem` writes the held cell's colour, frame,
+  label and count and sets its opacity to 1 or 0; `NativeTick` then calls `PlaceHeldItem`, which sets its render
+  translation. **Nothing is built, added, removed or given a tool tip after `BuildTree`**, so issue #1192's trap is
+  not reopened: picking up changes no `ChangeCount`, so the comparison tool tips of #832 are not rebuilt by it, and
+  putting down rebuilds them once only because an item moved, as before.
+- **Wearing**, `WearFromCarried`: lets go of the hold when the item it wears is the held one (the ruling above).
+
+### Phase 2's review of phase 1
+
+- **The per-frame functions build nothing.** Read, line by line: `RefreshHeldItem` writes a size override and font
+  sizes (only when the cell size moved), a brush, a padding, two texts and a render opacity; `PlaceHeldItem` reads
+  the pointer and writes a render translation. Neither constructs, adds, removes or sets a tool tip on any widget,
+  and `Refresh`'s lifted look changes only the colour and text it already wrote every frame. The Python test below
+  holds both functions to that.
+- **The held cell takes no part in hit testing.** `MakeCell(false)` sets `SelfHitTestInvisible` on each of its six
+  widgets one by one; it is in neither `Cells` nor `GearCells`, so `CarriedSlotUnderCursor` and
+  `GearSlotUnderCursor` never answer it; the frame underneath is what Slate finds, and its tool tip still shows.
+- **Interface scaling other than 1 is handled.** The pointer is read in viewport pixels, turned into Slate's absolute
+  space by `ScreenToWidgetAbsolute` (which takes the viewport's position and scale into account), and into the
+  widget's own space by `MyGeometry.AbsoluteToLocal`, which divides out the widget's accumulated scale. The cell's
+  size (`LastCellPx`, a size-box override) and its render translation are both in that same local space, so the
+  drawn cell is centred on the pointer at any scale. Not run: no test here has a viewport.
+- **The hold ends when the screen closes.** `ACataclysmPlayerController::Input_ToggleInventory` calls
+  `ReleaseHeld` before `RemoveFromParent`, and it is the only place the screen is removed. On reopening, the first
+  `NativeTick` sets the held cell's opacity to 0 before it is painted.
+- **No fault found, so no fix made to phase 1's code.** Comments that said `WearFromCarried` leaves the hold in
+  place (`HeldSlotToDraw`'s header and body, the first test's comment) were corrected for the ruling.
+
+### The assertion audit: every fixed number and starting state the tests rely on
+
+- **A fresh `UCataclysmInventoryComponent` holds 48 empty slots and nothing on the cursor**: its constructor sets
+  `Slots.SetNum(SlotCount)` and `Held` is initialised to `INDEX_NONE`. `AddItem` and `AddMaterial` take
+  `FirstFreeSlot`, the lowest empty slot (a material joins an existing stack first, and a fresh bag has none), so in
+  `FHeldItemBag` the helm, the boots and the motes land in 0, 1 and 2 and slot 3 is empty. Both inventory tests
+  assert all of that as one set-up line and stop if it does not hold.
+- **No table is loaded** for the first four tests: emptiness is `SlotIsEmpty`, which reads only the base and the
+  material's name and count.
+- **`PickUpCarried`, `PutDownCarried` and `ReleaseHeld`** are covered by `Cataclysm.Wearing.`; a put-down on the
+  empty slot 3 is a plain move, so the boots end in 3 and slot 1 is empty. `RemoveItemAt` leaves the hold alone,
+  which the emptied-slot case asserts as set-up.
+- **The counts of lifted cells, 0 and 1**, are over the 48 slots `SlotCount` names, counted by `LiftedCellsIn`.
+- **The position test's figures are hand arithmetic**: 500 - 24 = 476, 300 - 24 = 276; 500 - 10 = 490,
+  300 - 10 = 290; 0 - 24 = -24.
+- **`WearingTheHeldItemLetsGoOfIt` relies on wearing loading the item base table itself**, as every
+  `Cataclysm.Wearing.` test does: `WearFromCarried` calls `LoadBaseTable`, and `Equip` puts `Head_Helm` on the head.
+  Its starting state -- the first helm worn on the head, the second helm, the boots and the third helm in slots 0, 1
+  and 2, nothing held -- is one set-up assertion that stops the test. A worn helm with no enchantments adds no Worn
+  Residue, so the threshold question is never asked (as in `Cataclysm.Wearing.WhatComesOffGoesIntoTheBagEvenWhenItWasFull`,
+  which wears one helm over another the same way). Where each piece that came off lands is not assumed: two further
+  set-up assertions read it back by upgrade level (1 into slot 2, then 3 into slot 0) before anything is asserted
+  about the hold.
+- **The predicted counts below are a base plus names**: `Cataclysm.HeldItem.` held no test at the base; this branch
+  adds five by name and removes none.
+
+### Tests
+
+Five new, in `CataclysmHeldItemTests.cpp`, group `Cataclysm.HeldItem.`:
+
+1. `NothingIsDrawnOnTheCursorUnlessSomethingIsHeld`: no inventory, a bag holding things with none held, a put-back,
+   a let-go and a hold left on an emptied slot all draw nothing; CONTROL, holding the boots draws slot 1.
+2. `OnlyTheHeldSlotLooksLiftedAndOnlyWhileHeld`: with nothing held no cell of 48 is lifted; holding the boots, their
+   slot is lifted and exactly one cell is, with the helm and the motes full (controls) and slot 3 empty; put down in
+   slot 3, slot 3 is full, slot 1 empty, none lifted; the helm picked up is lifted (control), let go of is full, none
+   lifted; an index outside the bag and no inventory look empty.
+3. `ALiftedCellKeepsItsFrameDimmedAndShowsNoText`: a lifted gold frame keeps R, G and B and has 0.35 of its alpha;
+   full and empty frames are unchanged; a lifted cell's "Helm" and "34" show nothing, a full cell's show (controls).
+4. `TheHeldItemIsCentredOnTheCursor`: at 500, 300 a 48 cell starts at 476, 276 and its middle is the pointer; a 20
+   cell starts at 490, 290; at 0, 0 a 48 cell starts at -24, -24 (not clamped); a cell of -10 starts at the pointer.
+5. `WearingTheHeldItemLetsGoOfIt`, phase 2, for the ruling: CONTROL first, holding the boots and wearing a
+   different helm keeps the boots held, drawn, and the one lifted cell; then the second helm, held and worn with
+   `WearFromCarried` (what the right button calls), lets go: nothing held, nothing drawn on the cursor -- not the
+   helm that came off into that very slot -- no cell lifted, and that slot looks full.
+
+Python: `test_the_held_item_is_drawn_without_rebuilding_anything` reads `RefreshHeldItem` and `PlaceHeldItem` and
+fails if either constructs, adds, removes or sets a tool tip on a widget; checks `BuildTree` builds the held cell
+with `MakeCell(/*bTakesPartInHitTesting=*/false)`; and checks the widget calls the five new judgements and moves the
+cell with `SetRenderTranslation`. The five names join `test_every_judgement_the_screen_makes_is_outside_the_widget`.
+Proved in phase 1 with `tools/prove_guard.py` in this worktree, break `HeldCell.Size->SetRenderOpacity(1.0f);` to the
+same followed by ` HeldCell.Frame->SetToolTip(nullptr);` (anchor once): "PROVED: 1 failed, 12 passed in 0.11s |
+restored: 13 passed in 0.07s", the one failure
+`tools/tests/test_the_inventory_screen_draws_the_designed_grid.py::test_the_held_item_is_drawn_without_rebuilding_anything`.
+
+### Registered before the run
+
+The engine words a failed `TestEqual` on whole numbers "Expected '<what>' to be <expected>, but it was <actual>.", a
+failed `TestTrue` "Expected '<what>' to be true." and a failed `TestFalse` "Expected '<what>' to be false."
+(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`, lines 2065, 2676 and 2666 in this engine). Base counts
+are "Test Completed" lines in the whole-suite engine log of window enemy-hit-timing-w1 at `f549bccb4`, whose tree
+`development` `38ca41fcd` holds: 4600 performed, none under `Cataclysm.HeldItem.`, 18 under `Cataclysm.Wearing.`.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.HeldItem.` alone | 5 / 5: none at the base, + 5 |
+| `Cataclysm.Wearing.` alone | 18 / 18: 18 at the base, none added or removed; run because `WearFromCarried` changed |
+| Whole Unreal suite | 4605 / 4605: 4600 at the base, + 5 by name |
+| Python | 7251 passed, 8 skipped (JUnit: tests 7259, failures 0, errors 0, skipped 8), and `ruff check .` "All checks passed!", measured on this desktop on the tree of the registration commit except this one table cell. The window measures it again at that commit |
+| A, the held slot drawn full (`? ECataclysmCellLook::Lifted` to `? ECataclysmCellLook::Full`, in `CataclysmInventoryScreen.cpp`), prefix `Cataclysm.HeldItem.` | 2 tests, 4 assertions. In `OnlyTheHeldSlotLooksLiftedAndOnlyWhileHeld`, 3: "the slot on the cursor looks lifted" (to be true), "exactly one cell looks lifted" (to be 1, but it was 0) and "CONTROL: the helm looks lifted while it is held" (to be true). In `WearingTheHeldItemLetsGoOfIt`, 1: "CONTROL: and their cell is the one cell that looks lifted" (to be 1, but it was 0). Every other assertion and test passes |
+| B, an emptied held slot drawn (`\|\| UCataclysmInventoryComponent::SlotIsEmpty(Carried[OnTheCursor]))` to `\|\| false)`, in `CataclysmInventoryScreen.cpp`), the same prefix | 1 test, 1 assertion: in `NothingIsDrawnOnTheCursorUnlessSomethingIsHeld`, "a hold on a slot that has been emptied draws nothing" (to be -1, but it was 1). Its CONTROL and the other cases pass; `WearingTheHeldItemLetsGoOfIt` asks `HeldSlotToDraw` only of a held, full slot and of nothing held, and passes |
+| C, not centred (`static_cast<double>(FMath::Max(0.0f, CellPx)) * 0.5;` to `static_cast<double>(FMath::Max(0.0f, CellPx)) * 0.0;`, in `CataclysmInventoryScreen.cpp`), the same prefix | 1 test, 4 assertions, all in `TheHeldItemIsCentredOnTheCursor`: "a 48 pixel cell under a cursor at 500, 300 starts at 476, 276", "so the cursor is the middle of the drawn cell", "a 20 pixel cell under the same cursor starts at 490, 290" and "at the screen's top left corner it is not pulled back on: -24, -24" (each to be true). "a negative cell size is treated as nought: the corner is the cursor" passes |
+| D, the held item worn and the hold kept (`const bool bWearingWhatIsHeld = Inventory->HeldSlot() == CarriedSlot;` to the same with ` && !Inventory->IsHolding()` before the semicolon, which is never true, in `CataclysmWearing.cpp`), the same prefix | 1 test, 4 assertions, all in `WearingTheHeldItemLetsGoOfIt`: "wearing the held item lets go of it" (to be false), "so nothing is drawn on the cursor, not the helm that came off" (to be -1, but it was 0), "and no cell looks lifted" (to be 0, but it was 1) and "the slot the worn helm left, holding the one that came off, looks full" (to be true). Its four set-up assertions and three CONTROL assertions pass, and so do the other four tests |
+
+Each break's anchor occurs once in its file, counted with Python's `str.count` on the committed file
+(`prove_i878.py <proof> --anchors-only`). The breaks were not compiled before registration.
+
+### Window held-item-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `660b8a0ca` (on `development` `38ca41fcd`),
+lock `held-item-w1`, after the six pre-checks all passed (11,938 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.HeldItem.` alone | 5 / 5 | "5 tests performed, 5 succeeded, 0 failed" |
+| `Cataclysm.Wearing.` alone | 18 / 18 | "18 tests performed, 18 succeeded, 0 failed" |
+| Whole Unreal suite | 4605 | "4605 tests performed, 4605 succeeded, 0 failed"; "Declared: 4605 tests in the tree at 660b8a0ca; 4605 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7251 passed, 8 skipped in 195.44s"; JUnit tests 7259, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 4 in 2 tests | PROVED. The kept broken-half log fails exactly "the slot on the cursor looks lifted", "exactly one cell looks lifted" (1 expected, 0 read), "CONTROL: the helm looks lifted while it is held" and "CONTROL: and their cell is the one cell that looks lifted" (1 expected, 0 read); restored 5 of 5 |
+| B | 1 | PROVED. Exactly "a hold on a slot that has been emptied draws nothing" (-1 expected, 1 read); restored 5 of 5 |
+| C | 4 | PROVED. Exactly the four registered placement assertions; restored 5 of 5 |
+| D | 4 | PROVED. Exactly "wearing the held item lets go of it", "so nothing is drawn on the cursor, not the helm that came off" (-1 expected, 0 read), "and no cell looks lifted" (0 expected, 1 read) and "the slot the worn helm left, holding the one that came off, looks full"; restored 5 of 5 |
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **The drawing itself.** No test here can watch a widget draw: the automation command passes `-nullrhi` (issue
+  #559). `RefreshHeldItem`, `PlaceHeldItem` and the lifted cells were read, not run. **For the owner, on screen:**
+  open the inventory (I) with a few items, and left click one. (1) A copy of its cell appears centred under the
+  pointer and follows the mouse smoothly, over both panels and over the dungeon beside them. (2) The cell it came
+  from is faint -- frame in the same colour and thickness but much dimmer, no name or count -- and every other cell
+  is unchanged. (3) Hover a different item while holding: its tool tip still appears, which shows the drawn item is
+  not catching the pointer. (4) Left click an empty cell: the item lands there, the pointer is empty, the old cell
+  is empty and nothing is faint. (5) Pick one up and close and reopen the screen: nothing is on the pointer and
+  nothing is faint. (6) Resize the window while holding: the drawn item stays the size of a cell. (7) Left click a
+  worn piece: it comes off onto the pointer and its new bag cell is faint. (8) Pick up a helm while wearing one, and
+  right click it: it goes on, the old helm lands in the bag, and nothing is on the pointer or faint. Whether 0.35
+  reads as "lifted" rather than "broken", and whether centring hides too much of the target cell, are for that look
+  to settle.
+- **That the pointer and the drawn item agree under interface scaling** other than 1: read and reasoned above, not
+  run.
+- **A wear refused after the item left its slot** (`CannotBeWorn`, when `Equip` refuses) puts the item back with
+  `AddItem`, into the lowest free slot, which can be a lower one than it came from; the hold then stays on the slot
+  it left, and `HeldSlotToDraw` draws nothing for it. Unchanged #853 behaviour, not reached by any test here, and
+  not changed: the ruling is about a wear that succeeds.
+
+---
+
 ## 2026-11-02 — An ordinary attack's damage lands when its swing connects, not before the swing starts (#783)
 
 **Affects:** `ACataclysmEnemyCharacter::BasicAttackStrikeDelaySeconds`, `StrikeWhenTheSwingConnects`,

@@ -190,6 +190,24 @@ the cursor is pointing at; the item stays in its slot the whole time it is drawn
 on the cursor. That is deliberate, and it is what makes a save taken part way
 through a drag lose nothing.
 
+**What a held item looks like.** Issue #878. The item is drawn under the cursor
+as the cell it came from, at a cell's size, centred on the pointer so it sits
+over the cell a press would put it in, and it follows the mouse off the panels as
+well. The slot it was lifted from keeps its frame, at its rarity's colour and
+thickness but dimmed to about a third, and shows no name or count, because those
+are on the cursor now: a lifted cell must not read as full, and must not read as
+empty either, since the item is still in it. The line above the grid still says
+"holding" and the item's name. Centring on the pointer and the dimming are
+judgements to be settled in play; no published source was found for where Path of
+Exile, Last Epoch or Diablo place a held item relative to the pointer.
+
+**Wearing the held item lets go of it.** Ruled 2026-11-02 under issue #878. A
+right click on the item being held puts it on and leaves nothing on the cursor.
+The cursor holds a slot number, and what comes off the body lands in the first
+free slot, which is usually the one just emptied, so keeping the hold would put
+a piece the player never picked up on the cursor. Wearing a different item while
+holding one keeps the held one where it is.
+
 ## Dropping an item on the floor
 
 **Left click outside both panels while holding an item and it lands on the floor
