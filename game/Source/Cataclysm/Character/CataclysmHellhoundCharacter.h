@@ -356,6 +356,24 @@ public:
 		"tools/probe_hellhound_animation.py and sim/cataclysm_sim/enemy_stats.py.");
 
 	/**
+	 * When the bite connects, in seconds into `Scorch_Primary_Fire_Med`, and it
+	 * is ZERO BECAUSE NOBODY COULD MEASURE IT. Issue #783.
+	 *
+	 * `tools/measure_attack_impact.py` could not read this clip on 2026-08-21:
+	 * its three rules disagree by 0.338 seconds and it beats its control clip
+	 * only 3.7 times, and it is a firing animation worn by a melee bite, so its
+	 * hands travel 114 cm against 600 to 1200 for the creatures that really
+	 * swing. `game/docs/enemy-source-assets.md` records it as not measured.
+	 *
+	 * **ZERO LANDS THE BITE AT ONCE, EXACTLY AS BEFORE.** A JUDGEMENT, ruled
+	 * 2026-11-02 by the coordinating session: no figure is invented for a clip
+	 * that could not be read. Measure it, or replace the clip with one that can
+	 * be, and this is the one number to change -- `AttackTarget` already passes
+	 * it through the same delay the other three creatures use.
+	 */
+	static constexpr float MaulStrikeSeconds = 0.0f;
+
+	/**
 	 * The ground speed `Jog_Fwd` was authored for, in centimetres per second.
 	 *
 	 * MEASURED, NOT GUESSED. `tools/measure_animation_stride.py` samples the two
@@ -454,6 +472,12 @@ public:
 	/** The clip the last one-shot chose. Read by tests for the same reason. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> LastPlayedAnimation;
+
+	/** The rate the last one-shot was played at, or zero when nothing played.
+	 *  What the bite's strike is divided by once it is measured; issue #783.
+	 *  The same name the Brute's and the Imp's records have. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedRate = 0.0f;
 
 	/**
 	 * When the clip a one-shot started will finish, in world seconds.

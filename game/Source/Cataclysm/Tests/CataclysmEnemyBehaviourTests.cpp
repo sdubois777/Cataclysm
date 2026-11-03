@@ -132,6 +132,32 @@ namespace CataclysmBehaviourTest
 	}
 
 	/**
+	 * Let an ordinary swing the brain just ordered connect, and land its blow.
+	 *
+	 * WHY THIS EXISTS. Issue #783. The Brute's swing used to deal its damage in
+	 * the same call that started the clip; since that issue the damage waits
+	 * `ACataclysmBruteCharacter::SwingStrikeSeconds` for the hammer to arrive,
+	 * and is landed by the creature's own Tick -- which no automation test runs.
+	 * So the clock is moved just past the moment the blow was due, the way this
+	 * file moves it past a wind-up, and the landing is called by hand.
+	 *
+	 * IT MOVES THE CLOCK ONLY WHEN A BLOW IS WAITING. A swing that dealt its
+	 * damage at once, or none at all, leaves the clock where it was, so a test
+	 * asserting on health afterwards still fails for the reason it should.
+	 */
+	static void LetTheSwingConnect(UWorld* World, ACataclysmEnemyCharacter* Swinger)
+	{
+		if (!World || !Swinger || !Swinger->HasPendingBasicAttack())
+		{
+			return;
+		}
+		AdvanceWorldClock(World,
+			FMath::Max(0.0, Swinger->PendingBasicAttackLandsAtSeconds - World->GetTimeSeconds())
+				+ 0.01);
+		Swinger->LandPendingBasicAttack();
+	}
+
+	/**
 	 * Run the Brute's abilities to completion so only its ordinary swing is
 	 * left, and return how many it used.
 	 *
@@ -1321,6 +1347,8 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 	TestEqual(TEXT("and it counted the attack"), Brain->AttacksOrdered, 1);
 	TestEqual(TEXT("and recorded it as its ordinary attack"),
 		Brute.Actor->LastAttackUsed, static_cast<int32>(ACataclysmEnemyCharacter::OrdinaryAttackUsed));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS, 0.331 SECONDS LATER. Issue #783.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
 		Before, Player.Health()), Player.Health() < Before);
 
@@ -1329,10 +1357,11 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 		Brain->bHasRoamTarget);
 
 	// THE ATTACK INTERVAL IS A RATE LIMIT AND IT HOLDS. The world is never
-	// ticked so no time passes, and the Brute's interval is 1.6 seconds, so a
+	// ticked, so the only time that has passed is the third of a second the
+	// swing took to connect, and the Brute's interval is 1.2 seconds, so a
 	// second pass must not produce a second hit. The figure was 2.8 until
 	// play testing on 2026-08-07; what this test needs is only that some
-	// time has to pass, so it holds at either.
+	// time has to pass, so it holds at any of them.
 	const float AfterFirst = Player.Health();
 	TestEqual(TEXT("a second pass with no time elapsed still reports attacking"),
 		static_cast<int32>(Brain->Think()),
@@ -1431,6 +1460,8 @@ bool FCataclysmBruteAtTrueContactAndTrueHeightsAttacks::RunTest(const FString&)
 	TestEqual(TEXT("a Brute at exactly its designed reach attacks"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS. Issue #783.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
 		Before, Player.Health()), Player.Health() < Before);
 
@@ -1955,6 +1986,9 @@ bool FCataclysmBruteAttacksAtTrueContactTest::RunTest(const FString&)
 	TestEqual(TEXT("a Brute touching the player attacks rather than chasing"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS. Issue #783. The player has not
+	// moved, so it is still in reach and the blow is not missed.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
 		Before, Player.Health()), Player.Health() < Before);
 
@@ -2413,6 +2447,8 @@ bool FCataclysmBruteAlwaysHasSomethingToDoTest::RunTest(const FString&)
 	TestEqual(TEXT("so it falls back to its ordinary swing rather than standing"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS. Issue #783.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
 		Before, Player.Health()), Player.Health() < Before);
 
@@ -3094,6 +3130,10 @@ bool FCataclysmStunnedBruteDoesNotSwingTest::RunTest(const FString&)
 	TestEqual(TEXT("unstunned and in reach, it attacks"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS, a third of a second on. Issue
+	// #783. A third of a second does not bring the stomp back, which the
+	// paragraph above is careful about: it cools down for five.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(TEXT("and the player lost health"),
 		Player.Health() < BeforeUnstunned);
 
@@ -3946,6 +3986,9 @@ bool FCataclysmMedicInReachDoesNotSwingTest::RunTest(const FString&)
 	TestEqual(TEXT("an ordinary creature in reach attacks"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	// THE BLOW LANDS WHEN THE SWING CONNECTS. Issue #783. Landed here, before
+	// the rule below is put on, so the medic half measures only its own pass.
+	LetTheSwingConnect(World, Brute.Actor);
 	TestTrue(TEXT("and the player lost health"),
 		Player.Health() < BeforeOrdinary);
 

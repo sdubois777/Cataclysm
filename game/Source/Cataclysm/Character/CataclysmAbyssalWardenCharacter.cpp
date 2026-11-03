@@ -310,8 +310,28 @@ float ACataclysmAbyssalWardenCharacter::DesignedSecondsBetweenAttacks() const
 
 void ACataclysmAbyssalWardenCharacter::AttackTarget(AActor* Target)
 {
-	Super::AttackTarget(Target);
+	// THE COMBO STARTS AND ITS DAMAGE WAITS FOR THE LEFT SWING TO CONNECT.
+	// Issue #783. This used to deal the damage first and start the clips
+	// second, so the player was hurt 0.176 seconds before the fist arrived.
+	//
+	// AND THE LEFT SWING MAY NOT START AT ONCE. `UpdateLoopingAnimation` leaves
+	// a one-shot still playing to finish before it starts the next clip, which
+	// happens when a buff has made the attack interval shorter than the 2.1
+	// second combo. The damage waits for that too, read before the queue
+	// replaces it. Nothing waits with the art absent, because nothing played.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const float FirstSwingStartsIn = (LeftSwingAnimation && !bAnimationBlueprintBound)
+		? FMath::Max(0.0f, OneShotEndsAtSeconds - Now) : 0.0f;
+
 	PlayAttackAnimation();
+
+	// A RATE OF EXACTLY 1, because `UpdateLoopingAnimation` plays each clip of
+	// the combo through `PlayOneShot` with no window, and a clip played inside
+	// its own length is never compressed.
+	StrikeWhenTheSwingConnects(
+		Target, FirstSwingStartsIn
+			+ BasicAttackStrikeDelaySeconds(LeftSwingStrikeSeconds, 1.0f));
 }
 
 TArray<UAnimSequence*> ACataclysmAbyssalWardenCharacter::BasicAttackClips() const

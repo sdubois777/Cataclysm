@@ -817,9 +817,10 @@ public:
 	/**
 	 * Start the swing animation.
 	 *
-	 * Called by the base class when an attack actually lands, so that the
-	 * animation and the damage cannot drift apart. Does nothing when the art is
-	 * absent, which is every fresh clone.
+	 * Called by `AttackTarget` when the swing is ordered. The damage no longer
+	 * lands in that same call: it waits `SwingStrikeSeconds` for the clip to
+	 * connect, issue #783. Does nothing when the art is absent, which is every
+	 * fresh clone, and the damage keeps the same moment then.
 	 */
 	void PlayAttackAnimation();
 
@@ -1042,6 +1043,22 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float LastPlayedRate = 0.0f;
 
+	/**
+	 * When the ordinary swing connects, in seconds into `Attack_Biped_Melee_A`
+	 * at its authored speed. Issue #783.
+	 *
+	 * MEASURED, NOT CHOSEN. `tools/measure_attack_impact.py` read 0.331 on
+	 * 2026-08-21 -- peak speed and lowest point agree, and the clip beat its
+	 * control 1179 times -- and `game/docs/enemy-source-assets.md` records it.
+	 * `tools/tests/test_attack_impact_is_recorded.py` fails when the two differ.
+	 *
+	 * THE SWING'S DAMAGE WAITS THIS LONG, divided by the rate the clip is
+	 * played at, which is 1: `PlayAttackAnimation` passes no window. Before
+	 * issue #783 it landed at once and the hammer arrived a third of a second
+	 * later.
+	 */
+	static constexpr float SwingStrikeSeconds = 0.331f;
+
 	//~ The designed numbers.
 	//
 	// EVERY ONE OF THESE IS A SECOND COPY. The first copy is the Brute entry in
@@ -1087,6 +1104,11 @@ public:
 	 * supporting property and has now been spent deliberately.
 	 */
 	static constexpr float DesignedAttackIntervalSeconds = 1.2f;
+
+	static_assert(SwingStrikeSeconds < DesignedAttackIntervalSeconds,
+		"The Brute's swing connects later than the next swing begins, so every "
+		"blow would be landed early by the order after it. Either the clip "
+		"changed or the interval did; see game/docs/enemy-source-assets.md.");
 
 	/**
 	 * How close it must be to hit, centre to centre, in centimetres.

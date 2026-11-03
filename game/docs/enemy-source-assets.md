@@ -250,15 +250,15 @@ withdrawn figure that leaves no trace gets published again.
 
 ### What that means in play
 
-**Two of the five are fixed and three are not.**
+**All five are fixed, by two different routes.**
 
 | Creature | Play rate | Strike in play | Damage lands at | Gap |
 |---|:-:|:-:|:-:|---|
 | Gatekeeper | 1.00, after waiting 0.689 s | 0.971 s | 0.971 s, the wind-up's end | **none** |
 | Succubus | 1.00, after waiting 1.144 s | 1.300 s | 1.300 s, the wind-up's end | **none** |
-| Brute | 1.00 | 0.331 s | 0 s, before the clip starts | damage **0.33 s early** |
-| Imp | 1.00 | 0.242 to 0.308 s | 0 s | damage **0.24 to 0.31 s early** |
-| Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0 s | damage **0.17 s early** |
+| Brute | 1.00 | 0.331 s | 0.331 s, the damage waits for the swing | **none** |
+| Imp | 1.00 | 0.242 to 0.308 s | the drawn swipe's own strike; 0.276 s for B and C | **none** for A, D and E; B and C are not measured |
+| Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0.176 s, the left swing | **none**, at the left swing |
 
 **The two that are fixed wait rather than speed up.** Their clips reach the blow
 sooner than the damage arrives, so the clip is started later instead of being
@@ -272,17 +272,28 @@ are the shared rule. The Brute has used it for its two abilities since
 rather than a second copy of it. Issue
 [#784](https://github.com/sdubois777/Cataclysm/issues/784).
 
-**The three that are not fixed have a different cause**, which is why they are a
-different issue: their ordinary attack is not telegraphed at all, so there is no
-window to start a clip inside. `AttackTarget` applies the damage and then starts
-the clip, so the hit always lands before the blow. Issue
-[#783](https://github.com/sdubois777/Cataclysm/issues/783), and it needs a
-decision about whether a delayed hit should still land if the creature dies
-between the swing and the blow.
+**The other three had a different cause and are fixed the other way round.**
+Their ordinary attack is not telegraphed at all, so there is no window to start a
+clip inside: `AttackTarget` applied the damage and then started the clip, so the
+hit always landed before the blow. Since issue
+[#783](https://github.com/sdubois777/Cataclysm/issues/783) the clip starts when
+the attack is ordered and the DAMAGE waits, for the clip's strike divided by the
+rate it is played at. `ACataclysmEnemyCharacter::StrikeWhenTheSwingConnects` and
+`LandPendingBasicAttack` are the shared rule. A creature that dies, is stunned or
+knocked down, or is frightened in the gap does not land the blow, and a target
+that walked out of reach in the gap is missed, as walking out of the Gatekeeper's
+sweep is -- unless a rule ordered the strike (Echoes of the Past, the Staff's
+Compel), which lands wherever the target stands, as it always did.
+`docs/DECISIONS.md` has the rulings.
+
+**The Imp's two unmeasured swipes land at the mean of its three measured ones**,
+0.276 s, which is a judgement and not a measurement: the three measured swipes
+connect within 0.066 s of one another.
 
 **And two creatures have no answer at all**, because their strike moment could
-not be measured: the Hellhound, and the Corrupted Sentinel, which is the only one
-of the seven that fails the control outright.
+not be measured: the Hellhound, whose bite still deals its damage at once, as
+before -- `MaulStrikeSeconds` is zero until the clip is read -- and the Corrupted
+Sentinel, which is the only one of the seven that fails the control outright.
 
 **Re-run the measurement after importing or replacing any of these:**
 

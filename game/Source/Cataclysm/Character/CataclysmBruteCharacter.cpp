@@ -1040,8 +1040,17 @@ float ACataclysmBruteCharacter::DesignedSecondsBetweenAttacks() const
 
 void ACataclysmBruteCharacter::AttackTarget(AActor* Target)
 {
-	Super::AttackTarget(Target);
+	// THE SWING STARTS NOW AND ITS DAMAGE WAITS FOR IT TO CONNECT. Issue #783.
+	// This used to deal the damage first and start the clip second, so the
+	// player was hurt 0.331 seconds before the hammer arrived.
 	PlayAttackAnimation();
+
+	// THE RATE THE CLIP WAS REALLY PLAYED AT, which is 1 because the swing is
+	// given no window; zero, read as 1, when there is no art to play.
+	const float Rate = (AttackAnimation && LastPlayedAnimation == AttackAnimation)
+		? LastPlayedRate : 0.0f;
+	StrikeWhenTheSwingConnects(
+		Target, BasicAttackStrikeDelaySeconds(SwingStrikeSeconds, Rate));
 }
 
 void ACataclysmBruteCharacter::PlayAttackAnimation()
