@@ -300,6 +300,10 @@ public:
 	 * and for the same reason: `tools/tests/test_sentinel_matches_the_model.py`
 	 * reads these constants out of the source text, and it cannot evaluate an
 	 * expression. A figure spelled as a sum is one the Python guard cannot see.
+	 *
+	 * THE COMMON FIGURE. A rarer Sentinel is bigger, and its minimum is this
+	 * plus `BodyGrowthCm()`, so the circle clears its body as it stands: 357.6
+	 * at Elite, 419.44 at the Cataclysm Boss rung. Issue #2716.
 	 */
 	static constexpr float BrimstoneMortarMinimumRangeCm = 348.0f;
 

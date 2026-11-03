@@ -218,6 +218,10 @@ public:
 	 * walking at 400 cm/s can close four metres. Letting the throw land where it
 	 * was marked is the rule `docs/DECISIONS.md` states for every telegraphed
 	 * attack, and a player who walks inside the minimum range has dodged it.
+	 *
+	 * THE COMMON FIGURE. A rarer Brute is bigger, and its minimum is this plus
+	 * `BodyGrowthCm()`, so the circle clears its body as it stands: 267.6 at
+	 * Elite, 329.44 at the Cataclysm Boss rung. Issue #2716.
 	 */
 	static constexpr float RockThrowMinimumRangeCm = 258.0f;
 

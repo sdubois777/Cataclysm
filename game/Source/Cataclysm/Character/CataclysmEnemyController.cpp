@@ -1570,12 +1570,9 @@ float ACataclysmEnemyController::ReachAgainstCm(const ACataclysmCharacterBase* A
 	float Reach = Designed;
 
 	// ITS OWN BODY AS IT STANDS, AGAINST ITS BODY AS DESIGNED: a rarer creature is scaled bigger by `SetRarityStep`,
-	// and its blow starts that much further out. The unscaled radius is the capsule's own, so no creature's figure is
-	// written twice. Never shortened.
-	if (const UCapsuleComponent* OwnCapsule = Creature->GetCapsuleComponent())
-	{
-		Reach += FMath::Max(0.0f, OwnCapsule->GetScaledCapsuleRadius() - OwnCapsule->GetUnscaledCapsuleRadius());
-	}
+	// and its blow starts that much further out. Asked of `BodyGrowthCm`, the one measure of it, which a lobbed
+	// attack's minimum range asks too (issue #2716). Never shortened.
+	Reach += Creature->BodyGrowthCm();
 
 	// THE TARGET'S BODY AS IT STANDS, scaled with it, so a rarer creature's wider body counts. A character's root is
 	// its capsule; anything without one has no width to read and adds nothing.

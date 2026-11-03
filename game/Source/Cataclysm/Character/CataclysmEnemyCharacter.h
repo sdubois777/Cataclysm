@@ -1183,6 +1183,25 @@ public:
 	virtual bool AttackReachIsAContactReach() const { return true; }
 
 	/**
+	 * How much this creature's body has grown past its designed size, in centimetres: `max(0, its capsule's scaled
+	 * radius - its unscaled radius)`. Nought for a Common creature (scale 1) and for one with no capsule.
+	 *
+	 * WHY. A rarer creature is bigger: `SetRarityStep` scales the whole actor, capsule included, by the rung's
+	 * `BodyScale` (game/Data/EnemyRarities.csv: Elite 1.2 ... Cataclysm Boss 2.48832), so a 48 cm body is 57.6 at Elite
+	 * and 119.44 at the Cataclysm Boss rung. A figure designed from the body must grow with it.
+	 *
+	 * THE ONE MEASURE, ASKED BY TWO RULES. `ACataclysmEnemyController::ReachAgainstCm` lengthens a contact reach by it
+	 * (issue #2706), and the three lobbed attacks that refuse a target nearer than `marked radius + own body` add it
+	 * to that minimum, so the circle they mark never covers the caster's own body (issue #2716): the Brute's Rip and
+	 * Toss, the Gatekeeper's Soulfall and the Corrupted Sentinel's Brimstone Mortar. The unscaled radius is the
+	 * capsule's own, so no creature's designed body is written twice.
+	 *
+	 * NEVER BELOW NOUGHT, as #2706 ruled for the reach. No rung scales a body below 1, so nothing measured needs the
+	 * clamp; it keeps a figure from ever being shortened by a body.
+	 */
+	float BodyGrowthCm() const;
+
+	/**
 	 * A creature the floor made its medic starts nothing hostile.
 	 *
 	 * THE ROW SAYS SO TWICE. `War_Field_Medic` reads "It does not attack",
