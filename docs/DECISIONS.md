@@ -355,6 +355,30 @@ is 0; `ECataclysmHitDirection::Left` is 2 and `Right` 3. Each anchor occurs once
 (`prove_m745.py <P> --anchors-only`); the breaks were not compiled. P3's break leaves `Brain` unused, which is not an
 error here: this engine disables C4189 (`WindowsPlatformCompilerSetup.h` line 136). P4 keeps it referenced anyway.
 
+### Window hit-reaction-w1: the results
+
+Run by the coordinating session from 2026-11-02 23:50 to 2026-11-03 00:15 local time, at the registration commit
+`8ffc80d27` (on `development` `68335c5ae`), lock `hit-reaction-w1`, after the six pre-checks all passed (11,921 MB of
+physical memory free). Every registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 17 groups alone | each at its registered count | every one "0 failed": HitReaction. 12 (3 skipped halves, the registered three), Crowd. 9, FloorCrowd. 1, DungeonFloor. 16, ClickToMove. 2, Brute. 23, Warden. 20, Imp. 6, Sentinel. 6, Hellhound. 11, Gatekeeper. 13, Succubus. 10, AI. 51, EnemyHitTiming. 14, Enemy. 19, EnemyDeath. 4, Command. 22 |
+| Whole Unreal suite | 4632, 47 skipped halves | "4632 tests performed, 4632 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4632 tests in the tree at 8ffc80d27; 4632 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7302 passed, 9 skipped in 195.10s"; JUnit tests 7311, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 | PROVED. Exactly "the burn's ticks start no flinch" (0 expected, 2 read); restored 1 of 1 |
+| P2 | 10 | PROVED. Exactly the four right and six left cases, each reading the other side (2 and 3 swapped); restored 1 of 1 |
+| P3 | 2 | PROVED. Exactly "a hit during Molten Roar's wind-up starts no flinch" (1 expected, 2 read) and "and says the wind-up is why" (5 expected, 0 read); restored 1 of 1 |
+| P4 | 3 | PROVED. Exactly "once dead, the crowd no longer holds it", "and it is out of crowd mode" and "and its walk is over"; restored 1 of 1 |
+
+**Two date corrections in this commit, to records the coordinating session wrote.** The window records of #761
+(crowd-w1) and #1174 (click-move-w1) said "Run by the coordinating session on 2026-11-03". Both ran on 2026-11-02 by
+local time, the date this log uses; it was 2026-11-03 only in UTC. Both now say 2026-11-02. (#891's was corrected the
+same way in this branch's first phase.)
+
+Only this section and those two dates were changed after the tested commit.
+
 ### Not tested
 
 - **ANYTHING ON SCREEN.** Whether each clip reads as struck from the side it was chosen for, whether the Countess's
@@ -740,7 +764,7 @@ out of crowd mode and walks as it did before crowds" in `ACreatureTheCrowdCannot
 
 ### Window crowd-w1: the results
 
-Run by the coordinating session on 2026-11-03 at the registration commit `c1408064b` (on `development` `ec2319181`),
+Run by the coordinating session on 2026-11-02 at the registration commit `c1408064b` (on `development` `ec2319181`),
 lock `crowd-w1`, after the six pre-checks all passed (12,013 MB of physical memory free). Every registered figure was
 met.
 
@@ -1026,7 +1050,7 @@ Both with `tools/prove_guard.py` in this worktree, which no other process uses, 
 
 ### Window click-move-w1: the results
 
-Run by the coordinating session on 2026-11-03 at the registration commit `f939a69ee` (on `development` `5eab89868`),
+Run by the coordinating session on 2026-11-02 at the registration commit `f939a69ee` (on `development` `5eab89868`),
 lock `click-move-w1`, after the six pre-checks all passed (11,965 MB of physical memory free). Every registered figure
 was met.
 
