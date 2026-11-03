@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmEmpireStatusBar.h"
 #include "Math/Box2D.h"
 #include "CataclysmHUD.generated.h"
 
@@ -16,13 +17,13 @@ class UFont;
 /**
  * Everything the player can see about a fight while it is happening.
  *
- * THREE THINGS AND NOTHING ELSE, which is the whole of issue #518: a bar over
+ * IT BEGAN AS THREE THINGS, which was the whole of issue #518: a bar over
  * every creature that has been hurt, a number where each blow lands, and the
- * player's own health in the corner. The designed heads-up display is larger
- * than this -- an empire status bar, skill slots with cooldowns, a minimap --
- * and it is issue #49. This is not a first instalment of that; it is the
- * smallest thing that makes a combat figure judgeable by playing it, which is
- * how this project settles combat constants.
+ * player's own health in the corner -- the smallest thing that makes a combat
+ * figure judgeable by playing it, which is how this project settles combat
+ * constants. The designed heads-up display is issue #49, and two of its lines
+ * are drawn here now: the skill slots with their cooldowns (`DrawSkillBar`) and
+ * the empire status bar (`DrawEmpireStatusBar`). The minimap is not built.
  *
  * IT DRAWS ON THE CANVAS RATHER THAN THROUGH UMG, and the reasoning is on
  * UCataclysmCombatOverlay. In short: no module dependency, no widget Blueprint
@@ -147,6 +148,13 @@ private:
 
 	/** The pop-up over one box: its name and description, above the box. Issue #1193. */
 	void DrawSkillPopup(const struct FCataclysmSkillBarSlot& Slot, const FVector2D& BoxOrigin);
+
+	/**
+	 * The empire status bar, one line in the top left corner: dungeons standing, the next surge, cities at risk.
+	 * Issue #49. Nothing while no empire run is bound. `UCataclysmEmpireStatusBar` decides what it says, where it goes
+	 * and how small it may be shrunk; this measures the line and draws it.
+	 */
+	void DrawEmpireStatusBar();
 
 	/**
 	 * The four potion slots, in the bottom-right corner. Issue #806. Each box
@@ -345,6 +353,15 @@ private:
 
 	/** The world's time in seconds when the cursor last pointed at it. */
 	float DescribedAt = 0.0f;
+
+	/**
+	 * The empire status bar's line as last written, the figures it was written from and its width at
+	 * `UCataclysmEmpireStatusBar::BaseScale`. `DrawEmpireStatusBar` writes and measures the line again only when the
+	 * figures differ (`FCataclysmEmpireStatusFacts::HasTheSameFiguresAs`); empty until a run is first bound.
+	 */
+	FString EmpireStatusLine;
+	FCataclysmEmpireStatusFacts EmpireStatusFactsDrawn;
+	float EmpireStatusWidthAtBase = 0.0f;
 
 	//~ Layout, in pixels at an unscaled viewport.
 

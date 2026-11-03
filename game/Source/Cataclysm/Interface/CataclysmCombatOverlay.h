@@ -60,11 +60,12 @@ struct CATACLYSM_API FCataclysmDamageNumber
  * to be built in RebuildWidget, because NativeConstruct runs after the Slate
  * root has already been captured and a tree built there never appears.
  *
- * THIS IS THE COMBAT READABILITY LAYER, NOT THE INTERFACE. Issue #49 builds the
+ * THIS IS THE COMBAT READABILITY LAYER, NOT THE INTERFACE. Issue #49 is the
  * designed heads-up display -- the empire status bar, the skill slots with
- * their cooldowns, the minimap -- and those need layout, text scaling and
- * localisation, which is UMG work. This is expected to be replaced by it.
- * Issue #650.
+ * their cooldowns, the minimap. The first two are drawn on this same canvas
+ * now, by `UCataclysmSkillBar` and `UCataclysmEmpireStatusBar`; the minimap is
+ * not built. All of it needs layout, text scaling and localisation in the end,
+ * which is UMG work, and this is expected to be replaced by it. Issue #650.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmCombatOverlay : public UBlueprintFunctionLibrary

@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmEmpireStatusBar.h"
 #include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -69,6 +70,14 @@ void ACataclysmHUD::DrawHUD()
 	if (UCataclysmPotions::Enabled())
 	{
 		DrawPotions();
+	}
+
+	// THE TOP LEFT, WHICH NOTHING ELSE ON THE DUNGEON SCREEN USES. Issue #49. It
+	// shrinks to stay clear of the creature panel at its narrowest; see
+	// `UCataclysmEmpireStatusBar::ScaleToFit`.
+	if (UCataclysmEmpireStatusBar::Enabled())
+	{
+		DrawEmpireStatusBar();
 	}
 
 	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
@@ -255,6 +264,38 @@ void ACataclysmHUD::DrawOutlinedText(const FString& Text,
 	}
 
 	DrawText(Text, Colour, Left, Top, Font, Sized);
+}
+
+void ACataclysmHUD::DrawEmpireStatusBar()
+{
+	// THE FIGURES EVERY FRAME, AND THEY ARE A FEW INTEGERS: the run's dungeon count, its day, the days owed and one
+	// pass over its dungeons into a set held inline.
+	const FCataclysmEmpireStatusFacts Facts = UCataclysmEmpireStatusBar::FactsForWorld(this);
+
+	// NOTHING WHILE NO RUN IS BOUND, ruling (c) of 2026-11-02.
+	if (!Facts.bRunBound)
+	{
+		return;
+	}
+
+	// THE LINE ONLY WHEN A FIGURE HAS CHANGED. Writing it is four formatted strings and measuring it asks the font for
+	// every glyph, and the figures change a few times a day of play rather than sixty times a second. Measured at its
+	// own size, so it can be shrunk to the room beside the creature panel below.
+	if (EmpireStatusLine.IsEmpty() || !Facts.HasTheSameFiguresAs(EmpireStatusFactsDrawn))
+	{
+		EmpireStatusLine = UCataclysmEmpireStatusBar::LineFor(Facts);
+		EmpireStatusFactsDrawn = Facts;
+
+		const FBox2D AtBase = MeasureTextCentred(EmpireStatusLine, 0.0f, 0.0f, UCataclysmEmpireStatusBar::BaseScale);
+		EmpireStatusWidthAtBase = static_cast<float>(AtBase.Max.X - AtBase.Min.X);
+	}
+
+	// THE SCALE EVERY FRAME, since the window can be resized under a line that has not changed.
+	const float Scale =
+		UCataclysmEmpireStatusBar::ScaleToFit(EmpireStatusWidthAtBase, static_cast<float>(Canvas->SizeX));
+
+	DrawOutlinedText(EmpireStatusLine, UCataclysmCombatOverlay::ColourFromHex(UCataclysmEmpireStatusBar::TextHex),
+					 UCataclysmEmpireStatusBar::LeftPx, UCataclysmEmpireStatusBar::TopPx, Scale);
 }
 
 void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
