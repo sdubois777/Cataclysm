@@ -142,7 +142,11 @@ changed file compiles alone: "Build: Succeeded - 15 actions, 10 files compiled: 
 CataclysmSkillTemplate.cpp, Module.Cataclysm.5.cpp, CataclysmPlayerMovementTests.cpp, CataclysmPlayerCharacter.cpp,
 CataclysmPlayerController.cpp, CataclysmDungeonNavigationTests.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.27.cpp,
 Module.Cataclysm.9.cpp". Both `UnrealEditor-Cataclysm.dll` and `UnrealEditor-CataclysmEditor.dll` were relinked by
-it, so the editor module links against `AIModule`. No compile error was found.
+it, so the editor module links against `AIModule`. No compile error was found. Then, committed and with the build's
+makefile moved aside so it was regenerated, the unity files that hold them: "Build: Succeeded - 9 actions, 4 files
+compiled: Module.Cataclysm.5.cpp, Module.Cataclysm.9.cpp, Module.Cataclysm.27.cpp, Module.Cataclysm.12.cpp" (the
+editor module builds each file alone; the navigation test's object is the one built alone above). The fix below
+changed only a comment in `CataclysmPlayerCharacter.cpp` after the build of files alone.
 
 **Review, each read in the code:**
 
@@ -207,21 +211,25 @@ reach the assertions they break.
 The engine words a failed `TestTrue` "Expected '<what>' to be true.", `TestNull` "Expected '<what>' to be null.",
 `TestNotNull` "Expected '<what>' to be not null." and `TestEqual` on whole numbers "Expected '<what>' to be
 <expected>, but it was <actual>." (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` and
-`Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h`). Group counts at the base are name literals counted in the
-source; the whole-suite base is window held-item-w1's 4605 at `660b8a0ca`, whose tree differs from this branch's base,
-`development` `79f6787d3`, only in `docs/DECISIONS.md`.
+`Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h`). **Every base count is measured, not counted in the
+source**: "Test Completed" lines in window material-magic-find-w1's whole-suite engine log at `ec29aaa6e`, whose tree
+differs from this branch's base, `development` `5eab89868`, only in `docs/DECISIONS.md`; that run performed 4606. Each
+prefix ends in a dot, and no other group shares it (the same count with the dot dropped, except `Cataclysm.Player`,
+which also matches `PlayerAttack`, `PlayerBody`, `PlayerEffects`, `PlayerListenersBoundOnce` and `PlayerStats`, 54).
+**Phase 1 registered 17 for `Cataclysm.DungeonFloor.` from name literals; the run measured 16.**
 
 | Figure | Registered |
 |---|---|
 | `Cataclysm.ClickToMove.` alone | 2 / 2: none at the base, + 2 |
 | `Cataclysm.PlayerAttack.` alone | 6 / 6: 4 at the base, + 2 |
-| `Cataclysm.DungeonFloor.` alone | 17 / 17: 17 at the base, none added; run because its file changed |
-| Whole Unreal suite | TO-BE-MEASURED (4605 at the base, + 4 by name) |
+| `Cataclysm.DungeonFloor.` alone | 16 / 16: 16 at the base, none added; run because its file changed |
+| `Cataclysm.Player.` alone | 20 / 20: 20 at the base, none added; run because `CataclysmPlayerMovementTests.cpp`, whose group it is, changed |
+| Whole Unreal suite | 4610 / 4610: 4606 at the base, + 4 by name |
 | A, the aura toggle punches (`Shape() == ECataclysmSkillShape::Aura && Params.Duration <= 0.0f;` to `false;`, in `CataclysmSkillTemplate.cpp`), prefix `Cataclysm.PlayerAttack.` | 1 test, 2 assertions, both in `AnAuraToggledOnAndOffPlaysNoSwingAndAStrikeStillDoes`: "switching an aura on plays no swing" and "and switching it off plays no swing either" (each "to be null"; the second because the switch-on's montage is still current in an unticked world). Its set-up assertions and the Strike CONTROL pass; the other five tests pass |
 | B, every aura exempt (`Shape() == ECataclysmSkillShape::Aura && Params.Duration <= 0.0f;` to `Shape() == ECataclysmSkillShape::Aura;`), the same file and prefix | 1 test, 1 assertion: in `AnAuraWithADurationIsTimedNotAToggleAndStillSwings`, "an aura with a duration is not a toggle and still swings, as ruled" (to be not null). The other five pass |
-| C, a clicked walk driven by velocity again (`GetNavMovementProperties()->bUseAccelerationForPaths = true;` to the same with `false;`, in `CataclysmPlayerCharacter.cpp`), prefix `Cataclysm.ClickToMove.` | 2 tests, 2 assertions: "the player's movement component follows a path by acceleration, so a clicked walk runs" (to be true), and in the navigation test "a clicked walk: frames moving with no acceleration, which play the idle pose" (to be 0, but it was N, N being that walk's moving-frame count, which is not predicted). The turn, the finish, the arrival and all three CONTROL assertions pass, because the velocity-driven walk turns and arrives |
+| C, a clicked walk driven by velocity again (`GetNavMovementProperties()->bUseAccelerationForPaths = true;` to the same with `false;`, in `CataclysmPlayerCharacter.cpp`), prefix `Cataclysm.ClickToMove.` | 2 tests, 2 assertions: "the player's movement component follows a path by acceleration, so a clicked walk runs" (to be true), and in the navigation test "a clicked walk: frames moving with no acceleration, which play the idle pose" ("Expected '<what>' to be 0, but it was N."). **Registered by count only: N, the driven moving frames of that walk, is not predicted**, and no failure text past "but it was" is. The turn, the finish, the arrival and all three CONTROL assertions pass, because the velocity-driven walk turns and arrives |
 
-Each anchor occurs once in its file. The breaks were not compiled before registration.
+Each anchor occurs once in its file, checked by the window's own proof script with `--anchors-only` on the registration commit's tree. The breaks were not compiled before registration.
 
 ### Proofs run in phase 1 (Python only)
 
