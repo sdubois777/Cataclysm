@@ -33,6 +33,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For telling a player character's throw from any other, where Cripple is read. Issue #2273.
 #include "Character/CataclysmPlayerCharacter.h"
+// For a thrall's Compel strike, ordered as a rule's. Issue #783.
+#include "Character/CataclysmEnemyCharacter.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
@@ -2271,7 +2273,18 @@ int32 UCataclysmProjectileSkill::Land()
 				// itself. A minion swings; a subjugated enemy uses its own
 				// attack, which is what "keeps its own abilities" means for a
 				// thrall; the base class does nothing at all.
-				Body->AttackTarget(Targets[0]);
+				//
+				// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits
+				// for its swing and is not measured against reach when it lands,
+				// which is "wherever it happens to be standing" kept true.
+				if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
+				{
+					Thrall->StrikeAsARuleOrders(Targets[0]);
+				}
+				else
+				{
+					Body->AttackTarget(Targets[0]);
+				}
 				++CommandedStrikes;
 			}
 		}

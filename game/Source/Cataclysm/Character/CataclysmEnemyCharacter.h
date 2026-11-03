@@ -1871,7 +1871,7 @@ public:
 	 * **AND A TARGET THAT WALKED OUT OF REACH IN THE GAP IS MISSED**, which is
 	 * what the Gatekeeper's sweep and the Succubus's bolt already do: they land
 	 * where they were aimed, and a player who left is not hit. See
-	 * `bPendingBasicAttackMustStayInReach` for the one kind of strike this does
+	 * `bPendingBasicAttackMustStayInReach` for the two kinds of strike this does
 	 * not apply to.
 	 *
 	 * CALLED FROM `Tick`. PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD.
@@ -1879,6 +1879,25 @@ public:
 	 * @return whether a blow was dealt
 	 */
 	bool LandPendingBasicAttack();
+
+	/**
+	 * This creature's ordinary attack on `Target`, ordered by a RULE rather than
+	 * chosen by its own brain. Issue #783.
+	 *
+	 * **THE TWO RULES THAT DO THIS: ECHOES OF THE PAST'S STRIKE AND THE STAFF'S
+	 * COMPEL.** Both make a creature strike a target wherever that target is
+	 * standing, and before issue #783 both always landed: the blow was dealt
+	 * inside `AttackTarget`, with no distance asked.
+	 *
+	 * THE SAME `AttackTarget`, so the swing plays and its blow waits for the swing
+	 * to connect like any other, and death, a stun, a knockdown or fear in the
+	 * gap still drop it. THE ONE DIFFERENCE: the blow is not measured against
+	 * reach when it lands. An echo stands at its reach from where the player was
+	 * when it APPEARED, a second before it strikes, so a reach test at the strike
+	 * would let a player who stood still dodge it and never one who had walked
+	 * away. A JUDGEMENT, labelled so in docs/DECISIONS.md.
+	 */
+	void StrikeAsARuleOrders(AActor* Target);
 
 	/** Whether an ordinary attack's blow is waiting to land. */
 	bool HasPendingBasicAttack() const { return PendingBasicAttackLandsAtSeconds >= 0.0f; }
@@ -2247,8 +2266,15 @@ private:
 	 * that reaching it is not the creature's problem. Measuring such a strike
 	 * against a reach it never had would make it miss every time. A JUDGEMENT,
 	 * labelled so in docs/DECISIONS.md.
+	 *
+	 * AND FALSE FOR ANY STRIKE A RULE ORDERS, in reach or not, through
+	 * `StrikeAsARuleOrders`. Echoes of the Past and Compel strike a target
+	 * wherever it stands; see that function.
 	 */
 	bool bPendingBasicAttackMustStayInReach = false;
+
+	/** True only inside `StrikeAsARuleOrders`, while it calls `AttackTarget`. */
+	bool bStrikeOrderedByARule = false;
 
 	/** Forgets the waiting blow without dealing it. */
 	void ForgetPendingBasicAttack();

@@ -4018,7 +4018,9 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			}
 			else
 			{
-				Echo->AttackTarget(Player);
+				// AS A RULE'S STRIKE, which waits for its swing like any other and is not measured against reach
+				// when it lands: the echo stands at its reach from where the player was a second ago. Issue #783.
+				Echo->StrikeAsARuleOrders(Player);
 			}
 		}
 		EchoesStage = 2;

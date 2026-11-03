@@ -282,7 +282,9 @@ rate it is played at. `ACataclysmEnemyCharacter::StrikeWhenTheSwingConnects` and
 `LandPendingBasicAttack` are the shared rule. A creature that dies, is stunned or
 knocked down, or is frightened in the gap does not land the blow, and a target
 that walked out of reach in the gap is missed, as walking out of the Gatekeeper's
-sweep is. `docs/DECISIONS.md` has the rulings.
+sweep is -- unless a rule ordered the strike (Echoes of the Past, the Staff's
+Compel), which lands wherever the target stands, as it always did.
+`docs/DECISIONS.md` has the rulings.
 
 **The Imp's two unmeasured swipes land at the mean of its three measured ones**,
 0.276 s, which is a judgement and not a measurement: the three measured swipes

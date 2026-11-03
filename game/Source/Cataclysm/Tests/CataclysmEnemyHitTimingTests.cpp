@@ -36,7 +36,8 @@
  *   - the Imp's two unmeasured swipes wait for the mean of its three measured;
  *   - a creature that dies, or is stunned, in the gap lands nothing;
  *   - a target that walks out of reach in the gap is missed, and a strike
- *     ordered at a target already beyond reach -- the Staff's Compel -- is not;
+ *     ordered at a target already beyond reach -- the Staff's Compel -- is not,
+ *     nor is any strike a rule orders (Echoes of the Past, Compel);
  *   - the creature's own Tick is what lands the blow in play.
  *
  * NO WORLD IS TICKED. A world built by `UWorld::CreateWorld` never is, so each
@@ -487,6 +488,47 @@ CATACLYSM_TEST(FCataclysmHitTimingBeyondReachTest,
 	MoveTheClock(World, ACataclysmBruteCharacter::SwingStrikeSeconds + OneHundredth);
 	TestTrue(TEXT("and lands when the swing connects"), Brute->LandPendingBasicAttack());
 	TestTrue(FString::Printf(TEXT("on the target ten metres away (%.2f to %.2f)"),
+		Full, StruckHealth(Struck)), StruckHealth(Struck) < Full);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmHitTimingRuleStrikeTest,
+	"Cataclysm.EnemyHitTiming.AStrikeARuleOrdersLandsOnATargetThatWalkedOutOfReach")
+{
+	using namespace CataclysmEnemyHitTimingTest;
+
+	// ECHOES OF THE PAST AND THE STAFF'S COMPEL ORDER THIS, and both strike a
+	// target wherever it stands. An echo stands at its reach from where the
+	// player was when it appeared, a second before it strikes, so a reach test
+	// would let a player who stood still dodge it and never one who had walked
+	// away. A JUDGEMENT, labelled so in docs/DECISIONS.md. The same walk-out as
+	// `ATargetThatWalksOutOfReachBeforeTheSwingConnectsIsMissed`, with the
+	// opposite answer.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = SpawnSwinger<ACataclysmBruteCharacter>(World);
+	ACataclysmEnemyCharacter* Struck = SpawnStruck(World, InReachCm);
+	if (!TestNotNull(TEXT("a Brute"), Brute) || !TestNotNull(TEXT("a target"), Struck))
+	{
+		return false;
+	}
+
+	const float Full = StruckHealth(Struck);
+	Brute->StrikeAsARuleOrders(Struck);
+	TestEqual(TEXT("a rule's strike still deals nothing when the swing starts"),
+		StruckHealth(Struck), Full);
+	TestTrue(TEXT("and waits for the swing"), Brute->HasPendingBasicAttack());
+
+	Struck->SetActorLocation(FVector(300.0f, 0.0f, Struck->GetActorLocation().Z));
+	MoveTheClock(World, ACataclysmBruteCharacter::SwingStrikeSeconds + OneHundredth);
+
+	TestTrue(TEXT("and lands when the swing connects"), Brute->LandPendingBasicAttack());
+	TestTrue(FString::Printf(TEXT("on a target that walked out of reach in the gap (%.2f to %.2f)"),
 		Full, StruckHealth(Struck)), StruckHealth(Struck) < Full);
 	return true;
 }

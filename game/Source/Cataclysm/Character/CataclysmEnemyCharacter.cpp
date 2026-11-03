@@ -777,9 +777,20 @@ void ACataclysmEnemyCharacter::StrikeWhenTheSwingConnects(AActor* Target,
 	// IN REACH NOW MEANS IT MUST STILL BE IN REACH THEN. The same test the brain
 	// uses to decide to swing rather than chase -- flat distance, reach plus
 	// the contact tolerance -- so a swing the brain ordered always starts true.
-	bPendingBasicAttackMustStayInReach =
-		FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
+	//
+	// UNLESS A RULE ORDERED IT, which strikes wherever the target stands. See
+	// `StrikeAsARuleOrders`.
+	bPendingBasicAttackMustStayInReach = !bStrikeOrderedByARule
+		&& FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
 			<= AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm;
+}
+
+void ACataclysmEnemyCharacter::StrikeAsARuleOrders(AActor* Target)
+{
+	// THE VIRTUAL, so the creature's own swing plays and its own strike times
+	// the blow. The flag is put back however `AttackTarget` returns.
+	TGuardValue<bool> OrderedByARule(bStrikeOrderedByARule, true);
+	AttackTarget(Target);
 }
 
 bool ACataclysmEnemyCharacter::LandPendingBasicAttack()

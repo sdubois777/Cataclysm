@@ -522,6 +522,40 @@ def test_attack_target_waits_rather_than_dealing_the_damage_itself(
         f"StrikeWhenTheSwingConnects timed from {strike}.")
 
 
+SOURCE_DIR = REPO_ROOT / "game" / "Source" / "Cataclysm"
+
+#: (file, where the rule's strike is found, what ends that stretch). The two
+#: rules that order a creature's ordinary attack at a target wherever it stands.
+RULE_STRIKES = [
+    ("Dungeon/CataclysmDungeonGameMode.cpp",
+     "void ACataclysmDungeonGameMode::StepEchoesOfThePast(", "\n}"),
+    ("AbilitySystem/CataclysmSkillTemplates.cpp",
+     "if (Params.bCommandStrike", "++Landings;"),
+]
+
+
+@pytest.mark.parametrize("file_name,start_text,end_text", RULE_STRIKES)
+def test_a_rules_strike_is_not_measured_against_reach(
+        file_name, start_text, end_text):
+    """**ECHOES OF THE PAST AND COMPEL STRIKE WHEREVER THE TARGET STANDS.**
+    Issue #783 made an ordinary blow wait for its swing and miss a target that
+    walked out of reach in the gap. An echo stands at its reach from where the
+    player was a second BEFORE it strikes, so through `AttackTarget` a player
+    who stood still could dodge it and one who had walked away could not.
+    `StrikeAsARuleOrders` is the same swing without the reach test at landing;
+    each rule must order its creature's strike through it."""
+    source = without_comments(
+        (SOURCE_DIR / file_name).read_text(encoding="utf-8"))
+    start = source.find(start_text)
+    assert start != -1, f"{file_name} no longer holds {start_text!r}"
+    body = source[start:source.find(end_text, start)]
+
+    assert "StrikeAsARuleOrders(" in body, (
+        f"the rule's strike in {file_name} no longer orders the creature's "
+        f"ordinary attack through StrikeAsARuleOrders, so its blow is measured "
+        f"against a reach the rule never asked for. Issue #783.")
+
+
 def test_the_measurement_records_its_negative_control():
     """**AGREEMENT BETWEEN THE THREE RULES IS NOT ENOUGH ON ITS OWN**, and the
     notes have to say so. Three rules that all read hand motion agree with each
