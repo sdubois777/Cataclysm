@@ -237,6 +237,29 @@ group sharing a stem is `Cataclysm.EarnedBossSave.`, which `Cataclysm.EarnedBoss
 Each anchor occurs once in `CataclysmEmpireMapLayout.cpp`, checked by `prove_q6c.py --anchors-only` at the
 registration commit. The breaks were not compiled.
 
+### Window boss-map-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `e9b2a9221` (on `development`
+`483c64710`), lock `boss-map-w1`, after the six pre-checks all passed (11,830 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The seven groups alone | each at its registered count | every one "0 failed": BossOnTheMap. 5, EmpireScreen. 14, EmpireStatusBar. 8, DeathCost. 9, EarnedBoss. 4, EarnedBossSave. 3, SaveLoad. 75 |
+| Whole Unreal suite | 4657, 47 skipped halves | "4657 tests performed, 4657 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4657 tests in the tree at e9b2a9221; 4657 performed, gap 0"; "Test saves: 721 written and deleted, 0 left behind" |
+| The box's font-measured half | measured, not skipped | measured: "BOSS BOX: 100 city placements checked against the box" and "BOSS BOX: "Cataclysm boss: 8888 floors" needs 285 pixels of 344" |
+| Python | of record | "7340 passed, 9 skipped in 197.10s"; JUnit tests 7349, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 | PROVED. Exactly "on the same day as the last hit the opening is shown", reading "Day 4: a dungeon hit Outpost (-3,0) and left." as predicted; restored 5 of 5 |
+| P2 | 3 | PROVED. Exactly "on the clear that finishes the third the line says the boss is open", "once it has been cleared the line says so" and "and the next quest clear does open it"; restored 5 of 5 |
+| P3 | 2 | PROVED. Exactly "and says four of its floors were added by ordinary dungeons defeated" and "one floor added is singular"; restored 5 of 5 |
+| P4 | 1 | PROVED. Exactly "and ends by naming the command that walks it, with its identifier"; restored 5 of 5 |
+
+The test-save count is 721 against 720 at the base (`e4dc26009`); this branch writes no save, the cause of the one-save
+difference is not established, and 0 were left behind, which is the figure the run is held to.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal at run time**: compiled (above), not run.
