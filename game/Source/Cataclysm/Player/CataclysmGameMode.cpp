@@ -646,7 +646,8 @@ int32 ACataclysmGameMode::SpawnImps()
 			 "crowd, so twenty can hit a player at once. Together they are "
 			 "%.0f health and %.0f damage a second. They move at %.0f cm/s, "
 			 "faster than any player class, so walking away is not an escape. "
-			 "They will not queue into rings until issue #761 lands."),
+			 "They walk as a Detour crowd, so they should queue into rings "
+			 "around the player rather than shove (issue #761)."),
 		Spawned, ImpDistanceCm, *Centre.ToCompactString(), ImpBearingDegrees,
 		ImpPackRadiusCm, ImpHealth, ImpAttackDamage,
 		ACataclysmImpCharacter::DesignedAttackIntervalSeconds,

@@ -168,9 +168,11 @@ public:
 	 * threat, a pack is. One Imp takes 48 seconds to kill a geared character;
 	 * ten take 4.9.
 	 *
-	 * THEY WILL NOT QUEUE INTO RINGS YET. The ring behaviour the design
-	 * describes is what crowd avoidance produces, and this project has none at
-	 * all: issue #761. Until that lands they will shove rather than surround.
+	 * THE RINGS ARE THE CROWD'S TO MAKE. The ring behaviour the design describes
+	 * is what crowd avoidance produces, and since issue #761 every creature walks
+	 * as a Detour crowd agent (`ACataclysmEnemyController`'s constructor). No
+	 * test moves a pack, so whether ten of them surround rather than shove is
+	 * for watching here.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Sandbox")
 	int32 SpawnImps();
@@ -836,9 +838,8 @@ protected:
 	 * push them apart before anything happens.
 	 *
 	 * IT IS NOT THE RING THE DESIGN DESCRIBES. That ring forms around the PLAYER
-	 * when the pack has closed, out of crowd avoidance, and this project has no
-	 * crowd avoidance yet -- issue #761. This is only where they are standing
-	 * when the level opens.
+	 * when the pack has closed, out of crowd avoidance -- issue #761. This is only
+	 * where they are standing when the level opens.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
 	float ImpPackRadiusCm = 200.0f;

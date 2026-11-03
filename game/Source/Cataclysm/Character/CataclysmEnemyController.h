@@ -254,7 +254,72 @@ class CATACLYSM_API ACataclysmEnemyController : public AAIController
 	GENERATED_BODY()
 
 public:
-	ACataclysmEnemyController();
+	/**
+	 * Builds the controller with a crowd-following component in place of the
+	 * default path-following one. Issue #761.
+	 *
+	 * WHY. A pack used to shove into one blob rather than ring the player: every
+	 * creature walked its own path and only capsule collision kept bodies apart.
+	 * `docs/Cataclysm_GDD_v2.md`, the Imp's "What the engine has to do", names the
+	 * answer: "Unreal's Detour Crowd is the one to use rather than the older RVO
+	 * avoidance on the character movement component". Swapping the subobject here
+	 * reaches every creature, because every creature in the game -- monsters,
+	 * thralls and summoned minions -- is driven by this one controller.
+	 *
+	 * THE SUBOBJECT NAME IS THE ENGINE'S. `AAIController`'s constructor creates
+	 * the component as `CreateOptionalDefaultSubobject<UPathFollowingComponent>(
+	 * TEXT("PathFollowingComponent"))` (Runtime/AIModule/Private/AIController.cpp,
+	 * engine 5.8), so that is the name the class is swapped under.
+	 *
+	 * WHAT IT DOES IN A WORLD WITH NO NAVIGATION SYSTEM -- a world from
+	 * `UWorld::CreateWorld` of the Game type, which is what almost every
+	 * automation test runs in, has none -- nothing. `UCrowdFollowingComponent::
+	 * Initialize` finds no crowd manager and sets its own simulation state to
+	 * `Disabled`, and from then on every override it has hands straight to
+	 * `UPathFollowingComponent`.
+	 */
+	ACataclysmEnemyController(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	/**
+	 * Whether this actor is a body driven through a crowd-following component,
+	 * which is to say another member of the crowd. Issue #761.
+	 *
+	 * WHY THE QUESTION MATTERS. Detour's obstacle avoidance scores every velocity
+	 * it might take by its time to impact with each neighbouring crowd agent, and
+	 * it has no idea which of them is the one being chased. A creature walking at
+	 * another creature therefore slows as the gap closes, and can stop short of
+	 * its own reach. The player is not a crowd agent -- the player controller's
+	 * path following is the default class -- so a chase after the player is never
+	 * held off this way. See `MoveTo` for what is done about it.
+	 *
+	 * BY CLASS, NOT BY WHETHER THE SIMULATION IS RUNNING, so the answer is the
+	 * same in a test world as in the game. Suspending steering for a target the
+	 * crowd is not simulating changes nothing.
+	 *
+	 * STATIC AND PUBLIC so a test can ask it of any actor.
+	 */
+	static bool IsDrivenByACrowdAgent(const AActor* Actor);
+
+	/**
+	 * Every walk this controller orders passes through here.
+	 *
+	 * IT TURNS CROWD STEERING OFF FOR A WALK AT ANOTHER CROWD MEMBER AND ON FOR
+	 * EVERY OTHER WALK, and then asks `AAIController::MoveTo` exactly as before.
+	 * Issue #761. A walk at a creature -- a thrall or a minion going for a
+	 * monster, a maddened creature for its neighbour, a monster for a minion --
+	 * then closes the way every walk did before crowds, pressed in by its path and
+	 * stopped by capsule collision, so `ACataclysmEnemyController::Think`'s reach
+	 * test is met as it always was. A walk at the player, at a point or at a
+	 * commander keeps avoidance, which is what makes a pack ring the player.
+	 *
+	 * HERE RATHER THAN IN THE CHASE, because every walk -- the chase, the flee,
+	 * the follow, the roam, a guide's and a hungry creature's -- reaches this one
+	 * function, so none of them can be left steering the way the previous walk
+	 * did. `UCrowdFollowingComponent::SuspendCrowdSteering` does nothing when the
+	 * flag is already what it is asked to be.
+	 */
+	virtual FPathFollowingRequestResult MoveTo(const FAIMoveRequest& MoveRequest,
+											   FNavPathSharedPtr* OutPath = nullptr) override;
 
 	/** Seconds between one pass of the thinking and the next. */
 	static constexpr float ThinkIntervalSeconds = 0.25f;
@@ -795,6 +860,26 @@ private:
 	 * this replaces.
 	 */
 	ECataclysmBrainAction FollowCommander(ACataclysmCharacterBase* Driven);
+
+	/**
+	 * Take the possessed body out of the crowd when the crowd did not take it in,
+	 * so it walks as every creature walked before crowds rather than not at all.
+	 * Issue #761. Called once, at the end of `OnPossess`.
+	 *
+	 * WHY IT IS NEEDED. A crowd-following component that registered with a crowd
+	 * manager stays in crowd mode, and in crowd mode nothing moves it but the
+	 * crowd's own velocity, which the manager applies only to agents its Detour
+	 * crowd holds. Two cases leave it registered and not held, and both would
+	 * leave the creature standing for ever: a level with a navigation system and
+	 * no navigation mesh (the crowd has nothing to simulate on, so the chase's
+	 * straight-line fallback, which this file keeps on purpose for a broken
+	 * level, would stop working), and a crowd already holding `MaxAgents`
+	 * creatures (`game/Config/DefaultEngine.ini`).
+	 *
+	 * NOTHING HAPPENS WITHOUT A CROWD MANAGER, which is every world from
+	 * `UWorld::CreateWorld`; the component has already switched itself off there.
+	 */
+	void LeaveTheCrowdIfItWasNotTakenIn();
 
 	FTimerHandle ThinkTimer;
 

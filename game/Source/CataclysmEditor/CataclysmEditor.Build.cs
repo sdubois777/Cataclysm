@@ -40,6 +40,8 @@ public class CataclysmEditor : ModuleRules
 			// navigation mesh (issues #1174 and #793). The Cataclysm module
 			// already depends on it publicly; it is named here because this
 			// module now calls into it directly.
+			// It also holds UCrowdManager and UCrowdFollowingComponent, which the
+			// crowd test on a navigable floor reads. Issue #761.
 			"AIModule",
 
 			// The widget authoring helper, which builds a Widget Blueprint's
