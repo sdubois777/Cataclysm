@@ -323,6 +323,25 @@ not take `Cataclysm.EnemyHitTiming.`, nor `Cataclysm.Crowd.` `Cataclysm.CrowdCon
 Each anchor occurs once in its file, counted with Python `str.count` at the commit that registers this. The breaks
 were not compiled.
 
+### Window reach-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `b0233ef7d` (on `development`
+`6e269d6de`), lock `reach-w1`, after the six pre-checks all passed (11,549 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 24 groups alone | each at its registered count | every one "0 failed": ReachAgainstACreature. 14, AI. 51, Brute. 23, Hellhound. 11, Warden. 20, Imp. 6, Gatekeeper. 13, Succubus. 10, Sentinel. 6, EnemyHitTiming. 14, Command. 22, CompelHeld. 4, EchoesHeld. 4, Fear. 9, Crowd. 9, BossFloor. 5, Enemy. 19, HitReaction. 12, Telegraph. 14, Death. 30, Silence. 26, EnemyModifiers. 57, ConsumptionDouble. 15, DungeonModifierEffects. 768 |
+| Whole Unreal suite | 4684, 47 skipped halves | "4684 tests performed, 4684 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4684 tests in the tree at b0233ef7d; 4684 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7347 passed, 9 skipped in 201.98s"; JUnit tests 7356, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 9 tests, 19 | PROVED. The kept broken-half log fails exactly 19 assertions in the nine registered tests (each target-term reach reading 90 for 96, or 99.6 for 105.6, and the swings and blows that follow); restored 14 of 14 |
+| P2 | 4 tests, 5 | PROVED. Exactly the five "the blow lands ..." / "and takes health" assertions in the four registered tests; restored 14 of 14 |
+| P3 | 2 tests, 2 | PROVED. Exactly "a hungry Brute pressed against a creature as wide as itself swings rather than walking to the drop" and "a hungry Brute 91 cm from the player, inside its reach and the tolerance, swings rather than eats"; restored 14 of 14 |
+| P4 | 4 tests, 12 | PROVED. Exactly the twelve registered: an Elite Brute's 99.6, a Legendary Hellhound's 111.12, an Elite Imp's 138, the both-terms 105.6 and the no-body 99.6 each read without the attacker's growth, and the swings, bites and blows that follow; restored 14 of 14 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - Whether the change lets a creature's swing land in play, with real collision: no level was played.
