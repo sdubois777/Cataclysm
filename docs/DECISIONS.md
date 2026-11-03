@@ -265,6 +265,24 @@ assertion audit); the breaks were not compiled before registration. The two seed
 roll from a shifted stream under each break as well, and are registered as passing for the reasons given there.
 **A C++ guard proof must not run while the Python suite runs.**
 
+### Window material-magic-find-w1: the results
+
+Run by the coordinating session on 2026-11-03 at the registration commit `ec29aaa6e` (on `development` `79f6787d3`),
+lock `material-magic-find-w1`, after the six pre-checks all passed (11,393 MB of physical memory free). Every
+registered figure was met, and the two seeded tests on a shifted stream passed.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled both changed files alone and both unity files holding them) |
+| `Cataclysm.Drop.` alone | 30 / 30 | "30 tests performed, 30 succeeded, 0 failed" |
+| The new test alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole Unreal suite | 4606 / 4606 | "4606 tests performed, 4606 succeeded, 0 failed"; "Declared: 4606 tests in the tree at ec29aaa6e; 4606 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7265 passed, 8 skipped in 213.19s"; JUnit tests 7273, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 10 | PROVED. The kept broken-half log fails exactly the ten pinned shares, each reading the no-magic-find share (0.7507331 / 0.1876833 / 0.0469208 / 0.0117302 / 0.0029326), as the float32 replay predicted; restored 30 of 30 |
+| B | 18 | PROVED. Exactly the ten pinned shares and the eight order assertions, tiers 2 to 5 at 10,000% and at 999999995904% (1e12 in float32); restored 30 of 30 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Any of the C++ in the engine.** Compiled, not run; the figures above are predictions. The float32 replay of the
