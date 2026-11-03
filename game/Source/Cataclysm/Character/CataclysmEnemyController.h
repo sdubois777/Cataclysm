@@ -497,7 +497,8 @@ public:
 	 * 99.6, beyond its 90 plus the tolerance. Until this term it never swung at the
 	 * player at all. The growth is the capsule's scaled radius less its unscaled
 	 * one, so each creature's own designed body is read from its capsule and not
-	 * written again here.
+	 * written again here. It is asked of `ACataclysmEnemyCharacter::BodyGrowthCm`,
+	 * which three lobbed attacks' minimum ranges ask too (issue #2716).
 	 *
 	 * THE DESIGNED REACH UNCHANGED, as it was before issue #2706, for:
 	 *   - an attacker that is not an `ACataclysmEnemyCharacter` -- a summoned

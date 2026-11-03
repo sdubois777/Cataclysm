@@ -1758,6 +1758,17 @@ void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 	ApplyStartingAttributes();
 }
 
+float ACataclysmEnemyCharacter::BodyGrowthCm() const
+{
+	// THE CAPSULE AS IT STANDS AGAINST THE CAPSULE AS DESIGNED. See the header. Issues #2706 and #2716.
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!Capsule)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, Capsule->GetScaledCapsuleRadius() - Capsule->GetUnscaledCapsuleRadius());
+}
+
 void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 {
 	// A NEGATIVE STEP IS A CALLER ERROR, ANSWERED WITH COMMON. There is nothing

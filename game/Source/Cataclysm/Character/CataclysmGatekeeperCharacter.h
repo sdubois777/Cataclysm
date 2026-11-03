@@ -311,6 +311,11 @@ public:
 	 * WRITTEN OUT AS A NUMBER AND HELD TO THE SUM BY THE ASSERT BELOW, because
 	 * `tools/tests/test_gatekeeper_matches_the_model.py` reads these constants
 	 * out of the source text and cannot evaluate an expression.
+	 *
+	 * THE COMMON FIGURE. A rarer Gatekeeper is bigger, and its minimum is this
+	 * plus `BodyGrowthCm()`, so the circle clears its body as it stands: 357.6
+	 * at Elite, 419.44 at the Cataclysm Boss rung the slice places it on. Issue
+	 * #2716.
 	 */
 	static constexpr float SoulfallMinimumRangeCm = 348.0f;
 

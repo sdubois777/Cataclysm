@@ -135,13 +135,17 @@ def test_the_ability_is_given_the_sum_rather_than_a_literal() -> None:
     """
     text = source(BRUTE_CPP)
 
+    # AND THE BODY'S GROWTH AT A RARER RUNG, issue #2716, which is nought for a
+    # Common Brute. `test_a_lob_minimum_follows_the_casters_body.py` holds that
+    # term for all three lobs; this keeps the designed sum's two terms.
     assert re.search(
-        r"RockThrow\.MinRangeCm\s*=\s*RockThrowRadiusCm\s*\+\s*BruteCapsuleRadius\s*;",
+        r"RockThrow\.MinRangeCm\s*=\s*RockThrowRadiusCm\s*\+\s*BruteCapsuleRadius"
+        r"\s*\+\s*BodyGrowthCm\(\)\s*;",
         text), (
         "CataclysmBruteCharacter.cpp no longer builds RockThrow.MinRangeCm from "
-        "RockThrowRadiusCm + BruteCapsuleRadius. If the marked circle is ever "
-        "resized, a minimum written as a literal would quietly stop being the "
-        "distance at which the creature clears its own blast."
+        "RockThrowRadiusCm + BruteCapsuleRadius + BodyGrowthCm(). If the marked "
+        "circle is ever resized, a minimum written as a literal would quietly "
+        "stop being the distance at which the creature clears its own blast."
     )
 
     assert "static_assert" in text and "RockThrowMinimumRangeCm" in text, (

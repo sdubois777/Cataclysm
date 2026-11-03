@@ -323,7 +323,14 @@ ACataclysmGatekeeperCharacter::EnemyAbilities() const
 	// A MINIMUM, BECAUSE IT MARKS A CIRCLE WHERE IT LANDS. Below `radius + own
 	// body` that circle covers the creature's own feet, which is a melee attack
 	// wearing a thrown attack's telegraph. Issue #475 on the Brute.
-	Soulfall.MinRangeCm = SoulfallMinimumRangeCm;
+	//
+	// THE BODY AS IT STANDS, NOT AS DESIGNED. Issue #2716, ruled 2026-11-03: the
+	// slice places this creature at the Cataclysm Boss rung, where its body is
+	// 119.44 cm and the circle covered its own feet anywhere between 348 and
+	// 419.44 cm. `BodyGrowthCm` is nought for a Common Gatekeeper, whose minimum
+	// is exactly `SoulfallMinimumRangeCm`; the header's static_assert holds that
+	// constant to the same designed sum.
+	Soulfall.MinRangeCm = SoulfallRadiusCm + GatekeeperCapsuleRadius + BodyGrowthCm();
 	Soulfall.MaxRangeCm = SoulfallRangeCm;
 	Soulfall.CooldownSeconds = SoulfallCooldownSecondsInUse();
 	Soulfall.WindUpSeconds = SoulfallWindUpSeconds;

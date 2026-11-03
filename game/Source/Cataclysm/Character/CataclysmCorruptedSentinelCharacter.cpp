@@ -185,7 +185,13 @@ ACataclysmCorruptedSentinelCharacter::EnemyAbilities() const
 {
 	FCataclysmEnemyAbility Mortar;
 	Mortar.Name = TEXT("Brimstone Mortar");
-	Mortar.MinRangeCm = BrimstoneMortarMinimumRangeCm;
+	// THE MARKED CIRCLE PLUS THE BODY AS IT STANDS, so the circle never covers
+	// the creature's own feet at any rung. Issue #475 is the rule and #2716,
+	// ruled 2026-11-03, the body: a rarer Sentinel is scaled bigger by
+	// `SetRarityStep`, and `BodyGrowthCm` is how much, nought for a Common one,
+	// whose minimum is exactly `BrimstoneMortarMinimumRangeCm`; the header's
+	// static_assert holds that constant to the same designed sum.
+	Mortar.MinRangeCm = BrimstoneMortarRadiusCm + SentinelCapsuleRadius + BodyGrowthCm();
 	Mortar.MaxRangeCm = BrimstoneMortarRangeCm;
 	Mortar.CooldownSeconds = BrimstoneMortarCooldownSecondsInUse();
 	Mortar.WindUpSeconds = BrimstoneMortarWindUpSeconds;

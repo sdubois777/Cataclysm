@@ -397,7 +397,16 @@ TArray<FCataclysmEnemyAbility> ACataclysmBruteCharacter::EnemyAbilities() const
 	// THE SUM IS WRITTEN OUT HERE so that changing either term moves the
 	// minimum with it. RockThrowMinimumRangeCm carries the same figure for
 	// tests to read, and a static_assert below holds the two together.
-	RockThrow.MinRangeCm = RockThrowRadiusCm + BruteCapsuleRadius;
+	//
+	// AND THE BODY AS IT STANDS, NOT AS DESIGNED. Issue #2716, ruled
+	// 2026-11-03. A rarer Brute is scaled bigger by `SetRarityStep`, so its
+	// body reaches past the designed 48 cm (57.6 at Elite, 119.44 at the
+	// Cataclysm Boss rung) and the circle would cover its feet again between
+	// 258 cm and the grown sum. `BodyGrowthCm` is that growth, nought for a
+	// Common Brute, whose minimum is exactly the 258 it always was. The maximum
+	// is not grown: the throw is aimed at its target's centre, which the range
+	// already measures to.
+	RockThrow.MinRangeCm = RockThrowRadiusCm + BruteCapsuleRadius + BodyGrowthCm();
 	static_assert(
 		RockThrowMinimumRangeCm == RockThrowRadiusCm + BruteCapsuleRadius,
 		"RockThrowMinimumRangeCm has drifted from the marked radius plus the "
