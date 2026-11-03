@@ -4,6 +4,11 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dom/JsonObject.h"
@@ -52,6 +57,11 @@
  * THE BOSS IS PLACED BY HAND, on no city, three floors deep, with the timer that never runs out, as
  * `UCataclysmSurgeScheduler::MakeCataclysmDungeon` builds it but without drawing from the run's chance. How it OPENS is
  * `Cataclysm.EarnedBoss.`'s; what clearing it does is this group's, and the clear reads only its kind.
+ *
+ * EXCEPT ONE TEST, WHICH TAKES THE STAIRS. `TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` opens the
+ * real boss dungeon by the quest clears that earn it, goes to its last floor, kills the Cataclysm Boss that seals the
+ * stairs there (issue #1324 slice 6d) and takes them, so the win comes through `HandleStairsTaken` and nothing is
+ * called on the player's behalf but the walk. Added in phase 2, once slice 6d had merged.
  *
  * THESE TESTS TOUCH THE DISK: the win writes both records. Every slot is named by an identifier made for the test and
  * deleted on every way out, after any write still in flight has finished, as the save/load tests do.
@@ -311,6 +321,64 @@ namespace CataclysmWinningTheRunTest
 			Out.Add(UCataclysmRoster::NameFor(Cataclysm).ToString());
 		}
 		return FString::Join(Out, TEXT(", "));
+	}
+
+	/**
+	 * Opens the run's real Cataclysm boss dungeon the way play does, through `UCataclysmEmpireRun::ClearDungeon`: as
+	 * many Quest dungeons of the first active Cataclysm as it asks for, built by hand on the map's first city and
+	 * cleared, as `Cataclysm.BossFloor.` and `Cataclysm.EarnedBoss.` do. A run at difficulty tier 1 faces one Cataclysm
+	 * and needs it finished. Then its rolled sub-type and modifiers are taken off, as `Cataclysm.BossFloor.` takes them
+	 * off, so no floor rule and no Horde wave decides what stands at the exit. Answers its number, or `INDEX_NONE`.
+	 */
+	int32 OpenTheEarnedBossDungeon(UCataclysmEmpireRun& Run)
+	{
+		if (Run.ActiveCataclysms.IsEmpty() || Run.Map == nullptr || Run.Map->Cities.IsEmpty())
+		{
+			return INDEX_NONE;
+		}
+		const ECataclysmType Sender = Run.ActiveCataclysms[0];
+		const int32 Needed = UCataclysmRoster::QuestObjectivesFor(Sender);
+		for (int32 Cleared = 0; Cleared < Needed; ++Cleared)
+		{
+			FCataclysmDungeon Quest;
+			Quest.DungeonId = Run.NextDungeonId++;
+			Quest.Type = ECataclysmDungeonType::Quest;
+			Quest.Cataclysm = Sender;
+			Quest.CityId = Run.Map->Cities[0].CityId;
+			Run.Dungeons.Add(Quest);
+			Run.ClearDungeon(Quest.DungeonId);
+		}
+
+		FCataclysmDungeon* Earned = Run.Dungeons.FindByPredicate([](const FCataclysmDungeon& Standing)
+		{
+			return Standing.Type == ECataclysmDungeonType::Cataclysm;
+		});
+		if (Earned == nullptr)
+		{
+			return INDEX_NONE;
+		}
+		Earned->SubType = ECataclysmDungeonSubType::None;
+		Earned->Modifiers.Reset();
+		Earned->ModifierScore = 0.0f;
+		return Earned->DungeonId;
+	}
+
+	/**
+	 * Makes one blow certain to kill the boss, as `Cataclysm.BossFloor.` does: its drawn modifiers taken off, no
+	 * evasion, block or retaliation, no energy shield, and one point of health.
+	 */
+	void ReadyTheBossToDie(ACataclysmEnemyCharacter* Boss)
+	{
+		Boss->ModifierRows.Reset();
+		Boss->ApplyStartingAttributes();
+		if (UAbilitySystemComponent* Abilities = Boss->GetAbilitySystemComponent())
+		{
+			Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 0.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+			Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+		}
 	}
 }
 
@@ -781,6 +849,168 @@ bool FCataclysmWinningTheRunUnclearedTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("and no win was written"), bWinWritten);
 	TestTrue(TEXT("CONTROL: the same boss walked again is cleared"), bClearedAfter);
 	TestEqual(TEXT("CONTROL: and that raises the tier"), Scene.State->GetDifficultyTier(), 4);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The real path: the boss floor's stairs, once the Cataclysm Boss is dead
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunThroughTheStairsTest,
+	"Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The win through the path play takes, with nothing called on the player's behalf but the walk to the last floor:
+ * a tier 1 run opens its real boss dungeon by the quest clears that earn it (issue #1324 slice 6b), the player enters
+ * it and goes to its last floor, where the Cataclysm Boss stands and seals the stairs (slice 6d, ruling R5); taking
+ * them then does nothing. The player's blow kills it, the stairs open, and taking them clears the dungeon through
+ * `GoDownOneFloor` and `ClearEmpireDungeon`, which wins the run: the character is a tier higher, the first-kill points
+ * are paid for the first Cataclysm of its draw, the walk's owed day is not run, the next run is begun facing two, and
+ * the win is written. The other tests here call `ClearEmpireDungeon` as the stairs do; this one takes the stairs.
+ *
+ * GOING TO THE LAST FLOOR IS A JUMP, as `Cataclysm.BossFloor.`'s test of the earned boss dungeon makes it: the earned
+ * dungeon is 100 to 150 floors deep, and `GoToFloor` spends no day, so the walk owes only the day entering spent.
+ * `EnemyScale` is 0, so each floor holds its boss and nothing else. The kill's experience may raise the level, so the
+ * points are counted after it. Prints "WIN BY THE STAIRS".
+ */
+bool FCataclysmWinningTheRunThroughTheStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWinningTheRunTest;
+
+	FWinScene Scene = MakeWinScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ON_SCOPE_EXIT { Scene.ForgetTheSlots(); };
+
+	// THE BOSS AND NOTHING ELSE ON A FLOOR, as `Cataclysm.BossFloor.` builds its floors.
+	Scene.Mode->EnemyScale = 0.0f;
+
+	// A TIER 1 RUN, BEGUN AS A CHARACTER'S RUN IS, ON DAY 1, WITH ITS BOSS EARNED.
+	Scene.State->SetDifficultyTier(1);
+	UCataclysmEmpireRun* WonRun = Scene.Instance->BeginACharactersEmpireRun(
+		/* Seed */ 11, Scene.State->GetCataclysmOrderSeed(), ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
+		/* Tier */ 1);
+	if (!TestTrue(TEXT("set-up: a tier 1 run was begun"), WonRun && WonRun->Map && WonRun->Clock))
+	{
+		return false;
+	}
+	WonRun->AdvanceDay();
+	const int32 BossId = OpenTheEarnedBossDungeon(*WonRun);
+	const FCataclysmDungeon* Earned = BossId != INDEX_NONE ? WonRun->FindDungeon(BossId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the quests cleared opened the Cataclysm boss dungeon"), Earned)
+		|| !TestEqual(TEXT("set-up: on no city"), Earned->CityId, static_cast<int32>(INDEX_NONE)))
+	{
+		return false;
+	}
+	const int32 Floors = Earned->Floors;
+
+	// IN, AND TO ITS LAST FLOOR.
+	if (!TestTrue(TEXT("set-up: the boss dungeon was entered"), Scene.Mode->EnterEmpireDungeon(BossId)))
+	{
+		return false;
+	}
+	const int32 DayInside = WonRun->Day();
+	const int32 OwedInside = WonRun->DaysOwed();
+	if (!TestTrue(TEXT("set-up: its last floor was reached"), Scene.Mode->GoToFloor(Floors))
+		|| !TestTrue(TEXT("set-up: and is the last"), Scene.Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Boss = Scene.Mode->CataclysmBossNow();
+	if (!TestNotNull(TEXT("set-up: the Cataclysm Boss stands on the last floor"), Boss))
+	{
+		return false;
+	}
+	const FName Seal(ACataclysmDungeonGameMode::CataclysmBossSealKey);
+	const bool bSealedByIt = Scene.Mode->StairsSealedBy() == TArray<FName>({Seal});
+
+	// CONTROL: WHILE IT STANDS, THE STAIRS DO NOTHING.
+	Scene.Mode->HandleStairsTaken();
+	const bool bWonWhileItStood = WonRun->bWon || Scene.Instance->EmpireRun != WonRun;
+	const bool bStoodAfterTheStairs = WonRun->FindDungeon(BossId) != nullptr;
+	const int32 TierWhileItStood = Scene.State->GetDifficultyTier();
+	const bool bWrittenWhileItStood = Scene.Writer->LastTrigger() == ECataclysmSaveTrigger::RunWon;
+
+	// THE PLAYER KILLS IT, AND TAKES THE STAIRS.
+	ReadyTheBossToDie(Boss);
+	UCataclysmSkillEffects::ApplyHit(Scene.Character, Boss, 100000.0f);
+	const bool bBossDied = UCataclysmSkillEffects::IsDead(Boss);
+	const bool bOpened = Scene.Mode->StairsSealedBy().IsEmpty();
+	// THE POINTS AS THEY STAND AFTER THE KILL, whose experience may have raised the level, so the difference below is
+	// the stairs' alone.
+	const int32 PointsBefore = Scene.State->PassivePointsAvailable();
+	Scene.Mode->HandleStairsTaken();
+
+	const UCataclysmEmpireRun* Next = Scene.Instance->EmpireRun;
+	const ECataclysmType Against = DrawnAtTier(TheCharactersSeed, 1);
+	const FName AgainstName = UCataclysmRoster::NameFor(Against);
+	const ECataclysmSaveTrigger LastTrigger = Scene.Writer->LastTrigger();
+	WaitForTheSlot(Scene.CharacterSlot());
+	const UCataclysmCharacterSave* Written = ReadTheSlot<UCataclysmCharacterSave>(Scene.CharacterSlot());
+
+	AddInfo(FString::Printf(
+		TEXT("WIN BY THE STAIRS: the boss dungeon %d, %d floors, entered on day %d owing %d; sealed by it %s; while it "
+			 "stood the stairs won %s, it stood %s, tier %d; it died %s, the stairs opened %s; then the won run won %s on "
+			 "day %d, on day %d owing %d, the boss %s; the character at tier %d, %d points more, bosses [%s], the draw's "
+			 "first %s; the next run %s at tier %d facing [%s], its line day %d tier %d Cataclysm %d points %d; the last "
+			 "trigger '%s'; the record on disk at tier %d"),
+		BossId, Floors, DayInside, OwedInside, bSealedByIt ? TEXT("yes") : TEXT("NO"),
+		bWonWhileItStood ? TEXT("YES") : TEXT("no"), bStoodAfterTheStairs ? TEXT("yes") : TEXT("NO"),
+		TierWhileItStood, bBossDied ? TEXT("yes") : TEXT("NO"), bOpened ? TEXT("yes") : TEXT("NO"),
+		WonRun->bWon ? TEXT("yes") : TEXT("NO"), WonRun->WonDay, WonRun->Day(), WonRun->DaysOwed(),
+		WonRun->FindDungeon(BossId) ? TEXT("STILL STANDS") : TEXT("is gone"), Scene.State->GetDifficultyTier(),
+		Scene.State->PassivePointsAvailable() - PointsBefore,
+		*FString::JoinBy(Scene.State->GetDefeatedCataclysmBosses(), TEXT(", "),
+						 [](const FName& Name) { return Name.ToString(); }),
+		*AgainstName.ToString(), Next != WonRun ? TEXT("new") : TEXT("THE SAME"), Next ? Next->DifficultyTier : -1,
+		Next ? *NamesOf(Next->ActiveCataclysms) : TEXT(""), Next ? Next->LastRunWonDay : -1,
+		Next ? Next->LastRunWonTier : -1, Next ? static_cast<int32>(Next->LastRunWonCataclysm) : -1,
+		Next ? Next->LastRunWonPassivePoints : -1, UCataclysmSaveTriggers::NameOf(LastTrigger),
+		Written ? Written->DifficultyTier : -1));
+
+	TestTrue(TEXT("set-up: the walk owes the day entering spent"), OwedInside >= 1);
+	TestTrue(TEXT("while it stands the Cataclysm Boss alone seals the stairs"), bSealedByIt);
+	TestFalse(TEXT("CONTROL: taking the stairs while it stands wins nothing"), bWonWhileItStood);
+	TestTrue(TEXT("CONTROL: and clears nothing"), bStoodAfterTheStairs);
+	TestEqual(TEXT("CONTROL: and leaves the character's tier as it was"), TierWhileItStood, 1);
+	TestFalse(TEXT("CONTROL: and writes no win"), bWrittenWhileItStood);
+	TestTrue(TEXT("set-up: the player's blow killed the Cataclysm Boss"), bBossDied);
+	TestTrue(TEXT("once it is dead nothing seals the stairs"), bOpened);
+	TestNull(TEXT("taking them clears the boss dungeon"), WonRun->FindDungeon(BossId));
+	TestTrue(TEXT("which wins the run"), WonRun->bWon);
+	TestEqual(TEXT("on the day the walk had reached"), WonRun->WonDay, DayInside + OwedInside);
+	TestEqual(TEXT("and runs none of the walk's owed days: the won run is still on the day it was entered"),
+			  WonRun->Day(), DayInside);
+	TestEqual(TEXT("and owes none"), WonRun->DaysOwed(), 0);
+	TestEqual(TEXT("the game mode walks no dungeon"), Scene.Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("the character is a tier higher"), Scene.State->GetDifficultyTier(), 2);
+	TestEqual(TEXT("and ten passive points richer for taking them"),
+			  Scene.State->PassivePointsAvailable() - PointsBefore, 10);
+	TestTrue(TEXT("for the boss of the first Cataclysm of its draw"),
+			 Scene.State->GetDefeatedCataclysmBosses() == TArray<FName>({AgainstName}));
+	if (!TestNotNull(TEXT("the game instance holds a run"), Next))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a new one, begun at once"), Next != WonRun);
+	TestEqual(TEXT("at tier 2"), Next->DifficultyTier, 2);
+	TestTrue(TEXT("facing the character's draw at tier 2"),
+			 Next->ActiveCataclysms == UCataclysmRoster::ActiveFor(TheCharactersSeed, 2));
+	TestEqual(TEXT("carrying the win's day"), Next->LastRunWonDay, WonRun->WonDay);
+	TestEqual(TEXT("its tier"), Next->LastRunWonTier, 1);
+	TestEqual(TEXT("its Cataclysm"), static_cast<int32>(Next->LastRunWonCataclysm), static_cast<int32>(Against));
+	TestEqual(TEXT("and its points"), Next->LastRunWonPassivePoints, 10);
+	TestEqual(TEXT("the win's write was the last trigger"), static_cast<int32>(LastTrigger),
+			  static_cast<int32>(ECataclysmSaveTrigger::RunWon));
+	TestEqual(TEXT("and the character record on disk holds the raised tier"), Written ? Written->DifficultyTier : -1, 2);
 	return true;
 }
 
