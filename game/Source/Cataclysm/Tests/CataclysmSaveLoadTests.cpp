@@ -33,6 +33,7 @@
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -8025,6 +8026,172 @@ bool FCataclysmSaveLoadTierRunTest::RunTest(const FString&)
 	TestEqual(TEXT("and its write records it"), WrittenAtADeath, 4);
 	TestEqual(TEXT("a won run raises the tier by one"), Raised, 5);
 	TestEqual(TEXT("and holds it at the highest"), AtTheTop, ACataclysmGameMode::HighestDifficultyTier);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A character keeps its Cataclysm draw -- issue #1324 slice 6a
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadDrawTest
+{
+	/** A list of Cataclysms as their names, comma separated, in order. */
+	FString NamesOf(const TArray<ECataclysmType>& Cataclysms)
+	{
+		TArray<FString> Out;
+		for (const ECataclysmType Cataclysm : Cataclysms)
+		{
+			Out.Add(UCataclysmRoster::NameFor(Cataclysm).ToString());
+		}
+		return FString::Join(Out, TEXT(", "));
+	}
+}
+
+/**
+ * A new character draws its Cataclysm order seed once, when it is made; its run faces the first N of that draw, N its
+ * tier; the character record keeps the seed; and a death's write leaves it as it was. `docs/Cataclysm_GDD_v2.md`,
+ * Ending a Run: "The order a character adds Cataclysms in is drawn once when the character is created". Issue #1324
+ * slice 6a, ruled 2026-11-02.
+ *
+ * TIER 4, AS `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` SETS IT, so the run faces four and a list drawn from
+ * anything but the character's seed agrees with its draw by chance about once in 1,680. The seed itself is drawn from
+ * the clock and is not predicted. Prints "NEW CHARACTER DRAW".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterDrawTest,
+	"Cataclysm.SaveLoad.ANewCharacterDrawsItsCataclysmSeedOnceAndItsRunFacesThatDraw",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadNewCharacterDrawTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmSaveLoadDrawTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	const bool bSeedBefore = Scene.State->HasCataclysmOrderSeed();
+	Scene.State->SetDifficultyTier(4);
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Draws Once");
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const bool bSeedAfter = Scene.State->HasCataclysmOrderSeed();
+	const int32 Seed = Scene.State->GetCataclysmOrderSeed();
+	const FString RunFaces = Scene.Instance->EmpireRun ? NamesOf(Scene.Instance->EmpireRun->ActiveCataclysms) : FString();
+	const FString Drawn = NamesOf(UCataclysmRoster::ActiveFor(Seed, 4));
+
+	// A DEATH'S WRITE, and the seed after it.
+	Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+	const UCataclysmCharacterSave* Record = Read<UCataclysmCharacterSave>(CharacterSlot);
+	const int32 Written = Record ? Record->CataclysmOrderSeed : -1;
+	const int32 AfterADeath = Scene.State->GetCataclysmOrderSeed();
+
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER DRAW: outcome %d; a seed before %s, after %s: %d; the run faces [%s], the "
+								 "draw at tier 4 [%s]; written %d; after a death %d"),
+							static_cast<int32>(Outcome), bSeedBefore ? TEXT("yes") : TEXT("no"),
+							bSeedAfter ? TEXT("yes") : TEXT("no"), Seed, *RunFaces, *Drawn, Written, AfterADeath));
+
+	TestEqual(TEXT("set-up: the new character was made"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestFalse(TEXT("set-up: a character stood up for a test has drawn no seed"), bSeedBefore);
+	TestTrue(TEXT("the new character drew a Cataclysm order seed"), bSeedAfter);
+	TestTrue(TEXT("its run faces the first four of its draw, by name and in order"), RunFaces == Drawn);
+	TestEqual(TEXT("the character record keeps the seed"), Written, Seed);
+	TestEqual(TEXT("a death leaves the seed as it was"), AfterADeath, Seed);
+	return true;
+}
+
+/**
+ * A loaded character whose run cannot be read begins a new run against its own draw -- the first N of the seed its
+ * record keeps, N its tier -- and does so again on a second load: the same Cataclysms, by name and in order, though each
+ * new run's own seed comes from the clock. "The same tier means the same Cataclysms, by name and not only by count."
+ * Issue #1324 slice 6a, ruled 2026-11-02.
+ *
+ * THE RECORD IS REWRITTEN TO SEED 7 AND TIER 3, naming no run, so the load takes the new-run path
+ * (`ARunThatCannotBeReadStartsANewOneAndSaysSo`'s "no run named"). A list drawn from the clock instead agrees with seed
+ * 7's by chance about once in 336. Prints "LOADED DRAW".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadLoadedDrawTest,
+	"Cataclysm.SaveLoad.ALoadedCharactersNewRunFacesItsOwnDrawEveryTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadLoadedDrawTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmSaveLoadDrawTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveACharacter(*this, /*bDies=*/false, Saved))
+	{
+		return false;
+	}
+	if (!RewriteCharacter(*this, Saved, [](UCataclysmCharacterSave& Record)
+		{
+			Record.CurrentRunId.Invalidate();
+			Record.CataclysmOrderSeed = 7;
+			Record.DifficultyTier = 3;
+		}))
+	{
+		return false;
+	}
+
+	const FString Drawn = NamesOf(UCataclysmRoster::ActiveFor(7, 3));
+	TArray<FString> Faced;
+	TArray<FString> Lines;
+	for (int32 Load = 1; Load <= 2; ++Load)
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(FString::Printf(TEXT("load %d: set-up: the loading world was built"), Load), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
+																				 Saved.CharacterId);
+		const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+		const FString RunFaces = Run ? NamesOf(Run->ActiveCataclysms) : FString();
+		Faced.Add(RunFaces);
+		Lines.Add(FString::Printf(TEXT("load %d: %s, tier %d, the character's seed %d, the run faces [%s]"), Load,
+								  FCataclysmSaveLoad::Describe(Report.Outcome), Run ? Run->DifficultyTier : -1,
+								  Scene.State->GetCataclysmOrderSeed(), *RunFaces));
+
+		TestEqual(FString::Printf(TEXT("load %d: set-up: a new run was begun"), Load), static_cast<int32>(Report.Outcome),
+				  static_cast<int32>(ECataclysmLoadOutcome::LoadedWithANewRun));
+		TestEqual(FString::Printf(TEXT("load %d: the loaded character holds the seed its record keeps"), Load),
+				  Scene.State->GetCataclysmOrderSeed(), 7);
+		TestTrue(FString::Printf(TEXT("load %d: the new run faces the character's draw, by name and in order"), Load),
+				 RunFaces == Drawn);
+	}
+
+	AddInfo(FString::Printf(TEXT("LOADED DRAW: seed 7's draw at tier 3 [%s]; %s"), *Drawn,
+							*FString::Join(Lines, TEXT("; "))));
+
+	TestTrue(TEXT("the second load's run faces the same Cataclysms as the first's, by name and in order"),
+			 Faced.Num() == 2 && Faced[0] == Faced[1]);
 	return true;
 }
 

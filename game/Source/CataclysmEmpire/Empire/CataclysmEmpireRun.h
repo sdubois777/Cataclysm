@@ -489,12 +489,15 @@ public:
 	/**
 	 * Which Cataclysms this run faces.
 	 *
-	 * HOW MANY comes from the difficulty tier and WHICH ONES from the seed. The
-	 * design says a character faces one Cataclysm at first and gains one per
-	 * boss defeated until it faces all eight; the project owner ruled on
-	 * 2026-09-06 that the ORDER they are added in belongs to the character, so
-	 * replaying at the same seed meets the same ones. `UCataclysmRoster::
-	 * ActiveFor` draws it and its comment carries the argument.
+	 * HOW MANY comes from the difficulty tier and WHICH ONES from the
+	 * character's Cataclysm order seed. The design says a character faces one
+	 * Cataclysm at first and gains one per boss defeated until it faces all
+	 * eight; the project owner ruled on 2026-09-06 that the ORDER they are added
+	 * in belongs to the character, so replaying meets the same ones.
+	 * `UCataclysmRoster::ActiveFor` draws it and its comment carries the
+	 * argument. **THE SEED IS THE CHARACTER'S AND NOT THE RUN'S** since issue
+	 * #1324 slice 6a: `BeginForCharacter` takes it from the character record,
+	 * and `Begin`, which names no character, uses the run's own seed.
 	 *
 	 * IT IS THE DENOMINATOR OF THE UNLOCK RULE. `CataclysmDungeonRequirement`
 	 * is half of this list's length, rounded up.
@@ -879,6 +882,11 @@ public:
 	 * A SECOND CALL IS A FRESH RUN rather than a continuation, so a caller that
 	 * wants to keep a run has to keep this object.
 	 *
+	 * A RUN THAT NAMES NO CHARACTER DRAWS ITS CATACLYSMS FROM ITS OWN SEED: this is
+	 * `BeginForCharacter` with the run's seed as the order seed, which is what
+	 * every run did before issue #1324 slice 6a. A console command and a test name
+	 * no character; a character's run goes through `BeginForCharacter`.
+	 *
 	 * @param InSeed         what to seed the run's chance with. The same seed
 	 *                       gives the same run, AND the same set of Cataclysms:
 	 *                       see `ActiveCataclysms`.
@@ -901,6 +909,33 @@ public:
 			   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 			   int32 LethalityRung = 0,
 			   int32 InDifficultyTier = 1);
+
+	/**
+	 * Starts a character's run: as `Begin`, except that WHICH CATACLYSMS IT FACES
+	 * COMES FROM THE CHARACTER and not from the run's seed. Issue #1324 slice 6a.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, section II, Ending a Run: "The same tier means
+	 * the same Cataclysms, by name and not only by count." and "Only defeating the
+	 * boss dungeon adds a Cataclysm to the next run." So the list is the first
+	 * `UCataclysmRoster::ActiveCountFor(InDifficultyTier)` of
+	 * `UCataclysmRoster::OrderFor(InCataclysmOrderSeed)`: two runs of one
+	 * character at one tier face the same list in the same order, and a run one
+	 * tier higher faces that list with one more at its end -- whatever each run's
+	 * own seed is. Ruled by the coordinating session on 2026-11-02 from that
+	 * sentence.
+	 *
+	 * THE TWO SEEDS ARE SEPARATE ON PURPOSE. `InSeed` is the run's chance -- its
+	 * waves, its depths, its cities lost -- and a replay is a new run, so it is
+	 * drawn afresh. `InCataclysmOrderSeed` is the character's and never changes:
+	 * the character record keeps it (`UCataclysmCharacterSave::CataclysmOrderSeed`).
+	 *
+	 * @param InCataclysmOrderSeed the character's Cataclysm order seed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	void BeginForCharacter(int32 InSeed, int32 InCataclysmOrderSeed,
+						   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
+						   int32 LethalityRung = 0,
+						   int32 InDifficultyTier = 1);
 
 	/** Which day the run is on. Counted from 0, before any day has passed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

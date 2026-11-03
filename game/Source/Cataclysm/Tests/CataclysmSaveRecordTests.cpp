@@ -130,9 +130,12 @@ namespace CataclysmSaveRecordTest
 	{
 		return {
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
+			// CHARACTER IS AT v7 SINCE 2026-11-02, when a character came to carry its
+			// Cataclysm order seed (issue #1324 slice 6a); Character_v6.json is a
+			// migration input now.
 			// RUN IS AT v3 SINCE 2026-11-02 AS WELL, when a run came to keep what the
 			// player's last death cost (issue #41); Run_v2.json is a migration input now.
-			// CHARACTER IS AT v6 AND RUN WAS AT v2 FROM 2026-11-02, when a character
+			// CHARACTER WAS AT v6 AND RUN WAS AT v2 FROM 2026-11-02, when a character
 			// came to carry the build its corrupted double wears and a run the
 			// double's hunt (issue #2688); the character was at v5 from earlier
 			// that day, when it came to carry its Consumption mark. Run_v1.json
@@ -147,7 +150,7 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v6.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v7.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v3.json") },
 		};
 	}
@@ -591,7 +594,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -604,12 +607,15 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
+	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
+	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
+		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
 	// TRUE AND NOT FALSE, the default, so a mark that was not read cannot pass. Issue #2688.
 	TestTrue(TEXT("the Consumption mark in the file"), Read->bMarkedByConsumption);
 	// AND THE BUILD CAPTURED AT THE CROSSING, VERSION 6, read back field by field with values the record's own fields
@@ -835,6 +841,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("DifficultyTier"), 1);
 	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false); // Since #2688: the chain runs on to version 5.
 	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // And on to 6.
+	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // And 7.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1372,7 +1379,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1384,7 +1391,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

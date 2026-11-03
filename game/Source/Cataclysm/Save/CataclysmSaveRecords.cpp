@@ -279,6 +279,28 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before it carried a Cataclysm order seed is given the one its identifier gives, so it keeps one
+	 * fixed draw from then on. Issue #1324 slice 6a, ruled 2026-11-02. Written out, for `Migrate_3_to_4`'s reason.
+	 *
+	 * THE IDENTIFIER IS READ FROM THE RECORD, AS THE SAVE WRITES IT (32 hex digits). A record with no identifier, or one
+	 * that does not parse, gets the seed of the zero identifier: still one fixed seed, and no refusal, since a character
+	 * that cannot be named by its identifier is not one this step should stop loading.
+	 */
+	bool Migrate_6_to_7(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		FString IdentifierText;
+		FGuid Identifier;
+		if (!Record->TryGetStringField(TEXT("CharacterId"), IdentifierText) || !FGuid::Parse(IdentifierText, Identifier))
+		{
+			Identifier = FGuid(); // A migration's: an unreadable identifier is the zero one.
+		}
+		Record->SetNumberField(TEXT("CataclysmOrderSeed"),
+							   UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier)); // A migration's: the identifier's seed.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -291,6 +313,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
+		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 	};
 }
 
@@ -298,6 +321,27 @@ TArrayView<const FCataclysmSaveMigrationStep>
 UCataclysmCharacterSave::MigrationSteps() const
 {
 	return CataclysmCharacterSaveMigration::CharacterSteps;
+}
+
+int32 UCataclysmCharacterSave::CataclysmOrderSeedFor(const FGuid& Identifier)
+{
+	// FNV-1a, 32 BITS, ITS TWO CONSTANTS WRITTEN OUT. The header says why this and not `GetTypeHash`; changing either
+	// constant, or the byte order below, moves every migrated character's Cataclysms.
+	uint32 Hash = 2166136261u;
+	const uint32 Words[4] = { Identifier.A, Identifier.B, Identifier.C, Identifier.D };
+	for (const uint32 Word : Words)
+	{
+		// MOST SIGNIFICANT BYTE FIRST, the order the identifier's digits are written in, read by shifting so the
+		// platform's byte order cannot reach it.
+		for (int32 Shift = 24; Shift >= 0; Shift -= 8)
+		{
+			Hash ^= (Word >> Shift) & 0xFFu;
+			Hash *= 16777619u;
+		}
+	}
+
+	// POSITIVE, as every clock-drawn seed in the game is (`& 0x7FFFFFFF`).
+	return static_cast<int32>(Hash & 0x7FFFFFFFu);
 }
 
 namespace CataclysmRunSaveMigration

@@ -310,10 +310,12 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	else
 	{
 		RunId = FGuid::NewGuid();
+		// THE RUN'S CHANCE FROM THE CLOCK, A NEW RUN'S; ITS CATACLYSMS FROM THE CHARACTER, the same ones its last run at
+		// this tier faced. Issue #1324 slice 6a.
 		const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
-		Instance->BeginEmpireRun(Seed, ECataclysmSurgeMode::Static,
-								 static_cast<int32>(SavedCharacter->Partition.Lethality),
-								 SavedCharacter->DifficultyTier); // A load's new run: at the character's tier.
+		Instance->BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed, ECataclysmSurgeMode::Static,
+											static_cast<int32>(SavedCharacter->Partition.Lethality),
+											SavedCharacter->DifficultyTier); // A load's new run: at the character's tier.
 	}
 
 	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS, on the saved floor when there is one.

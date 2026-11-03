@@ -676,6 +676,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	// THE NAME AND PARTITION, as the record holds them, so the next save writes them back. Select-screen step 1 (#753).
 	State->SetIdentity(Record.CharacterName, Record.Partition); // A load's: the name and partition.
 	State->SetDifficultyTier(Record.DifficultyTier); // A load's: the character's tier. Issue #1472.
+	State->SetCataclysmOrderSeed(Record.CataclysmOrderSeed); // A load's: the character's draw. Issue #1324 slice 6a.
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.
 	{
 		State->MarkByConsumption();

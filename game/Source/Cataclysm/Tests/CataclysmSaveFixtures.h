@@ -62,6 +62,18 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * The Cataclysm order seed the committed character files' identifier, `5C0B1A4E5B7F4D2E9A3C6F81D24E7B03`, gives:
+	 * what `Migrate_6_to_7` writes into `Character_v1.json` to `Character_v6.json` on their way to version 7. Issue #1324
+	 * slice 6a. A NUMBER WORKED OUT APART FROM THE STEP, in Python, by
+	 * `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`, which checks it is still what the identifier gives; so
+	 * a test comparing a migrated record with it compares two things made apart, as `EmptyPlayerBuild` below does.
+	 */
+	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
+
+	/** The seed `Character_v7.json` states: not the one its identifier gives, so a seed re-derived on load cannot pass. */
+	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
+
+	/**
 	 * An empty `FCataclysmPlayerBuild` as the save writes one: what `Migrate_5_to_6` writes into a character record and
 	 * what a record holding no build writes back. Issue #2688. Built from the struct's defaults here, independently of
 	 * the step, so a test comparing a migrated record with it compares two things made apart.

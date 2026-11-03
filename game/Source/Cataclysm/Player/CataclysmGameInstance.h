@@ -79,6 +79,12 @@ public:
 	 * below rather than through a second read here. This is the path
 	 * `Cataclysm.EmpireMap` and `Cataclysm.EmpireAdvance` reach, so it is the
 	 * one that has to be right. Issue #1444.
+	 *
+	 * IT NAMES NO CHARACTER, so the clock's seed also draws the run's Cataclysms
+	 * (`BeginEmpireRun`). In the C++, only console commands reach it
+	 * (`Cataclysm.EmpireMap`, `Cataclysm.EmpireAdvance`, `Cataclysm.EnterDungeon`); a
+	 * character's run comes through `BeginACharactersEmpireRun`. Issue #1324
+	 * slice 6a.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* GetOrBeginEmpireRun();
@@ -160,6 +166,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* BeginEmpireRun(
 		int32 Seed = 0,
+		ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
+		int32 LethalityRung = 0,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * Throws away whatever run was in progress and starts a CHARACTER'S run: as `BeginEmpireRun`, except that the
+	 * Cataclysms it faces are drawn from the character's Cataclysm order seed rather than from the run's `Seed`
+	 * (`UCataclysmEmpireRun::BeginForCharacter`). Issue #1324 slice 6a, ruled 2026-11-02 from
+	 * `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the same Cataclysms, by name and not only by count."
+	 *
+	 * THE TWO DOORS A CHARACTER'S RUN COMES THROUGH IN PLAY: a new character's (`ACataclysmGameMode::
+	 * MakeThePendingCharacter`) and a loaded character's new run (`FCataclysmSaveLoad::CharacterAndRun`). Both pass
+	 * `ACataclysmPlayerState::GetCataclysmOrderSeed` or the record's `CataclysmOrderSeed`. `BeginEmpireRun` is this with
+	 * the run's own seed as the order seed, for a caller that names no character: a console command, a test.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	UCataclysmEmpireRun* BeginACharactersEmpireRun(
+		int32 Seed,
+		int32 CataclysmOrderSeed,
 		ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 		int32 LethalityRung = 0,
 		int32 DifficultyTier = 0);

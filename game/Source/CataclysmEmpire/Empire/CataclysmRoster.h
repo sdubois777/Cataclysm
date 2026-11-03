@@ -114,6 +114,12 @@ public:
 	 * gives both. `cataclysm_order_for` in `sim/cataclysm_sim/engine.py` has the
 	 * argument in full.
 	 *
+	 * **IN THE GAME THE SEED IS THE CHARACTER RECORD'S** since issue #1324 slice
+	 * 6a: `UCataclysmCharacterSave::CataclysmOrderSeed`, drawn once when the
+	 * character is made and handed to `UCataclysmEmpireRun::BeginForCharacter`.
+	 * Until then every run passed its own clock-drawn seed here, so a character's
+	 * next run met whatever the clock drew.
+	 *
 	 * **IT DRAWS FROM ITS OWN STREAM AND NOT FROM THE RUN'S**, which is a port
 	 * of the model's private generator and is here for the model's own stated
 	 * reason: taking these draws from the run's stream would shift every later

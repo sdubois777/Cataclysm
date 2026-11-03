@@ -33,6 +33,14 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginEmpireRun(
 	int32 Seed, ECataclysmSurgeMode Mode, int32 LethalityRung,
 	int32 DifficultyTier)
 {
+	// NO CHARACTER NAMED, SO THE RUN'S OWN SEED DRAWS ITS CATACLYSMS, as before issue #1324 slice 6a.
+	return BeginACharactersEmpireRun(Seed, Seed, Mode, LethalityRung, DifficultyTier);
+}
+
+UCataclysmEmpireRun* UCataclysmGameInstance::BeginACharactersEmpireRun(
+	int32 Seed, int32 CataclysmOrderSeed, ECataclysmSurgeMode Mode, int32 LethalityRung,
+	int32 DifficultyTier)
+{
 	EmpireRun = NewObject<UCataclysmEmpireRun>(this);
 
 	// WHICH TIER THE GAME IS BEING PLAYED AT, WHEN NOBODY SAID.
@@ -70,7 +78,9 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginEmpireRun(
 	// no modifiers, which is what the game did before this existed.
 	EmpireRun->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
 
-	EmpireRun->Begin(Seed, Mode, LethalityRung, Tier);
+	// THE CHARACTER'S DRAW, NOT THE RUN'S: the run's seed is its chance, and the order seed decides which Cataclysms it
+	// faces. Issue #1324 slice 6a.
+	EmpireRun->BeginForCharacter(Seed, CataclysmOrderSeed, Mode, LethalityRung, Tier);
 
 	// AND THE GAME MODE OF THE LEVEL BEING PLAYED TAKES ITS TIER, so a run begun during play is fought at its own tier at
 	// once. Issue #1472.

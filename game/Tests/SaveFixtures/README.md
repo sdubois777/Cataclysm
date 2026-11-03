@@ -436,6 +436,21 @@ followed, ruled 2026-11-01:
   `Character_v5.json` is now a migration input, not edited again;
   `Cataclysm.ConsumptionDouble.ACharacterFileFromBeforeTheBuildMigratesWithNone`
   runs it through the step and checks every other field is kept.
+- **The fourth is `CataclysmOrderSeed`, the character's Cataclysm order seed**
+  (issue #1324 slice 6a, ruled 2026-11-02 from `docs/Cataclysm_GDD_v2.md`, Ending
+  a Run: "The same tier means the same Cataclysms, by name and not only by
+  count."): the character record went to version 7 on 2026-11-02,
+  `Migrate_6_to_7` writes into a version 6 file the seed its `CharacterId` gives
+  (`UCataclysmCharacterSave::CataclysmOrderSeedFor`, 32-bit FNV-1a, 1412640493 for
+  this folder's identifier), and `Character_v7.json` is `Character_v6.json` at
+  version 7 with `"CataclysmOrderSeed": 975318642` added after
+  `ConsumptionBuild` and nothing else changed. **975318642 and not 1412640493**,
+  because a file holding the seed its identifier gives would pass whether the seed
+  was read or worked out again on load; and not 0, the field's default. No other
+  number in the file is 975318642. `Character_v6.json` is now a migration input,
+  not edited again;
+  `Cataclysm.CataclysmDraw.ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed`
+  runs it through the step and checks every other field is kept.
 - **And the run record took its first version the same day, to 2**, for the
   corrupted double's hunt (issue #2688, ruled 2026-11-02): three fields on
   `Walk` (`bConsumptionDoubleHasHunted`, `ConsumptionDoubleHealthShare`,
@@ -484,6 +499,7 @@ followed, ruled 2026-11-01:
 | `Character_v4.json` | The same character at version 4: version 3's contents, plus its difficulty tier, 2 |
 | `Character_v5.json` | The same character at version 5: version 4's contents, plus its Consumption mark, true |
 | `Character_v6.json` | The same character at version 6: version 5's contents, plus the build its corrupted double wears |
+| `Character_v7.json` | The same character at version 7: version 6's contents, plus its Cataclysm order seed, 975318642 |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -498,8 +514,8 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had five since
-(version 6 since 2026-11-02), and the run record two (version 3 since
+none of them had a migration to run. The character record has had six since
+(version 7 since 2026-11-02), and the run record two (version 3 since
 2026-11-02). Its header says more.
 
 ## Two things to keep in mind when editing one

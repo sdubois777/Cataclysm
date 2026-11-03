@@ -542,6 +542,13 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.bMarkedByConsumption = State->IsMarkedByConsumption(); // A save's: the Consumption mark. Issue #2688.
 		Record.ConsumptionBuild = State->ConsumptionBuild(); // A save's: the build captured at the crossing (O4).
 
+		// AND THE CATACLYSM ORDER SEED, ALWAYS, issue #1324 slice 6a: the one the creator drew or a load set, and for a
+		// character that never had one the seed its identifier gives, the rule a version 6 file migrates by. The writer
+		// sets `CharacterId` before it calls this.
+		Record.CataclysmOrderSeed = State->HasCataclysmOrderSeed()
+			? State->GetCataclysmOrderSeed() // A save's: the character's own seed.
+			: UCataclysmCharacterSave::CataclysmOrderSeedFor(Record.CharacterId);
+
 		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
 		//
 		// WRITTEN UNCONDITIONALLY, UNLIKE THE CREATION CHOICE ABOVE, and the
