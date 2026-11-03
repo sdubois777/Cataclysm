@@ -10,7 +10,8 @@ Decisions made outside the Google Drive documents, newest first.
 (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); `UCataclysmAccountSave::EmpireUpgradePoints`, an
 `int32` and now a `double`, `SchemaVersionNow` 1 to 2, `MigrationSteps` and `CataclysmAccountSaveMigration::Migrate_1_to_2`,
 new (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`); on `UCataclysmGameInstance`, `HeldAccount`,
-`AccountSlotFor`, `AutomationTestSlotSuffix`, `AccountFor`, `BankEmpirePoints`, `PlayingPartition` and `In`, new
+`RefusedAccountSlots`, `AccountSlotFor`, `AutomationTestSlotSuffix`, `AccountFor`, `BankEmpirePoints`,
+`PlayingPartition` and `In`, new
 (`game/Source/Cataclysm/Player/CataclysmGameInstance.h`, `.cpp`); `UCataclysmSaveWriter::WriteTheAccountRecord`, new, and
 `NoteTrigger`, changed (`game/Source/Cataclysm/Save/CataclysmSaveWriter.h`, `.cpp`); a comment on
 `ECataclysmSaveTrigger::AccountChanged` (`CataclysmSaveTriggers.h`); `ACataclysmDungeonGameMode::BankTheDefeatsEmpirePoints`,
@@ -19,20 +20,29 @@ new, and `ClearEmpireDungeon`, changed (`game/Source/Cataclysm/Dungeon/Cataclysm
 (`CataclysmEmpireMapLayout.h`, `.cpp`); `UCataclysmEmpireMapWidget::WriteStatus` (`CataclysmEmpireMapWidget.cpp`);
 `game/Tests/SaveFixtures/Account_v2.json`, new, and its `README.md`; tests:
 5 appended to `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp` (not a file of their own:
-`tools/tests/test_game_readme_is_true.py` holds the empire module to the files `game/README.md` describes) and 9 in
+`tools/tests/test_game_readme_is_true.py` holds the empire module to the files `game/README.md` describes) and 11 in
 `game/Source/Cataclysm/Tests/CataclysmEmpirePointsBankTests.cpp`, new, all in the new group `Cataclysm.EmpirePoints.`; the account
 fixture named in `CataclysmSaveRecordTests.cpp`, and one literal in `CataclysmSaveStorageTests.cpp`;
 `tools/tests/test_empire_points_port.py`, new; a docstring sentence each in
 `sim/tests/test_population_scales_empire_points.py` and
 `tools/tests/test_cataclysm_order_and_population_experience_are_stated.py`, which said the C++ awarded no points.
-**The run record is unchanged** and stays at version 4. Issue [#52](https://github.com/sdubois777/Cataclysm/issues/52),
+**The run record is unchanged** by this slice; it is at version 5, #1324 slice 6e's. Issue
+[#52](https://github.com/sdubois777/Cataclysm/issues/52),
 the first slice: awarding and banking points. The empire upgrade tree that spends them is not this slice.
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED AND NOT RUN.** Phase 1 was written with no build, by instruction: the build machine was in
-  use. No Unreal test and no guard proof has been run by the engine. Everything under "Registered before the run" is a
-  prediction for a window.
+- **COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction: the build machine was in use. Phase 2
+  (2026-11-03) rebased it onto development `7887021fd`, which holds #1324 slice 6e's win, reviewed it, and compiled it:
+  every changed `.cpp` alone and in its unity file, in both modules (under "Compiled" below). No Unreal test and no
+  guard proof has been run by the engine. Everything under "Registered before the run" is a prediction for a window.
+- **A WON BOSS DUNGEON BANKS ITS POINTS, AND BEFORE THE WIN BEGINS THE NEXT RUN.** The Cataclysm boss dungeon is a defeat
+  like any other -- the design's "It applies to every dungeon type, the Cataclysm boss included" -- so its clear banks 25
+  times the share living, and `ClearEmpireDungeon` banks it before `BeginTheRunAfterAWin` replaces the run that measured
+  it. `RunWon` stays the last trigger raised, which slice 6e's tests already read.
+- **THE MAP DOES NOT SHOW A WON BOSS'S AWARD IN BRACKETS.** The next run begins at once with nothing awarded
+  (`BeginForCharacter` zeroes `LastEmpirePointsAwarded`), so after a win the map shows the bank, 25 points larger, with no
+  "(+25.0 ...)". The win line says the run was won. A judgement of phase 2, left rather than carried across runs.
 - **A SOLO SELF-FOUND CHARACTER'S POINTS ARE NOT BANKED.** The design gives it a private bank in its own character
   record (`UCataclysmCharacterSave::PrivateEmpireUpgradePoints`, still an `int32`), and banking there would need the
   character record's version 8. This slice leaves it: the defeat is measured, logged as not banked, and the empire map
@@ -131,21 +141,165 @@ nowhere else, so a resolve earns nothing there either. `tools/tests/test_empire_
 equal kind by kind, the share's shape, the order (removal, award, retake in the game; award before retake in the model),
 and that neither half awards anywhere but a defeat.
 
+### Rebased onto #1324 slice 6e's win (phase 2)
+
+Branch `feat/a-dungeon-defeated-earns-empire-points-2`, phase 1 (`b8379f4be`, cut from `1d2b15f9d`) rebased onto
+development `7887021fd`. Git stopped on eight files; each kept both sides:
+
+- **`UCataclysmEmpireRun::ClearDungeon`** merged by itself: the award is measured after the dungeon leaves the map and
+  before a Fallen City's `Retake`, and 6e's win (`bWon`, `WonDay`, the owed days dropped) is set last, after both. A
+  conflict below it, beside 6e's new `NoteLastRunWon`, kept `NoteLastRunWon` and then the three empire-points functions.
+- **`ACataclysmDungeonGameMode::ClearEmpireDungeon`** merged by itself into this order: `ClearDungeon`, then
+  `BankTheDefeatsEmpirePoints` (which raises `AccountChanged`), then `LeaveEmpireDungeon` (whose owed days a win has
+  already dropped), then, for a win, `BeginTheRunAfterAWin` (which raises `RunWon`). Its header comment conflicted and
+  keeps both paragraphs, the bank's saying it comes before the win's next run.
+- **`UCataclysmGameInstance`**: both forward declarations (`ACataclysmPlayerState`, `UCataclysmAccountSave`) and the union
+  of both sides' includes.
+- **`CataclysmSaveRecordTests.cpp`**: 6e's run fixture comment (`Run_v5.json`) and this slice's `Account_v2.json` line.
+- **`CataclysmEmpireRunTests.cpp`**: 6e's win tests, then this slice's five, each section whole.
+- **The fixtures README**: 6e's version 5 bullet, then this slice's account bullet; the closing count says "the run record
+  four (version 5 since 2026-11-03), and the account record one".
+- **This file**: this entry first, then #2706's and 6e's, a rule between each.
+
+`python tools/check_resolved_cpp.py --changed`: "18 files read, 0 with complaints".
+
+### Compiled (phase 2)
+
+`python tools/unreal_build.py build`, three times, each read in full:
+
+1. With every change of the branch uncommitted (`git reset --mixed origin/development`), so adaptive unity compiled
+   each changed `.cpp` alone: "Build: Succeeded - 67 actions, 60 files compiled". Nothing needed fixing: the two risks
+   phase 1 named -- a `double` `UPROPERTY` and a `TObjectPtr` to a forward-declared class in the game instance's
+   header -- compile.
+2. After the review's fixes (below), again uncommitted: "Build: Succeeded - 21 actions, 18 files compiled". The object
+   files' times show `CataclysmGameInstance.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmEmpirePointsBankTests.cpp`,
+   `CataclysmEmpireMapLayout.cpp`, `CataclysmEmpireMapWidget.cpp` and `CataclysmSaveWriter.cpp` compiled alone in it,
+   and the first build compiled `CataclysmEmpireRun.cpp`, `CataclysmEmpireRunTests.cpp`, `CataclysmSaveRecords.cpp`,
+   `CataclysmSaveRecordTests.cpp` and `CataclysmSaveStorageTests.cpp` alone, none changed since.
+3. Committed, with `Makefile.bin` moved aside so the unity files were regenerated: "Build: Succeeded - 17 actions, 12
+   files compiled: Module.Cataclysm.22.cpp, Module.Cataclysm.31.cpp, Module.Cataclysm.11.cpp, Module.Cataclysm.13.cpp,
+   Module.Cataclysm.12.cpp, Module.Cataclysm.21.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.41.cpp,
+   Module.Cataclysm.43.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.42.cpp". The changed
+   files sit in 11 (map layout and widget), 12 (game instance), 13 (save records and writer), 21 (the bank tests), 31
+   (the save record and storage tests) and 38 (the dungeon game mode), all compiled. The empire module has too few
+   files for unity and builds each file alone, so build 1 is its only build.
+
+### Reviewed (phase 2)
+
+- **The order holds.** The award is measured before `Retake` (`ClearDungeon`), banked before the walk's owed days run
+  (`LeaveEmpireDungeon` follows the bank) and before a win begins the next run. A resolve never reaches `ClearDungeon`;
+  a death's resolve goes through `ResolveDungeonOnDeath`, and `ClearEmpireDungeon` banks only when `ClearDungeon`
+  cleared something. `ClearEmpireDungeon` is the only caller of `ClearDungeon` outside the tests.
+- **The account write cannot write a wrong partition's record.** `AccountChanged` is raised only after a successful
+  bank, in the same call, so `HeldAccount` is then the record banked into, and the writer writes it to the slot its own
+  partition names. The slot name is built in one place, `AccountSlotFor`, which the bank, the writer, the map line and
+  the tests all use; nothing else builds an account slot name to write to.
+- **FIXED: A REFUSED SLOT WAS READ AND LOGGED AT EVERY ASK.** The empire screen asks for the bank at every refresh of its
+  status line (`WriteStatus` to `EmpirePointsLineIn` to `AccountFor`), so a slot holding a record that would not read,
+  or one naming another partition, was read from disk and logged at `Error` at every refresh. `AccountFor` now
+  remembers a refused slot for the session (`RefusedAccountSlots`) and refuses it again without reading or logging.
+  Tested by `ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas` (three asks, one error expected), which also runs
+  the refusal phase 1 only read.
+- **ADDED: the boss dungeon's award, tested.** `ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins`.
+- **A KNOWN RISK, LEFT.** Switching to another partition and back within one session re-reads the first partition's slot;
+  were its last asynchronous write still in flight, the read would see the record before it. A write takes milliseconds
+  and a partition switch goes through the select screen, so this is recorded rather than built against.
+- **The test slots are deleted.** Every account slot a test reaches ends in `_AutomationTest`
+  (`AccountSlotFor` under `GIsAutomationTesting`). A test's first write to one finds it absent -- each bank test deletes
+  it first, and every test's end deletes what it wrote -- so `FCataclysmTestSaves` notes it and deletes it when the test
+  ends. Tests outside this group that clear a dungeon through the game mode with a character playing -- the
+  `Cataclysm.WinningTheRun.` and `Cataclysm.DungeonMode.` scenes -- now bank and, where a writer is writing, write that
+  slot too, and it is deleted the same way. The run's "Test saves: ..., 0 left behind" line is registered below.
+
+### What real play now writes
+
+**`Account_<Population>_<Lethality>.sav`** in the game's `Saved/SaveGames` -- `Account_Offline_Standard.sav` for a
+character made with the defaults, `Account_Online_Hardcore.sav` and so on for the others
+(`UCataclysmSavePartition::AccountSlotName`, population first) -- **written for the first time by the first ordinary or
+better dungeon a non-Solo-Self-Found character defeats** in a level whose save writer is writing (every level
+`ACataclysmGameMode::BeginSavingThisRun` began), asynchronously, at the defeat, and again at every later defeat. Before
+this nothing wrote an account record. A Solo Self-Found character writes none.
+
+### Assertion audit (phase 2)
+
+Every assertion that compares with a fixed number, or relies on a starting state, was checked against the code it
+reads:
+
+- **Full population after `Begin(1)`** (`ADefeatAtFullPopulationAwardsTheBaseOfEachKind`, `ADefeatAtFullPopulationBanksTheBase`,
+  the Solo Self-Found, death, refusal and boss tests): `UCataclysmEmpireMap::Build` sets every city's `Population` to its
+  `MaxPopulation`, and `BeginForCharacter` lands no wave and passes no day, so the share is exactly 1 until a day runs.
+  No banking test advances a day before its clear; `LeaveEmpireDungeon` runs only owed days, and none are owed without
+  `EnterEmpireDungeon`.
+- **610,000 and 605,000** (the 4.959016 and 0.991803 figures): the map is a diamond of radius 3, 25 cities -- the Pillar
+  150,000, four Sanctuaries 60,000, eight Bulwarks 20,000, twelve Outposts 5,000 -- 610,000 in all; one Outpost fallen
+  and emptied leaves 605,000 (`TotalPopulation` counts standing cities only). 5 times 605,000 over 610,000 is
+  4.95901639; the test computes it from the map's own maximum, with a tolerance of a billionth. `RetakenFraction` is 0.5,
+  so the retaken Outpost holds 2,500, as asserted.
+- **Half**: 2,500, 10,000, 30,000 and 75,000, each exact in a float, so the share is exactly 0.5.
+- **The third**: every city given 1,000 of 3,000, so the share is 25,000 over 75,000, the double nearest a third; three
+  of them add to exactly 1.0 (three times that double is 1 minus 2 to the -54, which rounds to 1.0 on the tie).
+- **37.625** (`Account_v2.json`): exact in binary; the engine writes doubles with `%.17g`. **37** (`Account_v1.json`):
+  the version 1 file's whole number, unchanged by the step.
+- **The write count, "at least one"** (`TheBankSurvivesASaveRoundTrip`): the bank's `AccountChanged` starts exactly one
+  write, and leaving the dungeon may start others; the slot's contents are what is asserted.
+- **The death's one detonation** (`ADeathsResolveBanksNothing`): the death resolves its dungeon, then runs the
+  Standard death cost of 5 days (`DeathDayCostStandard`). The first wave lands on day 1, and no surge dungeon resolves in
+  under 9.28 days (`ResolveBaseDays` 10 plus 1.6 a floor, times a jitter of at most 20% down), so nothing else detonates
+  in those days.
+- **The boss**: a tier 1 character's run through `BeginACharactersEmpireRun` faces one Cataclysm, and its boss dungeon,
+  placed by hand on no city, awards 25 at full population; `RunWon` is 10 and `AccountChanged` 7.
+
 ### Registered before the run
 
-`Cataclysm.EmpirePoints.` is a new group with no test at the base: **14 by name**, 5 in the empire module and 9 in the
-game module. `Cataclysm.SaveRecords.` and `Cataclysm.SaveStorage.` gain none; `EveryFixtureHoldsEveryFieldItsRecordWrites`
-now reads `Account_v2.json`, and `ARecordWrittenToASlotComesBackWhole` compares a double. Whole suite: the base's last
-measured total plus 14. The engine words a failed `TestTrue` "Expected '<what>' to be true.", a failed `FString`
-`TestEqual` "Expected '<what>' to be "<expected>", but it was "<actual>".", and a failed `double` `TestEqual` "Expected
-'<what>' to be %f, but it was %f and outside tolerance %f." (`AutomationTest.cpp`, read). Each anchor below occurs once
-in its file, counted by `str.count` at the registration commit; no break was compiled.
+`Cataclysm.EmpirePoints.` is a new group with no test at the base: **16 by name**, 5 in the empire module and 11 in the
+game module (9 from phase 1, 2 from phase 2's review). `Cataclysm.SaveRecords.` and `Cataclysm.SaveStorage.` gain none;
+`EveryFixtureHoldsEveryFieldItsRecordWrites` now reads `Account_v2.json`, and `ARecordWrittenToASlotComesBackWhole`
+compares a double.
+
+**Base counts** are "Test Completed" lines counted by prefix in the whole-suite engine log of #2706's registration
+commit `b0233ef7d`, whose game tree is development `7887021fd`'s: 4684 performed, 47 skipped halves. Every prefix ends
+in a dot, and none begins another in the list or takes a group it was not meant to (`Cataclysm.EmpireRun.` does not
+take `Cataclysm.EmpireRunTier.`, nor `Cataclysm.DungeonMode.` `Cataclysm.DungeonModifiers.`), checked against every
+path in that log.
+
+| Run alone | Registered | Why |
+|---|---|---|
+| `Cataclysm.EmpirePoints.` | 16: none at the base, + 16 by name | the slice's own |
+| `Cataclysm.EmpireRun.` | 68 | `ClearDungeon` and `BeginForCharacter` changed |
+| `Cataclysm.SaveRecords.` | 17 | the account fixture is `Account_v2.json` |
+| `Cataclysm.SaveStorage.` | 9 | one literal is a double |
+| `Cataclysm.SaveMigration.` | 8 | the account record has a migration chain |
+| `Cataclysm.SaveWriter.` | 25 | `NoteTrigger` writes the account record |
+| `Cataclysm.SaveTriggers.` | 6 | `AccountChanged` is raised |
+| `Cataclysm.SaveLoad.` | 75 | the records it reads and writes |
+| `Cataclysm.SavePartition.` | 4 | account slot names |
+| `Cataclysm.WinningTheRun.` | 11 | a win now banks, and `RunWon` must stay last |
+| `Cataclysm.BossClearedWins.` | 2 | a won boss dungeon |
+| `Cataclysm.BossOnTheMap.` | 5 | the map's status line |
+| `Cataclysm.BossFloor.` | 5 | the stairs' clear |
+| `Cataclysm.DungeonMode.` | 46 | clears through the game mode |
+| `Cataclysm.DeathCost.` | 9 | a death's resolve banks nothing |
+| `Cataclysm.EmpireScreen.` | 14 | the map's status line |
+
+**Whole suite: 4684 + 16 = 4700 performed**, 47 skipped halves (no new test skips one), and "Test saves: N written and
+deleted, 0 left behind".
+
+The engine words a failed `TestTrue` "Expected '<what>' to be true.", a failed `FString` `TestEqual` "Expected '<what>' to
+be "<expected>", but it was "<actual>".", a failed `int32` `TestEqual` "Expected '<what>' to be %d, but it was %d.", a
+failed `double` `TestEqual` "Expected '<what>' to be %f, but it was %f and outside tolerance %f.", and an expected
+message met the wrong number of times "Expected ('Warning') level log message or higher matching '<pattern>' to occur %d
+times with Contains match type, but it was found %d time(s)." -- checked only when the test has no other error
+(`AutomationTest.cpp`, read). Each anchor below occurs once in its file, counted by `str.count` at the registration
+commit (`prove_t52.py --anchors-only`); no break was compiled. All six run under `Cataclysm.EmpirePoints.`, 16 tests.
 
 | Proof | Break | Prefix | Predicted |
 |---|---|---|---|
-| P1, fractions rounded away | `Account->EmpireUpgradePoints += Points;` to `Account->EmpireUpgradePoints += FMath::FloorToDouble(Points);`, in `CataclysmGameInstance.cpp` | `Cataclysm.EmpirePoints.` | 4 tests, 7 assertions: `ADefeatAtHalfTheLivingPopulationBanksHalf` "an ordinary dungeon at half the population banks 0.5" (to be true); `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` "the first defeat banks a third" and "three defeats at a third bank exactly 1.0" (to be true) and "and the screen shows 1.0" (to be "1.0", but it was "0.0"); `TheBankSurvivesASaveRoundTrip` "holding the half point banked" and "and a new game instance reads the same bank" (to be true); `TheMapLineShowsTheBankRoundedDownToATenth` "after a defeat at half the population it shows the half point and where it came from" (to be "0.5 empire points banked (+0.5 from the last dungeon defeated)", but it was "0.0 empire points banked (+0.5 from the last dungeon defeated)"). Whole-point awards still bank, so `ADefeatAtFullPopulationBanksTheBase` and `ADeathsResolveBanksNothing` pass, and the five run tests do not reach the bank |
-| P2, a Fallen City worth an ordinary dungeon | `case ECataclysmDungeonType::FallenCity: return FallenCityEmpirePoints;` to `case ECataclysmDungeonType::FallenCity: return BasicDungeonEmpirePoints;`, in `CataclysmEmpireRun.cpp` | `Cataclysm.EmpirePoints.` | 2 tests, 2 assertions: `ADefeatAtFullPopulationAwardsTheBaseOfEachKind` "a Fallen City at full population awards its base, 5" (to be true); `AFallenCitysDefeatIsMeasuredBeforeItsCityIsRetaken` "the award is the share before the retake" (to be 4.959016, but it was 0.991803 and outside tolerance 0.000000: 5 and 1 times 605,000 over 610,000). "and not the share after it" passes (0.99 is far from 4.98) |
-| P3, the share always whole | `Map != nullptr ? static_cast<double>(Map->TotalPopulation()) : 0.0,` to `Map != nullptr ? static_cast<double>(Map->TotalMaxPopulation()) : 0.0,`, in `CataclysmEmpireRun.cpp` | `Cataclysm.EmpirePoints.` | 6 tests, 10 assertions: `ADefeatAtHalfTheLivingPopulationAwardsHalf` "an ordinary dungeon at half the population awards 0.5" and "a Quest dungeon at half the population awards 1.5" (to be true); `AFallenCitysDefeatIsMeasuredBeforeItsCityIsRetaken` "the award is the share before the retake" (to be 4.959016, but it was 5.000000 and outside tolerance 0.000000); `ADefeatAtHalfTheLivingPopulationBanksHalf` its one (to be true); `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` its three, the last "but it was "3.0""; `TheBankSurvivesASaveRoundTrip` its two; `TheMapLineShowsTheBankRoundedDownToATenth` its one, "but it was "1.0 empire points banked (+1.0 from the last dungeon defeated)"". At full population the share is 1 either way, so the bases, the death and the Solo Self-Found tests pass |
+| P1, fractions rounded away | `Account->EmpireUpgradePoints += Points;` to `Account->EmpireUpgradePoints += FMath::FloorToDouble(Points);`, in `CataclysmGameInstance.cpp` | `Cataclysm.EmpirePoints.` | 4 tests, 7 assertions: `ADefeatAtHalfTheLivingPopulationBanksHalf` "an ordinary dungeon at half the population banks 0.5" (to be true); `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` "the first defeat banks a third" and "three defeats at a third bank exactly 1.0" (to be true) and "and the screen shows 1.0" (to be "1.0", but it was "0.0"); `TheBankSurvivesASaveRoundTrip` "holding the half point banked" and "and a new game instance reads the same bank" (to be true); `TheMapLineShowsTheBankRoundedDownToATenth` "after a defeat at half the population it shows the half point and where it came from" (to be "0.5 empire points banked (+0.5 from the last dungeon defeated)", but it was "0.0 empire points banked (+0.5 from the last dungeon defeated)"). Whole-point awards still bank, so `ADefeatAtFullPopulationBanksTheBase`, `ADeathsResolveBanksNothing` and the boss's 25 pass, the refusal banks nothing, and the five run tests do not reach the bank. "16 performed, 12 succeeded, 4 failed" |
+| P2, a Fallen City worth an ordinary dungeon | `case ECataclysmDungeonType::FallenCity: return FallenCityEmpirePoints;` to `case ECataclysmDungeonType::FallenCity: return BasicDungeonEmpirePoints;`, in `CataclysmEmpireRun.cpp` | `Cataclysm.EmpirePoints.` | 2 tests, 2 assertions: `ADefeatAtFullPopulationAwardsTheBaseOfEachKind` "a Fallen City at full population awards its base, 5" (to be true); `AFallenCitysDefeatIsMeasuredBeforeItsCityIsRetaken` "the award is the share before the retake" (to be 4.959016, but it was 0.991803 and outside tolerance 0.000000: 5 and 1 times 605,000 over 610,000). "and not the share after it" passes (0.99 is far from 4.98). "16 performed, 14 succeeded, 2 failed" |
+| P3, the share always whole | `Map != nullptr ? static_cast<double>(Map->TotalPopulation()) : 0.0,` to `Map != nullptr ? static_cast<double>(Map->TotalMaxPopulation()) : 0.0,`, in `CataclysmEmpireRun.cpp` | `Cataclysm.EmpirePoints.` | 6 tests, 10 assertions: `ADefeatAtHalfTheLivingPopulationAwardsHalf` "an ordinary dungeon at half the population awards 0.5" and "a Quest dungeon at half the population awards 1.5" (to be true); `AFallenCitysDefeatIsMeasuredBeforeItsCityIsRetaken` "the award is the share before the retake" (to be 4.959016, but it was 5.000000 and outside tolerance 0.000000); `ADefeatAtHalfTheLivingPopulationBanksHalf` its one (to be true); `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` its three, the last "but it was "3.0""; `TheBankSurvivesASaveRoundTrip` its two; `TheMapLineShowsTheBankRoundedDownToATenth` its one, "but it was "1.0 empire points banked (+1.0 from the last dungeon defeated)"". At full population the share is 1 either way, so the bases, the death, the Solo Self-Found, the refusal and the boss tests pass. "16 performed, 10 succeeded, 6 failed" |
+| P4, a refusal read again at every ask | `if (RefusedAccountSlots.Contains(Slot))` to `if (RefusedAccountSlots.Contains(Slot + TEXT("#")))`, in `CataclysmGameInstance.cpp` | `Cataclysm.EmpirePoints.` | 1 test, 1 assertion: `ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas` "Expected ('Warning') level log message or higher matching 'names another partition' to occur 1 times with Contains match type, but it was found 3 time(s)." -- the bank, the map line and the direct ask each read and log. Every other assertion in it still holds, so the count is checked. "16 performed, 15 succeeded, 1 failed" |
+| P5, a won boss dungeon banks nothing | `BankTheDefeatsEmpirePoints(*Run, Cleared);` to `if (!Run->bWon) { BankTheDefeatsEmpirePoints(*Run, Cleared); }`, in `CataclysmDungeonGameMode.cpp` | `Cataclysm.EmpirePoints.` | 1 test, 2 assertions: `ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins` "and the account banked it, 25" and "and wrote it to its slot" (to be true). The run still measured 25 and `RunWon` is still last. No other test in the group clears a boss through the game mode. "16 performed, 15 succeeded, 1 failed" |
+| P6, the boss banked after the win's next run | two swaps in `CataclysmDungeonGameMode.cpp`: P5's, and `Instance->BeginTheRunAfterAWin(*Winner, UCataclysmSaveWriter::In(World));` to the same followed by `BankTheDefeatsEmpirePoints(*Run, Cleared);` | `Cataclysm.EmpirePoints.` | 1 test, 1 assertion: `ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins` "Expected 'the win's write is still the last trigger' to be 10, but it was 7." The 25 is still banked and written, from the won run. "16 performed, 15 succeeded, 1 failed" |
 
 ### Proofs run in phase 1 (Python only)
 
@@ -159,12 +313,15 @@ With `tools/prove_guard.py` in this worktree, which no other process uses, again
 
 ### Not tested
 
-- **Nothing in Unreal has run or compiled.** See SAID FIRST.
+- **Nothing in Unreal has run.** It compiles; see SAID FIRST and "Compiled".
 - **A clear walked down the stairs.** The tests bind the game mode to a placed dungeon and call `ClearEmpireDungeon`,
   which is what the last floor's stairs call; `-nullrhi` cannot walk a player onto stairs.
 - **The map widget's label.** A headless widget's labels are null, so `WriteStatus` is read, not run; the words are
   `EmpirePointsLineIn`'s, which is tested.
-- **A slot that will not read, or names another partition.** The refusal is read, not run.
+- **A slot that will not read.** The refusal of a record naming another partition is run
+  (`ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas`); one that will not read takes the same remembered refusal
+  through the other branch, which is read, not run.
+- **A partition switched and switched back within a session.** See the known risk under "Reviewed".
 - **Spending.** There is no empire upgrade tree in the game.
 
 ---
