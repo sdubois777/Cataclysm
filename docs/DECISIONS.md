@@ -154,6 +154,10 @@ rarer than before" and was not the break's target. Tests 4, 7 and 10 do not see 
 it: 4 is arithmetic on no code of the model's, 7 holds under the old rule as well, and 10 asks the import-time
 check directly, which it does with a failing and a passing case of its own.
 
+**The Python suite of record**, at `a4b677e05`: `python -u -m pytest --junit-xml=<outside the repository>` printed
+"7249 passed, 7 skipped in 217.31s"; the JUnit `testsuite` reads tests 7256, failures 0, errors 0, skipped 7.
+`python -m ruff check .` printed "All checks passed!". Only this paragraph was added after that run.
+
 ### Registered before the run
 
 For a later window, at this branch's head. The base is `development` `28d95ab3d`, the merge of the status-bar
