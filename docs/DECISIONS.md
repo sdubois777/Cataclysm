@@ -2,6 +2,186 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-03 — A Walk button enters a dungeon from the city screen and from under the Cataclysm boss dungeon's marker; outside a dungeon level the press is refused and says why (#2715)
+
+**Affects:** `FCataclysmWalkFromTheScreen`, new (`game/Source/Cataclysm/Interface/CataclysmWalkFromTheScreen.h`,
+`.cpp`); `UCataclysmCityScreenLayout::DungeonIdsFor`, new, and `DungeonLinesFor`, which now walks it
+(`CataclysmCityScreenLayout.h`, `.cpp`); `UCataclysmCityScreenWidget::WriteDetailRows`, changed, and `AddWalkButton`,
+`HandleWalkClicked`, `DungeonMode`, `SetDungeonModeForTests`, `ClickWalkForTests`, `LastRefusal` and `WalkButtons`, new,
+and the class comment (`CataclysmCityScreenWidget.h`, `.cpp`); `UCataclysmEmpireMapLayout::CataclysmDungeonBrief`,
+changed, and `CataclysmDungeonWalkGapPx`, `CataclysmDungeonWalkPosition`, `CataclysmDungeonWalkSize` and
+`CataclysmDungeonWalkButtonName`, new (`CataclysmEmpireMapLayout.h`, `.cpp`); `UCataclysmEmpireMapWidget::BuildCities`,
+`PlaceCataclysmDungeon`, `HandleCityHovered` and `HandleCityClicked`, changed, and `CataclysmDungeonWalkButton`,
+`WalkDungeon`, `DungeonMode`, `SetDungeonModeForTests`, `ClickCataclysmDungeonWalkForTests` and `LastWalkRefusal`, new,
+and the class comment (`CataclysmEmpireMapWidget.h`, `.cpp`); `ACataclysmPlayerController::CloseEmpireScreens`, new
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h`, `.cpp`); the comments on
+`ACataclysmDungeonGameMode::EmpireDungeonId` and inside `EnterEmpireDungeon`; `CataclysmWalkFromTheScreenTests.cpp`,
+new, and one moved assertion in `CataclysmBossOnTheMapTests.cpp` (`game/Source/Cataclysm/Tests/`);
+`tools/tests/test_a_message_names_only_registered_console_commands.py`, and a docstring in
+`tools/tests/test_game_readme_is_true.py`; `game/README.md`. Issue
+[#2715](https://github.com/sdubois777/Cataclysm/issues/2715).
+
+### SAID FIRST
+
+- **WRITTEN, NOT COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use: no Unreal build,
+  no automation test, no lock and no C++ guard proof. Every Unreal figure below is registered, not measured. The one
+  proof that ran is the Python one.
+- **IT DOES NOT TRAVEL.** A press calls `ACataclysmDungeonGameMode::EnterEmpireDungeon`, which belongs to the dungeon
+  game mode, so a Walk works only while the player is standing in a dungeon level (`L_Dungeon`). In any other level --
+  the front end, `L_Sandbox` -- the press is refused with the words `Cataclysm.EnterDungeon` prints in the same case:
+  "This level is not a dungeon, so there is no floor to walk. Open L_Dungeon and press Play." Getting from another
+  level into a dungeon level is the capital hub, issue [#48](https://github.com/sdubois777/Cataclysm/issues/48), and
+  nothing here invents it.
+- **ONE REFUSAL THE CONSOLE DOES NOT MAKE**: Walk on the dungeon being walked is refused, "You are walking dungeon 12
+  now." The console leaves it, runs the days the walk owes and starts it again on floor 1; a button does not do that
+  in one click. A judgement, below.
+
+### The design
+
+`docs/Cataclysm_GDD_v2.md`, under "How many Cataclysms must be finished to unlock the Cataclysm dungeon", in the
+paragraph that opens "Where it stands once earned: on no city": "The empire map shows a marker for it that the player
+enters from." Until this the marker said what the boss dungeon was and named the console command that walked it, and
+nothing on the city screen walked a city's dungeons.
+
+### `EnterEmpireDungeon`, read in full
+
+- **It refuses, returning false, in two places.** With no run (`EmpireRun()` finds none: no game instance run and no
+  test seam), changing nothing. And when the dungeon is not standing on the map -- but that is asked AFTER a walk
+  already under way has been left with `LeaveEmpireDungeon`, which runs the days that walk owes, so that refusal can
+  follow a change.
+- **It does not ask which level it is in, whether there is a player, or whether the player is alive.** It is a
+  member of `ACataclysmDungeonGameMode`, so it cannot be called where that is not the game mode; that is the whole
+  of its level check.
+- **It says nothing**: a bool, so every word a screen shows is the screen's. `FCataclysmWalkFromTheScreen` asks the
+  questions it can answer first, in this order, and words them as the console command words the same ones: no run
+  ("No run has been started."), no dungeon game mode (above), the dungeon not standing ("No dungeon 12 is standing on
+  the map."), the dungeon being walked ("You are walking dungeon 12 now."). Only then does it call
+  `EnterEmpireDungeon`, and a false from it is shown as "Dungeon 12 could not be entered.", the console's words.
+
+### What the player sees
+
+1. **The city screen**: under each line of "3 dungeons are standing on this city", a button, "Walk". In a dungeon
+   level a press enters that dungeon and closes the city screen and the empire map, leaving the player on its floor
+   1. Refused, the refusal line -- the one a refused upgrade uses -- says why, and both screens stay open.
+2. **The empire map**: under the "Cataclysm boss: 137 floors" box in the top left corner, a box one city wide,
+   "Walk", shown and hidden with the marker. A press enters the boss dungeon and closes the screens; refused, the line
+   under the map says why. The cursor on it writes the boss's brief, as the cursor on the marker does, and the brief
+   now ends "It stands on no city and never resolves. Walk, under this box, enters it." instead of "To walk it, type
+   Cataclysm.EnterDungeon 31 in a dungeon level; nothing enters a dungeon from this map yet." Pressing the marker
+   itself still writes the brief.
+
+### Judgements of the writing session
+
+- **EVERY WALK BUTTON IS ENABLED, AND A REFUSED PRESS SAYS WHY.** `UCataclysmChoiceButton::Press` does nothing on a
+  disabled button, and the reasons a walk is refused are too long for a box one city wide. So the button is always
+  "Walk", and the refusal goes where each screen already shows one.
+- **THE DUNGEON BEING WALKED REFUSES; ANOTHER DUNGEON MID-WALK DOES NOT.** Walk on a second dungeon while walking a
+  first leaves the first (its owed days run; it stays on the map, uncleared) and enters the second, exactly as
+  `Cataclysm.EnterDungeon` typed mid-walk does. Refusing it would leave no way out of a walk from the screens.
+- **THE WALK BOX GOES UNDER THE MARKER, ONE CITY WIDE.** 172 by 48 at a scale of one, its left edge on the marker's, 4
+  (scaled) below it. It covers no city on any panel the diamond fits in: its right edge is at most 172 scaled pixels
+  right of the diamond's left edge, and the diamond's first three rows begin at least one cell (188) right of it; the
+  fourth row, the first to begin at the left edge, starts 204 below the diamond's top, where the box ends 100 below.
+  Not on a panel too small for the diamond, for the reason the marker's entry gives. A test checks every city on the
+  marker test's four panels.
+- **THE MARKER'S OWN PRESS STILL WRITES THE BRIEF** rather than walking, so a click to read what the boss dungeon is
+  never spends a day.
+- **NO `BindWidget`.** The city screen's buttons are made with `CreateWidget` from `WBP_ChoiceButton` and added to the
+  detail list under their lines, as its upgrade buttons are added to theirs; the map's box is made with the marker, on
+  the same canvas. Neither `WBP_CityScreen` nor `WBP_EmpireMap` needs a change.
+- **THE GAME MODE IS FOUND BY WALKING THE LEVEL**, `ACataclysmDungeonGameMode::InWorld`, as the player's revival finds
+  it, with a weak test seam behind it as each screen has for its run.
+- **THE LINE AND ITS BUTTON CANNOT BE SORTED APART.** `DungeonLinesFor` now walks `DungeonIdsFor`'s list, so the
+  button under line N walks the dungeon line N describes; the lines read exactly as before.
+- **THE CONSOLE'S WORDS ARE COPIED, NOT SHARED.** `CataclysmPlayerCharacter.cpp` is unchanged.
+
+### Tests
+
+**Unreal, `Cataclysm.WalkFromTheScreen.`**, a new group, five in `CataclysmWalkFromTheScreenTests.cpp`:
+
+1. `TheCityScreenOffersOneWalkForEachDungeonLineInTheOrderItListsThem` ("WALK CITY"): city 0 of a fresh run offers no
+   Walk (CONTROL); 700 (30 floors, 40 days), 701 (12, 9) and 702 (20, 25) placed out of order give 701, 702, 700, one
+   per line, each line naming its dungeon's floors; the button says "Walk"; a Walk name stands for its dungeon, and
+   "City7", "CataclysmBossDungeon", "WalkDungeon" and no name stand for none.
+2. `TheBossMarkerHasAWalkBoxUnderItThatCoversNoCity` ("WALK BOX"): 172 by 48 centred at (110, 100) at a scale of one;
+   on the marker test's four panels inside the panel, under the marker and clear of all 25 cities (100 placements);
+   the box carries the standing boss's Walk name, and no name with no boss standing or no run (CONTROL).
+3. `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon` ("WALK PRESS"): a test world's dungeon game mode; Walk
+   under 701 (12 floors) walks it on floor 1, 12 deep, owing 1 on day 0, with no refusal; then Walk under 702 (20)
+   mid-walk walks 702, 20 deep, day 1, owing 1, and 701 still stands.
+4. `PressingWalkUnderTheBossMarkerEntersTheBossDungeon` ("WALK BOSS"): the map's Walk box, pressed through the name it
+   carries, walks the boss dungeon, as deep as it is, with no refusal; it still stands.
+5. `ARefusedWalkIsShownAndEntersNothing` ("WALK REFUSED"): the map with no dungeon game mode shows the not-a-dungeon
+   refusal and the boss stands; no run is refused for that; on the city screen a game mode with no run shows "Dungeon
+   700 could not be entered." and walks nothing; with the run, 999 shows "No dungeon 999 is standing on the map." and
+   owes nothing; CONTROL, the same press on 700 enters it; a floor down (floor 2, owing 2, day 0), Walk on 700 again
+   shows "You are walking dungeon 700 now." and leaves the floor, the days owed and the day where they were.
+
+**Starting states read, not assumed.** `Begin(4242, Static)` is day 0 with nothing standing (test 1 asserts city 0
+empty as set-up; tests 3 and 5 assert day 0 and nothing owed). A dungeon placed by hand has no `WalkDays`, so
+`WalkDaysPerFloor` is `UCataclysmDayClock::DaysPerFloor`, 1.0: arriving owes 1 and a descent 1. Leaving runs the owed
+days through `SettleDaysOwed`, so 1 owed takes day 0 to 1, and a walked dungeon's own timer stays stopped in them. A
+game mode spawned into a test world is not the authority game mode, so its `StartPlay` never runs: `TotalFloors` is
+the header's 10 and `FloorNumber` the header's 1 until something binds or builds a floor, and `EmpireRun()` is null
+until the seam is set (the world has no game instance). The boss run is `Cataclysm.BossOnTheMap.`'s with nothing
+defeated: tier 1, seed 11, four days, its Cataclysm's quest dungeons cleared by hand; that test asserts it opens.
+
+**Changed**: `Cataclysm.BossOnTheMap.TheMarkerSaysHowDeepItIsWhoSentItAndThatItNeverResolves` now holds that the brief
+ends "never resolves. Walk, under this box, enters it." and contains no "Cataclysm.", where it held the console
+sentence and looked the command up in `IConsoleManager`.
+
+**Python**: `test_the_scan_finds_the_registered_names_and_the_messages` keeps the `Cataclysm.LoadCharacter` refusal as
+its witness (a `Refused(FString::Printf(...))`, so both calls are shown read) and now holds that the empire map
+layout's messages name no console command. No Python test was added.
+
+### Registered before the run
+
+Base: the whole suite measured 4670 performed at `609fb3290`, slice 6e's registration commit (the entry below), which
+`development` `6e269d6de`, this branch's base, holds. Every prefix ends in a dot; no group name begins with
+`Cataclysm.WalkFromTheScreen`.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.WalkFromTheScreen.` alone | 5 / 5, a new group: none at the base, + 5 by name |
+| `Cataclysm.BossOnTheMap.` alone | 5 / 5, as measured at the base; one assertion changed, none added |
+| `Cataclysm.CityScreen.` alone | 15 / 15 (15 by name in `CataclysmCityScreenTests.cpp`); none changed. They reach `DungeonLinesFor`, now walking `DungeonIdsFor`, and the widget's changed `WriteDetailRows` |
+| `Cataclysm.EmpireScreen.` alone | 14 / 14, as measured at the base; none changed. They reach the map widget's click handler, which now asks for a Walk name first |
+| Whole Unreal suite | TO-BE-MEASURED. Expected: the base's 4670 plus 5 by name, all succeeding; 47 skipped halves, none added (no new test calls `ReportSkippedHalf`); 0 test saves left behind (the new tests write none) |
+| Python | TO-BE-MEASURED, with a JUnit file. None added; one changed |
+| P1, the walked dungeon's refusal (in `CataclysmWalkFromTheScreen.cpp`, `return FString::Printf(TEXT("You are walking dungeon %d now."), DungeonId);` to `return FString();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 4 succeeded, 1 failed": `ARefusedWalkIsShownAndEntersNothing`, 4 assertions. The press re-enters 700, so: 'pressing Walk on the dungeon being walked is refused, and says why' expected "You are walking dungeon 700 now.", read ""; 'and the player is still on floor 2' expected 2, read 1; 'and still owes the walk's two days' expected 2, read 1; 'and none of them has run' expected 0, read 2 |
+| P2, the map's Walk box writes the brief instead of walking (in `CataclysmEmpireMapWidget.cpp`, `WalkDungeon(WalkId);` to `WriteCataclysmDungeonDetail();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 3 succeeded, 2 failed", 3 assertions. `PressingWalkUnderTheBossMarkerEntersTheBossDungeon`: 'pressing Walk under the boss marker enters the boss dungeon' expected the boss's identifier, read -1; 'as deep as the boss dungeon is' expected its floors, read 10. `ARefusedWalkIsShownAndEntersNothing`: 'in a level that is not a dungeon the boss's Walk is refused, and the line under the map says why' expected the not-a-dungeon refusal, read "" |
+| P3, the game mode's refusal swallowed (in `CataclysmWalkFromTheScreen.cpp`, `return FString::Printf(TEXT("Dungeon %d could not be entered."), DungeonId);` to `return FString();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 4 succeeded, 1 failed": `ARefusedWalkIsShownAndEntersNothing`, 1 assertion, 'a game mode that cannot enter it refuses, and the screen shows that refusal' expected "Dungeon 700 could not be entered.", read "" |
+
+Each anchor occurs once in its file, counted with `grep -c` at the commit. The messages are given by assertion name,
+expected and read values; their exact wording is the engine's `TestEqual` (for integers, "Expected '...' to be 2, but
+it was 1."). The boss's identifier and floors are printed by "WALK BOSS".
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py` in this worktree, which no other process used: the brief's literal broken to end
+"Cataclysm.EnterDungeon enters it." (anchor counted once first). "PROVED: 1 failed, 1 passed in 0.38s | restored: 2
+passed in 0.34s", named failure
+`tools/tests/test_a_message_names_only_registered_console_commands.py::test_the_scan_finds_the_registered_names_and_the_messages`.
+
+### Not tested
+
+- **Anything in Unreal**: not compiled and not run (above).
+- **The buttons on screen.** A headless widget has no Widget Blueprint, so no Walk button is made, drawn or clicked;
+  the tests call the handler each button calls, through the name it carries.
+- **Closing the screens and the input mode after it**: `CloseEmpireScreens` needs a player controller, which a
+  headless test has none of.
+- **Whether it reads well**: a full-width "Walk" under each dungeon line, and the box under the marker.
+- **What the owner should click**: in `L_Dungeon`, press Play; with a run begun (`Cataclysm.EmpireBegin`) and a day
+  advanced so dungeons stand (`Cataclysm.EmpireAdvance 1`), open the map (`Cataclysm.EmpireMap`), click a city with
+  dungeons on it, and press Walk under one of them: both screens should close and the player should be on floor 1 of
+  that dungeon, and the map, reopened, should show the day the walk owes on its status line. Open the same city and
+  press Walk on the same dungeon: the refusal line should read "You are walking dungeon N now." Then in `L_Sandbox`,
+  open the map and a city, and press Walk: the refusal line should read "This level is not a dungeon, so there is no
+  floor to walk. Open L_Dungeon and press Play." With a run whose boss dungeon is open, the Walk box under its marker
+  does the same for the boss.
+
+---
+
 ## 2026-11-03 — A defeated dungeon earns empire upgrade points, scaled by the population living, into its partition's account bank, which keeps fractions at account record version 2; the empire map shows the bank (#52, the first slice)
 
 **Affects:** on `UCataclysmEmpireRun`, `BasicDungeonEmpirePoints`, `QuestDungeonEmpirePoints`, `FallenCityEmpirePoints`,

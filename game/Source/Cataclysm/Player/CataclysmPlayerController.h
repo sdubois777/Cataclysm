@@ -347,6 +347,16 @@ public:
 	void ToggleCityScreen(int32 CityId);
 
 	/**
+	 * Closes the empire overview and the city screen, whichever are open.
+	 *
+	 * WHAT A WALK BUTTON CALLS once a dungeon has been entered, so the player is
+	 * left standing on the floor they walked into rather than behind two screens.
+	 * Issue #2715. A screen that is not open is left alone, and the input mode is
+	 * the one every screen's closing sets, for the reason issue #1015 recorded.
+	 */
+	void CloseEmpireScreens();
+
+	/**
 	 * Open the choice panel for this floor object, or show its choices on the panel already open. Called when the
 	 * player clicks the object's name in reach, or arrives at it after a click from further off. Issues #1820 and
 	 * #41, the choice screen.

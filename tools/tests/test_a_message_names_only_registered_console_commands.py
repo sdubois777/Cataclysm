@@ -7,8 +7,10 @@ issue #1324's slice 6c branch, and this check was added beside it.
 
 A message here is every string literal inside the arguments of an `Ar.Log`, `Ar.Logf`, `Refused` or `FString::Printf`
 call in the game's non-test C++ (`Ar` is the output device a console command writes to; `Refused` builds the reason a
-load is refused; `FString::Printf` builds most of what a screen shows, such as the empire map's line for the Cataclysm
-boss dungeon, which names the command that walks it). `UE_LOG` is left out: one names a configuration section,
+load is refused; `FString::Printf` builds most of what a screen shows). The empire map's line for the Cataclysm boss
+dungeon named `Cataclysm.EnterDungeon` until 2026-11-03, when issue #2715 put a Walk box under its marker and the line
+names that instead; the refusal above, a `Refused(FString::Printf(...))`, is now what shows both calls are scanned.
+`UE_LOG` is left out: one names a configuration section,
 `/Script/Cataclysm.CataclysmPlayerController`, which is no command.
 A registered name is the first argument of an `FAutoConsoleCommand...`, `FAutoConsoleVariable...` or
 `TAutoConsoleVariable<...>` declaration anywhere under `game/Source`.
@@ -103,11 +105,14 @@ def test_the_scan_finds_the_registered_names_and_the_messages():
     assert "Cataclysm.LoadCharacter" in registered
     named = {name for _, _, name in names_in_messages()}
     assert len(named) >= FEWEST_MESSAGE_NAMES, sorted(named)
-    # The message this check was written for is among those scanned, and so is the empire map's line for the
-    # Cataclysm boss dungeon.
-    for source in ("Save/CataclysmSaveLoad.cpp", "Interface/CataclysmEmpireMapLayout.cpp"):
-        assert any(path.endswith(source) and name == "Cataclysm.EnterDungeon"
-                   for path, _, name in names_in_messages()), source
+    # The message this check was written for is among those scanned. It is a `Refused(FString::Printf(...))`, so it
+    # shows both of those calls are read. The empire map's line for the Cataclysm boss dungeon was the second witness
+    # until issue #2715 took the command out of it, and it is now held to name none.
+    assert any(path.endswith("Save/CataclysmSaveLoad.cpp") and name == "Cataclysm.EnterDungeon"
+               for path, _, name in names_in_messages())
+    assert not any(path.endswith("Interface/CataclysmEmpireMapLayout.cpp") for path, _, _ in names_in_messages()), (
+        "the empire map's line for the Cataclysm boss dungeon names a console command again; a Walk box enters it "
+        "since issue #2715")
 
 
 def test_every_console_command_a_message_names_is_registered():

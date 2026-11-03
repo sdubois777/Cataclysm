@@ -5,8 +5,10 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/TextBlock.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
+#include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
@@ -102,6 +104,23 @@ void UCataclysmEmpireMapWidget::SetPanelSizeForTests(FVector2D Size)
 	PanelSizeForTests = Size;
 }
 
+void UCataclysmEmpireMapWidget::SetDungeonModeForTests(ACataclysmDungeonGameMode* Mode)
+{
+	DungeonModeForTests = Mode;
+}
+
+ACataclysmDungeonGameMode* UCataclysmEmpireMapWidget::DungeonMode() const
+{
+	// THE LEVEL'S OWN GAME MODE FIRST, ALWAYS, as the city screen asks it. See
+	// `UCataclysmCityScreenWidget::DungeonMode`.
+	if (ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(GetWorld()))
+	{
+		return Mode;
+	}
+
+	return DungeonModeForTests.Get();
+}
+
 // ---------------------------------------------------------------------------
 // The cities
 // ---------------------------------------------------------------------------
@@ -178,6 +197,31 @@ void UCataclysmEmpireMapWidget::BuildCities()
 
 		CataclysmDungeonButton = Button;
 	}
+
+	// AND ITS WALK BOX, made now and hidden with it, for the same reason. The same
+	// two handlers: a press walks the dungeon the box's name stands for, and the
+	// cursor on it writes the boss's brief, as the cursor on the marker does.
+	// Issue #2715.
+	if (UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityHovered);
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityClicked);
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+		Button->SetVisibility(ESlateVisibility::Collapsed);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(MapCanvas->AddChild(Button)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		CataclysmDungeonWalkButton = Button;
+	}
 }
 
 void UCataclysmEmpireMapWidget::PlaceCities()
@@ -241,13 +285,41 @@ void UCataclysmEmpireMapWidget::PlaceCataclysmDungeon(float Scale)
 	}
 
 	// NO LABEL, NO BOX: before the run has opened it, and after it has been
-	// cleared. See `UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel`.
+	// cleared. See `UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel`. The
+	// Walk box under it goes with it. Issue #2715.
 	const FString Label =
 		UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel(ShownRun());
 	if (Label.IsEmpty())
 	{
 		CataclysmDungeonButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (CataclysmDungeonWalkButton != nullptr)
+		{
+			CataclysmDungeonWalkButton->SetVisibility(ESlateVisibility::Collapsed);
+		}
 		return;
+	}
+
+	// THE WALK BOX, UNDER THE MARKER, carrying the boss's identifier in its name,
+	// so a press walks the dungeon standing now. Plain rather than chosen, so the
+	// marker stays the bright one. Always available: a refused press writes why
+	// into the line under the map, and a disabled box would say nothing.
+	if (CataclysmDungeonWalkButton != nullptr)
+	{
+		if (UCanvasPanelSlot* WalkPlacement =
+				Cast<UCanvasPanelSlot>(CataclysmDungeonWalkButton->Slot))
+		{
+			WalkPlacement->SetPosition(
+				UCataclysmEmpireMapLayout::CataclysmDungeonWalkPosition(Scale));
+			WalkPlacement->SetSize(
+				UCataclysmEmpireMapLayout::CataclysmDungeonWalkSize(Scale));
+		}
+
+		CataclysmDungeonWalkButton->SetLabelScale(Scale);
+		CataclysmDungeonWalkButton->SetChoice(
+			UCataclysmEmpireMapLayout::CataclysmDungeonWalkButtonName(ShownRun()),
+			FText::FromString(FCataclysmWalkFromTheScreen::ButtonText()),
+			/*bChosen*/ false, /*bAvailable*/ true);
+		CataclysmDungeonWalkButton->SetVisibility(ESlateVisibility::Visible);
 	}
 
 	if (UCanvasPanelSlot* Placement =
@@ -386,8 +458,10 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 		return;
 	}
 
-	// THE BOSS DUNGEON'S BOX, which is no city's. Issue #1324 slice 6c.
-	if (Value == CataclysmDungeonButtonName())
+	// THE BOSS DUNGEON'S BOX, which is no city's. Issue #1324 slice 6c. AND ITS
+	// WALK BOX, which says the same: the brief ends by naming it. Issue #2715.
+	if (Value == CataclysmDungeonButtonName()
+		|| FCataclysmWalkFromTheScreen::DungeonForButton(Value) != INDEX_NONE)
 	{
 		WriteCataclysmDungeonDetail();
 		return;
@@ -448,13 +522,19 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 {
 	// THE BOSS DUNGEON'S BOX SAYS WHAT IT IS AND OPENS NOTHING. It has no city
-	// screen, and nothing walks a dungeon from this map -- there is no travel
-	// between the empire and a dungeon level, issue #48 -- so a press does what
-	// the cursor does: the brief, which ends by naming the command that walks it,
-	// `Cataclysm.EnterDungeon <id>`, with its identifier. Issue #1324 slice 6c.
+	// screen, so a press does what the cursor does: the brief, which ends by
+	// naming the Walk box under it. Issue #1324 slice 6c, and #2715.
 	if (Value == CataclysmDungeonButtonName())
 	{
 		WriteCataclysmDungeonDetail();
+		return;
+	}
+
+	// AND THE WALK BOX UNDER IT WALKS IT. Issue #2715.
+	const int32 WalkId = FCataclysmWalkFromTheScreen::DungeonForButton(Value);
+	if (WalkId != INDEX_NONE)
+	{
+		WalkDungeon(WalkId);
 		return;
 	}
 
@@ -491,6 +571,42 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 	{
 		Controller->ToggleCityScreen(CityId);
 	}
+}
+
+void UCataclysmEmpireMapWidget::WalkDungeon(int32 DungeonId)
+{
+	// THE RUN THIS MAP SHOWS, AND THE LEVEL'S DUNGEON GAME MODE. In a running
+	// game the game mode reads the same run from the game instance.
+	WalkRefusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId);
+
+	// A REFUSAL IS WRITTEN INTO THE LINE UNDER THE MAP, rather than the press
+	// doing nothing: in a level that is not a dungeon, above all, a box that did
+	// nothing would read as broken.
+	if (!WalkRefusal.IsEmpty())
+	{
+		if (DetailLabel != nullptr)
+		{
+			DetailLabel->SetText(FText::FromString(WalkRefusal));
+		}
+		return;
+	}
+
+	// AND THE EMPIRE SCREENS CLOSE, so the player is standing on the floor they
+	// walked into. A headless test has no player controller, and there the map
+	// stays.
+	if (ACataclysmPlayerController* Controller =
+			Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+	{
+		Controller->CloseEmpireScreens();
+	}
+}
+
+void UCataclysmEmpireMapWidget::ClickCataclysmDungeonWalkForTests()
+{
+	// THE NAME THE BOX CARRIES, through the handler the box calls, so this goes
+	// through the same lookup a real press does. `NAME_None` while no boss stands
+	// is no city's name and no Walk box's, so the handler does nothing with it.
+	HandleCityClicked(UCataclysmEmpireMapLayout::CataclysmDungeonWalkButtonName(ShownRun()));
 }
 
 int32 UCataclysmEmpireMapWidget::CityForButton(FName Value) const

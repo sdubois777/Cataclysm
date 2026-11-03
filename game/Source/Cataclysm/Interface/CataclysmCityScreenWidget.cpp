@@ -5,9 +5,12 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
+#include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayerController.h"
 
 void UCataclysmCityScreenWidget::NativeConstruct()
 {
@@ -33,6 +36,26 @@ UCataclysmEmpireRun* UCataclysmCityScreenWidget::ShownRun() const
 void UCataclysmCityScreenWidget::SetRunForTests(UCataclysmEmpireRun* Run)
 {
 	RunForTests = Run;
+}
+
+void UCataclysmCityScreenWidget::SetDungeonModeForTests(ACataclysmDungeonGameMode* Mode)
+{
+	DungeonModeForTests = Mode;
+}
+
+ACataclysmDungeonGameMode* UCataclysmCityScreenWidget::DungeonMode() const
+{
+	// THE LEVEL'S OWN GAME MODE FIRST, ALWAYS, for the reason `ShownRun` asks
+	// the game instance first: the test seam is reached only when the level has
+	// none, which a headless widget's never has and a dungeon level's always
+	// has. Found by walking the level, as `InWorld` says, rather than by asking
+	// for the authority game mode.
+	if (ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(GetWorld()))
+	{
+		return Mode;
+	}
+
+	return DungeonModeForTests.Get();
 }
 
 void UCataclysmCityScreenWidget::SetCity(int32 InCityId)
@@ -190,6 +213,7 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 
 	DetailBox->ClearChildren();
 	DetailRows.Reset();
+	WalkButtons.Reset();
 
 	const UCataclysmEmpireRun* Run = ShownRun();
 	if (Run == nullptr)
@@ -204,12 +228,22 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	const TArray<FString> Dungeons =
 		UCataclysmCityScreenLayout::DungeonLinesFor(Run, CityId);
 
+	// AND THE DUNGEON EACH LINE DESCRIBES, in the same order, for the Walk
+	// button under it. Issue #2715.
+	const TArray<int32> DungeonIds =
+		UCataclysmCityScreenLayout::DungeonIdsFor(Run, CityId);
+
 	AddRow(UCataclysmCityScreenLayout::DungeonHeading(Dungeons.Num()),
 		   /* bIsHeading */ true, /* bDim */ false);
 
-	for (const FString& Line : Dungeons)
+	for (int32 Index = 0; Index < Dungeons.Num(); ++Index)
 	{
-		AddRow(Line, /* bIsHeading */ false, /* bDim */ false);
+		AddRow(Dungeons[Index], /* bIsHeading */ false, /* bDim */ false);
+
+		if (DungeonIds.IsValidIndex(Index))
+		{
+			AddWalkButton(DungeonIds[Index]);
+		}
 	}
 
 	// WHAT IT HAS ALREADY BOUGHT.
@@ -284,6 +318,81 @@ void UCataclysmCityScreenWidget::AddRow(const FString& Text, bool bIsHeading,
 
 	DetailBox->AddChild(Row);
 	DetailRows.Add(Row);
+}
+
+// ---------------------------------------------------------------------------
+// Walking a dungeon standing on the city, issue #2715
+// ---------------------------------------------------------------------------
+
+void UCataclysmCityScreenWidget::AddWalkButton(int32 DungeonId)
+{
+	if (DetailBox == nullptr)
+	{
+		return;
+	}
+
+	TSubclassOf<UCataclysmChoiceButton> ButtonClass =
+		ChoiceButtonClass.LoadSynchronous();
+	if (!ButtonClass)
+	{
+		return;
+	}
+
+	UCataclysmChoiceButton* Button =
+		CreateWidget<UCataclysmChoiceButton>(this, ButtonClass);
+	if (!Button)
+	{
+		return;
+	}
+
+	// ALWAYS AVAILABLE, AND THE PRESS SAYS WHY WHEN IT IS REFUSED. A disabled
+	// button cannot be pressed and says nothing, and the reasons a walk is
+	// refused -- this is not a dungeon level, or the player is walking this one
+	// now -- are too long for a button's label.
+	Button->SetChoice(FCataclysmWalkFromTheScreen::ButtonNameFor(DungeonId),
+					  FText::FromString(FCataclysmWalkFromTheScreen::ButtonText()),
+					  /* bChosen */ false, /* bAvailable */ true);
+
+	Button->OnChoiceClicked.AddDynamic(
+		this, &UCataclysmCityScreenWidget::HandleWalkClicked);
+
+	DetailBox->AddChild(Button);
+	WalkButtons.Add(Button);
+}
+
+void UCataclysmCityScreenWidget::HandleWalkClicked(FName Value)
+{
+	const int32 DungeonId = FCataclysmWalkFromTheScreen::DungeonForButton(Value);
+
+	// THE RUN THIS SCREEN SHOWS, AND THE LEVEL'S DUNGEON GAME MODE. In a running
+	// game the game mode reads the same run from the game instance.
+	Refusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId);
+
+	// A REFUSAL IS SHOWN RATHER THAN SWALLOWED, on the line that shows a refused
+	// upgrade, for the reason `HandleOfferClicked` gives. Redrawn either way: a
+	// walk entered owes a day and stops that dungeon's timer.
+	Refresh();
+
+	if (!Refusal.IsEmpty())
+	{
+		return;
+	}
+
+	// AND THE EMPIRE SCREENS CLOSE, so the player is standing on the floor they
+	// walked into. The player controller owns both screens; a headless test has
+	// none, and there the screen stays.
+	if (ACataclysmPlayerController* Controller =
+			Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+	{
+		Controller->CloseEmpireScreens();
+	}
+}
+
+void UCataclysmCityScreenWidget::ClickWalkForTests(int32 DungeonId)
+{
+	// THE NAME THE BUTTON WOULD CARRY, so this goes through the same lookup a
+	// real press does, as `UCataclysmEmpireMapWidget::ClickCityForTests` does.
+	HandleWalkClicked(FCataclysmWalkFromTheScreen::ButtonNameFor(DungeonId));
 }
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@
 #include "Empire/CataclysmSurge.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
-#include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Tests/CataclysmTestSkip.h"
@@ -209,8 +208,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossOnTheMapMarkerTextTest,
  * Three tier 1 runs at seed 11 open the boss after three ordinary dungeons defeated and one more after it opened
  * (four added), after one before it (one added), and with none (as it rolled). The box says the depth; the brief
  * names the Cataclysm that sent it and its sub-type, the floors and the floors the ordinary dungeons added, singular
- * and plural, that it stands on no city and never resolves, and -- because pressing the box opens nothing -- the
- * registered console command that walks it, with its identifier. Prints "BOSS MARKER".
+ * and plural, that it stands on no city and never resolves, and -- since issue #2715 -- the Walk box under it that
+ * enters it, and no console command. Prints "BOSS MARKER".
  */
 bool FCataclysmBossOnTheMapMarkerTextTest::RunTest(const FString& Parameters)
 {
@@ -252,12 +251,11 @@ bool FCataclysmBossOnTheMapMarkerTextTest::RunTest(const FString& Parameters)
 											Boss->Floors)));
 	TestTrue(TEXT("and that it stands on no city and never resolves"), Brief.Contains(Rule));
 
-	// AND HOW TO WALK IT, because pressing the box cannot: the registered command, with this dungeon's identifier.
-	TestTrue(TEXT("and ends by naming the command that walks it, with its identifier"),
-			 Brief.EndsWith(FString::Printf(TEXT("To walk it, type Cataclysm.EnterDungeon %d in a dungeon level; nothing "
-												  "enters a dungeon from this map yet."), Boss->DungeonId)));
-	TestNotNull(TEXT("and that command is registered"),
-				IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.EnterDungeon")));
+	// AND WHAT ENTERS IT: the Walk box under the marker, since issue #2715. It named the console command until then,
+	// and said nothing entered a dungeon from the map, which a Walk box has made untrue.
+	TestTrue(TEXT("and ends by naming the Walk box that enters it"),
+			 Brief.EndsWith(TEXT("never resolves. Walk, under this box, enters it.")));
+	TestFalse(TEXT("and no longer names a console command"), Brief.Contains(TEXT("Cataclysm.")));
 
 	// ONE ADDED, SINGULAR.
 	UCataclysmEmpireRun* One = RunWithItsBossOpen(/* OrdinaryBefore */ 1, /* OrdinaryAfter */ 0);

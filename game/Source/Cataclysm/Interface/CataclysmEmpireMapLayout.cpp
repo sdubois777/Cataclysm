@@ -5,6 +5,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
+#include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveRecords.h"
 
@@ -396,6 +397,27 @@ FVector2D UCataclysmEmpireMapLayout::CataclysmDungeonMarkerSize(float Scale)
 	return FVector2D(CataclysmDungeonMarkerWidthPx * Scale, CataclysmDungeonMarkerHeightPx * Scale);
 }
 
+FVector2D UCataclysmEmpireMapLayout::CataclysmDungeonWalkPosition(float Scale)
+{
+	// THE MARKER'S LEFT EDGE, AND THE GAP BELOW ITS BOTTOM EDGE. The margin is not scaled, as the marker's is not; the
+	// gap is, so the two boxes keep their proportion as the map shrinks. See the header for why no city is under it.
+	const FVector2D Marker = CataclysmDungeonMarkerSize(Scale);
+	const FVector2D Size = CataclysmDungeonWalkSize(Scale);
+	return FVector2D(FitMarginPx + Size.X * 0.5,
+					 FitMarginPx + Marker.Y + CataclysmDungeonWalkGapPx * Scale + Size.Y * 0.5);
+}
+
+FVector2D UCataclysmEmpireMapLayout::CataclysmDungeonWalkSize(float Scale)
+{
+	return CitySize(Scale);
+}
+
+FName UCataclysmEmpireMapLayout::CataclysmDungeonWalkButtonName(const UCataclysmEmpireRun* Run)
+{
+	const FCataclysmDungeon* Boss = Run != nullptr && Run->Map != nullptr ? Run->FindCataclysmDungeon() : nullptr;
+	return Boss != nullptr ? FCataclysmWalkFromTheScreen::ButtonNameFor(Boss->DungeonId) : FName(NAME_None);
+}
+
 FString UCataclysmEmpireMapLayout::CataclysmDungeonMarkerLabel(const UCataclysmEmpireRun* Run)
 {
 	const FCataclysmDungeon* Boss = Run != nullptr && Run->Map != nullptr ? Run->FindCataclysmDungeon() : nullptr;
@@ -450,15 +472,12 @@ FString UCataclysmEmpireMapLayout::CataclysmDungeonBrief(const UCataclysmEmpireR
 		AddedPart = FString::Printf(TEXT("%d of them added by ordinary dungeons defeated"), Added);
 	}
 
-	// AND HOW TO WALK IT, because pressing its box cannot: nothing enters a dungeon from this map (issue #48), so the
-	// line names the console command that does, with this dungeon's identifier. `Cataclysm.EnterDungeon` is the one
-	// registered in `CataclysmPlayerCharacter.cpp`; `test_a_message_names_only_registered_console_commands.py` holds
-	// that every `Cataclysm.` name in a message here is registered.
+	// AND WHAT ENTERS IT: the Walk box under this one, since issue #2715. Until then nothing entered a dungeon from this
+	// map, and the line named the console command that did.
 	return FString::Printf(
 		TEXT("The Cataclysm boss dungeon%s: %d floor%s, %s. Every ordinary dungeon defeated adds a floor. It stands on "
-			 "no city and never resolves. To walk it, type Cataclysm.EnterDungeon %d in a dungeon level; nothing "
-			 "enters a dungeon from this map yet."),
-		*Marked, Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"), *AddedPart, Boss->DungeonId);
+			 "no city and never resolves. Walk, under this box, enters it."),
+		*Marked, Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"), *AddedPart);
 }
 
 FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run)

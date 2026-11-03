@@ -1077,6 +1077,30 @@ void ACataclysmPlayerController::ToggleCityScreen(int32 CityId)
 	CityScreen->AddToViewport();
 }
 
+void ACataclysmPlayerController::CloseEmpireScreens()
+{
+	bool bClosedAny = false;
+
+	if (CityScreen && CityScreen->IsInViewport())
+	{
+		CityScreen->RemoveFromParent();
+		bClosedAny = true;
+	}
+
+	if (EmpireMapScreen && EmpireMapScreen->IsInViewport())
+	{
+		EmpireMapScreen->RemoveFromParent();
+		bClosedAny = true;
+	}
+
+	// THE SAME INPUT MODE AS CLOSING ANY ONE OF THEM, for the reason issue #1015
+	// recorded: `FInputModeGameOnly` here would leave the player unable to move.
+	if (bClosedAny)
+	{
+		ApplyPlayingInputMode();
+	}
+}
+
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
 {
 	if (!SlotTag.IsValid())

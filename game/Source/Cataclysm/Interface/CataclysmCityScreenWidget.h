@@ -7,6 +7,7 @@
 #include "Interface/CataclysmCityScreenLayout.h"
 #include "CataclysmCityScreenWidget.generated.h"
 
+class ACataclysmDungeonGameMode;
 class UCataclysmChoiceButton;
 class UCataclysmEmpireRun;
 class UPanelWidget;
@@ -46,10 +47,13 @@ class UTextBlock;
  *   - **It shows no price and no build time.** A city upgrade is free and
  *     immediate because neither number is designed and there is no gold. Issue
  *     #1264.
- *   - **It does not let a player enter a dungeon standing on the city.**
- *     `Cataclysm.EnterDungeon` does that and only works from inside a dungeon
- *     level, because there is no travel between the empire and a dungeon. Issue
- *     #48.
+ *   - **It walks a dungeon only from a dungeon level.** Each dungeon line has a
+ *     Walk button under it, since issue #2715, and a press calls
+ *     `ACataclysmDungeonGameMode::EnterEmpireDungeon` and closes the empire
+ *     screens. In a level whose game mode is not the dungeon one the press is
+ *     refused and the refusal line says why: there is no travel between the
+ *     empire and a dungeon level. Issue #48. `FCataclysmWalkFromTheScreen`
+ *     holds the words and the refusals.
  *   - **It has no key of its own**, for the reason the empire overview and the
  *     character sheet have none: the input assets are generated in the editor
  *     and adding a binding is a separate change from building a screen.
@@ -132,6 +136,30 @@ public:
 	 * same handler the button calls, not a copy of it.
 	 */
 	void ClickOfferForTests(FName RowName);
+
+	/**
+	 * The dungeon game mode a test stands in for the level's. Issue #2715.
+	 *
+	 * A HEADLESS WIDGET HAS NO WORLD, so `ACataclysmDungeonGameMode::InWorld`
+	 * finds nothing for it and every Walk press would be refused as "not a
+	 * dungeon". The level's own game mode is always asked first; this is only
+	 * reached when there is none, as `SetRunForTests` is.
+	 */
+	void SetDungeonModeForTests(ACataclysmDungeonGameMode* Mode);
+
+	/**
+	 * Presses the Walk button under a dungeon's line as though it had been
+	 * clicked. The handler the button calls, reached through the name the button
+	 * carries, for the reason `ClickOfferForTests` exists. Issue #2715.
+	 */
+	void ClickWalkForTests(int32 DungeonId);
+
+	/**
+	 * Why the last press did nothing, as the refusal label shows it; empty when
+	 * it did something. For a test, which cannot read the label: a headless
+	 * widget's labels are null. Issue #2715.
+	 */
+	FString LastRefusal() const { return Refusal; }
 
 protected:
 	/** Which city this is, and what tier. */
@@ -225,6 +253,20 @@ private:
 	UFUNCTION()
 	void HandleOfferClicked(FName Value);
 
+	/** One Walk button into `DetailBox`, under the line of the dungeon it
+	 *  walks. Issue #2715. */
+	void AddWalkButton(int32 DungeonId);
+
+	/**
+	 * A Walk button was pressed: enter the dungeon its name stands for and close
+	 * the empire screens, or show why not. Issue #2715.
+	 */
+	UFUNCTION()
+	void HandleWalkClicked(FName Value);
+
+	/** The level's dungeon game mode, or the one a test supplied, or null. */
+	ACataclysmDungeonGameMode* DungeonMode() const;
+
 	/** Which city is being shown. */
 	int32 CityId = INDEX_NONE;
 
@@ -244,4 +286,14 @@ private:
 	/** The run supplied by a test. See `SetRunForTests`. */
 	UPROPERTY(Transient)
 	TObjectPtr<UCataclysmEmpireRun> RunForTests;
+
+	/** One Walk button per dungeon line, in the lines' order. Issue #2715. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UCataclysmChoiceButton>> WalkButtons;
+
+	/**
+	 * The game mode supplied by a test. See `SetDungeonModeForTests`. WEAK, so a
+	 * screen kept after its test world is destroyed holds nothing dangling.
+	 */
+	TWeakObjectPtr<ACataclysmDungeonGameMode> DungeonModeForTests;
 };

@@ -124,6 +124,21 @@ public:
 	static TArray<FString> DungeonLinesFor(const UCataclysmEmpireRun* Run,
 										   int32 CityId);
 
+	/**
+	 * The dungeons standing on the city, by identifier, in the order
+	 * `DungeonLinesFor` lists them: one per line, the same index. Issue #2715.
+	 *
+	 * WHAT THE WALK BUTTONS ARE MADE FROM. The screen puts a Walk button under
+	 * each dungeon line, and the button under line N has to walk the dungeon
+	 * line N describes. `DungeonLinesFor` walks this same list, so the two
+	 * cannot be sorted apart.
+	 *
+	 * EMPTY WITH NO RUN, NO SUCH CITY, OR NO CLOCK, as `DungeonLinesFor` is.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static TArray<int32> DungeonIdsFor(const UCataclysmEmpireRun* Run,
+									   int32 CityId);
+
 	/** One line per upgrade the city has already bought, in the order bought. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FString> HeldLinesFor(const UCataclysmEmpireRun* Run,
