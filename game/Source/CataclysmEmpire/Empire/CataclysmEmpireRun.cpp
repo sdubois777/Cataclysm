@@ -9,6 +9,15 @@
 void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 								int32 LethalityRung, int32 InDifficultyTier)
 {
+	// NO CHARACTER NAMED, SO THE RUN'S OWN SEED DRAWS ITS CATACLYSMS, as every run
+	// did before issue #1324 slice 6a. See `BeginForCharacter`.
+	BeginForCharacter(InSeed, InSeed, Mode, LethalityRung, InDifficultyTier);
+}
+
+void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrderSeed,
+											ECataclysmSurgeMode Mode, int32 LethalityRung,
+											int32 InDifficultyTier)
+{
 	Map = NewObject<UCataclysmEmpireMap>(this);
 	Map->Build();
 
@@ -57,10 +66,13 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	Stream.Initialize(InSeed);
 
 	// WHICH CATACLYSMS THIS CHARACTER FACES. How many comes from the difficulty
-	// tier and which ones from the seed, so replaying the same seed meets the
-	// same Cataclysms and the same seed one tier higher meets those plus one --
-	// the project owner's ruling of 2026-09-06. Issues #1338 and #1357.
-	ActiveCataclysms = UCataclysmRoster::ActiveFor(InSeed, InDifficultyTier);
+	// tier and which ones from the CHARACTER'S order seed, not the run's, so a
+	// character's next run at the same tier meets the same Cataclysms and one a
+	// tier higher meets those plus one -- the project owner's ruling of
+	// 2026-09-06, and "The same tier means the same Cataclysms, by name and not
+	// only by count" (`docs/Cataclysm_GDD_v2.md`, Ending a Run). Issues #1338,
+	// #1357 and #1324 slice 6a.
+	ActiveCataclysms = UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier);
 
 	// EVERY ACTIVE CATACLYSM IS A KEY BEFORE ANYTHING HAS HAPPENED, so one that
 	// has never sent a quest dungeon reads as 0 rather than as absent. A caller

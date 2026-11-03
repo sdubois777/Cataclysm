@@ -1202,6 +1202,10 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 7 SINCE 2026-11-02. The character carries its Cataclysm order seed (`CataclysmOrderSeed`, issue #1324 slice 6a), and
+	 * `Migrate_6_to_7` writes into a character written at 6 the seed its identifier gives (`CataclysmOrderSeedFor`): no
+	 * character had one before the field existed, and that keeps an existing character to one fixed draw from then on.
+	 *
 	 * 6 SINCE 2026-11-02. The character carries the build its corrupted double is made from, captured at the crossing
 	 * (`ConsumptionBuild`, issue #2688, the owner's decision O4), and `Migrate_5_to_6` writes an empty build into a
 	 * character written at 5: nothing captured one before the field existed.
@@ -1223,7 +1227,29 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 6;
+	static constexpr int32 SchemaVersionNow = 7;
+
+	/**
+	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
+	 * before the field, and what the save writes for a character that never drew one. Issue #1324 slice 6a, ruled
+	 * 2026-11-03.
+	 *
+	 * 32-BIT FNV-1a OVER THE IDENTIFIER'S SIXTEEN BYTES, IN THE ORDER ITS DIGITS ARE WRITTEN (`A`, `B`, `C`, `D`, each
+	 * most significant byte first), THEN THE SIGN BIT CLEARED, so the seed is positive like every clock-drawn seed in the
+	 * game. Written out here with its two constants (offset basis 2166136261, prime 16777619) and NOT `GetTypeHash`:
+	 *
+	 *   - STABLE ACROSS BUILDS. An engine upgrade may change `GetTypeHash(FGuid)`; this changes only if this function is
+	 *     edited, and editing it would move every migrated character's draw, which is why
+	 *     `Cataclysm.CataclysmDraw.TheSeedAnIdentifierGivesIsFixed` pins three of its answers as numbers.
+	 *   - STABLE ACROSS PLATFORMS. It reads the identifier's four whole numbers by shifting, never its bytes in memory,
+	 *     so byte order cannot reach it; it is unsigned 32-bit arithmetic, which every compiler does alike.
+	 *   - A CONSTANT FROZEN INTO THE MIGRATION, which section 5 rule 4 of `docs/Save_System_Design.md` allows: it reads
+	 *     nothing but the record.
+	 *
+	 * `tools/tests/test_a_character_keeps_its_cataclysm_draw.py` computes the same hash in Python for the committed
+	 * fixtures' identifier and checks the figure the tests compare with.
+	 */
+	static int32 CataclysmOrderSeedFor(const FGuid& Identifier);
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1276,6 +1302,19 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmPlayerBuild ConsumptionBuild;
+
+	/**
+	 * The character's Cataclysm order seed: every run of this character faces the first N of
+	 * `UCataclysmRoster::OrderFor(CataclysmOrderSeed)`, N its tier. Issue #1324 slice 6a.
+	 * `ACataclysmPlayerState::GetCataclysmOrderSeed`. `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the
+	 * same Cataclysms, by name and not only by count."
+	 *
+	 * VERSION 7: a record written before the field is at version 6, and `Migrate_6_to_7` writes into it the seed its
+	 * `CharacterId` gives (`CataclysmOrderSeedFor`). The default 0 is a seed like any other and not "none": a version 7
+	 * record somehow missing the key reads as seed 0.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmOrderSeed = 0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the

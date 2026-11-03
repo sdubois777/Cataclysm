@@ -2,6 +2,231 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A character keeps its Cataclysm draw across runs, and the character record keeps the seed at version 7 (#1324 slice 6a)
+
+**Affects:** `UCataclysmEmpireRun::BeginForCharacter`, new, and `Begin`, which now calls it with the run's own seed
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); `UCataclysmRoster::OrderFor`'s comment
+(`CataclysmRoster.h`); `UCataclysmGameInstance::BeginACharactersEmpireRun`, new, and `BeginEmpireRun`, which now calls
+it with the run's own seed (`game/Source/Cataclysm/Player/CataclysmGameInstance.h`, `.cpp`);
+`ACataclysmPlayerState::GetCataclysmOrderSeed`, `HasCataclysmOrderSeed`, `SetCataclysmOrderSeed` and two members, new
+(`CataclysmPlayerState.h`); `ACataclysmGameMode::MakeThePendingCharacter` (`CataclysmGameMode.cpp`);
+`FCataclysmSaveLoad::CharacterAndRun`'s new-run branch (`game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`);
+`UCataclysmCharacterSave` schema version 7, `CataclysmOrderSeed`, `CataclysmOrderSeedFor` and `Migrate_6_to_7`
+(`CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather::CharacterFrom` and `FCataclysmSaveApply::CharacterInto`
+(`CataclysmSaveGather.cpp`, `CataclysmSaveApply.cpp`); `game/Tests/SaveFixtures/Character_v7.json`, new, and
+`game/Tests/SaveFixtures/README.md`; six new tests in `game/Source/Cataclysm/Tests/CataclysmCataclysmDrawTests.cpp`
+and two in `CataclysmSaveLoadTests.cpp`; the moved assertions below, in `CataclysmSaveRecordTests.cpp`,
+`CataclysmConsumptionMarkTests.cpp`, `CataclysmConsumptionDoubleTests.cpp` and `CataclysmSaveFixtures.h`; a new
+Python test, `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 6a.
+
+### SAID FIRST
+
+- **WRITTEN, NOT COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Every Unreal
+  figure below is registered for a window and none is measured.
+- **THE SIMULATION NEEDED NO CHANGE.** It already keeps one order per character: `cataclysm_order_for` in
+  `sim/cataclysm_sim/engine.py` draws from the campaign's seed alone ("THE SEED IS THE CHARACTER"), and
+  `sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` holds the same seed to the same Cataclysms
+  (`test_the_same_seed_draws_the_same_cataclysms`) and a tier higher to those plus one
+  (`test_a_character_climbing_a_tier_keeps_what_it_already_faced`). The game was the half that drew from each run's
+  clock. No port test compares the two draws, and none can: `random.Random` and `FRandomStream` are different
+  generators, which `UCataclysmRoster::OrderFor` already says.
+- **TWO RUN-BEGIN PATHS STILL DRAW FROM THE RUN'S OWN SEED, ON PURPOSE:** the console commands, which name no
+  character. See "Every call site" below.
+
+### The design, and the ruling
+
+`docs/Cataclysm_GDD_v2.md`, section II, Ending a Run. The paragraph led by "**What a failed run costs is the run: the
+empire and the tier.**" ends: "Only defeating the boss dungeon adds a Cataclysm to the next run." The next paragraph's
+lead, and the sentence this slice builds: "**The same tier means the same Cataclysms, by name and not only by
+count.**" That paragraph goes on: "The order a character adds Cataclysms in is drawn once when the character is
+created, described under Game Start in this section, so a replay has nothing left to draw."
+
+**Ruled by the coordinating session on 2026-11-03, from that sentence** (its date; this entry and the version dates
+below are the local date, 2026-11-02, which `tools/tests/test_decisions_entries_are_separated.py` requires of a
+heading)**:** the character record carries a Cataclysm
+order seed, drawn once when the character is created, and every run's Cataclysm list is the first N (N the tier's
+count) of `UCataclysmRoster::OrderFor(that seed)`. A character file from before the field migrates with a seed derived
+deterministically from its `CharacterId`, so an existing character keeps one fixed draw from then on. So a run at tier
+T+1 faces the tier-T Cataclysms and one more, at the end.
+
+No formula or mechanic is proposed, so no genre research applies; the draw itself (`OrderFor`) is unchanged.
+
+### Every call site that drew a run's Cataclysms, and what each does now
+
+Found by searching `game/Source` for `BeginEmpireRun`, `->Begin(`, `.Begin(`, `ActiveFor(` and `OrderFor(` outside
+the tests.
+
+| Call site | Before | Now |
+|---|---|---|
+| `ACataclysmGameMode::MakeThePendingCharacter`, a new character from the new-character screen | `BeginEmpireRun` with a clock seed: the clock drew the run AND its Cataclysms | draws the character's seed once (`(FDateTime::Now().GetTicks() ^ FPlatformTime::Cycles64()) & 0x7FFFFFFF`, so it is not the run's seed read twice), keeps it on the player state, and begins with `BeginACharactersEmpireRun(Seed, State->GetCataclysmOrderSeed(), ...)` |
+| `FCataclysmSaveLoad::CharacterAndRun`, a loaded character whose run could not be read | `BeginEmpireRun` with a clock seed | `BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed, ...)`: a new run's chance from the clock, its Cataclysms from the record |
+| `FCataclysmSaveApply::RunInto`, a saved run put back | `Begin(0, ...)`, then the saved `ActiveCataclysms` written over the draw | unchanged: a resumed run keeps the list it was saved with. A run saved before this change keeps the clock-drawn list it was begun with until it ends |
+| `UCataclysmGameInstance::GetOrBeginEmpireRun`, reached in the C++ only by `Cataclysm.EmpireMap`, `Cataclysm.EmpireAdvance` and `Cataclysm.EnterDungeon` with no run | `BeginEmpireRun` with a clock seed | unchanged: no character is named, so the run's seed draws its Cataclysms |
+| `Cataclysm.EmpireBegin <seed> ...` | `BeginEmpireRun` with the typed seed | unchanged, for the same reason; the same typed seed still meets the same Cataclysms |
+
+`UCataclysmEmpireRun::Begin` and `UCataclysmGameInstance::BeginEmpireRun` keep their signatures and behaviour (the
+order seed is the run's seed), so no existing test's run changes.
+
+### What changes
+
+- **THE RUN.** `BeginForCharacter(InSeed, InCataclysmOrderSeed, Mode, Rung, Tier)` is `Begin` with
+  `ActiveCataclysms = UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier)`; every stream (`Stream`,
+  `CataclysmStream`, `ModifierStream`, the Corrupted Stalker's seed) still comes from `InSeed`, the run's chance.
+- **THE CHARACTER.** The player state holds the seed and whether anything set it. Only `MakeThePendingCharacter` draws
+  one, and only a load sets one otherwise.
+- **A CHARACTER THAT NEVER DREW ONE** -- the fresh start's nameless character, one an automation test stands up -- is
+  written with the seed its identifier gives, the migration's rule. **A judgement of the writing session**: the ruling
+  names only new characters and old files; this keeps every written character to one fixed draw and gives two such
+  characters different ones. Its first run, begun by a console command, drew from the clock (above), so only its
+  later runs agree with the record.
+
+### The save change: character record version 7
+
+By `game/Tests/SaveFixtures/README.md`, as #2688's slices 2b and 2c took it to 6. Verified before the change: the
+character record was at 6, the run record at 3, the account record at 1.
+
+- `UCataclysmCharacterSave::CataclysmOrderSeed`, `int32`, default 0, declared after `ConsumptionBuild`.
+  `SchemaVersionNow` 6 to 7.
+- `Migrate_6_to_7` reads `CharacterId` from the file, parses it, and writes `CataclysmOrderSeedFor` of it; an
+  identifier missing or unparseable gives the zero identifier's seed rather than a refusal.
+- **`CataclysmOrderSeedFor` IS 32-BIT FNV-1a** (offset basis 2166136261, prime 16777619) over the identifier's sixteen
+  bytes, `A`, `B`, `C`, `D` each most significant byte first -- the order its digits are written -- then the sign
+  bit cleared, so the seed is positive like every clock-drawn seed. **Stable across platforms**: it reads the four
+  whole numbers by shifting, never memory, and is unsigned 32-bit arithmetic. **Stable across builds**: its two
+  constants are written into it, and it does not use `GetTypeHash(FGuid)`, which an engine upgrade may change. It
+  reads only the record (section 5, rule 4). The committed fixtures' identifier gives **1412640493**, worked out in
+  Python by the new test file and pinned in Unreal.
+- `Character_v7.json` is `Character_v6.json` at version 7 with `"CataclysmOrderSeed": 975318642` after
+  `ConsumptionBuild` and nothing else changed (the Python test compares the two as objects). **Not 1412640493**, so a
+  seed worked out again on load cannot pass; not 0, the default; no other number in the file.
+  `Character_v6.json` is unedited and is now a migration input. The README's paragraph, table row and count of
+  character migrations (six) say so.
+- **THE VERSION SWEEP, READS AND NOT ONLY WRITES.** `grep` for `Character_v`, `CharacterSave::SchemaVersionNow`,
+  `SchemaVersion, `, `SchemaVersion = `, `"SchemaVersion\": ` and `MigrationSteps()` in `game/Source` and
+  `tools/tests`. `CataclysmSaveLoad.cpp`'s `IsNewerThanThisBuild` and `FCataclysmSaveStorage` read the constant and
+  move with it; the writer stamps it. The only literal character versions in the tests were
+  `TheCommittedCharacterFileReadsIntoTheValuesItStates`'s 6 (now 7) and the hand-written version 3 record of
+  `ACharacterRecordWrittenBeforeTheTierLoadsAtTierOne`, which still migrates and checks only its level and tier.
+  `tools/tests/test_save_migrations_are_single_steps.py` reads `SchemaVersionNow` and the fixture names generically and
+  needed no edit; it now requires `Character_v1.json` to `v7`, which exist. `docs/Save_System_Design.md` names no
+  character version.
+
+### Moved assertions
+
+1. `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`: the character entry reads `Character_v7.json`
+   (was v6).
+2. `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`: reads `Character_v7.json`, "it says it
+   is version 7" (was 6), and gains "the Cataclysm order seed in the file" (975318642).
+3. `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`: reads `Character_v7.json`. Assertions unchanged.
+4. to 6. `Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne`,
+   `Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked` and
+   `Cataclysm.ConsumptionDouble.ACharacterFileFromBeforeTheBuildMigratesWithNone`: each expected object gains
+   `"CataclysmOrderSeed": 1412640493` (`CataclysmSaveFixtures::FixtureIdentifiersOrderSeed`), because the chain runs on
+   to version 7. Assertions unchanged.
+
+### Tests
+
+Six new in `CataclysmCataclysmDrawTests.cpp`; `Cataclysm.CataclysmDraw.` is a new group and selects them and nothing
+else. The first three begin runs through `UCataclysmGameInstance::BeginACharactersEmpireRun` on a game instance with
+no world, each naming its tier. **No assertion compares with a list of names written out**: the orders quoted were
+worked out by a Python copy of `FRandomStream` (in the new Python test), not by the game, and each test prints the
+real ones.
+
+1. `TwoRunsOfOneCharacterAtOneTierFaceTheSameCataclysmsInOrder` ("SAME TIER"): character seed 24681357, tier 3, run
+   seeds 11 and 12: the first run faces `ActiveFor(24681357, 3)`; the second faces the first's list, by name and in
+   order. CONTROL: runs naming no character on seeds 11 and 12 face different lists (the copy: Death, Chaos, Void and
+   War, Famine, Demonic; the character's Demonic, Pestilence, War).
+2. `ARunATierHigherFacesTheSameCataclysmsAndOneMoreAtTheEnd` ("TIER HIGHER"): the same character at tier 3 (seed 11)
+   and tier 4 (seed 12): the tier 4 run's first three are the tier 3 run's, in order, and its fourth is not one of
+   them.
+3. `TwoCharactersWithDifferentSeedsCanFaceDifferentCataclysms` ("TWO CHARACTERS"): run seed 5, tier 3, character
+   seeds 7 and 8: each faces its own draw, and the two differ (the copy: Celestial, Death, Void and Void, Demonic,
+   Death).
+4. `ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed` ("DRAW MIGRATED"): `Character_v6.json` through the
+   chain: the step writes 1412640493 into the file; version 7; the record holds 1412640493, which is also what
+   `CataclysmOrderSeedFor` gives the identifier it read; a second load gives the same seed; CONTROL, not 0; every other
+   field kept.
+5. `TheCommittedCharacterFileKeepsItsSeedThroughARoundTrip` ("DRAW FILE"): `Character_v7.json` at 7 holds 975318642;
+   CONTROL, not its identifier's seed; written out and read back, still 975318642.
+6. `TheSeedAnIdentifierGivesIsFixed` ("SEED FOR"): the committed identifier gives 1412640493, the zero identifier
+   1768495365 and `FGuid(1, 2, 3, 4)` 1069075193.
+
+Two new in `CataclysmSaveLoadTests.cpp`, in `Cataclysm.SaveLoad.`, on the scene the file's other tests build:
+
+7. `ANewCharacterDrawsItsCataclysmSeedOnceAndItsRunFacesThatDraw` ("NEW CHARACTER DRAW"), driven as
+   `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` drives a creation, at tier 4: set-up, a stood-up character has
+   drawn no seed (a fresh `ACataclysmPlayerState`'s default); after the creation it has one; its run faces
+   `ActiveFor(its seed, 4)`; a death's write records the seed; and leaves it as it was. The seed comes from the clock
+   and is not predicted.
+8. `ALoadedCharactersNewRunFacesItsOwnDrawEveryTime` ("LOADED DRAW"): a character saved by `SaveACharacter`, its
+   record rewritten to name no run, seed 7 and tier 3, loaded twice into fresh worlds: each load begins a new run
+   (`LoadedWithANewRun`), the loaded character holds seed 7, and the run faces `ActiveFor(7, 3)`; the two loads' runs
+   face the same list.
+
+**Starting states read, not assumed**: test 7's "no seed before" is a set-up line; test 8's tier and seed are written
+into the record by the test; every other comparison is between two answers of the game, or with a number the test or
+the committed fixture states. A run's own seed in tests 7 and 8 comes from the clock, and nothing compares with it.
+
+Python, eleven, in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`: the FNV-1a here is FNV-1a (its
+published value for "a"); every committed character file has the one identifier; 1412640493 is what it gives and what
+`CataclysmSaveFixtures.h` states; the three pinned seeds; the v7 file's seed is 975318642, not 0, not its identifier's,
+and no other number in it; the v7 file is the v6 file plus the key; `Migrate_6_to_7` is registered and writes
+`CataclysmOrderSeedFor(Identifier)`; the hash's constants and byte order, and no `GetTypeHash`; the two play paths
+hand over the character's seed and `BeginForCharacter` draws from it; the seeds the Unreal tests chose draw what their
+comments say under the Python copy of the generator; and the copy's orders are permutations.
+
+### Registered before the run
+
+The engine words a failed `TestTrue` "Expected '<what>' to be true.", `TestFalse` "Expected '<what>' to be false." and
+`TestEqual` on whole numbers "Expected '<what>' to be <expected>, but it was <actual>."
+(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`). **The group counts are counted from name literals in
+this branch's source, not measured**; the whole-suite base is measured: 4610 performed by window click-move-w1 at
+`f939a69ee`, whose tree differs from this branch's base, `development` `ec2319181`, only in `docs/DECISIONS.md`. Each
+prefix ends in a dot and no other group shares it.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.CataclysmDraw.` alone | 6 / 6: none at the base, + 6 |
+| `Cataclysm.SaveLoad.` alone | 75 / 75: 73 at the base by name literals, + 2 |
+| `Cataclysm.SaveRecords.` alone | 17 / 17: 17 at the base (measured at window death-cost-w1), none added; three move |
+| `Cataclysm.ConsumptionMark.` alone | 6 / 6 by name literals, none added; one moves |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 (measured at death-cost-w1), none added; one moves |
+| Whole Unreal suite | TO-BE-MEASURED: 4610 at the base, + 8 by name, so 4618 expected |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, a loaded character's new run drawn from the clock again (`BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed,` to `BeginACharactersEmpireRun(Seed, Seed,`, in `CataclysmSaveLoad.cpp`), prefix `Cataclysm.SaveLoad.` | 1 test, 3 assertions, all in `ALoadedCharactersNewRunFacesItsOwnDrawEveryTime`, each "to be true": "load 1: the new run faces the character's draw, by name and in order", "load 2: the new run faces the character's draw, by name and in order" and "the second load's run faces the same Cataclysms as the first's, by name and in order". **Each can pass by chance**, about once in 336: a clock-drawn tier 3 list that happens to be seed 7's, or two that happen to match. "holds the seed its record keeps" passes (the load still sets it); the other 74 pass |
+| P2, the migration writes 0 (`UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier)); // A migration's` to `0); // A migration's`, in `CataclysmSaveRecords.cpp`), prefix `Cataclysm.CataclysmDraw.` | 1 test, 5 assertions, all in `ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed`: "the step writes the seed the identifier gives into the file" (to be true), "a character from before the draw holds the seed its identifier gives" (to be 1412640493, but it was 0), "which is what CataclysmOrderSeedFor gives the identifier it read" (to be 1412640493, but it was 0), "CONTROL: and it is not 0, the field's default" (to be true) and "and every other field is kept" (to be true). "a second load gives the same seed" passes (0 and 0). The other five pass. Outside the prefix it would also fail "and every other field is kept" in the three moved migration tests |
+| P3, every run drawn from its own seed (`UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier);` to `UCataclysmRoster::ActiveFor(InSeed, InDifficultyTier);`, in `CataclysmEmpireRun.cpp`), prefix `Cataclysm.CataclysmDraw.` | 3 tests, 6 assertions, each "to be true": in test 1 "the first run faces the character's draw, by name and in order" and "the second run faces the same Cataclysms as the first, by name and in order"; in test 2 "the tier 4 run's first three are the tier 3 run's, by name and in order"; in test 3 "the character of seed 7 faces its own draw", "the character of seed 8 faces its own draw" and "the two characters face different Cataclysms". Test 1's CONTROL and test 2's "and the one added ... is not one the tier 3 run faced" pass (the copy: seed 12's fourth is Pestilence, not in seed 11's three). Tests 4 to 6 pass. **The second assertion of test 1 and test 2's rest on test 1's CONTROL holding; the other four on the Python copy of the generator** (seed 11's list is not 24681357's; seed 5's is neither 7's nor 8's) |
+
+Each anchor occurs once in its file, counted by the phase 1 proof script. The breaks were not compiled.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py` in this worktree, which no other process uses, against
+`tools/tests/test_a_character_keeps_its_cataclysm_draw.py`, each anchor checked to occur once:
+
+- P1: "PROVED: 1 failed, 10 passed in 0.10s | restored: 11 passed in 0.05s", the failure
+  `test_a_characters_runs_are_begun_from_the_characters_seed`.
+- P2: "PROVED: 1 failed, 10 passed in 0.09s | restored: 11 passed in 0.06s", the failure
+  `test_the_migration_step_writes_the_identifiers_seed`.
+- P3: "PROVED: 1 failed, 10 passed in 0.09s | restored: 11 passed in 0.05s", the failure
+  `test_a_characters_runs_are_begun_from_the_characters_seed`.
+
+### Not tested
+
+- **Nothing in Unreal has run**, and nothing has compiled (SAID FIRST).
+- **A won run.** Nothing in play wins one yet (#1324's slice 6), so "a run at tier T+1 faces the tier-T list plus one"
+  is tested by beginning runs at T and T+1 for one seed, not by winning.
+- **The fresh start's character**, whose first run a console command begins from the clock, then whose record is
+  written with its identifier's seed (What changes): its later runs follow the record; its first does not. Not
+  exercised by a test.
+- **A run saved before this change and resumed** keeps the clock-drawn list it was saved with (`RunInto`); only its
+  next new run follows the character. Read, not run.
+- **Whether the Python copy of `FRandomStream` matches the engine.** It picked the seeds and predicts four of P3's six
+  failures; the Unreal tests' own CONTROL lines and info lines measure the real generator.
+
+---
+
 ## 2026-11-02 — A creature struck by a landed blow flinches away from it with its own pack's clip, and never while it is committed (#745)
 
 **Affects:** `UCataclysmHitReaction`, `ECataclysmHitDirection`, `ECataclysmFlinchRefusal` and `FCataclysmFlinchFacts`,

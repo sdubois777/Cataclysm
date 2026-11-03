@@ -195,11 +195,19 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCa
 	State->SetCreationChoice(Creation.WeaponType, Creation.DamageType);
 	Character.ApplyCreationChoice();
 
+	// ITS CATACLYSM ORDER SEED, DRAWN ONCE, HERE, AND NEVER AGAIN: `docs/Cataclysm_GDD_v2.md`, Ending a Run, "The order a
+	// character adds Cataclysms in is drawn once when the character is created". The record keeps it, and every run of
+	// this character faces the first N of its order. The clock and the processor's cycle counter together, so it is not
+	// the run's seed below read twice. Issue #1324 slice 6a.
+	State->SetCataclysmOrderSeed(static_cast<int32>(
+		(FDateTime::Now().GetTicks() ^ static_cast<int64>(FPlatformTime::Cycles64())) & 0x7FFFFFFF));
+
 	// ITS EMPIRE RUN, AT ITS LETHALITY: the fresh start's run, when one began, is Standard's.
 	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
-	Instance.BeginEmpireRun(Seed, ECataclysmSurgeMode::Static,
-							static_cast<int32>(Creation.Partition.Lethality), // A new character's: its run's lethality.
-							State->GetDifficultyTier()); // A new character's: its run at its tier. Issue #1472.
+	Instance.BeginACharactersEmpireRun(Seed, State->GetCataclysmOrderSeed(), // A new character's: its own draw.
+									   ECataclysmSurgeMode::Static,
+									   static_cast<int32>(Creation.Partition.Lethality), // A new character's: its run's lethality.
+									   State->GetDifficultyTier()); // A new character's: its run at its tier. Issue #1472.
 	TakeTheRunsTier(); // A new character's: this level fought at its run's tier.
 
 	// AND WRITTEN AT ONCE, so the select screen lists it even if the player quits before anything else writes.

@@ -341,6 +341,32 @@ public:
 	int32 RaiseDifficultyTierForAWin();
 
 	/**
+	 * The character's Cataclysm order seed: what `UCataclysmRoster::OrderFor` draws the order its Cataclysms are added in
+	 * from. Every run of this character faces the first N of that order, N its tier. Issue #1324 slice 6a.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the same Cataclysms, by name and not only by count."
+	 * and "The order a character adds Cataclysms in is drawn once when the character is created". So it is DRAWN ONCE,
+	 * by `ACataclysmGameMode::MakeThePendingCharacter`, and after that only a load sets it. The character record holds
+	 * it (version 7).
+	 *
+	 * UNSET UNTIL ONE OF THOSE SETS IT, as the identity is. A character that never had one -- the fresh start's nameless
+	 * character, one an automation test stands up -- is written with the seed its identifier gives
+	 * (`UCataclysmCharacterSave::CataclysmOrderSeedFor`), the rule a version 6 file migrates by, so it too keeps one fixed
+	 * draw from then on.
+	 */
+	int32 GetCataclysmOrderSeed() const { return CataclysmOrderSeed; }
+
+	/** Whether the creator or a load set the seed, as opposed to its default. */
+	bool HasCataclysmOrderSeed() const { return bHasCataclysmOrderSeed; }
+
+	/** Set it. NOT VALIDATED: every int32 is a seed. */
+	void SetCataclysmOrderSeed(int32 Seed)
+	{
+		CataclysmOrderSeed = Seed;
+		bHasCataclysmOrderSeed = true;
+	}
+
+	/**
 	 * Whether the character is marked: it crossed its tier's Consumption Threshold with an equip it confirmed. Issue
 	 * #2688. `docs/Cataclysm_GDD_v2.md`, "What crossing it does": "The character is marked." The character record holds
 	 * it (ruled 2026-11-02).
@@ -832,6 +858,12 @@ protected:
 	/** See `GetDifficultyTier`. Issue #1472. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	int32 DifficultyTier = 1;
+
+	/** See `GetCataclysmOrderSeed`. Issue #1324 slice 6a. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	int32 CataclysmOrderSeed = 0;
+
+	bool bHasCataclysmOrderSeed = false;
 
 	/** See `IsMarkedByConsumption`. Issue #2688. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
