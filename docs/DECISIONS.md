@@ -242,6 +242,27 @@ Both with `tools/prove_guard.py` in this worktree, which no other process uses, 
   12 passed in 0.05s", the one failure
   `tools/tests/test_the_player_swings.py::test_a_movement_skill_and_an_aura_toggle_play_no_swing`.
 
+### Window click-move-w1: the results
+
+Run by the coordinating session on 2026-11-03 at the registration commit `f939a69ee` (on `development` `5eab89868`),
+lock `click-move-w1`, after the six pre-checks all passed (11,965 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.ClickToMove.` alone | 2 | "2 tests performed, 2 succeeded, 0 failed" |
+| `Cataclysm.PlayerAttack.` alone | 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `Cataclysm.DungeonFloor.` alone | 16 | "16 tests performed, 16 succeeded, 0 failed" |
+| `Cataclysm.Player.` alone | 20 | "20 tests performed, 20 succeeded, 0 failed" |
+| Whole Unreal suite | 4610 | "4610 tests performed, 4610 succeeded, 0 failed"; "Declared: 4610 tests in the tree at f939a69ee; 4610 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7267 passed, 8 skipped in 233.63s"; JUnit tests 7275, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 1 test, 2 | PROVED. The kept broken-half log fails exactly "switching an aura on plays no swing" and "and switching it off plays no swing either" (to be null); restored 6 of 6 |
+| B | 1 | PROVED. Exactly "an aura with a duration is not a toggle and still swings, as ruled" (to be not null); restored 6 of 6 |
+| C | 2 tests, 2 | PROVED. Exactly "the player's movement component follows a path by acceleration, so a clicked walk runs" (to be true) and "a clicked walk: frames moving with no acceleration, which play the idle pose" (0 expected, 1327 read -- the unpredicted N); restored 2 of 2 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **What the run looks like.** No test has a renderer (`-nullrhi`); the tests measure the acceleration
