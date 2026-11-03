@@ -4,27 +4,33 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-11-02 — The dungeon screen draws the empire status bar: dungeons standing, the next surge, cities at risk (#49)
 
-**Affects:** `UCataclysmEmpireStatusBar` and `FCataclysmEmpireStatusFacts`, new
+**Affects:** `UCataclysmEmpireStatusBar` and `FCataclysmEmpireStatusFacts` with its `HasTheSameFiguresAs`, new
 (`game/Source/Cataclysm/Interface/CataclysmEmpireStatusBar.h`, `.cpp`), with the console variable
-`Cataclysm.Overlay.EmpireStatusBar`; `ACataclysmHUD::DrawEmpireStatusBar`, new, called from `DrawHUD`
+`Cataclysm.Overlay.EmpireStatusBar`; `ACataclysmHUD::DrawEmpireStatusBar` and the line it keeps
+(`EmpireStatusLine`, `EmpireStatusFactsDrawn`, `EmpireStatusWidthAtBase`), new, called from `DrawHUD`
 (`game/Source/Cataclysm/Interface/CataclysmHUD.h`, `.cpp`); the comments on `ACataclysmHUD` and
-`UCataclysmCombatOverlay` that said the bar was unbuilt (`CataclysmCombatOverlay.h`); seven new tests in
+`UCataclysmCombatOverlay` that said the bar was unbuilt (`CataclysmCombatOverlay.h`); eight new tests in
 `game/Source/Cataclysm/Tests/CataclysmEmpireStatusBarTests.cpp`. Issue
 [#49](https://github.com/sdubois777/Cataclysm/issues/49), one line of its list: the design's HUD Elements,
 "Empire status bar — active dungeon count, next surge countdown, cities at risk" (`docs/Cataclysm_GDD_v2.md`).
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN.** Written while the build machine was in use. The seven tests, the whole suite and
-  three proofs are registered below for a window.
+- **COMPILED, NOT RUN.** Written without a build by one session; a second compiled it on `development` `502bfeed5`,
+  reviewed it and fixed what is listed under "The second session's review". The three changed `.cpp` files compiled
+  on their own at their final text (each edited, so the adaptive build took it out of its unity file), and again
+  inside their unity files once committed. The eight tests, the whole suite and four proofs are registered below for
+  a window.
 - **WHAT THE PLAYER SEES, AND THIS IS THE SYSTEM'S BASIC UI.** While an empire run is bound, one line in the top
   left corner of the dungeon screen, warm near-white outlined in black, such as
   "3 dungeons standing | surge in 4 days | 2 cities at risk". With no run bound -- Play in the sandbox or in
   `L_Dungeon` with no campaign -- nothing at all. `Cataclysm.Overlay.EmpireStatusBar 0` turns it off.
 - **For the owner's launch check:** Play in the sandbox and the top left corner is empty. `Cataclysm.EmpireMap`
-  starts a run (it asks `UCataclysmGameInstance::EmpireRunFor` to start one); close the screen and the line is there.
-  `Cataclysm.EmpireAdvance 3` and the surge figure falls by three, when it was more than three off. Inside a dungeon walked from the empire screen it
-  falls by each whole day the walk owes while the empire screen's day stands still.
+  starts a run (it asks `UCataclysmGameInstance::EmpireRunFor` to start one) on day 0, before any wave; close the
+  screen and the line reads "0 dungeons standing | surge tomorrow | 0 cities at risk". `Cataclysm.EmpireAdvance 1`
+  lands the opening wave and the surge reads "surge in 90 days"; `Cataclysm.EmpireAdvance 3` takes it to 87. Inside
+  a dungeon walked from the empire screen it falls by each whole day the walk owes while the empire screen's day
+  stands still.
 
 ### The rulings, by the coordinating session under the owner's delegation, 2026-11-02
 
@@ -46,9 +52,8 @@ Decisions made outside the Google Drive documents, newest first.
 - **THE WORDS**, `UCataclysmEmpireStatusBar::LineFor`: "N dungeon(s) standing | surge ... | N city/cities at risk",
   one singular and every other count plural, nought included. The surge reads "surge in N days" for two or more,
   "surge tomorrow" for one, and for nought either "surge when you leave" (days owed reach it) or "surge tomorrow"
-  (nothing owed: a surge already due lands as the next day begins, since `UCataclysmEmpireRun::AdvanceDay` asks
-  `IsDue` of the day about to begin). A judgement of the writing session: digits always, "0 cities at risk" rather
-  than "no cities at risk", so the three parts keep one shape.
+  (nothing owed: a surge already due lands as the next day begins). A judgement of the writing session: digits
+  always, "0 cities at risk" rather than "no cities at risk", so the three parts keep one shape.
 - **THE FIGURES**, `UCataclysmEmpireStatusBar::FactsOf`: `UCataclysmEmpireRun::DungeonCount`; `CitiesAtRiskIn`, a
   set of the cities under `Dungeons` that are found and not fallen; `DaysToNextSurgeIn`,
   `UCataclysmSurgeScheduler::DaysUntilNextSurge` asked at `Day() + DaysOwed()` and rounded up, because a surge lands
@@ -57,60 +62,118 @@ Decisions made outside the Google Drive documents, newest first.
   `UCataclysmGameInstance::EmpireRunFor` with `bStartIfNone` false, so the bar never starts a campaign.
 - **THE SCHEDULED SURGE ONLY**, as the empire screen's own "Next surge in" is: an empty board or a city's fall can
   bring one sooner, and no countdown can say when.
-- **THE DRAW**, `ACataclysmHUD::DrawEmpireStatusBar`, after the potions and before the overhead bars: it measures the
-  line at `BaseScale` (0.6 of a damage number), asks `ScaleToFit` for a scale that ends it 16 pixels short of the
-  creature panel's narrowest left edge (28% of the screen, centred), never below 0.35, and draws it at 28, 24 -- the
-  player's bars' left inset and the creature panel's top margin. The top left is the one corner nothing else on the
-  dungeon screen uses. Position, size and colour are placeholders for play to settle.
+- **THE DRAW**, `ACataclysmHUD::DrawEmpireStatusBar`, after the potions and before the overhead bars. Each frame it
+  reads the figures -- a few integers and one pass over the dungeons into a set held inline -- and writes and
+  measures the line again only when `HasTheSameFiguresAs` says one changed. It measures the line at `BaseScale` (0.6
+  of a damage number), asks `ScaleToFit` each frame for a scale that ends it 16 pixels short of the creature panel's
+  narrowest left edge (28% of the screen, centred), never below 0.35, and draws it at 28, 24 -- the player's bars'
+  left inset and the creature panel's top margin. The top left is the one corner nothing else on the dungeon screen
+  uses. Position, size and colour are placeholders for play to settle.
+
+### The second session's review, 2026-11-02
+
+- **"surge tomorrow" at 0 days with nothing owed is true, and the code says so.** `UCataclysmEmpireRun::AdvanceDay`
+  sets `const int32 Today = Clock->Day + 1;` and fires `if (Surges->IsDue(Today))` before `Clock->AdvanceDay()` moves
+  the day, and `UCataclysmSurgeScheduler::IsDue` is `Day >= NextSurgeDay`. So a surge already due on the day showing
+  lands as the next day begins, never on entering or leaving a screen. The case is reached only on a run that has
+  begun and not yet advanced -- `NextSurgeDay` starts at 0 and `RecordSurge` puts it at least `LeastIntervalDays`,
+  25, past the day a surge lands -- which is the line `Cataclysm.EmpireMap` gives on a fresh run. Inside a walk the
+  count is in the walk's days, ruling (b): a surge "tomorrow" there lands with the next whole day, which is owed and
+  runs when the player leaves.
+- **The draw wrote four formatted strings, built a heap set and measured the line on every frame.** Fixed: the
+  line and its width are kept until a figure changes (`HasTheSameFiguresAs`, every field compared, with its own test),
+  and the set holds 32 cities inline -- the map has 25, `UCataclysmEmpireMap::Radius` 3 -- so reading the figures
+  allocates nothing. The colour is still parsed from its hex each frame, as every other piece of HUD text is.
+- **The launch check was wrong from a fresh run.** It said `Cataclysm.EmpireAdvance 3` lowers the surge figure by
+  three; a run `Cataclysm.EmpireMap` starts is on day 0 with the opening wave not yet landed, so the first advance
+  replaces "tomorrow" with 90 days. Rewritten above.
+- **The `CataclysmEmpire` module still depends on nothing in `Cataclysm`.** This change touches no file under
+  `game/Source/CataclysmEmpire/`; the bar is in `Cataclysm` and includes the empire's headers, the permitted direction.
+- **No local is named like a file-scope constant elsewhere in the module**, checked by script over every `.cpp`
+  under `game/Source/Cataclysm/`, since a file compiled alone locally cannot show that collision.
+
+### The assertion audit: every fixed number and starting state the tests rely on
+
+- **The world test's three set-up lines, on seed 7 at day 1, hold for every seed, from the code.** Each is read from
+  the run and asserted as set-up, so a change that broke one fails the test loudly rather than silently changing what
+  it checks. (1) The opening wave left dungeons standing: `NextSurgeDay` starts at 0, so day 1's `IsDue` fires it with
+  `OpeningDungeonsPerSurge`, 12, and no timer can run out on its first day -- `UCataclysmDayClock::ResolveDaysFor`
+  gives at least 10 + 1.6 days, and `ResolveJitter` takes at most 15% off. (2) No city has fallen on day 1: no timer
+  runs out, and the only bite is a Siege's, `SiegeDefenceBitePerDay` 1% of a full city plus `SiegeDamageGrowthPerDay`
+  times 0 days stood. (3) The next surge is more than three days off: `RecordSurge` sets `NextSurgeDay` to 1 +
+  `GapAfterThisSurge()`, which at `SurgeIndex` 0 is `IntervalDays`, 90, in every mode; no empty-board surge can follow
+  on day 1, since `LeastIntervalDays` is 25. So the world test's countdown is 90 days, and 87 with three owed. "More
+  dungeons stand than cities carry them" is true by construction: the test adds one on the first dungeon's city.
+- **`CitiesAtRiskAreDistinctStandingCitiesNotDungeons`** empties both lists before it counts, and finds its three
+  standing Outposts on the map rather than assuming them (a set-up line; `UCataclysmEmpireMap::Build` puts twelve on
+  ring 3). `UCataclysmEmpireMap::Fall` answers true for a standing city and leaves the run's list alone.
+- **`TheCountdownCountsFromTheDayTheWalkHasReached`** writes `NextSurgeDay` itself, so its 11, 8 and 0 depend only on
+  day 1, which a set-up line asserts (`Cataclysm.EmpireRun.TheReportedDayIsAlwaysTheClocksDay` holds the clock's
+  step of one).
+- **`TheLineShrinksToStayClearOfTheCreaturePanel`** works 647.2 by hand from
+  `UCataclysmCreaturePanel::MinimumWidthShare` 0.28, `LeftPx` 28 and `GapToPanelPx` 16; retuning any of the three
+  moves that figure and the test says so, which is its job. Its other cases sit far from their thresholds: 400 against
+  647.2 of room, 1000 against it, and 5000 at 1024 wide asking for a scale of 0.039 against the floor of 0.35.
+- **The words, the empties and the new comparison test** build their facts by hand and assume no starting state.
 
 ### Tests
 
-Seven new, in `CataclysmEmpireStatusBarTests.cpp`. `Cataclysm.EmpireStatusBar.` held none on `development` at
-`23d2333d6` and holds 7.
+Eight new, in `CataclysmEmpireStatusBarTests.cpp`. `Cataclysm.EmpireStatusBar.` held none on `development` at
+`502bfeed5` and holds 8.
 
 1. `TheLineSaysEachFigureWithItsOwnPlural`: facts 3, 4 days, 2 read "3 dungeons standing | surge in 4 days | 2 cities
    at risk"; 1, 1, 1 read "1 dungeon standing | surge tomorrow | 1 city at risk"; 0, 25, 0 read "0 dungeons standing
    | surge in 25 days | 0 cities at risk".
 2. `ASurgeTheDaysOwedReachLandsWhenThePlayerLeaves`: 0 days with 3 owed reads "surge when you leave"; 0 days with
    none owed, and 1 day with 3 owed, read "surge tomorrow".
-3. `NothingIsSaidWithNoRunBound`: no run, a run that has not begun, figures with the flag down, and no world all
+3. `TheFiguresAreTheSameOnlyWhenEveryOneIs`: the same figures are the same (control); a change to the flag, the
+   dungeons, the days, the days owed or the cities, each alone, is a change.
+4. `NothingIsSaidWithNoRunBound`: no run, a run that has not begun, figures with the flag down, and no world all
    say nothing; CONTROL, a begun run says something.
-4. `CitiesAtRiskAreDistinctStandingCitiesNotDungeons`: a real run on day 1 with the opening wave taken off. An empty
+5. `CitiesAtRiskAreDistinctStandingCitiesNotDungeons`: a real run on day 1 with the opening wave taken off. An empty
    board is 0 (control); two dungeons on one Outpost and one on another are 2; a dungeon on a third is 3 (control);
    the third falls (`UCataclysmEmpireMap::Fall`) with its dungeon standing, and the count is 2, with 4 dungeons still
    standing.
-5. `TheCountdownCountsFromTheDayTheWalkHasReached`: day 1, `NextSurgeDay` set to 11.5. Nothing owed, 11 (control);
+6. `TheCountdownCountsFromTheDayTheWalkHasReached`: day 1, `NextSurgeDay` set to 11.5. Nothing owed, 11 (control);
    3 owed, 8, and the line contains "surge in 8 days"; 11 owed, 0, and the line contains "surge when you leave".
-6. `TheBarGathersItsFiguresFromTheRunTheWorldHolds`: a test world with a `UCataclysmGameInstance` holding no run says
+7. `TheBarGathersItsFiguresFromTheRunTheWorldHolds`: a test world with a `UCataclysmGameInstance` holding no run says
    nothing (control). Then seed 7's real run on day 1, its opening wave standing and one more dungeon on the first wave
    dungeon's city; set-up lines pin that no city has fallen, that the cities are fewer than the dungeons, and that the
-   next surge is more than three days off. `FactsForWorld` is bound and gives the dungeon count, the test's own count
-   of distinct standing cities, and the rounded-up days; `LineForWorld` says those three. With 3 days owed the days
-   are those from `Day() + 3`, and the line says so.
-7. `TheLineShrinksToStayClearOfTheCreaturePanel`: 647.2 pixels of room at 1920 wide (1920 x 0.72 / 2 - 16 - 28); a
+   next surge is more than three days off (the audit above says why each holds). `FactsForWorld` is bound and gives
+   the dungeon count, the test's own count of distinct standing cities, and the rounded-up days; `LineForWorld` says
+   those three. With 3 days owed the days are those from `Day() + 3`, and the line says so.
+8. `TheLineShrinksToStayClearOfTheCreaturePanel`: 647.2 pixels of room at 1920 wide (1920 x 0.72 / 2 - 16 - 28); a
    line of 400, or of no width, is drawn at `BaseScale`; one of 1000 is shrunk until it ends 16 short of the panel;
    one of 5000 at 1024 wide stops at `SmallestScale`.
 
-**What the tests cannot see:** whether the line is legible, where it lands on a real screen, and whether it meets a
-creature panel wider than its narrowest. `DrawHUD` never runs under `-nullrhi`.
+**What the tests cannot see:** whether the line is legible, where it lands on a real screen, whether it meets a
+creature panel wider than its narrowest, and whether the draw really keeps its line between changes. `DrawHUD` never
+runs under `-nullrhi`.
 
 ### Registered before the run
 
+Base counts are "Test Completed" lines in the item-comparison-w1 whole-suite engine log of `cb32de836`, the tree
+`development` `502bfeed5` holds: 4569 performed, all `Result={Success}`, none under `Cataclysm.EmpireStatusBar.`.
+The engine words a failed `TestEqual` "Expected '<what>' to be <expected>, but it was <actual>.", and a failed
+`TestTrue` or `TestFalse` "Expected '<what>' to be true." or "... to be false.".
+
 | Figure | Registered |
 |---|---|
-| `Cataclysm.EmpireStatusBar.` alone | 7 / 7: none at `23d2333d6`, + 7 |
-| Whole Unreal suite | TO-BE-MEASURED: `development`'s last measured total at the window's base, + 7 |
+| `Cataclysm.EmpireStatusBar.` alone | 8 / 8: none at `502bfeed5`, + 8 |
+| Whole Unreal suite | 4577 / 4577: 4569 at `502bfeed5`, + 8 |
 | Python | of record, with JUnit, and ruff, at the registration commit |
-| A, cities counted with repeats (`TSet<int32> AtRisk;` to `TArray<int32> AtRisk;`, in `CataclysmEmpireStatusBar.cpp`), prefix `Cataclysm.EmpireStatusBar.` | 2 tests, 6 assertions: in `CitiesAtRiskAreDistinctStandingCitiesNotDungeons`, "two dungeons on one city and one on another are two cities at risk, not three" (3 read), "CONTROL: a third standing city with a dungeon on it is at risk" (4 read) and "a fallen city with a dungeon still on it is not at risk" (3 read); in `TheBarGathersItsFiguresFromTheRunTheWorldHolds`, "and the distinct standing cities they stand on", "the world's line says those three figures" and "and the world's line says so". Nothing else: its "CONTROL: an empty board puts no city at risk" and every other test pass |
-| B, a fallen city counted (`if (City != nullptr && !City->bFallen)` to `if (City != nullptr)`, in `CataclysmEmpireStatusBar.cpp`), the same prefix | 1 test, 1 assertion: "a fallen city with a dungeon still on it is not at risk" (3 read). Its two controls hold, and the world test holds because its set-up pins that no city has fallen on day 1 |
-| C, the countdown from the run's day alone (`DaysUntilNextSurge(Run->Day() + Run->DaysOwed())` to `DaysUntilNextSurge(Run->Day())`, in `CataclysmEmpireStatusBar.cpp`), the same prefix | 2 tests, 6 assertions: in `TheCountdownCountsFromTheDayTheWalkHasReached`, "three days owed count from the day the walk has reached: eight days off" (11 read), "and the line counts the same way", "days owed past the surge's day leave nothing to count" (11 read) and "and the line says the surge lands when the player leaves"; in `TheBarGathersItsFiguresFromTheRunTheWorldHolds`, "with three days owed the countdown counts from the walk's day" and "and the world's line says so". Its CONTROL with nothing owed holds |
+| A, cities counted with repeats (`TSet<int32, DefaultKeyFuncs<int32>, TInlineSetAllocator<32>> AtRisk;` to `TArray<int32, TInlineAllocator<32>> AtRisk;`, in `CataclysmEmpireStatusBar.cpp`), prefix `Cataclysm.EmpireStatusBar.` | 2 tests, 6 assertions: in `CitiesAtRiskAreDistinctStandingCitiesNotDungeons`, "two dungeons on one city and one on another are two cities at risk, not three" (to be 2, but it was 3), "CONTROL: a third standing city with a dungeon on it is at risk" (to be 3, but it was 4) and "a fallen city with a dungeon still on it is not at risk" (to be 2, but it was 3); in `TheBarGathersItsFiguresFromTheRunTheWorldHolds`, "and the distinct standing cities they stand on" (the figures depend on where seed 7's wave lands, so are not predicted), "the world's line says those three figures" and "and the world's line says so". Nothing else: its "CONTROL: an empty board puts no city at risk" and every other test pass |
+| B, a fallen city counted (`if (City != nullptr && !City->bFallen)` to `if (City != nullptr)`, in `CataclysmEmpireStatusBar.cpp`), the same prefix | 1 test, 1 assertion: "a fallen city with a dungeon still on it is not at risk" (to be 2, but it was 3). Its two controls hold, and the world test holds because no city falls on day 1 (the audit above) |
+| C, the countdown from the run's day alone (`DaysUntilNextSurge(Run->Day() + Run->DaysOwed())` to `DaysUntilNextSurge(Run->Day())`, in `CataclysmEmpireStatusBar.cpp`), the same prefix | 2 tests, 6 assertions: in `TheCountdownCountsFromTheDayTheWalkHasReached`, "three days owed count from the day the walk has reached: eight days off" (to be 8, but it was 11), "and the line counts the same way" (to be true), "days owed past the surge's day leave nothing to count" (to be 0, but it was 11) and "and the line says the surge lands when the player leaves" (to be true); in `TheBarGathersItsFiguresFromTheRunTheWorldHolds`, "with three days owed the countdown counts from the walk's day" (to be 87, but it was 90) and "and the world's line says so". Its CONTROL with nothing owed holds |
+| D, the cities left out of the figure comparison (`&& CitiesAtRisk == Other.CitiesAtRisk;` to `&& true;`, in `CataclysmEmpireStatusBar.cpp`), the same prefix | 1 test, 1 assertion: in `TheFiguresAreTheSameOnlyWhenEveryOneIs`, "another city at risk is a change" (to be false). Its CONTROL and the other four changes hold, and no other test calls the comparison |
 
-Each break's anchor occurs once in `CataclysmEmpireStatusBar.cpp` (counted with Python's `str.count` on the
-committed file). The breaks were not compiled before registration.
+Each break's anchor occurs once in `CataclysmEmpireStatusBar.cpp`, counted with Python's `str.count` on the
+committed file. The breaks were not compiled before registration.
 
 ### Not tested
 
-- The draw itself, `ACataclysmHUD::DrawEmpireStatusBar`: no canvas under `-nullrhi`. Read, not run.
+- The draw itself, `ACataclysmHUD::DrawEmpireStatusBar`, including that it keeps its line between changes: no
+  canvas under `-nullrhi`. Read, not run.
 - The console variable switching the bar off.
 - A real walk: the tests write `OwedDays` rather than spending floors, since `SpendFloorTime` and
   `SettleDaysOwed` are covered by their own tests.
