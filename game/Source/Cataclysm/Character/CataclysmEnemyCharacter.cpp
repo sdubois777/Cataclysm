@@ -7,6 +7,9 @@
 // For this creature's debuffs passing to whatever stands by its body. #1060.
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
+// For dropping an ordinary blow whose attacker was frightened before it landed.
+// Issue #783.
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For refusing a charge out of a pit. The Warhammer's Crater: "enemies in
 // the pit cannot charge or leap."
@@ -207,6 +210,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// corpse across the room. The same reasoning as being stunned mid-charge,
 	// issue #499.
 	CancelCharge();
+
+	// AND AN ORDINARY BLOW STILL WAITING FOR ITS SWING IS NOT DEALT. Issue
+	// #783, ruled 2026-11-02: a creature that dies between ordering a swing and
+	// the swing connecting did not land it. `LandPendingBasicAttack` asks
+	// `IsDead` as well, for a caller that is not Tick.
+	ForgetPendingBasicAttack();
 
 	// AND SO DOES EVERY PER-FRAME JOB THE CREATURE HAD, which matters more
 	// than it looks now that the body stays on screen for a clip's length.
@@ -528,6 +537,12 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 	// the next frame. Issue #1515, Nowhere to Run.
 	HoldAgainstMovingAway();
 	RefreshWalkSpeed();
+
+	// AN ORDINARY BLOW WAITING FOR ITS SWING LANDS HERE, or is dropped here if
+	// the creature lost its attack. Issue #783. Nothing else calls it in play,
+	// and `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+	// is what fails if this line goes, because no automation test ticks a world.
+	LandPendingBasicAttack();
 }
 
 void ACataclysmEnemyCharacter::NoteHeldBy(const AActor* Holder, float UntilSeconds,
@@ -706,6 +721,124 @@ float ACataclysmEnemyCharacter::StrikeAlignedDelaySeconds(float StrikeSeconds,
 	// once. Writing the arithmetic that is actually meant is worth more than
 	// writing the shortest arithmetic that happens to match it.
 	return FMath::Max(0.0f, LandsAtSeconds - StrikeSeconds / Rate);
+}
+
+float ACataclysmEnemyCharacter::BasicAttackStrikeDelaySeconds(float StrikeSeconds,
+															  float PlayRate)
+{
+	// NOT MEASURED LANDS AT ONCE, exactly as every ordinary attack did before
+	// issue #783. The Hellhound is the creature this is for: its clip's three
+	// rules disagree by 0.338 s and it beats its control only 3.7 times, so no
+	// figure is recorded for it and none is invented here.
+	if (StrikeSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// NO CLIP PLAYED IS READ AS THE AUTHORED SPEED, so a checkout without the
+	// Paragon art deals its damage at the same moment a checkout with it does.
+	// Every one of these clips plays at exactly 1 at its designed interval, so
+	// the two agree in ordinary play.
+	const float Rate = PlayRate > UE_KINDA_SMALL_NUMBER ? PlayRate : 1.0f;
+	return StrikeSeconds / Rate;
+}
+
+void ACataclysmEnemyCharacter::StrikeWhenTheSwingConnects(AActor* Target,
+														  float DelaySeconds)
+{
+	// A BLOW STILL WAITING IS DEALT NOW, before this order replaces it. See the
+	// header: a little early is better than never.
+	if (HasPendingBasicAttack())
+	{
+		PendingBasicAttackLandsAtSeconds = 0.0f;
+		LandPendingBasicAttack();
+		ForgetPendingBasicAttack();
+	}
+
+	const UWorld* World = GetWorld();
+	if (DelaySeconds <= 0.0f || !World)
+	{
+		// AT ONCE, AND THEREFORE EXACTLY AS BEFORE: no reach test, no state
+		// test, the same call in the same frame. The Hellhound takes this path.
+		ACataclysmEnemyCharacter::AttackTarget(Target);
+		return;
+	}
+
+	if (!Target)
+	{
+		// NOTHING TO STRIKE, so nothing waits. The base class's blow at a null
+		// target dealt nothing either.
+		return;
+	}
+
+	PendingBasicAttackTarget = Target;
+	PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds() + DelaySeconds;
+
+	// IN REACH NOW MEANS IT MUST STILL BE IN REACH THEN. The same test the brain
+	// uses to decide to swing rather than chase -- flat distance, reach plus
+	// the contact tolerance -- so a swing the brain ordered always starts true.
+	bPendingBasicAttackMustStayInReach =
+		FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
+			<= AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm;
+}
+
+bool ACataclysmEnemyCharacter::LandPendingBasicAttack()
+{
+	if (!HasPendingBasicAttack())
+	{
+		return false;
+	}
+
+	// THE ATTACKER LOST ITS ATTACK: dead, stunned or knocked down, or fleeing.
+	// The brain's own order -- death, then `CannotAct`, then the flee step --
+	// and the blow is dropped rather than held, as an interrupted wind-up is.
+	// Asked every frame from Tick, so a stun that begins and ends inside the gap
+	// still drops it.
+	FVector FleeSource;
+	if (UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this)
+		|| UCataclysmFear::FleeSourceOf(this, FleeSource))
+	{
+		ForgetPendingBasicAttack();
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	if (World && World->GetTimeSeconds() < PendingBasicAttackLandsAtSeconds)
+	{
+		return false;
+	}
+
+	AActor* Target = PendingBasicAttackTarget.Get();
+	const bool bMustStayInReach = bPendingBasicAttackMustStayInReach;
+	ForgetPendingBasicAttack();
+
+	if (!Target)
+	{
+		return false;
+	}
+
+	// WALKED OUT OF THE BLOW. The swing was committed and is not taken back --
+	// the animation plays and the attack interval is spent -- but it lands where
+	// it was swung, and the target is no longer there.
+	if (bMustStayInReach
+		&& FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
+			> AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)
+	{
+		return false;
+	}
+
+	// THE SAME BLOW AS BEFORE, BY NAME. Calling the virtual would reach the
+	// creature's own override and start a second swing.
+	ACataclysmEnemyCharacter::AttackTarget(Target);
+	return true;
+}
+
+void ACataclysmEnemyCharacter::ForgetPendingBasicAttack()
+{
+	PendingBasicAttackTarget = nullptr;
+	PendingBasicAttackLandsAtSeconds = -1.0f;
+	bPendingBasicAttackMustStayInReach = false;
 }
 
 bool ACataclysmEnemyCharacter::RefreshPhase()

@@ -331,6 +331,27 @@ HOOKS = {
             "UCataclysmCommand::AttackIntervalScaleFor",
         },
     },
+    # A CREATURE'S OWN FRAME, WHICH NO AUTOMATION TEST TICKS. Issue #783. The
+    # Brute's, the Imp's and the Abyssal Warden's ordinary blow waits for its
+    # swing to connect and is landed from here. Their tests move the world
+    # clock and call `LandPendingBasicAttack` by hand, because a world built by
+    # `UWorld::CreateWorld` is never ticked -- so deleting this call would leave
+    # every one of them passing while those three creatures dealt no ordinary
+    # damage at all in play.
+    #
+    # ITS JOB IS A MEMBER CALL, written with its brackets the way
+    # `PostAttributeBaseChange`'s are, so `test_the_jobs_are_pinned` finds no
+    # `UCataclysm...::` call to complain about and passes on an empty set.
+    "ACataclysmEnemyCharacter::Tick": {
+        "file": CHARACTER / "CataclysmEnemyCharacter.cpp",
+        "jobs": {
+            "LandPendingBasicAttack()":
+                "an ordinary blow that waited for its swing being dealt when "
+                "the swing connects, or dropped when the creature lost its "
+                "attack, issue #783",
+        },
+        "questions": set(),
+    },
     # THE PLAYER CONTROLLER'S FRAME, WHICH NO AUTOMATION TEST HAS. Issue #1515,
     # Shoulder Through. The tests run with no player controller, so they drive
     # `UCataclysmShoulderThrough::Step` directly with the direction this hook

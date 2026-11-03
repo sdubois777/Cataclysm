@@ -148,19 +148,43 @@ float ACataclysmImpCharacter::DesignedSecondsBetweenAttacks() const
 	return AttackIntervalSecondsInUse();
 }
 
-void ACataclysmImpCharacter::AttackTarget(AActor* Target)
+float ACataclysmImpCharacter::RendStrikeSecondsFor(int32 Index)
 {
-	Super::AttackTarget(Target);
-	PlayRendAnimation();
+	// IN THE ORDER OF RendAnimationNames, A TO E. B and C are the two nobody
+	// could measure and take the mean of the other three; see the header.
+	static constexpr float StrikeSeconds[RendAnimationCount] = {
+		RendAStrikeSeconds,
+		RendUnmeasuredStrikeSeconds,
+		RendUnmeasuredStrikeSeconds,
+		RendDStrikeSeconds,
+		RendEStrikeSeconds,
+	};
+	return Index >= 0 && Index < RendAnimationCount ? StrikeSeconds[Index] : 0.0f;
 }
 
-void ACataclysmImpCharacter::PlayRendAnimation()
+void ACataclysmImpCharacter::AttackTarget(AActor* Target)
 {
-	if (RendAnimations.IsEmpty())
-	{
-		return;
-	}
+	// THE SWIPE STARTS NOW AND ITS DAMAGE WAITS FOR IT TO CONNECT. Issue #783.
+	// This used to deal the damage first and start the clip second, so the
+	// player was hurt a quarter of a second before the claw arrived -- closer
+	// to the previous swipe's landing than to this one's.
+	const int32 Drawn = PlayRendAnimation();
+	StrikeWhenTheSwingConnects(
+		Target, BasicAttackStrikeDelaySeconds(RendStrikeSecondsFor(Drawn),
+											  LastPlayedRate));
+}
 
+int32 ACataclysmImpCharacter::PlayRendAnimation()
+{
+	// NOTHING PLAYED YET, so a swipe with no art reads as the authored speed.
+	LastPlayedRate = 0.0f;
+
+	// DRAWN FROM THE FIVE NAMES, NOT FROM THE CLIPS LOADED. The two are the same
+	// five whenever the art is here -- `ResolveBody` keeps a null entry rather
+	// than skipping it -- so the draw is unchanged in play; and without the art
+	// a swipe is still drawn, because which swipe it is decides when its damage
+	// lands. Issue #783.
+	//
 	// ITS OWN STREAM, seeded from this creature and the moment it swung, so ten
 	// Imps swinging in the same frame do not all draw the same clip. Salted with
 	// RendDrawSalt so it is not the stream the death draw or the drop roll uses:
@@ -171,10 +195,11 @@ void ACataclysmImpCharacter::PlayRendAnimation()
 	FRandomStream Stream(GetUniqueID()
 		^ static_cast<int32>(Now * 1000.0f) ^ RendDrawSalt);
 
-	const int32 Index = Stream.RandRange(0, RendAnimations.Num() - 1);
+	const int32 Index = Stream.RandRange(0, RendAnimationCount - 1);
+	LastRendDrawn = Index;
 	if (!RendAnimations.IsValidIndex(Index))
 	{
-		return;
+		return Index;
 	}
 
 	// ONE CLIP DRAWN FROM FIVE, NOT A SEQUENCE. The Abyssal Warden's basic
@@ -183,6 +208,7 @@ void ACataclysmImpCharacter::PlayRendAnimation()
 	// each a whole swipe that returns where it started, so any of them can
 	// follow any other.
 	PlayOneShot(RendAnimations[Index].Get(), AttackIntervalSecondsInUse());
+	return Index;
 }
 
 float ACataclysmImpCharacter::JogPlayRate()
@@ -290,6 +316,7 @@ float ACataclysmImpCharacter::PlayOneShot(UAnimSequence* Animation,
 	// single-node path today.
 	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
 	MeshComponent->SetPlayRate(Rate);
+	LastPlayedRate = Rate;
 
 	// AND THE MESH IS OWED BACK WHEN IT FINISHES. A one-shot in single-node mode
 	// plays once and then HOLDS ITS LAST FRAME forever.

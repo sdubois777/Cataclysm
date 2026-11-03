@@ -312,8 +312,14 @@ float ACataclysmHellhoundCharacter::DesignedSecondsBetweenAttacks() const
 
 void ACataclysmHellhoundCharacter::AttackTarget(AActor* Target)
 {
-	Super::AttackTarget(Target);
+	// THE SAME SHAPE AS THE OTHER THREE, AND IT STILL LANDS AT ONCE. Issue #783.
+	// The bite's strike could not be measured, so `MaulStrikeSeconds` is zero
+	// and the delay is zero: the blow is dealt in this call, as it was before.
+	// The clip now starts a line earlier than the damage rather than a line
+	// later, inside the same frame.
 	PlayMaulAnimation();
+	StrikeWhenTheSwingConnects(
+		Target, BasicAttackStrikeDelaySeconds(MaulStrikeSeconds, LastPlayedRate));
 }
 
 void ACataclysmHellhoundCharacter::PlayMaulAnimation()
@@ -397,6 +403,7 @@ float ACataclysmHellhoundCharacter::PlayOneShot(UAnimSequence* Animation,
 											   float HoldSeconds)
 {
 	LastPlayedAnimation = Animation;
+	LastPlayedRate = 0.0f;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
 	if (!Animation || !MeshComponent)
@@ -431,6 +438,10 @@ float ACataclysmHellhoundCharacter::PlayOneShot(UAnimSequence* Animation,
 	// bug that branch prevents.
 	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
 	MeshComponent->SetPlayRate(Rate);
+
+	// RECORDED, because the bite's damage is timed off it once its strike is
+	// measured. Issue #783.
+	LastPlayedRate = Rate;
 
 	// AND THE MESH IS OWED BACK WHEN IT FINISHES. A one-shot in single-node mode
 	// plays once and then HOLDS ITS LAST FRAME forever. Recording when it ends

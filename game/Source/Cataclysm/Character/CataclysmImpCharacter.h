@@ -288,6 +288,55 @@ public:
 		"sim/cataclysm_sim/enemy_stats.py.");
 
 	/**
+	 * When each measured claw swipe connects, in seconds into the clip at its
+	 * authored speed. Issue #783.
+	 *
+	 * MEASURED, NOT CHOSEN. `tools/measure_attack_impact.py` read these on
+	 * 2026-08-21, each with peak speed and furthest reach agreeing, and
+	 * `game/docs/enemy-source-assets.md` records them:
+	 *
+	 *     Attack_A_SetA   0.242 s
+	 *     Attack_B_SetA   not measured, the three rules disagree by 0.167 s
+	 *     Attack_C_SetA   not measured, the three rules disagree by 0.330 s
+	 *     Attack_D_SetA   0.278 s
+	 *     Attack_E_SetA   0.308 s
+	 *
+	 * `tools/tests/test_attack_impact_is_recorded.py` fails when a figure here
+	 * and the one in the notes differ.
+	 */
+	static constexpr float RendAStrikeSeconds = 0.242f;
+	static constexpr float RendDStrikeSeconds = 0.278f;
+	static constexpr float RendEStrikeSeconds = 0.308f;
+
+	/**
+	 * When the two swipes nobody could measure are taken to connect: the mean of
+	 * the three that were, 0.276 seconds.
+	 *
+	 * **A JUDGEMENT, RULED 2026-11-02 BY THE COORDINATING SESSION, AND NOT A
+	 * MEASUREMENT.** The three measured swipes connect within 0.066 seconds of
+	 * one another, so the mean is at most 0.034 seconds from any of them; the
+	 * alternative, landing those two at once, would leave two swipes in five
+	 * with the very fault issue #783 is about. Re-measure B and C and this goes.
+	 *
+	 * DERIVED HERE RATHER THAN WRITTEN AS A NUMBER, so it cannot drift from the
+	 * three it is the mean of.
+	 */
+	static constexpr float RendUnmeasuredStrikeSeconds =
+		(RendAStrikeSeconds + RendDStrikeSeconds + RendEStrikeSeconds) / 3.0f;
+
+	static_assert(RendAStrikeSeconds < RendAnimationSeconds
+		&& RendDStrikeSeconds < RendAnimationSeconds
+		&& RendEStrikeSeconds < RendAnimationSeconds,
+		"An Imp swipe is recorded as connecting after its own clip has ended. "
+		"See game/docs/enemy-source-assets.md.");
+
+	/**
+	 * When the swipe at `Index` in `RendAnimationNames` connects. Zero for an
+	 * index that is not a swipe, which lands a blow at once.
+	 */
+	static float RendStrikeSecondsFor(int32 Index);
+
+	/**
 	 * The ground speed `NonCombat_JogFwd_B` was authored for, in centimetres per
 	 * second.
 	 *
@@ -394,6 +443,26 @@ public:
 	TObjectPtr<class UAnimSequence> LastPlayedAnimation;
 
 	/**
+	 * The rate the last one-shot was played at, or zero when nothing played.
+	 * Issue #783: a swipe's damage waits for its strike divided by this, so a
+	 * swipe compressed by a short interval connects sooner and so does its
+	 * damage. The same name the Brute's record has.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float LastPlayedRate = 0.0f;
+
+	/**
+	 * Which of `RendAnimationNames` the last swipe drew, or `INDEX_NONE` before
+	 * the first. Issue #783.
+	 *
+	 * DRAWN WITH OR WITHOUT THE ART, because the swipe decides when its damage
+	 * lands and that moment must not depend on whether the clip could be shown.
+	 * Read by tests, which cannot otherwise tell which strike time applies.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 LastRendDrawn = INDEX_NONE;
+
+	/**
 	 * When the clip a one-shot started will finish, in world seconds.
 	 *
 	 * THIS IS WHAT STOPS THE HELD FINAL FRAME. Without it nothing knows a swipe
@@ -425,5 +494,7 @@ private:
 	 *  play it at its authored speed for as long as it is. */
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
 
-	void PlayRendAnimation();
+	/** Draws a swipe and plays it if the art is here. Returns the index drawn,
+	 *  which is drawn either way; see `LastRendDrawn`. */
+	int32 PlayRendAnimation();
 };

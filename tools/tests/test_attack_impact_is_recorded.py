@@ -17,6 +17,9 @@ WHAT IT CHECKS, and each can fail:
     every clip the C++ names as an ordinary attack has a row
     the second table's arithmetic follows from the first table's and the C++
     the play rates are the ones the C++ constants produce
+    every strike an ordinary attack's damage waits on is the measured one,
+    the Imp's unmeasured swipes wait for the mean, and the Hellhound's bite
+    waits for nothing while it is unmeasured (issue #783)
 
 THE ARITHMETIC IS RECOMPUTED RATHER THAN COMPARED TO A COPY, which is the same
 shape as `tools/tests/test_enemy_telegraphs.py`. A figure in the table that
@@ -321,35 +324,202 @@ def test_the_whole_clip_still_fits_inside_the_attack_interval(
         f"recovery off.")
 
 
-@pytest.mark.parametrize("creature", ["Gatekeeper", "Succubus"])
-def test_the_notes_say_these_two_have_no_gap_left(creature):
+@pytest.mark.parametrize("creature",
+                         ["Gatekeeper", "Succubus", "Brute", "Imp",
+                          "Abyssal Warden"])
+def test_the_notes_say_these_five_have_no_gap_left(creature):
     """The table is what a reader consults. Fixing the code and leaving the
-    table saying the damage is 0.73 seconds late would be worse than either."""
+    table saying the damage is 0.73 seconds late would be worse than either.
+
+    THE LAST THREE JOINED IN ISSUE #783, BY THE OTHER ROUTE. Their ordinary
+    attack has no telegraph, so it is the DAMAGE that waits for the clip rather
+    than the clip that waits for the damage. Until then this file held a test
+    that the table still called those three early."""
     rows = in_play_rows()
     assert creature in rows, (
         f"the 'What that means in play' table has no {creature} row.")
 
     gap = rows[creature]["gap"].strip().lower()
-    assert "none" in gap, (
+    assert "none" in gap and "early" not in gap, (
         f"the notes give {creature} a gap of {rows[creature]['gap']!r}. Its "
-        f"clip is now started so its strike meets the damage, so the gap is "
-        f"none. Issue #784.")
+        f"damage now lands when its clip strikes, so the gap is none. Issues "
+        f"#784 and #783.")
 
 
-@pytest.mark.parametrize("creature", ["Brute", "Imp", "Abyssal Warden"])
-def test_the_notes_still_say_the_other_three_are_wrong(creature):
-    """They are a different issue with a different cause and are NOT fixed.
-    A table that quietly stopped saying so would hide three live defects."""
-    rows = in_play_rows()
-    assert creature in rows, (
-        f"the 'What that means in play' table has no {creature} row.")
+# --------------------------------------------------------------------------
+# The ordinary attacks whose DAMAGE waits for the clip. Issue #783.
+# --------------------------------------------------------------------------
 
-    gap = rows[creature]["gap"].strip().lower()
-    assert "early" in gap, (
-        f"the notes give {creature} a gap of {rows[creature]['gap']!r}. Its "
-        f"ordinary attack is not telegraphed, so there is no window to start a "
-        f"clip inside and its damage still lands before its blow. That is "
-        f"issue #783 and it is open.")
+#: (header, the strike constant, the clip it was measured on). Every constant a
+#: creature's ordinary attack times its damage from, each pinned to the figure
+#: the notes record for its clip. The Imp's B and C swipes and the Hellhound's
+#: bite are not here because nothing was measured for them; the two tests after
+#: this one hold what is done about each instead.
+DELAYED = [
+    ("CataclysmBruteCharacter.h", "SwingStrikeSeconds", "Attack_Biped_Melee_A"),
+    ("CataclysmImpCharacter.h", "RendAStrikeSeconds", "Attack_A_SetA"),
+    ("CataclysmImpCharacter.h", "RendDStrikeSeconds", "Attack_D_SetA"),
+    ("CataclysmImpCharacter.h", "RendEStrikeSeconds", "Attack_E_SetA"),
+    ("CataclysmAbyssalWardenCharacter.h", "LeftSwingStrikeSeconds",
+     "PrimaryAttack_LA_Fast"),
+]
+
+
+@pytest.mark.parametrize("header,strike_name,clip", DELAYED)
+def test_the_damage_waits_for_the_measured_strike(header, strike_name, clip):
+    """**THE JOIN BETWEEN THE MEASUREMENT AND THE DELAY.** The same check
+    `test_the_measured_strike_reached_the_code` makes for the two telegraphed
+    creatures, for the constants an ordinary attack's damage now waits on."""
+    recorded = seconds_in(strike_rows().get(clip, ""))
+    assert recorded is not None, (
+        f"game/docs/enemy-source-assets.md records no single strike time for "
+        f"{clip}, and {header} times an ordinary attack's damage from "
+        f"{strike_name}. Issue #783.")
+
+    written = constant(strike_name, header)
+    assert written == pytest.approx(recorded, abs=CLOSE_ENOUGH), (
+        f"{header} says {strike_name} is {written} and the measurement "
+        f"recorded for {clip} is {recorded}. Re-run "
+        f"tools/measure_attack_impact.py and change both or neither.")
+
+
+def imp_strike_table() -> list[str]:
+    """The constants `ACataclysmImpCharacter::RendStrikeSecondsFor` answers, in
+    the order it holds them."""
+    source = without_comments(
+        (CHARACTER_DIR / "CataclysmImpCharacter.cpp").read_text(encoding="utf-8"))
+    match = re.search(
+        r"static\s+constexpr\s+float\s+StrikeSeconds\s*\[\s*RendAnimationCount"
+        r"\s*\]\s*=\s*\{([^}]*)\}", source)
+    if match is None:
+        pytest.fail(
+            "CataclysmImpCharacter.cpp no longer holds RendStrikeSecondsFor's "
+            "table as 'static constexpr float StrikeSeconds[RendAnimationCount]"
+            " = {...}', so nothing says which swipe waits for which strike.")
+    return [name.strip() for name in match.group(1).split(",") if name.strip()]
+
+
+def imp_swipe_names() -> list[str]:
+    source = without_comments(
+        (CHARACTER_DIR / "CataclysmImpCharacter.cpp").read_text(encoding="utf-8"))
+    match = re.search(r"RendAnimationNames\s*\[\s*RendAnimationCount\s*\]\s*=\s*"
+                      r"\{([^}]*)\}", source)
+    if match is None:
+        pytest.fail("CataclysmImpCharacter.cpp no longer lists "
+                    "RendAnimationNames as an initialised array.")
+    return re.findall(r'TEXT\("([A-Za-z0-9_]+)"\)', match.group(1))
+
+
+def test_each_imp_swipe_waits_for_its_own_strike_or_for_the_mean():
+    """**THE ORDER IS THE WHOLE OF IT.** `RendStrikeSecondsFor` is indexed by
+    the same draw as `RendAnimationNames`, so a table written in a different
+    order than the names would give every swipe another swipe's moment and
+    every figure would still be right.
+
+    A measured swipe must wait for ITS constant; an unmeasured one -- B and C,
+    which the notes record as not measured -- for the mean. Ruled 2026-11-02."""
+    names = imp_swipe_names()
+    table = imp_strike_table()
+    rows = strike_rows()
+    assert len(names) == len(table) == 5, (
+        f"the Imp has {len(names)} swipe names and {len(table)} strike times; "
+        f"RendStrikeSecondsFor needs one for each.")
+
+    for name, entry in zip(names, table, strict=True):
+        letter = name.split("_")[1]
+        if rows.get(name) == "not measured":
+            assert entry == "RendUnmeasuredStrikeSeconds", (
+                f"{name} is not measured, and RendStrikeSecondsFor gives it "
+                f"{entry} rather than the mean of the measured three.")
+        else:
+            assert entry == f"Rend{letter}StrikeSeconds", (
+                f"{name} is measured, and RendStrikeSecondsFor gives it {entry} "
+                f"rather than Rend{letter}StrikeSeconds -- another swipe's "
+                f"moment, or the mean.")
+
+
+def test_the_imps_unmeasured_swipes_wait_for_the_mean_of_the_measured_three():
+    """A JUDGEMENT, RULED 2026-11-02, and the derivation is what is held here:
+    the mean of exactly the three constants pinned above, written as their mean
+    rather than as a number that could drift from them."""
+    header = without_comments(
+        (CHARACTER_DIR / "CataclysmImpCharacter.h").read_text(encoding="utf-8"))
+    match = re.search(
+        r"static\s+constexpr\s+float\s+RendUnmeasuredStrikeSeconds\s*=\s*"
+        r"\(\s*(\w+)\s*\+\s*(\w+)\s*\+\s*(\w+)\s*\)\s*/\s*3\.0f\s*;", header)
+    assert match is not None, (
+        "CataclysmImpCharacter.h no longer derives RendUnmeasuredStrikeSeconds "
+        "as the mean of three named constants. It was ruled the mean of the "
+        "measured swipes; a literal figure would drift from them.")
+    assert sorted(match.groups()) == sorted(
+        ["RendAStrikeSeconds", "RendDStrikeSeconds", "RendEStrikeSeconds"]), (
+        f"RendUnmeasuredStrikeSeconds is the mean of {match.groups()}, not of "
+        f"the three measured swipes A, D and E.")
+
+    mean = sum(constant(name, "CataclysmImpCharacter.h")
+               for name in match.groups()) / 3.0
+    assert mean == pytest.approx(0.276, abs=CLOSE_ENOUGH), (
+        f"the mean of the measured swipes is {mean:.4f}, and the notes and "
+        f"docs/DECISIONS.md say 0.276 s.")
+    assert "0.276 s" in notes(), (
+        "game/docs/enemy-source-assets.md no longer says the Imp's unmeasured "
+        "swipes land at 0.276 s.")
+
+
+def test_the_hellhounds_bite_still_lands_at_once_because_it_is_unmeasured():
+    """**ZERO, AND ONLY WHILE THE NOTES SAY NOT MEASURED.** Ruled 2026-11-02:
+    no figure is invented for a clip that could not be read, so the bite deals
+    its damage at once as it did before issue #783. The day the notes record a
+    time for it, this fails and says which constant to set."""
+    written = constant("MaulStrikeSeconds", "CataclysmHellhoundCharacter.h")
+    cell = strike_rows().get("Scorch_Primary_Fire_Med")
+    if cell == "not measured":
+        assert written == 0.0, (
+            f"CataclysmHellhoundCharacter.h gives MaulStrikeSeconds {written}, "
+            f"and the notes record Scorch_Primary_Fire_Med as not measured. "
+            f"Where did the figure come from?")
+    else:
+        recorded = seconds_in(cell or "")
+        assert recorded is not None and written == pytest.approx(
+            recorded, abs=CLOSE_ENOUGH), (
+            f"the notes now record {cell!r} for Scorch_Primary_Fire_Med and "
+            f"MaulStrikeSeconds is {written}. Set it to the measured figure.")
+
+
+#: The four ordinary attacks and the strike their AttackTarget times the damage
+#: from. Read out of the function body, because a constant pinned to the notes
+#: is worth nothing if the code that should use it uses another.
+ATTACK_TARGET_STRIKES = [
+    ("CataclysmBruteCharacter.cpp", "ACataclysmBruteCharacter",
+     "SwingStrikeSeconds"),
+    ("CataclysmImpCharacter.cpp", "ACataclysmImpCharacter",
+     "RendStrikeSecondsFor(Drawn)"),
+    ("CataclysmAbyssalWardenCharacter.cpp", "ACataclysmAbyssalWardenCharacter",
+     "LeftSwingStrikeSeconds"),
+    ("CataclysmHellhoundCharacter.cpp", "ACataclysmHellhoundCharacter",
+     "MaulStrikeSeconds"),
+]
+
+
+@pytest.mark.parametrize("file_name,class_name,strike", ATTACK_TARGET_STRIKES)
+def test_attack_target_waits_rather_than_dealing_the_damage_itself(
+        file_name, class_name, strike):
+    """**THE ONE LINE ISSUE #783 WAS.** Each of the four used to call
+    `Super::AttackTarget` -- the damage, at once -- and then start its clip.
+    Now each starts its clip and hands the blow to
+    `StrikeWhenTheSwingConnects` with its own strike."""
+    source = without_comments(
+        (CHARACTER_DIR / file_name).read_text(encoding="utf-8"))
+    start = source.find(f"void {class_name}::AttackTarget(")
+    assert start != -1, f"{file_name} no longer defines {class_name}::AttackTarget"
+    body = source[start:source.find("\n}", start)]
+
+    assert "Super::AttackTarget" not in body, (
+        f"{class_name}::AttackTarget calls Super::AttackTarget again, which "
+        f"deals the damage before the swing connects. Issue #783.")
+    assert "StrikeWhenTheSwingConnects(" in body and strike in body, (
+        f"{class_name}::AttackTarget does not hand its blow to "
+        f"StrikeWhenTheSwingConnects timed from {strike}.")
 
 
 def test_the_measurement_records_its_negative_control():

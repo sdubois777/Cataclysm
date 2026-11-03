@@ -307,6 +307,52 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
+	 * Lands every ordinary blow these creatures are waiting to land.
+	 *
+	 * WHY THIS EXISTS. Issue #783. An Imp's claw swipe -- and the Brute's and the
+	 * Abyssal Warden's swing -- no longer deals its damage inside `AttackTarget`:
+	 * it waits for the clip to connect and is landed by the creature's own Tick,
+	 * which no automation test runs. The beat above moves no world clock, so a
+	 * blow ordered on a beat is still waiting after it. This moves the world
+	 * clock just past the LATEST blow due and lands them all, the way a running
+	 * game would a third of a second later.
+	 *
+	 * IT MOVES THE CLOCK ONLY WHEN A BLOW IS WAITING, so a creature that dealt
+	 * its blow at once, or dealt none, leaves the test exactly as it was.
+	 */
+	void LandTheWaitingBlows(UWorld* World, const TArray<ACataclysmEnemyCharacter*>& Strikers)
+	{
+		if (!World)
+		{
+			return;
+		}
+		double LatestDue = -1.0;
+		for (const ACataclysmEnemyCharacter* Striker : Strikers)
+		{
+			if (Striker && Striker->HasPendingBasicAttack())
+			{
+				LatestDue = FMath::Max(LatestDue,
+					static_cast<double>(Striker->PendingBasicAttackLandsAtSeconds));
+			}
+		}
+		if (LatestDue < 0.0)
+		{
+			return;
+		}
+		if (World->TimeSeconds < LatestDue)
+		{
+			World->TimeSeconds = LatestDue + 0.01;
+		}
+		for (ACataclysmEnemyCharacter* Striker : Strikers)
+		{
+			if (Striker)
+			{
+				Striker->LandPendingBasicAttack();
+			}
+		}
+	}
+
+	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
 	 * controller, and a possessed pawn.
@@ -27189,6 +27235,9 @@ bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
 	// AT LEAST, NOT EQUAL: regeneration may only raise it, and a strike can only lower it.
 	TestTrue(TEXT("no strike a beat early"), HealthOf(Player.Character) >= Before - 0.01f);
 	Beat(Mode, 1);
+	// THE ECHOES ARE IMPS, AND AN IMP'S SWIPE LANDS WHEN IT CONNECTS, a quarter of a second after the beat that
+	// ordered it. Issue #783.
+	LandTheWaitingBlows(World, Mode->EchoesStandingNow());
 	const float AfterStrike = HealthOf(Player.Character);
 	TestTrue(FString::Printf(TEXT("the echoes struck the player (%.1f to %.1f)"), Before, AfterStrike),
 			 AfterStrike < Before);
@@ -27516,11 +27565,15 @@ namespace CataclysmDungeonModifierEffectsTest
 		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
 		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		// EACH SWIPE IS LANDED WHEN IT CONNECTS, before it is read. Issue #783: an Imp's blow waits a quarter of a
+		// second for its claw, and nothing is put on either echo until both have been measured.
 		const float Full = HealthOf(Player.Character);
 		Free->AttackTarget(Player.Character);
+		LandTheWaitingBlows(World, {Free});
 		Read.BlowOfTheFree = Full - HealthOf(Player.Character);
 		Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
 		Held->AttackTarget(Player.Character);
+		LandTheWaitingBlows(World, {Held});
 		Read.BlowOfTheHeld = Full - HealthOf(Player.Character);
 		Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
 		if (!Test.TestTrue(*Named(TEXT("set-up: the free echo's blow, struck by hand, takes health")),
@@ -27579,6 +27632,9 @@ namespace CataclysmDungeonModifierEffectsTest
 		{
 			return Read;
 		}
+		// AND THE STRIKE BEAT'S SWIPES LAND WHEN THEY CONNECT. Issue #783. A held echo that refused to strike has
+		// nothing waiting, so only the other's blow, or both in the control, lands here.
+		LandTheWaitingBlows(World, {Free, Held});
 		Read.Lost = Before - HealthOf(Player.Character);
 		Read.bSetUp = true;
 		return Read;

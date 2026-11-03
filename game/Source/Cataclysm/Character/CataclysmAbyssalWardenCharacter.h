@@ -648,6 +648,24 @@ public:
 	 *  Separated from PlayAttackAnimation so a test can ask without playing. */
 	TArray<class UAnimSequence*> BasicAttackClips() const;
 
+	/**
+	 * When the left swing connects, in seconds into `PrimaryAttack_LA_Fast` at
+	 * its authored speed. Issue #783.
+	 *
+	 * MEASURED, NOT CHOSEN. `tools/measure_attack_impact.py` read 0.176 on
+	 * 2026-08-21, peak speed and furthest reach agreeing, and
+	 * `game/docs/enemy-source-assets.md` records it.
+	 * `tools/tests/test_attack_impact_is_recorded.py` fails when the two differ.
+	 *
+	 * THE LEFT SWING AND NOT THE RIGHT, because the combo has one blow's damage
+	 * and the left swing is the first thing in it to connect. The right swing
+	 * (0.168 s into its own clip) follows it 1.1333 seconds later as the second
+	 * half of the same movement. Which of two visible blows the one damage
+	 * belongs to is a judgement; the first is the one the player reads as the
+	 * attack arriving.
+	 */
+	static constexpr float LeftSwingStrikeSeconds = 0.176f;
+
 	/** Plays one clip once, and records it. Returns how long it will take,
 	 *  which is its length divided by whatever rate it needed. */
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);

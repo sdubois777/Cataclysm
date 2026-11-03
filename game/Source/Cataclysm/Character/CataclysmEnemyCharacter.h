@@ -1809,6 +1809,87 @@ public:
 										   float MinimumRate,
 										   float MaximumRate);
 
+	// ----------------------------------------------------------------------
+	// An ordinary attack whose damage waits for the swing
+	//
+	// **THE PROBLEM THIS SOLVES IS THE OPPOSITE ONE.** The two functions above
+	// move an ANIMATION so its strike meets damage that lands at a fixed moment,
+	// the end of a telegraph. An ordinary attack has no telegraph and no fixed
+	// moment: `AttackTarget` used to deal its damage at once and then start the
+	// swing, so the hit landed 0.17 to 0.33 seconds before the weapon arrived.
+	// Measured 2026-08-21 under issue #526; issue #783. Here it is the DAMAGE
+	// that moves, to the clip's measured strike divided by the rate the clip is
+	// really played at. Ruled 2026-11-02 by the coordinating session.
+	//
+	// **A WORLD-CLOCK DEADLINE CHECKED EVERY FRAME, NOT AN ANIMATION NOTIFY AND
+	// NOT AN FTimerManager TIMER.** Not a notify, because the Paragon clips carry
+	// none and placing them means editing the art (ruled). Not an engine timer,
+	// for the two reasons the Gatekeeper's pending sweep records: a timer fixes
+	// its deadline when it is made, and a world built by `UWorld::CreateWorld` --
+	// every automation test's -- is never ticked, so no test could watch one
+	// fire. `LandPendingBasicAttack` is called from `Tick` and is public, so a
+	// test moves the world clock and calls it, the way the brain's tests move
+	// the clock and call `Think`.
+	//
+	// WHAT DOES NOT MOVE: the damage figure, its tags, every on-hit effect and
+	// the threat it causes, because the blow is the same
+	// `ACataclysmEnemyCharacter::AttackTarget` call, made later. The brain's
+	// attack interval, `LastAttackUsed` and `AttacksOrdered` are stamped when
+	// the swing is ORDERED, as before, because none of them reads the damage.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Seconds from an ordinary attack being ordered until its blow lands.
+	 *
+	 * **THE MEASURED STRIKE DIVIDED BY THE RATE THE CLIP IS REALLY PLAYED AT.**
+	 * A clip played at twice its authored speed reaches its strike in half the
+	 * time, so the damage has to come in half the time too.
+	 *
+	 * @param StrikeSeconds  when the clip strikes at its authored speed. Zero or
+	 *                       less means NOT MEASURED, and the blow lands at once,
+	 *                       which is how the Hellhound is left until its clip is
+	 *                       read (ruled 2026-11-02).
+	 * @param PlayRate       the rate the clip was really played at. Zero or less
+	 *                       means no clip played -- a checkout without the
+	 *                       Paragon art -- and is read as the authored speed, so
+	 *                       the damage keeps the same moment with or without the
+	 *                       art.
+	 */
+	static float BasicAttackStrikeDelaySeconds(float StrikeSeconds, float PlayRate);
+
+	/**
+	 * Lands the blow an ordinary attack left waiting once its moment has come,
+	 * or drops it if the attacker has lost its attack.
+	 *
+	 * **DROPPED, NOT DELAYED FURTHER, WHEN THE ATTACKER IS DEAD, CANNOT ACT OR IS
+	 * FLEEING.** Those are the three states in which `ACataclysmEnemyController::
+	 * Think` abandons a committed wind-up, and the blow is abandoned for the same
+	 * reason: a creature killed, stunned, knocked down or frightened in the gap
+	 * did not finish its swing. Ruled 2026-11-02: the design's "committed once
+	 * the wind-up starts" is about the TARGET leaving, not the attacker dying.
+	 *
+	 * **AND A TARGET THAT WALKED OUT OF REACH IN THE GAP IS MISSED**, which is
+	 * what the Gatekeeper's sweep and the Succubus's bolt already do: they land
+	 * where they were aimed, and a player who left is not hit. See
+	 * `bPendingBasicAttackMustStayInReach` for the one kind of strike this does
+	 * not apply to.
+	 *
+	 * CALLED FROM `Tick`. PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD.
+	 *
+	 * @return whether a blow was dealt
+	 */
+	bool LandPendingBasicAttack();
+
+	/** Whether an ordinary attack's blow is waiting to land. */
+	bool HasPendingBasicAttack() const { return PendingBasicAttackLandsAtSeconds >= 0.0f; }
+
+	/**
+	 * When the waiting blow lands, in world seconds. Negative when nothing waits.
+	 * Read by tests, which cannot otherwise see that a blow is coming.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float PendingBasicAttackLandsAtSeconds = -1.0f;
+
 	/**
 	 * How close it must be to hit, in centimetres.
 	 *
@@ -1988,6 +2069,22 @@ protected:
 	virtual void InitAbilityActorInfo() override;
 
 	/**
+	 * Deals this creature's ordinary blow on `Target` after `DelaySeconds`, or
+	 * at once when that is zero. Issue #783.
+	 *
+	 * WHAT THE FOUR CREATURES WHOSE ORDINARY ATTACK PLAYS A SWING CALL FROM THEIR
+	 * `AttackTarget`, after starting the clip, in place of `Super::AttackTarget`.
+	 * The blow it deals later is `ACataclysmEnemyCharacter::AttackTarget` called
+	 * by name, so it is exactly the blow they dealt at once before.
+	 *
+	 * A SECOND ORDER WHILE A BLOW STILL WAITS LANDS THE FIRST ONE NOW. That
+	 * happens only when an attack interval is shorter than a strike delay -- a
+	 * buffed creature or a console override -- and a blow dealt a little early
+	 * is better than a blow the player was owed and never received.
+	 */
+	void StrikeWhenTheSwingConnects(AActor* Target, float DelaySeconds);
+
+	/**
 	 * Writes one attribute, if the ability system is holding it yet.
 	 *
 	 * Ten attributes are written on spawn and every one needs the same guard, so
@@ -2132,6 +2229,30 @@ protected:
 	static constexpr float LongestChargeStepCm = 75.0f;
 
 private:
+	/** What the waiting ordinary blow will strike. Weak, so a target destroyed
+	 *  in the gap is simply not hit. Issue #783. */
+	TWeakObjectPtr<AActor> PendingBasicAttackTarget;
+
+	/**
+	 * Whether the waiting blow misses a target that has left this creature's
+	 * reach by the time it lands.
+	 *
+	 * **TRUE FOR A SWING ORDERED AT A TARGET IN REACH, WHICH IS EVERY SWING THE
+	 * BRAIN ORDERS.** Its target walking out of reach in the gap walks out of the
+	 * blow, as walking out of the Gatekeeper's sweep does.
+	 *
+	 * FALSE FOR A STRIKE ORDERED AT A TARGET ALREADY OUT OF REACH, which only a
+	 * rule does: the Staff's Compel makes everything the caster commands strike
+	 * one enemy "wherever it happens to be standing", and that row is explicit
+	 * that reaching it is not the creature's problem. Measuring such a strike
+	 * against a reach it never had would make it miss every time. A JUDGEMENT,
+	 * labelled so in docs/DECISIONS.md.
+	 */
+	bool bPendingBasicAttackMustStayInReach = false;
+
+	/** Forgets the waiting blow without dealing it. */
+	void ForgetPendingBasicAttack();
+
 	/**
 	 * Writes the attack damage attribute from the designed figure, and nothing else.
 	 * Issues #1820 and #41.

@@ -2,6 +2,214 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — An ordinary attack's damage lands when its swing connects, not before the swing starts (#783)
+
+**Affects:** `ACataclysmEnemyCharacter::BasicAttackStrikeDelaySeconds`, `StrikeWhenTheSwingConnects`,
+`LandPendingBasicAttack`, `HasPendingBasicAttack`, `PendingBasicAttackLandsAtSeconds` and `ForgetPendingBasicAttack`,
+new, with `Tick` and `HandleDeath` calling them (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`);
+`AttackTarget` on `ACataclysmBruteCharacter`, `ACataclysmImpCharacter`, `ACataclysmAbyssalWardenCharacter` and
+`ACataclysmHellhoundCharacter`, rewritten; `ACataclysmBruteCharacter::SwingStrikeSeconds`,
+`ACataclysmImpCharacter::RendAStrikeSeconds`, `RendDStrikeSeconds`, `RendEStrikeSeconds`, `RendUnmeasuredStrikeSeconds`,
+`RendStrikeSecondsFor`, `LastPlayedRate` and `LastRendDrawn`, `ACataclysmAbyssalWardenCharacter::LeftSwingStrikeSeconds`,
+`ACataclysmHellhoundCharacter::MaulStrikeSeconds` and `LastPlayedRate`, new; `ACataclysmImpCharacter::PlayRendAnimation`,
+which now draws a swipe with or without the art and returns it; 13 new tests in
+`game/Source/Cataclysm/Tests/CataclysmEnemyHitTimingTests.cpp`; 11 existing tests moved (below), through
+`LetTheSwingConnect` in `CataclysmEnemyBehaviourTests.cpp` and `LandTheWaitingBlows` in
+`CataclysmDungeonModifierEffectsTests.cpp`, both new; `game/docs/enemy-source-assets.md`'s "What that means in play";
+`tools/tests/test_attack_impact_is_recorded.py` and `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+Issue [#783](https://github.com/sdubois777/Cataclysm/issues/783).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Nothing below
+  "Registered before the run" has been measured; every figure there is a prediction.
+- **A TARGET THAT WALKS OUT OF REACH IN THE GAP IS NOW MISSED, AND THAT CAN CHANGE THE FEEL OF MELEE.** Ruling (b)
+  below: matching the Gatekeeper and the Succubus. The swing is committed -- it plays and spends the attack interval --
+  but it lands where it was swung. A player walking straight away at 3.5 to 4.6 m/s covers 115 cm or more in the
+  Brute's 0.331 s, against a reach whose slack beyond contact is the controller's 2 cm, so a player who keeps walking
+  away from a Brute that has stopped to swing will now dodge the blow. Circling at the same distance does not. Before
+  this change every ordered swing hit. This is the owner's to judge in play.
+- **For the owner's launch check:** let a Brute, an Imp pack and an Abyssal Warden hit you while standing still: the
+  health bar should drop as each weapon arrives, not as the swing begins. Then walk straight away from a Brute as it
+  swings, and see whether dodging it that way is wanted. A Hellhound's bite still lands as the bite starts.
+
+### The rulings, by the coordinating session, 2026-11-02 (under the owner's delegation)
+
+- **(a)** Delay the damage to the clip's strike moment -- strike seconds divided by the play rate actually used -- on a
+  timer, not animation notifies on the Paragon clips (no art and no editor work).
+- **(b)** If the attacker dies, is stunned or otherwise loses its attack in the gap, the blow does not land. The
+  design's "committed once the wind-up starts" is about the TARGET leaving, not the attacker dying. Whether a target
+  that moved out of reach in the gap is still hit follows that sentence and the existing Gatekeeper and Succubus
+  behaviour.
+- **(c)** The Imp's unmeasured clips use the mean of its measured ones; the Hellhound's bite has no delay until
+  measured. Both are judgements.
+- **(d)** The damage figure, on-hit effects and threat behave exactly as before; only the moment changes. Anything that
+  keys off "the attack happened" keeps its timing unless the code shows it is tied to the damage.
+
+### What changes
+
+- **THE CLIP STARTS WHEN THE SWING IS ORDERED; THE DAMAGE WAITS.** Each of the four `AttackTarget` overrides called
+  `Super::AttackTarget` (the blow, at once) and then started its clip. Each now starts its clip and hands the blow to
+  `StrikeWhenTheSwingConnects(Target, BasicAttackStrikeDelaySeconds(Strike, Rate))`. The blow dealt later is
+  `ACataclysmEnemyCharacter::AttackTarget` called by name, the same call as before, so the figure, the tags, every
+  on-hit effect, the Contagious Touch path and whatever threat a hit causes are unchanged (ruling (d)).
+- **"ON A TIMER" IS A WORLD-CLOCK DEADLINE CHECKED EVERY FRAME, NOT AN `FTimerManager` TIMER.** A judgement on ruling (a)'s
+  wording, whose point is "not a notify". `PendingBasicAttackLandsAtSeconds` is set when the swing is ordered and
+  `ACataclysmEnemyCharacter::Tick` calls `LandPendingBasicAttack` every frame. That is the Gatekeeper's and the
+  Succubus's pending-clip mechanism (#784), chosen for the reasons recorded there: an engine timer fixes its deadline
+  when made, and a world built by `UWorld::CreateWorld` -- every automation test's -- is never ticked, so no test could
+  watch one fire. Tests move the world clock and call `LandPendingBasicAttack`, as the brain's tests move it and call
+  `Think`; one calls `Tick` itself, and `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` fails if the
+  call leaves `Tick`.
+- **THE STRIKE, DIVIDED BY THE RATE THE CLIP REALLY PLAYS AT** (`BasicAttackStrikeDelaySeconds`). Measured strikes, from
+  `game/docs/enemy-source-assets.md`, measured 2026-08-21 by `tools/measure_attack_impact.py`:
+
+  | Creature | Clip | Strike | Constant | Rate used |
+  |---|---|:-:|---|---|
+  | Brute | `Attack_Biped_Melee_A` | 0.331 s | `SwingStrikeSeconds` | `LastPlayedRate`, which is 1: the swing is given no window |
+  | Imp | `Attack_A_SetA` | 0.242 s | `RendAStrikeSeconds` | `LastPlayedRate`, new: 0.8 s inside 0.9, so 1 |
+  | Imp | `Attack_B_SetA`, `Attack_C_SetA` | not measured | `RendUnmeasuredStrikeSeconds`, 0.276 s | the same |
+  | Imp | `Attack_D_SetA` | 0.278 s | `RendDStrikeSeconds` | the same |
+  | Imp | `Attack_E_SetA` | 0.308 s | `RendEStrikeSeconds` | the same |
+  | Abyssal Warden | `PrimaryAttack_LA_Fast` | 0.176 s | `LeftSwingStrikeSeconds` | exactly 1: each combo clip is played with no window |
+  | Hellhound | `Scorch_Primary_Fire_Med` | not measured | `MaulStrikeSeconds`, 0 | `LastPlayedRate`, new; unused while the strike is 0 |
+
+  A rate of zero -- nothing played, a checkout without the art -- is read as 1, so the damage lands at the same moment
+  with or without the art; every one of these clips plays at exactly 1 at its designed interval, so the two agree in
+  ordinary play. The Imp now draws its swipe from the five names whether or not the clips loaded (the same draw when
+  they did: `ResolveBody` keeps a null entry rather than dropping one), because the swipe decides the wait.
+- **THE WARDEN'S DAMAGE IS THE LEFT SWING'S.** A judgement: its combo is a left swing, a right swing and a recovery
+  carrying one blow's damage, and the left swing is the first thing in it to connect. If a buffed Warden orders a
+  swing while a one-shot is still playing, `UpdateLoopingAnimation` starts the left swing only when that clip ends, and
+  the damage waits for that too (read in `AttackTarget` before the queue replaces it; nothing waits without the art).
+- **THE IMP'S TWO UNMEASURED SWIPES WAIT 0.276 S, THE MEAN OF 0.242, 0.278 AND 0.308** (ruling (c), a judgement). The
+  three measured swipes connect within 0.066 s of one another, so the mean is at most 0.034 s from any of them; landing
+  B and C at once instead would leave two swipes in five with this issue's fault. Derived in the header as the mean of
+  the three constants, so it cannot drift from them.
+- **THE HELLHOUND STILL BITES AT ONCE** (ruling (c), a judgement). `MaulStrikeSeconds` is 0, so the delay is 0 and the
+  blow is dealt inside `AttackTarget`, as before. Its clip's three rules disagree by 0.338 s and it beats its control
+  only 3.7 times. Its `AttackTarget` has the same shape as the other three, so measuring it is one constant. The one
+  difference from before: the clip now starts a line before the damage rather than a line after, in the same frame.
+- **WHAT DROPS THE BLOW (ruling (b)).** `LandPendingBasicAttack` asks, every frame and at landing, the three things
+  `ACataclysmEnemyController::Think` abandons a committed wind-up for, in its order: `UCataclysmSkillEffects::IsDead`,
+  `UCataclysmSkillEffects::CannotAct` (stun and knockdown) and `UCataclysmFear::FleeSourceOf` (fear, or a rule's
+  flight). Any of them forgets the blow; it is not held for the state to end. `HandleDeath` also forgets it, and
+  switches the creature's Tick off as it always has.
+- **A TARGET THAT LEFT REACH IS MISSED (ruling (b)).** Read from the two creatures the ruling names. The Gatekeeper's
+  Dread Cleave lands at the end of its wind-up whatever the target did and sweeps only what stands in its arc
+  (`StrikeAround`); the Succubus's Soulfire is fired at `AimedAt`, "so a player who stepped out of the lane is not hit".
+  Both are committed and both miss a target that left. So: a swing ordered at a target within `AttackReachCm()` plus
+  `ACataclysmEnemyController::ContactToleranceCm` -- the brain's own test for swinging rather than chasing, so every
+  brain-ordered swing -- misses if, when it connects, the target is no longer within that distance. The swing still
+  plays and the interval is still spent.
+- **A STRIKE ORDERED AT A TARGET ALREADY BEYOND REACH IS NOT MEASURED AGAINST REACH.** A judgement, mine. Only a rule
+  does this: the Staff's Compel makes everything the caster commands strike one enemy "wherever it happens to be
+  standing" (`UCataclysmSkillTemplate`'s command strike, `CataclysmSkillTemplates.cpp` ~2274), and that row is explicit
+  that reaching it is not the creature's problem. Measuring such a strike against a reach it never had would make it
+  miss every time. It still waits for its swing, and death, stun and fear still drop it. Echoes of the Past's echo
+  strike (`CataclysmDungeonGameMode.cpp` ~4020) stands each echo at its own reach from the player, so it is a swing in
+  reach and the reach rule applies to it.
+- **A SECOND ORDER WHILE A BLOW STILL WAITS LANDS THE FIRST AT ONCE.** Only a buffed or console-shortened interval
+  reaches this (the shortest designed interval, the Imp's 0.9 s, is three times its longest strike). A judgement: a
+  blow landed a little early is better than one the player was owed and never received.
+- **WHAT KEEPS ITS TIMING (ruling (d)), read in `ACataclysmEnemyController::Think` about line 795.** `LastAttackTime` and
+  `bHasAttacked` (the next-attack interval), `LastAttackUsed` (Echoes of the Past) and `AttacksOrdered` are all stamped
+  when the swing is ORDERED, after `AttackTarget` returns, and none reads the damage; so all four keep their timing.
+  The ordinary swing has no cooldown of its own. Nothing else the brain does keys off the blow.
+
+### Every moved assertion, old -> new
+
+No assertion's text, expected value or tolerance changed. Each one reads health that used to change inside the call
+that ordered the swing; each now reads it after a new step that moves the world clock just past the waiting blow's
+moment (0.01 s after it) and lands it. Old: read straight after the order. New: read after that step.
+
+| # | Test | Assertion | Step added before it |
+|---|---|---|---|
+| 1 | `Cataclysm.AI.ABruteInContactReachStopsRoamingAndLandsAHit` | "and the player lost health (%.0f to %.0f)" | `LetTheSwingConnect(World, Brute.Actor)` after the first `Think`; the comment on the later "a second pass ... does not hit again" now says 0.341 s has passed against a 1.2 s interval |
+| 2 | `Cataclysm.AI.ABruteAtTrueContactAndTrueHeightsAttacks` | "and the player lost health (%.0f to %.0f)" | the same |
+| 3 | `Cataclysm.AI.ABruteAttacksWhenItsCapsuleIsTouchingThePlayers` | "and the player lost health (%.0f to %.0f)" | the same, before the nudge to 91 cm |
+| 4 | `Cataclysm.AI.ABruteInReachIsNeverIdleBecauseEverythingIsCoolingDown` | "and the player lost health (%.0f to %.0f)" | the same |
+| 5 | `Cataclysm.AI.AStunnedEnemyInReachDoesNotSwing` | "and the player lost health" | the same, before the stun; 0.341 s does not bring the five-second stomp back |
+| 6 | `Cataclysm.AI.AMedicInReachFacesItsTargetAndNeverSwings` | "and the player lost health" | the same, before the medic flag |
+| 7 | `Cataclysm.DungeonModifierEffects.EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish` | "the echoes struck the player (%.1f to %.1f)" | `LandTheWaitingBlows(World, Mode->EchoesStandingNow())` after the strike beat (the echoes are Imps) |
+| 8-11 | `Cataclysm.EchoesHeld.AStunnedEchoDoesNotStrikeAndTheEchoBesideItDoes`, `...AKnockedDownEcho...`, `...AFearedEcho...`, `...EveryEchoStrikesWithNothingOnItAndASilencedEchoStillSwings` | in `EchoesStrikeWithOneHeld`: "set-up: the free echo's blow, struck by hand, takes health" and "set-up: the held echo's blow, struck by hand, takes health"; and every line reading `Read.Lost` (the control's "both echoes strike and the player loses both blows", the held lines, the silenced line) | `LandTheWaitingBlows(World, {Free})` and `{Held}` after each hand blow, before it is read; `LandTheWaitingBlows(World, {Free, Held})` after the strike beat, before `Read.Lost` |
+
+Found by a sweep of every `AttackTarget` caller (the brain, Echoes of the Past, Compel, and `ACataclysmMinion`'s own,
+which is a different class) and every test that makes one of the four creatures swing; the six tests that call
+`AttackTarget` on them but assert only on the clip (`Cataclysm.Imp.ItDrawsBetweenSeveralClawSwipes`,
+`...ItReturnsToARestingPoseAfterASwipe`, `Cataclysm.Warden.ItSwingsLeftThenRightThenRecovers`,
+`...ItReturnsToARestingPoseAfterASwing`, `Cataclysm.Hellhound.ItReturnsToARestingPoseAfterABite`,
+`Cataclysm.AI.ABrutePlaysItsSwingClipWhenItLandsAHit`) are unchanged. That sweep was a read, not a run.
+
+### Tests
+
+Thirteen new, in the new group `Cataclysm.EnemyHitTiming.`:
+
+1. `TheWaitIsTheStrikeDividedByTheRateTheClipPlaysAt`: 0.331 at rate 1, 0.1655 at 2, 0.331 with no clip, 0 unmeasured.
+2. `TheBrutesSwingDealsNothingUntilItConnectsAndAllOfItThen`, 3. `TheImpsSwipe...` (the drawn swipe's strike over the
+   rate it played at), 4. `TheWardensSwingDealsNothingUntilItsLeftSwingConnectsAndAllOfItThen`: each through
+   `CheckTheBlowWaitsForTheStrike` -- nothing dealt at the order, the blow waiting and due at the strike, nothing a
+   hundredth of a second before, the blow a hundredth after, nothing left waiting, and the blow equal to the one
+   `ACataclysmEnemyCharacter::AttackTarget` deals at once.
+5. `TheHellhoundsUnmeasuredBiteStillLandsAtOnce`.
+6. `TheImpsUnmeasuredSwipesWaitForTheMeanOfTheMeasuredThree`: A, D and E their own; B and C the mean, 0.276.
+7. `ACreatureThatDiesBeforeItsSwingConnectsDealsNothing` (marked dead, so only `LandPendingBasicAttack` can refuse).
+8. `ACreatureStunnedBeforeItsSwingConnectsDealsNothing`.
+9. `ATargetThatWalksOutOfReachBeforeTheSwingConnectsIsMissed`.
+10. `AStrikeOrderedAtATargetBeyondReachStillLands` (the Compel judgement).
+11. `TheCreaturesOwnFrameLandsTheBlow` (a Warden's `Tick`, called by hand as `Cataclysm.EnemyDeath` does).
+12. `ASecondSwingOrderedBeforeTheFirstConnectsLandsTheFirst`.
+13. `TheWardensBlowWaitsForASwingThatHasNotStartedYet`: with the art, half a second still playing plus 0.176; without
+    it, 0.176 and a reported skipped half.
+
+Python, in `tools/tests/test_attack_impact_is_recorded.py`: the five measured strike constants pinned to the notes'
+figures; the Imp's strike table held in the order of its swipe names (measured swipes their own constant, unmeasured
+the mean); the mean derived from exactly A, D and E and equal to 0.276; `MaulStrikeSeconds` zero while the notes say
+not measured, and the measured figure the day they do not; each `AttackTarget` hands its blow to
+`StrikeWhenTheSwingConnects` with its own strike and no longer calls `Super::AttackTarget`; and the "no gap left" check
+now covers all five creatures, replacing the check that the Brute, Imp and Warden were still early. In
+`test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`, `ACataclysmEnemyCharacter::Tick` must call
+`LandPendingBasicAttack()`.
+
+Three of the Python checks were proved with `tools/prove_guard.py`'s `break_and_run` on 2026-11-02, each "PROVED" with
+one named failure and the restored half passing: `SwingStrikeSeconds` 0.331 to 0.341 fails
+`test_the_damage_waits_for_the_measured_strike[CataclysmBruteCharacter.h-SwingStrikeSeconds-Attack_Biped_Melee_A]`;
+the `LandPendingBasicAttack();` line removed from `Tick` fails
+`test_the_hook_runs_this_job[ACataclysmEnemyCharacter::Tick-LandPendingBasicAttack()-...]`; and the Imp's first two
+table entries swapped fails `test_each_imp_swipe_waits_for_its_own_strike_or_for_the_mean`.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.EnemyHitTiming.` alone | 13 / 13; without the Paragon art, one skipped half, `TheWardensBlowWaitsForASwingThatHasNotStartedYet` |
+| The moved tests | all 11 pass; `Cataclysm.AI.`, `Cataclysm.DungeonModifierEffects.` and `Cataclysm.EchoesHeld.` totals are unchanged by this branch |
+| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total, + 13, 0 failed |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, death not asked (`if (UCataclysmSkillEffects::IsDead(this)` to `if (UCataclysmSkillEffects::IsDead(nullptr)`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.ACreatureThatDiesBeforeItsSwingConnectsDealsNothing` | fails "its swing's moment comes and nothing is landed" ("Expected ... to be false") and "and the target is untouched" ("Expected ... to be <full>, but it was <less>") -- 2 -- and nothing else; "and the blow is gone rather than held" holds |
+| P2, no wait (`PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds() + DelaySeconds;` to `PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds();`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.TheBrutesSwingDealsNothingUntilItConnectsAndAllOfItThen` | fails "due when the clip strikes, divided by the rate it plays at" ("to be 0.331000, but it was 0.000000"), "a hundredth of a second before it is due, nothing lands", "and the target is untouched" and "a hundredth of a second after, it lands" -- 4 -- and nothing else; the blow still equals the one dealt at once |
+| P3, reach not asked (`> AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)` to `> AttackReachCm() + 100000.0f)`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.ATargetThatWalksOutOfReachBeforeTheSwingConnectsIsMissed` | fails "the swing connects with nothing" and "and the target that walked out is untouched" -- 2 -- and nothing else; "and the blow is spent" holds |
+
+Each break's anchor occurs once in `CataclysmEnemyCharacter.cpp` (counted by script at registration). The breaks were
+not compiled before registration.
+
+### Not tested
+
+- **THE TIMING BY EYE.** Whether the health bar now drops as each weapon visibly arrives can only be judged in play with
+  the Paragon art, which a worktree does not have; under the automation run's `-nullrhi` nothing is drawn. The owner's
+  launch check above.
+- **The feel of the reach rule.** Whether walking away from a swinging Brute should dodge it is a balance question the
+  tests only describe.
+- The flee half of what drops a blow (`UCataclysmFear::FleeSourceOf`): read, not tested; death and stun are.
+- A blow dropped by `HandleDeath` itself: test 7 marks the creature dead without running the handler, so that the one
+  line it proves is `LandPendingBasicAttack`'s.
+- The Warden's wait for a clip still playing, in a worktree: that half needs the Grux pack.
+- An Imp or Brute ordered by Compel, through the skill: covered at the function by test 10, not through a cast.
+- The Hellhound's bite, the Imp's B and C swipes and the Warden's right swing are not measured, and nothing here
+  measured them.
+
+---
+
 ## 2026-11-02 — A death in a dungeon of the empire says what it cost, on the empire screen and as a notice on standing up, and the run record keeps it at version 3 (#41)
 
 **Affects:** `UCataclysmEmpireRun::LastDeathDay`, `LastDeathDungeonName`, `LastDeathWalkDays`, `LastDeathDaysCost`,
