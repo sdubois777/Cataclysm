@@ -264,6 +264,24 @@ starting state, and the changed one in `CataclysmBossOnTheMapTests.cpp`, checked
 - **"No Cataclysm." in the brief**: `Contains` ignores case by default; the brief's fixed text says "Cataclysm boss",
   and what it fills in is a Cataclysm's name, a sub-type and two counts.
 
+### Window walk-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `0351b56d7` (on `development`
+`6f6c2518f`), lock `walk-w1`, after the six pre-checks all passed (11,746 MB of physical memory free). Every registered
+figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The six groups alone | each at its registered count | every one "0 failed": WalkFromTheScreen. 5, BossOnTheMap. 5, CityScreen. 15, EmpireScreen. 14, EmpirePoints. 16, DungeonMode. 46 |
+| Whole Unreal suite | 4705, 47 skipped halves, 0 left behind | "4705 tests performed, 4705 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4705 tests in the tree at 0351b56d7; 4705 performed, gap 0"; "Test saves: 733 written and deleted, 0 left behind" |
+| Python | of record | "7352 passed, 9 skipped in 192.34s"; JUnit tests 7361, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 test, 4 | PROVED. Exactly "pressing Walk on the dungeon being walked is refused, and says why", "and the player is still on floor 2" (2 expected, 1 read), "and still owes the walk's two days" (2, 1) and "and none of them has run" (0, 2); restored 5 of 5 |
+| P2 | 2 tests, 3 | PROVED. Exactly "pressing Walk under the boss marker enters the boss dungeon" (17 expected, -1 read), "as deep as the boss dungeon is" (128, 10) and the refusal line for a box that is not a dungeon; restored 5 of 5 |
+| P3 | 1 test, 1 | PROVED. Exactly "a game mode that cannot enter it refuses, and the screen shows that refusal" ("Dungeon 700 could not be entered." expected); restored 5 of 5 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal**: compiled, not run (above).
