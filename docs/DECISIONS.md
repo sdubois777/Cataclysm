@@ -8,7 +8,9 @@ Decisions made outside the Google Drive documents, newest first.
 `PathFollowingComponent` subobject for `UCrowdFollowingComponent`; `MoveTo`, `IsDrivenByACrowdAgent` and
 `LeaveTheCrowdIfItWasNotTakenIn`, new, with `OnPossess` calling the last
 (`game/Source/Cataclysm/Character/CataclysmEnemyController.h`, `.cpp`); a new `MaxAgents=1024` for the crowd manager
-in `game/Config/DefaultEngine.ini`; `AIModule` named in `game/Source/CataclysmEditor/CataclysmEditor.Build.cs`;
+in `game/Config/DefaultEngine.ini`; a comment beside `AIModule` in `game/Source/CataclysmEditor/CataclysmEditor.Build.cs`
+(phase 1 added the name; development had added it meanwhile for [#1174](https://github.com/sdubois777/Cataclysm/issues/1174), so
+the rebase kept one entry and both reasons);
 comments that said the project had no crowd avoidance, in `game/Source/Cataclysm/Player/CataclysmGameMode.h`, the
 Imp pack's log line in `game/Source/Cataclysm/Player/CataclysmGameMode.cpp` and the header of
 `game/Source/Cataclysm/Tests/CataclysmImpTests.cpp`; eight new tests in
@@ -19,9 +21,10 @@ Imp pack's log line in `game/Source/Cataclysm/Player/CataclysmGameMode.cpp` and 
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while another change held the build machine.
-  Every engine signature used was read in the engine source of 5.8 before it was written, but nothing here has been
-  built. Every Unreal figure under "Registered before the run" is a prediction.
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written while another change held the build machine; phase 2
+  rebased it onto development `ec2319181` and compiled it with no change to any source line: every changed `.cpp`
+  alone and then inside its unity file, with no compiler diagnostic in any of them (below). No automation test has
+  run. Every Unreal figure under "Registered before the run" is a prediction for the window.
 - **NO TEST MOVES A CREATURE.** Whether ten Imps closing on the player ring them rather than shove is not measured
   by anything here: it needs a whole world ticked for seconds of game time, which no test in this project does, and
   the outcome would depend on frame timing. A test that could be flaky was not written. The tests check the
@@ -185,6 +188,75 @@ sources. Proved with `tools/prove_guard.py` in this worktree, break `MaxAgents=1
 failed, 1 passed in 0.09s | restored: 3 passed in 0.04s", the failures
 `test_the_crowd_holds_twice_the_largest_floor_measured` and `test_the_unreal_test_copies_the_same_two_figures`.
 
+### Phase 2: the rebase, the compile and a second reading
+
+**The rebase** onto development `ec2319181` conflicted in two files, both from
+[#1174](https://github.com/sdubois777/Cataclysm/issues/1174): `CataclysmEditor.Build.cs`, where both branches had added
+`AIModule` (one entry kept, with both reasons), and `CataclysmDungeonNavigationTests.cpp`, where both had added includes
+and appended a test (both kept, the crowd test after the clicked-walk test; `AIController.h` included once).
+`python tools/check_resolved_cpp.py --changed`: "7 files read, 0 with complaints".
+
+**The compile.** `python tools/unreal_build.py build` on the rebased branch: "Build: Succeeded - 43 actions, 38 files
+compiled". Then with the branch's changes uncommitted, so that adaptive unity builds each changed file alone (the
+makefile moved aside to make it regenerate): "Build: Succeeded - 13 actions, 8 files compiled: CataclysmImpTests.cpp,
+CataclysmCrowdTests.cpp, CataclysmEnemyController.cpp, CataclysmGameMode.cpp, Module.Cataclysm.17.cpp,
+Module.Cataclysm.8.cpp, Module.Cataclysm.25.cpp, Module.Cataclysm.12.cpp". Then committed again, the makefile moved aside
+again, so the four unity files are rebuilt holding them: "Build: Succeeded - 9 actions, 4 files compiled:
+Module.Cataclysm.17.cpp, Module.Cataclysm.8.cpp, Module.Cataclysm.25.cpp, Module.Cataclysm.12.cpp". The editor module
+does not build in unity files, so `CataclysmDungeonNavigationTests.cpp` is always compiled alone; its object is newer
+than its rebased source. Each changed file's compiler report (`.sarif`) holds no result. Nothing had to be fixed.
+
+**A second reading of phase 1, against the engine source of 5.8.** Nothing in it was changed.
+
+- **The subobject name** is the engine's: `AAIController`'s constructor creates
+  `CreateOptionalDefaultSubobject<UPathFollowingComponent>(TEXT("PathFollowingComponent"))`.
+- **The check in `OnPossess` reads a registered agent, not a not-yet-registered one.** `AAIController::OnPossess` calls
+  `PathFollowingComponent->Initialize()` itself, after `AController::OnPossess` has set the pawn (which hands the path
+  follower its movement component through `OnNewPawn`). `UCrowdFollowingComponent::Initialize` calls
+  `RegisterCrowdAgent` there and then, which `UCrowdManager::RegisterAgent`s it and, when a Detour crowd exists, gives it
+  a slot (`AddAgent`). The one deferred case is a navigation system not yet initialised AND no crowd manager, where the
+  component waits for `OnNavigationInitDone`; `LeaveTheCrowdIfItWasNotTakenIn` returns at once when there is no manager,
+  so it does not take that creature out. So the check cannot drop every creature by reading too early.
+- **A limit of the fallback, recorded and not changed.** An agent registered while its manager has no Detour crowd is
+  kept in the manager's `ActiveAgents`, and `UCrowdManager::CreateCrowdManager` gives every one of them a slot when a
+  navigation mesh arrives later. The fallback takes such a creature out (unregistering it), so a creature possessed in
+  the moment between a level's navigation data registering and its Detour mesh being built would stay out for good.
+  The Detour mesh is built when the navigation data's generator is made, as the data registers
+  (`FRecastNavMeshGenerator::ConstructTiledNavMesh`, whose `SetRecastMesh` re-creates the crowd), and a dungeon level's
+  navigation data registers when the world initialises, before anything is spawned, so no such moment is known in play.
+- **Every walk the brain orders reaches the override.** There are six in `CataclysmEnemyController.cpp`, each an
+  unqualified `MoveTo(Request)` inside a member function, which dispatches to the override: the guide's walk, the flight
+  (and its straight-line retry), the hungry creature's walk to a drop, the chase, the follow of a commander and the
+  roam, each with its no-path retry. `AAIController::MoveToActor` and `MoveToLocation` build a request and call the
+  virtual `MoveTo` too, which is how the test reaches it. No `SimpleMoveToLocation`, `RequestMove` or
+  `RequestDirectMove` is called on a creature anywhere in the game; the player controller's `SimpleMoveToLocation` calls
+  walk the player, whose path follower is the engine's default class.
+- **Minions and thralls are this controller's.** `ACataclysmMinion`'s constructor sets `AIControllerClass` to
+  `ACataclysmEnemyController`, as `ACataclysmEnemyCharacter`'s does; no game source calls a controller's `Possess`
+  (Subjugate's `UCataclysmSummonSkill::Possess` is the skill's own function and changes the creature's side), so
+  Subjugate, Compel and Madness change sides and targets and never the controller. An
+  Echo of the Dead is un-possessed and its controller destroyed at once (`CataclysmDungeonGameMode.cpp`), which
+  `AAIController::OnUnPossess` follows with the path follower's `Cleanup`, unregistering it.
+- **The INI section is the one the engine reads.** `UCrowdManager` is `UCLASS(config = Engine, defaultconfig)` in the
+  `AIModule` module and `MaxAgents` is `UPROPERTY(config)`, so its section is `[/Script/AIModule.CrowdManager]`; the
+  navigation system makes its manager with `NewObject` from `CrowdManagerClass`, `/Script/AIModule.CrowdManager` by
+  default, so the live manager starts from the class default's configured values.
+- **The warning does not flood the tests.** It is written only when a crowd manager exists and gave no slot. A test
+  world from `UWorld::CreateWorld` of the Game type has no navigation system (`CreateNavigation(InWorldType ==
+  EWorldType::Editor)` in `World.cpp`), and the one test that builds an `EditorPreview` world
+  (`CataclysmBodyBeforeSocketsTests.cpp`) gets none either. The only worlds in the suite with a crowd manager are the
+  editor module's navigable floors, whose crowd has a mesh, and `ACreatureTheCrowdCannotHoldWalksOutsideIt`, which
+  writes it once, for its one creature. No test loads a map. A warning does not fail an automation test
+  (`bElevateLogWarningsToErrors` is false, as `CataclysmDungeonGameModeTests.cpp` records), and no test here declares an
+  expected message. Kept at Warning: in play it would repeat only on a level that is already broken, or once per
+  creature past 1024.
+- **Found, not changed: a dead creature stays in the crowd until its body is removed.** `HandleDeath` turns its collision
+  off and its movement off, but its controller keeps it possessed until `Destroy`, after its death clip
+  (`CorpseSeconds`). For that time it is a crowd agent standing still, which the living steer round although nothing
+  stops them walking through it. A creature with no death clip goes on the next tick, and the code says five of the
+  seven vertical slice creatures have none. Taking the dead out of
+  the crowd at death is a behaviour change this entry does not make; it is for the owner's look ("Not tested").
+
 ### The assertion audit: where each fixture's starting state comes from
 
 - **Nine bodies**: `SpawnEveryKind` spawns the eight kinds 5 m apart with `AlwaysSpawn`, and an imp through
@@ -207,28 +279,86 @@ failed, 1 passed in 0.09s | restored: 3 passed in 0.04s", the failures
   `DoInitialSetup`, and the first agent registered finds the navigation mesh (`UCrowdManager::UpdateNavData`) and
   builds the Detour crowd on it if it was not built when the mesh registered.
 
+Checked again in phase 2, each against the source it rests on:
+
+- **Sixty Imps fit, and each gets a slot.** A cell is 400 cm (`FCataclysmFloorGenerator::CellSizeCm`) and
+  `WorldOfCell` is a cell's middle; `OpenSquareCorner(Plan, 2)` returns a cell whose square from one cell before it to
+  two after it, both ways, is floor and holds neither the entrance nor the exit, so floor runs from 600 cm before the
+  corner's middle to 1000 cm past it. The Imps stand from -300 to 750 cm, their 30 cm bodies reaching -330 and 780,
+  inside a mesh inset by the navigation agent's radius from 600 and 1000. **What "held" counts is a slot, not a
+  polygon:** `UCrowdManager::IsAgentValid` is true when the agent has a Detour index, and `dtCrowd::addAgent` gives one
+  to an agent wherever it stands, marking one that found no polygon `DT_CROWDAGENT_STATE_INVALID`; it refuses only when
+  every slot is taken or its query filter table is full, and all sixty share the default filter. So sixty are held by
+  a crowd of 1024 and exactly fifty by a crowd of the engine's 50, the case the test exists for. Each registers inside
+  its own possession, before the next is spawned (above).
+- **The figures 30 and 96.** `ACataclysmImpCharacter::ImpCapsuleRadius` is 30 and `BruteCapsuleRadius` 48, set by
+  `InitCapsuleSize` in their constructors; the minion's is 30, every other creature's 48. `UCapsuleComponent::
+  CalcBoundingCylinder` returns the radius times the larger of the component's X and Y scales, plus the end cap's
+  sideways offset, which is nought for an upright capsule; the capsule is the root, so `SetActorScale3D(2)` makes it 96
+  at once. At scale 1 it equals `GetScaledCapsuleRadius`, which test 3 compares it with.
+- **`MaxAgents` read on the class default.** It is `UPROPERTY(config)` on a `config = Engine` class, so the class
+  default reads `[/Script/AIModule.CrowdManager]` when it is made, and an automation run launches the editor on this
+  project's configuration. `FindFProperty` finds a protected property as readily as a public one.
+- **The test-6 character.** `ACharacter::SpawnDefaultController` with `AIControllerClass` set to `AAIController`
+  possesses it with the engine's controller, whose path follower is the default class, so it is not a crowd agent.
+- **Walks in a world with no navigation system.** `MoveToActor` and `MoveToLocation` abort nothing (the follower is
+  idle), and the override sets the steering flag before `AAIController::MoveTo` fails to find a path, so the flag is
+  what the test reads.
+- **The proofs' predicted counts hold against the tests as committed**: under A every test that fetches the crowd
+  component stops at its first assertion that needs it, and the two that never fetch it pass; under B the eight enemy
+  kinds read RVO on and the minion, built by `ACataclysmMinion`, does not; under D only the two walks at a creature
+  read the flag differently.
+
 ### Registered before the run
 
 The engine words a failed `TestEqual` on whole numbers "Expected '<what>' to be <expected>, but it was <actual>.", a
 failed `TestTrue` "Expected '<what>' to be true.", a failed `TestFalse` "Expected '<what>' to be false." and a failed
 `TestNotNull` "Expected '<what>' to be not null." (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` lines
-2065, 2676 and 2666, and `Public/Misc/AutomationTest.h` line 2453, in this engine). No base was measured by this
-session; the window measures it.
+2065, 2676 and 2666, and `Public/Misc/AutomationTest.h` line 2453, in this engine).
+
+**Base counts** are the "Test Completed" lines, counted by prefix and ignoring case as the engine's filter does, in
+the click-move window's whole-suite engine log at `f939a69ee`, whose tree is development `ec2319181`'s (4610
+performed). `Cataclysm.Crowd.` takes the trailing dot because `Cataclysm.Crowd` alone matches 13 there:
+`Cataclysm.CrowdControl.` and `Cataclysm.CrowdControlCeiling.`. Every other prefix below ends in a dot and matches
+only its own group.
+
+**Because this changes how every creature walks**, the groups that drive a creature's brain, its walks, its fear, its
+charges and its side are run alone as well, at their base counts with nothing added, so a regression shows by group
+before the whole suite. In a test world nothing should change for them, because there is no navigation system there
+and the crowd component hands everything to the path follower; these runs are what shows that.
 
 | Figure | Registered |
 |---|---|
 | `Cataclysm.Crowd.` alone | 8 / 8: none at the base, + 8 |
 | `Cataclysm.FloorCrowd.` alone | 1 / 1: none at the base, + 1 |
-| `Cataclysm.DungeonFloor.` alone | the base's count, unchanged; run because its file changed |
-| `Cataclysm.Imp.` alone | the base's count, unchanged; run because every Imp is now a crowd agent |
-| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total + 9 by name |
-| Python | TO-BE-MEASURED at the registration commit. Narrowed, by this session, on the tree of the commit that adds this entry except this cell: the 121 files under `tools/tests` that scan C++ sources or read the decisions log, the controller, the game mode, the Imp tests, `DefaultEngine.ini` or a `Build.cs` -- "3452 passed, 5 skipped in 76.50s", JUnit tests 3457, failures 0, errors 0, skipped 5; `ruff check .` "All checks passed!" |
+| `Cataclysm.DungeonFloor.` alone | 16 / 16: 16 at the base, none added; run because its file changed |
+| `Cataclysm.ClickToMove.` alone | 2 / 2: 2 at the base, none added; its tests share the changed file |
+| `Cataclysm.Imp.` alone | 6 / 6: 6 at the base, none added; run because every Imp is now a crowd agent |
+| `Cataclysm.AI.` alone | 51 / 51: the brain: chase, reach, roam, wind-ups |
+| `Cataclysm.Fear.` alone | 9 / 9: flight |
+| `Cataclysm.NowhereToRun.` alone | 4 / 4: a held creature's flight |
+| `Cataclysm.Command.` alone | 22 / 22: minions following and fighting |
+| `Cataclysm.CompelHeld.` alone | 4 / 4: Compel |
+| `Cataclysm.EchoesHeld.` alone | 4 / 4: Echoes, whose brains are destroyed |
+| `Cataclysm.MinionAttackSpeed.` alone | 5 / 5: summoned imps |
+| `Cataclysm.MinionDeath.` alone | 19 / 19: minions |
+| `Cataclysm.RisenImps.` alone | 11 / 11: imps raised from the cursed dead |
+| `Cataclysm.Hellhound.` alone | 11 / 11: the lane charge |
+| `Cataclysm.Brute.` alone | 23 / 23: the Brute, whose body the radius test doubles |
+| `Cataclysm.Warden.` alone | 20 / 20: the Warden's charge |
+| `Cataclysm.ForcedMovement.` alone | 13 / 13: knockback, pull, drag |
+| `Cataclysm.Enemy.` alone | 19 / 19: the base enemy |
+| `Cataclysm.DungeonEnemies.` alone | 13 / 13: whole floors of creatures placed |
+| `Cataclysm.Sandbox.` alone | 8 / 8: the sandbox's creatures, the Imp pack among them |
+| Whole Unreal suite | 4619 / 4619: 4610 at the base, + 9 by name |
+| Python | Whole suite, by phase 2, on the tree of the registration commit except this cell: "7270 passed, 8 skipped in 208.69s (0:03:28)", JUnit tests 7278, failures 0, errors 0, skipped 8; `ruff check .` "All checks passed!". Earlier, narrowed, by phase 1 on its own tree: the 121 files under `tools/tests` that scan C++ sources or read the decisions log, the controller, the game mode, the Imp tests, `DefaultEngine.ini` or a `Build.cs` -- "3452 passed, 5 skipped in 76.50s", JUnit tests 3457, failures 0, errors 0, skipped 5; `ruff check .` "All checks passed!" |
 | A, no crowd (`SetDefaultSubobjectClass<UCrowdFollowingComponent>(` to `SetDefaultSubobjectClass<UPathFollowingComponent>(`, in `CataclysmEnemyController.cpp`), prefix `Cataclysm.Crowd.` | 6 tests, 16 assertions; "8 performed, 2 succeeded, 6 failed". In `EveryCreatureIsDrivenAsACrowdAgent`, 11: "<name> walks through a crowd-following component" (to be true) for each of the nine names, "every one of the nine walks as a crowd agent" (to be 9, but it was 0) and "a creature brain made with no body walks through a crowd-following component" (to be true); its nine "<name> is driven by the creatures' brain" pass. One set-up assertion each in four more: "set-up: every creature walks through a crowd-following component" (to be 9, but it was 0) in `EachCreaturesCrowdRadiusIsItsOwnCapsule` and in `NoCreatureIsPushedApartByCrowdSeparation`; "set-up: the Brute walks through a crowd-following component" (to be not null) in `AWalkAtAnotherCreatureIsNotSteeredAroundIt`; "set-up: the creature walks through a crowd-following component" (to be not null) in `WithoutANavigationSystemPathFollowingIsAsBefore` and in `ACreatureTheCrowdCannotHoldWalksOutsideIt`. `NoCreatureAvoidsByRvoBesideTheCrowd` and `TheCrowdHoldsTwiceTheLargestFloor` pass |
 | B, RVO on every enemy (`AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;` to the same followed by ` GetCharacterMovement()->bUseRVOAvoidance = true;`, in `CataclysmEnemyCharacter.cpp`), the same prefix | 1 test, 9 assertions, all in `NoCreatureAvoidsByRvoBesideTheCrowd`: "<name> does not use RVO avoidance" (to be false) for the eight enemy kinds -- the base enemy, the Brute, the Imp, the Hellhound, the Abyssal Warden, the Corrupted Sentinel, the Gatekeeper and the Succubus -- and "no creature uses RVO avoidance beside the crowd" (to be 0, but it was 8). The summoned imp is an `ACataclysmMinion`, not an enemy, and passes. "8 performed, 7 succeeded, 1 failed" |
 | D, every walk steered (`Crowd->SuspendCrowdSteering(IsDrivenByACrowdAgent(MoveRequest.GetGoalActor()));` to `Crowd->SuspendCrowdSteering(false);`, in `CataclysmEnemyController.cpp`), the same prefix | 1 test, 2 assertions, both in `AWalkAtAnotherCreatureIsNotSteeredAroundIt`: "a walk at another creature is not steered around it" and "CONTROL: and a second walk at the creature is not steered again" (each to be true). Its four `IsDrivenByACrowdAgent` assertions and the three steered-walk assertions pass. "8 performed, 7 succeeded, 1 failed" |
 
-Each break's anchor occurs once in its file, counted with Python's `str.count` on the committed file. The breaks were
-not compiled before registration. A fourth was considered and not registered, to keep the window to three proofs:
+Each break's anchor occurs once in its file, counted with Python's `str.count` on the committed file, and counted again
+in phase 2 on the rebased files by the window's proof script (`--anchors-only`). The breaks were not compiled before
+registration. A fourth was considered and not registered, to keep the window to three proofs:
 `if (Manager->IsAgentValid(Crowd))` to `if (Manager->IsAgentValid(Crowd) || true)` would fail exactly "so it is taken
 out of crowd mode and walks as it did before crowds" in `ACreatureTheCrowdCannotHoldWalksOutsideIt`.
 
@@ -251,6 +381,9 @@ out of crowd mode and walks as it did before crowds" in `ACreatureTheCrowdCannot
 - **The full-crowd fallback.** No test fills a crowd of 1024; the no-mesh case is tested and shares the code.
 - **Frame cost.** The crowd steers every agent present every frame. Two to five hundred agents on a floor has not been
   measured; the owner has parked performance work, and this is a place it may show.
+- **Walking round the dead.** A creature with a death clip stays a crowd agent until its body is removed (phase 2's
+  reading, above): for the owner's look, whether a pack visibly steers round a body that no longer blocks it. If it
+  does, the cure is to take the dead out of the crowd when they die, which is a change of its own.
 
 ---
 
