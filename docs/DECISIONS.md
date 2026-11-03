@@ -18,9 +18,12 @@ in `tools/tests/test_the_rock_throw_minimum_range.py`, whose pattern gains the g
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction: the build machine was in use.
-  No Unreal test and no C++ guard proof has run. Everything under "Registered before the run" is a prediction for a
-  window. The Python guard is run, and proved twice (below).
+- **COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction: the build machine was in use. Phase 2
+  rebased it onto `development` `95c8dd308` and compiled it, every changed `.cpp` alone and every unity file holding
+  one (under "Compiled (phase 2)"). No Unreal test and no C++ guard proof has run. Everything under "Registered before
+  the run" is a prediction for a window. The Python guard is run, and proved twice (below).
+- **PHASE 2 CHANGED NO CODE.** The review and the assertion audit found nothing to fix; the registration is
+  re-measured against the rebased base.
 - **NO DESIGNED MARGIN OR MAXIMUM CHANGES.** A Common caster's minimum is exactly 258 / 348 / 348 cm, as before; the
   three `...MinimumRangeCm` constants and the static_asserts holding them to the designed sums are untouched.
 - **THE MAXIMUM NEEDS NO GROWTH, AND NO MINIMUM REACHES ITS MAXIMUM AT ANY RUNG** (the table: 329.44 against 1,000;
@@ -128,7 +131,8 @@ registers exactly that state.
 **Python**: `test_a_lob_minimum_follows_the_casters_body.py`, comments stripped first: each lob's `MinRangeCm` is assigned
 once in its `EnemyAbilities()` and is exactly `marked radius + body + BodyGrowthCm()` (three cases); `BodyGrowthCm`'s body
 is the `FMath::Max(0.0f, ...)` of the scaled less the unscaled radius; `ReachAgainstCm` adds `Creature->BodyGrowthCm()`;
-and of every `.cpp` and `.h` under `game/Source` but the tests (391), only `CataclysmEnemyCharacter.cpp` reads
+and of every `.cpp` and `.h` under `game/Source` but the tests (391 at phase 1's base, 393 after the rebase brought
+#2715's helper), only `CataclysmEnemyCharacter.cpp` reads
 `GetUnscaledCapsuleRadius`. **Run before the fix, at commit `9b3cddd32`: "6 failed in 0.18s"**, every test in the file.
 After it: the file and `test_the_rock_throw_minimum_range.py`, "11 passed in 0.20s".
 
@@ -150,27 +154,129 @@ counted once by `str.count`:
 ### Registered before the run
 
 Assertion wording is the engine's: "Expected '<what>' to be true." for a `TestTrue`, "Expected '<what>' to be <e>, but
-it was <a> and outside tolerance <t>." for a `float` `TestEqual`, six decimals. **Base counts** are those window
-reach-w1 printed (#2706's), for groups #52 did not touch. Every prefix ends in a dot; no existing group begins
-`Cataclysm.LobMinimum`.
+it was <a> and outside tolerance <t>." for a `float` `TestEqual`, six decimals (the form a kept engine log of an
+earlier window prints).
+
+**Base, re-measured in phase 2** against the rebased branch's base: the whole-suite engine log of #2715's window at its
+registration commit `0351b56d7`, whose `game/` tree is the one `development` `95c8dd308` holds (`git diff --stat
+0351b56d7 origin/development -- game/` prints nothing). That run performed 4705, all succeeding, with 47 skipped
+halves. The group counts below are its "Test Completed" lines counted by prefix, case-insensitively, as the engine's
+filter matches. Every prefix ends in a dot; no group in that log begins `Cataclysm.LobMinimum`, and each prefix below
+takes only its own group. **The dot matters for one**: `Cataclysm.AI` without it also takes `Cataclysm.Ailments`. Phase
+1's figures, from #2706's window, were the same for every group listed.
 
 | Figure | Registered |
 |---|---|
 | `Cataclysm.LobMinimum.` alone | 7 performed, 7 succeeded: none at the base, + 7 by name; no skipped half |
-| Each alone, none added or changed | `Cataclysm.ReachAgainstACreature.` 14 (the reach now asks the helper; same figure), `Cataclysm.Brute.` 23, `Cataclysm.Gatekeeper.` 13, `Cataclysm.Sentinel.` 6, `Cataclysm.Telegraph.` 14, `Cataclysm.AI.` 51, `Cataclysm.Silence.` 26, `Cataclysm.EnemyHitTiming.` 14, `Cataclysm.BossFloor.` 5: each that many performed and succeeded, 0 failed. Every existing test reading a lob's minimum uses a Common caster, or a rarer one below 348 cm |
-| Whole Unreal suite | **TO-BE-MEASURED**: the base's total + 7 by name, 0 failed; the base's skipped halves; 0 test saves left behind |
+| Each alone, none added or changed | `Cataclysm.ReachAgainstACreature.` 14 (the reach now asks the helper; same figure), `Cataclysm.Brute.` 23, `Cataclysm.Gatekeeper.` 13, `Cataclysm.Sentinel.` 6, `Cataclysm.Telegraph.` 14, `Cataclysm.AI.` 51, `Cataclysm.Silence.` 26, `Cataclysm.EnemyHitTiming.` 14, `Cataclysm.BossFloor.` 5, as measured at the base: each that many performed and succeeded, 0 failed. No existing test asks for a lob from a rarer caster (the audit below) |
+| Whole Unreal suite | Not measured. Registered: 4712 performed (the base's 4705 plus 7 by name), all succeeding; 47 skipped halves, none added (no new test calls `ReportSkippedHalf`); 0 test saves left behind (the new tests write none) |
 | P1, Soulfall's growth dropped (`Soulfall.MinRangeCm = SoulfallRadiusCm + GatekeeperCapsuleRadius + BodyGrowthCm();` to `Soulfall.MinRangeCm = SoulfallRadiusCm + GatekeeperCapsuleRadius;`, in `CataclysmGatekeeperCharacter.cpp`), prefix `Cataclysm.LobMinimum.` | 7 performed, 4 succeeded, 3 failed, 11 assertions: test 1, seven, "a Gatekeeper at rung N: its minimum is its marked circle plus its body as it stands" for N 1 to 5 (each "but it was 348.000000 and outside tolerance 0.010000"; the expected six decimals not predicted), "an Elite Gatekeeper's minimum is 357.60 cm" ("to be 357.600006, but it was 348.000000 and outside tolerance 0.010000.") and "a Cataclysm Boss Gatekeeper's minimum is 419.44 cm" ("to be 419.440002, but it was 348.000000 ..."); tests 4 and 5, two each, "a Gatekeeper at rung 1 (5) does not begin Soulfall at a target inside its marked circle plus its body as it stands" and "and no circle it marks covers its own body (nearest edge 52.80 (83.72) cm from its centre, its body 57.60 (119.44) cm)", each "to be true." |
 | P2, Rip and Toss's growth dropped (`RockThrow.MinRangeCm = RockThrowRadiusCm + BruteCapsuleRadius + BodyGrowthCm();` to `RockThrow.MinRangeCm = RockThrowRadiusCm + BruteCapsuleRadius;`, in `CataclysmBruteCharacter.cpp`), same prefix | 7 performed, 4 succeeded, 3 failed, 11 assertions: test 1, seven, the Brute's five rung assertions ("but it was 258.000000 ..."), "an Elite Brute's minimum is 267.60 cm" ("to be 267.600006, but it was 258.000000 ...") and "a Cataclysm Boss Brute's minimum is 329.44 cm" ("to be 329.440002, but it was 258.000000 ..."); tests 2 and 3, two each, "a Brute at rung 1 (5) does not begin Rip and Toss ..." and "and no circle it marks covers its own body (nearest edge 52.80 (83.72) cm ..., its body 57.60 (119.44) cm)" |
 | P3, the growth zeroed (`return FMath::Max(0.0f, Capsule->GetScaledCapsuleRadius() - Capsule->GetUnscaledCapsuleRadius());` to `return 0.0f * FMath::Max(0.0f, Capsule->GetScaledCapsuleRadius() - Capsule->GetUnscaledCapsuleRadius());`, in `CataclysmEnemyCharacter.cpp`), same prefix | 7 performed, 0 succeeded, 7 failed, 33 assertions: test 1's 21 (P1's seven, P2's seven, and the Corrupted Sentinel's seven, worded as the Gatekeeper's with "Corrupted Sentinel"), and the CASE's two in each of tests 2 to 7 (the Sentinel's "does not begin Brimstone Mortar ..."). Every CONTROL holds. The same break also reproduces #2706's P4 under `Cataclysm.ReachAgainstACreature.`; not registered here |
-| Python | `ruff check .` clean; the whole suite in the window, 0 failed |
+| Python | Measured in phase 2 on the tree of the commit before this one plus this entry with this cell unfilled: "7358 passed, 9 skipped in 191.51s", and the JUnit file's `testsuite` tests="7367" failures="0" errors="0" skipped="9" (7358 passed), the two agreeing. Six added by phase 1, one changed. `ruff check .`: "All checks passed!". The window measures both again |
 
-Each anchor occurs once in its file. The breaks were not compiled. The two-decimal figures inside the CASE's message
+Each anchor occurs once in its file, counted again in phase 2 by `prove_v2716.py --anchors-only` at the rebased code.
+The breaks were not compiled. Re-checked in phase 2 against the code as rebased: the predictions stand. The rebase
+brought nothing into the enemy files, the brain or the marker. The two-decimal figures inside the CASE's message
 are `%.2f` prints of floor-plane distances (262.8 − 210, 293.72 − 210, 352.8 − 300, 383.72 − 300) and of the scaled radii;
 if a print differs in the last place, the count and the leading words are the registration.
 
+### Rebased (phase 2)
+
+Branch `fix/an-ability-minimum-follows-the-casters-body-2`: phase 1 (`34103f2d8`, cut from `6f6c2518f`) rebased onto
+`development` `95c8dd308`, which had added #2715's Walk buttons since. Git stopped on one file, this one: this entry
+first, then #2715's, a rule between. Nothing else conflicted, and #2715 touched none of the files this change does.
+`python tools/check_resolved_cpp.py --changed` read no files once the rebase had finished (nothing was left
+uncommitted), so it was run over the branch's eleven C++ files by name: "11 files read, 0 with complaints".
+
+### Compiled (phase 2)
+
+`python tools/unreal_build.py build`, three times, each read in full:
+
+1. The rebased commit as it stood: "Build: Succeeded - 49 actions, 44 files compiled". Nothing needed fixing.
+2. With every change of the branch uncommitted (`git reset --mixed origin/development`, then back to the same head,
+   `git status` clean and the branch's diff byte-identical before and after) and `Makefile.bin` moved aside, so
+   adaptive unity compiled each changed `.cpp` alone: "Build: Succeeded - 12 actions, 9 files compiled:
+   CataclysmCorruptedSentinelCharacter.cpp, CataclysmBruteCharacter.cpp, CataclysmLobMinimumTests.cpp,
+   CataclysmGatekeeperCharacter.cpp, CataclysmEnemyController.cpp, CataclysmEnemyCharacter.cpp,
+   Module.Cataclysm.7.cpp, Module.Cataclysm.27.cpp, Module.Cataclysm.8.cpp". All six changed `.cpp` files, alone.
+3. Committed, with `Makefile.bin` moved aside again so the unity files were regenerated: "Build: Succeeded - 6
+   actions, 3 files compiled: Module.Cataclysm.7.cpp, Module.Cataclysm.27.cpp, Module.Cataclysm.8.cpp". The changed
+   files sit in 7 (the Brute), 8 (the enemy character, the brain, the Gatekeeper and the Corrupted Sentinel) and 27
+   (the new tests), all compiled.
+
+### Reviewed (phase 2)
+
+- **One measure.** `BodyGrowthCm` is the only reader of `GetUnscaledCapsuleRadius` in the game's source (the Python
+  guard counts it); `ReachAgainstCm` adds `Creature->BodyGrowthCm()` and measures nothing itself; the three lobs add
+  it to their minimum. No other ability marks a circle where it lands: `bArcsOntoItsTarget = true` is set in these
+  three `EnemyAbilities` and nowhere else. The game's other minimums (the Abyssal Warden's Stampede, the Hellhound's
+  Hellrush, the Corrupted Stalker's chosen ability) mark no circle where they land.
+- **Each minimum is margin plus the scaled radius, and a Common caster's is exact.** Each capsule is built from the
+  constant its sum names (`InitCapsuleSize(BruteCapsuleRadius, ...)`, `GatekeeperCapsuleRadius`,
+  `SentinelCapsuleRadius`, each 48), so `48 + BodyGrowthCm()` is the scaled radius. At scale 1 the growth is
+  `48 - 48`, exactly nought in floating point, and the sums are exactly 258 / 348 / 348.
+- **The table is the data's.** `game/Data/EnemyRarities.csv` `BodyScale`: 1.0, 1.2, 1.44, 1.728, 2.0736, 2.48832.
+  48 times each is 48, 57.6, 69.12, 82.944, 99.5328 and 119.43936 (the table's 119.44 is that, rounded); the minimums
+  are 258 to 329.44 and 348 to 419.44, against maximums of 1,000 and 1,400. No rung brings a minimum to its maximum.
+  `SetRarityStep` is the only code that scales a creature (`SetActorScale3D` appears nowhere else in the game's
+  source outside the tests), so no other path grows a body past the table.
+- **A rung change is seen at once.** `ChooseAbility` and `UseAbilitiesOn` each call `EnemyAbilities()` when they
+  ask, and the marker is drawn from the array `UseAbilitiesOn` just built; nothing caches a minimum.
+- **The static_asserts are untouched and compare distinct things**: the literal 258 with `RockThrowRadiusCm +
+  BruteCapsuleRadius` (210 + 48), the literal 348 with `SoulfallRadiusCm + GatekeeperCapsuleRadius` and with
+  `BrimstoneMortarRadiusCm + SentinelCapsuleRadius` (300 + 48). After this change the two 348 constants are read by
+  the asserts and the tests only; the game's minimum is the sum.
+- **Nothing needed fixing.**
+
+### Assertion audit (phase 2)
+
+Every assertion in `CataclysmLobMinimumTests.cpp` that compares with a fixed number or relies on a starting state,
+checked against the code it reads:
+
+- **The scales, 1.2 and 2.48832 (tolerance 0.0001)**: the Elite and Cataclysm_Boss rows' `BodyScale`;
+  `ACataclysmDungeonGameMode::CataclysmBossRung` is 5, the Cataclysm_Boss row's `Step`.
+- **Which rung a spawned creature starts at**: `RarityStep` defaults to 0 in the header and nothing in a creature's
+  construction or `BeginPlay` sets it; only `SetRarityStep` does, called by the game mode's spawners and by these
+  tests. So each creature starts Common at scale 1, and a test world's capsule is scaled by exactly the call play
+  makes. Asserted as set-up: the rung read back, the scale above 1, and the capsule's radius equal to the unscaled
+  radius times the table's scale (0.01).
+- **The radii**: every capsule here is 48 unscaled, the target's too (`EnemyCapsuleRadius`). Scaled, 57.6000023 and
+  119.439354 in floating point; the tests read them from the capsule, never from a literal.
+- **Common exact (tolerance 0)**: the growth is exactly nought at scale 1, above.
+- **The per-rung minimum (0.01)**: the minimum and `MarkerRadiusCm + scaled radius` are two float sums of the same
+  terms, apart by far less than 0.01.
+- **The four figures (0.01)**: 267.6, 357.6, and 329.44 and 419.44 against true values of 329.43935 and 419.43935,
+  0.00065 apart.
+- **The maximum (tolerance 0)**: assigned from the unchanged constants 1,000 and 1,400.
+- **The CASE distances**, 262.8 and 293.72 for the Brute, 352.8 and 383.72 for the others: each lies strictly between
+  the old minimum and the grown one, 4.8 cm and 35.72 cm from each. The CONTROL distances, 269.6, 331.44, 359.6 and
+  421.44, are 2 cm past the grown minimum and far inside the maximum.
+- **The Brute's Stomp** reaches 350 cm, covering every Brute distance used (262.8 to 331.44), so it is spent first.
+  Its wind-up is 1.4 s and the clock is moved 1.5, which lands it by the clock condition in `ContinueWindUp`; the
+  attack interval is `DesignedAttackIntervalSeconds`, 1.2 s, and the gate multiplies it by
+  `AttackIntervalScaleFor`, which is 1 with no order given; 2.75 s in all is inside the Stomp's 8 s cooldown, and Rip
+  and Toss has never been used, so it is ready. The Stomp's circle is destroyed when it lands (`Dismiss` calls
+  `Destroy`), so the CONTROL's "one circle" counts the lob's alone.
+- **The Gatekeeper's phase**: `PhaseReached` starts at 1, and `SetRarityStep` refills health through
+  `ApplyStartingAttributes`, so it is in phase 1 (asserted): Soul Harvest (phase 3) and Call the Damned (phase 2) are
+  skipped, and Dread Cleave reaches only `DreadCleaveRadiusCm`, 200.
+- **The Sentinel**: the mortar is first in its list; refused, it falls to Siege Bolt (0 to 1,400), whose marker is a
+  lane (`IsLane`) and is not counted.
+- **Where the circle is**: `AimPointFor` is the target's own floor point and `ShowCircle` takes `MarkerRadiusCm`
+  unscaled (210 and 300, above `SmallestUsefulRadiusCm`, 100). So the CASE's nearest edges print 52.80 and 83.72 and
+  the bodies 57.60 and 119.44 at `%.2f`.
+- **Existing tests.** A grown minimum can only refuse a lob, so a test is at risk only where it expects a lob from a
+  caster above Common at a distance in the band. Of the fourteen existing test files naming one of these three lobs, none sets
+  a rung on a lobbing creature: the Gatekeeper tests' one `SetRarityStep` is on a called Imp and the Silence tests'
+  on a plain creature. Their lobbing distances, `(348 + 1,400) / 2` = 874 and the Sentinel's 700, are beyond every
+  grown minimum. The `Cataclysm.ReachAgainstACreature.` tests raise a Brute to Elite and a Gatekeeper to the Cataclysm
+  Boss rung and spend abilities at contact distances (91 to about 203 cm), below every minimum before and after. The
+  modifier-effect tests that raise a Gatekeeper's rung do not think.
+
 ### Not tested
 
-- **Nothing in Unreal has run, and nothing has compiled.** See SAID FIRST.
+- **Anything in Unreal**: compiled, not run. See SAID FIRST.
 - **Call the Damned's ring**: verified by reading (above), not tested, and not changed.
 - **The Legendary, Herald and Boss rungs through the brain**: test 1 checks their figures; tests 2 to 7 draw the circle
   at Elite and Cataclysm Boss only.
