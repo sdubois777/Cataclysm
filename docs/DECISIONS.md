@@ -374,6 +374,24 @@ prediction moves. No run has printed the eighth, and no figure here names it: te
 
 The moved assertions add one fixed number, version 5, which `Run_v5.json` states.
 
+### Window run-won-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `609fb3290` (on `development`
+`1d2b15f9d`), lock `run-won-w1`, after the six pre-checks all passed (11,692 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 15 groups alone | each at its registered count | every one "0 failed": WinningTheRun. 11, BossClearedWins. 2, SaveRecords. 17, DeathCost. 9, ConsumptionDouble. 15, EarnedBossSave. 3, SaveTriggers. 6, EarnedBoss. 4, EmpireRun. 68, BossFloor. 5, BossOnTheMap. 5, EmpireScreen. 14, SaveLoad. 75, CataclysmDraw. 6, SaveWriter. 25 |
+| Whole Unreal suite | 4670, 47 skipped halves | "4670 tests performed, 4670 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4670 tests in the tree at 609fb3290; 4670 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7347 passed, 9 skipped in 198.03s"; JUnit tests 7356, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 2 tests, 9 | PROVED. Exactly the nine registered, including "and the character record on disk holds the raised tier" (2 expected, 1 read); restored 11 of 11 |
+| P2 | 1 test, 3 | PROVED. Exactly "the walk owes nothing once it is won" (0 expected, 4 read), "so leaving runs none of its days" (0 expected, 4 read) and "and the run's day stays where it was" (2 expected, 6 read); restored 2 of 2 |
+| P3 | 4 tests, 7 | PROVED. Exactly the seven registered, "its Cataclysm" reading 1 (Demonic) for 3 (War), as the measured draw of seed 24681357 predicted; restored 11 of 11 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal**: compiled in phase 2, not run (above).
