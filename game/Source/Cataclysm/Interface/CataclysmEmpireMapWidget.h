@@ -38,11 +38,23 @@ class UTextBlock;
  * spends its upgrade slots there. This asks the player controller to open it,
  * because the controller owns every screen in this project. Issue #42.
  *
+ * THE CATACLYSM BOSS DUNGEON HAS A BOX OF ITS OWN, because it stands on no city
+ * (the project owner, 2026-11-02, verbatim: "On no city (Recommended)"). Once
+ * the run has opened it, one more choice button sits in the map panel's top
+ * left corner, where the diamond has no city, saying "Cataclysm boss: 137
+ * floors"; it is hidden before it opens and after it has been cleared. The
+ * cursor on it, or a press, writes what it is into the line under the map.
+ * `UCataclysmEmpireMapLayout` decides where it goes and every word. Issue #1324
+ * slice 6c.
+ *
  * WHAT IT DOES NOT DO YET:
  *
- *   - **A city cannot be entered from here.** Clicking one opens its screen; no
- *     dungeon standing on it can be walked from either, because there is no
- *     travel between the empire and a dungeon level. Issue #48.
+ *   - **A city cannot be entered from here, and nor can the boss dungeon.**
+ *     Clicking a city opens its screen and pressing the boss's box says what it
+ *     is; no dungeon can be walked from either, because there is no travel
+ *     between the empire and a dungeon level. Issue #48.
+ *     `Cataclysm.EnterDungeon <id>` in a dungeon level walks any of them, the
+ *     boss included; `Cataclysm.ShowEmpire` lists the identifiers.
  *   - **It does not advance the day.** Nothing in the game does except a console
  *     command. Walking a dungeon and spending days at the forge are what
  *     eventually will.
@@ -201,6 +213,20 @@ private:
 	/** One box per city, in city identifier order. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UCataclysmChoiceButton>> CityButtons;
+
+	/**
+	 * The Cataclysm boss dungeon's box, made with the cities and hidden until the
+	 * run has one standing. NOT IN `CityButtons`, which is indexed by city and
+	 * read by `PlacedAt`; the boss is on no city. Issue #1324 slice 6c.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> CataclysmDungeonButton;
+
+	/** Places, labels, shows or hides the boss dungeon's box. */
+	void PlaceCataclysmDungeon(float Scale);
+
+	/** Writes the boss dungeon's brief into the line under the map. */
+	void WriteCataclysmDungeonDetail();
 
 	/** The run supplied by a test. See `SetRunForTests`. */
 	UPROPERTY(Transient)

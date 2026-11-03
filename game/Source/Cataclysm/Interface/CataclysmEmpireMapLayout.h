@@ -212,12 +212,27 @@ public:
 	 * string built inside `WriteStatus` cannot be read back by any test. This
 	 * takes a run and answers a string, so every case below is covered.
 	 *
-	 * **HOW MANY OBJECTIVES ARE NEEDED IS NOT SHOWN, AND THAT IS DELIBERATE.**
-	 * The requirement is stated per Cataclysm in `docs/Cataclysm_GDD_v2.md`
-	 * section XI -- 10, 5, 10, 5, 5, 10, 8, 5 -- and the empire layer has no
-	 * notion of which Cataclysm is running, so "1 of 8" would be a denominator
-	 * this build invented. Issue #1357 is what has to land before a fraction can
-	 * be honest.
+	 * **AND HOW FAR THE PLAYER IS FROM THE CATACLYSM BOSS DUNGEON**, since issue
+	 * #1324 slice 6c (2026-11-03): "4 dungeons cleared, 7 quest objectives, 1 of
+	 * 5 Cataclysms finished; the boss dungeon opens when 3 are finished". The
+	 * fraction is Cataclysms finished (`UCataclysmEmpireRun::CataclysmsComplete`)
+	 * of the Cataclysms the run faces, and the number it opens at is
+	 * `CataclysmDungeonRequirement`, half of them rounded up. Once it has opened
+	 * the clause says "the Cataclysm boss dungeon is open", and once it has left
+	 * the board, which only a clear does, "the Cataclysm boss dungeon has been
+	 * cleared". A run whose requirement is met and whose boss has not opened --
+	 * which play cannot reach, because the clear that meets it opens it, but a
+	 * run record from before version 4 can, since `Migrate_3_to_4` writes it
+	 * unopened -- is told the next quest dungeon cleared opens it, which is when
+	 * `OpenCataclysmDungeonIfEarned` next runs.
+	 *
+	 * **THIS SAID NO DENOMINATOR COULD BE SHOWN, AND FOR OBJECTIVES THAT IS STILL
+	 * SO.** Each Cataclysm asks for its own count, `docs/Cataclysm_GDD_v2.md`
+	 * section XI -- 10, 5, 10, 5, 5, 10, 8, 5 -- so "7 of 8 quest objectives"
+	 * would add counts that belong to different Cataclysms. What issue #1357
+	 * made honest is the count of CATACLYSMS finished, which the run has known
+	 * since it began keeping objectives per Cataclysm; the line said "until
+	 * #1357" and #1357 had landed.
 	 *
 	 * @param Run the run to describe. Null, or one that has not begun, answers
 	 *            an empty string rather than a line of zeroes, so a screen with
@@ -297,14 +312,95 @@ public:
 
 	/**
 	 * The one line the empire screen shows for the latest thing that happened to the empire: `LastDeathLine` while
-	 * the death is at least as recent as the last hit and the last fall's move, and `LastHitLine` otherwise.
+	 * the death is at least as recent as the last hit, the last fall's move and the opening of the Cataclysm boss
+	 * dungeon; `CataclysmDungeonOpenedLine` while the opening is at least as recent as the last hit and the last
+	 * move; and `LastHitLine` otherwise.
 	 *
 	 * ON THE SAME DAY THE DEATH IS SHOWN, a judgement of 2026-11-02: the death's own resolve can be that day's hit,
 	 * and the death's line names what it felled, so it is the larger account of the two. A hit on a LATER day -- in
 	 * the days the death charged, say -- is more recent, and its line replaces the death's.
 	 *
-	 * @param Run the run to describe. Empty when neither line has anything to say.
+	 * **THE OPENING, ON THE SAME DAY, BEATS A HIT OR A MOVE AND LOSES TO A DEATH**, a judgement of issue #1324 slice
+	 * 6c (2026-11-03), from the order the three happen in on one day. A hit and a fall's move of day D happen while
+	 * day D is advanced, and nothing resolves while the player is inside a dungeon (2026-10-24), so they come before
+	 * any walk begun on day D; the opening's day is `Day()` when the walk's quest clear was credited, before the
+	 * walk's own owed days run, so it comes after them. A death costs at least five days on top of its walk's, so no
+	 * opening can share a day with a death that came before it; a death can share a day with an opening only from a
+	 * LATER walk that owed no whole day, which came after it. So the later event is shown each time.
+	 *
+	 * @param Run the run to describe. Empty when no line has anything to say.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString LatestEventLine(const UCataclysmEmpireRun* Run);
+
+	// ----------------------------------------------------------------------
+	// The Cataclysm boss dungeon, which stands on no city -- issue #1324 slice 6c
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How big the Cataclysm boss dungeon's marker is drawn, at a scale of one, in pixels: two cities wide and one
+	 * tall.
+	 *
+	 * IT IS ON NO CITY, so it cannot be drawn where cities are. The project owner, 2026-11-02, verbatim: "On no city
+	 * (Recommended)" -- the empire map shows a Cataclysm boss dungeon marker the player enters from, and it never
+	 * bites a city. So it is a box of its own in the map panel's top left corner, where the diamond has no city.
+	 *
+	 * TWO CITIES WIDE BECAUSE ITS LABEL IS LONGER than any city's: "Cataclysm boss: 137 floors" against "Outpost
+	 * 100%". `Cataclysm.BossOnTheMap.TheMarkerSitsInTheEmptyCornerAndItsLabelFits` measures it.
+	 */
+	static constexpr float CataclysmDungeonMarkerWidthPx = 2.0f * CityWidthPx;
+	static constexpr float CataclysmDungeonMarkerHeightPx = CityHeightPx;
+
+	/**
+	 * Where the marker sits, as its CENTRE, for the reason `PositionFor` answers a centre: the box is placed on a
+	 * canvas slot aligned to its middle, as a city's is.
+	 *
+	 * THE TOP LEFT CORNER, A MARGIN IN FROM BOTH EDGES, AND IT COVERS NO CITY AT ANY SCALE `ScaleToFit` GIVES. The
+	 * diamond is fitted inside the same margins and centred, so its top row starts no higher than the marker's top,
+	 * and that row holds only the Outpost in the middle, whose box begins 564 scaled pixels right of the diamond's left
+	 * edge -- three cells -- where the marker ends at most 344 right of it. The next row down begins 68 below
+	 * the top row, where the marker is 48 tall. `Cataclysm.BossOnTheMap.TheMarkerSitsInTheEmptyCornerAndItsLabelFits`
+	 * checks it against every city on the panels the city overlap test uses.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D CataclysmDungeonMarkerPosition(float Scale);
+
+	/** How big the marker is drawn at this scale. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D CataclysmDungeonMarkerSize(float Scale);
+
+	/**
+	 * What the marker's box says: "Cataclysm boss: 137 floors". Empty while no Cataclysm boss dungeon stands --
+	 * before it opens, and after it has been cleared -- which is what hides the marker.
+	 *
+	 * @param Run the run to describe. Null, or one that has not begun, answers an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString CataclysmDungeonMarkerLabel(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * What the line under the map says when the cursor is on the marker, or it is pressed: "The Cataclysm boss
+	 * dungeon (Death, Horde): 137 floors, 12 of them added by ordinary dungeons defeated. Every ordinary dungeon
+	 * defeated adds a floor. It stands on no city and never resolves." Empty while none stands.
+	 *
+	 * THE CATACLYSM IS `UCataclysmRoster::NameFor`'s, the name `Describe` uses, and the sub-type is
+	 * `UCataclysmSurgeScheduler::SubTypeName`'s; either is left out when it says nothing. THE FLOORS ADDED are the
+	 * dungeon's floors less the floors it rolled, `CataclysmDungeonBaseFloors`, which is every ordinary dungeon
+	 * defeated this run (`UCataclysmEmpireRun::CataclysmDungeonFloorsNow`). None added reads "as it rolled".
+	 *
+	 * @param Run the run to describe. Null, or one that has not begun, answers an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString CataclysmDungeonBrief(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The opening of the Cataclysm boss dungeon, as the empire screen's latest event: "Day 214: the Cataclysm boss
+	 * dungeon opened." The day is `UCataclysmEmpireRun::CataclysmDungeonOpenedDay`. It stays this run's opening after
+	 * the dungeon has been cleared, as a hit's line stays after its dungeon has left.
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one that has not opened it answer an empty
+	 *            string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run);
 };

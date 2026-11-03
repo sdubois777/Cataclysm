@@ -872,9 +872,16 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	Run->Begin(7);
 
+	// THE CATACLYSM CLAUSE ON THE END of every line below is issue #1324 slice
+	// 6c's: `Begin(7)` is tier 1, so the run faces one Cataclysm and the boss
+	// opens when that one is finished. The counters set below do not finish it:
+	// a Cataclysm is finished by `QuestObjectivesByCataclysm`, which only a
+	// quest clear raises, and `Cataclysm.BossOnTheMap.` covers that clause.
+	const FString Tail = TEXT(", 0 of 1 Cataclysm finished; the boss dungeon opens when 1 is finished");
+
 	TestEqual(TEXT("a fresh run has cleared nothing and earned nothing"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("No dungeons cleared yet, no quest objectives")));
+			  FString(TEXT("No dungeons cleared yet, no quest objectives")) + Tail);
 
 	// THE COUNTERS ARE SET DIRECTLY HERE, AND THAT IS THE POINT OF THIS TEST.
 	// Whether they are RAISED correctly is
@@ -886,28 +893,32 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("one dungeon, singular, and still no objectives"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("1 dungeon cleared, no quest objectives")));
+			  FString(TEXT("1 dungeon cleared, no quest objectives")) + Tail);
 
 	Run->DungeonsCleared = 4;
 	Run->QuestObjectives = 1;
 
 	TestEqual(TEXT("four dungeons and one objective, each with its own plural"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("4 dungeons cleared, 1 quest objective")));
+			  FString(TEXT("4 dungeons cleared, 1 quest objective")) + Tail);
 
 	Run->DungeonsCleared = 12;
 	Run->QuestObjectives = 3;
 
 	TestEqual(TEXT("and both plural"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("12 dungeons cleared, 3 quest objectives")));
+			  FString(TEXT("12 dungeons cleared, 3 quest objectives")) + Tail);
 
-	// **NO DENOMINATOR.** The design states a different objective count for each
-	// of the eight Cataclysms and the empire layer has no notion of which one is
-	// running, so "3 of 8" would be a number this build invented. Issue #1357 is
-	// what has to land first, and this fails if somebody adds one meanwhile.
-	TestFalse(TEXT("and it does not claim to know how many are needed"),
-			  UCataclysmEmpireMapLayout::ProgressLine(Run).Contains(TEXT(" of ")));
+	// **NO DENOMINATOR FOR THE OBJECTIVES.** The design states a different
+	// objective count for each of the eight Cataclysms, so "3 of 8 quest
+	// objectives" would add counts that belong to different Cataclysms. This said
+	// the line held no " of " at all until issue #1324 slice 6c gave it the one
+	// fraction issue #1357 made honest, Cataclysms finished of those faced; so the
+	// line holds exactly that one, and this fails if an objective fraction is
+	// added beside it.
+	const FString Twelve = UCataclysmEmpireMapLayout::ProgressLine(Run);
+	TestEqual(TEXT("and its only fraction is the Cataclysms'"),
+			  Twelve.Len() - Twelve.Replace(TEXT(" of "), TEXT("")).Len(), 4);
 
 	return true;
 }
