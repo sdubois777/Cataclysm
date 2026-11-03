@@ -362,6 +362,27 @@ registration. A fourth was considered and not registered, to keep the window to 
 `if (Manager->IsAgentValid(Crowd))` to `if (Manager->IsAgentValid(Crowd) || true)` would fail exactly "so it is taken
 out of crowd mode and walks as it did before crowds" in `ACreatureTheCrowdCannotHoldWalksOutsideIt`.
 
+### Window crowd-w1: the results
+
+Run by the coordinating session on 2026-11-03 at the registration commit `c1408064b` (on `development` `ec2319181`),
+lock `crowd-w1`, after the six pre-checks all passed (12,013 MB of physical memory free). Every registered figure was
+met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The 21 groups alone | each at its registered count | every one "0 failed": Crowd. 8, FloorCrowd. 1, DungeonFloor. 16, ClickToMove. 2, Imp. 6, AI. 51, Fear. 9, NowhereToRun. 4, Command. 22, CompelHeld. 4, EchoesHeld. 4, MinionAttackSpeed. 5, MinionDeath. 19, RisenImps. 11, Hellhound. 11, Brute. 23, Warden. 20, ForcedMovement. 13, Enemy. 19, DungeonEnemies. 13, Sandbox. 8 |
+| Whole Unreal suite | 4619 | "4619 tests performed, 4619 succeeded, 0 failed"; "Declared: 4619 tests in the tree at c1408064b; 4619 performed, gap 0"; "Test saves: 721 written and deleted, 0 left behind" |
+| Python | of record | "7270 passed, 8 skipped in 197.46s"; JUnit tests 7278, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 6 tests, 16 | PROVED. The kept broken-half log fails exactly 16 assertions in the six registered tests (the nine per-creature "walks through a crowd-following component" lines and their counts, and the set-up lines of the tests that need a crowd component); restored 8 of 8 |
+| B | 1 test, 9 | PROVED. Exactly "no creature uses RVO avoidance beside the crowd" (0 expected, 8 read) and the eight per-creature "does not use RVO avoidance" lines; restored 8 of 8 |
+| D | 1 test, 2 | PROVED. Exactly "a walk at another creature is not steered around it" and "CONTROL: and a second walk at the creature is not steered again"; restored 8 of 8 |
+
+The test-save count is 721 against 719 at the base (`f939a69ee`). This branch adds no save-writing code; the cause of
+the two-save difference is not established, and 0 were left behind, which is the figure the run is held to.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **The ring itself.** For the owner, on screen, in the sandbox with its ten Imps (`ACataclysmGameMode::SpawnImps`) and
