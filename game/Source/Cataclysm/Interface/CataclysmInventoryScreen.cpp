@@ -225,9 +225,9 @@ int32 UCataclysmInventoryScreen::HeldSlotToDraw(
 		return INDEX_NONE;
 	}
 
-	// AN EMPTY HELD SLOT DRAWS NOTHING. Wearing the held item with the right
-	// button can empty the slot and leaves the hold on it, and an empty frame
-	// following the mouse would claim the player is holding something.
+	// AN EMPTY HELD SLOT DRAWS NOTHING. A slot can be emptied under the hold --
+	// a stack spent to nothing, the bag emptied or restored -- and an empty
+	// frame following the mouse would claim the player is holding something.
 	const int32 OnTheCursor = Inventory->HeldSlot();
 	const TArray<FCataclysmCarriedSlot>& Carried = Inventory->GetSlots();
 	if (!Carried.IsValidIndex(OnTheCursor)

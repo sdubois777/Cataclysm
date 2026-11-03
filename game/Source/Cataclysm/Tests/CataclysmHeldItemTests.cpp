@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Interface/CataclysmInventoryScreen.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWearing.h"
@@ -34,12 +35,27 @@ namespace CataclysmHeldItemTest
 	const TCHAR* HeldBootsBase = TEXT("Boots_Sabatons");
 	const TCHAR* HeldMoteMaterial = TEXT("Material_Corrupted_Mote");
 
-	/** A gear item of a base, with nothing else on it. */
-	FCataclysmItem ItemOfBase(const TCHAR* Base)
+	/** A gear item of a base, with nothing else on it but an upgrade level to tell it apart. */
+	FCataclysmItem ItemOfBase(const TCHAR* Base, int32 GearLevel = 0)
 	{
 		FCataclysmItem Item;
 		Item.Base = FName(Base);
+		Item.GearLevel = GearLevel;
 		return Item;
+	}
+
+	/** How many of the 48 cells of a bag look lifted. */
+	int32 LiftedCellsIn(const UCataclysmInventoryComponent* Inventory)
+	{
+		int32 Lifted = 0;
+		for (int32 Index = 0; Index < UCataclysmInventoryComponent::SlotCount; ++Index)
+		{
+			if (FScreen::CellLookFor(Inventory, Index) == ECataclysmCellLook::Lifted)
+			{
+				++Lifted;
+			}
+		}
+		return Lifted;
 	}
 
 	/**
@@ -68,18 +84,7 @@ namespace CataclysmHeldItemTest
 		}
 
 		/** How many of the 48 cells look lifted. */
-		int32 LiftedCells() const
-		{
-			int32 Lifted = 0;
-			for (int32 Index = 0; Index < UCataclysmInventoryComponent::SlotCount; ++Index)
-			{
-				if (FScreen::CellLookFor(Inventory, Index) == ECataclysmCellLook::Lifted)
-				{
-					++Lifted;
-				}
-			}
-			return Lifted;
-		}
+		int32 LiftedCells() const { return LiftedCellsIn(Inventory); }
 
 		UCataclysmInventoryComponent* Inventory = nullptr;
 		int32 Helm = INDEX_NONE;
@@ -98,11 +103,11 @@ namespace CataclysmHeldItemTest
 /**
  * Nothing is drawn under the cursor unless something is held and its slot holds something.
  *
- * THE LAST CASE IS THE ONE THAT CAN GO WRONG IN PLAY. The hold is a slot number, and wearing
- * the held item with the right button can empty that slot without letting go of it
- * (`UCataclysmWearing::WearFromCarried` does not clear the hold). An empty frame following the
- * mouse would then say the player is holding something they are not. The test empties the
- * slot directly, which reaches the same state without needing an equipment component.
+ * THE LAST CASE IS THE ONE THAT CAN GO WRONG IN PLAY. The hold is a slot number, and a slot
+ * can be emptied without the hold being let go of: a stack of a material spent to nothing,
+ * the bag emptied whole or restored. An empty frame following the mouse would then say the
+ * player is holding something they are not. The test empties the slot directly. Wearing the
+ * held item does not reach this state: it lets go (WearingTheHeldItemLetsGoOfIt, below).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldItemNothingDrawnTest,
 	"Cataclysm.HeldItem.NothingIsDrawnOnTheCursorUnlessSomethingIsHeld",
@@ -309,6 +314,99 @@ bool FCataclysmHeldItemPositionTest::RunTest(const FString&)
 
 	TestTrue(TEXT("a negative cell size is treated as nought: the corner is the cursor"),
 		FScreen::HeldItemTopLeftFor(Cursor, -10.0f).Equals(Cursor, 0.001));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Wearing what is held
+// ---------------------------------------------------------------------------
+
+/**
+ * Wearing the held item lets go of it; wearing another item does not.
+ *
+ * RULED 2026-11-02 UNDER ISSUE #878. The hold is a slot number. A right click on the held item
+ * wears it, and what comes off lands in the first free slot -- here the very slot the held
+ * item left -- so a hold left in place would draw that piece on the pointer as though the
+ * player had picked it up. `UCataclysmWearing::WearFromCarried` is what the right button calls
+ * (`ACataclysmPlayerController::RightPressOnTheInventoryScreen`), so this calls it directly.
+ *
+ * THE CONTROL COMES FIRST: holding the boots and wearing a different helm keeps the boots on
+ * the cursor, so a rule that let go on every wear would fail it.
+ *
+ * NO TABLE IS LOADED HERE EITHER, beyond what wearing loads for itself, as the
+ * `Cataclysm.Wearing.` tests do: a helm goes on the head by its base.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldItemWearingLetsGoTest,
+	"Cataclysm.HeldItem.WearingTheHeldItemLetsGoOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldItemWearingLetsGoTest::RunTest(const FString&)
+{
+	using namespace CataclysmHeldItemTest;
+
+	// A HELM WORN, AND IN A FRESH BAG A SECOND HELM, THE BOOTS AND A THIRD HELM, in slots 0, 1
+	// and 2. The upgrade levels tell the three helms apart.
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	const ECataclysmWearResult FirstOn = UCataclysmWearing::WearFromCarried(
+		Inventory, Equipment, Inventory->AddItem(ItemOfBase(HeldHelmBase, 1)), Went);
+	const int32 SecondHelm = Inventory->AddItem(ItemOfBase(HeldHelmBase, 2));
+	const int32 Boots = Inventory->AddItem(ItemOfBase(HeldBootsBase));
+	const int32 ThirdHelm = Inventory->AddItem(ItemOfBase(HeldHelmBase, 3));
+	if (!TestTrue(TEXT("set-up: the first helm is worn on the head, and the second helm, the boots "
+					   "and the third helm are carried in slots 0, 1 and 2 with nothing held"),
+			FirstOn == ECataclysmWearResult::Worn && Went == ECataclysmGearSlot::Head
+			&& SecondHelm == 0 && Boots == 1 && ThirdHelm == 2 && !Inventory->IsHolding()))
+	{
+		return false;
+	}
+
+	// CONTROL: HOLDING THE BOOTS, THE THIRD HELM IS WORN WITH THE RIGHT BUTTON.
+	UCataclysmWearing::PickUpCarried(Inventory, Boots);
+	const ECataclysmWearResult OtherOn =
+		UCataclysmWearing::WearFromCarried(Inventory, Equipment, ThirdHelm, Went);
+	if (!TestTrue(TEXT("set-up: the third helm goes on over the first, which comes off into the "
+					   "slot the third helm left"),
+			OtherOn == ECataclysmWearResult::Swapped && Inventory->ItemAt(ThirdHelm)
+			&& Inventory->ItemAt(ThirdHelm)->GearLevel == 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: wearing a different item keeps the boots on the cursor"),
+		Inventory->IsHolding() && Inventory->HeldSlot() == Boots);
+	TestEqual(TEXT("CONTROL: the boots are still drawn on the cursor"),
+		FScreen::HeldSlotToDraw(Inventory), Boots);
+	TestEqual(TEXT("CONTROL: and their cell is the one cell that looks lifted"),
+		LiftedCellsIn(Inventory), 1);
+
+	// THE RULING: THE SECOND HELM IS PICKED UP AND WORN WITH THE RIGHT BUTTON.
+	UCataclysmWearing::ReleaseHeld(Inventory);
+	UCataclysmWearing::PickUpCarried(Inventory, SecondHelm);
+	if (!TestTrue(TEXT("set-up: the second helm is on the cursor"),
+			Inventory->IsHolding() && Inventory->HeldSlot() == SecondHelm))
+	{
+		return false;
+	}
+	const ECataclysmWearResult HeldOn =
+		UCataclysmWearing::WearFromCarried(Inventory, Equipment, SecondHelm, Went);
+	if (!TestTrue(TEXT("set-up: the held helm goes on, and the third helm comes off into the very "
+					   "slot the held one left"),
+			HeldOn == ECataclysmWearResult::Swapped && Inventory->ItemAt(SecondHelm)
+			&& Inventory->ItemAt(SecondHelm)->GearLevel == 3))
+	{
+		return false;
+	}
+	TestFalse(TEXT("wearing the held item lets go of it"), Inventory->IsHolding());
+	TestEqual(TEXT("so nothing is drawn on the cursor, not the helm that came off"),
+		FScreen::HeldSlotToDraw(Inventory), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and no cell looks lifted"), LiftedCellsIn(Inventory), 0);
+	TestTrue(TEXT("the slot the worn helm left, holding the one that came off, looks full"),
+		FScreen::CellLookFor(Inventory, SecondHelm) == ECataclysmCellLook::Full);
 
 	return true;
 }

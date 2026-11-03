@@ -307,11 +307,13 @@ public:
 	 * Which carried slot is drawn under the cursor, or INDEX_NONE for none.
 	 *
 	 * NOTHING IS DRAWN UNLESS SOMETHING IS HELD AND THE HELD SLOT HOLDS
-	 * SOMETHING. The second half is not a formality. Wearing a held item with
-	 * the right button can empty its slot without letting go of it -- the hold
-	 * is a slot number, and `UCataclysmWearing::WearFromCarried` does not clear
-	 * it -- and an empty frame following the mouse would say the player is
-	 * holding a thing they are not.
+	 * SOMETHING. The second half is not a formality. The hold is a slot number,
+	 * and a slot can be emptied without the hold being let go of: a stack of a
+	 * material spent to nothing (`RemoveMaterial`), the bag emptied whole
+	 * (`RemoveEverything`) or replaced (`RestoreSlots`). An empty frame
+	 * following the mouse would say the player is holding a thing they are
+	 * not. Wearing the held item is not one of these: since issue #878
+	 * `UCataclysmWearing::WearFromCarried` lets go of it.
 	 *
 	 * @return the held slot when it holds something, otherwise INDEX_NONE,
 	 *         including for a null inventory

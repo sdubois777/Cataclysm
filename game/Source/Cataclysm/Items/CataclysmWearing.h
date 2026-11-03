@@ -213,6 +213,12 @@ public:
 	 * the player chooses comes through here; see `EquipInto`'s header for the
 	 * ones that do not ask.
 	 *
+	 * WEARING THE ITEM ON THE CURSOR TAKES IT OFF THE CURSOR. Ruled 2026-11-02
+	 * under issue #878. The hold is a slot number, and what comes off lands in
+	 * the first free slot -- often the one just emptied -- so a hold left in
+	 * place would put that piece on the cursor. Wearing any other item leaves
+	 * the hold alone, and so does every refusal.
+	 *
 	 * @param OutSlot  where the item ended up. Untouched when nothing was worn.
 	 * @param bConfirmedPastThreshold  the player has said yes, so do not ask.
 	 * @param DifficultyTier  the tier whose threshold applies; 0 for the one
