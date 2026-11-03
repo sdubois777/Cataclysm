@@ -214,3 +214,67 @@ FString UCataclysmEmpireMapLayout::LastHitLine(const UCataclysmEmpireRun* Run)
 		: FString::Printf(TEXT("Day %d: a dungeon hit %s and left."),
 						  Run->LastHitDay, *HitCityName);
 }
+
+FString UCataclysmEmpireMapLayout::LastDeathLine(const UCataclysmEmpireRun* Run)
+{
+	// NOTHING TO SAY: no run, a run that has not begun, or no death yet. Day 0 is what `Begin` writes, and no death
+	// is on day 0: a run begins with nothing standing on the map, and the first wave lands on day 1.
+	if (Run == nullptr || Run->Map == nullptr || Run->LastDeathDay <= 0)
+	{
+		return FString();
+	}
+
+	const FString Where = Run->LastDeathDungeonName.IsEmpty()
+		? FString(TEXT("a dungeon")) : Run->LastDeathDungeonName;
+
+	// THE WALK'S DAYS, AND THEN THE DEATH'S ON TOP OF THEM. "More" only when the walk ran some, so a walk that owed
+	// no whole day does not read as if the death's days were added to something.
+	const int32 Walk = Run->LastDeathWalkDays;
+	const int32 Cost = Run->LastDeathDaysCost;
+	const FString WalkPart = Walk <= 0
+		? FString(TEXT("The walk owed no whole day"))
+		: FString::Printf(TEXT("The walk's %d day%s ran"), Walk, Walk == 1 ? TEXT("") : TEXT("s"));
+	const FString CostPart = FString::Printf(TEXT("the death cost %d %sday%s"), Cost,
+											 Walk > 0 ? TEXT("more ") : TEXT(""), Cost == 1 ? TEXT("") : TEXT("s"));
+
+	// EVERY CITY THE DEATH'S RESOLVE FELLED, BY THE MAP'S NAME FOR IT, joined as a sentence joins a list. A city that
+	// cannot be found is still a city that fell.
+	TArray<FString> Names;
+	for (const int32 CityId : Run->LastDeathFallenCityIds)
+	{
+		const FCataclysmCity* City = Run->Map->Find(CityId);
+		Names.Add(City != nullptr ? City->Name : FString(TEXT("a city")));
+	}
+	FString FellPart;
+	if (Names.IsEmpty())
+	{
+		FellPart = TEXT("no city fell");
+	}
+	else if (Names.Num() == 1)
+	{
+		FellPart = FString::Printf(TEXT("%s fell"), *Names[0]);
+	}
+	else
+	{
+		const FString Last = Names.Pop();
+		FellPart = FString::Printf(TEXT("%s and %s fell"), *FString::Join(Names, TEXT(", ")), *Last);
+	}
+
+	return FString::Printf(TEXT("Day %d: you died in %s. %s, %s, and %s."),
+						   Run->LastDeathDay, *Where, *WalkPart, *CostPart, *FellPart);
+}
+
+FString UCataclysmEmpireMapLayout::LatestEventLine(const UCataclysmEmpireRun* Run)
+{
+	// THE DEATH WHILE NOTHING THE HIT LINE COVERS IS MORE RECENT; on the same day, the death. See the header.
+	if (Run != nullptr && Run->LastDeathDay > 0
+		&& Run->LastDeathDay >= Run->LastHitDay && Run->LastDeathDay >= Run->LastMoveDay)
+	{
+		const FString Death = LastDeathLine(Run);
+		if (!Death.IsEmpty())
+		{
+			return Death;
+		}
+	}
+	return LastHitLine(Run);
+}

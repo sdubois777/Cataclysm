@@ -1530,7 +1530,8 @@ public:
  *
  *   - **What the player has achieved this run IS HERE NOW**, since issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
- *     fourteen fields under "Progress" below.
+ *     fourteen fields under "Progress" below, and since version 3 the five
+ *     last-death fields after them.
  *     `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
  *   - **What tier the run is played at, and which Cataclysms it faces, ARE
  *     HERE NOW**, since issue
@@ -1556,8 +1557,12 @@ public:
 	 * hunt. A VERSION AND NOT A DEFAULT, by `game/Tests/SaveFixtures/README.md`: saves load since #753, so a field added
 	 * to a record takes a version (ruled 2026-11-02). Until then it was 1, and the comments below that say a field
 	 * needed no bump were written while nothing loaded a save.
+	 *
+	 * 3 SINCE 2026-11-02 AS WELL. The run keeps what the player's last death cost (issue #41): five fields beside the
+	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and `Migrate_2_to_3` writes an empty death into a run
+	 * written at 2.
 	 */
-	static constexpr int32 SchemaVersionNow = 2;
+	static constexpr int32 SchemaVersionNow = 3;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1859,6 +1864,27 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 LastMoveToCityId = INDEX_NONE;
+
+	/**
+	 * The empire screen's last-death line: the day, the dungeon's name, the walk's days, the death's own days, and
+	 * the cities its resolve felled. `UCataclysmEmpireRun::LastDeathDay` and the four beside it; issue #41, ruled
+	 * 2026-11-02. SAVED BECAUSE THE LAST HIT IS, and so A SCHEMA VERSION, 3: `Migrate_2_to_3` writes an empty death
+	 * into a run written at 2, where none was kept.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString LastDeathDungeonName;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathWalkDays = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathDaysCost = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<int32> LastDeathFallenCityIds;
 
 	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
 	//

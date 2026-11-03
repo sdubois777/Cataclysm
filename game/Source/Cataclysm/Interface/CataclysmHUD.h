@@ -165,6 +165,13 @@ private:
 	 */
 	void DrawPotions();
 
+	/**
+	 * What the player's last death in a dungeon of the empire cost, centred on the screen in two lines, while
+	 * `ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt` says it is up: for `DeathCostNoticeSeconds` after standing
+	 * back up. Issue #41, ruled 2026-11-02. Another caller of `DrawTextCentred`; no banner system is started.
+	 */
+	void DrawDeathCostNotice();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
@@ -363,6 +370,16 @@ private:
 	FCataclysmEmpireStatusFacts EmpireStatusFactsDrawn;
 	float EmpireStatusWidthAtBase = 0.0f;
 
+	/**
+	 * The death-cost notice as last laid out: its lines, the world's time the notice was posted at, and the widest
+	 * line's width at `DeathCostNoticeScale`. `DrawDeathCostNotice` copies, splits and measures the notice again only
+	 * when the posting differs, which is once a death and not sixty times a second -- the form `DrawEmpireStatusBar`
+	 * keeps its line in. Empty until a notice is first drawn. Issue #41.
+	 */
+	TArray<FString> DeathCostNoticeLines;
+	float DeathCostNoticeLinesPostedAt = -1.0f;
+	float DeathCostNoticeWidestAtScale = 0.0f;
+
 	//~ Layout, in pixels at an unscaled viewport.
 
 public:
@@ -438,6 +455,16 @@ private:
 	 * locked notice is drawn there too. Issue #1833, phase 2.
 	 */
 	static constexpr float SkillBarNextUseScale = 1.1f;
+
+	/**
+	 * The death-cost notice: its text size, how far down the screen its first line sits as a share of the height,
+	 * how much of the width it may fill before it is shrunk, and the space between its two lines. Issue #41,
+	 * 2026-11-02. Judgements of the session that built it, for play to settle.
+	 */
+	static constexpr float DeathCostNoticeScale = 1.0f;
+	static constexpr float DeathCostNoticeTopShare = 0.3f;
+	static constexpr float DeathCostNoticeWidthShare = 0.9f;
+	static constexpr float DeathCostNoticeLineGapPx = 4.0f;
 
 public:
 	/**

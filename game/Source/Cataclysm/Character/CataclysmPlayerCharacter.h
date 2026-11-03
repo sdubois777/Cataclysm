@@ -421,6 +421,40 @@ public:
 	bool IsAwaitingRespawn() const;
 
 	/**
+	 * How long the notice saying what a death cost stays on the heads-up display, in seconds. Issue #41, 2026-11-02.
+	 *
+	 * A JUDGEMENT, AND LABELLED AS ONE. The ruling asked for the duration other timed notices use, and the heads-up
+	 * display has no timed notice of a sentence to take one from: the timed texts it draws are a damage number
+	 * (`UCataclysmCombatOverlay::NumberLifetimeSeconds`, 1.1), the word "Negated" (`NegatedShownSeconds`, 2) and the
+	 * creature panel's linger (`UCataclysmCreaturePanel::LingerSeconds`, 1), each one word or one number. This line
+	 * runs to about thirty words, which at about four words a second is seven or eight seconds of reading; 8 is that,
+	 * and play settles it, as it settles `RespawnDelaySeconds` above.
+	 */
+	static constexpr float DeathCostNoticeSeconds = 8.0f;
+
+	/**
+	 * The notice saying what the last death cost, at a moment of the world's time, or empty: the line
+	 * `ACataclysmDungeonGameMode::DeathCostLine` gave when the character stood back up from a death that ended a walk,
+	 * for `DeathCostNoticeSeconds` from that moment. Issue #41, 2026-11-02.
+	 *
+	 * THE TIME IS THE CALLER'S, as `ACataclysmHUD::DropExpired` takes it, so a test can ask about any moment without
+	 * ticking a world. The heads-up display passes the world's time.
+	 *
+	 * NOTHING IS POSTED for a death that ended no walk: no dungeon of the empire bound, the playtest switch set, or
+	 * the Cataclysm's own dungeon.
+	 */
+	FString DeathCostNoticeAt(float WorldSeconds) const;
+
+	/**
+	 * Whether `DeathCostNoticeAt` would answer the notice at that moment, without copying it: what the heads-up
+	 * display asks every frame. The one place the notice's seconds are counted.
+	 */
+	bool DeathCostNoticeIsUpAt(float WorldSeconds) const;
+
+	/** The world's time the notice was posted at, or -1 when none has been. For tests. */
+	float DeathCostNoticePostedAtSeconds() const { return DeathCostNoticePostedAt; }
+
+	/**
 	 * What the character carries, and what it is wearing.
 	 *
 	 * ACCESSORS RATHER THAN MAKING THE COMPONENTS PUBLIC, because the
@@ -964,6 +998,10 @@ private:
 	 *  instead of at the world origin. */
 	FVector RespawnLocation = FVector::ZeroVector;
 	FRotator RespawnRotation = FRotator::ZeroRotator;
+
+	/** The notice `DeathCostNoticeAt` answers, and the world's time it was posted at, or -1. Issue #41. */
+	FString DeathCostNotice;
+	float DeathCostNoticePostedAt = -1.0f;
 
 	// --- The basic attack is NOT here any more. Issue #1187 -----------------
 	//

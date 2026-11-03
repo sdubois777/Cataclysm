@@ -272,4 +272,39 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString LastHitLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * What the player's last death in a dungeon of the empire cost, as one line: "Day 42: you died in the Hollow
+	 * dungeon on Outpost (-3,0). The walk's 3 days ran, the death cost 5 more days, and Outpost (-3,0) fell." Issue
+	 * #41, ruled by the coordinating session on 2026-11-02.
+	 *
+	 * WHY THE SCREEN NEEDS IT. A death ends the walk, runs the days it had spent, charges 5, 10 or 15 more, and
+	 * resolves an ordinary dungeon at once, which can fell its city. Until this, all of it was worked out and only
+	 * written to the log.
+	 *
+	 * READ FROM THE FIVE FIELDS THE RUN KEEPS, `UCataclysmEmpireRun::LastDeathDay` and the four beside it, which
+	 * `ACataclysmDungeonGameMode::EndTheDungeonForADeath` writes with the figures it computed.
+	 *
+	 * THE WORDS. Every city the death's resolve felled is named, by the map's name for it, "X fell", "X and Y fell",
+	 * "X, Y and Z fell", and "no city fell" when none did. A day count of one is "1 day". A walk that owed no whole
+	 * day says so, and the death's days are then not "more".
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one with no death in it all answer an empty
+	 *            string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString LastDeathLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The one line the empire screen shows for the latest thing that happened to the empire: `LastDeathLine` while
+	 * the death is at least as recent as the last hit and the last fall's move, and `LastHitLine` otherwise.
+	 *
+	 * ON THE SAME DAY THE DEATH IS SHOWN, a judgement of 2026-11-02: the death's own resolve can be that day's hit,
+	 * and the death's line names what it felled, so it is the larger account of the two. A hit on a LATER day -- in
+	 * the days the death charged, say -- is more recent, and its line replaces the death's.
+	 *
+	 * @param Run the run to describe. Empty when neither line has anything to say.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString LatestEventLine(const UCataclysmEmpireRun* Run);
 };

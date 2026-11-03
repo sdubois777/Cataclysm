@@ -449,6 +449,21 @@ followed, ruled 2026-11-01:
   edited again; `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone`
   runs it through the step and checks every other field is kept. Every test
   that read `Run_v1.json` as the committed run file reads `Run_v2.json` now.
+- **The run record went to version 3 the same day**, for what the player's last
+  death cost (issue #41, ruled by the coordinating session on 2026-11-02): five
+  fields beside the last hit's -- `LastDeathDay`, `LastDeathDungeonName`,
+  `LastDeathWalkDays`, `LastDeathDaysCost` and `LastDeathFallenCityIds` -- saved
+  because the last hit is. `Migrate_2_to_3` writes an empty death into a version 2
+  file (day 0, no name, no days, no city), and `Run_v3.json` is `Run_v2.json` at
+  version 3 with those five keys added after `LastMoveToCityId` and nothing else
+  changed. **None holds its default**: day 103, the name "the Siege dungeon on
+  Outpost (-3,0)", 19 walk days, 15 days for the death (Heretic's, which is the
+  rung the file's `SurgeLethalityRung` of 2 names), and the cities 17 and 23 --
+  two, so the array is shown to survive past its first element. No number among
+  them is used anywhere else in the file. `Run_v2.json` is now a migration input,
+  not edited again; `Cataclysm.DeathCost.ARunFileFromBeforeTheDeathLineMigratesWithNone`
+  runs it through the step and checks every other field is kept. Every test that
+  read `Run_v2.json` as the committed run file reads `Run_v3.json` now.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -471,6 +486,7 @@ followed, ruled 2026-11-01:
 | `Character_v6.json` | The same character at version 6: version 5's contents, plus the build its corrupted double wears |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
+| `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -483,7 +499,7 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had five since
-(version 6 since 2026-11-02), and the run record one (version 2 since
+(version 6 since 2026-11-02), and the run record two (version 3 since
 2026-11-02). Its header says more.
 
 ## Two things to keep in mind when editing one

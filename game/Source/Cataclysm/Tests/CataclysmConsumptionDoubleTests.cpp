@@ -798,7 +798,8 @@ bool FCataclysmConsumptionDoubleCharacterMigrationTest::RunTest(const FString& P
 
 /**
  * A run file written at version 1, before the double's hunt was saved, migrates to version 2 with no hunt, and every
- * other field is kept. Prints "HUNT MIGRATED".
+ * other field is kept. Prints "HUNT MIGRATED". Since 2026-11-02 the chain runs on to version 3, which adds an empty
+ * death (issue #41), and the expected object carries it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumptionDoubleRunMigrationTest,
 	"Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone",
@@ -866,6 +867,12 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	Origin->SetNumberField(TEXT("Y"), 0.0);
 	Origin->SetNumberField(TEXT("Z"), 0.0);
 	ExpectedRules->SetObjectField(TEXT("ConsumptionDoubleLocation"), Origin);
+	// AND THE EMPTY DEATH `Migrate_2_to_3` WRITES, because the chain runs on to version 3 since 2026-11-02 (issue #41).
+	Expected->SetNumberField(TEXT("LastDeathDay"), 0);
+	Expected->SetStringField(TEXT("LastDeathDungeonName"), FString());
+	Expected->SetNumberField(TEXT("LastDeathWalkDays"), 0);
+	Expected->SetNumberField(TEXT("LastDeathDaysCost"), 0);
+	Expected->SetArrayField(TEXT("LastDeathFallenCityIds"), TArray<TSharedPtr<FJsonValue>>());
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

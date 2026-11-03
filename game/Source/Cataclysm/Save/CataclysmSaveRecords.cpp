@@ -334,9 +334,26 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before it kept what the last death cost holds no death: none was kept. Issue #41, ruled by the
+	 * coordinating session on 2026-11-02. Written out, for `Migrate_1_to_2`'s reason, as the five fields' defaults: day
+	 * 0, which the empire screen reads as no death, no name, no days and no city.
+	 */
+	bool Migrate_2_to_3(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("LastDeathDay"), 0); // A migration's: no death, written out.
+		Record->SetStringField(TEXT("LastDeathDungeonName"), FString());
+		Record->SetNumberField(TEXT("LastDeathWalkDays"), 0);
+		Record->SetNumberField(TEXT("LastDeathDaysCost"), 0);
+		Record->SetArrayField(TEXT("LastDeathFallenCityIds"), TArray<TSharedPtr<FJsonValue>>());
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
+		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 	};
 }
 

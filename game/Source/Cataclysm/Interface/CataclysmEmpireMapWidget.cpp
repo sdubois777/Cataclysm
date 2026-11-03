@@ -252,7 +252,11 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// Appended here so that no Widget Blueprint has to gain a label; empty
 		// until the first hit or move. See
 		// `UCataclysmEmpireMapLayout::LastHitLine`.
-		const FString LastHit = UCataclysmEmpireMapLayout::LastHitLine(Run);
+		//
+		// OR WHAT THE PLAYER'S LAST DEATH COST, while it is the most recent of the
+		// three, since 2026-11-02 (issue #41). `LatestEventLine` chooses; see
+		// `UCataclysmEmpireMapLayout::LastDeathLine`.
+		const FString LastHit = UCataclysmEmpireMapLayout::LatestEventLine(Run);
 
 		SurgeLabel->SetText(FText::FromString(FString::Printf(
 			TEXT("%s   Next surge in %.0f days, bringing %d.%s%s"),
