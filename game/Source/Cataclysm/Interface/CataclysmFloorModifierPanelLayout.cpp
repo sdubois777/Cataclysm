@@ -32,6 +32,21 @@ TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor
 			continue;
 		}
 
+		// THE CATACLYSM BOSS'S LINE, WHICH IS NO ROW EITHER: named for what it is, with whether it seals the stairs.
+		// Issue #1324 slice 6d.
+		if (Key == FName(CataclysmBossKey))
+		{
+			Line.bIsTheCataclysmBoss = true;
+			Line.Built = ECataclysmModifierBuilt::Built;
+			Line.Name = CataclysmBossName;
+			if (const FString* Counting = LiveCounts.Find(Key))
+			{
+				Line.LiveCount = *Counting;
+			}
+			Lines.Add(MoveTemp(Line));
+			continue;
+		}
+
 		Line.Built = UCataclysmDungeonModifierEffects::BuiltStateOf(Key);
 
 		const FCataclysmDungeonModifierRow* Row =
@@ -66,9 +81,10 @@ FString UCataclysmFloorModifierPanelLayout::NameLineFor(const FCataclysmFloorMod
 {
 	FString Named;
 
-	if (Line.bIsTheConsumptionDouble)
+	if (Line.bIsTheConsumptionDouble || Line.bIsTheCataclysmBoss)
 	{
-		Named = Line.Name; // The double's: no row, and not marked as a missing one. Issue #2688.
+		// The double's or the Cataclysm Boss's: no row, and not marked as a missing one. Issues #2688 and #1324.
+		Named = Line.Name;
 	}
 	else if (!Line.bIsARow)
 	{

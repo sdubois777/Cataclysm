@@ -2425,6 +2425,49 @@ public:
 	 */
 	bool HeavenlyCoreSealsTheStairs() const;
 
+	// ----------------------------------------------------------------------
+	// The Cataclysm boss dungeon's last floor, issue #1324 slice 6d
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The rung a Cataclysm Boss stands at: Step 5 of `game/Data/EnemyRarities.csv`, the top of the ladder, whose
+	 * SpawnWeight is 0. `docs/Cataclysm_GDD_v2.md` section VIII: "A Cataclysm Boss is placed, not drawn". Since
+	 * 2026-11-03; `tools/tests/test_the_cataclysm_boss_rung_is_the_tables.py` holds it to the table's step.
+	 */
+	static constexpr int32 CataclysmBossRung = 5;
+
+	/**
+	 * What `StairsSealedBy` names while the Cataclysm Boss stands on its floor. Not a row of the modifier table, as
+	 * the Heavenly Core's is not, and the key the floor panel lists the boss's line by
+	 * (`UCataclysmFloorModifierPanelLayout::CataclysmBossKey` is the same text). Since 2026-11-03.
+	 */
+	static constexpr const TCHAR* CataclysmBossSealKey = TEXT("Cataclysm_Boss");
+
+	/**
+	 * Whether the floor being walked is the last floor of a Cataclysm boss dungeon, whose boss is the Cataclysm Boss:
+	 * the dungeon bound from the empire is of `ECataclysmDungeonType::Cataclysm`, this is its last floor
+	 * (`IsOnTheLastFloor`, so never the sandbox's and never the dark floor), and the floor's brief puts a boss at its
+	 * exit. Issue #1324 slice 6d, since 2026-11-03. Every other floor, and every other kind's last floor, keeps the
+	 * Gatekeeper's drawn rung.
+	 */
+	bool IsTheCataclysmBossFloor() const;
+
+	/**
+	 * The Cataclysm Boss on this floor while it stands, or null: the Gatekeeper the population placed at the exit of
+	 * `IsTheCataclysmBossFloor`, while it is valid and not dead. ANY DEATH ENDS IT, whoever dealt it, the player or
+	 * anything else: the coordinating session's ruling R5 says the stairs open when the boss dies, and names no
+	 * killer. A creature that rises from it afterwards (Dead Rising) is a new creature and is not it.
+	 */
+	class ACataclysmEnemyCharacter* CataclysmBossNow() const;
+
+	/**
+	 * Whether the Cataclysm Boss seals the stairs: on its floor, while it stands. Ruling R5 of 2026-11-02 by the
+	 * coordinating session: "the last floor's stairs stay sealed until the Cataclysm Boss dies". Those stairs are the
+	 * way out that clears the dungeon, so the seal holds back the clear, as the Heavenly Core's does. THE LAST FLOOR
+	 * IS SEALED HERE, as the Core seals it and unlike every modifier row that seals the stairs.
+	 */
+	bool CataclysmBossSealsTheStairs() const;
+
 	/**
 	 * The health a Heavenly Core is given: the floor boss's,
 	 * `ACataclysmGameMode::GatekeeperHealth`, at Common. Ruled 2026-10-22,
@@ -3440,6 +3483,26 @@ private:
 	 * `FCataclysmDungeonFloorRules::BossAtTheExit` makes of depth.
 	 */
 	bool IsTheFinalFloorForItsBoss() const;
+
+	/**
+	 * The rung the floor's population pass puts a placement on: `CataclysmBossRung` for the Gatekeeper on
+	 * `IsTheCataclysmBossFloor`, which is the one boss the population places (`FCataclysmFloorPopulator` places a
+	 * Gatekeeper only at the exit, and at most one), and `UCataclysmEnemyRarity::RollTheRarity` for every other,
+	 * which draws as before. Issue #1324 slice 6d.
+	 */
+	int32 PopulationRungFor(const FCataclysmEnemyPlacement& Placement) const;
+
+	/** Records `Boss` as this floor's Cataclysm Boss, the one `CataclysmBossNow` answers. Issue #1324 slice 6d. */
+	void NoteTheCataclysmBoss(ACataclysmEnemyCharacter* Boss);
+
+	/** Forgets this floor's Cataclysm Boss, as a floor is populated and as the dungeon is left. */
+	void ForgetTheCataclysmBoss();
+
+	/**
+	 * Any death of the Cataclysm Boss, whoever dealt it: the panel is told at once that the stairs are open. The seal
+	 * itself needs no notice -- `CataclysmBossNow` reads the creature -- so it opens without one.
+	 */
+	void NoteDeathForTheCataclysmBoss(const struct FCataclysmDeathNotice& Notice);
 
 	/** The starvation curse, as a floor carrying it begins: one more stack of one kind. */
 	void AddAStarvationCurse();
@@ -4472,7 +4535,9 @@ public:
 	 * The row keys the floor panel draws a line for: the floor's own rows in their order, and on the dark floor a
 	 * fall leads to, Those in the Dark after them when that floor did not draw it. Issues #1820 and #41, ruled
 	 * 2026-10-09: a player on the dark floor always sees why the stairs are shut and how many creatures still
-	 * stand. The floor's own rows and nothing else at every other time.
+	 * stand. The floor's own rows and nothing else at every other time, except two lines that are no rows, listed
+	 * last: the corrupted double's while it hunts (issue #2688), and the Cataclysm Boss's on the last floor of the
+	 * Cataclysm boss dungeon (`UCataclysmFloorModifierPanelLayout::CataclysmBossKey`, issue #1324 slice 6d).
 	 */
 	TArray<FName> RowsTheFloorPanelLists() const;
 
@@ -5693,6 +5758,13 @@ private:
 
 	/** The Ascendant's Heavenly Core on this floor, or nothing. 2026-10-22. */
 	TWeakObjectPtr<ACataclysmEnemyCharacter> HeavenlyCore;
+
+	/**
+	 * The Cataclysm Boss the population placed on this floor, or nothing; and whether one was placed, so the panel can
+	 * tell a boss slain (its creature gone) from a floor that could place none. Issue #1324 slice 6d.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> CataclysmBoss;
+	bool bCataclysmBossPlaced = false;
 
 	/** Pestilent Empowerment: one beacon, and whether it has been counted, so a Horde arena's counts once. */
 	struct FPlagueBeacon
