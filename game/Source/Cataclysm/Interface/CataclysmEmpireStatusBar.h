@@ -44,14 +44,7 @@ struct CATACLYSM_API FCataclysmEmpireStatusFacts
 	 * integers -- and writes and measures the line again only when they differ from the ones it last drew, so a field
 	 * left out of this comparison would leave a stale figure on screen. A new field goes here as well.
 	 */
-	bool SaysTheSameAs(const FCataclysmEmpireStatusFacts& Other) const
-	{
-		return bRunBound == Other.bRunBound
-			&& DungeonsStanding == Other.DungeonsStanding
-			&& DaysToNextSurge == Other.DaysToNextSurge
-			&& DaysOwed == Other.DaysOwed
-			&& CitiesAtRisk == Other.CitiesAtRisk;
-	}
+	bool HasTheSameFiguresAs(const FCataclysmEmpireStatusFacts& Other) const;
 };
 
 /**

@@ -357,7 +357,7 @@ private:
 	/**
 	 * The empire status bar's line as last written, the figures it was written from and its width at
 	 * `UCataclysmEmpireStatusBar::BaseScale`. `DrawEmpireStatusBar` writes and measures the line again only when the
-	 * figures differ (`FCataclysmEmpireStatusFacts::SaysTheSameAs`); empty until a run is first bound.
+	 * figures differ (`FCataclysmEmpireStatusFacts::HasTheSameFiguresAs`); empty until a run is first bound.
 	 */
 	FString EmpireStatusLine;
 	FCataclysmEmpireStatusFacts EmpireStatusFactsDrawn;

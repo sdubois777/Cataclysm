@@ -145,15 +145,15 @@ bool FCataclysmEmpireStatusBarSameFiguresTest::RunTest(const FString& Parameters
 	// number on screen. Each field is changed alone below, and each change must be seen.
 	const FCataclysmEmpireStatusFacts Drawn = BoundFacts(3, 4, 0, 2);
 
-	TestTrue(TEXT("CONTROL: the same figures are the same"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 0, 2)));
+	TestTrue(TEXT("CONTROL: the same figures are the same"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 0, 2)));
 
 	FCataclysmEmpireStatusFacts Unbound = Drawn;
 	Unbound.bRunBound = false;
-	TestFalse(TEXT("a run no longer bound is a change"), Drawn.SaysTheSameAs(Unbound));
-	TestFalse(TEXT("another dungeon standing is a change"), Drawn.SaysTheSameAs(BoundFacts(4, 4, 0, 2)));
-	TestFalse(TEXT("a day closer to the surge is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 3, 0, 2)));
-	TestFalse(TEXT("a day owed is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 1, 2)));
-	TestFalse(TEXT("another city at risk is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 0, 3)));
+	TestFalse(TEXT("a run no longer bound is a change"), Drawn.HasTheSameFiguresAs(Unbound));
+	TestFalse(TEXT("another dungeon standing is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(4, 4, 0, 2)));
+	TestFalse(TEXT("a day closer to the surge is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 3, 0, 2)));
+	TestFalse(TEXT("a day owed is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 1, 2)));
+	TestFalse(TEXT("another city at risk is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 0, 3)));
 
 	return true;
 }

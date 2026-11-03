@@ -281,7 +281,7 @@ void ACataclysmHUD::DrawEmpireStatusBar()
 	// THE LINE ONLY WHEN A FIGURE HAS CHANGED. Writing it is four formatted strings and measuring it asks the font for
 	// every glyph, and the figures change a few times a day of play rather than sixty times a second. Measured at its
 	// own size, so it can be shrunk to the room beside the creature panel below.
-	if (EmpireStatusLine.IsEmpty() || !Facts.SaysTheSameAs(EmpireStatusFactsDrawn))
+	if (EmpireStatusLine.IsEmpty() || !Facts.HasTheSameFiguresAs(EmpireStatusFactsDrawn))
 	{
 		EmpireStatusLine = UCataclysmEmpireStatusBar::LineFor(Facts);
 		EmpireStatusFactsDrawn = Facts;

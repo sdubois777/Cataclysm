@@ -29,6 +29,16 @@ namespace
 		ECVF_Default);
 }
 
+bool FCataclysmEmpireStatusFacts::HasTheSameFiguresAs(const FCataclysmEmpireStatusFacts& Other) const
+{
+	// EVERY FIELD, so a figure that moved is never drawn stale. A new field goes here as well.
+	return bRunBound == Other.bRunBound
+		&& DungeonsStanding == Other.DungeonsStanding
+		&& DaysToNextSurge == Other.DaysToNextSurge
+		&& DaysOwed == Other.DaysOwed
+		&& CitiesAtRisk == Other.CitiesAtRisk;
+}
+
 bool UCataclysmEmpireStatusBar::Enabled()
 {
 	return CVarShowEmpireStatusBar.GetValueOnAnyThread() != 0;
