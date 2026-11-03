@@ -23,9 +23,10 @@ new, and one moved assertion in `CataclysmBossOnTheMapTests.cpp` (`game/Source/C
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use: no Unreal build,
-  no automation test, no lock and no C++ guard proof. Every Unreal figure below is registered, not measured. The one
-  proof that ran is the Python one.
+- **COMPILED, NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Phase 2, the same day,
+  rebased it onto `development` `6f6c2518f` and compiled it -- every changed `.cpp` alone and in its unity file (below)
+  -- but ran no automation test, took no lock and ran no C++ guard proof. Every Unreal figure below is registered, not
+  measured. The one proof that ran is the Python one.
 - **IT DOES NOT TRAVEL.** A press calls `ACataclysmDungeonGameMode::EnterEmpireDungeon`, which belongs to the dungeon
   game mode, so a Walk works only while the player is standing in a dungeon level (`L_Dungeon`). In any other level --
   the front end, `L_Sandbox` -- the press is refused with the words `Cataclysm.EnterDungeon` prints in the same case:
@@ -108,9 +109,11 @@ nothing on the city screen walked a city's dungeons.
    the box carries the standing boss's Walk name, and no name with no boss standing or no run (CONTROL).
 3. `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon` ("WALK PRESS"): a test world's dungeon game mode; Walk
    under 701 (12 floors) walks it on floor 1, 12 deep, owing 1 on day 0, with no refusal; then Walk under 702 (20)
-   mid-walk walks 702, 20 deep, day 1, owing 1, and 701 still stands.
+   mid-walk walks 702, 20 deep, day 1, owing 1, and 701 still stands; leaving it uncleared awarded no empire points
+   (`LastEmpirePointsAwarded` still 0, asserted 0 as set-up; phase 2, after #52).
 4. `PressingWalkUnderTheBossMarkerEntersTheBossDungeon` ("WALK BOSS"): the map's Walk box, pressed through the name it
-   carries, walks the boss dungeon, as deep as it is, with no refusal; it still stands.
+   carries, walks the boss dungeon, as deep as it is, with no refusal; it still stands; and entering it awarded no
+   empire points: `LastEmpirePointsAwarded` is still what the last quest dungeon cleared awarded (phase 2, after #52).
 5. `ARefusedWalkIsShownAndEntersNothing` ("WALK REFUSED"): the map with no dungeon game mode shows the not-a-dungeon
    refusal and the boss stands; no run is refused for that; on the city screen a game mode with no run shows "Dungeon
    700 could not be entered." and walks nothing; with the run, 999 shows "No dungeon 999 is standing on the map." and
@@ -136,9 +139,11 @@ layout's messages name no console command. No Python test was added.
 
 ### Registered before the run
 
-Base: the whole suite measured 4670 performed at `609fb3290`, slice 6e's registration commit (the entry below), which
-`development` `6e269d6de`, this branch's base, holds. Every prefix ends in a dot; no group name begins with
-`Cataclysm.WalkFromTheScreen`.
+Base, re-measured in phase 2 against the rebased branch's base: the whole-suite engine log of #52's window at its
+registration commit `0da52fa7`, whose `game/` tree (`d30b132b1`) is the one `development` `6f6c2518f` holds. That run
+performed 4700, with 47 skipped halves. The group counts below are its "Test Completed" lines counted by prefix,
+case-insensitively, as the engine's filter matches. Every prefix ends in a dot; no group in that log begins with
+`Cataclysm.WalkFromTheScreen`, and none of the six names below begins another's.
 
 | Figure | Registered |
 |---|---|
@@ -146,15 +151,23 @@ Base: the whole suite measured 4670 performed at `609fb3290`, slice 6e's registr
 | `Cataclysm.BossOnTheMap.` alone | 5 / 5, as measured at the base; one assertion changed, none added |
 | `Cataclysm.CityScreen.` alone | 15 / 15 (15 by name in `CataclysmCityScreenTests.cpp`); none changed. They reach `DungeonLinesFor`, now walking `DungeonIdsFor`, and the widget's changed `WriteDetailRows` |
 | `Cataclysm.EmpireScreen.` alone | 14 / 14, as measured at the base; none changed. They reach the map widget's click handler, which now asks for a Walk name first |
-| Whole Unreal suite | TO-BE-MEASURED. Expected: the base's 4670 plus 5 by name, all succeeding; 47 skipped halves, none added (no new test calls `ReportSkippedHalf`); 0 test saves left behind (the new tests write none) |
-| Python | TO-BE-MEASURED, with a JUnit file. None added; one changed |
+| `Cataclysm.EmpirePoints.` alone | 16 / 16, as measured at the base; none changed. #52's group, which reaches the map layout file whose includes this rebase merged and the status line beside the Walk box |
+| `Cataclysm.DungeonMode.` alone | 46 / 46, as measured at the base; none changed. They reach `EnterEmpireDungeon`, whose comment alone changed |
+| Whole Unreal suite | Not measured. Registered: 4705 performed (the base's 4700 plus 5 by name), all succeeding; 47 skipped halves, none added (no new test calls `ReportSkippedHalf`); 0 test saves left behind (the new tests write none) |
+| Python | Measured in phase 2 on the tree of the commit before this one plus this entry with this cell unfilled: "7352 passed, 9 skipped in 209.09s", and the JUnit file's `testsuite` tests="7361" failures="0" errors="0" skipped="9" (7352 passed), the two agreeing. None added; one changed. The window measures it again |
 | P1, the walked dungeon's refusal (in `CataclysmWalkFromTheScreen.cpp`, `return FString::Printf(TEXT("You are walking dungeon %d now."), DungeonId);` to `return FString();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 4 succeeded, 1 failed": `ARefusedWalkIsShownAndEntersNothing`, 4 assertions. The press re-enters 700, so: 'pressing Walk on the dungeon being walked is refused, and says why' expected "You are walking dungeon 700 now.", read ""; 'and the player is still on floor 2' expected 2, read 1; 'and still owes the walk's two days' expected 2, read 1; 'and none of them has run' expected 0, read 2 |
 | P2, the map's Walk box writes the brief instead of walking (in `CataclysmEmpireMapWidget.cpp`, `WalkDungeon(WalkId);` to `WriteCataclysmDungeonDetail();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 3 succeeded, 2 failed", 3 assertions. `PressingWalkUnderTheBossMarkerEntersTheBossDungeon`: 'pressing Walk under the boss marker enters the boss dungeon' expected the boss's identifier, read -1; 'as deep as the boss dungeon is' expected its floors, read 10. `ARefusedWalkIsShownAndEntersNothing`: 'in a level that is not a dungeon the boss's Walk is refused, and the line under the map says why' expected the not-a-dungeon refusal, read "" |
 | P3, the game mode's refusal swallowed (in `CataclysmWalkFromTheScreen.cpp`, `return FString::Printf(TEXT("Dungeon %d could not be entered."), DungeonId);` to `return FString();`), prefix `Cataclysm.WalkFromTheScreen.` | "5 performed, 4 succeeded, 1 failed": `ARefusedWalkIsShownAndEntersNothing`, 1 assertion, 'a game mode that cannot enter it refuses, and the screen shows that refusal' expected "Dungeon 700 could not be entered.", read "" |
 
-Each anchor occurs once in its file, counted with `grep -c` at the commit. The messages are given by assertion name,
-expected and read values; their exact wording is the engine's `TestEqual` (for integers, "Expected '...' to be 2, but
-it was 1."). The boss's identifier and floors are printed by "WALK BOSS".
+Each anchor occurs once in its file, counted with `grep -c` at the commit and again by `prove_u2715.py --anchors-only`
+in phase 2. The messages are given by assertion name, expected and read values; their exact wording is the engine's
+`TestEqual` (for integers, "Expected '...' to be 2, but it was 1."). The boss's identifier and floors are printed by
+"WALK BOSS". Re-checked in phase 2 against the code as rebased: the predictions stand. P1's re-entry runs the two owed
+days through `LeaveEmpireDungeon` (day 2), then charges floor 1 (owing 1); P2's 10 is the header's `TotalFloors`, which
+nothing assigns in a spawned game mode (`StartPlay` is the authority's, there is no `BeginPlay` override, and only
+`BindEmpireDungeon` sets it), and the boss is far deeper than 10 at this seed -- the base log's "BOSS MARKER" line reads
+132 floors for the same tier 1, seed 11 run with four added. The two empire-point assertions phase 2 added pass under
+all three breaks: none of them reaches `ClearDungeon`.
 
 ### Proofs run in phase 1 (Python only)
 
@@ -163,9 +176,97 @@ With `tools/prove_guard.py` in this worktree, which no other process used: the b
 passed in 0.34s", named failure
 `tools/tests/test_a_message_names_only_registered_console_commands.py::test_the_scan_finds_the_registered_names_and_the_messages`.
 
+### Rebased (phase 2)
+
+Branch `feat/walk-a-dungeon-from-the-screen-2`: phase 1 (`7c288f319`, cut from `6e269d6de`) rebased onto `development`
+`6f6c2518f`, which had added #2706's reach and #52's empire points since. Git stopped on two files; each kept both
+sides:
+
+- **`CataclysmEmpireMapLayout.cpp`'s includes**: #52's `Player/CataclysmGameInstance.h` and `Save/CataclysmSaveRecords.h`,
+  and this change's `Interface/CataclysmWalkFromTheScreen.h`, in order.
+- **This file**: this entry first, then #52's and #2706's, a rule between each.
+
+The map layout's header, the map widget (where #52 added the empire points to `WriteStatus`) and the game mode (where
+#52 added `BankTheDefeatsEmpirePoints` to `ClearEmpireDungeon`) merged by themselves. `python tools/check_resolved_cpp.py
+--changed`: "16 files read, 0 with complaints".
+
+### Compiled (phase 2)
+
+`python tools/unreal_build.py build`, three times, each read in full:
+
+1. The rebased commit as it stood: "Build: Succeeded - 58 actions, 51 files compiled". Nothing needed fixing; the risk
+   phase 1 named -- a `TWeakObjectPtr` to the forward-declared `ACataclysmDungeonGameMode` in both widget headers --
+   compiles.
+2. After the review's one addition (below), with every change of the branch uncommitted (`git reset --mixed
+   origin/development`), so adaptive unity compiled each changed `.cpp` alone: "Build: Succeeded - 21 actions, 18 files
+   compiled". UnrealBuildTool's log names the nine excluded from the unity files and compiled alone:
+   `CataclysmDungeonGameMode.cpp`, `CataclysmCityScreenLayout.cpp`, `CataclysmCityScreenWidget.cpp`,
+   `CataclysmEmpireMapLayout.cpp`, `CataclysmEmpireMapWidget.cpp`, `CataclysmWalkFromTheScreen.cpp`,
+   `CataclysmPlayerController.cpp`, `CataclysmBossOnTheMapTests.cpp` and `CataclysmWalkFromTheScreenTests.cpp`.
+3. Committed, with `Makefile.bin` moved aside so the unity files were regenerated: "Build: Succeeded - 12 actions, 9
+   files compiled: Module.Cataclysm.14.cpp, Module.Cataclysm.36.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.11.cpp,
+   Module.Cataclysm.41.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.42.cpp,
+   Module.Cataclysm.39.cpp". The changed files sit in 11 (city screen layout and widget, map layout and widget), 12
+   (the helper and the player controller), 14 (the boss-on-the-map tests), 36 (the Walk tests) and 38 (the dungeon game
+   mode), all compiled.
+
+### Reviewed (phase 2)
+
+- **The button asks before the game mode does, in that order.** `EnterEmpireDungeon` leaves a walk under way -- running
+  its owed days -- before it asks whether the dungeon stands, so a press that reached it for a dungeon not standing
+  would change the day and then refuse. `FCataclysmWalkFromTheScreen::RefusalFor`, which `Walk` asks first, refuses no
+  run, then no dungeon game mode, then a dungeon not standing, then the dungeon being walked, and only then is
+  `EnterEmpireDungeon` called. What is left after it is a dungeon that stood when pressed and was taken off the map by
+  the days a walk being left ran, which the console reaches the same way; the press then shows "Dungeon N could not be
+  entered.", which is true, and the screens stay open.
+- **The refusals are the console's words, and true.** "No run has been started." (`Cataclysm.ShowEmpire`,
+  `Cataclysm.CityUpgrades` and `Cataclysm.BuyCityUpgrade` say it; `Cataclysm.EnterDungeon` starts a run instead, and no
+  button is drawn without one), the not-a-dungeon sentence, "No dungeon N is standing on the map." (the console's first sentence) and
+  "Dungeon N could not be entered." are copied from `CataclysmPlayerCharacter.cpp`; "You are walking dungeon N now." is
+  this screen's own, and the player is.
+- **The screens close only on success.** The city screen redraws and, with no refusal, calls `CloseEmpireScreens`; the
+  map writes a refusal into the line under it and returns before closing. `CloseEmpireScreens` removes what is in the
+  viewport and sets the input mode `ToggleEmpireMap` and `ToggleCityScreen` set on closing.
+- **The Walk box covers no city.** Recomputed from the layout's constants in Python for the four panels (100
+  placements, none overlapping) and for every panel from 300 by 200 to 4000 by 3000 in steps of 37 and 41 pixels on
+  which the diamond fits: none overlaps, and the box is inside every one.
+- **A Walk changes no empire points, since #52.** Only `UCataclysmEmpireRun::ClearDungeon` sets
+  `LastEmpirePointsAwarded`, and only `ACataclysmDungeonGameMode::ClearEmpireDungeon` calls it outside the tests and
+  banks; `EnterEmpireDungeon` and `LeaveEmpireDungeon` call neither, and the days a left walk runs resolve dungeons,
+  which award nothing. ADDED: an assertion in "WALK PRESS" and one in "WALK BOSS" holding it (Tests, above).
+- **Nothing else needed fixing.**
+
+### Assertion audit (phase 2)
+
+Every assertion in `CataclysmWalkFromTheScreenTests.cpp` that compares with a fixed number, a fixed string or a
+starting state, and the changed one in `CataclysmBossOnTheMapTests.cpp`, checked against the code it reads:
+
+- **A fresh run is day 0, owes nothing, awarded nothing and stands nothing on city 0**: `Begin` writes `OwedDays`,
+  `LastEmpirePointsAwarded` and the day at nought and lands no surge. Asserted as set-up wherever relied on (tests 1, 3
+  and, through "set-up: on day 0" after the descent, 5); a failed set-up stops the test rather than misreading.
+- **Identifiers 700, 701, 702 and 999**: `NextDungeonId` starts at 0 and nothing stands at the start, so no dungeon of
+  the run's own can carry them; the one day test 3 runs lands the first surge, whose dungeons take small identifiers.
+- **Owing 1, then 2; day 0, then 1**: a dungeon placed by hand has `WalkDays` 0, so `WalkDaysPerFloor` is
+  `UCataclysmDayClock::DaysPerFloor`, 1.0 (`CataclysmDayClock.h`); `SpendFloorTime` owes one whole day per call inside
+  a walk; `LeaveEmpireDungeon` runs the owed days through `SettleDaysOwed`.
+- **12, 20, and floor 1, then 2**: `BindEmpireDungeon` sets `TotalFloors` to `Max(1, Floors)`, `EnterEmpireDungeon`
+  goes to floor 1, and `GoDownOneFloor` one deeper, as `Cataclysm.DungeonMode.`'s cost tests use them in the same kind
+  of test world.
+- **701 and 702 still standing after one day**: their timers are 9 and 25, and 701's is stopped while it is walked.
+- **The line "contains 12 floors"**: `DungeonLinesFor` writes "%d floors, %.0f days until it bites" for a dungeon with
+  no sub-type, and the three depths are distinct strings.
+- **172, 48, 110, 100 and 100 placements**: `CityWidthPx` 172, `CityHeightPx` 48, `FitMarginPx` 24, the marker
+  `CityHeightPx` tall, the gap 4; `UCataclysmEmpireMap::Build` makes 25 cities (a diamond of radius 3), on four panels,
+  the same four as the marker test's.
+- **The boss**: its identifier and depth are read from the run, never written as numbers; the run is
+  `Cataclysm.BossOnTheMap.`'s helper with nothing defeated, line for line.
+- **The refusal strings**: compared with literals the helper returns, or with `NotADungeonLevelText()` itself.
+- **"No Cataclysm." in the brief**: `Contains` ignores case by default; the brief's fixed text says "Cataclysm boss",
+  and what it fills in is a Cataclysm's name, a sub-type and two counts.
+
 ### Not tested
 
-- **Anything in Unreal**: not compiled and not run (above).
+- **Anything in Unreal**: compiled, not run (above).
 - **The buttons on screen.** A headless widget has no Widget Blueprint, so no Walk button is made, drawn or clicked;
   the tests call the handler each button calls, through the name it carries.
 - **Closing the screens and the input mode after it**: `CloseEmpireScreens` needs a player controller, which a
