@@ -187,6 +187,26 @@ are "Test Completed" lines in the whole-suite engine log of window enemy-hit-tim
 Each break's anchor occurs once in its file, counted with Python's `str.count` on the committed file
 (`prove_i878.py <proof> --anchors-only`). The breaks were not compiled before registration.
 
+### Window held-item-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `660b8a0ca` (on `development` `38ca41fcd`),
+lock `held-item-w1`, after the six pre-checks all passed (11,938 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.HeldItem.` alone | 5 / 5 | "5 tests performed, 5 succeeded, 0 failed" |
+| `Cataclysm.Wearing.` alone | 18 / 18 | "18 tests performed, 18 succeeded, 0 failed" |
+| Whole Unreal suite | 4605 | "4605 tests performed, 4605 succeeded, 0 failed"; "Declared: 4605 tests in the tree at 660b8a0ca; 4605 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7251 passed, 8 skipped in 195.44s"; JUnit tests 7259, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 4 in 2 tests | PROVED. The kept broken-half log fails exactly "the slot on the cursor looks lifted", "exactly one cell looks lifted" (1 expected, 0 read), "CONTROL: the helm looks lifted while it is held" and "CONTROL: and their cell is the one cell that looks lifted" (1 expected, 0 read); restored 5 of 5 |
+| B | 1 | PROVED. Exactly "a hold on a slot that has been emptied draws nothing" (-1 expected, 1 read); restored 5 of 5 |
+| C | 4 | PROVED. Exactly the four registered placement assertions; restored 5 of 5 |
+| D | 4 | PROVED. Exactly "wearing the held item lets go of it", "so nothing is drawn on the cursor, not the helm that came off" (-1 expected, 0 read), "and no cell looks lifted" (0 expected, 1 read) and "the slot the worn helm left, holding the one that came off, looks full"; restored 5 of 5 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **The drawing itself.** No test here can watch a widget draw: the automation command passes `-nullrhi` (issue
