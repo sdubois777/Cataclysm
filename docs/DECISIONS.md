@@ -5,14 +5,17 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-11-02 — An ordinary attack's damage lands when its swing connects, not before the swing starts (#783)
 
 **Affects:** `ACataclysmEnemyCharacter::BasicAttackStrikeDelaySeconds`, `StrikeWhenTheSwingConnects`,
-`LandPendingBasicAttack`, `HasPendingBasicAttack`, `PendingBasicAttackLandsAtSeconds` and `ForgetPendingBasicAttack`,
-new, with `Tick` and `HandleDeath` calling them (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`);
+`LandPendingBasicAttack`, `HasPendingBasicAttack`, `PendingBasicAttackLandsAtSeconds`, `ForgetPendingBasicAttack`,
+`StrikeAsARuleOrders` and `bStrikeOrderedByARule`, new, with `Tick` and `HandleDeath` calling them
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`); the echo strike in
+`ACataclysmDungeonGameMode::StepEchoesOfThePast` (`Dungeon/CataclysmDungeonGameMode.cpp`) and Compel's thrall strike
+in `CataclysmSkillTemplates.cpp`, which now order it through `StrikeAsARuleOrders` (phase 2);
 `AttackTarget` on `ACataclysmBruteCharacter`, `ACataclysmImpCharacter`, `ACataclysmAbyssalWardenCharacter` and
 `ACataclysmHellhoundCharacter`, rewritten; `ACataclysmBruteCharacter::SwingStrikeSeconds`,
 `ACataclysmImpCharacter::RendAStrikeSeconds`, `RendDStrikeSeconds`, `RendEStrikeSeconds`, `RendUnmeasuredStrikeSeconds`,
 `RendStrikeSecondsFor`, `LastPlayedRate` and `LastRendDrawn`, `ACataclysmAbyssalWardenCharacter::LeftSwingStrikeSeconds`,
 `ACataclysmHellhoundCharacter::MaulStrikeSeconds` and `LastPlayedRate`, new; `ACataclysmImpCharacter::PlayRendAnimation`,
-which now draws a swipe with or without the art and returns it; 13 new tests in
+which now draws a swipe with or without the art and returns it; 14 new tests in
 `game/Source/Cataclysm/Tests/CataclysmEnemyHitTimingTests.cpp`; 11 existing tests moved (below), through
 `LetTheSwingConnect` in `CataclysmEnemyBehaviourTests.cpp` and `LandTheWaitingBlows` in
 `CataclysmDungeonModifierEffectsTests.cpp`, both new; `game/docs/enemy-source-assets.md`'s "What that means in play";
@@ -21,14 +24,23 @@ Issue [#783](https://github.com/sdubois777/Cataclysm/issues/783).
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Nothing below
-  "Registered before the run" has been measured; every figure there is a prediction.
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written while the build machine was in use; phase 2 (below)
+  compiled it on 2026-11-02, every changed and new `.cpp` alone and in its unity file, reviewed it, and audited every
+  fixed-number assertion. Nothing below "Registered before the run" has been measured; every figure there is a
+  prediction.
+- **PHASE 2 CHANGED ONE OF PHASE 1'S JUDGEMENTS: A STRIKE A RULE ORDERS IS NOT MEASURED AGAINST REACH.** Phase 1 read
+  Echoes of the Past's echo as standing at its reach from the player when it strikes. It stands at its reach from where
+  the player was when it APPEARED, a second earlier, so the reach rule made a player who stood still able to dodge it
+  and one who had walked away not. Echoes and Compel now order through `StrikeAsARuleOrders`, and both land wherever
+  the target stands, as they did before this issue. A judgement; see "Phase 2" below.
 - **A TARGET THAT WALKS OUT OF REACH IN THE GAP IS NOW MISSED, AND THAT CAN CHANGE THE FEEL OF MELEE.** Ruling (b)
   below: matching the Gatekeeper and the Succubus. The swing is committed -- it plays and spends the attack interval --
   but it lands where it was swung. A player walking straight away at 3.5 to 4.6 m/s covers 115 cm or more in the
   Brute's 0.331 s, against a reach whose slack beyond contact is the controller's 2 cm, so a player who keeps walking
   away from a Brute that has stopped to swing will now dodge the blow. Circling at the same distance does not. Before
-  this change every ordered swing hit. This is the owner's to judge in play.
+  this change every ordered swing hit. The coordinating session accepted this consequence on 2026-11-02, and it is on
+  the owner's launch-check list below: walking straight away from a Brute dodges its basic swing. This is the owner's
+  to judge in play.
 - **For the owner's launch check:** let a Brute, an Imp pack and an Abyssal Warden hit you while standing still: the
   health bar should drop as each weapon arrives, not as the swing begins. Then walk straight away from a Brute as it
   swings, and see whether dodging it that way is wanted. A Hellhound's bite still lands as the bite starts.
@@ -106,9 +118,10 @@ Issue [#783](https://github.com/sdubois777/Cataclysm/issues/783).
   does this: the Staff's Compel makes everything the caster commands strike one enemy "wherever it happens to be
   standing" (`UCataclysmSkillTemplate`'s command strike, `CataclysmSkillTemplates.cpp` ~2274), and that row is explicit
   that reaching it is not the creature's problem. Measuring such a strike against a reach it never had would make it
-  miss every time. It still waits for its swing, and death, stun and fear still drop it. Echoes of the Past's echo
+  miss every time. It still waits for its swing, and death, stun and fear still drop it. ~~Echoes of the Past's echo
   strike (`CataclysmDungeonGameMode.cpp` ~4020) stands each echo at its own reach from the player, so it is a swing in
-  reach and the reach rule applies to it.
+  reach and the reach rule applies to it.~~ **Corrected in phase 2:** the echo stands at its reach from where the
+  player was when it appeared, a second before it strikes; see "A STRIKE A RULE ORDERS" under Phase 2.
 - **A SECOND ORDER WHILE A BLOW STILL WAITS LANDS THE FIRST AT ONCE.** Only a buffed or console-shortened interval
   reaches this (the shortest designed interval, the Imp's 0.9 s, is three times its longest strike). A judgement: a
   blow landed a little early is better than one the player was owed and never received.
@@ -143,7 +156,7 @@ which is a different class) and every test that makes one of the four creatures 
 
 ### Tests
 
-Thirteen new, in the new group `Cataclysm.EnemyHitTiming.`:
+Fourteen new, in the new group `Cataclysm.EnemyHitTiming.` (thirteen in phase 1, the fourteenth in phase 2):
 
 1. `TheWaitIsTheStrikeDividedByTheRateTheClipPlaysAt`: 0.331 at rate 1, 0.1655 at 2, 0.331 with no clip, 0 unmeasured.
 2. `TheBrutesSwingDealsNothingUntilItConnectsAndAllOfItThen`, 3. `TheImpsSwipe...` (the drawn swipe's strike over the
@@ -161,6 +174,8 @@ Thirteen new, in the new group `Cataclysm.EnemyHitTiming.`:
 12. `ASecondSwingOrderedBeforeTheFirstConnectsLandsTheFirst`.
 13. `TheWardensBlowWaitsForASwingThatHasNotStartedYet`: with the art, half a second still playing plus 0.176; without
     it, 0.176 and a reported skipped half.
+14. `AStrikeARuleOrdersLandsOnATargetThatWalkedOutOfReach` (phase 2): test 9's walk-out through
+    `StrikeAsARuleOrders`, which still waits for the swing and then lands.
 
 Python, in `tools/tests/test_attack_impact_is_recorded.py`: the five measured strike constants pinned to the notes'
 figures; the Imp's strike table held in the order of its swipe names (measured swipes their own constant, unmeasured
@@ -178,20 +193,130 @@ the `LandPendingBasicAttack();` line removed from `Tick` fails
 `test_the_hook_runs_this_job[ACataclysmEnemyCharacter::Tick-LandPendingBasicAttack()-...]`; and the Imp's first two
 table entries swapped fails `test_each_imp_swipe_waits_for_its_own_strike_or_for_the_mean`.
 
+Phase 2 added `test_a_rules_strike_is_not_measured_against_reach`, two cases: the echo strike in `StepEchoesOfThePast`
+and Compel's command strike must order through `StrikeAsARuleOrders`. Proved the same way on 2026-11-02, both
+"PROVED", one named failure each and the restored half 56 passed: `Echo->StrikeAsARuleOrders(Player);` to
+`Echo->AttackTarget(Player);` fails its `[Dungeon/CataclysmDungeonGameMode.cpp-...]` case, and
+`Thrall->StrikeAsARuleOrders(Targets[0]);` to `Thrall->AttackTarget(Targets[0]);` fails its
+`[AbilitySystem/CataclysmSkillTemplates.cpp-...]` case.
+
+### Phase 2: compiled, reviewed and audited, 2026-11-02
+
+Rebased onto development 49e0403d1 (#49's status bar, #41's death cost); the one conflict was this file, resolved by
+putting this entry first. No C++ file this branch touches was changed by development since 502bfeed5.
+
+**COMPILED.** `python tools/unreal_build.py build`, three times. With the branch's changes left uncommitted, so the
+adaptive build compiled each changed and new `.cpp` outside its unity file: "Build: Succeeded - 60 actions, 55 files
+compiled", every one of the eight phase 1 `.cpp` files given its own object (read from the objects' times, since that
+line names no files). Phase 1 compiled with no change at all. Then the four files the fix below touches, alone the
+same way: "Build: Succeeded - 47 actions, 44 files compiled". Then committed, with the makefile moved aside to force
+the unity files to be regenerated: "Build: Succeeded - 12 actions, 9 files compiled: Module.Cataclysm.22.cpp,
+Module.Cataclysm.41.cpp, Module.Cataclysm.6.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.38.cpp,
+Module.Cataclysm.40.cpp, Module.Cataclysm.36.cpp, Module.Cataclysm.8.cpp, Module.Cataclysm.37.cpp", which hold
+`CataclysmEnemyHitTimingTests.cpp` (22), `CataclysmSkillTemplates.cpp` (6), `CataclysmDungeonGameMode.cpp` (36),
+`CataclysmDungeonModifierEffectsTests.cpp` (37) and the Enemy, Imp and Hellhound characters (8); the Brute and Warden
+(7) and `CataclysmEnemyBehaviourTests.cpp` (21) were compiled in their unity files by the second build, after the last
+edit to the header they include.
+
+**EVERY CALLER OF `AttackTarget` ON THE FOUR CREATURES, AND WHAT IT NOW DOES.** Found by a sweep of every
+`AttackTarget(` outside the tests; no class derives from the four.
+
+| Caller | Before | Now |
+|---|---|---|
+| `ACataclysmEnemyController::Think`, the brain's ordinary swing (only ever ordered within reach plus 2 cm) | blow at once | blow when the swing connects; missed if the target left reach in the gap; dropped if the swinger dies, cannot act or flees |
+| Echoes of the Past's echo strike, `StepEchoesOfThePast` | blow at once, wherever the player stood | **changed in phase 2:** blow when the swing connects, wherever the player stands then; still dropped if the echo cannot act or flees in the gap |
+| The Staff's Compel, a subjugated creature's command strike | blow at once, wherever the enemy stood | **changed in phase 2:** the same as the echo |
+| `ACataclysmMinion` (a minion's swing) | a different class with its own `AttackTarget` | unchanged |
+| A maddened creature, a thrall fighting on its own | through the brain | as the brain's swing |
+
+**A STRIKE A RULE ORDERS IS NOT MEASURED AGAINST REACH (a judgement, phase 2's; it replaces phase 1's reading of the
+echo).** The echo is placed at its reach from the player's position at stage 0 (`EchoesDistanceCm(AttackReachCm())`
+around `Centre`), and strikes one second later (`EchoesStrikeAfterSeconds`) without being moved. Under phase 1 a
+player who had walked more than 2 cm outward in that second was beyond reach at the order, so the blow was exempt and
+always landed, while a player who stood still was in reach at the order, so stepping away in the next quarter second
+dodged it -- the reverse of any rule a player could learn. Before this issue the echo's blow and Compel's always landed.
+`StrikeAsARuleOrders` keeps that, and changes only the moment. The reach rule for the brain's own swing, which the
+coordinating session accepted, is untouched.
+
+**REVIEWED, AND HELD.** `Tick` calls `LandPendingBasicAttack` every frame; with nothing waiting that is one float
+comparison (`HasPendingBasicAttack`). Every enemy's Tick is enabled from construction (`bCanEverTick` in the base and in
+all four) and is switched off in one place only, `HandleDeath`, which forgets the blow on the line before. All four
+subclasses' `Tick` call `Super::Tick` first. Nothing else in the project disables an enemy's tick or dilates its time.
+The damage figure, tags, on-hit effects, Contagious Touch and threat are unchanged because the blow is
+`ACataclysmEnemyCharacter::AttackTarget` called by name, as before; `ApplyHit` asks nothing of the attacker's position
+or state. The brain's `LastAttackTime`, `bHasAttacked`, `LastAttackUsed` and `AttacksOrdered` are stamped when the swing
+is ordered, after `AttackTarget` returns, so the next-attack interval and Echoes' record keep their timing; the
+ordinary swing has no cooldown. A creature destroyed in the gap (an echo dismissed, a floor cleared) takes its waiting
+blow with it, which is right: neither happens within a third of a second of a swing in ordinary play.
+
+**THE ASSERTION AUDIT.** Every assertion in the fourteen new tests and the eleven moved ones that compares against a
+fixed number or relies on a starting state, read against the code on the no-art path this worktree and the build
+machine's window take:
+
+- **Play rates.** No test hard-codes a rate. Tests 2 to 4 compute their expectation from the creature's own constant
+  over the rate it recorded (the Imp's `LastPlayedRate`, 0 without the art and read as 1) or over exactly 1 (the Brute
+  is given no window; the Warden's combo clips are played with none). Without the art no clip plays and every wait is
+  the strike itself: 0.331, the drawn swipe's 0.242 / 0.276 / 0.278 / 0.308, 0.176. With the art each clip plays at
+  exactly 1 at its designed interval (`Rate = max(1, Length / Hold)`: the Brute's and the Warden's `Hold` is the clip's
+  own length; the Imp's swipes are about 0.8 s inside 0.9), so the same figures.
+- **Reach and contact tolerance.** `InReachCm` 80 is inside the Brute's and Warden's 90 cm and the Imp's 132, each plus
+  `ContactToleranceCm` 2; reach is `MeleeReachCm`, a constant set in each constructor and never scaled. Test 9's and
+  14's walk-out goes to 300 cm, test 10's target stands at 1000. The brain tests stand the player at 80 or exactly 90 cm
+  and never move it before the blow lands. The echoes stand at exactly their reach (`EchoesDistanceCm` is reach clamped
+  to 600) from a player that never moves.
+- **World time.** Every world starts at 0 and is never ticked. Each moved test now advances it by the blow's wait plus
+  0.01 s (0.341 s for a Brute, at most 0.318 s for an Imp). Re-read after that: the second-pass check in
+  `ABruteInContactReachStopsRoamingAndLandsAHit` still sees 0.341 s against a 1.2 s interval, and it and
+  `ABruteAttacksWhenItsCapsuleIsTouchingThePlayers` think again 0.341 s later than before, at most about 4.1 s after
+  `SpendAbilities` began the first wind-up (its wind-ups plus 0.05 each, then the 1.2 s interval plus 0.05; read, not
+  run), against the abilities' 5 s cooldowns. The stun and medic tests then advance 1.3 s more as before; an ability
+  back by then would change neither, because `Think` asks the stun before any ability and `UseAbilitiesOn` refuses a
+  medic every ability. The echo tests' ten-second holds never expire because no timer runs in an unticked world. The float deadline against the double clock: 0.331f is
+  0.33100000024, so the hundredth-before and hundredth-after reads are 0.0099 and 0.0101 s away from it.
+- **Starting state.** Health: the struck creature's `SetHealth(1000000)` writes the maximum and health through
+  `ApplyStartingAttributes`; every health check in the moved tests and the new ones is "less than before", "equal to
+  before" or a difference between two reads, never a figure. Damage: `SetAttackDamage(100)` on the swinger; nothing in the struck creature can
+  evade, block or soak (evasion, block chance and energy shield written to 0) and critical strikes are silenced by
+  `MakeWorldThatHasBegunPlay`. "The blow is the one it used to deal at once" compares two blows on the same target
+  0.01 apart; the struck creature has a million health, so no health-fraction condition moves between them. The stun
+  in test 8 is designed (no threshold), its instigator carries no crowd-control ceiling, and a Common Brute is not a
+  boss. Test 7 marks the Brute dead without running `HandleDeath`, and nothing in `ApplyHit` or the damage calculation
+  refuses a dead attacker (read, not run), so P1's break lands the blow. The Imp test asserts the drawn index lies in 0..4 before reading it.
+- **The skipped half.** Without the Grux pack `TheWardensBlowWaitsForASwingThatHasNotStartedYet` checks 0.176 alone
+  and reports its skipped half through `CataclysmTestSkip::ReportSkippedHalf`; with the pack and no animation
+  Blueprint bound, 0.5 + 0.176. With a Blueprint bound it takes the no-art branch, and says so.
+
+Nothing in the audit needed a change. Two moved assertions keep labels that are now slightly loose and were left as
+they are because the rule that moved them changes no assertion text: "a second pass with no time elapsed" and "because
+no time has passed" in `ABruteInContactReachStopsRoamingAndLandsAHit`, where 0.341 s has passed; the comment above them
+says so.
+
 ### Registered before the run
+
+Base counts are "Test Completed" lines in the death-cost window's whole-suite engine log at 1765f8ede (the tree
+development 49e0403d1 holds; 4586 performed, 4586 succeeded, 43 skipped halves).
 
 | Figure | Registered |
 |---|---|
-| `Cataclysm.EnemyHitTiming.` alone | 13 / 13; without the Paragon art, one skipped half, `TheWardensBlowWaitsForASwingThatHasNotStartedYet` |
-| The moved tests | all 11 pass; `Cataclysm.AI.`, `Cataclysm.DungeonModifierEffects.` and `Cataclysm.EchoesHeld.` totals are unchanged by this branch |
-| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total, + 13, 0 failed |
+| `Cataclysm.EnemyHitTiming.` alone | 14 / 14 (0 at the base); without the Paragon art, one skipped half, `TheWardensBlowWaitsForASwingThatHasNotStartedYet` |
+| `Cataclysm.AI.` alone | 51 / 51 (51 at the base; six moved, none added) |
+| `Cataclysm.EchoesHeld.` alone | 4 / 4 (4 at the base; all four moved) |
+| `Cataclysm.DungeonModifierEffects.EchoesOfThePast` alone | 2 / 2 (2 at the base, a name prefix: the moved `...BringsTheLastFloorsDeadBackToStrikeOnceAndVanish` and `...RecordsTheLastSixPaidDeathsOfOneFloor`) |
+| `Cataclysm.CompelHeld.` alone | 4 / 4 (4 at the base; unchanged tests, whose thrall's strike now goes through `StrikeAsARuleOrders`) |
+| Whole Unreal suite | 4600 performed (4586 + 14), 4600 succeeded, 0 failed; 44 skipped halves (the base's 43 + 1); 0 test saves left behind |
 | Python | of record, with JUnit, and ruff, at the registration commit |
 | P1, death not asked (`if (UCataclysmSkillEffects::IsDead(this)` to `if (UCataclysmSkillEffects::IsDead(nullptr)`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.ACreatureThatDiesBeforeItsSwingConnectsDealsNothing` | fails "its swing's moment comes and nothing is landed" ("Expected ... to be false") and "and the target is untouched" ("Expected ... to be <full>, but it was <less>") -- 2 -- and nothing else; "and the blow is gone rather than held" holds |
 | P2, no wait (`PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds() + DelaySeconds;` to `PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds();`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.TheBrutesSwingDealsNothingUntilItConnectsAndAllOfItThen` | fails "due when the clip strikes, divided by the rate it plays at" ("to be 0.331000, but it was 0.000000"), "a hundredth of a second before it is due, nothing lands", "and the target is untouched" and "a hundredth of a second after, it lands" -- 4 -- and nothing else; the blow still equals the one dealt at once |
 | P3, reach not asked (`> AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)` to `> AttackReachCm() + 100000.0f)`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.ATargetThatWalksOutOfReachBeforeTheSwingConnectsIsMissed` | fails "the swing connects with nothing" and "and the target that walked out is untouched" -- 2 -- and nothing else; "and the blow is spent" holds |
 
-Each break's anchor occurs once in `CataclysmEnemyCharacter.cpp` (counted by script at registration). The breaks were
-not compiled before registration.
+| P4, a rule's strike measured against reach (`TGuardValue<bool> OrderedByARule(bStrikeOrderedByARule, true);` to `TGuardValue<bool> OrderedByARule(bStrikeOrderedByARule, false);`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.EnemyHitTiming.AStrikeARuleOrdersLandsOnATargetThatWalkedOutOfReach` | fails "and lands when the swing connects" ("Expected ... to be true.") and "on a target that walked out of reach in the gap" ("Expected ... to be true.") -- 2 -- and nothing else; "a rule's strike still deals nothing when the swing starts" and "and waits for the swing" hold |
+
+Each break's anchor occurs once in `CataclysmEnemyCharacter.cpp`, counted by `prove_h783.py --anchors-only` at the
+registration commit. Each predicted message was re-read in phase 2 against the test as it stands and the engine's
+wording in `Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`: `TestFalse` writes "Expected '<what>' to be
+false.", `TestTrue` "... to be true.", and the float `TestEqual` "Expected '<what>' to be <expected>, but it was
+<actual> and outside tolerance <tolerance>." -- so P1's and P2's "to be X, but it was Y" are the start of the line
+rather than the whole of it. The breaks were not compiled before registration.
 
 ### Not tested
 
@@ -204,7 +329,9 @@ not compiled before registration.
 - A blow dropped by `HandleDeath` itself: test 7 marks the creature dead without running the handler, so that the one
   line it proves is `LandPendingBasicAttack`'s.
 - The Warden's wait for a clip still playing, in a worktree: that half needs the Grux pack.
-- An Imp or Brute ordered by Compel, through the skill: covered at the function by test 10, not through a cast.
+- An Imp or Brute ordered by Compel, through the skill: covered at the function by tests 10 and 14, not through a
+  cast. The echo strike's walk-out, through the rule: covered at the function by test 14 and by the Python check that
+  the rule calls `StrikeAsARuleOrders`; no Unreal test moves the player between an echo's order and its blow.
 - The Hellhound's bite, the Imp's B and C swipes and the Warden's right swing are not measured, and nothing here
   measured them.
 
