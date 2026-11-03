@@ -68,6 +68,29 @@ def python_code_of(function) -> str:
     return "\n".join(line.split("#", 1)[0] for line in source.splitlines())
 
 
+#: Where the boss dungeon's maker begins, in the flattened code.
+BOSS_MAKER = "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon("
+
+
+def surge_code_without_the_boss() -> str:
+    """`CataclysmSurge.cpp` as code, with `MakeCataclysmDungeon` cut out.
+
+    THE BOSS DUNGEON'S MAKER IS LEFT OUT OF THE COUNTS BELOW ON PURPOSE, since
+    issue #1324 slice 6b (2026-11-03). Those counts hold `MakeDungeon` and
+    `MakeFallenCityDungeon` to the rule about what a hit is scaled by, and they
+    were written when nothing built a Cataclysm dungeon. The boss rolls its
+    floors once, takes no city upgrade (it stands on no city) and never hits
+    anything; `test_the_boss_dungeons_floors_are_its_roll_and_it_never_hits`
+    below holds that separately rather than letting it move these numbers.
+    """
+    code = cpp_code(SURGE_CPP)
+    if BOSS_MAKER not in code:
+        return code
+    start = code.index(BOSS_MAKER)
+    end = code.index("return Dungeon; }", start) + len("return Dungeon; }")
+    return code[:start] + code[end:]
+
+
 # ------------------------------------------------------------------ the model
 
 def test_the_model_sizes_a_hit_by_natural_floors_by_default() -> None:
@@ -148,7 +171,7 @@ def test_the_game_keeps_the_rolled_depth_apart_from_what_an_upgrade_moved(
     `_make_dungeon` does the same four things in the same order for the
     tree's floors; `test_the_model_takes_the_trees_floors_after_the_natural_depth`
     above is its half."""
-    code = cpp_code(SURGE_CPP)
+    code = surge_code_without_the_boss()
 
     roll = ("Dungeon.Floors = FMath::Max(1, Stream.RandRange("
             "Spec.LeastFloors, Spec.MostFloors));")
@@ -189,7 +212,7 @@ def test_in_the_game_the_walk_and_the_timer_still_read_the_total_floors(
 ) -> None:
     """ONLY THE HIT. The model's walk and timer read `d.floors`; the game's
     read `Dungeon.Floors`, after the upgrades."""
-    code = cpp_code(SURGE_CPP)
+    code = surge_code_without_the_boss()
 
     stored = code.index("Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;")
     walk = "Dungeon.Floors * UCataclysmDayClock::DaysPerFloor"
@@ -219,7 +242,7 @@ def test_nothing_else_in_the_game_moves_a_dungeons_floors() -> None:
     """The roll, the city upgrades, and a Fallen City's depth. A fourth
     assignment would be a new source of floors, and whether it is natural
     would need saying."""
-    code = cpp_code(SURGE_CPP)
+    code = surge_code_without_the_boss()
 
     assert code.count("Dungeon.Floors =") == 3, (
         f"CataclysmSurge.cpp assigns Dungeon.Floors "
@@ -227,3 +250,28 @@ def test_nothing_else_in_the_game_moves_a_dungeons_floors() -> None:
         "2026-10-13: the roll, the city's upgrades, and a Fallen City's "
         "depth. " + WHEN_THE_GAME_CHANGES)
     assert "Dungeon.Floors +=" not in code and "Dungeon.Floors -=" not in code
+
+
+def test_the_boss_dungeons_floors_are_its_roll_and_it_never_hits() -> None:
+    """The Cataclysm boss dungeon, since issue #1324 slice 6b (2026-11-03).
+
+    ITS FLOORS ARE SET ONCE, FROM THE ROLL, and no `UpgradeFloors` is set, so
+    all of them read as rolled: it stands on no city, so no city upgrade can
+    reach it. The floors it gains for the ordinary dungeons defeated are set by
+    the run (`UCataclysmEmpireRun::DeepenCataclysmDungeon`), not here. None of
+    it sizes a hit: it never resolves (`NeverResolveDays`).
+    """
+    code = cpp_code(SURGE_CPP)
+    assert BOSS_MAKER in code, "MakeCataclysmDungeon is gone from CataclysmSurge.cpp"
+    start = code.index(BOSS_MAKER)
+    boss = code[start:code.index("return Dungeon; }", start)]
+
+    assert boss.count("Dungeon.Floors =") == 1
+    assert ("Dungeon.Floors = FMath::Max(1, Stream.RandRange("
+            "Spec.LeastFloors, Spec.MostFloors));") in boss
+    assert "UpgradeFloors" not in boss and "UpgradeValueFor" not in boss, (
+        "MakeCataclysmDungeon reads or sets a city upgrade's floors; the boss "
+        "stands on no city. " + WHEN_THE_GAME_CHANGES)
+    assert "Dungeon.ResolveDays = NeverResolveDays;" in boss, (
+        "MakeCataclysmDungeon gives the boss a timer that can run out, so its "
+        "floors could size a hit. " + WHEN_THE_GAME_CHANGES)

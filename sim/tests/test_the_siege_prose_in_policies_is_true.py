@@ -452,9 +452,24 @@ class TestAPillarSiegeCanNeverBeAnswered:
             "Siege CAN be answered and the docstring is wrong.")
 
     def test_only_two_dungeon_kinds_ever_spawn_there(self, made):
+        """At most the Cataclysm and the Pillar's own Fallen City, and the
+        Cataclysm always.
+
+        A SUBSET SINCE 2026-11-03, NOT AN EQUALITY. Until then a Siege boss
+        dungeon stood on the Pillar and bit it, and the Pillar fell in 246 of
+        6,000 campaigns at `analyse_siege_dose.py`'s settings -- which is where
+        Pillar Fallen Cities came from. Issue #1324 slice 6b put the earned boss on no city and barred
+        a Cataclysm from the Siege, and in these 320 campaigns the Pillar no
+        longer falls. The earned boss is still RECORDED at the Pillar here,
+        because it is rolled from the Pillar's row through `_make_dungeon`; it
+        then stands on no city.
+        """
         kinds = {dtype for tier, dtype, _, _ in made
                  if tier is CityTier.PILLAR}
-        assert kinds == {DungeonType.CATACLYSM, DungeonType.FALLEN_CITY}, (
+        assert DungeonType.CATACLYSM in kinds, (
+            f"{CAMPAIGNS} campaigns rolled no Cataclysm dungeon from the "
+            "Pillar's row, so the claim below is about nothing")
+        assert kinds <= {DungeonType.CATACLYSM, DungeonType.FALLEN_CITY}, (
             f"{CAMPAIGNS} campaigns put {sorted(k.value for k in kinds)} on "
             "the Pillar. The docstring says the Cataclysm and the Fallen City "
             "and nothing else.")
