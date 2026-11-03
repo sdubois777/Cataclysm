@@ -222,6 +222,26 @@ moved in the second pass, with the line it breaks: the first pass's `... ? Death
 `AutomationTest.cpp`'s ("Expected '%s' to be %d, but it was %d." and, for text, the values in double quotes); its
 text comparison ignores case, which none of these depends on.
 
+### Window death-cost-w1: the results
+
+Run by the coordinating session on 2026-11-02 at the registration commit `1765f8ede` (on `development` `28d95ab3d`),
+lock `death-cost-w1`, after the six pre-checks all passed (12,096 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.DeathCost.` alone | 9 / 9 | "9 tests performed, 9 succeeded, 0 failed" |
+| `Cataclysm.SaveRecords.` alone | 17 / 17 | "17 tests performed, 17 succeeded, 0 failed" |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15 | "15 tests performed, 15 succeeded, 0 failed" |
+| Whole Unreal suite | 4586 / 0 | "4586 tests performed, 4586 succeeded, 0 failed"; "Declared: 4586 tests in the tree at 1765f8ede; 4586 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" (712 at the base; this branch's save tests write saves) |
+| Python | of record | "7234 passed, 8 skipped in 214.77s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1 | 6 in 2 tests | PROVED. The kept broken-half log fails exactly the six registered assertions, X being "Outpost (-3,0)": in each test "the walk's three days are kept" (3 expected, 5 read), "Standard's five days are kept as the death's cost" (5 expected, 3 read) and "the line says so" with the walk's and the death's days swapped; restored 9 of 9 |
+| P2 | 1 | PROVED. Exactly "on the same day as the last hit the death is shown", expected "Day 12: you died in the dungeon on Outpost (-2,-1). The walk's 2 days ran, the death cost 5 more days, and no city fell.", read "Day 12: a dungeon hit Outpost (-3,0) and left."; restored 9 of 9 |
+| P3 | 1 | PROVED. Exactly "it is gone a quarter second after them", read "Day 4: you died in the dungeon on Outpost (-3,0). The walk's 3 days ran, the death cost 5 more days, and no city fell." (the uncertain last clause held); restored 9 of 9 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - The drawing: `DrawHUD` never runs under `-nullrhi`, so the notice's two lines, its place, its ink and its shrinking
