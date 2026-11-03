@@ -110,6 +110,10 @@ void UCataclysmInventoryWidget::NativeTick(const FGeometry& MyGeometry,
 	}
 
 	Refresh(Inventory, Equipment, Abilities);
+
+	// THE ITEM ON THE CURSOR FOLLOWS IT, after Refresh has said whether there is
+	// one. Issue #878.
+	PlaceHeldItem(MyGeometry);
 }
 
 void UCataclysmInventoryWidget::NativeDestruct()
@@ -288,6 +292,17 @@ void UCataclysmInventoryWidget::BuildTree()
 				  /*Column=*/SlotIndex % UCataclysmInventoryComponent::Columns,
 				  Cells);
 	}
+
+	// THE ITEM ON THE CURSOR, issue #878: one more cell, the same widgets a grid
+	// cell is, added to the root LAST so it is drawn over the panel. Pinned to
+	// the root's top left corner and moved by a render translation each frame
+	// (PlaceHeldItem), so following the mouse never lays anything out again.
+	// Drawn at no opacity until something is held; RefreshHeldItem says when.
+	HeldCell = MakeCell(/*bTakesPartInHitTesting=*/false);
+	UOverlaySlot* CursorCellSlot = Root->AddChildToOverlay(HeldCell.Size);
+	CursorCellSlot->SetHorizontalAlignment(HAlign_Left);
+	CursorCellSlot->SetVerticalAlignment(VAlign_Top);
+	HeldCell.Size->SetRenderOpacity(0.0f);
 }
 
 void UCataclysmInventoryWidget::BuildGearPanel(UVerticalBox* Into)
@@ -340,6 +355,20 @@ void UCataclysmInventoryWidget::BuildGearPanel(UVerticalBox* Into)
 void UCataclysmInventoryWidget::BuildCell(
 	UUniformGridPanel* Grid, int32 Row, int32 Column,
 	TArray<FCataclysmInventoryCellWidgets>& Into)
+{
+	const FCataclysmInventoryCellWidgets Widgets =
+		MakeCell(/*bTakesPartInHitTesting=*/true);
+
+	UUniformGridSlot* GridSlot =
+		Grid->AddChildToUniformGrid(Widgets.Size, Row, Column);
+	GridSlot->SetHorizontalAlignment(HAlign_Fill);
+	GridSlot->SetVerticalAlignment(VAlign_Fill);
+
+	Into.Add(Widgets);
+}
+
+FCataclysmInventoryCellWidgets UCataclysmInventoryWidget::MakeCell(
+	bool bTakesPartInHitTesting)
 {
 	FCataclysmInventoryCellWidgets Widgets;
 
@@ -401,12 +430,26 @@ void UCataclysmInventoryWidget::BuildCell(
 	// its neighbours.
 	Widgets.Size->SetClipping(EWidgetClipping::ClipToBounds);
 
-	UUniformGridSlot* GridSlot =
-		Grid->AddChildToUniformGrid(Widgets.Size, Row, Column);
-	GridSlot->SetHorizontalAlignment(HAlign_Fill);
-	GridSlot->SetVerticalAlignment(VAlign_Fill);
+	// THE ITEM ON THE CURSOR TAKES NO PART IN HIT TESTING, EVERY WIDGET OF IT,
+	// one at a time. It is painted over the grid exactly where the cursor is, so
+	// a hit-testable piece of it would be the widget under the cursor for as long
+	// as anything is held: the cell beneath would never be hovered and its tool
+	// tip would never show. SelfHitTestInvisible exempts only the widget it is
+	// set on, which is why it is set on all six rather than on the outermost;
+	// the one value that covers a whole subtree is the one this file must not
+	// use, for the reason the root's visibility in BuildTree gives. Issue #878.
+	if (!bTakesPartInHitTesting)
+	{
+		UWidget* const Pieces[] = {
+			Widgets.Size.Get(), Widgets.Frame.Get(), Widgets.Interior.Get(),
+			Inside, Widgets.Label.Get(), Widgets.Quantity.Get()};
+		for (UWidget* Piece : Pieces)
+		{
+			Piece->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		}
+	}
 
-	Into.Add(Widgets);
+	return Widgets;
 }
 
 void UCataclysmInventoryWidget::Refresh(
@@ -527,18 +570,28 @@ void UCataclysmInventoryWidget::Refresh(
 			Widgets.Quantity->SetFontSize(QuantityFontPx);
 		}
 
-		const FLinearColor Colour = FScreen::ColourFor(Carried, Rarities,
-													   Materials, Tiers);
+		// THE SLOT ON THE CURSOR IS DRAWN AS LIFTED, issue #878: its frame kept
+		// at its thickness in a dimmed colour, and no name or count, because
+		// those are on the cursor now. Before this the grid looked the same
+		// whether anything was held or not. Only the colour and the text are
+		// affected, both already written every frame; no tool tip is touched.
+		// Picking up does not move ChangeCount (HoldSlot counts nothing), so the
+		// comparison tool tips below are not rebuilt by it; putting down moves
+		// an item between slots and rebuilds them once, as it did before.
+		const ECataclysmCellLook Look = FScreen::CellLookFor(Inventory, Index);
+
+		const FLinearColor Colour = FScreen::FrameColourFor(
+			FScreen::ColourFor(Carried, Rarities, Materials, Tiers), Look);
 
 		Widgets.Frame->SetBrush(FSlateColorBrush(Colour));
 		Widgets.Frame->SetPadding(FMargin(static_cast<float>(
 			FScreen::BorderThicknessFor(Carried, Materials))));
 
-		Widgets.Label->SetText(
-			FText::FromString(FScreen::LabelFor(Carried, Bases, Materials)));
+		Widgets.Label->SetText(FText::FromString(FScreen::TextShownFor(
+			FScreen::LabelFor(Carried, Bases, Materials), Look)));
 
-		Widgets.Quantity->SetText(
-			FText::FromString(FScreen::QuantityTextFor(Carried)));
+		Widgets.Quantity->SetText(FText::FromString(
+			FScreen::TextShownFor(FScreen::QuantityTextFor(Carried), Look)));
 
 		if (bCarriedToolTipsStale)
 		{
@@ -602,6 +655,93 @@ void UCataclysmInventoryWidget::Refresh(
 	RefreshGear(Equipment, Bases, Affixes, Rarities, Materials, Tiers,
 				PositiveEnchantments, NegativeEnchantments, bResized, CellPx,
 				LabelFontPx, bWornChanged);
+
+	RefreshHeldItem(Inventory, Bases, Rarities, Materials, Tiers, bResized,
+					CellPx, LabelFontPx, QuantityFontPx);
+}
+
+void UCataclysmInventoryWidget::RefreshHeldItem(
+	const UCataclysmInventoryComponent* Inventory, const UDataTable* Bases,
+	const UDataTable* Rarities, const UDataTable* Materials,
+	const UDataTable* Tiers, bool bResized, float CellPx, float LabelFontPx,
+	float QuantityFontPx)
+{
+	if (!HeldCell.Size || !HeldCell.Frame || !HeldCell.Label
+		|| !HeldCell.Quantity)
+	{
+		return;
+	}
+
+	// THE SAME SIZE AS A GRID CELL, and resized when they are.
+	if (bResized)
+	{
+		HeldCell.Size->SetWidthOverride(CellPx);
+		HeldCell.Size->SetHeightOverride(CellPx);
+		HeldCell.Label->SetFontSize(LabelFontPx);
+		HeldCell.Quantity->SetFontSize(QuantityFontPx);
+	}
+
+	const int32 Drawn = FScreen::HeldSlotToDraw(Inventory);
+	if (Drawn == INDEX_NONE)
+	{
+		// NOTHING HELD, NOTHING DRAWN. Hidden by opacity and not removed, so a
+		// pick-up and a put-down create and destroy no widget.
+		HeldCell.Size->SetRenderOpacity(0.0f);
+		return;
+	}
+
+	// DRAWN AS THE CELL IT CAME FROM WAS DRAWN BEFORE IT WAS LIFTED: the same
+	// rarity colour, frame thickness, label and count, from the same functions,
+	// so the thing on the cursor is recognisably the thing that was picked up.
+	// HeldSlotToDraw answered a slot, so the inventory is there and the index is
+	// in it.
+	const FCataclysmCarriedSlot& OnTheCursor = Inventory->GetSlots()[Drawn];
+
+	HeldCell.Frame->SetBrush(FSlateColorBrush(
+		FScreen::ColourFor(OnTheCursor, Rarities, Materials, Tiers)));
+	HeldCell.Frame->SetPadding(FMargin(static_cast<float>(
+		FScreen::BorderThicknessFor(OnTheCursor, Materials))));
+	HeldCell.Label->SetText(
+		FText::FromString(FScreen::LabelFor(OnTheCursor, Bases, Materials)));
+	HeldCell.Quantity->SetText(
+		FText::FromString(FScreen::QuantityTextFor(OnTheCursor)));
+
+	HeldCell.Size->SetRenderOpacity(1.0f);
+}
+
+void UCataclysmInventoryWidget::PlaceHeldItem(const FGeometry& MyGeometry)
+{
+	if (!HeldCell.Size || HeldCell.Size->GetRenderOpacity() <= 0.0f)
+	{
+		return;
+	}
+
+	// THE SAME CURSOR POSITION, AND THE SAME CONVERSION, THAT A PRESS IS
+	// JUDGED BY. The controller reads GetMousePosition and CarriedSlotUnderCursor
+	// converts it with ScreenToWidgetAbsolute; doing the same here means the
+	// drawn item is centred on exactly the point a press would put it down at.
+	const APlayerController* Controller = GetOwningPlayer();
+	float X = 0.0f;
+	float Y = 0.0f;
+	if (!Controller || !Controller->GetMousePosition(X, Y))
+	{
+		// NO MOUSE OVER THE VIEWPORT. It stays where it was last drawn rather
+		// than jumping to a corner.
+		return;
+	}
+
+	FVector2D Absolute = FVector2D::ZeroVector;
+	USlateBlueprintLibrary::ScreenToWidgetAbsolute(
+		this, FVector2D(X, Y), Absolute, /*bIncludeWindowPosition=*/false);
+
+	// INTO THIS WIDGET'S OWN SPACE, which is the root overlay's: the cell is
+	// pinned to the root's top left corner, so a translation in this space is a
+	// position in it.
+	const FVector2D Local =
+		FVector2D(MyGeometry.AbsoluteToLocal(FVector2f(Absolute)));
+
+	HeldCell.Size->SetRenderTranslation(
+		FScreen::HeldItemTopLeftFor(Local, LastCellPx));
 }
 
 void UCataclysmInventoryWidget::RefreshGear(

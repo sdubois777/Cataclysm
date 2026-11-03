@@ -203,6 +203,41 @@ private:
 	void BuildCell(UUniformGridPanel* Grid, int32 Row, int32 Column,
 				   TArray<FCataclysmInventoryCellWidgets>& Into);
 
+	/**
+	 * The widgets of one cell, built and not yet placed anywhere.
+	 *
+	 * SHARED BY THE GRIDS AND THE ITEM ON THE CURSOR, so the held item is drawn
+	 * by exactly the widgets a cell is. Issue #878.
+	 *
+	 * @param bTakesPartInHitTesting  false for the item on the cursor. Every
+	 *        widget of that cell is then made SelfHitTestInvisible one by one,
+	 *        because it is drawn on top of the grid exactly where the cursor
+	 *        is: a hit-testable one would be the widget under the cursor all the
+	 *        time it is held, and the cell beneath would never show its tool tip.
+	 */
+	FCataclysmInventoryCellWidgets MakeCell(bool bTakesPartInHitTesting);
+
+	/**
+	 * Writes the item on the cursor: what it looks like, or that nothing is
+	 * drawn. Called from Refresh, every frame, and cheap: one cell's colour,
+	 * frame and text, and never a tool tip. Issue #878.
+	 */
+	void RefreshHeldItem(const UCataclysmInventoryComponent* Inventory,
+						 const UDataTable* Bases, const UDataTable* Rarities,
+						 const UDataTable* Materials, const UDataTable* Tiers,
+						 bool bResized, float CellPx, float LabelFontPx,
+						 float QuantityFontPx);
+
+	/**
+	 * Moves the item on the cursor to the cursor. Called from NativeTick after
+	 * Refresh, because it needs the widget's geometry and Refresh has none.
+	 *
+	 * A RENDER TRANSLATION AND NOT A LAYOUT CHANGE. Moving it changes where it is
+	 * painted and nothing about the panel's layout, so following the mouse every
+	 * frame costs no layout pass and touches no other cell.
+	 */
+	void PlaceHeldItem(const FGeometry& MyGeometry);
+
 	/** Which cell of a list the cursor is over, or INDEX_NONE. */
 	int32 IndexOfCellUnderCursor(
 		const TArray<FCataclysmInventoryCellWidgets>& From,
@@ -267,6 +302,18 @@ private:
 	 */
 	UPROPERTY()
 	TArray<FCataclysmInventoryCellWidgets> GearCells;
+
+	/**
+	 * The item on the cursor, drawn as one more cell over everything else.
+	 * Issue #878.
+	 *
+	 * BUILT ONCE WITH THE REST OF THE TREE AND NEVER REBUILT. It is shown by
+	 * opacity rather than added and removed, so picking an item up and putting
+	 * it down creates no widget, and it is in neither Cells nor GearCells, so
+	 * the cursor's own cell is never what CarriedSlotUnderCursor answers.
+	 */
+	UPROPERTY()
+	FCataclysmInventoryCellWidgets HeldCell;
 
 	/** The line above the panel of worn gear. */
 	UPROPERTY()

@@ -375,7 +375,8 @@ def test_every_judgement_the_screen_makes_is_outside_the_widget() -> None:
 
     for judgement in ("CellSizeFor", "LabelFontSizeFor", "LabelFor",
                       "QuantityTextFor", "ColourFor", "BorderThicknessFor",
-                      "HeaderTextFor"):
+                      "HeaderTextFor", "HeldSlotToDraw", "CellLookFor",
+                      "FrameColourFor", "TextShownFor", "HeldItemTopLeftFor"):
         assert re.search(rf"\b{judgement}\s*\(", header), (
             f"UCataclysmInventoryScreen no longer declares {judgement}. Every "
             f"judgement the inventory screen makes lives outside the widget so "
@@ -387,3 +388,63 @@ def test_every_judgement_the_screen_makes_is_outside_the_widget() -> None:
         "CataclysmInventoryWidget no longer refers to "
         "UCataclysmInventoryScreen at all, so it is deciding for itself what "
         "each cell says and how big it is.")
+
+
+def body_of(text: str, definition: str) -> str:
+    """One function's body: from its definition to the first closing brace in
+    the first column, which is where every function in these files ends."""
+    parts = text.split(definition, 1)
+    assert len(parts) == 2, (
+        f"CataclysmInventoryWidget.cpp has no {definition}. If it was renamed, "
+        f"rename it here too.")
+    return parts[1].split("\n}", 1)[0]
+
+
+def test_the_held_item_is_drawn_without_rebuilding_anything() -> None:
+    """The item on the cursor follows the mouse every frame and builds nothing.
+
+    Issue #878 draws a held item under the cursor and its slot as lifted. Both
+    happen every frame the screen is open, and the trap beside them is issue
+    #1192: a tool tip set every frame is a new tool tip object every frame,
+    and Slate closes and re-opens it until it never shows. Building or adding
+    a widget every frame would be the same mistake for the whole cell.
+
+    SO THE TWO PER-FRAME FUNCTIONS ARE READ FOR WHAT THEY MUST NOT DO, and the
+    cell they write is checked to be built once, with the tree, and to take no
+    part in hit testing, or the cell under a held item could never show its own
+    tool tip. No test can watch any of this draw, because the automation
+    command passes -nullrhi (issue #559), so the source is what is checked.
+    """
+    text = read(WIDGET_CPP)
+
+    for definition in ("::RefreshHeldItem(", "::PlaceHeldItem("):
+        body = body_of(text, definition)
+        for forbidden in ("ConstructWidget", "MakeCell(", "SetToolTip",
+                          "AddChild", "RemoveFromParent"):
+            assert forbidden not in body, (
+                f"UCataclysmInventoryWidget{definition.rstrip('(')} calls "
+                f"{forbidden}. It runs every frame the screen is open; building "
+                f"a widget or setting a tool tip there rebuilds it every frame, "
+                f"which is issue #1192's fault. Build the cell once in BuildTree "
+                f"and only write its colour, text, opacity and translation.")
+
+    build = body_of(text, "::BuildTree(")
+    assert "MakeCell(/*bTakesPartInHitTesting=*/false)" in build, (
+        "BuildTree no longer builds the item on the cursor as a cell that takes "
+        "no part in hit testing. Drawn over the grid where the cursor is, a "
+        "hit-testable one would be the widget under the cursor all the time an "
+        "item is held, and the cell beneath would never show its tool tip.")
+
+    # WHAT IS DRAWN, AND WHERE, ARE THE SCREEN'S JUDGEMENTS, which the
+    # automation tests in CataclysmHeldItemTests.cpp cover.
+    for call in ("FScreen::HeldSlotToDraw(", "FScreen::CellLookFor(",
+                 "FScreen::FrameColourFor(", "FScreen::TextShownFor(",
+                 "FScreen::HeldItemTopLeftFor("):
+        assert call in text, (
+            f"CataclysmInventoryWidget.cpp no longer calls {call.rstrip('(')}, "
+            f"so the held item or the lifted cell is decided inside the widget, "
+            f"where no test can reach it.")
+    assert "SetRenderTranslation(" in body_of(text, "::PlaceHeldItem("), (
+        "PlaceHeldItem no longer moves the item on the cursor with a render "
+        "translation. Anything that moves it through layout lays the panel out "
+        "again every frame the mouse moves.")

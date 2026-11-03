@@ -216,3 +216,72 @@ FString UCataclysmInventoryScreen::HeaderTextFor(int32 Used, int32 Capacity,
 
 	return FString::Printf(TEXT("%s        holding %s"), *Counted, *HeldName);
 }
+
+int32 UCataclysmInventoryScreen::HeldSlotToDraw(
+	const UCataclysmInventoryComponent* Inventory)
+{
+	if (!Inventory || !Inventory->IsHolding())
+	{
+		return INDEX_NONE;
+	}
+
+	// AN EMPTY HELD SLOT DRAWS NOTHING. Wearing the held item with the right
+	// button can empty the slot and leaves the hold on it, and an empty frame
+	// following the mouse would claim the player is holding something.
+	const int32 OnTheCursor = Inventory->HeldSlot();
+	const TArray<FCataclysmCarriedSlot>& Carried = Inventory->GetSlots();
+	if (!Carried.IsValidIndex(OnTheCursor)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(Carried[OnTheCursor]))
+	{
+		return INDEX_NONE;
+	}
+
+	return OnTheCursor;
+}
+
+ECataclysmCellLook UCataclysmInventoryScreen::CellLookFor(
+	const UCataclysmInventoryComponent* Inventory, int32 SlotIndex)
+{
+	if (!Inventory || !Inventory->GetSlots().IsValidIndex(SlotIndex)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(
+			   Inventory->GetSlots()[SlotIndex]))
+	{
+		return ECataclysmCellLook::Empty;
+	}
+
+	// ASKED OF THE INVENTORY AND NOT REMEMBERED BY THE SCREEN. A slot number is
+	// all a hold is, and INDEX_NONE never equals a valid index, so nothing held
+	// means nothing lifted without a second test.
+	return SlotIndex == Inventory->HeldSlot() ? ECataclysmCellLook::Lifted
+											  : ECataclysmCellLook::Full;
+}
+
+FLinearColor UCataclysmInventoryScreen::FrameColourFor(
+	const FLinearColor& ItemColour, ECataclysmCellLook Look)
+{
+	if (Look != ECataclysmCellLook::Lifted)
+	{
+		return ItemColour;
+	}
+
+	// THE SAME HUE, DIMMED. The frame's thickness is left alone by the caller,
+	// so the rarity is still there to read in both channels, only quieter.
+	FLinearColor Dimmed = ItemColour;
+	Dimmed.A *= LiftedFrameOpacity;
+	return Dimmed;
+}
+
+FString UCataclysmInventoryScreen::TextShownFor(const FString& Text,
+												ECataclysmCellLook Look)
+{
+	return Look == ECataclysmCellLook::Lifted ? FString() : Text;
+}
+
+FVector2D UCataclysmInventoryScreen::HeldItemTopLeftFor(const FVector2D& Cursor,
+														 float CellPx)
+{
+	// HALF A CELL UP AND HALF A CELL LEFT, which puts the cursor in the middle
+	// of the drawn item.
+	const double HalfCell = static_cast<double>(FMath::Max(0.0f, CellPx)) * 0.5;
+	return Cursor - FVector2D(HalfCell, HalfCell);
+}
