@@ -131,6 +131,45 @@ def test_the_call_is_in_the_shared_place_and_not_in_one_shape():
         f"cost.")
 
 
+def test_a_movement_skill_and_an_aura_toggle_play_no_swing():
+    """Two exemptions from the clip, and only two.
+
+    A MOVEMENT SKILL, since 2026-09-02: the project owner pressed the
+    Greatsword's charge and saw "this weird punch when he starts moving".
+
+    AN AURA TOGGLE, since issue #1180's ruling of 2026-09-14: "keep the unarmed
+    punch clip for SelfBuff, Summon, Deployable and Aura for now, and suppress
+    it on Aura toggles." A toggle is an aura with no Duration, which is
+    `UCataclysmAuraSkill`'s own definition, so the Duration test is part of the
+    exemption: without it every aura would be exempt, Living Pyre included,
+    and "keep ... Aura" would mean nothing.
+
+    CHECKED FROM PYTHON because continuous integration builds no C++; the
+    automation tests in `CataclysmPlayerAttackAnimationTests.cpp` check what
+    actually plays.
+    """
+    body = function_body(
+        read(SKILL_CPP), "bool UCataclysmSkillTemplate::CommitAndBegin")
+
+    assert "Shape() != ECataclysmSkillShape::Movement" in body, (
+        "CommitAndBegin no longer exempts the Movement shape from the attack "
+        "clip, so a charge throws a punch and then runs.")
+
+    toggle = re.search(
+        r"Shape\(\)\s*==\s*ECataclysmSkillShape::Aura\s*&&\s*"
+        r"Params\.Duration\s*<=\s*0\.0f", body)
+    assert toggle, (
+        "CommitAndBegin does not exempt an aura with no Duration -- a toggle -- "
+        "from the attack clip, so switching Conflagration on throws a punch. "
+        "Ruled under issue #1180: suppress it on Aura toggles.")
+
+    for shape in ("SelfBuff", "Summon", "Deployable"):
+        assert f"ECataclysmSkillShape::{shape}" not in body, (
+            f"CommitAndBegin names the {shape} shape. The ruling of issue #1180 "
+            f"keeps the clip for {shape} for now; only Movement and an aura "
+            f"toggle are exempt.")
+
+
 def test_the_default_is_to_do_nothing_so_enemies_are_unaffected():
     """A virtual with an empty body, because the skeletons differ.
 

@@ -184,6 +184,40 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	Movement->bOrientRotationToMovement = true;
 	Movement->RotationRate = FRotator(0.0f, 640.0f, 0.0f);
 
+	// A CLICKED WALK IS DRIVEN BY ACCELERATION, SO IT PLAYS THE RUN. Issue #1174.
+	// Every click-to-move order goes through `SimpleMoveToLocation`, and the path
+	// following component it starts moves a character in one of two ways. With
+	// this false, the engine's default, it hands the movement component a
+	// velocity (`RequestDirectMove`) and the component's acceleration stays at
+	// zero; with it true it hands over a direction as movement input
+	// (`RequestPathMove`), exactly as holding the button does. `ABP_Unarmed` sets
+	// `ShouldMove` from `GroundSpeed > 0.01 AND GetCurrentAcceleration != 0`, so a
+	// clicked walk played the idle pose while it travelled -- the "slides there"
+	// the project owner reported.
+	//
+	// THE TURN WAS NEVER PART OF IT, whatever the issue guessed.
+	// `bOrientRotationToMovement`, set above, turns toward the acceleration and,
+	// when there is none, toward the path follower's requested velocity
+	// (`UCharacterMovementComponent::ComputeOrientToMovementRotation`), so a
+	// clicked walk faced its path either way. The navigation test measures both.
+	//
+	// HERE, ON THE PLAYER'S OWN COMPONENT, AND NOT IN THE ANIMATION BLUEPRINT.
+	// Changing `ShouldMove` to ground speed alone would change braking for every
+	// character that reads the shared asset, and would be lost by anyone
+	// re-copying it from the engine's template.
+	//
+	// WHAT ELSE IT CHANGES. The end of a walk: the path follower eases its input
+	// over the engine's own braking distance -- speed squared over twice
+	// `BrakingDecelerationWalking`, about 39 cm at 400 cm/s
+	// (`GetPathFollowingBrakingDistance`) -- and then lets go, and the character
+	// brakes as it does when a held key is released, instead of being stopped
+	// dead on the point (`ShouldStopMovementOnPathFinished` is false for a walk
+	// driven by acceleration). Shoulder Through now fires on a clicked walk,
+	// which is the "ordinary walking" its ruling of 2026-09-25 names; a walk to a
+	// clicked enemy is still excluded by the controller's `PendingAttack` test.
+	// A charge is unaffected: `PawnCannotWalk` stops every path while one runs.
+	Movement->GetNavMovementProperties()->bUseAccelerationForPaths = true;
+
 	// Movement is confined to the horizontal plane. Dungeon floors are flat and
 	// this keeps a click on a wall from pushing the character upward.
 	Movement->bConstrainToPlane = true;

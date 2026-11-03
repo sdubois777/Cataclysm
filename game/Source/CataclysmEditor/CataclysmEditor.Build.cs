@@ -35,6 +35,13 @@ public class CataclysmEditor : ModuleRules
 			// sandbox level its navigation bounds.
 			"NavigationSystem",
 
+			// SimpleMoveToLocation, AAIController and the path following
+			// component, for the test that walks a clicked path across a real
+			// navigation mesh (issues #1174 and #793). The Cataclysm module
+			// already depends on it publicly; it is named here because this
+			// module now calls into it directly.
+			"AIModule",
+
 			// The widget authoring helper, which builds a Widget Blueprint's
 			// tree because the editor's Python layer cannot reach it. All four
 			// are needed together and none is spare:
