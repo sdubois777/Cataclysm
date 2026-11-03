@@ -309,7 +309,8 @@ bool FCataclysmWalkFromTheScreenCityPressTest::RunTest(const FString& Parameters
 	if (!TestEqual(TEXT("set-up: the game mode walks nothing yet"), Scene.Mode->EmpireDungeonId,
 				   static_cast<int32>(INDEX_NONE))
 		|| !TestEqual(TEXT("set-up: a fresh run is on day 0"), Run->Day(), 0)
-		|| !TestEqual(TEXT("set-up: and owes nothing"), Run->DaysOwed(), 0))
+		|| !TestEqual(TEXT("set-up: and owes nothing"), Run->DaysOwed(), 0)
+		|| !TestEqual(TEXT("set-up: and has awarded no empire points"), Run->LastEmpirePointsAwarded, 0.0))
 	{
 		return false;
 	}
@@ -343,6 +344,9 @@ bool FCataclysmWalkFromTheScreenCityPressTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("leaving the first ran the one day it owed"), Run->Day(), 1);
 	TestEqual(TEXT("and the second owes the day arriving costs"), Run->DaysOwed(), 1);
 	TestNotNull(TEXT("and the first, left uncleared, is still on the map"), Run->FindDungeon(701));
+
+	// AND NO EMPIRE POINTS, since issue #52: only `ClearDungeon` awards them, and leaving a walk clears nothing.
+	TestEqual(TEXT("and leaving it uncleared awarded no empire points"), Run->LastEmpirePointsAwarded, 0.0);
 	return true;
 }
 
@@ -377,6 +381,7 @@ bool FCataclysmWalkFromTheScreenBossPressTest::RunTest(const FString& Parameters
 	}
 	const int32 BossId = Boss->DungeonId;
 	const int32 BossFloors = Boss->Floors;
+	const double AwardBefore = Run->LastEmpirePointsAwarded;
 	Scene.Mode->SetEmpireRunForTests(Run);
 
 	UCataclysmEmpireMapWidget* Map = NewObject<UCataclysmEmpireMapWidget>();
@@ -385,13 +390,19 @@ bool FCataclysmWalkFromTheScreenBossPressTest::RunTest(const FString& Parameters
 	Map->Refresh();
 
 	Map->ClickCataclysmDungeonWalkForTests();
-	AddInfo(FString::Printf(TEXT("WALK BOSS: boss %d of %d floors; walking %d, %d floors, refusal \"%s\""), BossId,
-							BossFloors, Scene.Mode->EmpireDungeonId, Scene.Mode->TotalFloors, *Map->LastWalkRefusal()));
+	AddInfo(FString::Printf(TEXT("WALK BOSS: boss %d of %d floors; walking %d, %d floors, refusal \"%s\"; last award %.3f, "
+								 "%.3f before"),
+							BossId, BossFloors, Scene.Mode->EmpireDungeonId, Scene.Mode->TotalFloors,
+							*Map->LastWalkRefusal(), Run->LastEmpirePointsAwarded, AwardBefore));
 
 	TestEqual(TEXT("pressing Walk under the boss marker enters the boss dungeon"), Scene.Mode->EmpireDungeonId, BossId);
 	TestEqual(TEXT("as deep as the boss dungeon is"), Scene.Mode->TotalFloors, BossFloors);
 	TestEqual(TEXT("with no refusal written under the map"), Map->LastWalkRefusal(), FString());
 	TestNotNull(TEXT("and the boss dungeon still stands while it is walked"), Run->FindCataclysmDungeon());
+
+	// AND NO EMPIRE POINTS, since issue #52: entering clears nothing, so the last award is still the last quest
+	// dungeon's, which opened the boss.
+	TestEqual(TEXT("and entering it awarded no empire points"), Run->LastEmpirePointsAwarded, AwardBefore);
 	return true;
 }
 
