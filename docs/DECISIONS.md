@@ -19,13 +19,20 @@ creatures (`ACataclysmBruteCharacter`, `ACataclysmAbyssalWardenCharacter`, `ACat
 `AttackTarget` cuts one short; 12 new tests in `game/Source/Cataclysm/Tests/CataclysmHitReactionTests.cpp`;
 `tools/tests/test_a_struck_enemy_flinches.py`, new; `game/docs/enemy-source-assets.md`'s new "The four clips each
 creature flinches with"; `docs/Cataclysm_GDD_v2.md`'s new "What being hit looks like". No `.uasset` was made or
-changed. Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745).
+changed. Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745). **And, ruled separately the same day and
+built in the same change, a dead creature leaves the crowd at death:** `ACataclysmEnemyController::LeaveTheCrowdAtDeath`,
+new, called from `ACataclysmEnemyCharacter::HandleDeath`, and one new test in
+`game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp`, group `Cataclysm.Crowd.`; issue
+[#761](https://github.com/sdubois777/Cataclysm/issues/761)'s follow-up.
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN.** Phase 1 was written while the build machine was in use, by instruction: no Unreal
-  build, no Unreal test and no guard proof has been run. Everything under "Registered before the run" is a prediction
-  for a later window.
+- **COMPILED, NOT RUN.** Phase 1 was written while the build machine was in use, by instruction, and did not compile:
+  its direction test called a helper from a namespace it had not named. Phase 2 fixed that, rebased the branch onto
+  development `68335c5ae` and compiled every changed file alone and in its unity file (below). No Unreal test and no
+  guard proof has been run. Everything under "Registered before the run" is a prediction for a later window.
+- **A DEAD CREATURE NOW LEAVES THE DETOUR CROWD THE MOMENT IT DIES**, rather than when its body is removed after the
+  death clip, so the living stop steering round a corpse that blocks nothing. Its own section below.
 - **WHAT THE PLAYER SEES.** A Brute, Abyssal Warden, Imp, Corrupted Sentinel, Hellhound, Gatekeeper or Succubus struck
   by a blow that lands -- to health, its energy shield or a temporary absorb -- plays its pack's hit reaction for the
   side the blow came from, unless it is busy: winding up, swinging, casting, charging, already flinching, stunned,
@@ -192,22 +199,161 @@ skipped in 0.17s | restored: 32 passed, 1 skipped in 0.07s", `crashed` False, `n
 - **The flinch records.** `FlinchesChosen` starts at 0, `LastFlinchRefusal` at `None`, on every fresh creature; tests 5
   and 6 read them after a control or with nothing before.
 
+### Also in this change: a dead creature leaves the crowd at death
+
+**The ruling**, by the coordinating session on 2026-11-02, under the owner's delegation: a dead creature leaves the crowd
+at death. It was found while building [#761](https://github.com/sdubois777/Cataclysm/issues/761), whose entry records
+it as found and not changed: every creature walks as a Detour crowd agent through `UCrowdFollowingComponent`, and a dead
+one stayed an agent until its body was destroyed -- after its whole death clip, for a dressed creature -- so the living
+kept steering round a corpse whose capsule `HandleDeath` had already switched off, and it kept a slot in the crowd.
+
+**What changes.** `ACataclysmEnemyCharacter::HandleDeath`, after it switches the body's collision off, asks its brain
+`ACataclysmEnemyController::LeaveTheCrowdAtDeath()`, new and public. That does nothing when the component is already
+`Disabled` -- a world with no crowd manager, or a creature the crowd never took in -- and otherwise leaves the way
+`LeaveTheCrowdIfItWasNotTakenIn` does: `SetCrowdSimulationState(ECrowdSimulationState::Disabled)`, which unregisters the
+agent from the manager. **ONE STEP MORE, BECAUSE A CREATURE CAN DIE MID-WALK:** in engine 5.8
+`UCrowdFollowingComponent::SetCrowdSimulationState` returns without doing anything unless path following is `Idle`, so
+the walk is stopped first with `StopMovement()`. `AAIController::StopMovement` calls `AbortMove`, whose
+`OnPathFinished` calls `Reset`, which sets the status to `Idle` before it returns (`PathFollowingComponent.cpp`, about
+lines 469-477, 578-616 and 801-827). Nothing in this project listens for a finished move (no `OnMoveCompleted` or
+`OnRequestFinished` handler), and the brain does nothing for a dead body (`Think`'s first test). Thralls die through the
+same `HandleDeath` and are covered. **A summoned minion is not:** `ACataclysmMinion::HandleDeath` removes its body half a
+second after death and was not changed, a judgement that half a second is not worth a second path.
+
+**The test**, `Cataclysm.Crowd.ACreatureThatDiesLeavesTheCrowdAndItsLivingNeighbourStays`. **IN THE EDITOR MODULE,
+BESIDE `Cataclysm.FloorCrowd.`, BECAUSE ONLY A REAL NAVIGATION MESH LETS THE CROWD HOLD ANYONE.** The worlds in
+`CataclysmCrowdTests.cpp` have either no navigation system, so no crowd manager, or a navigation system with no mesh, in
+which `LeaveTheCrowdIfItWasNotTakenIn` takes every creature back out at possession; in neither is a living creature an
+agent, so neither could show one stop being one. On the floor `Cataclysm.FloorCrowd.` builds (seed 3, Halls), two Imps
+three metres apart in its open square: both are in crowd mode and held by the crowd (`UCrowdManager::IsAgentValid`);
+the first is ordered to walk four and a half metres and reads `Moving`; `HandleDeath`; then it is dead, no longer held,
+out of crowd mode and its walk is `Idle`, and -- the CONTROL -- its living neighbour is still in crowd mode and still
+held. Dying mid-walk is on purpose: it is the case that needs `StopMovement`.
+
+### Phase 2: the rebase, the compile and a second reading
+
+**The rebase** onto development `68335c5ae` (which added #1174's clicked walk and #761's crowd since phase 1's base
+`5eab89868`) conflicted only in this log: both sides had added entries at the top. Every entry was kept, this one first.
+No C++ conflicted, so there was no hand-resolved C++ for `check_resolved_cpp.py` to read.
+
+**The compile.** The first build of the rebased branch, with the crowd change uncommitted: "Build: Failed - 50 actions,
+45 files compiled", on eight `error C3861: 'FloorDirectionAtDegrees': identifier not found` in
+`CataclysmHitReactionTests.cpp` -- `TheDirectionIsTheNearestOfFourQuarters` was the one test in the file without
+`using namespace CataclysmHitReactionTest;`. Fixed; then "Build: Succeeded - 6 actions, 2 files compiled:
+CataclysmHitReactionTests.cpp, Module.Cataclysm.25.cpp". **Every changed `.cpp` compiled alone** -- adaptive unity
+compiles the git working set file by file -- across three builds: `CataclysmEnemyController.cpp`,
+`CataclysmEnemyCharacter.cpp` and `CataclysmDungeonNavigationTests.cpp` in the first (no error in any of them; the
+failure was the test file's), `CataclysmHitReactionTests.cpp` in the second, and the other nine with the branch reset to
+development so its changes were uncommitted and the makefile moved aside: "Build: Succeeded - 15 actions, 12 files
+compiled: CataclysmCorruptedSentinelCharacter.cpp, CataclysmImpCharacter.cpp, CataclysmHellhoundCharacter.cpp,
+CataclysmAbyssalWardenCharacter.cpp, CataclysmBruteCharacter.cpp, CataclysmSuccubusCharacter.cpp,
+CataclysmHitReaction.cpp, CataclysmGatekeeperCharacter.cpp, CataclysmVitalAttributeSet.cpp, Module.Cataclysm.7.cpp,
+Module.Cataclysm.8.cpp, Module.Cataclysm.9.cpp". **Then the unity files holding them**, committed again and the
+makefile moved aside again: "Build: Succeeded - 9 actions, 4 files compiled: Module.Cataclysm.7.cpp,
+Module.Cataclysm.9.cpp, Module.Cataclysm.8.cpp, Module.Cataclysm.25.cpp", the four that hold the twelve changed files of
+the `Cataclysm` module (read from the generated unity files). The editor module does not build in unity files. No
+compiler warning came from a changed file; the one warning printed, C4996 on `CountBits`, is
+`CataclysmAbilitySystemComponent.cpp` line 1315's and predates this branch.
+
+**A second reading of phase 1.** Nothing but the compile error needed changing.
+
+- **The hook** is in the damage branch after the death notice (`NotifyIfHealthReachedZero`, about line 2199) and after
+  the stun and the knockdown, immediately before `PlayImpactEffect`. It asks `ShouldDrawFor` -- something reached
+  health, the energy shield or a temporary absorb, and the effect is not damage over time -- and refuses a share of an
+  ally's blow. A killing blow is refused as `Dead`, a stunning one as `CannotAct`.
+- **Where the blow came from.** `MakeEffectContext` sets the instigator to the ability system's owner and the causer
+  to its avatar; for the player the owner is the player state, which stands at the origin, so asking the causer before
+  the instigator is what makes the player's blows read from the player. No ordinary blow adds a source object; only a
+  minion's and a gadget's do (`CataclysmSkillEffects.cpp` lines 1493 and 2945).
+- **No flinch delays an attack or a #783 blow.** `OneShotEndsAtSeconds` is read outside `UpdateLoopingAnimation` only
+  by the Warden's `AttackTarget`, which cuts a flinch short first. Every creature's swing and ability clip goes through
+  the one-shot that forgets a flinch (the Brute's abilities through `PlayAbilityMontage`), and no creature's blow is
+  timed from anything a flinch sets. The brain never asks whether a clip is playing.
+- **The crowd.** A flinch moves nothing and asks nothing of the controller, so it neither steers nor stops a creature;
+  a single-node creature struck while walking shows the clip while it keeps walking, as "Not tested" records.
+- **The death clip.** A dead creature refuses every flinch, `HandleDeath` switches the actor's tick off so no
+  `UpdateLoopingAnimation` runs after it, and `PlayDeathAnimation` puts the mesh in single-node mode with the death clip,
+  which replaces a flinch clip or the Brute's flinch montage.
+- **Per frame**, nothing: no tick was added. Per landed blow on one of the seven, one gather of plain facts.
+- **One small behaviour, recorded rather than changed:** the Brute's `IsPlayingAOneShot` asks `IsAnyMontagePlaying`,
+  which stays true while a montage blends out, so for the 0.2 s of a swing's or a flinch's blend-out a blow is refused
+  as `Attacking`.
+
+### The assertion audit, on the path the build machine runs
+
+The window runs in this worktree, which has no Paragon art, so no clip loads and **nothing is ever played**: what a test
+can read there is what a blow CHOSE (`FlinchesChosen`, `LastFlinchDirection`, `LastFlinchClipPath`,
+`LastFlinchRefusal`), never what PLAYED (`LastFlinchClip` stays null, and `IsFlinching` stays false until a test writes
+`FlinchEndsAtSeconds` itself). Every assertion against a fixed figure or a starting state, on that path:
+
+| Test | Assertion | Figure | Why it holds without the art |
+|---|---|---|---|
+| 1 | each of 24 directions | 0 to 3 | pure arithmetic on the two vectors; at 44 and 46 degrees the two projections differ by at least 0.024 |
+| 2 | each of 12 refusals | 0 to 7 | pure: `RefusalFor` on hand-built facts |
+| 3 | one flinch chosen, toward the side, with the named path | 1; 0 to 3; a path | a fresh creature, health 1,000,000, evasion and block 0, no one-shot playing (its end is 0 at world time 0), no wind-up (`WindingUpAbility` starts at -1); the path is named in the constructor, so it is chosen without the art. What played is checked only for a clip that loaded: 0 of 28 here, one skipped half |
+| 4 | none chosen; `NoHitReactions` | 0; 1 | the plain creature names no clips |
+| 5 | the control; then none; `WindingUp`; ability, landing time, 8 passes | 1; 1; 5; as written | the control is test 3's case; the wind-up is written on the brain by the test, and no flinch touches the brain |
+| 6 | none; `Attacking`; the blow due unchanged, not landed 0.01 s before, landed 0.01 s after | 0; 7 | the Brute's swing sets its waiting blow without the art (its strike moment at the authored rate); nothing played |
+| 7 | the flinch ended; the blow waits the left swing's strike alone | `LeftSwingStrikeSeconds`, to 0.001 | the half-second flinch is written by the test; with no left swing clip the swing starts at once; one skipped half |
+| 8 | the first chosen; the second refused as `AlreadyFlinching`; after the end, one more | 1; 1 and 6; 2 | the flinch's end is written by the test; one skipped half |
+| 9 | the burn's ticks start none; a later blow one more | 0; before + 1 | the Imp has no energy shield, so each tick reaches health and is still refused as a tick; the control is counted from the figure after the burn |
+| 10 | none; `Dead` | 0; 2 | the blow's death notice runs before the hook |
+| 11 | none, `CannotAct`, for each | 0; 3 | a designed stun and a designed knockdown, applied before the blows |
+| 12 | none; `Charging` | 0; 4 | Stampede's charge, begun before the blow; nothing is ticked, so it runs on |
+| crowd | held, then not; out of crowd mode; walk `Idle`; neighbour held | -- | a real mesh; read from the crowd manager and the component, not from art |
+
+**The skipped halves this branch adds without the art are exactly three**, each registered below:
+`EachDemonicCreatureFlinchesWithTheClipForTheSideItWasStruckFrom`, `ASwingOrderedDuringAFlinchEndsItAndIsNotDelayed`
+and `NoFlinchStartsWhileOneIsPlaying`. The crowd test has no half that depends on art.
+
 ### Registered before the run
+
+The engine words a failed `TestEqual` on whole numbers "Expected '<what>' to be <expected>, but it was <actual>.", a
+failed `TestTrue` "Expected '<what>' to be true." and a failed `TestFalse` "Expected '<what>' to be false."
+(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` lines 2065, 2676 and 2666, in this engine).
+
+**Base counts** are the "Test Completed" lines, counted by prefix and ignoring case as the engine's filter does, in the
+crowd window's whole-suite engine log at `c1408064b`, whose tree is development `68335c5ae`'s (4619 performed, every
+one `Success`; 44 skipped halves; "Test saves: 721 written and deleted, 0 left behind"). Every prefix ends in a dot, and
+each matches only its own group there: `Cataclysm.Crowd` without the dot would take `Cataclysm.CrowdControl.` and
+`Cataclysm.CrowdControlCeiling.` too, and `Cataclysm.Enemy` would take nine groups, 127 tests. The groups run alone are the two
+this branch adds tests to, the three that share the changed navigation test file, every group named for one of the
+seven creatures whose class changed, the brain's, #783's blow timing, and the three that kill creatures through the
+changed `HandleDeath`.
 
 | Figure | Registered |
 |---|---|
-| `Cataclysm.HitReaction.` alone | 12 / 12 (0 at the base); without the Paragon art, three skipped halves: `EachDemonicCreatureFlinchesWithTheClipForTheSideItWasStruckFrom` (28 of 28 clips did not load), `ASwingOrderedDuringAFlinchEndsItAndIsNotDelayed`, `NoFlinchStartsWhileOneIsPlaying` |
-| `Cataclysm.EnemyHitTiming.` alone | 14 / 14, as at window enemy-hit-timing-w1; the Warden's `AttackTarget` changed only for a creature already flinching, which none of them is |
-| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total plus 12, all succeeded, 0 failed; the base's skipped halves plus 3; 0 test saves left behind |
-| Python | of record, with JUnit, and ruff, at the registration commit |
+| `Cataclysm.HitReaction.` alone | 12 / 12: none at the base, + 12 by name; without the Paragon art, three skipped halves: `EachDemonicCreatureFlinchesWithTheClipForTheSideItWasStruckFrom` (28 of 28 clips did not load), `ASwingOrderedDuringAFlinchEndsItAndIsNotDelayed`, `NoFlinchStartsWhileOneIsPlaying` |
+| `Cataclysm.Crowd.` alone | 9 / 9: 8 at the base, + 1 by name (`ACreatureThatDiesLeavesTheCrowdAndItsLivingNeighbourStays`) |
+| `Cataclysm.FloorCrowd.` alone | 1 / 1: 1 at the base; its file changed |
+| `Cataclysm.DungeonFloor.` alone | 16 / 16: 16 at the base; its file changed |
+| `Cataclysm.ClickToMove.` alone | 2 / 2: 2 at the base; its file changed |
+| `Cataclysm.Brute.` alone | 23 / 23: 23 at the base |
+| `Cataclysm.Warden.` alone | 20 / 20: 20 at the base |
+| `Cataclysm.Imp.` alone | 6 / 6: 6 at the base |
+| `Cataclysm.Sentinel.` alone | 6 / 6: 6 at the base; the Corrupted Sentinel's group |
+| `Cataclysm.Hellhound.` alone | 11 / 11: 11 at the base |
+| `Cataclysm.Gatekeeper.` alone | 13 / 13: 13 at the base |
+| `Cataclysm.Succubus.` alone | 10 / 10: 10 at the base |
+| `Cataclysm.AI.` alone | 51 / 51: 51 at the base; the brain, whose wind-up the flinch reads |
+| `Cataclysm.EnemyHitTiming.` alone | 14 / 14: 14 at the base, as at window enemy-hit-timing-w1; the Warden's `AttackTarget` changed only for a creature already flinching, which none of them is |
+| `Cataclysm.Enemy.` alone | 19 / 19: 19 at the base; the base enemy, whose `HandleDeath` changed |
+| `Cataclysm.EnemyDeath.` alone | 4 / 4: 4 at the base; a creature's death |
+| `Cataclysm.Command.` alone | 22 / 22: 22 at the base; kills creatures it commands |
+| Whole Unreal suite | 4632 / 4632: 4619 at the base, + 12 + 1 by name; 0 failed; 47 skipped halves, the base's 44 + the three above; 0 test saves left behind (how many were written is not registered: the crowd window's own count moved by 2 with no cause found) |
+| Python | Whole suite, by phase 2, on the tree of the registration commit except this cell: "7302 passed, 9 skipped in 200.90s (0:03:20)", JUnit tests 7311, failures 0, errors 0, skipped 9 -- 33 more than the crowd window's 7278, the 33 cases of `test_a_struck_enemy_flinches.py`, one of which (the clips on disk) skips without the art; `ruff check .` "All checks passed!" |
 | P1, a tick admitted (`if (UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome) && !bShareOfAnAllysDamage)` to `if (Outcome.DealtToHealth > 0.0f && !bShareOfAnAllysDamage)`, in `CataclysmVitalAttributeSet.cpp`), prefix `Cataclysm.HitReaction.ADamageOverTimeTickStartsNoFlinch` | fails "the burn's ticks start no flinch" ("Expected 'the burn's ticks start no flinch' to be 0, but it was 2.": both ticks flinch, without the art because nothing limits them and with it because the Imp's 0.6667 s clip is over before the next) -- 1 -- and nothing else; "a landed blow afterwards does" holds, because it is counted from the figure after the burn |
 | P2, left and right swapped (`return Beside > 0.0 ? ECataclysmHitDirection::Right : ECataclysmHitDirection::Left;` to `return Beside > 0.0 ? ECataclysmHitDirection::Left : ECataclysmHitDirection::Right;`, in `CataclysmHitReaction.cpp`), prefix `Cataclysm.HitReaction.TheDirectionIsTheNearestOfFourQuarters` | fails the 10 cases expecting left or right -- the four "right" ones "... to be 3, but it was 2." and the six "left" ones "... to be 2, but it was 3." -- 10 -- and none of the 14 expecting front or back |
 | P3, the brain's wind-up not asked (`Facts.bWindingUp = (Brain && Brain->WindingUpAbility != INDEX_NONE) \|\| IsChannellingInfernoCharge();` to `Facts.bWindingUp = IsChannellingInfernoCharge();`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.HitReaction.NoFlinchStartsDuringAWindUpAndTheWindUpIsUntouched` | fails "a hit during Molten Roar's wind-up starts no flinch" ("... to be 1, but it was 2.") and "and says the wind-up is why" ("... to be 5, but it was 0.") -- 2 -- and nothing else; the three "wind-up untouched" lines hold, because a flinch never touches the brain |
 
+| P4, the dead do not leave the crowd (`Brain->LeaveTheCrowdAtDeath();` to `(void)Brain;`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.Crowd.ACreatureThatDiesLeavesTheCrowdAndItsLivingNeighbourStays` | fails "once dead, the crowd no longer holds it" and "and it is out of crowd mode" (each "... to be false.") and "and its walk is over" ("... to be true.": nothing else in `HandleDeath` aborts a walk -- `DisableMovement` keeps path following, by the engine's `StopMovementKeepPathing`, and no tick runs) -- 3 -- and nothing else; the four set-up assertions and both CONTROL lines hold |
+
 The four right cases are `+Y`, 46 degrees, 134 degrees and "facing +Y, -X"; the six left are `-Y`, -46, -134, "above and
 to the left", "facing +Y, +X" and "a long facing and a long gap". `ECataclysmFlinchRefusal::WindingUp` is 5 and `None`
 is 0; `ECataclysmHitDirection::Left` is 2 and `Right` 3. Each anchor occurs once in its file, counted by a Python
-`str.count` at the registration commit; the breaks were not compiled.
+`str.count` at phase 1's commit and again in phase 2 on the rebased files by the window's proof script
+(`prove_m745.py <P> --anchors-only`); the breaks were not compiled. P3's break leaves `Brain` unused, which is not an
+error here: this engine disables C4189 (`WindowsPlatformCompilerSetup.h` line 136). P4 keeps it referenced anyway.
 
 ### Not tested
 
@@ -225,6 +371,10 @@ is 0; `ECataclysmHitDirection::Left` is 2 and `Right` 3. Each anchor occurs once
 - A point-blank skill's share struck at an ally and a wearer's share of an ally's blow: read, not tested.
 - The flinch through the player's own skills, minions and projectiles: every test strikes with a plain creature's
   ordinary attack, which reaches the same hook.
+- **That the living walk differently once a body has left the crowd.** No test ticks the crowd (the #761 entry says
+  why); the test reads the crowd manager's own answer for the dead and the living.
+- A summoned minion's death, which leaves it in the crowd for its last half second, and a creature dying while the
+  crowd is full: not changed, not tested.
 
 ---
 
