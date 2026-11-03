@@ -94,6 +94,21 @@ public:
 	 */
 	static constexpr float CentimetresPerMetre = 100.0f;
 
+	/**
+	 * The radius of the player's collision capsule, in centimetres: the
+	 * `CapsuleRadius` this class's constructor gives its capsule, 42.
+	 *
+	 * PUBLIC FOR THE ONE QUESTION ANOTHER CLASS ASKS OF IT. Every creature's melee
+	 * reach is designed against this body -- the Brute's 90 cm is its own 48 plus
+	 * this 42 -- so `ACataclysmEnemyController::ReachAgainstCm` reads it to say
+	 * how far that reach goes against a body of another size. Issue #2706.
+	 *
+	 * A FUNCTION AND NOT THE CONSTANT MOVED HERE, so the figure stays written once,
+	 * in the `.cpp`, where the Python checks that compare it with the model read
+	 * it.
+	 */
+	static float CapsuleRadiusCm();
+
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	/**

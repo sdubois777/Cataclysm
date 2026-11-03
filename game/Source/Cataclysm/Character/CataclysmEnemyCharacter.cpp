@@ -874,14 +874,14 @@ void ACataclysmEnemyCharacter::StrikeWhenTheSwingConnects(AActor* Target,
 	PendingBasicAttackLandsAtSeconds = World->GetTimeSeconds() + DelaySeconds;
 
 	// IN REACH NOW MEANS IT MUST STILL BE IN REACH THEN. The same test the brain
-	// uses to decide to swing rather than chase -- flat distance, reach plus
-	// the contact tolerance -- so a swing the brain ordered always starts true.
+	// uses to decide to swing rather than chase -- `IsInReach`: flat distance,
+	// the reach against this target plus the contact tolerance -- so a swing the
+	// brain ordered always starts true. Issue #2706 made it the same function.
 	//
 	// UNLESS A RULE ORDERED IT, which strikes wherever the target stands. See
 	// `StrikeAsARuleOrders`.
 	bPendingBasicAttackMustStayInReach = !bStrikeOrderedByARule
-		&& FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
-			<= AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm;
+		&& ACataclysmEnemyController::IsInReach(this, Target);
 }
 
 void ACataclysmEnemyCharacter::StrikeAsARuleOrders(AActor* Target)
@@ -930,10 +930,10 @@ bool ACataclysmEnemyCharacter::LandPendingBasicAttack()
 
 	// WALKED OUT OF THE BLOW. The swing was committed and is not taken back --
 	// the animation plays and the attack interval is spent -- but it lands where
-	// it was swung, and the target is no longer there.
-	if (bMustStayInReach
-		&& FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
-			> AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)
+	// it was swung, and the target is no longer there. The brain's own test,
+	// `IsInReach`, so a target pressed against a creature as wide as itself is
+	// still struck. Issue #2706.
+	if (bMustStayInReach && !ACataclysmEnemyController::IsInReach(this, Target))
 	{
 		return false;
 	}

@@ -462,6 +462,66 @@ public:
 	static constexpr float ContactToleranceCm = 2.0f;
 
 	/**
+	 * How far `Attacker`'s attack reaches against `Target`, centre to centre along
+	 * the floor, in centimetres. Issue #2706.
+	 *
+	 * WHY THE TARGET'S SIZE ENTERS AT ALL. Every creature's melee reach is designed
+	 * against the PLAYER's body: the Brute's, the Hellhound's and the Abyssal
+	 * Warden's 90 cm is their own 48 cm radius plus the player's 42, so it is
+	 * exactly the distance at which the two touch (`ContactToleranceCm` above).
+	 * Against a body of 48 cm two capsules cannot come closer than 96, so a Brute
+	 * that is a thrall, maddened, or otherwise fighting another 48 cm creature
+	 * pressed against it and never swung.
+	 *
+	 * SO THE REACH IS THE DESIGNED ONE PLUS HOW MUCH WIDER THE TARGET IS THAN THE
+	 * PLAYER: `AttackReachCm() + (target radius - player radius)`, the target's
+	 * radius as its capsule is scaled. Against the player it is exactly
+	 * `AttackReachCm()`, so nothing changes there; against a 48 cm body it is 6 cm
+	 * longer. Ruled by the coordinating session on 2026-11-03.
+	 *
+	 * NEVER SHORTER THAN THE DESIGNED REACH. Against a body narrower than the
+	 * player (an Imp, a summoned minion, both 30 cm) the difference is negative,
+	 * and it is held at zero, so the reach there is what it was. Shortening it
+	 * would stop a matchup that works today: an Elite Brute, scaled to a 57.6 cm
+	 * body by its rarity (`BodyScale` 1.2 in game/Data/EnemyRarities.csv), touches
+	 * a 30 cm minion at 87.6 cm, which the designed 90 reaches and 78 would not.
+	 *
+	 * THE ATTACKER'S OWN SIZE IS NOT READ, which is a separate question and is
+	 * not answered here: that same Elite Brute touches the player at 99.6 cm,
+	 * beyond its 90 plus the tolerance, whatever this function does with the
+	 * target.
+	 *
+	 * THE DESIGNED REACH UNCHANGED, as it was before issue #2706, for:
+	 *   - a target with no capsule as its root, which has no body width to read;
+	 *   - an attacker that is not an `ACataclysmEnemyCharacter` -- a summoned
+	 *     minion or a gadget -- whose reach is a range set against enemies and not
+	 *     against the player, and whose "within its reach" is ruled to be the
+	 *     brain's own centre-to-centre measure (`ACataclysmMinion::
+	 *     HostilesWithinReach`, ruled 2026-10-27), which this keeps true.
+	 *
+	 * Zero for no attacker.
+	 */
+	static float ReachAgainstCm(const ACataclysmCharacterBase* Attacker, const AActor* Target);
+
+	/**
+	 * Whether `Target` stands within `Attacker`'s reach: the floor-plane distance
+	 * between the two no more than `ReachAgainstCm` plus `ContactToleranceCm`.
+	 * False when either is missing. Issue #2706.
+	 *
+	 * THE ONE TEST EVERY PLACE ASKS THAT COMPARES A CREATURE'S DISTANCE WITH ITS
+	 * REACH, so they cannot disagree: the brain's choice between chasing and
+	 * swinging (`Think`), Famished Beasts' "fight rather than eat" in the same
+	 * function, and the swing's own two questions in
+	 * `ACataclysmEnemyCharacter` -- whether the blow must still be in reach when
+	 * it lands, and whether it is (issue #783).
+	 *
+	 * FAMISHED BEASTS DID NOT ADD THE TOLERANCE UNTIL THIS, and it does now: a
+	 * hungry Brute pressed against the player measured a hair past its 90 cm and
+	 * walked off to eat.
+	 */
+	static bool IsInReach(const ACataclysmCharacterBase* Attacker, const AActor* Target);
+
+	/**
 	 * The least a roam leg is worth walking, as seconds of the character's own
 	 * movement.
 	 *

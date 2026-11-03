@@ -417,6 +417,20 @@ def test_the_engine_measures_reach_on_the_floor_plane() -> None:
         "height difference nobody chose is not what any designed reach means. "
         "See issue #373.")
 
+    # AND THE TEST THAT DECIDES: since issue #2706 the chase, the swing's
+    # landing and Famished Beasts all ask `IsInReach`, so the distance above
+    # only chooses an ability. The floor plane has to hold there too.
+    in_reach = re.search(
+        r"bool\s+ACataclysmEnemyController::IsInReach\s*\([^)]*\)\s*\{(.*?)\n\}",
+        text, re.DOTALL)
+    assert in_reach, (
+        "ACataclysmEnemyController::IsInReach is gone from the controller. It "
+        "is the one test the chase, the swing's landing and Famished Beasts "
+        "ask whether a target is within reach. Issue #2706.")
+    assert re.search(r"FVector::Dist2D\s*\(", in_reach.group(1)), (
+        "ACataclysmEnemyController::IsInReach no longer measures on the floor "
+        "plane. See issue #373.")
+
 
 def test_the_rank_capacities_are_what_the_geometry_gives(imp):
     """The two capacities the document tabulates, recomputed from first

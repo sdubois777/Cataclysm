@@ -114,6 +114,11 @@ namespace
 	}
 }
 
+float ACataclysmPlayerCharacter::CapsuleRadiusCm()
+{
+	return CapsuleRadius;
+}
+
 const TCHAR* ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat =
 	TEXT("movement_speed_reduction_suppressed");
 const TCHAR* ACataclysmPlayerCharacter::CrowdControlEndsWhenItsApplierDiesStat =
