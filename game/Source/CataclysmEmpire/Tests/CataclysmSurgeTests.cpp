@@ -1661,10 +1661,14 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 
 			// AND EVERY SHARE IS ABOVE WHAT IT HAS ON THE FULL LINE, which is
 			// the difference between spreading the barred points and dropping
-			// them. The gap is smallest for Sacrificial, at 14.04% against
-			// 12.00% since the Siege joined the Cow Level off the line (12.90%
-			// against 12.00% before). This compares two computed figures, not
-			// the rolls, so the tolerance above has no bearing on it.
+			// them. The gap is smallest for Sacrificial, the lightest of the
+			// five, at 15.56% against 13.30% since the Siege joined the Cow
+			// Level off the line (14.30% against 13.30% before). This compares
+			// two computed figures, not the rolls, so the tolerance above has no
+			// bearing on it. **IT SAID 12.90% AGAINST 12.00%** until issue #1324
+			// slice 6b, figures from a Sacrificial weight of 12 that had become
+			// 13.3 (`SpawnWeightSacrificial`), and phase 1 of that slice carried
+			// the stale 12 into 14.04%.
 			TestTrue(*FString::Printf(
 						 TEXT("sub-type %d gained from the redistribution"),
 						 Value),

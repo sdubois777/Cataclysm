@@ -18,7 +18,9 @@ THE COORDINATING SESSION'S RULINGS FOR THE SLICE, under the owner's delegation:
 
 THE GAME HOLDS THE SAME RULES in `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned`
 and `DeepenCataclysmDungeon`; `tools/tests/test_surge_port.py` compares the two
-sides' source, and the Unreal tests under `Cataclysm.EmpireRun.` run the game's.
+sides' source, and the Unreal groups `Cataclysm.EarnedBoss.` and
+`Cataclysm.EarnedBossSave.` run the game's. (This said `Cataclysm.EmpireRun.`
+until the second phase of the slice; no test of the boss is in that group.)
 """
 
 from __future__ import annotations
