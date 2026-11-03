@@ -274,6 +274,27 @@ checked against the code it reads:
   Boss rung and spend abilities at contact distances (91 to about 203 cm), below every minimum before and after. The
   modifier-effect tests that raise a Gatekeeper's rung do not think.
 
+### Window lob-minimum-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `6f5bc1874` (on `development`
+`95c8dd308`), lock `lob-minimum-w1`, after the six pre-checks all passed (11,609 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The ten groups alone | each at its registered count | every one "0 failed": LobMinimum. 7, ReachAgainstACreature. 14, Brute. 23, Gatekeeper. 13, Sentinel. 6, Telegraph. 14, AI. 51, Silence. 26, EnemyHitTiming. 14, BossFloor. 5 |
+| Whole Unreal suite | 4712, 47 skipped halves, 0 left behind | "4712 tests performed, 4712 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4712 tests in the tree at 6f5bc1874; 4712 performed, gap 0"; "Test saves: 734 written and deleted, 0 left behind" |
+| Python | of record | "7358 passed, 9 skipped in 192.65s"; JUnit tests 7367, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 3 tests, 11 | PROVED. "7 tests performed, 4 succeeded, 3 failed": exactly the eleven registered, each Gatekeeper minimum reading 348.000000 (357.600006 at rung 1 to 419.439362 at rung 5 expected) and the circle-over-its-body lines at rungs 1 and 5 (52.80 against 57.60 cm, 83.72 against 119.44 cm); restored 7 of 7 |
+| P2 | 3 tests, 11 | PROVED. "7 tests performed, 4 succeeded, 3 failed": exactly the eleven registered, the Brute's minimums reading 258.000000; restored 7 of 7 |
+| P3 | 7 tests, 33 | PROVED. "7 tests performed, 0 succeeded, 7 failed", 33 failed assertions, as registered; restored 7 of 7 |
+
+Each count is the broken run's "Error: Expected" lines, read from its kept log. The other error lines in those logs are
+the engine's two start-up lines about `GameFeatureData` and one "Test Completed. Result={Fail}" line per failed test.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal**: compiled, not run. See SAID FIRST.
