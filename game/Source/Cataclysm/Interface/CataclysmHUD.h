@@ -165,6 +165,13 @@ private:
 	 */
 	void DrawPotions();
 
+	/**
+	 * What the player's last death in a dungeon of the empire cost, centred on the screen in two lines, while
+	 * `ACataclysmPlayerCharacter::DeathCostNoticeAt` answers it: for `DeathCostNoticeSeconds` after standing back up.
+	 * Issue #41, ruled 2026-11-02. Another caller of `DrawTextCentred`; no banner system is started.
+	 */
+	void DrawDeathCostNotice();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
@@ -438,6 +445,16 @@ private:
 	 * locked notice is drawn there too. Issue #1833, phase 2.
 	 */
 	static constexpr float SkillBarNextUseScale = 1.1f;
+
+	/**
+	 * The death-cost notice: its text size, how far down the screen its first line sits as a share of the height,
+	 * how much of the width it may fill before it is shrunk, and the space between its two lines. Issue #41,
+	 * 2026-11-02. Judgements of the session that built it, for play to settle.
+	 */
+	static constexpr float DeathCostNoticeScale = 1.0f;
+	static constexpr float DeathCostNoticeTopShare = 0.3f;
+	static constexpr float DeathCostNoticeWidthShare = 0.9f;
+	static constexpr float DeathCostNoticeLineGapPx = 4.0f;
 
 public:
 	/**

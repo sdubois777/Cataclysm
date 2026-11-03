@@ -1861,9 +1861,10 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	// the whole of what a death did before issue #41.
 	//
 	// WHAT IS STILL NOT BUILT: the equipment a death costs in Hardcore and
-	// Heretic, anything on screen that says what the death cost, a capital to
-	// come back to (issue #48), and what a death does when several players
-	// share a dungeon.
+	// Heretic, a capital to come back to (issue #48), and what a death does
+	// when several players share a dungeon. WHAT THE DEATH COST IS ON SCREEN
+	// since 2026-11-02: `Revive` posts it as a notice and the empire screen
+	// keeps it as its line, both `UCataclysmEmpireMapLayout::LastDeathLine`.
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -1911,7 +1912,17 @@ void ACataclysmPlayerCharacter::Revive()
 		if (ACataclysmDungeonGameMode* DungeonDiedIn =
 				ACataclysmDungeonGameMode::InWorld(GetWorld()))
 		{
-			DungeonDiedIn->EndTheDungeonForADeath();
+			// AND THE PLAYER IS TOLD WHAT IT COST, for `DeathCostNoticeSeconds` from now, in the words the empire
+			// screen uses. Only for a death that ended a walk: one that did not cost nothing. Issue #41, ruled
+			// 2026-11-02.
+			const bool bTheWalkEnded = DungeonDiedIn->EndTheDungeonForADeath();
+			if (bTheWalkEnded)
+			{
+				DeathCostNotice = DungeonDiedIn->DeathCostLine();
+				const UWorld* StoodUpIn = GetWorld();
+				DeathCostNoticePostedAt =
+					StoodUpIn != nullptr ? static_cast<float>(StoodUpIn->GetTimeSeconds()) : 0.0f;
+			}
 		}
 	}
 
@@ -2099,6 +2110,18 @@ void ACataclysmPlayerCharacter::Revive()
 bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 {
 	return UCataclysmSkillEffects::IsDead(this);
+}
+
+FString ACataclysmPlayerCharacter::DeathCostNoticeAt(float WorldSeconds) const
+{
+	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
+	// `UCataclysmCombatOverlay::NegatedTextFor` uses for its own timed word.
+	if (DeathCostNoticePostedAt < 0.0f || DeathCostNotice.IsEmpty())
+	{
+		return FString();
+	}
+	const float Since = WorldSeconds - DeathCostNoticePostedAt;
+	return Since >= 0.0f && Since <= DeathCostNoticeSeconds ? DeathCostNotice : FString();
 }
 
 UAbilitySystemComponent* ACataclysmPlayerCharacter::GetAbilitySystemComponent() const

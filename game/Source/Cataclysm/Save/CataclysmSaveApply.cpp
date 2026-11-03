@@ -615,6 +615,12 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.LastMoveDay = Record.LastMoveDay;
 	Run.LastMoveFromCityId = Record.LastMoveFromCityId;
 	Run.LastMoveToCityId = Record.LastMoveToCityId;
+	// WHAT THE LAST DEATH COST, since run record version 3 (issue #41, 2026-11-02), so a restored run shows its line.
+	Run.LastDeathDay = Record.LastDeathDay;
+	Run.LastDeathDungeonName = Record.LastDeathDungeonName;
+	Run.LastDeathWalkDays = Record.LastDeathWalkDays;
+	Run.LastDeathDaysCost = Record.LastDeathDaysCost;
+	Run.LastDeathFallenCityIds = Record.LastDeathFallenCityIds;
 	Run.ActiveCataclysms = Record.ActiveCataclysms;
 
 	OutWhy.Reset();

@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A death in a dungeon of the empire says what it cost, on the empire screen and as a notice on standing up, and the run record keeps it at version 3 (#41)
+
+**Affects:** `UCataclysmEmpireRun::LastDeathDay`, `LastDeathDungeonName`, `LastDeathWalkDays`, `LastDeathDaysCost`,
+`LastDeathFallenCityIds`, `NameOfDungeon` and `NoteDeath`, new, and `Begin`, which clears them
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); `ACataclysmDungeonGameMode::EndTheDungeonForADeath`,
+which keeps what it computed, and `DeathCostLine`, new (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`.cpp`); `UCataclysmEmpireMapLayout::LastDeathLine` and `LatestEventLine`, new
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h`, `.cpp`); `UCataclysmEmpireMapWidget::WriteStatus`
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapWidget.cpp`); `ACataclysmPlayerCharacter::Revive`,
+`DeathCostNoticeSeconds`, `DeathCostNoticeAt` and `DeathCostNoticePostedAtSeconds`, new
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`, `.cpp`); `ACataclysmHUD::DrawDeathCostNotice`, new
+(`game/Source/Cataclysm/Interface/CataclysmHUD.h`, `.cpp`); `UCataclysmRunSave` schema version 3, five fields and
+`Migrate_2_to_3` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather::ProgressFrom`
+and `FCataclysmSaveApply::RunInto` (`game/Source/Cataclysm/Save/CataclysmSaveGather.h`, `.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`); `game/Tests/SaveFixtures/Run_v3.json`, new, and
+`game/Tests/SaveFixtures/README.md`; nine new tests in `game/Source/Cataclysm/Tests/CataclysmDeathCostTests.cpp`; the
+moved assertions below, in `game/Source/Cataclysm/Tests/CataclysmSaveRecordTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmConsumptionDoubleTests.cpp`. Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** Written while the build machine was in use: code, tests and this entry only. Every
+  figure below is registered for a window, and nothing here has been measured.
+- **ONE RULING'S PREMISE DID NOT HOLD.** Ruling (c) asked the notice to last as long as the heads-up display's other
+  timed notices. There is none of a sentence to copy: the display's timed texts are a damage number
+  (`UCataclysmCombatOverlay::NumberLifetimeSeconds`, 1.1 s), the word "Negated" (`NegatedShownSeconds`, 2 s) and the
+  creature panel's linger (`UCataclysmCreaturePanel::LingerSeconds`, 1 s), and the skill bar's comment says "There is
+  no notice or banner system in this module". Two seconds is too short to read a sentence of about thirty words, so
+  `DeathCostNoticeSeconds` is **8, a judgement**, below. It is one constant, for the ruler to change.
+- **A DUNGEON HAS NO NAME IN THIS BUILD**, so the record keeps the name the screen would give it, a judgement below.
+- **THE RUN RECORD GOES TO VERSION 3**, because the last hit is saved (ruling (b)); `Run_v2.json` becomes a migration
+  input.
+
+### The rulings, by the coordinating session under the owner's delegation, 2026-11-02
+
+- **(a)** The run keeps the last death the way it keeps the last hit: the day, the dungeon's name, the days the walk
+  had run, the extra days the death cost, and the cities that fell as a result -- whatever `EndTheDungeonForADeath`
+  already computes, no new figure.
+- **(b)** It is saved if and only if the last hit is saved. The last hit is (`UCataclysmRunSave::LastHitDay` and the
+  two beside it), so it is, by `game/Tests/SaveFixtures/README.md`: a new run record version, a migration step that
+  writes an empty death, a new fixture, the previous one kept unedited as a migration input, and every version
+  comparison swept. Verified before the change: the character record was at 6 and the run record at 2.
+- **(c)** The player sees it in two places: the empire map's status line, beside the last hit's line and shown while
+  it is the most recent event, and a timed notice on the heads-up display when the player stands back up.
+- **(d)** Plain and literally true words, naming the cities that fell, "and no city fell" when none did, singular
+  and plural correct. Final wording the writing session's.
+
+### Judgements of the writing session
+
+- **The notice lasts 8 seconds.** About thirty words at about four words a second is seven or eight seconds of
+  reading. See SAID FIRST.
+- **The dungeon is named by its sub-type, its kind and its city**: "the Hollow dungeon on Outpost (-3,0)", "the Horde
+  Quest dungeon on ...", "the dungeon on ..." for an ordinary one. `ACataclysmDungeonGameMode::DungeonName` is a
+  placeholder reading "Dungeon", and these are the words the empire screen and `UCataclysmEmpireRun::Describe` already
+  tell dungeons apart by (`UCataclysmSurgeScheduler::SubTypeName` and `KindName`, which say nothing for `None` and
+  `Basic`). It is read before the resolve, because an ordinary dungeon is off the map after it, and kept as text.
+- **"The cities that fell as a result" is the resolve's `Fallen`, and nothing the days afterwards felled.** That list
+  is the one `EndTheDungeonForADeath` computed (ruling (a)); a city the walk's days or the death's days felled is in
+  that day's own report.
+- **On the same day, the death's line is shown and not the hit's.** The death's own resolve can be a hit, and the
+  death's line says what it felled. A hit on a later day replaces it.
+- **The words.** "Day 42: you died in the Hollow dungeon on Outpost (-3,0). The walk's 3 days ran, the death cost 5
+  more days, and Outpost (-3,0) fell." Cities as "X", "X and Y", "X, Y and Z"; "1 day"; a walk that owed no whole day
+  reads "The walk owed no whole day, the death cost 5 days", without "more".
+- **The notice's place and size:** two lines, broken after the first sentence, centred, its first line three tenths
+  of the way down the screen, in the skill bar's notice ink, at text scale 1, shrunk to fit nine tenths of the width.
+
+### What changes
+
+- **THE RECORD.** `EndTheDungeonForADeath` reads the dungeon's name with the figures it already read before the
+  resolve, and after charging the days calls `UCataclysmEmpireRun::NoteDeath` with the day the walk had reached, that
+  name, the walk's owed days, `DeathDayCost` and `ResolveDungeonOnDeath`'s `Fallen`. The order of resolve, leave,
+  charge is unchanged, and so is the log line, whose comment no longer says nothing on screen shows it.
+- **THE LINE.** `UCataclysmEmpireMapLayout::LastDeathLine` turns the five fields into the words above; empty with no
+  run, a run not begun, or no death.
+- **THE EMPIRE SCREEN.** `WriteStatus` appends `LatestEventLine` where it appended `LastHitLine`: the death's line while
+  `LastDeathDay` is at least the last hit's and the last move's day, `LastHitLine` otherwise.
+- **THE NOTICE.** `Revive` keeps whether `EndTheDungeonForADeath` ended a walk; when it did, the character holds
+  `DeathCostLine` (the line of the run that game mode walks for) and the world's time. `DeathCostNoticeAt(seconds)`
+  answers it from that moment to `DeathCostNoticeSeconds` after, both ends included, the form `NegatedTextFor` uses.
+  `ACataclysmHUD::DrawDeathCostNotice` draws it, through `DrawTextCentred`. Nothing is posted for a death that ended no
+  walk.
+- **THE SAVE, VERSION 3.** Five fields on `UCataclysmRunSave` after `LastMoveToCityId`, gathered by `ProgressFrom` and
+  put back by `RunInto`; `Migrate_2_to_3` writes day 0, an empty name, 0, 0 and an empty list. `Run_v3.json` is
+  `Run_v2.json` at version 3 with the five keys after `LastMoveToCityId` holding 103, "the Siege dungeon on Outpost
+  (-3,0)", 19, 15 and [17, 23], none a default and none another number in the file. The README records it.
+
+### Moved assertions
+
+Every `SchemaVersion` comparison, migration chain run and reader of a committed run fixture in the tests was swept
+(`grep` for `Run_v`, `RunSave::SchemaVersionNow`, `SchemaVersion, ` and `MigrationSteps()`). No run test compares a
+literal version number; the writers stamp `SchemaVersionNow` and move with it.
+
+1. `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`: the run entry reads `Run_v3.json` (was v2).
+2. to 7. `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt`,
+   `AFileWithoutThePartOfADayStillLoads`, `TheCommittedRunFileKeepsTheSurgeSchedule`,
+   `AFileWithoutTheSurgeScheduleStillLoads`, `TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom` and
+   `AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`: each reads `Run_v3.json` (was `Run_v2.json`), and its refusal
+   messages name it. Their assertions are unchanged.
+8. `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone`: its expected object also gains the five
+   empty death keys, because the chain runs on to version 3. Its assertions are unchanged.
+
+### Tests
+
+Nine new, in `CataclysmDeathCostTests.cpp`; `Cataclysm.DeathCost.` is a new group and selects them and nothing else.
+The real-run tests build the scene `CataclysmDungeonCostsDaysTests.cpp` builds for its deaths (Standard, the opening
+wave landed and both lists emptied), place an ordinary dungeon of twenty floors on an Outpost, enter it and go down
+two floors so the walk owes three days, kill the player and call `Revive`.
+
+1. `TheLineSaysTheDayTheDungeonTheDaysAndTheCitiesThatFell`: seven records, the sentences written out and only the
+   cities' names read from the map: no city, one (a walk and a death of one day), two, three, a walk owing no whole
+   day, no name kept ("a dungeon"), a city the map cannot find ("a city"). CONTROL: no run, a run not begun, no death.
+2. `ADungeonIsNamedByItsSubTypeItsKindAndItsCity`: ordinary, Hollow, Horde Quest, Fallen City, a Cow Level on a city
+   not on the map ("the Cow Level dungeon"). CONTROL: a number no dungeon has.
+3. `ADeathThatFellsItsCityKeepsWhatEndingTheWalkComputed` ("DEATH COST FELLS"): the Outpost at ten defence. The day
+   the walk had reached, "the dungeon on" the Outpost, 3, 5, the Outpost alone as fallen; CONTROL: no death kept
+   before, and the day afterwards that day and five; the whole line; the screen shows it.
+4. `ADeathThatFellsNothingKeepsWhatEndingTheWalkComputedAndTheScreenShowsIt` ("DEATH COST NOTHING FELL"): the Outpost
+   whole: the same, none fallen, "and no city fell."; CONTROL: the death's own hit set the last hit on an earlier
+   day; the screen shows the death.
+5. `TheEmpireScreenShowsTheDeathWhileItIsTheLatestAndTheHitOnceOneIsLater`: the hit before any death (CONTROL); the
+   death later than the hit; on the same day; a later hit; a later move; the death on a move's own day.
+6. `TheNoticeIsUpWhenThePlayerStandsBackUpAndGoneAfterItsSeconds` ("DEATH NOTICE"): CONTROL: a death with no dungeon
+   bound posts nothing; none before the death; posted at the world's time; up at that moment saying the run's death
+   line, still up a quarter second before its seconds end, gone a quarter second after.
+7. `ARunsLastDeathSurvivesTheRecordItsJsonAndARestore` ("DEATH SAVED"): gathered as the writer gathers, through JSON,
+   restored by `RunInto`: the five fields and the same line. CONTROL: a run with no death restores with none.
+8. `ARunFileFromBeforeTheDeathLineMigratesWithNone` ("DEATH MIGRATED"): `Run_v2.json` through the chain: each of the
+   five keys written empty, one assertion each; version 3, no death; every other field kept.
+9. `TheCommittedRunFileReadsIntoTheDeathItStates` ("DEATH FILE"): `Run_v3.json` at 3, holding 103, the name, 19, 15
+   and 17 then 23.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.DeathCost.` alone | 9 / 9, a new group |
+| `Cataclysm.SaveRecords.` and `Cataclysm.ConsumptionDouble.` | every test passes; their counts do not change |
+| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total + 9, which is 4562 (window minion-attributes-w1 at `b07b9b193`; the base `23d2333d6` differs from it only in `docs/DECISIONS.md`, by `git diff --stat`) + 9 = 4571 |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, the walk's days and the death's swapped as they are kept (`Run->NoteDeath(DayOfTheDeath, NameOfTheDungeon, DaysTheWalkOwed, DaysTheDeathCost,` to `Run->NoteDeath(DayOfTheDeath, NameOfTheDungeon, DaysTheDeathCost, DaysTheWalkOwed,`, in `CataclysmDungeonGameMode.cpp`), prefix `Cataclysm.DeathCost.` | 2 tests, 6 assertions: in each of tests 3 and 4, "the walk's three days are kept" (5 read), "Standard's five days are kept as the death's cost" (3 read) and "the line says so". Nothing else: the screen and notice assertions compare with the run's own line, and tests 1, 2, 5, 7, 8 and 9 never reach `EndTheDungeonForADeath` |
+| P2, the death not shown on a hit's own day (`&& Run->LastDeathDay >= Run->LastHitDay` to `&& Run->LastDeathDay > Run->LastHitDay`, in `CataclysmEmpireMapLayout.cpp`), prefix `Cataclysm.DeathCost.` | 1 test, 1 assertion: "on the same day as the last hit the death is shown". Tests 3 and 4 hold: no hit there is on the death's day |
+| P3, the notice never taken down (`return Since >= 0.0f && Since <= DeathCostNoticeSeconds ? DeathCostNotice : FString();` to `return Since >= 0.0f ? DeathCostNotice : FString();`, in `CataclysmPlayerCharacter.cpp`), prefix `Cataclysm.DeathCost.` | 1 test, 1 assertion: "it is gone a quarter second after them". Message text not predicted, only the assertion |
+
+Each anchor occurs once in its file, counted by the writing session with a script over the committed text. The breaks
+were not compiled.
+
+### Not tested
+
+- The drawing: `DrawHUD` never runs under `-nullrhi`, so the notice's two lines, its place, its ink and its shrinking
+  are read and not seen; and the empire screen's label is null in a headless test, so `WriteStatus` appending
+  `LatestEventLine` is read and not run.
+- A death on Hardcore or Heretic in a real run, a death in a Quest dungeon or a Dungeon City, and one in the
+  Cataclysm's own dungeon (which posts nothing by reading `EndTheDungeonForADeath`'s early return): only Standard deaths
+  in ordinary dungeons are run.
+- The playtest switch with the notice: by reading, a death it keeps in the dungeon ends no walk and posts nothing.
+- A run saved and loaded through the game's own slots: the save test goes through `ProgressFrom`, JSON and `RunInto`
+  directly.
+- Co-operative play: one character holds the notice.
+
+---
+
 ## 2026-11-02 — The dungeon screen draws the empire status bar: dungeons standing, the next surge, cities at risk (#49)
 
 **Affects:** `UCataclysmEmpireStatusBar` and `FCataclysmEmpireStatusFacts` with its `HasTheSameFiguresAs`, new

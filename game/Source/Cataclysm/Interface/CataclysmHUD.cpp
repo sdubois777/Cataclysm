@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmReaperSoul.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -100,6 +101,9 @@ void ACataclysmHUD::DrawHUD()
 	DrawDropNames();
 	DrawFloorObjectNames();
 	DrawReaperSoulNames();
+
+	// WHAT THE LAST DEATH COST, for a few seconds after standing back up. Issue #41, 2026-11-02.
+	DrawDeathCostNotice();
 
 	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
 	// behind it and covers a strip of the screen; a damage number or a drop
@@ -348,6 +352,63 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 	DrawTextCentred(
 		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
 		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
+void ACataclysmHUD::DrawDeathCostNotice()
+{
+	// NOTHING HERE DECIDES ANYTHING, for the reason this class's header gives. Whether the notice is up and what it
+	// says is `ACataclysmPlayerCharacter::DeathCostNoticeAt`, whose words are `UCataclysmEmpireMapLayout::
+	// LastDeathLine`; this lays them out and draws them.
+	const ACataclysmPlayerCharacter* Player = Cast<ACataclysmPlayerCharacter>(GetOwningPawn());
+	const UWorld* World = GetWorld();
+	if (Player == nullptr || World == nullptr || Canvas == nullptr)
+	{
+		return;
+	}
+
+	const FString Notice = Player->DeathCostNoticeAt(static_cast<float>(World->GetTimeSeconds()));
+	if (Notice.IsEmpty())
+	{
+		return;
+	}
+
+	// TWO LINES, BROKEN AFTER THE FIRST SENTENCE: where and when the player died, then what it cost. As one line it
+	// is wider than most screens at this display's text size.
+	TArray<FString> Lines;
+	FString Head;
+	FString Tail;
+	if (Notice.Split(TEXT(". "), &Head, &Tail, ESearchCase::CaseSensitive))
+	{
+		Lines.Add(Head + TEXT("."));
+		Lines.Add(Tail);
+	}
+	else
+	{
+		Lines.Add(Notice);
+	}
+
+	// AND SHRUNK TO FIT when the wider line would still run past the screen's edges: a long list of fallen cities
+	// can.
+	float Widest = 0.0f;
+	for (const FString& Line : Lines)
+	{
+		const FBox2D Measured = MeasureTextCentred(Line, 0.0f, 0.0f, DeathCostNoticeScale);
+		Widest = FMath::Max(Widest, static_cast<float>(Measured.GetSize().X));
+	}
+	const float Room = static_cast<float>(Canvas->SizeX) * DeathCostNoticeWidthShare;
+	const float FittedScale = (Widest > Room && Widest > 0.0f)
+		? DeathCostNoticeScale * Room / Widest
+		: DeathCostNoticeScale;
+
+	// IN THE NOTICE INK THE SKILL BAR'S OWN NOTICE USES, centred, a little above the middle of the screen, which is
+	// clear of the bars at the bottom and of the creature panel at the top.
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::LockedNoticeInkHex);
+	float Top = static_cast<float>(Canvas->SizeY) * DeathCostNoticeTopShare;
+	for (const FString& Line : Lines)
+	{
+		const FBox2D Drawn = DrawTextCentred(Line, Ink, static_cast<float>(Canvas->SizeX) * 0.5f, Top, FittedScale);
+		Top = static_cast<float>(Drawn.Max.Y) + DeathCostNoticeLineGapPx;
+	}
 }
 
 void ACataclysmHUD::DrawPotions()

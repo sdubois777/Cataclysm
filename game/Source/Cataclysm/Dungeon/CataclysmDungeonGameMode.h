@@ -486,8 +486,20 @@ public:
 	 * IT DOES NOT ASK WHETHER ANYBODY DIED. The caller does.
 	 *
 	 * @return whether the death ended the walk. False changed nothing at all.
+	 *
+	 * AND THE RUN KEEPS WHAT IT COST, since 2026-11-02: `UCataclysmEmpireRun::NoteDeath`, with the figures worked out
+	 * here, after the days are charged. `DeathCostLine` below reads it back as words.
 	 */
 	bool EndTheDungeonForADeath();
+
+	/**
+	 * The words saying what the last death in a dungeon of the empire cost, from the run this game mode walks for:
+	 * `UCataclysmEmpireMapLayout::LastDeathLine`. Empty with no run, or no death in it. Issue #41, 2026-11-02.
+	 *
+	 * HERE BECAUSE `ACataclysmPlayerCharacter::Revive` NEEDS THE RUN THIS GAME MODE USES, and a test world's run is
+	 * handed to the game mode through `SetEmpireRunForTests` rather than found on a game instance.
+	 */
+	FString DeathCostLine() const;
 
 	/**
 	 * How deep the dungeon being walked is, or 0 when none is bound.

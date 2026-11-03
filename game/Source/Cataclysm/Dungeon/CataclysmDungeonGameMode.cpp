@@ -46,6 +46,7 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
@@ -24734,6 +24735,11 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	const int32 DaysTheWalkOwed = Run->DaysOwed();
 	const int32 DayOfTheDeath = Run->Day() + DaysTheWalkOwed;
 
+	// AND WHAT IT WAS CALLED, for the line that says what the death cost (issue #41, 2026-11-02). Read here for the
+	// reason above: after the resolve an ordinary dungeon is off the map and has no name to read. Empty for a number
+	// with no dungeon behind it.
+	const FString NameOfTheDungeon = Run->NameOfDungeon(DiedInDungeon);
+
 	// 1. IT RESOLVES, IF IT IS THE KIND THAT DOES, WHILE THE PLAYER IS STILL
 	// INSIDE. Every part of that is the empire's: the consequence on the city,
 	// the dungeon leaving the map after it, and doing nothing at all for a
@@ -24764,9 +24770,15 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	const int32 DaysTheDeathCost = Run->DeathDayCost();
 	Run->AdvanceDays(DaysTheDeathCost);
 
-	// AT `Log`, LIKE THE DEATH ITSELF AND FOR ITS REASON. Nothing on screen
-	// says what a death cost, so this line is the only place a person can read
-	// it.
+	// 4. AND THE RUN KEEPS WHAT IT COST, the figures above and nothing worked out again: the day the walk had
+	// reached, the dungeon's name, the walk's days, the death's days, and the cities the resolve felled. The empire
+	// screen's line and the notice the player reads on standing up are both `UCataclysmEmpireMapLayout::
+	// LastDeathLine` of it. Issue #41, ruled by the coordinating session on 2026-11-02.
+	Run->NoteDeath(DayOfTheDeath, NameOfTheDungeon, DaysTheWalkOwed, DaysTheDeathCost,
+				   WhatTheDeathResolved.Fallen);
+
+	// AT `Log`, LIKE THE DEATH ITSELF AND FOR ITS REASON. The same figures are on screen since 2026-11-02, in the
+	// line the run now keeps; this stays as the record a log reader has.
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("The death on day %d ended the walk of dungeon %d. %s Cities "
 				"it felled: %d. The walk's %d days ran, then the death charged %d, "
@@ -24781,6 +24793,11 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 			   ? TEXT("still on the map") : TEXT("no longer on the map"));
 
 	return true;
+}
+
+FString ACataclysmDungeonGameMode::DeathCostLine() const
+{
+	return UCataclysmEmpireMapLayout::LastDeathLine(EmpireRun());
 }
 
 bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMove)

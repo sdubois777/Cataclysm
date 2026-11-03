@@ -46,6 +46,11 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	LastMoveDay = 0;
 	LastMoveFromCityId = INDEX_NONE;
 	LastMoveToCityId = INDEX_NONE;
+	LastDeathDay = 0;
+	LastDeathDungeonName.Reset();
+	LastDeathWalkDays = 0;
+	LastDeathDaysCost = 0;
+	LastDeathFallenCityIds.Reset();
 	SurgesFromEmptyBoard = 0;
 	OwedDays = 0;
 
@@ -1619,6 +1624,45 @@ int32 UCataclysmEmpireRun::DeathDayCost() const
 	// answers for any rung nobody chose.
 	return UCataclysmDayClock::DeathDayCostFor(
 		Surges != nullptr ? Surges->LethalityRung : 0);
+}
+
+FString UCataclysmEmpireRun::NameOfDungeon(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr)
+	{
+		return FString();
+	}
+
+	// THE SUB-TYPE, THEN THE KIND, THEN "dungeon": "the Horde Quest dungeon". Either word is left out when it says
+	// nothing, which `SubTypeName` and `KindName` answer for `None` and `Basic`, so most dungeons are "the dungeon".
+	TArray<FString> Words;
+	const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon->SubType);
+	if (!SubType.IsEmpty())
+	{
+		Words.Add(SubType);
+	}
+	const FString Kind = UCataclysmSurgeScheduler::KindName(Dungeon->Type);
+	if (!Kind.IsEmpty())
+	{
+		Words.Add(Kind);
+	}
+	Words.Add(TEXT("dungeon"));
+	const FString Called = TEXT("the ") + FString::Join(Words, TEXT(" "));
+
+	// AND THE CITY IT STANDS ON, by the map's own name for it. A dungeon whose city cannot be found is still named.
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(Dungeon->CityId) : nullptr;
+	return City != nullptr ? FString::Printf(TEXT("%s on %s"), *Called, *City->Name) : Called;
+}
+
+void UCataclysmEmpireRun::NoteDeath(int32 Day, const FString& DungeonName, int32 WalkDays, int32 DaysCost,
+									const TArray<int32>& FallenCityIds)
+{
+	LastDeathDay = Day;
+	LastDeathDungeonName = DungeonName;
+	LastDeathWalkDays = WalkDays;
+	LastDeathDaysCost = DaysCost;
+	LastDeathFallenCityIds = FallenCityIds;
 }
 
 // ---------------------------------------------------------------------------

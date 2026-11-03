@@ -799,6 +799,52 @@ public:
 	int32 LastMoveToCityId = INDEX_NONE;
 
 	/**
+	 * The day of the player's last death in a dungeon of the empire, or 0 when there has been none this run. Issue
+	 * #41, ruled by the coordinating session on 2026-11-02.
+	 *
+	 * KEPT THE WAY THE LAST HIT IS KEPT, and for the same reason: until this nothing on screen said what a death
+	 * cost, and `ACataclysmDungeonGameMode::EndTheDungeonForADeath` worked out every figure and only logged it.
+	 * `NoteDeath` writes all five fields at once, with what that function computed and nothing else.
+	 * `UCataclysmEmpireMapLayout::LastDeathLine` turns them into a line, which the empire screen shows while the
+	 * death is the most recent thing it has a line for and the heads-up display shows when the player stands up.
+	 *
+	 * THE DAY IS THE DAY THE WALK HAD REACHED: the run's day and the days the walk owed, since the run's own day does
+	 * not move while the player is inside (2026-10-24).
+	 *
+	 * SAVED, all five, since run record version 3, because the last hit is saved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathDay = 0;
+
+	/**
+	 * What the dungeon the player died in was called when it was died in, from `NameOfDungeon`, or empty when the
+	 * death was in a dungeon number with no dungeon behind it.
+	 *
+	 * A NAME AND NOT A NUMBER, because an ordinary dungeon leaves the map at the death it resolves on, so by the time
+	 * the line is read there is nothing left to look its number up in.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString LastDeathDungeonName;
+
+	/** The whole days the walk had spent, which ran when the death ended it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathWalkDays = 0;
+
+	/** The days the death itself cost on top of them: `DeathDayCost` when it happened. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathDaysCost = 0;
+
+	/**
+	 * The cities the death's resolve felled, in the order the resolve reported them: `FCataclysmDayReport::Fallen`
+	 * of `ResolveDungeonOnDeath`. Empty when none fell, which is every death in a Quest dungeon or a Dungeon City.
+	 *
+	 * NOT A CITY THE DAYS AFTERWARDS FELLED. Those are each day's own report's, and the last hit's line if a hit
+	 * felled nothing; the ruling counts the cities that fell as a result of the death.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> LastDeathFallenCityIds;
+
+	/**
 	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
 	 * board was empty rather than because the clock or a city's fall sent them.
 	 *
@@ -1162,6 +1208,26 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	int32 DeathDayCost() const;
+
+	/**
+	 * What to call a dungeon standing on the map when a person reads it: "the Hollow dungeon on Outpost (-3,0)",
+	 * "the dungeon on Bulwark (1,2)", "the Horde Quest dungeon on ...". Empty when no dungeon has that number.
+	 *
+	 * A DUNGEON HAS NO NAME OF ITS OWN IN THIS BUILD -- `ACataclysmDungeonGameMode::DungeonName` is a placeholder
+	 * that reads "Dungeon" -- so it is named the way the empire screen and `Describe` tell one dungeon from another:
+	 * its sub-type, its kind, and the city it stands on. The words are `UCataclysmSurgeScheduler::SubTypeName` and
+	 * `KindName`, which answer nothing for `None` and `Basic`, and the city's own name. A judgement of the session
+	 * that built the death's line, 2026-11-02.
+	 */
+	FString NameOfDungeon(int32 DungeonId) const;
+
+	/**
+	 * Keeps what a death cost, for the line that says so: the five `LastDeath` fields, all of them, replacing the last
+	 * death's. Issue #41, 2026-11-02. `ACataclysmDungeonGameMode::EndTheDungeonForADeath` is the caller, with the
+	 * figures it has just computed; nothing here works any of them out again.
+	 */
+	void NoteDeath(int32 Day, const FString& DungeonName, int32 WalkDays, int32 DaysCost,
+				   const TArray<int32>& FallenCityIds);
 
 	// ----------------------------------------------------------------------
 	// City upgrades

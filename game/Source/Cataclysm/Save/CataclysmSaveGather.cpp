@@ -390,6 +390,12 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	Record.LastMoveDay = Run.LastMoveDay;
 	Record.LastMoveFromCityId = Run.LastMoveFromCityId;
 	Record.LastMoveToCityId = Run.LastMoveToCityId;
+	// WHAT THE LAST DEATH COST, since run record version 3 (issue #41, 2026-11-02).
+	Record.LastDeathDay = Run.LastDeathDay;
+	Record.LastDeathDungeonName = Run.LastDeathDungeonName;
+	Record.LastDeathWalkDays = Run.LastDeathWalkDays;
+	Record.LastDeathDaysCost = Run.LastDeathDaysCost;
+	Record.LastDeathFallenCityIds = Run.LastDeathFallenCityIds;
 
 	return true;
 }
