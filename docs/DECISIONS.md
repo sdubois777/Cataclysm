@@ -290,6 +290,24 @@ With `tools/prove_guard.py` in this worktree, which no other process uses, again
 - P3: "PROVED: 1 failed, 10 passed in 0.09s | restored: 11 passed in 0.05s", the failure
   `test_a_characters_runs_are_begun_from_the_characters_seed`.
 
+### Window cataclysm-draw-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `7a0a18452` (on `development`
+`b897f4a69`), lock `cataclysm-draw-w1`, after the six pre-checks all passed (11,286 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The eight groups alone | each at its registered count | every one "0 failed": CataclysmDraw. 6, SaveLoad. 75, SaveRecords. 17, ConsumptionMark. 6, ConsumptionDouble. 15, DeathCost. 9, EmpireRun. 68, EmpireRunTier. 5 |
+| Whole Unreal suite | 4640, 47 skipped halves | "4640 tests performed, 4640 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4640 tests in the tree at 7a0a18452; 4640 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7313 passed, 9 skipped in 195.48s"; JUnit tests 7322, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 test, 3 (by chance about 99.1%) | PROVED. Exactly the three registered: "load 1: ...", "load 2: ..." and "the second load's run faces the same Cataclysms as the first's, by name and in order"; restored 75 of 75 |
+| P2 | 1 test, 5 | PROVED. Exactly the five registered, two reading 0 for 1412640493; restored 6 of 6 |
+| P3 | 3 tests, 6 | PROVED. Exactly the six registered, in the three registered tests; restored 6 of 6 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Nothing in Unreal has run.** It compiled in phase 2 (SAID FIRST); no test or proof has been run by the engine.
