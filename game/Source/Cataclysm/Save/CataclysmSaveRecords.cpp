@@ -394,10 +394,25 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before it kept its Cataclysm boss dungeon had not opened one: nothing in the game opened one until
+	 * issue #1324 slice 6b, 2026-11-03. Written out, for `Migrate_1_to_2`'s reason, as the three fields' defaults: not
+	 * opened, day 0 and no floors.
+	 */
+	bool Migrate_3_to_4(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetBoolField(TEXT("bCataclysmDungeonOpened"), false); // A migration's: no boss opened, written out.
+		Record->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
+		Record->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
+		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 	};
 }
 

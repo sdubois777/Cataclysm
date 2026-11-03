@@ -653,13 +653,21 @@ class TuningConfig:
         "Volatile": 16.4, "Siege": 7.5, "Sacrificial": 13.3, "Cow Level": 7.0,
     })
 
-    # WHICH SUB-TYPES A KIND OF DUNGEON MAY NOT ROLL. **THERE IS EXACTLY ONE
-    # ENTRY AND THAT IS THE WHOLE RULE.** The project owner ruled on 2026-09-06,
-    # verbatim: "Last stand is a cataclysm dungeon and should not be allowed to
-    # roll as a cow level sub type." Asked how far to take it, they answered
-    # "Only the one you ruled".
+    # WHICH SUB-TYPES A KIND OF DUNGEON MAY NOT ROLL. **TWO PAIRS, BOTH ON THE
+    # CATACLYSM, AND THAT IS THE WHOLE RULE.** The project owner ruled the first
+    # on 2026-09-06, verbatim: "Last stand is a cataclysm dungeon and should not
+    # be allowed to roll as a cow level sub type." Asked how far to take it,
+    # they answered "Only the one you ruled".
     #
-    # SO THE OTHER 27 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THIS ONE
+    # THE SECOND, THE SIEGE, SINCE 2026-11-03: ruled by the coordinating session
+    # under the owner's delegation for issue #1324 slice 6b, barred the same way
+    # as the Cow Level. The earned boss stands on no city (the owner, that day,
+    # verbatim "On no city (Recommended)"), and a Siege is the sub-type whose
+    # whole effect is a daily bite on the city it stands on. Until then a
+    # Cataclysm dungeon on the Pillar could roll one and bite the Pillar daily.
+    # It bars the Last Stand too, which is the same kind of dungeon.
+    #
+    # SO THE OTHER 26 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THESE
     # ABOUT ANY OF THEM. Whether a Fallen City should be able to roll a
     # Sacrificial is unstated by omission rather than decided; issue #1333
     # raised it with a Quest Siege (now settled by `QUEST_SUBTYPE_BY_CATACLYSM`
@@ -675,8 +683,9 @@ class TuningConfig:
     #
     # THE GAME HOLDS THE SAME RULE in
     # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
-    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
-    # two and fails if either side moves.
+    # `CataclysmAlsoForbiddenSubType`, read by `BarredSubTypeOn` and
+    # `AlsoBarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares
+    # the two and fails if either side moves.
     #
     # FROM 2026-10-16 TO THE NEXT COMMIT A SECOND ROW BARRED A QUEST DUNGEON
     # FROM THE SIEGE, as an interim rule; `QUEST_SUBTYPE_BY_CATACLYSM` below
@@ -684,7 +693,7 @@ class TuningConfig:
     # rolls a sub-type at all.
     SUBTYPES_FORBIDDEN_ON: dict[DungeonType, tuple[str, ...]] = field(
         default_factory=lambda: {
-            DungeonType.CATACLYSM: ("Cow Level",),
+            DungeonType.CATACLYSM: ("Cow Level", "Siege"),
         })
 
     # EACH CATACLYSM'S QUEST DUNGEONS ARE ONE SUB-TYPE, NOT ROLLED, since

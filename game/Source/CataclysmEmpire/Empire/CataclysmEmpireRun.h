@@ -58,8 +58,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 *
 	 * **A DUNGEON IN THIS LIST DID NOT NECESSARILY BITE ANYTHING.** It is the
 	 * list of timers that ran out. An ordinary dungeon on a city already fallen
-	 * takes nothing, and a Fallen City and a Cataclysm stand on a city whose
-	 * damage is already done. A caller counting how often the empire was hurt
+	 * takes nothing, and a Fallen City stands on a city whose damage is already
+	 * done. (The Cataclysm boss dungeon is never here: it stands on no city and
+	 * its timer never runs out, since 2026-11-03.) A caller counting how often the empire was hurt
 	 * reads `UCataclysmEmpireRun::DungeonsDetonated` and
 	 * `UCataclysmEmpireRun::QuestHits` rather than the length of this list.
 	 *
@@ -276,14 +277,19 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *     dungeon to walk into, spends days at the forge, and kills the player. None
  *     of that belongs here: in the game the player is a character in a world,
  *     and what this owns is the empire's side of the clock.
- *   - **The win condition, though no longer the requirement it reads.** Since
- *     issue #1357 this DOES answer whether the player has earned the right to
- *     face the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active
- *     Cataclysms finished, rounded up. What it still does not do is ACT on the
- *     answer: nothing here creates a Cataclysm boss dungeon, opens an enemy
- *     capital or sets a won state. That is slice 6 of issue #1324, and its other
- *     two blockers are untouched -- the enemy capital does not exist and neither
- *     does the loss condition, and both are design gaps as well as missing code.
+ *   - **Winning, though no longer the dungeon a win is earned in.** Since
+ *     issue #1357 this answers whether the player has earned the right to face
+ *     the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active Cataclysms
+ *     finished, rounded up -- and since issue #1324 slice 6b (2026-11-03) it
+ *     ACTS on the answer: the quest clear that meets it opens the Cataclysm boss
+ *     dungeon, on no city (`OpenCataclysmDungeonIfEarned`). What it still does
+ *     not do is set a won state when that dungeon is defeated; that is slice 6e.
+ *     **This paragraph used to say the enemy capital did not exist and neither
+ *     did the loss condition, as two open design gaps.** The project owner
+ *     answered both on 2026-09-06 (issue #1324): the enemy capital "is just the
+ *     boss dungeon becoming enterable", which is what this opens, and "Losing
+ *     the Pillar ends the run", with a path opening starting the Last Stand
+ *     rather than losing it.
  *   - **The Last Stand.** `bPillarExposed` is the condition; the Cataclysm boss
  *     dungeon moving to the Pillar and absorbing everything still standing is
  *     issue #43.
@@ -651,12 +657,14 @@ public:
 	 * above is the wrong number for the boss's depth, and the model says so in
 	 * as many words beside `Simulation.basic_cleared`, which this ports.
 	 *
-	 * NOTHING READS IT YET. The Cataclysm boss dungeon does not exist -- that is
-	 * slice 6 of issue #1324 -- and growing it by one floor per ordinary dungeon
-	 * is [#1315](https://github.com/sdubois777/Cataclysm/issues/1315). This is
-	 * the number both will need, counted from the day the player starts rather
-	 * than reconstructed afterwards from a board that no longer holds what was
-	 * cleared.
+	 * THE CATACLYSM BOSS DUNGEON'S DEPTH READS IT, since issue #1324 slice 6b
+	 * (2026-11-03): `CataclysmDungeonFloorsNow` is its rolled floors plus this,
+	 * so the ordinary dungeons defeated before it opened and after it opened
+	 * both count -- the rule of
+	 * [#1315](https://github.com/sdubois777/Cataclysm/issues/1315). This said
+	 * nothing read it until then. It is counted from the day the player starts
+	 * rather than reconstructed afterwards from a board that no longer holds
+	 * what was cleared.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 BasicDungeonsCleared = 0;
@@ -709,8 +717,9 @@ public:
 	 *
 	 * WHAT `FCataclysmDayReport::Resolved` CANNOT ANSWER, which is why this
 	 * exists. That list is every timer that ran out, and not every timer
-	 * running out costs a city anything: a Fallen City and a Cataclysm stand on
-	 * a city whose damage is already done. A caller counting how often the
+	 * running out costs a city anything: a Fallen City stands on a city whose
+	 * damage is already done, and the Cataclysm boss dungeon on none, with a
+	 * timer that never runs out. A caller counting how often the
 	 * empire was hurt had no number to read and the report's own comment said
 	 * so.
 	 *
@@ -991,14 +1000,16 @@ public:
 	/**
 	 * Whether the player has earned the right to face the Cataclysm.
 	 *
-	 * **IT ANSWERS AND IT DOES NOT ACT.** Nothing here creates a Cataclysm
-	 * dungeon, opens an enemy capital or sets a won state; that is slice 6 of
-	 * issue [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) and it
-	 * has two blockers left that this does not touch -- the enemy capital does
-	 * not exist, and neither does the loss condition. Both are design gaps as
-	 * well as missing code. What issue #1357 removes is the third: the module
-	 * could not tell which Cataclysm a quest dungeon belonged to, so the
-	 * requirement could not be checked at all.
+	 * **IT ANSWERS AND `OpenCataclysmDungeonIfEarned` ACTS.** The quest clear
+	 * that makes this true opens the Cataclysm boss dungeon, since issue
+	 * [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6b
+	 * (2026-11-03). **This said nothing created that dungeon and that two
+	 * blockers were left -- the enemy capital did not exist, and neither did
+	 * the loss condition.** The project owner answered both on 2026-09-06: the
+	 * enemy capital "is just the boss dungeon becoming enterable", and "Losing
+	 * the Pillar ends the run". What issue #1357 removed was the third: the
+	 * module could not tell which Cataclysm a quest dungeon belonged to, so
+	 * the requirement could not be checked at all.
 	 *
 	 * IT CAN GO FROM TRUE BACK TO FALSE ONLY IF THE ACTIVE COUNT RISES, and it
 	 * cannot: `ActiveCataclysms` is set once, by `Begin`, from a difficulty tier
@@ -1008,6 +1019,78 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsCataclysmDungeonUnlocked() const;
+
+	// ----------------------------------------------------------------------
+	// The Cataclysm boss dungeon, once earned -- issue #1324 slice 6b
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether this run has opened its Cataclysm boss dungeon.
+	 *
+	 * ONCE A RUN, AND IT STAYS TRUE after the dungeon leaves the board, which is
+	 * what stops a later quest clear opening a second one. `Begin` clears it.
+	 * The model's equivalent is `Simulation.cataclysm` not being None.
+	 *
+	 * SAVED, with the two below, since run record version 4.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCataclysmDungeonOpened = false;
+
+	/**
+	 * The day it opened: the run's day when the quest clear that met the
+	 * requirement was credited, `Day()`, which does not include the days the
+	 * walk that cleared it still owes (they run after the clear, by the owner's
+	 * decision of 2026-10-24). 0 until it opens. It is also the dungeon's
+	 * `SpawnedDay`, and the model's `spawned_day` is the same day.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonOpenedDay = 0;
+
+	/**
+	 * The floors it rolled when it opened, 100 to 150, before any ordinary
+	 * dungeon's floor was added; 0 until it opens.
+	 *
+	 * KEPT AND NOT THE DEPTH, so the depth is worked out from the count rather
+	 * than added to: see `CataclysmDungeonFloorsNow`. The model's field is
+	 * `Simulation.cataclysm_base_floors`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonBaseFloors = 0;
+
+	/**
+	 * How deep the Cataclysm boss dungeon is: its rolled floors plus one for
+	 * every ordinary dungeon defeated this run, those before it opened and those
+	 * after, with no cap. 0 while it has not opened.
+	 *
+	 * THE DESIGN, `docs/Cataclysm_GDD_v2.md` section VIII, Dungeon Basics:
+	 * "Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss
+	 * dungeon. Quest dungeons and retaken Dungeon Cities do not", and the
+	 * Dungeon Types row, "Grows by one floor for every ordinary dungeon the
+	 * player defeats". Before and after it opens and with no cap, ruled by the
+	 * coordinating session on 2026-11-03.
+	 *
+	 * COMPUTED FROM `BasicDungeonsCleared` AND NOT INCREMENTED, a judgement of
+	 * the session that built it: one counter is the only record of the growth,
+	 * so the depth cannot drift from it -- a restored run that puts the count
+	 * and the base back has its depth back, and a clear reaching the count by a
+	 * path nobody thought to deepen from still deepens it. The standing
+	 * dungeon's `Floors` is set to this whenever the count moves
+	 * (`DeepenCataclysmDungeon`), because every reader of a dungeon's depth --
+	 * the dungeon game mode, the enemy score, the clock, the save -- reads
+	 * `FCataclysmDungeon::Floors` and none should need to know it grows.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonFloorsNow() const;
+
+	/**
+	 * The Cataclysm boss dungeon standing on the board, or null: before it
+	 * opens, and after it leaves the board.
+	 *
+	 * BY ITS KIND, because it is the only Cataclysm dungeon the game builds. A
+	 * Last Stand is issue #43's and will be the same kind, and this is where the
+	 * two will have to be told apart.
+	 */
+	const FCataclysmDungeon* FindCataclysmDungeon() const;
 
 	/**
 	 * One day passes.
@@ -1095,7 +1178,13 @@ public:
 	/** One dungeon by its identifier, or null. */
 	const FCataclysmDungeon* FindDungeon(int32 DungeonId) const;
 
-	/** Every dungeon standing on one city. */
+	/**
+	 * Every dungeon standing on one city.
+	 *
+	 * THE CATACLYSM BOSS DUNGEON IS ON NO CITY, so it is never among them for a
+	 * city's number; asked for `INDEX_NONE`, this answers the dungeons on no
+	 * city, which is that one. Since 2026-11-03.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	TArray<int32> DungeonsOn(int32 CityId) const;
 
@@ -1156,6 +1245,14 @@ public:
 	 * NOTHING IS COUNTED FOR A DUNGEON THAT WAS NOT THERE. The counters are
 	 * raised after the removal succeeds, so clearing the same identifier twice,
 	 * or one that never existed, adds nothing.
+	 *
+	 * **AND SINCE 2026-11-03 IT IS WHERE THE CATACLYSM BOSS DUNGEON OPENS AND
+	 * GROWS.** A Quest clear that meets the requirement opens it
+	 * (`OpenCataclysmDungeonIfEarned`, last in the Quest branch), and an
+	 * ordinary clear deepens a boss already standing by a floor
+	 * (`DeepenCataclysmDungeon`). Issue #1324 slice 6b. Clearing the boss
+	 * itself counts as a dungeon cleared and nothing else here; winning the run
+	 * by it is slice 6e.
 	 *
 	 * @return whether it was there to clear.
 	 */
@@ -1381,8 +1478,10 @@ private:
 	 * moves it -- or, with nowhere to go, leaves it -- and it does not take the
 	 * timer's move as well that day, which is the model's rule; until
 	 * 2026-10-21 the fall absorbed it. The clock has already put its timer back
-	 * to full by the time this is called. A Fallen City and a Cataclysm take
-	 * nothing.
+	 * to full by the time this is called. A Fallen City takes nothing, and the
+	 * Cataclysm boss dungeon never gets here: its timer never runs out
+	 * (`UCataclysmSurgeScheduler::NeverResolveDays`), and were it to, it would
+	 * take nothing either.
 	 *
 	 * IT HAS TWO CALLERS SINCE ISSUE #41. `AdvanceDay`, for every timer that ran
 	 * out, which is what the paragraphs above describe. And
@@ -1439,10 +1538,11 @@ private:
 	 * a fall absorbed every dungeon on it. Ruled by the coordinating session,
 	 * 2026-10-21.
 	 *
-	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City and a Cataclysm also refuse
-	 * to resolve and also reach here; a Fallen City *is* its city and cannot
-	 * leave it, and the Cataclysm boss dungeon's one move is the Last Stand,
-	 * issue #43.
+	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City also refuses to resolve and
+	 * also reaches here, and *is* its city and cannot leave it. The Cataclysm
+	 * boss dungeon would refuse as well, and since 2026-11-03 does not reach
+	 * here: it stands on no city with a timer that never runs out, and its one
+	 * move is the Last Stand, issue #43.
 	 */
 	void RelocateQuestDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 
@@ -1542,6 +1642,41 @@ private:
 	 */
 	void AddFallenCityDungeon(int32 CityId, int32 DungeonsAbsorbed,
 							  FCataclysmDayReport& OutReport);
+
+	/**
+	 * The quest clear that meets the requirement opens the Cataclysm boss
+	 * dungeon: built by `UCataclysmSurgeScheduler::MakeCataclysmDungeon`, given
+	 * its modifiers, put on the board and on the clock with a timer that never
+	 * runs out, and made as deep as `CataclysmDungeonFloorsNow` says.
+	 *
+	 * CALLED AT THE END OF `ClearDungeon`'S QUEST BRANCH, which is where
+	 * `Simulation._finish_current` calls `_maybe_open_cataclysm`, and nowhere
+	 * else. Nothing when `IsCataclysmDungeonUnlocked` answers false, when it
+	 * has opened before this run (`bCataclysmDungeonOpened`), or when the run
+	 * has not begun.
+	 *
+	 * ON NO CITY: the project owner, 2026-11-03, verbatim "On no city
+	 * (Recommended)". ITS CATACLYSM IS THE NEWEST ACTIVE ONE, the last of
+	 * `ActiveCataclysms`, ruled by the coordinating session for the slice.
+	 *
+	 * IT DRAWS TWO NUMBERS FROM `Stream` -- the depth and the sub-type -- and
+	 * its modifiers from `ModifierStream`, so every later wave in the run is
+	 * rolled from a different place than it would have been. The model's open
+	 * draws from its stream too.
+	 */
+	void OpenCataclysmDungeonIfEarned();
+
+	/**
+	 * Sets the standing Cataclysm boss dungeon's floors to
+	 * `CataclysmDungeonFloorsNow`, its walk to one day a floor, and the clock's
+	 * copy of its floors; its timer is not touched. Nothing when none stands.
+	 *
+	 * CALLED WHERE THE COUNT MOVES: by `ClearDungeon` for an ordinary dungeon,
+	 * after `BasicDungeonsCleared` is raised, and by
+	 * `OpenCataclysmDungeonIfEarned` for the ones defeated before it opened.
+	 * The model's `_deepen_cataclysm` is called from the same two places.
+	 */
+	void DeepenCataclysmDungeon();
 
 	/**
 	 * Takes a dungeon off the map and off the clock, and nothing else.

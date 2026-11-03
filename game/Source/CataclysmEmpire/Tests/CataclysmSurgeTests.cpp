@@ -1524,65 +1524,51 @@ bool FCataclysmSurgeSubTypeOneDrawTest::RunTest(const FString& Parameters)
 				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
 	}
 
-	// **BOTH REFUSALS AT ONCE, which is the only path that stacks them.** A
-	// Cataclysm on a city that already holds a Siege has one sub-type off the
-	// line before the draw and another refused after it, and the re-read has to
-	// map onto the five that are left. Seeds chosen by what they draw, for the
-	// same reason as above.
-	TArray<int32> SeedsThatDrawASiegeOnACataclysm;
-	for (int32 Seed = 1;
-		 Seed <= 1000 && SeedsThatDrawASiegeOnACataclysm.Num() < 5;
-		 ++Seed)
+	// **THE STACKED REFUSAL IS GONE, AND THIS SAYS SO RATHER THAN LOSING IT.**
+	// Until 2026-11-03 a Cataclysm on a city that already held a Siege had the
+	// Cow Level off the line before the draw and a drawn Siege refused after
+	// it. Since then the Siege is barred on the Cataclysm kind as well (issue
+	// #1324 slice 6b, `AlsoBarredSubTypeOn`), so a Cataclysm's draw never
+	// lands on one and the refusal can no longer be reached for that kind. What
+	// is held instead: over the first thousand seeds no Cataclysm draw lands on
+	// a Siege, and refusing a Siege for one changes neither its answer nor its
+	// single draw. `Cataclysm.EarnedBoss.ACataclysmDungeonIsNeverASiege` rolls
+	// it twenty thousand times.
+	int32 CataclysmSieges = 0;
+	int32 Differed = 0;
+	for (int32 Seed = 1; Seed <= 1000; ++Seed)
 	{
-		FRandomStream Trial(Seed);
-		if (UCataclysmSurgeScheduler::RollSubType(
-				Trial, /*bSiegeAllowed=*/true,
-				ECataclysmDungeonType::Cataclysm)
-			== ECataclysmDungeonSubType::Siege)
-		{
-			SeedsThatDrawASiegeOnACataclysm.Add(Seed);
-		}
-	}
-
-	// THE CONTROL, again. Without seeds that reach both refusals the checks
-	// below are the loop above written a third time.
-	if (!TestEqual(TEXT("seeds whose Cataclysm draw lands on Siege were found"),
-				   SeedsThatDrawASiegeOnACataclysm.Num(), 5))
-	{
-		return false;
-	}
-
-	for (const int32 Seed : SeedsThatDrawASiegeOnACataclysm)
-	{
-		FRandomStream Rolled(Seed);
+		FRandomStream Allowed(Seed);
+		FRandomStream Refused(Seed);
 		FRandomStream Drawn(Seed);
 
-		const ECataclysmDungeonSubType Got =
+		const ECataclysmDungeonSubType WhenAllowed =
 			UCataclysmSurgeScheduler::RollSubType(
-				Rolled, /*bSiegeAllowed=*/false,
+				Allowed, /*bSiegeAllowed=*/true,
+				ECataclysmDungeonType::Cataclysm);
+		const ECataclysmDungeonSubType WhenRefused =
+			UCataclysmSurgeScheduler::RollSubType(
+				Refused, /*bSiegeAllowed=*/false,
 				ECataclysmDungeonType::Cataclysm);
 		Drawn.FRand();
 
-		TestNotEqual(*FString::Printf(
-						 TEXT("at seed %d the Cataclysm's Siege was refused"),
-						 Seed),
-					 static_cast<uint8>(Got),
-					 static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+		CataclysmSieges +=
+			WhenAllowed == ECataclysmDungeonSubType::Siege ? 1 : 0;
+		Differed += WhenAllowed != WhenRefused ? 1 : 0;
 
-		// AND IT DID NOT LAND ON THE OTHER BARRED ONE. The re-read maps onto a
-		// line the Cow Level is off as well; mapping onto the six the ordinary
-		// refusal uses would put it back in play exactly where the ruling says
-		// it must not be.
-		TestNotEqual(*FString::Printf(
-						 TEXT("nor did it become a Cow Level at seed %d"),
-						 Seed),
-					 static_cast<uint8>(Got),
-					 static_cast<uint8>(ECataclysmDungeonSubType::CowLevel));
-
-		TestEqual(*FString::Printf(
-					  TEXT("and at seed %d both refusals cost one draw"), Seed),
-				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
+		if (Refused.GetCurrentSeed() != Drawn.GetCurrentSeed())
+		{
+			TestEqual(*FString::Printf(
+						  TEXT("at seed %d a refused Cataclysm roll cost one draw"),
+						  Seed),
+					  Refused.GetCurrentSeed(), Drawn.GetCurrentSeed());
+		}
 	}
+
+	TestEqual(TEXT("no Cataclysm draw over a thousand seeds lands on a Siege"),
+			  CataclysmSieges, 0);
+	TestEqual(TEXT("and refusing a Siege changes no Cataclysm's answer"),
+			  Differed, 0);
 
 	return true;
 }
@@ -1633,11 +1619,16 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 		// IT WAS 92.4 FOR ONE DAY. Halving the Siege weight on issue #1349 gave
 		// the other six the slack in proportion, which carried the Cow Level
 		// from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that #1293
-		// decided, so the shortened line is 93 again.
+		// decided, so the shortened line was 93 again.
+		//
+		// AND 85.5 SINCE 2026-11-03, when the Siege's 7.5 came off the line for
+		// a Cataclysm as well (issue #1324 slice 6b, `AlsoBarredSubTypeOn`). The
+		// five left share both; `Cataclysm.EarnedBoss.ACataclysmDungeonIsNeverASiege`
+		// holds the Siege half.
 		const float Total = UCataclysmSurgeScheduler::TotalSpawnWeight(
-			ECataclysmDungeonSubType::CowLevel);
+			ECataclysmDungeonSubType::CowLevel, ECataclysmDungeonSubType::Siege);
 
-		TestEqual(TEXT("the shortened line is 93 points wide"), Total, 93.0f,
+		TestEqual(TEXT("the shortened line is 85.5 points wide"), Total, 85.5f,
 				  0.0001f);
 
 		for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
@@ -1647,7 +1638,8 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 			const ECataclysmDungeonSubType SubType =
 				static_cast<ECataclysmDungeonSubType>(Value);
 
-			if (SubType == ECataclysmDungeonSubType::CowLevel)
+			if (SubType == ECataclysmDungeonSubType::CowLevel
+				|| SubType == ECataclysmDungeonSubType::Siege)
 			{
 				continue;
 			}
@@ -1668,9 +1660,11 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 					  Share, Wanted, 2.0f);
 
 			// AND EVERY SHARE IS ABOVE WHAT IT HAS ON THE FULL LINE, which is
-			// the difference between spreading the seven points and dropping
-			// them. The gap is smallest for Sacrificial at 12.90% against
-			// 12.00%, so the tolerance above cannot hide it.
+			// the difference between spreading the barred points and dropping
+			// them. The gap is smallest for Sacrificial, at 14.04% against
+			// 12.00% since the Siege joined the Cow Level off the line (12.90%
+			// against 12.00% before). This compares two computed figures, not
+			// the rolls, so the tolerance above has no bearing on it.
 			TestTrue(*FString::Printf(
 						 TEXT("sub-type %d gained from the redistribution"),
 						 Value),
@@ -1702,9 +1696,11 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 				 CowLevels > 0);
 	}
 
-	// **ONLY THE ONE PAIR THE OWNER RULED.** Twenty-seven of the twenty-eight
-	// stay legal, and this is where that is held: a session barring a second
-	// pair by inference has to break a test that quotes the scope back.
+	// **ONLY THE PAIRS RULED.** The owner barred one on 2026-09-06 and the
+	// coordinating session the Siege on 2026-11-03, both on the Cataclysm, so
+	// twenty-six of the twenty-eight stay legal, and this is where that is held
+	// for the other kinds: a session barring another pair by inference has to
+	// break a test that quotes the scope back.
 	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Basic,
 											  ECataclysmDungeonType::Quest,
 											  ECataclysmDungeonType::FallenCity })
@@ -2721,7 +2717,8 @@ bool FCataclysmSurgeQuestChanceTest::RunTest(const FString& Parameters)
 		Draws, Quests, 100.0f * Quests / Draws, Basics, Rolled.Num()));
 
 	// NOTHING BUT THOSE TWO. A Fallen City is what a city became rather than
-	// something a surge rolled, and nothing builds a Cataclysm until slice 6.
+	// something a surge rolled, and a Cataclysm is earned rather than rolled
+	// (`MakeCataclysmDungeon`, since slice 6b; this said nothing built one).
 	TestEqual(TEXT("only two kinds are ever rolled"), Rolled.Num(), 2);
 	TestEqual(TEXT("and every draw was one of them"), Quests + Basics, Draws);
 

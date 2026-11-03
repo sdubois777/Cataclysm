@@ -166,7 +166,9 @@ public:
 	/**
 	 * What the player has achieved this run: the fourteen "Progress" fields of
 	 * `UCataclysmRunSave`. Issue #1374. And, since run record version 3, the
-	 * five last-death fields after them (issue #41, 2026-11-02).
+	 * five last-death fields after them (issue #41, 2026-11-02), and since
+	 * version 4 the three Cataclysm boss dungeon fields after those (issue
+	 * #1324 slice 6b, 2026-11-03).
 	 *
 	 * IT TAKES A RUN RATHER THAN A WORLD, for the reason `RunClockFrom` gives.
 	 *

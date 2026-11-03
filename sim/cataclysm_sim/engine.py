@@ -109,7 +109,15 @@ class Dungeon:
     did: int
     dtype: DungeonType
     #: Which city it stands on. A Quest dungeon's changes when it relocates.
-    city_id: int
+    #:
+    #: **NONE FOR THE EARNED CATACLYSM BOSS DUNGEON, WHICH STANDS ON NO CITY**,
+    #: since 2026-11-03. The project owner, verbatim: "On no city
+    #: (Recommended)". It never bites a city, no timer runs on it, and the
+    #: Last Stand moving it to the Pillar is issue #43's. Until then
+    #: `_maybe_open_cataclysm` put it on the Pillar. Every reader of this field
+    #: either cannot meet that dungeon or asks `cities.get` and treats None as
+    #: no city; `docs/DECISIONS.md`, 2026-11-03, lists them. Issue #1324.
+    city_id: int | None
     #: THE TIER ITS DEPTH WAS ROLLED FROM, WHICH IS NOT "THE HOST'S TIER". It
     #: is set once, at creation, from the city the surge put it on, and it does
     #: NOT move when a Quest dungeon relocates -- `floors` does not move either,
@@ -369,7 +377,13 @@ class Simulation:
         #: NOT `cleared`, which counts every kind. See
         #: `cataclysm_floors_per_dungeon_cleared`.
         self.basic_cleared = 0
-        #: Floors the earned boss gained from `basic_cleared` when it opened.
+        #: The earned boss's depth before any growth: what it rolled when it
+        #: opened, 0 until then. Its depth is this plus `basic_cleared` times
+        #: `cataclysm_floors_per_dungeon_cleared`, worked out again on every
+        #: ordinary clear by `_deepen_cataclysm`. Issue #1324 slice 6b.
+        self.cataclysm_base_floors = 0
+        #: Floors the earned boss has gained from `basic_cleared`: those
+        #: cleared before it opened AND after, since 2026-11-03.
         self.cataclysm_floors_earned = 0
         self.resolved = 0
         #: Times a Quest dungeon's timer ran out and hit a standing city.
@@ -532,7 +546,9 @@ class Simulation:
 
         THE OTHER CALLERS are the ones that change a dungeon's depth AFTER
         `_make_dungeon` built it and have to work the days out again.
-        `_maybe_open_cataclysm` and `_open_last_stand` both do that.
+        `_deepen_cataclysm` (the earned boss, when it opens and on every
+        ordinary clear after, since 2026-11-03) and `_open_last_stand` both do
+        that.
 
         **BOTH OF THOSE BUILD A CATACLYSM DUNGEON, AND A CATACLYSM DUNGEON CAN
         NO LONGER BE A COW LEVEL**, so neither of them can reach the branch
@@ -627,16 +643,19 @@ class Simulation:
     def subtypes_allowed_on(self, dtype: DungeonType) -> list[str]:
         """The sub-types this kind of dungeon may roll, in weight order.
 
-        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND THAT IS THE ONLY
-        EXCLUSION THERE IS.** (A Quest dungeon a surge makes does not roll at
-        all since 2026-10-16: it takes its Cataclysm's sub-type,
+        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL OR A SIEGE, AND THOSE ARE
+        THE ONLY EXCLUSIONS THERE ARE.** (A Quest dungeon a surge makes does not
+        roll at all since 2026-10-16: it takes its Cataclysm's sub-type,
         `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`.) The project owner ruled on
         2026-09-06, verbatim:
         "Last stand is a cataclysm dungeon and should not be allowed to roll as
         a cow level sub type." Asked how far to take it they answered "Only the
-        one you ruled", so the other 27 pairs stay legal and nothing here may be
-        read as a statement about any of them. Issue #1333;
-        `config.SUBTYPES_FORBIDDEN_ON` carries the rule and the reasoning.
+        one you ruled". The Siege joined it on 2026-11-03, ruled by the
+        coordinating session for issue #1324 slice 6b: the earned boss stands
+        on no city, and a Siege's whole effect is a daily bite on its city. The
+        other 26 pairs stay legal and nothing here may be read as a statement
+        about any of them. Issue #1333; `config.SUBTYPES_FORBIDDEN_ON` carries
+        the rule and the reasoning.
 
         WHY THE RULING WAS MADE THAT WAY RATHER THAN AS A REPAIR. A Cow Level's
         time "is doubled and cannot be reduced", and `_open_last_stand` recomputed
@@ -1608,9 +1627,15 @@ class Simulation:
         # `cataclysm_floors_per_dungeon_cleared`.
         if d.dtype is DungeonType.BASIC:
             self.basic_cleared += 1
+            # AND AN EARNED BOSS ALREADY OPEN GROWS BY IT, since 2026-11-03.
+            # The design's Dungeon Basics bullet counts every ordinary dungeon
+            # defeated, before the boss opens and after.
+            self._deepen_cataclysm()
 
-        city = self.empire.cities[d.city_id]
-        if d.dtype is DungeonType.FALLEN_CITY and city.fallen:
+        # `get` AND NOT AN INDEX: the earned boss stands on no city.
+        city = self.empire.cities.get(d.city_id)
+        if (d.dtype is DungeonType.FALLEN_CITY and city is not None
+                and city.fallen):
             self._retake(city)
 
         if d.dtype is DungeonType.QUEST:
@@ -1895,18 +1920,44 @@ class Simulation:
         reading rather than a decision.
 
         IT IS AS DEEP AS THE WORK THE PLAYER CHOSE TO DO. The design document
-        says "every dungeon defeated adds one floor to the Cataclysm boss
-        dungeon", and until issue #1315 nothing added any: a campaign that
-        cleared thirty dungeons met the same boss as one that cleared five.
+        says "Every **ordinary** dungeon defeated adds one floor to the
+        Cataclysm boss dungeon", and until issue #1315 nothing added any: a
+        campaign that cleared thirty dungeons met the same boss as one that
+        cleared five.
 
         ONLY ORDINARY DUNGEONS COUNT, so beelining the objectives gives a
         smaller boss than clearing the map. See
         `cataclysm_floors_per_dungeon_cleared` for the ruling and the reasons.
 
+        AND THEY COUNT AFTER IT OPENS TOO, since 2026-11-03 (issue #1324 slice
+        6b, ruled by the coordinating session from the design's Dungeon Basics
+        bullet and its Dungeon Types row, "Grows by one floor for every ordinary
+        dungeon the player defeats"). Until then the count was added once, here,
+        and an ordinary dungeon cleared afterwards did not deepen it. The depth
+        is `cataclysm_base_floors` plus the count, worked out again by
+        `_deepen_cataclysm` on every ordinary clear, with no cap.
+
+        IT STANDS ON NO CITY, since 2026-11-03, the project owner's decision,
+        verbatim "On no city (Recommended)". It never bites a city and no timer
+        runs on it (`_empire_day` skips it). Until then it stood on the Pillar.
+        It is still ROLLED from the Pillar's Cataclysm row, 100 to 150 floors,
+        which is the only row a Cataclysm dungeon has; `city_tier` says so and
+        nothing reads it for this kind. Moving it to the Pillar in a Last Stand
+        is issue #43's.
+
+        ITS CATACLYSM IS THE NEWEST ACTIVE ONE, the last of `active_types`,
+        ruled by the coordinating session; the game's
+        `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` stamps the same.
+
+        IT OPENS ONCE A RUN. `self.cataclysm` is kept after the boss leaves the
+        board, so a second quest clear cannot open a second one.
+
         THIS IS NOT WHERE THE LAST STAND IS BUILT. `_open_last_stand` has its
         own bonuses and takes none of this; the two are deliberately separate.
         """
         cfg = self.cfg
+        if self.cataclysm is not None:
+            return
         if len(self.cataclysms_complete()) < cfg.cataclysms_required():
             return
         if any(x.dtype is DungeonType.CATACLYSM for x in self.dungeons.values()):
@@ -1914,16 +1965,34 @@ class Simulation:
 
         d = self._make_dungeon(DungeonType.CATACLYSM,
                                self.empire.cities[self.empire.pillar_id])
+        d.city_id = None
+        d.source = self.active_types[-1] if self.active_types else ""
 
-        d.floors += self.basic_cleared * cfg.cataclysm_floors_per_dungeon_cleared
-        d.run_days = self._walk_days(d.floors, d.subtype)
-
-        #: HOW MANY OF ITS FLOORS WERE EARNED, recorded now rather than worked
-        #: out at the end: more ordinary dungeons can be cleared after the boss
-        #: opens, and they do not deepen a dungeon that already exists.
-        self.cataclysm_floors_earned = (
-            self.basic_cleared * cfg.cataclysm_floors_per_dungeon_cleared)
+        self.cataclysm_base_floors = d.floors
         self.cataclysm = d
+        self._deepen_cataclysm()
+
+    def _deepen_cataclysm(self) -> None:
+        """The earned boss's depth: its rolled floors plus one a floor for every
+        ordinary dungeon defeated, and the walk worked out again from it.
+
+        WORKED OUT FROM THE COUNT EACH TIME AND NOT ADDED TO, so the depth can
+        never drift from `basic_cleared`: a clear that reached the count by any
+        path is in the depth. Nothing when no boss is open, or when it has left
+        the board.
+
+        THROUGH `_walk_days`, for the reason `test_the_earned_boss_recomputes_
+        its_walk_through_the_subtype_helper` gives: one day a floor less what
+        the tree takes off, and a Cow Level's doubling kept if a kind that can
+        be one ever grows.
+        """
+        d = self.cataclysm
+        if d is None or d.did not in self.dungeons:
+            return
+        earned = self.basic_cleared * self.cfg.cataclysm_floors_per_dungeon_cleared
+        d.floors = self.cataclysm_base_floors + earned
+        d.run_days = self._walk_days(d.floors, d.subtype)
+        self.cataclysm_floors_earned = earned
 
     # -- main loop -------------------------------------------------------
 
@@ -2015,6 +2084,12 @@ class Simulation:
         for d in list(self.dungeons.values()):
             inside = d.did == self._inside_did()
             if inside and not cfg.timer_ticks_while_running:
+                continue
+            # A DUNGEON ON NO CITY HAS NO TIMER RUNNING, since 2026-11-03: the
+            # earned boss, which the owner put on no city ("On no city
+            # (Recommended)"). It never resolves and threatens nothing. Until
+            # then it stood on the Pillar with a 999 day timer that refilled.
+            if d.city_id is None:
                 continue
             d.resolve_in -= 1.0
 

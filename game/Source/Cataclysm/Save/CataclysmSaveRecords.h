@@ -1569,8 +1569,9 @@ public:
  *
  *   - **What the player has achieved this run IS HERE NOW**, since issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
- *     fourteen fields under "Progress" below, and since version 3 the five
- *     last-death fields after them.
+ *     fourteen fields under "Progress" below, since version 3 the five
+ *     last-death fields after them, and since version 4 the three Cataclysm
+ *     boss dungeon fields after those.
  *     `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
  *   - **What tier the run is played at, and which Cataclysms it faces, ARE
  *     HERE NOW**, since issue
@@ -1600,8 +1601,12 @@ public:
 	 * 3 SINCE 2026-11-02 AS WELL. The run keeps what the player's last death cost (issue #41): five fields beside the
 	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and `Migrate_2_to_3` writes an empty death into a run
 	 * written at 2.
+	 *
+	 * 4 SINCE 2026-11-03. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
+	 * day it opened and the floors it rolled, `bCataclysmDungeonOpened` to `CataclysmDungeonBaseFloors`, and
+	 * `Migrate_3_to_4` writes a boss not yet opened into a run written at 3.
 	 */
-	static constexpr int32 SchemaVersionNow = 3;
+	static constexpr int32 SchemaVersionNow = 4;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1924,6 +1929,24 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<int32> LastDeathFallenCityIds;
+
+	/**
+	 * The run's Cataclysm boss dungeon: whether it has opened, the day it opened, and the floors it rolled before any
+	 * ordinary dungeon's floor was added. `UCataclysmEmpireRun::bCataclysmDungeonOpened` and the two beside it; issue
+	 * #1324 slice 6b, 2026-11-03. A SCHEMA VERSION, 4: `Migrate_3_to_4` writes a boss not yet opened -- false, 0 and 0
+	 * -- into a run written at 3, which is what such a run was, since nothing opened one before.
+	 *
+	 * THE DEPTH IS NOT SAVED HERE, because it is worked out: the floors rolled plus `BasicDungeonsCleared`, which is
+	 * saved above. The dungeon itself, while it stands, is in `Dungeons` with its floors like any other, on no city.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bCataclysmDungeonOpened = false;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmDungeonOpenedDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmDungeonBaseFloors = 0;
 
 	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
 	//

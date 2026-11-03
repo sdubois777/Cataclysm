@@ -782,6 +782,11 @@ bool FCataclysmDeathCostMigrationTest::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("LastDeathWalkDays"), 0);
 	Expected->SetNumberField(TEXT("LastDeathDaysCost"), 0);
 	Expected->SetArrayField(TEXT("LastDeathFallenCityIds"), TArray<TSharedPtr<FJsonValue>>());
+	// AND THE UNOPENED CATACLYSM BOSS DUNGEON `Migrate_3_to_4` WRITES, because the chain runs on to version 4 since
+	// 2026-11-03 (issue #1324 slice 6b).
+	Expected->SetBoolField(TEXT("bCataclysmDungeonOpened"), false);
+	Expected->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
+	Expected->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -814,14 +819,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v3.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
- * Prints "DEATH FILE".
+ * `Run_v4.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
+ * Prints "DEATH FILE". It read `Run_v3.json` until the run record went to version 4 on 2026-11-03 (issue #1324 slice
+ * 6b); `Run_v4.json` holds the same five values, and `Run_v3.json` is a migration input now.
  */
 bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v3.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v4.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -832,7 +838,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v3.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v4.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -841,7 +847,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 							Read->SchemaVersion, Read->LastDeathDay, *Read->LastDeathDungeonName, Read->LastDeathWalkDays,
 							Read->LastDeathDaysCost, Read->LastDeathFallenCityIds.Num()));
 
-	TestEqual(TEXT("it says it is version 3"), Read->SchemaVersion, 3);
+	TestEqual(TEXT("it says it is version 4"), Read->SchemaVersion, 4);
 	TestEqual(TEXT("the death's day"), Read->LastDeathDay, 103);
 	TestEqual(TEXT("the dungeon's name"), Read->LastDeathDungeonName, FString(TEXT("the Siege dungeon on Outpost (-3,0)")));
 	TestEqual(TEXT("the walk's days"), Read->LastDeathWalkDays, 19);

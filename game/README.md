@@ -222,10 +222,15 @@ by `git add` with no error and no warning. Guarded by
   existed and neither rule the owner had given could be built. **What is still
   generic is how the eight differ in attack** — the simulation gives each its own
   shape of wave and this draws uniformly, issue
-  [#53](https://github.com/sdubois777/Cataclysm/issues/53) — and **nothing acts
-  on the unlock**: no Cataclysm boss dungeon is created and no run is won,
-  because the enemy capital and the loss condition are both still missing, issue
-  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6.
+  [#53](https://github.com/sdubois777/Cataclysm/issues/53). **The unlock opens
+  the Cataclysm boss dungeon**, since 2026-11-03: the quest clear that meets it
+  puts the boss on the board on no city (the owner, verbatim, "On no city
+  (Recommended)"), where it never bites a city and no timer runs out on it, as
+  deep as its roll plus every ordinary dungeon defeated in the run, before it
+  opened and after. **No run is won yet** -- beating it is slice 6e of issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324), and the map
+  marker for it is slice 6c. This said the enemy capital and the loss condition
+  were missing until then; the owner had answered both on 2026-09-06.
 
   **Every dungeon a surge creates has a sub-type, and six of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring
@@ -330,16 +335,19 @@ by `git add` with no error and no warning. Guarded by
   weights, rather than being rolled again or left plain: measured at none at all
   over twenty campaigns and 10,914 simulated days.
 
-  **A Cataclysm dungeon may not be a Cow Level, and that is the only pair of the
-  twenty-eight that is barred.** The owner ruled it on 2026-09-06 because a Cow
-  Level Last Stand was losing the doubled walk it is supposed to keep; the
-  situation was removed rather than the symptom repaired. `BarredSubTypeOn` is
-  the rule and `RollSubType` takes the barred sub-type off the line before its
-  single draw, so the weight is spread over the other six and no second draw is
-  taken. **Nothing may be inferred from it about any other pair** — the other 27
-  stay legal. Issue
-  [#1333](https://github.com/sdubois777/Cataclysm/issues/1333). Nothing builds a
-  Cataclysm dungeon yet, so the rule answers rather than fires.
+  **A Cataclysm dungeon may not be a Cow Level or a Siege, and those are the only
+  pairs of the twenty-eight that are barred.** The owner ruled the first on
+  2026-09-06 because a Cow Level Last Stand was losing the doubled walk it is
+  supposed to keep; the situation was removed rather than the symptom repaired.
+  The coordinating session barred the Siege on 2026-11-03, because the boss
+  dungeon stands on no city and a Siege's whole effect is a daily bite on one.
+  `BarredSubTypeOn` and `AlsoBarredSubTypeOn` are the rule and `RollSubType`
+  takes both off the line before its single draw, so the weight is spread over
+  the other five and no second draw is taken. **Nothing may be inferred from them
+  about any other pair** — the other 26 stay legal. Issue
+  [#1333](https://github.com/sdubois777/Cataclysm/issues/1333). The rule fires
+  on the boss dungeon a run earns, since 2026-11-03; until then nothing built a
+  Cataclysm dungeon and it only answered.
 
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.

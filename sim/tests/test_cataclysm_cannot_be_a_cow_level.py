@@ -1,4 +1,4 @@
-"""A Cataclysm dungeon may not roll the Cow Level sub-type.
+"""A Cataclysm dungeon may not roll the Cow Level sub-type, nor the Siege.
 
 **THE RULING.** The project owner, 2026-09-06, verbatim: *"Last stand is a
 cataclysm dungeon and should not be allowed to roll as a cow level sub type."*
@@ -14,11 +14,17 @@ bonuses after the dungeon is built and worked the walk out again with a bare
 walked in 145 days where 290 was correct. Offered the repair, the owner removed
 the situation instead. About 7 in 100 Last Stands were affected.
 
-**WHAT THIS FILE DOES NOT SAY.** Anything about the other 27 dungeon-type and
-sub-type pairs. All of them stay legal, by the owner's explicit scope, and
-`TestTheOtherPairsStayLegal` is here to keep that a decision rather than a thing
-that quietly drifted -- a later session adding a second exclusion should have to
-break a test that says the owner ruled one.
+**THE SIEGE JOINED IT ON 2026-11-03**, ruled by the coordinating session under
+the owner's delegation for issue #1324 slice 6b and barred the same way. The
+earned boss stands on no city -- the owner, that day, verbatim "On no city
+(Recommended)" -- and a Siege's whole effect is a daily bite on its city. It
+bars the Last Stand too, the same kind of dungeon.
+
+**WHAT THIS FILE DOES NOT SAY.** Anything about the other 26 dungeon-type and
+sub-type pairs. All of them stay legal, and `TestTheOtherPairsStayLegal` is here
+to keep that a decision rather than a thing that quietly drifted -- a later
+session adding a third exclusion should have to break a test that says two were
+ruled.
 
 THE OTHER HALF OF THE PORT is `tools/tests/test_dungeon_subtype_port.py`, which
 compares this rule against `UCataclysmSurgeScheduler::CataclysmForbiddenSubType`
@@ -64,6 +70,16 @@ def spread(sim: Simulation, dtype: DungeonType, city,
 
 
 class TestTheRule:
+    def test_a_cataclysm_dungeon_never_rolls_a_siege(self):
+        """The second pair, since 2026-11-03. Its control is the Basic line of
+        `TestTheOtherPairsStayLegal`, which sees a Siege on the same draw."""
+        sim = Simulation(TuningConfig(), seed=0)
+        seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
+
+        assert seen["Siege"] == 0, (
+            f"a Cataclysm dungeon rolled Siege {seen['Siege']} times in "
+            f"{ROLLS}; the coordinating session barred it on 2026-11-03")
+
     def test_a_cataclysm_dungeon_never_rolls_a_cow_level(self):
         sim = Simulation(TuningConfig(), seed=0)
         seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
@@ -107,16 +123,20 @@ class TestTheRule:
         its slack to all six of the others in proportion, which carried the Cow
         Level from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that
         #1293 decided, so the six that remain when it is barred are 93 again.
+
+        AND 85.5 SINCE 2026-11-03, when the Siege's 7.5 was barred as well: the
+        five that remain share both.
         """
         sim = Simulation(TuningConfig(), seed=2)
         w = dict(sim.cfg.SUBTYPE_SPAWN_WEIGHTS)
         seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
+        barred = ("Cow Level", "Siege")
 
-        total = sum(v for n, v in w.items() if n != "Cow Level")
-        assert total == pytest.approx(93.0)
+        total = sum(v for n, v in w.items() if n not in barred)
+        assert total == pytest.approx(85.5)
 
         for name, weight in w.items():
-            if name == "Cow Level":
+            if name in barred:
                 continue
             wanted = 100.0 * weight / total
             got = 100.0 * seen[name] / ROLLS
@@ -125,9 +145,9 @@ class TestTheRule:
                 f"redistributed weights want {wanted:.2f}%")
 
         # AND EVERY SHARE IS ABOVE WHAT IT WAS ON THE FULL LINE, which is the
-        # difference between spreading the 7 and dropping it.
+        # difference between spreading the 14.5 and dropping it.
         for name, weight in w.items():
-            if name == "Cow Level":
+            if name in barred:
                 continue
             assert 100.0 * seen[name] / ROLLS > 100.0 * weight / 100.0
 
@@ -163,7 +183,8 @@ class TestTheRule:
 
 
 class TestTheOtherPairsStayLegal:
-    """The owner: "Only the one you ruled". Twenty-seven pairs are untouched."""
+    """The owner: "Only the one you ruled"; the coordinating session added the
+    Siege on 2026-11-03. Twenty-six pairs are untouched."""
 
     # NO QUEST CASE SINCE 2026-10-18. Each Cataclysm's Quest dungeons are one
     # fixed sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`, the owner's
@@ -179,28 +200,30 @@ class TestTheOtherPairsStayLegal:
         missing = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - set(seen)
         assert not missing, (
             f"a {dtype.value} dungeon can no longer roll {sorted(missing)}. "
-            "The ruling of 2026-09-06 barred exactly one pair -- Cataclysm "
-            "and Cow Level -- and said nothing about any other")
+            "The rulings of 2026-09-06 and 2026-11-03 barred two pairs -- "
+            "Cataclysm and Cow Level, Cataclysm and Siege -- and said nothing "
+            "about any other")
 
-    def test_a_cataclysm_can_still_be_any_of_the_other_six(self):
+    def test_a_cataclysm_can_still_be_any_of_the_other_five(self):
         sim = Simulation(TuningConfig(), seed=4)
         seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
 
-        wanted = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - {"Cow Level"}
+        wanted = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - {"Cow Level", "Siege"}
         assert set(seen) == wanted, (
             f"a Cataclysm dungeon rolled {sorted(seen)} where the ruling "
             f"leaves it {sorted(wanted)}")
 
-    def test_the_model_records_exactly_one_forbidden_pair(self):
-        """The rule is data, so this is where "only the one you ruled" is held.
+    def test_the_model_records_exactly_two_forbidden_pairs(self):
+        """The rule is data, so this is where "only the one you ruled" is held,
+        with the Siege the coordinating session added on 2026-11-03.
 
-        A session that adds a second row here is making a design decision the
-        owner has not made. `docs/DECISIONS.md` carries the ruling and the
-        scope; issue #1342 is the nearest open question.
+        A session that adds a third is making a design decision nobody has
+        made. `docs/DECISIONS.md` carries both rulings and the scope; issue
+        #1342 is the nearest open question.
         """
         cfg = TuningConfig()
         assert cfg.SUBTYPES_FORBIDDEN_ON == {
-            DungeonType.CATACLYSM: ("Cow Level",)}
+            DungeonType.CATACLYSM: ("Cow Level", "Siege")}
 
 
 class TestTheFightsThatActuallyGetBuilt:

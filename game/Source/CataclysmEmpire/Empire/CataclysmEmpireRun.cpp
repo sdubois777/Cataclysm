@@ -63,6 +63,13 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	SurgesFromEmptyBoard = 0;
 	OwedDays = 0;
 
+	// AND THE CATACLYSM BOSS DUNGEON IS SHUT AGAIN. A second `Begin` carrying the
+	// last run's opened boss would stop this run ever opening its own. Issue
+	// #1324 slice 6b.
+	bCataclysmDungeonOpened = false;
+	CataclysmDungeonOpenedDay = 0;
+	CataclysmDungeonBaseFloors = 0;
+
 	Stream.Initialize(InSeed);
 
 	// WHICH CATACLYSMS THIS CHARACTER FACES. How many comes from the difficulty
@@ -229,6 +236,111 @@ bool UCataclysmEmpireRun::IsCataclysmDungeonUnlocked() const
 	}
 
 	return CataclysmsComplete() >= CataclysmDungeonRequirement();
+}
+
+// ---------------------------------------------------------------------------
+// The Cataclysm boss dungeon, once earned -- issue #1324 slice 6b
+// ---------------------------------------------------------------------------
+
+int32 UCataclysmEmpireRun::CataclysmDungeonFloorsNow() const
+{
+	if (!bCataclysmDungeonOpened)
+	{
+		return 0;
+	}
+
+	// THE ROLL AND THE COUNT, AND NOTHING ELSE. Every ordinary dungeon defeated
+	// this run is in `BasicDungeonsCleared`, those before the boss opened and
+	// those after, so this is the design's rule with no cap.
+	return CataclysmDungeonBaseFloors
+		+ BasicDungeonsCleared
+			* UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon;
+}
+
+const FCataclysmDungeon* UCataclysmEmpireRun::FindCataclysmDungeon() const
+{
+	return Dungeons.FindByPredicate(
+		[](const FCataclysmDungeon& Candidate)
+		{
+			return Candidate.Type == ECataclysmDungeonType::Cataclysm;
+		});
+}
+
+void UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned()
+{
+	// ONCE A RUN. The flag outlives the dungeon, so a quest clear after the boss
+	// has left the board does not bring another.
+	if (bCataclysmDungeonOpened || Clock == nullptr
+		|| !IsCataclysmDungeonUnlocked())
+	{
+		return;
+	}
+
+	// THE NEWEST ACTIVE CATACLYSM SENDS IT: the last of the list, which is the
+	// one the character's draw added last. Ruled by the coordinating session for
+	// the slice; the model stamps `active_types[-1]`.
+	const ECataclysmType Newest = ActiveCataclysms.Num() > 0
+		? ActiveCataclysms.Last() : ECataclysmType::None;
+
+	FCataclysmDungeon Dungeon = UCataclysmSurgeScheduler::MakeCataclysmDungeon(
+		NextDungeonId, Day(), Stream, Newest);
+
+	// IT CARRIES MODIFIERS, as every dungeon the player walks does: one per
+	// difficulty tier, from the active Cataclysms' pool. The model's
+	// `_make_dungeon` samples them for a Cataclysm dungeon too.
+	GiveModifiers(Dungeon);
+
+	// THE SAME TWO STEPS EVERY DUNGEON TAKES ONTO THE BOARD, so the dungeons and
+	// the timers stay in step (`DungeonsAgreeWithTimers`). Its timer is
+	// `UCataclysmSurgeScheduler::NeverResolveDays` and never runs out.
+	if (!Clock->AddDungeon(Dungeon.DungeonId, Dungeon.Floors))
+	{
+		return;
+	}
+
+	Clock->SetResolveDays(Dungeon.DungeonId, Dungeon.ResolveDays);
+
+	bCataclysmDungeonOpened = true;
+	CataclysmDungeonOpenedDay = Dungeon.SpawnedDay;
+	CataclysmDungeonBaseFloors = Dungeon.Floors;
+
+	Dungeons.Add(Dungeon);
+	NextDungeonId = FMath::Max(NextDungeonId, Dungeon.DungeonId + 1);
+
+	// AND AS DEEP AS THE ORDINARY DUNGEONS ALREADY DEFEATED MAKE IT.
+	DeepenCataclysmDungeon();
+}
+
+void UCataclysmEmpireRun::DeepenCataclysmDungeon()
+{
+	FCataclysmDungeon* Boss = Dungeons.FindByPredicate(
+		[](const FCataclysmDungeon& Candidate)
+		{
+			return Candidate.Type == ECataclysmDungeonType::Cataclysm;
+		});
+
+	if (Boss == nullptr || !bCataclysmDungeonOpened)
+	{
+		return;
+	}
+
+	Boss->Floors = CataclysmDungeonFloorsNow();
+
+	// ONE DAY A FLOOR, the starting rate: no city upgrade reaches a dungeon on no
+	// city. A Cow Level's doubling is kept should one ever grow, which a
+	// Cataclysm cannot be today -- the model's `_walk_days` keeps it the same way.
+	Boss->WalkDays = FMath::Max(1.0f, Boss->Floors * UCataclysmDayClock::DaysPerFloor);
+	if (Boss->SubType == ECataclysmDungeonSubType::CowLevel)
+	{
+		Boss->WalkDays *= UCataclysmSurgeScheduler::CowLevelWalkMultiplier;
+	}
+
+	// THE CLOCK'S COPY OF ITS FLOORS, NOT ITS TIMER, which never runs out. The
+	// save writes the whole timer list, so a stale copy would reach the disk.
+	if (Clock != nullptr)
+	{
+		Clock->SetFloors(Boss->DungeonId, Boss->Floors);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -825,9 +937,10 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 		return;
 	}
 
-	// ONLY A QUEST DUNGEON MOVES. A Fallen City and a Cataclysm also answer
-	// false to `Resolves`, and both reach the caller above, but neither
-	// wanders: a Fallen City IS its city, and the Cataclysm boss dungeon's one
+	// ONLY A QUEST DUNGEON MOVES. A Fallen City also answers false to
+	// `Resolves` and reaches the caller above, but does not wander: it IS its
+	// city. The Cataclysm boss dungeon would answer the same, and since
+	// 2026-11-03 its timer never runs out, so it never reaches here; its one
 	// move is the Last Stand, issue #43. Checking the kind here rather than at
 	// the call site keeps the rule beside the thing it is a rule about.
 	if (Dungeon->Type != ECataclysmDungeonType::Quest)
@@ -1454,6 +1567,10 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	if (Kind == ECataclysmDungeonType::Basic)
 	{
 		++BasicDungeonsCleared;
+
+		// AND A BOSS ALREADY STANDING GROWS BY IT, since 2026-11-03: the ordinary
+		// dungeons defeated after it opened count as well as those before.
+		DeepenCataclysmDungeon();
 	}
 
 	// ONE CLEARED QUEST DUNGEON IS ONE OBJECTIVE. The project owner ruled it on
@@ -1479,6 +1596,11 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 			int32& Earned = QuestObjectivesByCataclysm.FindOrAdd(Sender);
 			++Earned;
 		}
+
+		// AND THE CLEAR THAT MEETS THE REQUIREMENT OPENS THE BOSS DUNGEON, last in
+		// this branch, where `Simulation._finish_current` calls
+		// `_maybe_open_cataclysm`. Issue #1324 slice 6b.
+		OpenCataclysmDungeonIfEarned();
 	}
 
 	// BEATING A FALLEN CITY IS HOW A CITY COMES BACK. `docs/Cataclysm_GDD_v2.md`
@@ -1940,6 +2062,19 @@ FString UCataclysmEmpireRun::Describe() const
 		DungeonsCleared, BasicDungeonsCleared, QuestObjectives,
 		DungeonsDetonated, QuestHits));
 
+	// THE BOSS DUNGEON, ONCE EARNED, which stands on no city and so is in no
+	// line the map draws. Issue #1324 slice 6b.
+	if (bCataclysmDungeonOpened)
+	{
+		Lines.Add(FString::Printf(
+			TEXT("The Cataclysm boss dungeon opened on day %d: %d floors, %d "
+				 "rolled and %d for the ordinary dungeons defeated. It stands "
+				 "on no city."),
+			CataclysmDungeonOpenedDay, CataclysmDungeonFloorsNow(),
+			CataclysmDungeonBaseFloors,
+			CataclysmDungeonFloorsNow() - CataclysmDungeonBaseFloors));
+	}
+
 	if (Map->IsPillarExposed())
 	{
 		Lines.Add(TEXT("A Sanctuary has fallen. The Cataclysm can reach the "
@@ -2014,14 +2149,25 @@ FString UCataclysmEmpireRun::Describe() const
 								  Dungeon.Modifiers.Num(),
 								  Dungeon.ModifierScore);
 
+			// A DUNGEON ON NO CITY HAS NO TIMER WORTH PRINTING: the Cataclysm
+			// boss dungeon's is a billion days and never runs out
+			// (`UCataclysmSurgeScheduler::NeverResolveDays`), and a billion
+			// day countdown would read as a fault. Since 2026-11-03.
+			const FString Where = City
+				? FString::Printf(TEXT("on %s"), *City->Name)
+				: FString(TEXT("on no city"));
+			const FString Timer = Dungeon.CityId == INDEX_NONE
+				? FString(TEXT("it never resolves"))
+				: FString::Printf(TEXT("%.1f days until it resolves"),
+								  Clock->DaysUntilResolveFor(Dungeon.DungeonId));
+
 			Lines.Add(FString::Printf(
-				TEXT("  dungeon %d%s on %s: %d floors, %.1f days until it "
-					 "resolves%s"),
+				TEXT("  dungeon %d%s %s: %d floors, %s%s"),
 				Dungeon.DungeonId,
 				*Marked,
-				City ? *City->Name : TEXT("nowhere"),
+				*Where,
 				Dungeon.Floors,
-				Clock->DaysUntilResolveFor(Dungeon.DungeonId),
+				*Timer,
 				*Modifiers));
 		}
 	}

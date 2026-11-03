@@ -967,11 +967,12 @@ class TestWhatADungeonIs:
         the epic named as worse than a failing test.
 
         WHAT IT STILL GUARDS, and it is a real thing rather than a formality.
-        Slices 4 to 6 remain. A Fallen City must keep coming from
-        `MakeFallenCityDungeon` and nowhere else, and NOTHING may build a
-        Cataclysm until slice 6 does it deliberately -- that dungeon is the win
-        condition and issues #43 and #1315 also reach for it, so a third route to
-        it appearing by accident is exactly what this stops.
+        A Fallen City must keep coming from `MakeFallenCityDungeon` and nowhere
+        else, and the Cataclysm boss dungeon from `MakeCataclysmDungeon`, which
+        slice 6b added on 2026-11-03 for a run that has earned it, and nowhere
+        else -- that dungeon is the win condition and issue #43 also reaches for
+        it, so a surge landing one by accident is exactly what this stops. The
+        name still says what it checks, so it did not change a third time.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
@@ -994,15 +995,20 @@ class TestWhatADungeonIs:
             for where, body in (("RollKind", rolled), ("MakeDungeon", made)):
                 assert f"ECataclysmDungeonType::{kind}" not in body, (
                     f"{where} mentions {kind}, so a surge may now land one. A "
-                    "Fallen City comes from MakeFallenCityDungeon and nothing "
-                    "builds a Cataclysm; see issue #1324")
+                    "Fallen City comes from MakeFallenCityDungeon and the "
+                    "Cataclysm from MakeCataclysmDungeon; see issue #1324")
 
-    def test_only_a_city_falling_creates_a_dungeon_a_surge_did_not(self):
-        """One route puts a dungeon on the map that no surge rolled, and one only.
+    def test_only_a_city_falling_and_an_earned_boss_create_a_dungeon_a_surge_did_not(self):
+        """Two routes put a dungeon on the map that no surge rolled, and two only.
 
-        Slice 2 of #1324 added `MakeFallenCityDungeon`. This is the guard that a
-        third route does not appear without being noticed: the two makers on
-        `UCataclysmSurgeScheduler` are the whole of how a dungeon comes to exist.
+        CALLED `test_only_a_city_falling_creates_a_dungeon_a_surge_did_not` UNTIL
+        2026-11-03, when slice 6b of #1324 added the second route and made the
+        old name false. Slice 2 added `MakeFallenCityDungeon`; slice 6b added
+        `MakeCataclysmDungeon`, the boss dungeon a run earns. This is the guard
+        that a fourth route does not appear without being noticed: the three
+        makers on `UCataclysmSurgeScheduler` are the whole of how a dungeon comes
+        to exist, and each of the two that a surge does not call has exactly one
+        caller in the run.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
@@ -1010,9 +1016,33 @@ class TestWhatADungeonIs:
         makers = re.findall(r"UCataclysmSurgeScheduler::(Make\w*Dungeon)\(",
                             source)
 
-        assert sorted(set(makers)) == ["MakeDungeon", "MakeFallenCityDungeon"], (
+        assert sorted(set(makers)) == ["MakeCataclysmDungeon", "MakeDungeon",
+                                       "MakeFallenCityDungeon"], (
             f"the makers of a dungeon are now {sorted(set(makers))}. A new one "
             "means a new way for a dungeon to exist; see issue #1324")
+
+        run = TestWhatClearingADungeonCounts.code_only(
+            read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                 / "CataclysmEmpireRun.cpp"), "//")
+        assert run.count("UCataclysmSurgeScheduler::MakeCataclysmDungeon(") == 1, (
+            "the run calls MakeCataclysmDungeon other than once, from "
+            "OpenCataclysmDungeonIfEarned, so the boss dungeon has another way "
+            "onto the board")
+        opener = run.split("void UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned()", 1)
+        assert len(opener) == 2 and "MakeCataclysmDungeon(" in opener[1].split("\n}\n", 1)[0], (
+            "MakeCataclysmDungeon is no longer called from "
+            "OpenCataclysmDungeonIfEarned")
+
+        # AND THE BOSS ONE IS THE ONLY THING THAT NAMES THE CATACLYSM KIND.
+        boss = source.split("UCataclysmSurgeScheduler::MakeCataclysmDungeon(\n", 1)[1]
+        boss = boss.split("\n}", 1)[0]
+
+        assert "Dungeon.Type = ECataclysmDungeonType::Cataclysm;" in boss, (
+            "MakeCataclysmDungeon no longer makes a Cataclysm dungeon")
+        for kind in ("Quest", "FallenCity", "Basic"):
+            assert f"ECataclysmDungeonType::{kind}" not in boss, (
+                f"MakeCataclysmDungeon mentions {kind}; it should build one "
+                "kind only")
 
         # AND THE FALLEN CITY ONE IS THE ONLY THING THAT NAMES A KIND A SURGE
         # DOES NOT ROLL.
@@ -2082,8 +2112,10 @@ class TestWhatClearingADungeonCounts:
         # the city, which slice 2 added and which is not a tally.
         assert "ECataclysmDungeonType::Cataclysm" not in game, (
             "ClearDungeon now mentions the Cataclysm boss dungeon. Beating it "
-            "is the win condition, which is slice 6, and it is neither an "
-            "ordinary clear nor a quest objective")
+            "is the win condition, which is slice 6e, and it is neither an "
+            "ordinary clear nor a quest objective. Opening and deepening it "
+            "since slice 6b go through OpenCataclysmDungeonIfEarned and "
+            "DeepenCataclysmDungeon, which name the kind themselves")
 
         fallen_uses = game.count("ECataclysmDungeonType::FallenCity")
 
@@ -2191,6 +2223,148 @@ class TestWhatClearingADungeonCounts:
             "there is now a return between the DungeonsDetonated count and the "
             "damage below it, so a resolve can be counted without the city "
             "paying for it")
+
+
+class TestTheEarnedBossDungeon:
+    """**THE CATACLYSM BOSS DUNGEON OPENS THE SAME WAY IN BOTH HALVES.** Issue
+    #1324 slice 6b, 2026-11-03.
+
+    The project owner, that day, verbatim: "On no city (Recommended)". The
+    coordinating session ruled the rest: its depth is a roll from the Cataclysm
+    row plus one floor for every ordinary dungeon defeated, before it opens and
+    after; it is never a Siege (held in `test_dungeon_subtype_port.py`); it is
+    sent by the newest active Cataclysm. The model's
+    `Simulation._maybe_open_cataclysm` and `_deepen_cataclysm` are the original;
+    `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned`, `DeepenCataclysmDungeon`
+    and `UCataclysmSurgeScheduler::MakeCataclysmDungeon` the copy.
+
+    WHAT THIS CANNOT SEE. That either side behaves: `sim/tests/
+    test_the_earned_boss_stands_on_no_city_and_grows.py` runs the model and the
+    Unreal group `Cataclysm.EarnedBoss.` the game. This catches somebody changing
+    one side's rule while looking only at that side.
+    """
+
+    RUN_SOURCE = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                  / "CataclysmEmpireRun.cpp")
+    SURGE_SOURCE = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                    / "CataclysmSurge.cpp")
+
+    @staticmethod
+    def model_code(function) -> str:
+        import inspect
+        return TestWhatClearingADungeonCounts.code_only(
+            inspect.getsource(function), "#")
+
+    def test_both_put_it_on_no_city(self):
+        from cataclysm_sim.engine import Simulation
+
+        assert "d.city_id = None" in self.model_code(
+            Simulation._maybe_open_cataclysm), (
+                "Simulation._maybe_open_cataclysm no longer puts the earned boss "
+                "on no city; the owner ruled it on 2026-11-03")
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert "Dungeon.CityId = INDEX_NONE;" in made, (
+            "MakeCataclysmDungeon no longer puts the boss on no city")
+
+    def test_both_roll_it_from_the_pillars_cataclysm_row(self):
+        from cataclysm_sim.engine import Simulation
+
+        opened = self.model_code(Simulation._maybe_open_cataclysm)
+        assert "self._make_dungeon(DungeonType.CATACLYSM," in opened
+        assert "self.empire.cities[self.empire.pillar_id]" in opened
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert ("SpecFor(ECataclysmDungeonType::Cataclysm, "
+                "ECataclysmCityTier::Pillar)") in made, (
+            "MakeCataclysmDungeon no longer rolls from the Pillar's Cataclysm "
+            "row, the only one a Cataclysm has")
+
+    def test_both_open_it_last_in_the_quest_branch_of_a_clear(self):
+        from cataclysm_sim.engine import Simulation
+
+        model = self.model_code(Simulation._finish_current)
+        quest = model.split("if d.dtype is DungeonType.QUEST:", 1)[1]
+        quest = quest.split("if d.dtype is DungeonType.CATACLYSM:", 1)[0]
+        assert "self._maybe_open_cataclysm()" in quest, (
+            "Simulation._finish_current no longer opens the boss in its quest "
+            "branch")
+
+        game = TestWhatClearingADungeonCounts.cleared_in_the_game()
+        branch = game.split("if (Kind == ECataclysmDungeonType::Quest)", 1)[1]
+        branch = branch.split("if (bWasFallenCity", 1)[0]
+        assert "++QuestObjectives;" in branch
+        assert branch.rstrip().rstrip("}").rstrip().endswith(
+            "OpenCataclysmDungeonIfEarned();"), (
+            "ClearDungeon's quest branch no longer ends by opening the boss "
+            "dungeon, which is where the model opens it")
+
+    def test_both_deepen_it_on_every_ordinary_clear(self):
+        """Before it opens AND after: the clear that raises the count deepens a
+        boss already standing, in both halves."""
+        from cataclysm_sim.engine import Simulation
+
+        model = self.model_code(Simulation._finish_current)
+        ordinary = model.split("if d.dtype is DungeonType.BASIC:", 1)[1]
+        ordinary = ordinary.split("city = ", 1)[0]
+        assert "self.basic_cleared += 1" in ordinary
+        assert "self._deepen_cataclysm()" in ordinary, (
+            "an ordinary clear no longer deepens an open boss in the model")
+
+        game = TestWhatClearingADungeonCounts.cleared_in_the_game()
+        branch = game.split("if (Kind == ECataclysmDungeonType::Basic)", 1)[1]
+        branch = branch.split("if (Kind == ECataclysmDungeonType::Quest)", 1)[0]
+        assert "++BasicDungeonsCleared;" in branch
+        assert "DeepenCataclysmDungeon();" in branch, (
+            "an ordinary clear no longer deepens an open boss in the game")
+
+    def test_both_work_the_depth_out_from_the_count(self, surge_header, model):
+        from cataclysm_sim.engine import Simulation
+
+        deepen = self.model_code(Simulation._deepen_cataclysm)
+        assert ("self.basic_cleared * self.cfg.cataclysm_floors_per_dungeon_cleared"
+                in deepen)
+        assert "d.floors = self.cataclysm_base_floors + earned" in deepen
+
+        floors_now = body_of(read(self.RUN_SOURCE),
+                             "int32 UCataclysmEmpireRun::CataclysmDungeonFloorsNow() const")
+        assert ("CataclysmDungeonBaseFloors + BasicDungeonsCleared * "
+                "UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon"
+                in floors_now), (
+            "CataclysmDungeonFloorsNow no longer works the depth out as the roll "
+            "plus the ordinary dungeons defeated")
+
+        assert (number(surge_header, "CataclysmFloorsPerOrdinaryDungeon")
+                == model.cataclysm_floors_per_dungeon_cleared), (
+            "the floors an ordinary dungeon adds to the boss differ between "
+            "UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon and "
+            "config.cataclysm_floors_per_dungeon_cleared")
+
+    def test_both_send_it_from_the_newest_active_cataclysm(self):
+        from cataclysm_sim.engine import Simulation
+
+        assert "self.active_types[-1]" in self.model_code(
+            Simulation._maybe_open_cataclysm)
+
+        opener = body_of(read(self.RUN_SOURCE),
+                         "void UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned()")
+        assert "ActiveCataclysms.Last()" in opener
+
+    def test_no_timer_runs_out_on_it_in_either(self):
+        """The model skips the timer of a dungeon on no city; the game gives it
+        one that a day cannot move."""
+        from cataclysm_sim.engine import Simulation
+
+        day = self.model_code(Simulation._empire_day)
+        assert "if d.city_id is None:" in day, (
+            "Simulation._empire_day runs a timer on a dungeon that stands on no "
+            "city again")
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert "Dungeon.ResolveDays = NeverResolveDays;" in made
 
 
 class TestTheEscalationModes:
