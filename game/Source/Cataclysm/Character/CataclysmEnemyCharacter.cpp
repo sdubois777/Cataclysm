@@ -51,6 +51,8 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+// For loading the hit-reaction clips by path. Issue #745.
+#include "UObject/SoftObjectPath.h"
 #include "Save/CataclysmSaveWriter.h"
 
 namespace
@@ -247,6 +249,14 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// player around or stand in the way of another creature for the frame it
 	// has left.
 	SetActorEnableCollision(false);
+
+	// AND IT LEAVES THE CROWD, for the same reason: the living steer round
+	// every agent the crowd holds, and a corpse whose capsule blocks nothing is
+	// not one of them. Ruled 2026-11-02; the controller says how.
+	if (ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController()))
+	{
+		Brain->LeaveTheCrowdAtDeath();
+	}
 
 	// WHAT IT DROPPED, before the actor goes away. How much and how good both
 	// follow from this creature's own rarity, which it already knows as a Step
@@ -525,6 +535,95 @@ float ACataclysmEnemyCharacter::PlayDeathAnimation()
 	MeshComponent->SetPlayRate(1.0f);
 
 	return UCataclysmEnemyDeath::CorpseSecondsFor(Clip->GetPlayLength());
+}
+
+void ACataclysmEnemyCharacter::SetHitReactionClipsIn(const TCHAR* Folder, const TCHAR* Front, const TCHAR* Back,
+													 const TCHAR* Left, const TCHAR* Right)
+{
+	// IN `ECataclysmHitDirection` ORDER, which is what `FlinchFrom` indexes by.
+	HitReactionClipPaths.Reset();
+	HitReactionClipPaths.Add(ClipPathIn(Folder, Front));
+	HitReactionClipPaths.Add(ClipPathIn(Folder, Back));
+	HitReactionClipPaths.Add(ClipPathIn(Folder, Left));
+	HitReactionClipPaths.Add(ClipPathIn(Folder, Right));
+}
+
+void ACataclysmEnemyCharacter::LoadHitReactionClips()
+{
+	// A NULL ENTRY IS KEPT for a clip that did not load, so every clip stays at its own direction.
+	HitReactionAnimations.Reset();
+	for (const FString& Path : HitReactionClipPaths)
+	{
+		HitReactionAnimations.Add(Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()));
+	}
+}
+
+FCataclysmFlinchFacts ACataclysmEnemyCharacter::FlinchFactsNow() const
+{
+	FCataclysmFlinchFacts Facts;
+	Facts.bHasHitReactions = !HitReactionClipPaths.IsEmpty();
+	Facts.bDead = UCataclysmSkillEffects::IsDead(this);
+
+	// STUNNED OR KNOCKED DOWN, ONE QUESTION. The same one `LandPendingBasicAttack` and the brain ask.
+	Facts.bCannotAct = UCataclysmSkillEffects::CannotAct(this);
+	Facts.bCharging = IsCharging();
+
+	// COMMITTED TO A TELEGRAPH: the brain's wind-up, which is every telegraphed ability of every creature, and
+	// Inferno Charge's channel, which is a modifier's wind-up held on the creature rather than on the brain. Both draw
+	// a marker and both are "committed once the wind-up starts". Ruled 2026-11-02, (a).
+	const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController());
+	Facts.bWindingUp = (Brain && Brain->WindingUpAbility != INDEX_NONE) || IsChannellingInfernoCharge();
+
+	Facts.bFlinching = IsFlinching();
+
+	// AN ATTACK IN PROGRESS: its blow still waiting for the swing (issue #783), or a clip of its own still playing.
+	Facts.bAttacking = HasPendingBasicAttack() || IsPlayingAOneShot();
+	return Facts;
+}
+
+ECataclysmFlinchRefusal ACataclysmEnemyCharacter::WhyNoFlinchNow() const
+{
+	return UCataclysmHitReaction::RefusalFor(FlinchFactsNow());
+}
+
+bool ACataclysmEnemyCharacter::IsFlinching() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < FlinchEndsAtSeconds;
+}
+
+bool ACataclysmEnemyCharacter::FlinchFrom(const FVector& From)
+{
+	LastFlinchRefusal = WhyNoFlinchNow();
+	if (LastFlinchRefusal != ECataclysmFlinchRefusal::None)
+	{
+		return false;
+	}
+
+	// THE DECISION, RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT. See the header.
+	const ECataclysmHitDirection Direction =
+		UCataclysmHitReaction::DirectionOf(GetActorForwardVector(), From - GetActorLocation());
+	const int32 Index = static_cast<int32>(Direction);
+
+	++FlinchesChosen;
+	LastFlinchDirection = Direction;
+	LastFlinchClipPath = HitReactionClipPaths.IsValidIndex(Index) ? HitReactionClipPaths[Index] : FString();
+	LastFlinchClip = HitReactionAnimations.IsValidIndex(Index) ? HitReactionAnimations[Index].Get() : nullptr;
+
+	// NOTHING TO PLAY WITHOUT THE ART, and so nothing to wait for: the rate limit is the clip's own length.
+	if (!LastFlinchClip)
+	{
+		return true;
+	}
+
+	// THROUGH THE CREATURE'S OWN `PlayOneShot`, which forgets any earlier flinch first, so this is set after it.
+	const float Seconds = PlayFlinchClip(LastFlinchClip);
+	const UWorld* World = GetWorld();
+	if (Seconds > 0.0f && World)
+	{
+		FlinchEndsAtSeconds = World->GetTimeSeconds() + Seconds;
+	}
+	return true;
 }
 
 void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)

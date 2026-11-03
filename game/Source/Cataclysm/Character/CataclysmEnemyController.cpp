@@ -168,6 +168,27 @@ void ACataclysmEnemyController::LeaveTheCrowdIfItWasNotTakenIn()
 	Crowd->SetCrowdSimulationState(ECrowdSimulationState::Disabled);
 }
 
+void ACataclysmEnemyController::LeaveTheCrowdAtDeath()
+{
+	// NOT IN CROWD MODE, NOTHING TO LEAVE: a world with no crowd manager, where
+	// the component switched itself off, or a body the crowd never took in,
+	// which `LeaveTheCrowdIfItWasNotTakenIn` already took out.
+	UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent());
+	if (!Crowd || Crowd->GetCrowdSimulationState() == ECrowdSimulationState::Disabled)
+	{
+		return;
+	}
+
+	// THE WALK FIRST, because `SetCrowdSimulationState` refuses while path
+	// following is anything but idle, and a creature can die mid-stride.
+	// `AbortMove` resets the component to idle before it returns.
+	StopMovement();
+
+	// AND OUT OF THE CROWD, the same call `LeaveTheCrowdIfItWasNotTakenIn` makes:
+	// it unregisters the agent from the manager and frees its Detour slot.
+	Crowd->SetCrowdSimulationState(ECrowdSimulationState::Disabled);
+}
+
 bool ACataclysmEnemyController::IsDrivenByACrowdAgent(const AActor* Actor)
 {
 	// NAMED SO AS TO HIDE NOTHING: `Body` is a member function of this class, and

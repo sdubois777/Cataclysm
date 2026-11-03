@@ -105,6 +105,12 @@ ACataclysmSuccubusCharacter::ACataclysmSuccubusCharacter()
 	// unlike the Corrupted Sentinel's `Corrupted_Sentinel`.
 	ArchetypeRow = TEXT("Succubus");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right. The Countess pack names the first two `Fwd` and `Bwd`,
+	// read here as struck from the front and from behind, the way the other packs' `Front` and `Back` read. That
+	// reading is a judgement nobody has checked by eye; see docs/DECISIONS.md. Issue #745.
+	SetHitReactionClipsIn(AnimationFolder,
+		TEXT("Hitreact_Fwd"), TEXT("Hitreact_Bwd"), TEXT("Hitreact_Left"), TEXT("Hitreact_Right"));
+
 	// ITS "MELEE REACH" IS ITS SHOT'S RANGE, AND THAT IS NOT A MISUSE.
 	// `ACataclysmEnemyController::Think` treats the reach as the distance at
 	// which the creature stops walking and starts attacking, and for a creature
@@ -645,6 +651,10 @@ float ACataclysmSuccubusCharacter::PlayOneShot(UAnimSequence* Animation,
 float ACataclysmSuccubusCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
 													 float Rate)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a). Here rather
+	// than in `PlayOneShot`, which passes through here, so the bolt played at its own rate ends one too.
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -675,6 +685,19 @@ float ACataclysmSuccubusCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
 	CurrentLoopingAnimation = nullptr;
 
 	return Length / Rate;
+}
+
+bool ACataclysmSuccubusCharacter::IsPlayingAOneShot() const
+{
+	// THE RECORD `UpdateLoopingAnimation` ALREADY READS. Issue #745.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < OneShotEndsAtSeconds;
+}
+
+float ACataclysmSuccubusCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the walk or the idle back when it ends. Issue #745.
+	return PlayOneShot(Clip);
 }
 
 bool ACataclysmSuccubusCharacter::ResolveBody(bool bIncludeAnimation)
@@ -738,6 +761,9 @@ bool ACataclysmSuccubusCharacter::ResolveBody(bool bIncludeAnimation)
 			DeathAnimations.Add(Cast<UAnimSequence>(
 				FSoftObjectPath(ClipPathIn(AnimationFolder, Name)).TryLoad()));
 		}
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		if (!IdleAnimation || !JogAnimation || !AttackAnimation
 			|| !CastAnimation)

@@ -321,6 +321,30 @@ public:
 	virtual FPathFollowingRequestResult MoveTo(const FAIMoveRequest& MoveRequest,
 											   FNavPathSharedPtr* OutPath = nullptr) override;
 
+	/**
+	 * Take the body this controller drives out of the crowd, because it has
+	 * died. Ruled 2026-11-02 by the coordinating session, under the owner's
+	 * delegation: a dead creature leaves the crowd at death.
+	 *
+	 * WHY. Until this, a creature stayed a crowd agent until its body was
+	 * destroyed, which for a dressed creature is after its whole death clip. The
+	 * corpse no longer blocks anything -- `ACataclysmEnemyCharacter::HandleDeath`
+	 * switches its collision off -- but the crowd still counted it as a
+	 * neighbour, so the living steered round a body they could have walked
+	 * through, and it held one of the crowd's slots.
+	 *
+	 * HOW, AND IT IS `LeaveTheCrowdIfItWasNotTakenIn`'S WAY OUT: the component is
+	 * set to `ECrowdSimulationState::Disabled`, which unregisters it from the
+	 * crowd manager. That call REFUSES UNLESS PATH FOLLOWING IS IDLE, and a
+	 * creature can die mid-walk, so the walk is stopped first; `StopMovement`
+	 * aborts it and leaves the component idle in the same call.
+	 *
+	 * CALLED FROM `ACataclysmEnemyCharacter::HandleDeath`, once, after the
+	 * creature is marked dead. Does nothing for a body not in the crowd: a world
+	 * with no crowd manager, or one the crowd never took in.
+	 */
+	void LeaveTheCrowdAtDeath();
+
 	/** Seconds between one pass of the thinking and the next. */
 	static constexpr float ThinkIntervalSeconds = 0.25f;
 

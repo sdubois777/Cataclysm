@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySet.h"
+// For the flinch's direction and refusal, which are reflected fields below. Issue #745.
+#include "Character/CataclysmHitReaction.h"
 #include "CataclysmEnemyCharacter.generated.h"
 
 class UCataclysmAbilitySystemComponent;
@@ -1019,6 +1021,140 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float CorpseSeconds = 0.0f;
+
+	//~ Flinching when hit. Issue #745.
+	//
+	// WHAT WAS WRONG. A creature that was hit showed nothing: it kept walking, or kept standing, in the pose it was
+	// in, and only the floating number and the impact burst said the blow had landed. Every Demonic creature's pack
+	// ships four directional hit-reaction clips and nothing loaded them.
+	//
+	// THE SHAPE `DeathAnimations` ALREADY HAS: clip PATHS named by the dressed subclass, the clips loaded beside the
+	// death clips in its `ResolveBody` with a null entry kept for one that is absent, and what is done with them held
+	// here once for all seven. The rules -- which clip, and whether at all -- are statics on `UCataclysmHitReaction`.
+	//
+	// THE RULINGS OF 2026-11-02, by the coordinating session under the owner's delegation: (a) a flinch never
+	// cancels or delays a wind-up or an attack, and none starts during one; (b) no flinch starts while one is
+	// playing, so the clip's own length is the only rate limit; (c) the clip is the nearest of four quarters to the
+	// side the blow came from; (d) only a landed hit flinches, never a damage-over-time tick; (e) nor does a creature
+	// that is dead, stunned, knocked down or charging. `docs/DECISIONS.md` has the entry.
+
+	/**
+	 * The four hit-reaction clips' paths, in `ECataclysmHitDirection` order: front, back, left, right.
+	 *
+	 * NAMED IN THE DRESSED SUBCLASS'S CONSTRUCTOR, through `SetHitReactionClipsIn`, rather than in `ResolveBody`.
+	 * That is the one difference from `DeathAnimations`, and it is for the worktree: `ResolveBody` stops at the
+	 * missing body mesh before it reaches the animations, so a path named there would never be named at all without
+	 * the art, and a test could not see which clip a blow chose. Named here, the choice is visible with or without it.
+	 *
+	 * EMPTY FOR EVERY CREATURE BUT THE SEVEN DEMONIC ONES, which refuses every flinch (`NoHitReactions`).
+	 */
+	TArray<FString> HitReactionClipPaths;
+
+	/**
+	 * The four clips, loaded from `HitReactionClipPaths` by `LoadHitReactionClips`, in the same order.
+	 *
+	 * A NULL ENTRY IS KEPT for a clip that did not load, which is every entry without the Paragon art. Dropping one
+	 * would move every later clip to the wrong direction.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TArray<TObjectPtr<class UAnimSequence>> HitReactionAnimations;
+
+	/** Names this creature's four hit-reaction clips, all in one folder, as `ClipPathIn` writes each path. */
+	void SetHitReactionClipsIn(const TCHAR* Folder, const TCHAR* Front, const TCHAR* Back, const TCHAR* Left,
+							   const TCHAR* Right);
+
+	/**
+	 * Loads the clips `HitReactionClipPaths` names into `HitReactionAnimations`.
+	 *
+	 * CALLED FROM EACH DRESSED CREATURE'S `ResolveBody`, beside its death clips, so the load happens once when the
+	 * creature is dressed and never in the frame of a blow.
+	 */
+	void LoadHitReactionClips();
+
+	/**
+	 * Flinch away from a blow that just landed from `From`, unless something refuses it.
+	 *
+	 * CALLED BY `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, ON A LANDED HIT ONLY: something arrived, to
+	 * health, the energy shield or a temporary absorb, and it was not a damage-over-time tick. That is the rule the
+	 * impact burst already follows (`UCataclysmImpactEffect::ShouldDrawFor`), so the flinch and the burst show the
+	 * same blows. Ruled 2026-11-02, (d).
+	 *
+	 * RECORDS ITS DECISION BEFORE ANYTHING IS ASKED TO PLAY, the split `ACataclysmBruteCharacter::PlayInAttackSlot`
+	 * makes: without the Paragon art the clip is null and nothing plays, and the direction and the path chosen are
+	 * still recorded, so a test in a worktree checks the choice.
+	 *
+	 * @param From  where the blow came from; see `UCataclysmHitReaction::WhereTheBlowCameFrom`
+	 * @return whether a flinch was chosen, whether or not a clip could be played for it
+	 */
+	bool FlinchFrom(const FVector& From);
+
+	/** What `UCataclysmHitReaction::RefusalFor` is asked about this creature now. */
+	FCataclysmFlinchFacts FlinchFactsNow() const;
+
+	/** Why this creature would not flinch now, or `None` when it would. */
+	ECataclysmFlinchRefusal WhyNoFlinchNow() const;
+
+	/** Whether a flinch clip still holds this creature's body. */
+	bool IsFlinching() const;
+
+	/**
+	 * Forgets the flinch playing, if any. Called first by every creature's `PlayOneShot`, so a swing, a cast or a
+	 * roar that replaces a flinch on the mesh also ends it here. Ruled 2026-11-02, (a): a flinch never holds back
+	 * what replaces it.
+	 */
+	void ForgetFlinch() { FlinchEndsAtSeconds = -1.0f; }
+
+	/**
+	 * Whether a one-shot of this creature's own -- a swing, a cast, a roar, a flinch -- still holds its body.
+	 *
+	 * INERT HERE: a creature with no art plays nothing. Each dressed creature answers from its own record, the one
+	 * its `UpdateLoopingAnimation` already reads (`OneShotEndsAtSeconds`), or from its animation instance where a
+	 * graph plays the clip. The flinch refuses while one is playing, as "attacking", ruled 2026-11-02, (a).
+	 */
+	virtual bool IsPlayingAOneShot() const { return false; }
+
+	/**
+	 * Plays one flinch clip the way this creature plays any one-shot, and says how long it holds the body.
+	 *
+	 * INERT HERE, answering zero: nothing played. Each dressed creature passes it to its own `PlayOneShot`, which is
+	 * what knows whether its mesh is driven by a graph slot or in single-node mode, and which records when the clip
+	 * ends so `UpdateLoopingAnimation` puts the creature's walk or idle back afterwards.
+	 */
+	virtual float PlayFlinchClip(class UAnimSequence* /*Clip*/) { return 0.0f; }
+
+	/**
+	 * How many flinches this creature has chosen, whether or not a clip played for them. Read by tests.
+	 *
+	 * A COUNT RATHER THAN A FLAG for the reason `ACataclysmBruteCharacter::AbilityMontagesStarted` gives: a second
+	 * flinch where none should start leaves a flag exactly as it was.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 FlinchesChosen = 0;
+
+	/** Which way the last flinch chosen faced. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	ECataclysmHitDirection LastFlinchDirection = ECataclysmHitDirection::Front;
+
+	/** The path of the clip the last flinch chose, whether or not it loaded. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	FString LastFlinchClipPath;
+
+	/** The clip the last flinch chose, or null where it did not load. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> LastFlinchClip;
+
+	/**
+	 * When the flinch playing ends, in world seconds; negative when none is. Set only when a clip really played.
+	 *
+	 * THIS IS THE RATE LIMIT, AND IT IS THE CLIP'S OWN LENGTH. Ruled 2026-11-02, (b): no flinch starts while one is
+	 * playing, so no number of its own is needed. Without the art nothing plays and nothing is limited.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float FlinchEndsAtSeconds = -1.0f;
+
+	/** Why the last landed blow did not flinch this creature, or `None` when it did. Read by tests. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	ECataclysmFlinchRefusal LastFlinchRefusal = ECataclysmFlinchRefusal::None;
 
 	/** A stand-in body, so an enemy is visible before there is any art. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")

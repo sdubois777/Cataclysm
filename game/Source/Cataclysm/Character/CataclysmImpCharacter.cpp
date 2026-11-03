@@ -100,6 +100,10 @@ ACataclysmImpCharacter::ACataclysmImpCharacter()
 	// Imp. Nothing reads its stats out of that row yet.
 	ArchetypeRow = TEXT("Imp");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right, from the melee minion's own folder. Issue #745.
+	SetHitReactionClipsIn(AnimationFolder,
+		TEXT("HitReact_Front"), TEXT("HitReact_Back"), TEXT("HitReact_Left"), TEXT("HitReact_Right"));
+
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 	ResistancePercent = DesignedResistancePercent;
@@ -286,6 +290,9 @@ void ACataclysmImpCharacter::UpdateLoopingAnimation()
 float ACataclysmImpCharacter::PlayOneShot(UAnimSequence* Animation,
 										  float HoldSeconds)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a).
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -331,6 +338,19 @@ float ACataclysmImpCharacter::PlayOneShot(UAnimSequence* Animation,
 	CurrentLoopingAnimation = nullptr;
 
 	return Length / Rate;
+}
+
+bool ACataclysmImpCharacter::IsPlayingAOneShot() const
+{
+	// THE RECORD `UpdateLoopingAnimation` ALREADY READS. Issue #745.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < OneShotEndsAtSeconds;
+}
+
+float ACataclysmImpCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the walk or the idle back when it ends. Issue #745.
+	return PlayOneShot(Clip);
 }
 
 bool ACataclysmImpCharacter::ResolveBody(bool bIncludeAnimation)
@@ -399,6 +419,9 @@ bool ACataclysmImpCharacter::ResolveBody(bool bIncludeAnimation)
 			DeathAnimations.Add(Cast<UAnimSequence>(
 				FSoftObjectPath(ClipPathIn(AnimationFolder, Name)).TryLoad()));
 		}
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		// COUNTED RATHER THAN CHECKED ONE BY ONE, because there are ten of them
 		// and naming each in a warning would be a wall of text nobody reads.

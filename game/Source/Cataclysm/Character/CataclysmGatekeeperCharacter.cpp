@@ -133,6 +133,10 @@ ACataclysmGatekeeperCharacter::ACataclysmGatekeeperCharacter()
 	// The row of game/Data/EnemyArchetypes.csv this creature reads.
 	ArchetypeRow = TEXT("Gatekeeper");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right, as the Sevarog pack spells them. Issue #745.
+	SetHitReactionClipsIn(AnimationFolder,
+		TEXT("Hitreact_Front"), TEXT("Hitreact_Back"), TEXT("Hitreact_Left"), TEXT("Hitreact_Right"));
+
 	// ITS REACH IS DREAD CLEAVE'S RADIUS, which is what the model's
 	// `ATTACK_REACH['Gatekeeper']` of 2.0 metres is: the basic attack's own
 	// reach. `ACataclysmEnemyController::Think` treats it as the distance at
@@ -718,6 +722,10 @@ float ACataclysmGatekeeperCharacter::PlayOneShot(UAnimSequence* Animation,
 float ACataclysmGatekeeperCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
 													   float Rate)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a). Here rather
+	// than in `PlayOneShot`, which passes through here, so the sweep played at its own rate ends one too.
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -748,6 +756,19 @@ float ACataclysmGatekeeperCharacter::PlayOneShotAtRate(UAnimSequence* Animation,
 	CurrentLoopingAnimation = nullptr;
 
 	return Length / Rate;
+}
+
+bool ACataclysmGatekeeperCharacter::IsPlayingAOneShot() const
+{
+	// THE RECORD `UpdateLoopingAnimation` ALREADY READS. Issue #745.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < OneShotEndsAtSeconds;
+}
+
+float ACataclysmGatekeeperCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the walk or the idle back when it ends. Issue #745.
+	return PlayOneShot(Clip);
 }
 
 bool ACataclysmGatekeeperCharacter::ResolveBody(bool bIncludeAnimation)
@@ -813,6 +834,9 @@ bool ACataclysmGatekeeperCharacter::ResolveBody(bool bIncludeAnimation)
 			DeathAnimations.Add(Cast<UAnimSequence>(
 				FSoftObjectPath(ClipPathIn(AnimationFolder, Name)).TryLoad()));
 		}
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		if (!IdleAnimation || !JogAnimation || !CleaveAnimation
 			|| !SoulfallAnimation || !CallAnimation || !UltimateAnimation)

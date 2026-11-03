@@ -55,6 +55,72 @@ the renderer crashed the editor during a Horde run, issue
 owner's ruling is in `docs/DECISIONS.md` under the 2026-09-10 heading "No enemy
 simulates cloth".
 
+## The four clips each creature flinches with
+
+Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745). A creature
+struck by a landed blow plays the clip for the side the blow came from. Each
+creature names its four in its constructor through
+`ACataclysmEnemyCharacter::SetHitReactionClipsIn`, in the order front, back,
+left, right, and `tools/tests/test_a_struck_enemy_flinches.py` holds this table
+and the code together.
+
+**Listed on 2026-11-02 from the file names in the main checkout's
+`game/Content/`**, by a directory listing and not through the editor. Every one
+of the 28 files exists there.
+
+| Enemy | Folder under `game/Content/` | Front | Back | Left | Right |
+|---|---|---|---|---|---|
+| The Brute | `ParagonRampage/Characters/Heroes/Rampage/Animations` | `HitReact_Front` | `HitReact_Back` | `HitReact_Left` | `HitReact_Right` |
+| The Abyssal Warden | `ParagonGrux/Characters/Heroes/Grux/Animations` | `HitReact_Front` | `HitReact_Back` | `HitReact_Left` | `HitReact_Right` |
+| The Imp | `ParagonMinions/Characters/Minions/Down_Minions/Animations/Melee` | `HitReact_Front` | `HitReact_Back` | `HitReact_Left` | `HitReact_Right` |
+| The Corrupted Sentinel | `ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege` | `HitReact_Front_Planted` | `HitReact_Back_Planted` | `HitReact_Left_Planted` | `HitReact_Right_Planted` |
+| The Hellhound | `ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations` | `IggyScorch_HitReact_Front` | `IggyScorch_HitReact_Back` | `IggyScorch_HitReact_Left` | `IggyScorch_HitReact_Right` |
+| The Gatekeeper | `ParagonSevarog/Characters/Heroes/Sevarog/Animations` | `Hitreact_Front` | `Hitreact_Back` | `Hitreact_Left` | `Hitreact_Right` |
+| The Succubus | `ParagonCountess/Characters/Heroes/Countess/Animations` | `Hitreact_Fwd` | `Hitreact_Bwd` | `Hitreact_Left` | `Hitreact_Right` |
+
+**Their lengths, in seconds**, read on 2026-11-02 from the `SequenceLength`
+asset registry tag stored in each `.uasset` file's bytes -- the tag this file's
+other lengths were read from through the editor, read here without it. Nothing in
+the code holds one: a flinch plays at its authored speed and holds the body for
+its own length, which is the only limit on how often a creature flinches.
+
+| Enemy | Front | Back | Left | Right |
+|---|:-:|:-:|:-:|:-:|
+| The Brute | 0.8667 | 0.8667 | 0.8667 | 0.8667 |
+| The Abyssal Warden | 0.8667 | 0.8667 | 0.8667 | 0.8667 |
+| The Imp | 0.6667 | 0.6667 | 0.6667 | 0.6667 |
+| The Corrupted Sentinel | 0.8000 | 0.8000 | 0.8000 | 0.8000 |
+| The Hellhound | 0.8333 | 1.3333 | 0.8333 | 0.8333 |
+| The Gatekeeper | 1.7667 | 1.9000 | 1.9667 | 1.5667 |
+| The Succubus | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+
+**The Gatekeeper's are the longest by far, up to 1.97 seconds**, against its
+3.0 second attack interval. A boss struck steadily would spend most of the
+time between its attacks flinching. Nothing refuses it, because the rulings name
+no exception for a boss; it is the first thing to look at in play.
+
+**The Corrupted Sentinel's are the `_Planted` four, a judgement.** Its siege
+folder has both: the unsuffixed four are the minion standing, and this creature
+never stands -- its idle is `Idle_Planted` and its shots `Fire_Planted` and
+`Fire_Planted_B`. The folder's `HitReact_Front_A` is a second front clip and is
+not used.
+
+**The Succubus's `Fwd` and `Bwd` are read as front and back**, the way the
+other packs' `Front` and `Back` read. Whether the Countess pack means "struck
+from the front" or "thrown forward" by `Fwd` has not been checked by eye. If a
+blow from in front makes her lurch forward, the two are the wrong way round, and
+it is the order of the two names in `ACataclysmSuccubusCharacter`'s constructor
+that changes. **The same holds for every pack's `Left` and `Right`**: they are
+read as the side the blow came from.
+
+**The Hellhound's drive the rider as well as the mount**, as every clip it
+plays but its bite does: the pack has one skeleton for the pair.
+
+**Not used:** the `Down_Minions` folder's `Ranged` and `Super` hit reactions,
+which belong to minions no creature wears, `HitReact_FullBody_A` among them; and
+`ParagonMinions/Characters/Buff/Buff_Black` and `Prime_Helix`, which no creature
+wears either.
+
 ## How big each one actually is
 
 Reference-pose bounds read from each skeletal mesh through the editor, in
