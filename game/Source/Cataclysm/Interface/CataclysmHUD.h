@@ -167,8 +167,8 @@ private:
 
 	/**
 	 * What the player's last death in a dungeon of the empire cost, centred on the screen in two lines, while
-	 * `ACataclysmPlayerCharacter::DeathCostNoticeAt` answers it: for `DeathCostNoticeSeconds` after standing back up.
-	 * Issue #41, ruled 2026-11-02. Another caller of `DrawTextCentred`; no banner system is started.
+	 * `ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt` says it is up: for `DeathCostNoticeSeconds` after standing
+	 * back up. Issue #41, ruled 2026-11-02. Another caller of `DrawTextCentred`; no banner system is started.
 	 */
 	void DrawDeathCostNotice();
 
@@ -369,6 +369,16 @@ private:
 	FString EmpireStatusLine;
 	FCataclysmEmpireStatusFacts EmpireStatusFactsDrawn;
 	float EmpireStatusWidthAtBase = 0.0f;
+
+	/**
+	 * The death-cost notice as last laid out: its lines, the world's time the notice was posted at, and the widest
+	 * line's width at `DeathCostNoticeScale`. `DrawDeathCostNotice` copies, splits and measures the notice again only
+	 * when the posting differs, which is once a death and not sixty times a second -- the form `DrawEmpireStatusBar`
+	 * keeps its line in. Empty until a notice is first drawn. Issue #41.
+	 */
+	TArray<FString> DeathCostNoticeLines;
+	float DeathCostNoticeLinesPostedAt = -1.0f;
+	float DeathCostNoticeWidestAtScale = 0.0f;
 
 	//~ Layout, in pixels at an unscaled viewport.
 

@@ -211,7 +211,8 @@ bool FCataclysmDeathCostLineTest::RunTest(const FString& Parameters)
 	const FString A = NameOfCity(*Run, 0);
 	const FString B = NameOfCity(*Run, 1);
 	const FString C = NameOfCity(*Run, 2);
-	if (!TestFalse(TEXT("set-up: the map names its first three cities"), A.IsEmpty() || B.IsEmpty() || C.IsEmpty()))
+	if (!TestFalse(TEXT("set-up: the map names its first three cities"), A.IsEmpty() || B.IsEmpty() || C.IsEmpty())
+		|| !TestNull(TEXT("set-up: the map has no city 999"), Run->Map->Find(999)))
 	{
 		return false;
 	}
@@ -275,6 +276,11 @@ bool FCataclysmDeathCostNameTest::RunTest(const FString& Parameters)
 	Run->Begin(1);
 	Run->Dungeons.Empty();
 	const FString A = NameOfCity(*Run, 0);
+	if (!TestFalse(TEXT("set-up: the map names its first city"), A.IsEmpty())
+		|| !TestNull(TEXT("set-up: the map has no city 999"), Run->Map->Find(999)))
+	{
+		return false;
+	}
 
 	const auto Put = [Run](int32 Id, ECataclysmDungeonType Type, ECataclysmDungeonSubType SubType, int32 CityId)
 	{
@@ -346,6 +352,17 @@ bool FCataclysmDeathCostFellsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE STARTING STATE THE FIGURES BELOW RELY ON, established rather than assumed: the bite fells the Outpost's ten
+	// defence (`UCataclysmEmpireMap::Damage` fells at nought or below), and a death at Standard costs five days.
+	const FCataclysmDungeon* Placed = Scene.Run->FindDungeon(DungeonId);
+	if (!TestNotNull(TEXT("set-up: the placed dungeon is on the map"), Placed)
+		|| !TestTrue(TEXT("set-up: the dungeon's bite is at least the Outpost's ten defence"),
+					 Placed->DefenceDamage * Placed->BiteScale() >= 10.0f)
+		|| !TestEqual(TEXT("set-up: a death at Standard costs five days"), Scene.Run->DeathDayCost(), 5))
+	{
+		return false;
+	}
+
 	const int32 DayOfTheDeath = Scene.Run->Day() + Scene.Run->DaysOwed();
 	if (!TestEqual(TEXT("CONTROL: before the death the run keeps no death"), Scene.Run->LastDeathDay, 0)
 		|| !DieAndStandUp(*this, Scene))
@@ -372,6 +389,12 @@ bool FCataclysmDeathCostFellsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the line says so"), UCataclysmEmpireMapLayout::LastDeathLine(&Run),
 		FString::Printf(TEXT("Day %d: you died in the dungeon on %s. The walk's 3 days ran, the death cost 5 more days, "
 							 "and %s fell."), DayOfTheDeath, *CityName, *CityName));
+	// NOTHING IN THE EIGHT DAYS THAT RAN AFTER IT -- the walk's three and the death's five -- HIT A CITY OR MOVED A
+	// DUNGEON, which is what lets the screen still show the death. By the code: no surge of any kind comes within
+	// 25 days of the opening wave, the scene's map holds nothing else, and a Dungeon City never resolves.
+	// Established here, so a change to any of that is named by this line rather than by the screen's.
+	TestTrue(TEXT("set-up: no hit and no move came after the death's day"),
+			 Run.LastHitDay <= Run.LastDeathDay && Run.LastMoveDay <= Run.LastDeathDay);
 	TestEqual(TEXT("and the empire screen shows it"), UCataclysmEmpireMapLayout::LatestEventLine(&Run),
 			  UCataclysmEmpireMapLayout::LastDeathLine(&Run));
 	return true;
@@ -410,6 +433,23 @@ bool FCataclysmDeathCostFellsNothingTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE STARTING STATE THE FIGURES BELOW RELY ON, established rather than assumed: the Outpost is put at its full
+	// defence, which the bite does not reach, and a death at Standard costs five days.
+	FCataclysmCity* Whole = Scene.Run->Map->FindMutable(CityId);
+	const FCataclysmDungeon* Placed = Scene.Run->FindDungeon(DungeonId);
+	if (!TestNotNull(TEXT("set-up: the Outpost is on the map"), Whole)
+		|| !TestNotNull(TEXT("set-up: the placed dungeon is on the map"), Placed))
+	{
+		return false;
+	}
+	Whole->Defence = Whole->MaxDefence;
+	if (!TestTrue(TEXT("set-up: the Outpost's defence is more than the dungeon's bite"),
+				  Whole->Defence > Placed->DefenceDamage * Placed->BiteScale())
+		|| !TestEqual(TEXT("set-up: a death at Standard costs five days"), Scene.Run->DeathDayCost(), 5))
+	{
+		return false;
+	}
+
 	const int32 DayOfTheDeath = Scene.Run->Day() + Scene.Run->DaysOwed();
 	if (!DieAndStandUp(*this, Scene))
 	{
@@ -434,6 +474,8 @@ bool FCataclysmDeathCostFellsNothingTest::RunTest(const FString& Parameters)
 							 "and no city fell."), DayOfTheDeath, *CityName));
 	TestTrue(TEXT("CONTROL: the death's own hit set the last hit, on a day before the death's"),
 			 Run.LastHitDay > 0 && Run.LastHitDay < Run.LastDeathDay);
+	// AND NO FALL MOVED A DUNGEON IN THE DAYS AFTERWARDS, for the reason `ADeathThatFellsItsCity...` gives.
+	TestTrue(TEXT("set-up: no move came after the death's day"), Run.LastMoveDay <= Run.LastDeathDay);
 	TestEqual(TEXT("so the empire screen shows the death and not the hit"),
 			  UCataclysmEmpireMapLayout::LatestEventLine(&Run), UCataclysmEmpireMapLayout::LastDeathLine(&Run));
 	return true;

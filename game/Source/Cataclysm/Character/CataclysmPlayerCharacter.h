@@ -445,6 +445,12 @@ public:
 	 */
 	FString DeathCostNoticeAt(float WorldSeconds) const;
 
+	/**
+	 * Whether `DeathCostNoticeAt` would answer the notice at that moment, without copying it: what the heads-up
+	 * display asks every frame. The one place the notice's seconds are counted.
+	 */
+	bool DeathCostNoticeIsUpAt(float WorldSeconds) const;
+
 	/** The world's time the notice was posted at, or -1 when none has been. For tests. */
 	float DeathCostNoticePostedAtSeconds() const { return DeathCostNoticePostedAt; }
 

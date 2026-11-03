@@ -241,7 +241,7 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// moves the timers. So today's number has to be known before the clock is
 	// asked to move.
 	//
-	// A TEST PINS THIS. `Cataclysm.EmpireRun.TheReportedDayIsTheClocksDay` fails
+	// A TEST PINS THIS. `Cataclysm.EmpireRun.TheReportedDayIsAlwaysTheClocksDay` fails
 	// if the clock ever stops advancing by exactly one.
 	const int32 Today = Clock->Day + 1;
 	Report.Day = Today;

@@ -2112,16 +2112,21 @@ bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 	return UCataclysmSkillEffects::IsDead(this);
 }
 
-FString ACataclysmPlayerCharacter::DeathCostNoticeAt(float WorldSeconds) const
+bool ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt(float WorldSeconds) const
 {
 	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
 	// `UCataclysmCombatOverlay::NegatedTextFor` uses for its own timed word.
 	if (DeathCostNoticePostedAt < 0.0f || DeathCostNotice.IsEmpty())
 	{
-		return FString();
+		return false;
 	}
 	const float Since = WorldSeconds - DeathCostNoticePostedAt;
-	return Since >= 0.0f && Since <= DeathCostNoticeSeconds ? DeathCostNotice : FString();
+	return Since >= 0.0f && Since <= DeathCostNoticeSeconds;
+}
+
+FString ACataclysmPlayerCharacter::DeathCostNoticeAt(float WorldSeconds) const
+{
+	return DeathCostNoticeIsUpAt(WorldSeconds) ? DeathCostNotice : FString();
 }
 
 UAbilitySystemComponent* ACataclysmPlayerCharacter::GetAbilitySystemComponent() const
@@ -2613,9 +2618,15 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 		}
 	}
 
-	// AN EVERYDAY ITEM, AND THAT IS NOT A CHOICE MADE HERE. Rarity is computed
-	// from what fills an item's four slots rather than stored, so a base with no
-	// affixes and no enchantments IS an Everyday. UCataclysmItemValues::RarityOf.
+	// AN ITEM WITH NO RARITY AT ALL, AND THAT IS NOT A CHOICE MADE HERE. Rarity
+	// is computed from what fills an item's four slots rather than stored, and
+	// `UCataclysmItemValues::RarityOf` accepts eight combinations of
+	// enchantments and affixes, the least of them Everyday's none and one. A
+	// base with no affix and no enchantment is none of the eight, so it has no
+	// rarity -- this comment called it an Everyday until 2026-11-02, which was
+	// false. So it has no whole name either: `UCataclysmItemName::NameOf`
+	// answers an empty string for it, the item tooltip draws no name line, and
+	// the comparison heading calls it by its base's own name (issue #832).
 	FCataclysmItem Starting;
 	Starting.Base = StartingWeaponBase;
 	Starting.GearLevel = 0;
