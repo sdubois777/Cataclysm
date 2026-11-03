@@ -535,14 +535,33 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// Strike, Projectile and Debuff shapes wait on it -- a Movement skill
 		// never asks, so skipping the clip cannot move a blow.
 		//
-		// THE OTHER FOUR NON-STRIKING SHAPES STILL PUNCH. A self buff, a summon,
-		// a deployable and an aura are not swings either, and taking the clip
+		// AND NOT AN AURA TOGGLE, SINCE ISSUE #1180'S RULING. Ruled 2026-09-14
+		// under the owner's delegation: "keep the unarmed punch clip for
+		// SelfBuff, Summon, Deployable and Aura for now, and suppress it on Aura
+		// toggles."
+		//
+		// A TOGGLE IS AN AURA WITH NO DURATION, which is `UCataclysmAuraSkill`'s
+		// own definition: "TOGGLED WHEN IT HAS NO DURATION, TIMED WHEN IT HAS
+		// ONE". Conflagration is the toggle; Living Pyre, an Ultimate lasting six
+		// seconds, is timed and keeps its punch, which is what leaves the
+		// ruling's "and Aura" meaning something. A judgement on the ruling's
+		// words, stated in docs/DECISIONS.md; exempting every aura is the other
+		// reading and is this line without its second half.
+		//
+		// SWITCHING ON IS THE ONLY WAY AN AURA REACHES THIS FUNCTION. Switching
+		// it off is `UCataclysmAuraSkill::InputPressed` ending it, which never
+		// comes here, so this one test is the whole of "on toggles". It costs an
+		// aura nothing else, for the reason it cost the Movement shape nothing:
+		// an aura never asks `SecondsUntilTheSwingConnects`.
+		//
+		// THE OTHER THREE NON-STRIKING SHAPES STILL PUNCH, as ruled. A self buff,
+		// a summon and a deployable are not swings either, and taking the clip
 		// away from them would leave them standing still, which is the state
 		// issue #1126 existed to end. There is no gesture in the project for
-		// "you did something that is not a swing", and choosing between a wrong
-		// animation and no animation is the project owner's call rather than
-		// this function's. Issue #1180.
-		if (Shape() != ECataclysmSkillShape::Movement)
+		// "you did something that is not a swing".
+		const bool bAuraToggle =
+			Shape() == ECataclysmSkillShape::Aura && Params.Duration <= 0.0f;
+		if (Shape() != ECataclysmSkillShape::Movement && !bAuraToggle)
 		{
 			if (ACataclysmCharacterBase* Character =
 					Cast<ACataclysmCharacterBase>(Self))

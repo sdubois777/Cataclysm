@@ -26,6 +26,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Engine/World.h"
+// For a character nobody configured, the control for how a path is followed. Issue #1174.
+#include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -2270,6 +2272,62 @@ bool FCataclysmPlayerWalkingSpeedFollowsTheLineJustStored::RunTest(const FString
 			  WalkPlain, 0.1f);
 	TestEqual(TEXT("and health never moved"), AbilitySystem->GetNumericAttribute(HealthAttribute), HealthPlain,
 			  0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A clicked walk is driven by acceleration. Issue #1174.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerFollowsAPathByAcceleration,
+	"Cataclysm.ClickToMove.ThePlayersMovementComponentFollowsAPathByAcceleration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The setting that makes a clicked walk run, read the way the path follower reads it.
+ *
+ * WHAT IT GUARDS. Every click-to-move order goes through `SimpleMoveToLocation`, and the path following component
+ * asks the movement component `UseAccelerationForPathFollowing` on every frame of the walk. Answered false -- the
+ * engine's default -- it sets a velocity and leaves the acceleration at zero, and `ABP_Unarmed` plays its idle pose
+ * for anything moving with no acceleration: the "slides there" the project owner reported. The walk itself is
+ * stepped on a real navigation mesh in the editor module's
+ * `Cataclysm.ClickToMove.AClickedWalkMovesTheCharacterByAccelerationSoItRunsAndStillTurnsAndArrives`; this is the
+ * plain half, which
+ * needs no navigation mesh.
+ *
+ * THE CONTROL IS A CHARACTER NOBODY CONFIGURED, which has to answer false. Without it, the first assertion could
+ * pass because the engine had started defaulting to true, and the player's own line would be untested.
+ */
+bool FCataclysmPlayerFollowsAPathByAcceleration::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("the player's movement component"), Movement))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the player's movement component follows a path by acceleration, so a clicked walk runs"),
+			 Movement->UseAccelerationForPathFollowing());
+
+	const ACharacter* Plain = World->SpawnActor<ACharacter>(FVector(500.0, 0.0, 0.0), FRotator::ZeroRotator);
+	const UCharacterMovementComponent* PlainMovement = Plain ? Plain->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("an unconfigured character's movement component"), PlainMovement))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("CONTROL: a character nobody configured follows a path by velocity, the engine's default"),
+			  PlainMovement->UseAccelerationForPathFollowing());
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS

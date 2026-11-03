@@ -22,6 +22,14 @@
 #include "Misc/QueuedThreadPool.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
 
+// For a clicked walk on a real navigation mesh. Issues #1174 and #793.
+#include "AIController.h"
+#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Navigation/PathFollowingComponent.h"
+
 /**
  * Whether a character can actually walk a generated dungeon floor.
  *
@@ -877,6 +885,263 @@ bool FCataclysmShortcutNavigationTest::RunTest(const FString& Parameters)
 	const double Least = Shortcut.Saving * 0.5 * FCataclysmFloorGenerator::CellSizeCm;
 	TestTrue(FString::Printf(TEXT("and it is shorter: %.0f cm against %.0f, by at least %.0f"), Open, Shut, Least),
 			 Shut - Open >= Least);
+	TearDown(Setup);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A clicked walk on a real navigation mesh. Issues #1174 and #793.
+//
+// THE ONE TEST THAT DRIVES CLICK-TO-MOVE. Issue #793 records that nothing did: a click goes through
+// `UAIBlueprintHelperLibrary::SimpleMoveToLocation`, which needs a navigation mesh, and only this module can build one
+// (see the comment at the top of this file). Issue #1174 is what the walk looked like once it worked: the character
+// slid to the point playing its idle pose, because the path follower set its velocity and left its acceleration at
+// zero, and `ABP_Unarmed` plays its run only while the acceleration is not zero.
+//
+// STEPPED BY HAND. A test world is never ticked, so each frame calls the path follower and then the movement
+// component, the order a game frame runs them in (the controller, which owns the path follower, ticks before the pawn
+// it possesses). A thirtieth of a second a frame.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonNavTest
+{
+	/** What one clicked walk did. */
+	struct FClickedWalkReading
+	{
+		/** Whether the order started a walk at all. */
+		bool bOrdered = false;
+
+		/**
+		 * Frames the path follower drove -- it was still following the path after its own tick -- on which the
+		 * character was on the ground at more than `MovingCmPerSecond`, flat.
+		 *
+		 * ONLY FRAMES THE FOLLOWER DROVE, AND THE FIRST WRITING MISSED IT. On the frame a walk driven by acceleration
+		 * finishes, the follower gives no input (`OnPathFinished` does not stop a walk driven by acceleration:
+		 * `ShouldStopMovementOnPathFinished` is false for it), so the movement component has no acceleration while
+		 * the character, still braking from a walking pace, moves at well over `MovingCmPerSecond`. Counted, that
+		 * frame alone failed the assertion with the fix in place. It is the brake a released key gives, not the
+		 * slide, and the slide is what is asked about. Found by reading `UPathFollowingComponent::OnPathFinished`
+		 * on 2026-11-02, before any run.
+		 */
+		int32 MovingFrames = 0;
+
+		/** Of those, the frames on which the movement component's acceleration was zero: what plays the idle pose. */
+		int32 MovingWithNoAcceleration = 0;
+
+		/** The most the character's facing turned away from the way it was stood, in degrees, over the walk. */
+		double MostTurnedDegrees = 0.0;
+
+		/** Whether the path follower had finished when the stepping stopped. */
+		bool bFinished = false;
+
+		/** Where the character stood at the end. */
+		FVector EndedAt = FVector::ZeroVector;
+	};
+
+	/** One frame of the walk, in seconds. */
+	constexpr float ClickedWalkStepSeconds = 1.0f / 30.0f;
+
+	/** Slower than this, flat, is not counted as moving: the first frame of a start and the last of a stop. */
+	constexpr double MovingCmPerSecond = 50.0;
+
+	/**
+	 * How near the stairs the walk to them has to end, flat.
+	 *
+	 * WHERE IT IS EXPECTED TO END, READ AND NOT RUN: about half a metre short. The follower calls a walk finished
+	 * within its acceptance radius, a tenth of the agent's radius, plus 1.1 times that radius
+	 * (`UPathFollowingComponent::MinAgentRadiusPct`), about 50 cm for the player's 42 cm capsule; the last frame
+	 * carries it a little nearer as it brakes. The stairs' cell middle is on the navigation mesh (the halls floor's
+	 * cells are four metres wide), so the path ends on the stairs. A metre and a half leaves room for that and
+	 * still fails a walk that stopped in the wrong room or never set off.
+	 */
+	constexpr double ArrivedWithinCm = 150.0;
+
+	/** How far a clicked walk must turn the character, which was stood facing directly away from its first leg. */
+	constexpr double TurnedAtLeastDegrees = 90.0;
+
+	/**
+	 * Stand the character at `Start` facing `Yaw`, order a walk to `Goal` the way a click does, and step it for at
+	 * most `MostFrames` frames or until the walk finishes.
+	 *
+	 * THE ORDER IS THE GAME'S OWN CALL, `SimpleMoveToLocation`, which is what
+	 * `ACataclysmPlayerController::Input_MoveToCursorReleased` calls for a click on the floor.
+	 */
+	FClickedWalkReading WalkAClickedPath(AAIController& Controller, ACataclysmPlayerCharacter& Character,
+										 const FVector& Start, float Yaw, const FVector& Goal, int32 MostFrames)
+	{
+		FClickedWalkReading Reading;
+		UCharacterMovementComponent* Movement = Character.GetCharacterMovement();
+		UPathFollowingComponent* Follower = Controller.GetPathFollowingComponent();
+		UCapsuleComponent* Capsule = Character.GetCapsuleComponent();
+		UWorld* World = Character.GetWorld();
+		if (!Movement || !Follower || !Capsule || !World)
+		{
+			return Reading;
+		}
+
+		// STOOD ON THE GROUND, whose top is the floor actor's height (`ACataclysmDungeonFloor::GroundThicknessCm`),
+		// two centimetres up so the capsule starts clear of it.
+		Controller.StopMovement();
+		const FRotator Stood(0.0, Yaw, 0.0);
+		Character.SetActorLocationAndRotation(
+			Start + FVector(0.0, 0.0, Capsule->GetScaledCapsuleHalfHeight() + 2.0), Stood, /*bSweep=*/false, nullptr,
+			ETeleportType::TeleportPhysics);
+		Movement->StopMovementImmediately();
+		const FVector StoodFacing = Stood.Vector().GetSafeNormal2D();
+
+		UAIBlueprintHelperLibrary::SimpleMoveToLocation(&Controller, Goal);
+		Reading.bOrdered = Follower->GetStatus() == EPathFollowingStatus::Moving;
+		if (!Reading.bOrdered)
+		{
+			return Reading;
+		}
+
+		for (int32 Frame = 0; Frame < MostFrames; ++Frame)
+		{
+			// THE WORLD'S CLOCK TOO, because the path follower's block detection samples by it.
+			World->TimeSeconds += ClickedWalkStepSeconds;
+			Follower->TickComponent(ClickedWalkStepSeconds, LEVELTICK_All, nullptr);
+			const bool bDriven = Follower->GetStatus() == EPathFollowingStatus::Moving;
+			Movement->TickComponent(ClickedWalkStepSeconds, LEVELTICK_All, nullptr);
+
+			const FVector Travel(Movement->Velocity.X, Movement->Velocity.Y, 0.0);
+			if (bDriven && Movement->IsMovingOnGround() && Travel.Size() > MovingCmPerSecond)
+			{
+				++Reading.MovingFrames;
+				if (Movement->GetCurrentAcceleration().IsNearlyZero())
+				{
+					++Reading.MovingWithNoAcceleration;
+				}
+			}
+
+			const FVector Facing = Character.GetActorForwardVector().GetSafeNormal2D();
+			const double Cosine = FMath::Clamp(FVector::DotProduct(Facing, StoodFacing), -1.0, 1.0);
+			Reading.MostTurnedDegrees = FMath::Max(Reading.MostTurnedDegrees, FMath::RadiansToDegrees(FMath::Acos(Cosine)));
+
+			if (Follower->GetStatus() == EPathFollowingStatus::Idle)
+			{
+				Reading.bFinished = true;
+				break;
+			}
+		}
+
+		Reading.EndedAt = Character.GetActorLocation();
+		return Reading;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClickedWalkRunsTest,
+	"Cataclysm.ClickToMove.AClickedWalkMovesTheCharacterByAccelerationSoItRunsAndStillTurnsAndArrives",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClickedWalkRunsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	// THE FLOOR MOST TESTS IN THIS FILE STAND ON, seed 3 in halls. That a path joins its arrival point to its stairs
+	// is asserted below as set-up: `ACharacterCanPathFromTheArrivalPointToTheStairs` walks seeds 21 onward, not this
+	// one, which the first writing of this comment claimed.
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// THE WALK A CLICK ON THE STAIRS WOULD ORDER, asked first so the character can be stood facing directly away
+	// from its first leg. Turning to face it is then a real turn, and a character that never turned would be caught.
+	const FVector Start = Setup.Floor->EntranceWorld();
+	const FVector Goal = Setup.Floor->ExitWorld();
+	FPathFindingQuery Query(nullptr, *Setup.NavData, Start, Goal);
+	Query.SetAllowPartialPaths(false);
+	const FPathFindingResult Path = Setup.Navigation->FindPathSync(Query);
+	if (!TestTrue(TEXT("set-up: a path joins the arrival point to the stairs"),
+				  Path.IsSuccessful() && Path.Path.IsValid() && Path.Path->GetPathPoints().Num() >= 2))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const TArray<FNavPathPoint>& Points = Path.Path->GetPathPoints();
+	const FVector FirstLeg(Points[1].Location.X - Points[0].Location.X, Points[1].Location.Y - Points[0].Location.Y,
+						   0.0);
+	const float AwayYaw = static_cast<float>((-FirstLeg).Rotation().Yaw);
+	const double PathCm = Path.Path->GetLength();
+
+	// THE PLAYER CHARACTER, POSSESSED BY AN AI CONTROLLER AND NOT BY THE PLAYER'S OWN, AND THAT IS FORCED.
+	// `APlayerController::IsLocalController` answers false in a world with no net driver to a controller with no
+	// local player, which every test world's is, and `UCharacterMovementComponent::TickComponent` performs a move
+	// only for a character that is locally controlled -- so under `ACataclysmPlayerController` the character would
+	// stand still and every assertion below would be about nothing. `AController::IsLocalController` answers true in
+	// a world with no network. Read in this engine's source on 2026-11-02, not run.
+	//
+	// IT CHANGES NOTHING ASKED HERE. The setting under test is on the player character's movement component, and the
+	// path follower asks that component, whichever controller owns the follower. The controller's own frame,
+	// `ACataclysmPlayerController::PostProcessInput`, is reached by no automation test either way.
+	//
+	// NO PLAYER STATE, so the character walks at the speed its constructor writes,
+	// `ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond`: `InitAbilityActorInfo` returns at once without one.
+	AAIController* Controller = Setup.World->SpawnActor<AAIController>();
+	ACataclysmPlayerCharacter* Character = Setup.World->SpawnActor<ACataclysmPlayerCharacter>(
+		Start + FVector(0.0, 0.0, 200.0), FRotator(0.0, AwayYaw, 0.0));
+	if (!TestTrue(TEXT("set-up: a controller and the player character were spawned"), Controller && Character))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	Controller->Possess(Character);
+
+	// AT MOST TWICE THE TIME THE PATH TAKES AT 200 CM A SECOND, half a walking pace, and three seconds more.
+	const int32 MostFrames = FMath::Clamp(
+		FMath::CeilToInt32((PathCm / 200.0 + 3.0) / ClickedWalkStepSeconds), 90, 9000);
+
+	const FClickedWalkReading Clicked = WalkAClickedPath(*Controller, *Character, Start, AwayYaw, Goal, MostFrames);
+	AddInfo(FString::Printf(
+		TEXT("Clicked walk: path %.0f cm, %d moving frames, %d of them with no acceleration, turned at most %.0f "
+			 "degrees, finished %d, ended %.0f cm from the stairs. Issue #1174."),
+		PathCm, Clicked.MovingFrames, Clicked.MovingWithNoAcceleration, Clicked.MostTurnedDegrees,
+		Clicked.bFinished ? 1 : 0, FVector::Dist2D(Clicked.EndedAt, Goal)));
+
+	if (!TestTrue(TEXT("set-up: the click ordered a walk"), Clicked.bOrdered)
+		|| !TestTrue(TEXT("set-up: the character walked, for at least a second of frames"), Clicked.MovingFrames >= 30))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// THE FAULT, ASKED THE WAY THE ANIMATION ASKS IT. `ABP_Unarmed` plays its run only while the acceleration is not
+	// zero, so every moving frame with none is a frame of sliding.
+	TestEqual(TEXT("a clicked walk: frames moving with no acceleration, which play the idle pose"),
+			  Clicked.MovingWithNoAcceleration, 0);
+
+	// AND THE TURN, WHICH WAS NEVER THE FAULT AND IS KEPT. Issue #1174 guessed that a clicked walk also failed to turn,
+	// because `bOrientRotationToMovement` turns toward the acceleration. It does not stop there:
+	// `UCharacterMovementComponent::ComputeOrientToMovementRotation` falls back to the path follower's requested
+	// velocity when the acceleration is zero, so the character turned all along. The CONTROL below measures that.
+	// Asserted here so that driving the walk by acceleration is seen not to have lost the turn.
+	TestTrue(TEXT("a clicked walk turns the character, stood facing away, toward its path"),
+			 Clicked.MostTurnedDegrees >= TurnedAtLeastDegrees);
+
+	// AND IT GETS THERE, which is issue #793's question: nothing tested that a click moves the character at all.
+	TestTrue(TEXT("the clicked walk to the stairs finishes"), Clicked.bFinished);
+	TestTrue(TEXT("and ends within a metre and a half of them"),
+			 FVector::Dist2D(Clicked.EndedAt, Goal) <= ArrivedWithinCm);
+
+	// THE CONTROL: THE SAME WALK DRIVEN BY VELOCITY, the engine's default and the game before issue #1174. It has to
+	// move with no acceleration on every moving frame, or the assertions above could not have failed for the reason
+	// they exist: this is the measurement of the fault, not a reading of the engine.
+	Character->GetCharacterMovement()->GetNavMovementProperties()->bUseAccelerationForPaths = false;
+	const FClickedWalkReading Slid = WalkAClickedPath(*Controller, *Character, Start, AwayYaw, Goal, /*MostFrames=*/45);
+	AddInfo(FString::Printf(TEXT("Control walk: %d moving frames, %d of them with no acceleration, turned at most %.0f "
+								 "degrees."),
+							Slid.MovingFrames, Slid.MovingWithNoAcceleration, Slid.MostTurnedDegrees));
+	if (TestTrue(TEXT("CONTROL: the same walk driven by velocity moves too"), Slid.bOrdered && Slid.MovingFrames > 0))
+	{
+		TestEqual(TEXT("CONTROL: and every frame it moves, it moves with no acceleration"),
+				  Slid.MovingWithNoAcceleration, Slid.MovingFrames);
+		TestTrue(TEXT("CONTROL: and it turns toward its path all the same, so the turn was never the fault"),
+				 Slid.MostTurnedDegrees >= TurnedAtLeastDegrees);
+	}
+
 	TearDown(Setup);
 	return true;
 }

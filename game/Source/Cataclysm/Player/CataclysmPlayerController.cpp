@@ -454,6 +454,13 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	// - `bOrientRotationToMovement` turns the character toward its acceleration,
 	//   so a charge could otherwise carry it sideways.
 	//
+	// A CLICKED WALK HAD THE FIRST OF THOSE FAULTS AND IS FIXED ELSEWHERE, issue
+	// #1174: the player's movement component follows a path by acceleration, set
+	// in `ACataclysmPlayerCharacter`'s constructor. (It never had the second: with
+	// no acceleration the movement component turns toward the path's requested
+	// velocity, which a root motion source does not leave.) The two cannot add
+	// together, because `PawnCannotWalk` stops any path while a charge runs.
+	//
 	// AFTER `StopMovement` AND NOT BEFORE. That call ends with
 	// `StopMovementImmediately`, which zeroes both velocity and acceleration, so
 	// input added before it would be thrown away in the same frame.
@@ -484,6 +491,13 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 		// the velocity, because pressing into an enemy's capsule covers no
 		// ground. Ruled 2026-09-25. Like the charge above, no automation test
 		// reaches this line; the library's `Step` is what they drive.
+		//
+		// A CLICKED WALK COUNTS SINCE ISSUE #1174. Path following used to set
+		// the velocity and leave the acceleration at zero, so this never fired on
+		// a click; the player's movement component now follows a path by
+		// acceleration (`ACataclysmPlayerCharacter`'s constructor), which is
+		// ordinary walking as the ruling means it. The walk to a clicked enemy is
+		// still excluded, by `PendingAttack` above.
 		const ACharacter* Walker = Cast<ACharacter>(ControlledPawn);
 		if (Carried.IsNearlyZero() && !PendingAttack.IsValid() && Walker
 			&& Walker->GetCharacterMovement())

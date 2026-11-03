@@ -2,6 +2,281 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A clicked walk plays the run, and switching an aura on throws no punch (#1174, #1180)
+
+**Affects:** `ACataclysmPlayerCharacter`'s constructor, one line and its comment
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`); `UCataclysmSkillTemplate::CommitAndBegin`, one
+condition and its comment (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`); two comments in
+`ACataclysmPlayerController::PostProcessInput` (`game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`);
+`AIModule` named in `game/Source/CataclysmEditor/CataclysmEditor.Build.cs`; four new automation tests in
+`game/Source/CataclysmEditor/Tests/CataclysmDungeonNavigationTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmPlayerAttackAnimationTests.cpp`; two new Python tests in
+`tools/tests/test_player_movement_speed.py` and `tools/tests/test_the_player_swings.py`. Issues
+[#1174](https://github.com/sdubois777/Cataclysm/issues/1174), the ruled part of
+[#1180](https://github.com/sdubois777/Cataclysm/issues/1180), and the test
+[#793](https://github.com/sdubois777/Cataclysm/issues/793) asks for.
+
+### SAID FIRST
+
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written while the build machine was in use; phase 2 compiled it,
+  found one fault in the new navigation test by reading the engine (it would have failed with the fix in place;
+  "Phase 2" below), and corrected two statements. Every Unreal figure below is still a prediction.
+- **A JUDGEMENT ON THE RULING'S WORDS.** #1180 was ruled "keep the unarmed punch clip for SelfBuff, Summon, Deployable
+  and Aura for now, and suppress it on Aura toggles." `UCataclysmAuraSkill`'s own header defines a toggle: "TOGGLED
+  WHEN IT HAS NO DURATION, TIMED WHEN IT HAS ONE". So an aura with no Duration (Conflagration, the aura slot) plays no
+  clip, and an aura with one (Living Pyre, the Demonic Fist's six-second Ultimate) keeps its punch, which is what
+  leaves "and Aura" meaning something. **If every aura was meant, the change is to drop `&& Params.Duration <= 0.0f`
+  from one line** and to delete or invert
+  `Cataclysm.PlayerAttack.AnAuraWithADurationIsTimedNotAToggleAndStillSwings`; break B below is that change.
+- **#1174 GUESSED TWO FAULTS AND ONE WAS REAL.** The run animation was the fault. The turn was not: read in this
+  engine's source, `UCharacterMovementComponent::ComputeOrientToMovementRotation` turns toward the acceleration and,
+  when there is none, toward the path follower's requested velocity, so a clicked walk faced its path all along. The
+  new navigation test measures both, the turn as a CONTROL.
+
+### What the player sees
+
+- **Clicking the floor (or a drop's name, or a floor object's name, from out of reach) now plays the run**, as holding
+  the button always has, instead of the idle pose sliding across the floor. The end of the walk changes a little: the
+  walk is still called finished about half a metre short of the point, and the character now brakes from there as it
+  does when a held button is let go, over about 15 cm, instead of being stopped dead where it was called finished.
+- **Switching Conflagration on throws no punch.** Switching it off never did (below). Living Pyre, a Movement skill
+  and every other shape are as they were: the three other non-striking shapes, SelfBuff, Summon and Deployable, still
+  punch, as ruled.
+
+### The cause of #1174, and what changes
+
+Every click-to-move order is `UAIBlueprintHelperLibrary::SimpleMoveToLocation` (four calls in
+`CataclysmPlayerController.cpp`: a drop's name, a floor object's name, the floor, and the walk to a clicked enemy).
+The path following component it starts drives the movement component one of two ways, chosen by the movement
+component's `FNavMovementProperties::bUseAccelerationForPaths`, false by default: false hands over a velocity
+(`RequestDirectMove`), which `UCharacterMovementComponent::CalcVelocity` applies through a local acceleration and
+never writes to the component's `Acceleration`; true hands over a direction as movement input (`RequestPathMove`,
+which adds it to the pawn's movement input), as holding the button does with `AddMovementInput`. `ABP_Unarmed`'s
+`ShouldMove` is
+`GroundSpeed > 0.01 AND GetCurrentAcceleration != 0`, read out of the asset on 2026-09-02 (#1174's body), so a clicked
+walk played idle. **The fix is that one setting, true, on the player character's movement component, in its
+constructor** (`Movement->GetNavMovementProperties()->bUseAccelerationForPaths = true;`). The engine has no setter
+for it in 5.8: the old member is deprecated since 5.5 and the struct is reached through `GetNavMovementProperties`.
+The shared `ABP_Unarmed` is not touched, for the reasons #1174 gives (every character reads it; it is a copy of an
+engine template).
+
+No formula or mechanic is proposed, so no genre research applies: every click-to-move game in the genre plays its run
+cycle on a clicked walk, and this is the engine's own switch for doing that.
+
+### Consequences checked
+
+- **The end of a walk.** With acceleration, `UPathFollowingComponent::ShouldStopMovementOnPathFinished` is false, so
+  the walk is not stopped dead on arrival. **Phase 1 said the follower eases its input first, and it does not.** It
+  calls the walk finished within its acceptance radius, a tenth of the agent's radius, plus 1.1 times that radius
+  (`MinAgentRadiusPct`): about 50 cm for the player's 42 cm capsule. Its easing begins only within
+  `GetPathFollowingBrakingDistance` of the path's end -- speed squared over twice `BrakingDecelerationWalking`, 400
+  squared over 4096, about 39 cm (the player sets no braking figure of its own) -- which a finished walk never
+  reaches. So the follower lets go at walking pace and the character brakes on the engine's defaults (ground friction
+  8, doubled by `BrakingFrictionFactor`, and 2,048 cm/s² of deceleration) over about 15 cm, worked out and not
+  measured. Read in `UPathFollowingComponent::FollowPathSegment`, `HasReachedDestination` and `OnPathFinished` on
+  2026-11-02. Not judged by eye.
+- **Shoulder Through now fires on a clicked walk.** It asks the acceleration, which a clicked walk used to leave at
+  zero. Its ruling of 2026-09-25 says "ordinary walking", which a clicked walk is. The walk to a clicked enemy is still
+  excluded: `PostProcessInput` asks only while `PendingAttack` is not valid, and `PendingAttack` is kept for the whole
+  of a walk to an enemy. A walk to a drop's or a floor object's name now counts. No automation test reaches
+  `PostProcessInput`.
+- **The charge is not doubled.** `PostProcessInput` feeds a charge's direction back as movement input. While a charge
+  runs, `PawnCannotWalk` is true (the same `RunningAdvanceOn` answers both `IsBeingWalkedByASkill` and
+  `AdvanceDirectionFor`), and that calls `StopMovement` first, which ends any path. So the two inputs never add.
+- **Holding the button.** `Input_MoveToCursorStarted` calls `StopMovement`, so a held steer never adds to a path still
+  being followed; `Input_Move`, the keys, does the same.
+- **Fear and stuns** stop any path in `PostProcessInput` before anything else, as before.
+- **No test measured click-walk speed or arrival** before this change (#793), so none moves.
+
+### Issue #1180's ruled part
+
+Ruled 2026-09-14 under the owner's delegation, relayed by the master session and recorded on the issue: "Ruling: yes,
+keep the unarmed punch clip for SelfBuff, Summon, Deployable and Aura for now, and suppress it on Aura toggles. Code
+work (D)." `CommitAndBegin` now skips `PlayAttackAnimation` for the Movement shape, as before, and for an aura with no
+Duration. **Switching an aura on is the only way one reaches `CommitAndBegin`**: switching it off is
+`UCataclysmAuraSkill::InputPressed` calling `EndAbility`, which plays nothing and never did, so the one condition is
+the whole of "on toggles". An aura never asks `SecondsUntilTheSwingConnects`, so skipping the clip moves no blow.
+
+### Tests
+
+New in Unreal, four:
+
+1. `Cataclysm.ClickToMove.AClickedWalkMovesTheCharacterByAccelerationSoItRunsAndStillTurnsAndArrives` (editor
+   module, on seed 3's halls floor with a real navigation mesh): the player character, stood at the arrival point
+   facing directly away from its path's first leg, is sent to the stairs by `SimpleMoveToLocation` and stepped by hand
+   (path follower, then movement component, a thirtieth of a second a frame). Asserts no moving frame the follower
+   drove has zero acceleration, the facing turned at least 90 degrees, the walk finished, and it ended within 150 cm
+   of the stairs (#793). CONTROL: the same walk with the setting forced false moves, has zero acceleration on every
+   moving frame
+   (the fault measured, not read), and turns all the same. **It is possessed by an `AAIController`, not the player's
+   own**: `APlayerController::IsLocalController` answers false with no net driver and no local player, and
+   `UCharacterMovementComponent::TickComponent` moves only a locally controlled character, so under
+   `ACataclysmPlayerController` nothing would move. Read in the engine source, not run. The setting is on the
+   character's component, which the follower asks whatever owns it. No player state, so it walks at
+   `DefaultWalkSpeedCmPerSecond`, 400.
+2. `Cataclysm.ClickToMove.ThePlayersMovementComponentFollowsAPathByAcceleration`: the player's component answers
+   `UseAccelerationForPathFollowing` true; CONTROL, a plain `ACharacter`'s answers false.
+3. `Cataclysm.PlayerAttack.AnAuraToggledOnAndOffPlaysNoSwingAndAStrikeStillDoes`, mirroring the Movement exemption's
+   test: nothing playing to begin with (a spawned player has played no montage, the same set-up assertion the
+   Movement test makes); Conflagration's params (no Duration) switched on, held, no montage; released and pressed
+   again (the path `Cataclysm.Skills.PressingAnAuraAgainSwitchesItOff` uses), not held, no montage; CONTROL, a Strike
+   on the same character swings.
+4. `Cataclysm.PlayerAttack.AnAuraWithADurationIsTimedNotAToggleAndStillSwings`: an aura with Duration 6, in the aura
+   slot (the Ultimate slot carries a Fervour cost in `game/Data/SkillSlots.csv`, and a refused cast plays nothing),
+   switched on, swings. This pins the judgement above.
+
+Mana is set to 10,000 in both animation tests so no cast is refused for its cost. Both report a skipped half and pass
+where the Mannequin art is absent, as the file's other tests do.
+
+Python, two: `test_a_clicked_walk_is_driven_by_acceleration` (exactly one assignment of `bUseAccelerationForPaths`,
+of true, outside comments, in `CataclysmPlayerCharacter.cpp`) and `test_a_movement_skill_and_an_aura_toggle_play_no_swing`
+(`CommitAndBegin`'s code names Movement and an aura with `Params.Duration <= 0.0f`, and names no SelfBuff, Summon or
+Deployable).
+
+### Phase 2: compiled, reviewed, and every fixed figure audited
+
+Rebased onto `development` `5eab89868` (#891); the only conflict was this file, both entries at the top, both kept,
+this one first. Built with `python tools/unreal_build.py build` with the branch's changes uncommitted, so that each
+changed file compiles alone: "Build: Succeeded - 15 actions, 10 files compiled: CataclysmPlayerAttackAnimationTests.cpp,
+CataclysmSkillTemplate.cpp, Module.Cataclysm.5.cpp, CataclysmPlayerMovementTests.cpp, CataclysmPlayerCharacter.cpp,
+CataclysmPlayerController.cpp, CataclysmDungeonNavigationTests.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.27.cpp,
+Module.Cataclysm.9.cpp". Both `UnrealEditor-Cataclysm.dll` and `UnrealEditor-CataclysmEditor.dll` were relinked by
+it, so the editor module links against `AIModule`. No compile error was found. Then, committed and with the build's
+makefile moved aside so it was regenerated, the unity files that hold them: "Build: Succeeded - 9 actions, 4 files
+compiled: Module.Cataclysm.5.cpp, Module.Cataclysm.9.cpp, Module.Cataclysm.27.cpp, Module.Cataclysm.12.cpp" (the
+editor module builds each file alone; the navigation test's object is the one built alone above). The fix below
+changed only a comment in `CataclysmPlayerCharacter.cpp` after the build of files alone.
+
+**Review, each read in the code:**
+
+- **The setting is not overwritten.** The only engine code that writes `FNavMovementProperties::bUseAccelerationForPaths`
+  besides its default is `UNavMovementComponent::Serialize`, which in an editor build copies the deprecated member over
+  it when loading an object saved before the 5.5 change. The player is never loaded from an asset:
+  `ACataclysmGameMode` names the native class as `DefaultPawnClass`, and nothing derives from it. Nothing in
+  `game/Source` or `game/Config` sets it anywhere else.
+- **Enemies and minions are untouched.** `ACataclysmEnemyCharacter` and `ACataclysmMinion` derive from
+  `ACataclysmCharacterBase`, not from the player's class, and each has its own movement component from `ACharacter`.
+- **The `AAIController` in the walk test is necessary**, as phase 1 read: `APlayerController::IsLocalController`
+  answers false when there is no net driver and `Player` is not a `ULocalPlayer`; `UCharacterMovementComponent::
+  TickComponent` performs a move only for a locally controlled character (or one with no controller);
+  `AController::IsLocalController` answers true in a standalone world.
+- **The charge, Shoulder Through and holding the button** are as stated above: `PawnCannotWalk` includes
+  `IsBeingWalkedByASkill`, and `Input_MoveToCursorStarted` and `Input_Move` both call `StopMovement`.
+- **The aura rows.** `game/Data/WeaponSkills.csv` has two rows of the Aura shape: `Demonic_All_Aura`, Conflagration,
+  with no Duration, which now plays no punch; and `Demonic_Fist_Ultimate`, Living Pyre, `Duration=6`, which keeps it.
+  The seven other Aura-slot rows (War's Blood and Iron, and the empty Celestial, Pestilence, Void, Death, Chaos and
+  Famine rows) have no Shape and are not aura skills, so nothing changes for them. `Params.Duration` defaults to 0
+  (`CataclysmSkillShape.h`), and the aura itself tells a toggle by the same `Params.Duration <= 0.0f`.
+
+**One fault, in the new navigation test, fixed.** It counted every frame on which the character moved on the ground
+with no acceleration. On the frame a walk driven by acceleration finishes, the follower gives no input and does not
+stop the character (above), so the movement component has no acceleration while the character, braking from walking
+pace, still moves at more than 100 cm/s: one counted frame, and the assertion would have failed with the fix in
+place. The test now counts only frames the follower drove -- still following after its own tick. That frame is the
+brake a released key gives, not the slide. Its comment also claimed
+`ACharacterCanPathFromTheArrivalPointToTheStairs` proves seed 3 can be crossed; that test walks seeds 21 onward, and
+the path on seed 3 is asserted in this test as set-up. Both corrected; the end-of-walk statements above were corrected
+in the constructor's comment too.
+
+**Every assertion against a fixed number or a starting state**, because two windows on 2026-11-02 stopped on one. None
+of these was measured; each is read. **None depends on chance or on the wall clock**: the floor is a fixed seed, the
+navigation mesh is built synchronously, every frame is a fixed thirtieth of a second and the world clock is advanced
+by hand. So each passes on every run or fails on every run.
+
+| Assertion | Why the figure holds | If it does not |
+|---|---|---|
+| set-up: at least 30 moving frames | 30 frames at 400 cm/s is 4 m, one cell; the generator puts the arrival point and the stairs at the two ends of the floor's longest walk (`FCataclysmFloorGenerator`'s "two-sweep trick") | the test stops at set-up, not at the fault |
+| no driven moving frame with zero acceleration | on a driven frame the input is the unit direction to the current path point, and the follower's easing never begins (above) | it would fail with the fix in, which the run shows |
+| the facing turned at least 90 degrees | stood facing directly away from the first leg, which starts at the arrival cell's middle, at least 2 m from that cell's edge and so at least about 1.66 m from any corner of a mesh inset 34 cm; facing along it is about 180 degrees, reached in about 0.28 s at 640 degrees a second | none foreseen; the margin is 90 degrees |
+| the walk finishes | at most twice the path's time at 200 cm/s, plus 3 s | a snag, below |
+| it ends within 150 cm of the stairs | about 50 cm expected (above); the stairs' cell middle is on the mesh, so the path ends there | a snag, below |
+| CONTROL, moving within 45 frames | 2,048 cm/s² for one frame is 68 cm/s, over the 50 cm/s floor | none foreseen |
+| CONTROL, the velocity walk turns | `PerformMovement` turns the character before it clears the requested velocity it turns toward | none foreseen |
+| the animation tests: nothing playing to begin with | a spawned player has played no montage; the Movement test asserts the same and passed in the 4,606-test run | none foreseen |
+| the animation tests: mana 10,000 | maximum set before current, which the vital set clamps to it; the aura slot costs 20 (`game/Data/SkillSlots.csv`) | none foreseen |
+
+**Capsule 42 cm against a navigation agent of 34.** The path keeps 34 cm from a wall, so at a corner the capsule can
+meet the wall by up to 8 cm and slides along it. The follower counts a path point passed within 1.1 times 42 cm of it,
+or once the character is beyond it, and calls a walk blocked only after under 10 cm of travel across ten samples half
+a second apart. A snag that stopped the walk would fail "finishes" or "within 150 cm" on every run, and the run's
+info line prints the path's length, the frames, the turn and where it ended. **Not measured.** No assertion was
+weakened; the frame count was narrowed to what the animation actually reads.
+
+The animation tests' groups skipped no half in that run, so the Mannequin art is in this worktree and proofs A and B
+reach the assertions they break.
+
+### Registered before the run
+
+The engine words a failed `TestTrue` "Expected '<what>' to be true.", `TestNull` "Expected '<what>' to be null.",
+`TestNotNull` "Expected '<what>' to be not null." and `TestEqual` on whole numbers "Expected '<what>' to be
+<expected>, but it was <actual>." (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` and
+`Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h`). **Every base count is measured, not counted in the
+source**: "Test Completed" lines in window material-magic-find-w1's whole-suite engine log at `ec29aaa6e`, whose tree
+differs from this branch's base, `development` `5eab89868`, only in `docs/DECISIONS.md`; that run performed 4606. Each
+prefix ends in a dot, and no other group shares it (the same count with the dot dropped, except `Cataclysm.Player`,
+which also matches `PlayerAttack`, `PlayerBody`, `PlayerEffects`, `PlayerListenersBoundOnce` and `PlayerStats`, 54).
+**Phase 1 registered 17 for `Cataclysm.DungeonFloor.` from name literals; the run measured 16.**
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ClickToMove.` alone | 2 / 2: none at the base, + 2 |
+| `Cataclysm.PlayerAttack.` alone | 6 / 6: 4 at the base, + 2 |
+| `Cataclysm.DungeonFloor.` alone | 16 / 16: 16 at the base, none added; run because its file changed |
+| `Cataclysm.Player.` alone | 20 / 20: 20 at the base, none added; run because `CataclysmPlayerMovementTests.cpp`, whose group it is, changed |
+| Whole Unreal suite | 4610 / 4610: 4606 at the base, + 4 by name |
+| A, the aura toggle punches (`Shape() == ECataclysmSkillShape::Aura && Params.Duration <= 0.0f;` to `false;`, in `CataclysmSkillTemplate.cpp`), prefix `Cataclysm.PlayerAttack.` | 1 test, 2 assertions, both in `AnAuraToggledOnAndOffPlaysNoSwingAndAStrikeStillDoes`: "switching an aura on plays no swing" and "and switching it off plays no swing either" (each "to be null"; the second because the switch-on's montage is still current in an unticked world). Its set-up assertions and the Strike CONTROL pass; the other five tests pass |
+| B, every aura exempt (`Shape() == ECataclysmSkillShape::Aura && Params.Duration <= 0.0f;` to `Shape() == ECataclysmSkillShape::Aura;`), the same file and prefix | 1 test, 1 assertion: in `AnAuraWithADurationIsTimedNotAToggleAndStillSwings`, "an aura with a duration is not a toggle and still swings, as ruled" (to be not null). The other five pass |
+| C, a clicked walk driven by velocity again (`GetNavMovementProperties()->bUseAccelerationForPaths = true;` to the same with `false;`, in `CataclysmPlayerCharacter.cpp`), prefix `Cataclysm.ClickToMove.` | 2 tests, 2 assertions: "the player's movement component follows a path by acceleration, so a clicked walk runs" (to be true), and in the navigation test "a clicked walk: frames moving with no acceleration, which play the idle pose" ("Expected '<what>' to be 0, but it was N."). **Registered by count only: N, the driven moving frames of that walk, is not predicted**, and no failure text past "but it was" is. The turn, the finish, the arrival and all three CONTROL assertions pass, because the velocity-driven walk turns and arrives |
+
+Each anchor occurs once in its file, checked by the window's own proof script with `--anchors-only` on the registration commit's tree. The breaks were not compiled before registration.
+
+### Proofs run in phase 1 (Python only)
+
+Both with `tools/prove_guard.py` in this worktree, which no other process uses, each anchor checked to occur once:
+
+- Break C's swap, against `tools/tests/test_player_movement_speed.py`: "PROVED: 1 failed, 7 passed in 0.12s |
+  restored: 8 passed in 0.09s", the one failure
+  `tools/tests/test_player_movement_speed.py::test_a_clicked_walk_is_driven_by_acceleration`.
+- Break B's swap, against `tools/tests/test_the_player_swings.py`: "PROVED: 1 failed, 11 passed in 0.09s | restored:
+  12 passed in 0.05s", the one failure
+  `tools/tests/test_the_player_swings.py::test_a_movement_skill_and_an_aura_toggle_play_no_swing`.
+
+### Window click-move-w1: the results
+
+Run by the coordinating session on 2026-11-03 at the registration commit `f939a69ee` (on `development` `5eab89868`),
+lock `click-move-w1`, after the six pre-checks all passed (11,965 MB of physical memory free). Every registered figure
+was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| `Cataclysm.ClickToMove.` alone | 2 | "2 tests performed, 2 succeeded, 0 failed" |
+| `Cataclysm.PlayerAttack.` alone | 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `Cataclysm.DungeonFloor.` alone | 16 | "16 tests performed, 16 succeeded, 0 failed" |
+| `Cataclysm.Player.` alone | 20 | "20 tests performed, 20 succeeded, 0 failed" |
+| Whole Unreal suite | 4610 | "4610 tests performed, 4610 succeeded, 0 failed"; "Declared: 4610 tests in the tree at f939a69ee; 4610 performed, gap 0"; "Test saves: 719 written and deleted, 0 left behind" |
+| Python | of record | "7267 passed, 8 skipped in 233.63s"; JUnit tests 7275, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 1 test, 2 | PROVED. The kept broken-half log fails exactly "switching an aura on plays no swing" and "and switching it off plays no swing either" (to be null); restored 6 of 6 |
+| B | 1 | PROVED. Exactly "an aura with a duration is not a toggle and still swings, as ruled" (to be not null); restored 6 of 6 |
+| C | 2 tests, 2 | PROVED. Exactly "the player's movement component follows a path by acceleration, so a clicked walk runs" (to be true) and "a clicked walk: frames moving with no acceleration, which play the idle pose" (0 expected, 1327 read -- the unpredicted N); restored 2 of 2 |
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **What the run looks like.** No test has a renderer (`-nullrhi`); the tests measure the acceleration
+  `ABP_Unarmed` reads, not the pose it plays. **For the owner: in `L_Sandbox`, click the floor a few metres away and
+  watch the character run and stop; click a drop's name from out of reach; switch Conflagration (the aura key) on and
+  off and see no punch either way.** Living Pyre still punches on purpose (above); say if every aura was meant.
+- **Shoulder Through on a clicked walk**, and the charge beside a clicked walk: `PostProcessInput` is reached by no
+  automation test.
+- **The player's own controller in the walk test**: it cannot move a character in a test world (above).
+- **Enemies were not looked at.** They path through `ACataclysmEnemyController::MoveTo`, by velocity; whether any of
+  their animation Blueprints gates on acceleration the way `ABP_Unarmed` does was not checked.
+
+---
+
 ## 2026-11-02 — Crafting materials get magic find on the weights, with their own reach of 3 (#891)
 
 **Affects:** `sim/cataclysm_sim/loot.py` (new `MATERIAL_MAGIC_FIND_REACH`, `material_magic_find_multiplier`,

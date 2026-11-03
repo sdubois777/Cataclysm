@@ -231,3 +231,36 @@ def test_the_pawn_follows_the_movement_speed_attribute() -> None:
         "at spawn and keeps it. Equipping boots would change the stat and not "
         "the character."
     )
+
+
+def test_a_clicked_walk_is_driven_by_acceleration() -> None:
+    """A click-to-move walk has to give the movement component an acceleration.
+
+    WHY. Issue #1174: "if you just click somewhere to move he slides there, but
+    if you hold to move he runs". `ABP_Unarmed` plays its run only while the
+    movement component's acceleration is not zero, and the engine's path
+    follower, which every click-to-move order uses, sets a velocity and leaves
+    the acceleration at zero unless the movement component asks it to follow
+    the path by acceleration. That request is one line in the player
+    character's constructor, and deleting it brings the slide back with nothing
+    else looking wrong.
+
+    WHY HERE AS WELL AS IN UNREAL. Continuous integration builds no C++, so the
+    automation tests `Cataclysm.ClickToMove.*` never run on a pull request.
+    Comments are stripped first, because the constructor's comment names the
+    setting too.
+    """
+    code = re.sub(r"/\*.*?\*/", " ", source(PLAYER_CPP), flags=re.DOTALL)
+    code = re.sub(r"//[^\n]*", " ", code)
+
+    assignments = re.findall(
+        r"GetNavMovementProperties\(\)\s*->\s*bUseAccelerationForPaths\s*=\s*"
+        r"(\w+)\s*;", code)
+    assert assignments == ["true"], (
+        f"CataclysmPlayerCharacter.cpp sets bUseAccelerationForPaths "
+        f"{assignments or 'nowhere'}; expected exactly one assignment, of true, "
+        f"in the constructor. Without it a clicked walk is driven by velocity, "
+        f"the movement component's acceleration stays at zero, and ABP_Unarmed "
+        f"plays its idle pose while the character slides to the point. "
+        f"Issue #1174."
+    )
