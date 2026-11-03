@@ -270,7 +270,29 @@ Read, not run, 2026-11-03.
 
 ### Compiled
 
-TO-BE-MEASURED
+Every compile on this machine, 2026-11-03, read off `python tools/unreal_build.py build`'s `Build:` line. **No compile
+error at any step; nothing needed fixing.**
+
+1. The branch as committed in `5f3c39f77` (phase 1 rebased onto `development` 6e269d6de, and phase 2): `Build:
+   Succeeded - 65 actions, 58 files compiled`.
+2. **Each changed `.cpp` alone.** `git reset --mixed origin/development`, so the branch's changes were uncommitted and
+   UnrealBuildTool's adaptive build takes each modified file out of its unity file. With the makefile as it was:
+   `Build: Succeeded - target already up to date, 0 actions, nothing compiled`. With `Makefile.bin` moved aside to force
+   its regeneration: `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.9.cpp,
+   CataclysmPlayerCharacter.cpp`. The object files then read: each of the five changed `.cpp` files has an object of its
+   own, `CataclysmPlayerCharacter.cpp.obj` from this build and `CataclysmCorruptedStalkerCharacter`,
+   `CataclysmEnemyCharacter`, `CataclysmEnemyController` and `CataclysmReachAgainstACreatureTests` `.cpp.obj` from
+   step 1's, all written after the last edit. Then `git reset --mixed` back to `5f3c39f77`: `git status` showed only the
+   coordinator's untracked file, as before, and the branch's diff against `development`, saved before and after, was
+   byte-identical (`cmp`).
+3. **The unity files that hold them.** `Makefile.bin` moved aside again, so the files went back into unity files:
+   `Build: Succeeded - 6 actions, 3 files compiled: Module.Cataclysm.8.cpp, Module.Cataclysm.9.cpp,
+   Module.Cataclysm.29.cpp`. `Module.Cataclysm.8.cpp` includes `CataclysmCorruptedStalkerCharacter.cpp`,
+   `CataclysmEnemyCharacter.cpp` and `CataclysmEnemyController.cpp`; `.9` includes `CataclysmPlayerCharacter.cpp`;
+   `.29` includes `CataclysmReachAgainstACreatureTests.cpp`. Both moved copies were deleted.
+
+The changed headers (`CataclysmEnemyCharacter.h`, `CataclysmEnemyController.h`, `CataclysmPlayerCharacter.h` and the
+four creature headers) are compiled in every file that includes them, which step 1's 58 files are.
 
 ### Registered before the run
 
@@ -281,7 +303,22 @@ Attacking 2, WindingUp 4 (no break below moves it), SeekingADrop 13. **The six-d
 reach are not predicted** (99.6 is a sum of floats that may print as 99.599998 or 99.600006); for those only the
 assertion's words and the count are registered.
 
-TO-BE-MEASURED
+**Base counts** are "Test Completed" lines counted by prefix in the whole-suite engine log of the slice 6e window's
+registration commit `609fb329`, whose game tree is `development` 6e269d6de's (4,670 performed, every one `Success`, 47
+skipped halves). Every prefix ends in a dot, so none takes another group whose name it begins (`Cataclysm.Enemy.` does
+not take `Cataclysm.EnemyHitTiming.`, nor `Cataclysm.Crowd.` `Cataclysm.CrowdControl.`, nor `Cataclysm.Death.`
+`Cataclysm.DeathCost.`). Tests are numbered as listed under "Tests" above.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ReachAgainstACreature.` alone | 14 performed, 14 succeeded: none at the base, + 14 by name; no skipped half |
+| Each alone, none added or changed; each orders, lands or reasons about a creature's attack | `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23, `Cataclysm.Hellhound.` 11, `Cataclysm.Warden.` 20, `Cataclysm.Imp.` 6, `Cataclysm.Gatekeeper.` 13, `Cataclysm.Succubus.` 10, `Cataclysm.Sentinel.` 6, `Cataclysm.EnemyHitTiming.` 14, `Cataclysm.Command.` 22, `Cataclysm.CompelHeld.` 4, `Cataclysm.EchoesHeld.` 4, `Cataclysm.Fear.` 9, `Cataclysm.Crowd.` 9, `Cataclysm.BossFloor.` 5, `Cataclysm.Enemy.` 19, `Cataclysm.HitReaction.` 12, `Cataclysm.Telegraph.` 14, `Cataclysm.Death.` 30, `Cataclysm.Silence.` 26, `Cataclysm.EnemyModifiers.` 57, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.DungeonModifierEffects.` 768: each that many performed and succeeded, 0 failed |
+| Whole Unreal suite | 4,670 + 14 = 4,684 performed, 0 failed; 47 skipped halves, the base's; 0 test saves left behind |
+| P1, the target's term zeroed (`FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm())` to `0.0f * FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm())`, in `CataclysmEnemyController.cpp`), prefix `Cataclysm.ReachAgainstACreature.` | 14 performed, 5 succeeded (tests 5, 9, 11, 12 and 14), 9 failed, 19 assertions: test 1, three, "against a body 48 cm across the Brute reaches 96 cm", "and so does the Hellhound" and "and so does the Abyssal Warden", each "... to be 96.000000, but it was 90.000000 and outside tolerance 0.001000."; tests 2, 3 and 4, three each: "a thrall <Brute / Hellhound / Abyssal Warden> pressed against a creature as wide as itself swings rather than chasing" ("... to be 2, but it was 1."), "and it ordered one swing" ("... to be 1, but it was 0.") and "and the blow lands: the creature it touches loses health" ("... to be true."); test 6, one, "half a centimetre inside 98 cm, it swings at a creature as wide as itself" ("... to be 2, but it was 1."); test 7, two, "the blow lands on a creature as wide as itself that is pressed against it" and "and takes health" (each "... to be true."); test 8, one, "a hungry Brute pressed against a creature as wide as itself swings rather than walking to the drop" ("... to be 2, but it was 13."); test 10, one, "and against a body 48 cm across, 105.6 cm: both terms add" (a `float` mismatch, about 99.6 where 105.6 is expected, tolerance 0.010000; the six decimals not predicted); test 13, two, "an Elite Brute pressed against a creature 48 cm across swings rather than chasing" ("... to be 2, but it was 1.") and "and it ordered one swing at it" ("... to be 1, but it was 0.") |
+| P2, the landing's old comparison (`if (bMustStayInReach && !ACataclysmEnemyController::IsInReach(this, Target))` to `if (bMustStayInReach && FVector::Dist2D(GetActorLocation(), Target->GetActorLocation()) > AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)`, in `CataclysmEnemyCharacter.cpp`), same prefix | 14 performed, 10 succeeded, 4 failed, 5 assertions: "and the blow lands: the creature it touches loses health" in tests 2 and 4 (each "... to be true."); in test 7 "the blow lands on a creature as wide as itself that is pressed against it" and "and takes health" (each "... to be true."); in test 11 "and the blow lands on the player it touches" ("... to be true."). Tests 3 and 12 pass: the Hellhound's bite lands at once and is never asked |
+| P3, Famished Beasts' old comparison (`Hungry && Hungry->bSeeksDropsForTheFloorRule && !IsInReach(Driven, Target))` to `Hungry && Hungry->bSeeksDropsForTheFloorRule && !(Target && FVector::Dist2D(Driven->GetActorLocation(), Target->GetActorLocation()) <= Driven->AttackReachCm()))`, in `CataclysmEnemyController.cpp`), same prefix | 14 performed, 12 succeeded, 2 failed, 2 assertions: test 8's "a hungry Brute pressed against a creature as wide as itself swings rather than walking to the drop" and test 9's "a hungry Brute 91 cm from the player, inside its reach and the tolerance, swings rather than eats", each "... to be 2, but it was 13.". Test 9's CONTROL at 93 cm passes |
+| P4, the attacker's own growth zeroed (`Reach += FMath::Max(0.0f, OwnCapsule->GetScaledCapsuleRadius() - OwnCapsule->GetUnscaledCapsuleRadius());` to `Reach += 0.0f * FMath::Max(0.0f, OwnCapsule->GetScaledCapsuleRadius() - OwnCapsule->GetUnscaledCapsuleRadius());`, in `CataclysmEnemyController.cpp`), same prefix | 14 performed, 10 succeeded, 4 failed, 12 assertions: test 10, five `float` mismatches, "an Elite Brute against the player reaches 99.6 cm: its 90 and the 9.6 its body grew" (it was 90.000000), "and against a body 48 cm across, 105.6 cm: both terms add" (96.000000), "and against an actor with no body, 99.6 cm: its own growth still counts" (90.000000), "a Legendary Hellhound against the player reaches 111.12 cm" (90.000000) and "an Elite Imp against the player reaches 138 cm: its 132 and the 6 its body grew" (132.000000), each "outside tolerance 0.010000", the expected figure's six decimals not predicted; test 11, three, "an Elite Brute touching the player swings rather than chasing" ("... to be 2, but it was 1."), "and it ordered one swing" ("... to be 1, but it was 0.") and "and the blow lands on the player it touches" ("... to be true."); test 12, two, "a Legendary Hellhound touching the player bites rather than chasing" ("... to be 2, but it was 1.") and "and it ordered one bite" ("... to be 1, but it was 0."); test 13, two, as in P1. Tests 1 to 9 (every creature Common) and 14 (a range) pass |
+| Python | `ruff check .` clean; the whole suite in the window, 0 failed |
 
 Each anchor occurs once in its file, counted with Python `str.count` at the commit that registers this. The breaks
 were not compiled.
