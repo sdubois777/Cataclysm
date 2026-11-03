@@ -126,6 +126,12 @@ ACataclysmHellhoundCharacter::ACataclysmHellhoundCharacter()
 	// Hellhound. Nothing reads its stats out of that row yet.
 	ArchetypeRow = TEXT("Hellhound");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right. Like every clip this creature plays but its bite, they
+	// drive the rider as well as the mount: the pack has one skeleton for the pair. Issue #745.
+	SetHitReactionClipsIn(TEXT("/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations"),
+		TEXT("IggyScorch_HitReact_Front"), TEXT("IggyScorch_HitReact_Back"), TEXT("IggyScorch_HitReact_Left"),
+		TEXT("IggyScorch_HitReact_Right"));
+
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 	ResistancePercent = DesignedResistancePercent;
@@ -402,6 +408,9 @@ void ACataclysmHellhoundCharacter::UpdateLoopingAnimation()
 float ACataclysmHellhoundCharacter::PlayOneShot(UAnimSequence* Animation,
 											   float HoldSeconds)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a).
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 	LastPlayedRate = 0.0f;
 
@@ -459,6 +468,19 @@ float ACataclysmHellhoundCharacter::PlayOneShot(UAnimSequence* Animation,
 	return Length / Rate;
 }
 
+bool ACataclysmHellhoundCharacter::IsPlayingAOneShot() const
+{
+	// THE RECORD `UpdateLoopingAnimation` ALREADY READS. Issue #745.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < OneShotEndsAtSeconds;
+}
+
+float ACataclysmHellhoundCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the walk or the idle back when it ends. Issue #745.
+	return PlayOneShot(Clip);
+}
+
 bool ACataclysmHellhoundCharacter::ResolveBody(bool bIncludeAnimation)
 {
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -510,6 +532,9 @@ bool ACataclysmHellhoundCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(FirstDeathAnimationPath).TryLoad()));
 		DeathAnimations.Add(Cast<UAnimSequence>(
 			FSoftObjectPath(SecondDeathAnimationPath).TryLoad()));
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		if (!MaulAnimation || !IdleAnimation || !JogAnimation)
 		{

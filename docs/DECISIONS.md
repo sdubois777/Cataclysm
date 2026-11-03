@@ -2,6 +2,228 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A creature struck by a landed blow flinches away from it with its own pack's clip, and never while it is committed (#745)
+
+**Affects:** `UCataclysmHitReaction`, `ECataclysmHitDirection`, `ECataclysmFlinchRefusal` and `FCataclysmFlinchFacts`,
+new (`game/Source/Cataclysm/Character/CataclysmHitReaction.h`, `.cpp`); on `ACataclysmEnemyCharacter`,
+`HitReactionClipPaths`, `HitReactionAnimations`, `SetHitReactionClipsIn`, `LoadHitReactionClips`, `FlinchFrom`,
+`FlinchFactsNow`, `WhyNoFlinchNow`, `IsFlinching`, `ForgetFlinch`, the virtuals `IsPlayingAOneShot` and
+`PlayFlinchClip`, and the test records `FlinchesChosen`, `LastFlinchDirection`, `LastFlinchClipPath`, `LastFlinchClip`,
+`FlinchEndsAtSeconds` and `LastFlinchRefusal`, new (`CataclysmEnemyCharacter.h`, `.cpp`); the hook in
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, beside `PlayImpactEffect`; in each of the seven Demonic
+creatures (`ACataclysmBruteCharacter`, `ACataclysmAbyssalWardenCharacter`, `ACataclysmImpCharacter`,
+`ACataclysmCorruptedSentinelCharacter`, `ACataclysmHellhoundCharacter`, `ACataclysmGatekeeperCharacter`,
+`ACataclysmSuccubusCharacter`): the constructor names its four clips, `ResolveBody` loads them, its one-shot
+(`PlayOneShot`, or `PlayOneShotAtRate` for the Gatekeeper and the Succubus) forgets a flinch first, and it overrides
+`IsPlayingAOneShot` and `PlayFlinchClip`; the Brute's `PlayAbilityMontage` forgets a flinch too, and the Abyssal Warden's
+`AttackTarget` cuts one short; 12 new tests in `game/Source/Cataclysm/Tests/CataclysmHitReactionTests.cpp`;
+`tools/tests/test_a_struck_enemy_flinches.py`, new; `game/docs/enemy-source-assets.md`'s new "The four clips each
+creature flinches with"; `docs/Cataclysm_GDD_v2.md`'s new "What being hit looks like". No `.uasset` was made or
+changed. Issue [#745](https://github.com/sdubois777/Cataclysm/issues/745).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN.** Phase 1 was written while the build machine was in use, by instruction: no Unreal
+  build, no Unreal test and no guard proof has been run. Everything under "Registered before the run" is a prediction
+  for a later window.
+- **WHAT THE PLAYER SEES.** A Brute, Abyssal Warden, Imp, Corrupted Sentinel, Hellhound, Gatekeeper or Succubus struck
+  by a blow that lands -- to health, its energy shield or a temporary absorb -- plays its pack's hit reaction for the
+  side the blow came from, unless it is busy: winding up, swinging, casting, charging, already flinching, stunned,
+  knocked down or dead. A burn or a poison ticking never flinches it. The flinch moves nothing and delays nothing; it is
+  a clip.
+- **THE GATEKEEPER'S FLINCHES ARE LONG: 1.57 TO 1.97 SECONDS**, against its 3.0 second attack interval, read from the
+  clips' own length tags. A boss struck steadily between its attacks would spend most of that time flinching. The
+  rulings name no exception for a boss and none was built. **For the owner: whether a boss should flinch at all** is
+  the first thing to look at in play.
+- **WHICH CLIP IS "LEFT" WAS READ FROM ITS NAME, NOT SEEN.** Every pack's `Left` and `Right` are read as the side the
+  blow came from, and the Countess pack's `Fwd` and `Bwd` as front and back. If a blow from a creature's left makes it
+  recoil the wrong way, the two names swap in that creature's constructor; nothing else changes.
+
+### The rulings, by the coordinating session, 2026-11-02 (under the owner's delegation, from the design)
+
+The brief stating them was dated 2026-11-03, which was the UTC date; this log and the code comments use the local
+date, as `test_no_entry_is_dated_later_than_today` requires.
+
+- **(a)** A flinch never cancels or delays a wind-up or an attack, and none starts during one. The design,
+  `docs/Cataclysm_GDD_v2.md`, under "What the player can do during a wind-up, and what the attack does": "**The enemy
+  is committed once the wind-up starts.** It does not cancel because the player left. Committing is what makes a
+  telegraph a chance to punish the enemy rather than only a chance to survive it."
+- **(b)** Rate: no flinch starts while one is playing, so the clip's own length is the limit; no new number is needed.
+- **(c)** The direction is the hit's direction relative to the creature's facing, picked as front, back, left or right
+  by the nearest of four 90-degree sectors, as a pure function testable alone. Use the hit's source location if the
+  damage path has one; otherwise the instigator's location.
+- **(d)** Damage-over-time ticks and other non-hit damage do not flinch; only a landed hit does.
+- **(e)** A creature that is dead, stunned or knocked down (playing its own reaction), or mid-charge, does not flinch.
+
+No genre research was done for this entry: the shape was ruled before the work began, and this session researched
+nothing. The judgements below are labelled as this session's.
+
+### What changes
+
+- **THE CLIPS, NAMED BY EACH CREATURE, LOADED BESIDE ITS DEATH CLIPS.** The `DeathAnimations` pattern of issue
+  [#522](https://github.com/sdubois777/Cataclysm/issues/522): paths as strings, loaded at runtime with
+  `FSoftObjectPath::TryLoad` in `ResolveBody`, a null entry kept for a clip that did not load, and what is done with them
+  held once on the base. **One difference, for the worktree:** the four paths are named in the constructor
+  (`SetHitReactionClipsIn(Folder, Front, Back, Left, Right)`, through `ClipPathIn`), not in `ResolveBody`, because
+  `ResolveBody` stops at the missing body mesh before it reaches the animations, and a test without the art could then
+  not see which clip a blow chose. The inventory, all 28 present in the main checkout's `game/Content/`:
+
+  | Creature | Folder | Front, Back, Left, Right |
+  |---|---|---|
+  | Brute | `/Game/ParagonRampage/Characters/Heroes/Rampage/Animations` | `HitReact_Front`, `HitReact_Back`, `HitReact_Left`, `HitReact_Right` |
+  | Abyssal Warden | `/Game/ParagonGrux/Characters/Heroes/Grux/Animations` | `HitReact_Front`, `HitReact_Back`, `HitReact_Left`, `HitReact_Right` |
+  | Imp | `/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Melee` | `HitReact_Front`, `HitReact_Back`, `HitReact_Left`, `HitReact_Right` |
+  | Corrupted Sentinel | `/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege` | `HitReact_Front_Planted`, `HitReact_Back_Planted`, `HitReact_Left_Planted`, `HitReact_Right_Planted` |
+  | Hellhound | `/Game/ParagonIggyScorch/Characters/Heroes/IggyScorch/Animations` | `IggyScorch_HitReact_Front`, `IggyScorch_HitReact_Back`, `IggyScorch_HitReact_Left`, `IggyScorch_HitReact_Right` |
+  | Gatekeeper | `/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations` | `Hitreact_Front`, `Hitreact_Back`, `Hitreact_Left`, `Hitreact_Right` |
+  | Succubus | `/Game/ParagonCountess/Characters/Heroes/Countess/Animations` | `Hitreact_Fwd`, `Hitreact_Bwd`, `Hitreact_Left`, `Hitreact_Right` |
+
+  Their lengths are in `game/docs/enemy-source-assets.md`, read from each file's `SequenceLength` tag: 0.6667 s (Imp)
+  to 1.9667 s (Gatekeeper, left). **The Sentinel's are the `_Planted` four, a judgement:** it never stands up (its idle
+  is `Idle_Planted`, its shots `Fire_Planted`), and the folder's unsuffixed four are the minion standing.
+- **PLAYED THROUGH THE CREATURE'S OWN ONE-SHOT.** `PlayFlinchClip` is `return PlayOneShot(Clip);` in all seven, so the
+  Brute's flinch is a dynamic montage in `ABP_Brute`'s `DefaultSlot` and blends over the walk
+  (`PlaySlotAnimationAsDynamicMontage`, the swing's path), and the other six play it in single-node mode, recording
+  `OneShotEndsAtSeconds` so `UpdateLoopingAnimation` puts the idle or walk back when it ends. At the authored speed. No
+  montage asset; nothing new under `game/Content/`.
+- **WHERE A HIT IS TOLD FROM A TICK, AND WHERE THIS HOOKS IN (ruling (d)).** `Hit.bIsDamageOverTime` is read off the
+  effect's asset tags (`UCataclysmDamageCalculation::DamageOverTimeTag`) at the top of the damage branch of
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`; it is the one place the game tells the two apart. The hook is
+  in that branch, immediately before `PlayImpactEffect`, and asks the impact burst's own question,
+  `UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome)`: something arrived (to health, the energy shield or a temporary
+  absorb) and it was not damage over time. So the flinch and the burst show the same blows; an evaded blow and one
+  mitigated to nothing flinch nothing. A wearer's share of an ally's blow (`bShareOfAnAllysDamage`) is refused too, a
+  judgement: it is damage paid on another's behalf, not a blow struck at this body. **AFTER EVERYTHING ELSE IN THE
+  BRANCH**, so a blow that killed has already marked the creature dead and a blunt blow that stunned it has already
+  stunned it.
+- **WHERE THE BLOW CAME FROM (ruling (c)), `UCataclysmHitReaction::WhereTheBlowCameFrom`, in this order:** the point the
+  effect is stamped as struck from (`StruckFromSetDataName`, a gadget's copy of its summoner's skill: the one blow in the
+  game with a source of its own); else the effect context's source object when it is an actor (a minion whose blow is
+  dealt in its summoner's name); else the effect causer, which every blow here sets to its instigator, so the
+  instigator's location; else the creature's own place, which reads as front. **The damage path carries no hit result**:
+  nothing calls `AddHitResult`, and `UCataclysmImpactEffect::ImpactLocationFor` already falls back to the actor for every
+  blow. A projectile's blow names its firer, so a shot reads as from the shooter.
+- **THE DIRECTION (ruling (c)), `UCataclysmHitReaction::DirectionOf`.** In the floor plane: the gap to the source
+  projected on the creature's forward and on its right (+Y for a creature facing +X). The larger projection wins; **a
+  blow exactly on a diagonal goes to front or back**, a judgement, since a boundary must belong to one side; and a source
+  standing where the creature stands, or a creature with no facing, is front.
+- **WHAT REFUSES, IN THE ORDER IT IS REPORTED (rulings (a), (b), (e)), `UCataclysmHitReaction::RefusalFor`:** no clips
+  named (every other creature: the plain dummy, the Corrupted Stalker, minions are not enemies at all); dead
+  (`UCataclysmSkillEffects::IsDead`); stunned or knocked down (`CannotAct`, the question the brain and #783's waiting
+  blow ask); charging (`IsCharging`); winding up -- the brain's `WindingUpAbility`, which covers every telegraphed
+  ability of every creature, **and Inferno Charge's channel**, a modifier's telegraph held on the creature rather than on
+  the brain, a judgement that it is "committed" in the ruling's sense; a flinch still playing (`FlinchEndsAtSeconds`,
+  set from the clip's played length -- ruling (b)'s whole limit); attacking -- #783's blow still waiting
+  (`HasPendingBasicAttack`), or a one-shot of the creature's own still holding its body (`IsPlayingAOneShot`: the six
+  single-node creatures' `OneShotEndsAtSeconds`, plus the Warden's queued combo; the Brute's, and a Warden with a graph
+  bound, asked of the animation instance, `IsAnyMontagePlaying`). Without the art nothing plays, so nothing is limited:
+  every landed blow on an idle creature chooses a flinch with no clip.
+- **AN ATTACK THAT BEGINS DURING A FLINCH REPLACES IT AT ONCE (ruling (a)).** Every creature's one-shot calls
+  `ForgetFlinch()` first, so a swing, a cast or a roar played over a flinch ends it; the Brute's ability montage does the
+  same. **The Abyssal Warden needed more:** its `AttackTarget` read `OneShotEndsAtSeconds` to make the left swing and
+  its blow wait for a clip still playing (#783), which would have made a flinch delay its attack. It now cuts a flinch
+  short (`ForgetFlinch()`, `OneShotEndsAtSeconds = Now`) before that read. No other creature reads the record outside
+  `UpdateLoopingAnimation`. **Three creatures' wind-up clips start part way into the wind-up** -- the Brute's ability
+  montages, the Gatekeeper's and the Succubus's strike-aligned clips (#784) -- so a flinch already playing when such a
+  wind-up begins plays on until that clip starts and replaces it. The wind-up's timing is the brain's and does not move.
+- **WHAT DOES NOT CHANGE.** No damage figure, timing, cooldown, wind-up, movement or brain decision. Without the art,
+  nothing any existing test reads changes: no clip loads, so `FlinchEndsAtSeconds` is never set and `IsFlinching` is
+  never true; the only new state is the six records. With the art, a creature struck while idle now plays a clip where
+  it played none; a read of every test that reads `LastPlayedAnimation`, `CurrentLoopingAnimation`,
+  `OneShotEndsAtSeconds` or a montage found none that strikes a Demonic creature and then reads its animation. That
+  sweep was a read, not a run.
+
+### Tests
+
+Twelve new, in the new group `Cataclysm.HitReaction.`. Every blow is real: a plain creature on the players' side swings
+at the creature under test through `ACataclysmEnemyCharacter::AttackTarget`, which is `ApplyHit`, so the hook is
+reached, not `FlinchFrom` called by hand.
+
+1. `TheDirectionIsTheNearestOfFourQuarters`: 24 cases -- the four straight lines; 44 and 46 degrees either side of every
+   boundary; the four exact diagonals; nothing to judge; height ignored; a creature facing +Y; long vectors.
+2. `TheFirstRefusalThatAppliesIsTheOneReported`: every refusal alone, none, and three combinations.
+3. `EachDemonicCreatureFlinchesWithTheClipForTheSideItWasStruckFrom`: all seven, each struck from each of four sides by
+   a fresh creature (28): one flinch chosen, toward that side, with the clip path written out in the test, not read
+   from the creature. With the art also the clip loaded, is the one played, and holds the body; without it, one skipped
+   half.
+4. `ACreatureWithNoClipsNamedNeverFlinches`: the plain creature, `NoHitReactions`.
+5. `NoFlinchStartsDuringAWindUpAndTheWindUpIsUntouched`: a Warden's control flinch, then Molten Roar's wind-up set on
+   its brain as `Cataclysm.Gatekeeper` sets one; no flinch, `WindingUp`, and the ability, landing time and passes left
+   unchanged.
+6. `NoFlinchStartsDuringASwingAndItsBlowLandsWhenItWould`: a Brute's swing ordered, the Brute struck: no flinch,
+   `Attacking`, the blow still due when it was, nothing a hundredth of a second before, the blow a hundredth after.
+7. `ASwingOrderedDuringAFlinchEndsItAndIsNotDelayed`: a Warden flinching swings: the flinch ends and the blow waits
+   0.176 s alone. Without the art a half-second flinch is written in by hand and the clip half is reported skipped.
+8. `NoFlinchStartsWhileOneIsPlaying`: an Imp: a second blow during the flinch starts none (`AlreadyFlinching`), and one
+   a hundredth of a second after it ends does. Without the art the length is written in by hand; skipped half reported.
+9. `ADamageOverTimeTickStartsNoFlinch`: a burn of 50 a tick on an Imp, the timers run 2.5 s (ticks at 1 s and 2 s;
+   `BaseSecondsPerTick` is 1): health lost and no flinch; then a landed blow does flinch it. The striker stands 100 m
+   away, past the Imp's 10 m notice, because running the timers runs its brain.
+10. `ABlowThatKillsStartsNoFlinch`: an Imp at one hit point, killed by the blow: no flinch, `Dead`.
+11. `AStunnedOrKnockedDownCreatureDoesNotFlinch`: two Imps, a designed stun and a designed knockdown: `CannotAct` each.
+12. `NoFlinchStartsMidCharge`: a Warden on Stampede's own figures: no flinch, `Charging`, and the charge runs on.
+
+Python, `tools/tests/test_a_struck_enemy_flinches.py`, 33 cases: each creature's four names and folder, written out in
+the test (7); each loads them in `ResolveBody` after its death clips (7); each one-shot's first statement is
+`ForgetFlinch()` (7); each `PlayFlinchClip` returns `PlayOneShot(Clip)` (7); the Warden cuts a flinch short before it
+reads how long its swing waits; the hook is guarded by `ShouldDrawFor(Hit, Outcome) && !bShareOfAnAllysDamage` and
+calls `FlinchFrom` with `WhereTheBlowCameFrom`, and `ShouldDrawFor` still refuses a tick; the asset record's table
+matches; every clip exists on disk (skipped without the packs; all 28 checked by hand against the main checkout on
+2026-11-02); and the design document's five sentences. No Python guard proof was run.
+
+### Where each fixture's starting state comes from
+
+- **Health.** `SetHealth(1000000)` writes the maximum and the health through `ApplyStartingAttributes`, scaled by the
+  rarity (Common) and no modifiers (none are drawn). A 100 damage blow cannot kill; the kill test uses `SetHealth(1)`.
+  No assertion reads a health figure; each reads "less than before" or "unchanged".
+- **Evasion and block.** Written to 0 after `SetHealth`, which writes the creature's designed evasion back. The Succubus
+  keeps its energy shield, so her blows are absorbed by it, which `ShouldDrawFor` counts as arrived. Critical strikes
+  are silenced by `MakeWorldThatHasBegunPlay` and change no count anyway.
+- **Facing.** Spawned at `FRotator::ZeroRotator`, facing +X. Nothing turns it: the brain's turning is through the
+  movement component, and no world here is ticked.
+- **The clock.** Every world starts at 0. A flinch's end and a one-shot's end start at -1 and 0, so nothing is playing.
+  Only test 9 runs the timer manager.
+- **The brain.** Every creature is possessed on spawn, as `Cataclysm.Gatekeeper` relies on. Nothing in tests 1 to 8 or
+  10 to 12 runs its timer, so it never thinks; in test 9 it finds nobody within its notice.
+- **The flinch records.** `FlinchesChosen` starts at 0, `LastFlinchRefusal` at `None`, on every fresh creature; tests 5
+  and 6 read them after a control or with nothing before.
+
+### Registered before the run
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.HitReaction.` alone | 12 / 12 (0 at the base); without the Paragon art, three skipped halves: `EachDemonicCreatureFlinchesWithTheClipForTheSideItWasStruckFrom` (28 of 28 clips did not load), `ASwingOrderedDuringAFlinchEndsItAndIsNotDelayed`, `NoFlinchStartsWhileOneIsPlaying` |
+| `Cataclysm.EnemyHitTiming.` alone | 14 / 14, as at window enemy-hit-timing-w1; the Warden's `AttackTarget` changed only for a creature already flinching, which none of them is |
+| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total plus 12, all succeeded, 0 failed; the base's skipped halves plus 3; 0 test saves left behind |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1, a tick admitted (`if (UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome) && !bShareOfAnAllysDamage)` to `if (Outcome.DealtToHealth > 0.0f && !bShareOfAnAllysDamage)`, in `CataclysmVitalAttributeSet.cpp`), prefix `Cataclysm.HitReaction.ADamageOverTimeTickStartsNoFlinch` | fails "the burn's ticks start no flinch" ("Expected 'the burn's ticks start no flinch' to be 0, but it was 2.": both ticks flinch, without the art because nothing limits them and with it because the Imp's 0.6667 s clip is over before the next) -- 1 -- and nothing else; "a landed blow afterwards does" holds, because it is counted from the figure after the burn |
+| P2, left and right swapped (`return Beside > 0.0 ? ECataclysmHitDirection::Right : ECataclysmHitDirection::Left;` to `return Beside > 0.0 ? ECataclysmHitDirection::Left : ECataclysmHitDirection::Right;`, in `CataclysmHitReaction.cpp`), prefix `Cataclysm.HitReaction.TheDirectionIsTheNearestOfFourQuarters` | fails the 10 cases expecting left or right -- the four "right" ones "... to be 3, but it was 2." and the six "left" ones "... to be 2, but it was 3." -- 10 -- and none of the 14 expecting front or back |
+| P3, the brain's wind-up not asked (`Facts.bWindingUp = (Brain && Brain->WindingUpAbility != INDEX_NONE) \|\| IsChannellingInfernoCharge();` to `Facts.bWindingUp = IsChannellingInfernoCharge();`, in `CataclysmEnemyCharacter.cpp`), prefix `Cataclysm.HitReaction.NoFlinchStartsDuringAWindUpAndTheWindUpIsUntouched` | fails "a hit during Molten Roar's wind-up starts no flinch" ("... to be 1, but it was 2.") and "and says the wind-up is why" ("... to be 5, but it was 0.") -- 2 -- and nothing else; the three "wind-up untouched" lines hold, because a flinch never touches the brain |
+
+The four right cases are `+Y`, 46 degrees, 134 degrees and "facing +Y, -X"; the six left are `-Y`, -46, -134, "above and
+to the left", "facing +Y, +X" and "a long facing and a long gap". `ECataclysmFlinchRefusal::WindingUp` is 5 and `None`
+is 0; `ECataclysmHitDirection::Left` is 2 and `Right` 3. Each anchor occurs once in its file, counted by a Python
+`str.count` at the registration commit; the breaks were not compiled.
+
+### Not tested
+
+- **ANYTHING ON SCREEN.** Whether each clip reads as struck from the side it was chosen for, whether the Countess's
+  `Fwd` is "from the front", how a flinch looks over a walk (the six single-node creatures cut from the walk to the clip
+  and back, and keep moving while it plays; the Brute blends it in its slot) -- none of that can be judged without the
+  art, which a worktree does not have, and nothing is drawn under `-nullrhi`. **For the owner's launch check:** strike
+  each of the seven from each side while it stands still and while it walks, and once while it winds up or swings;
+  and watch a Gatekeeper struck steadily, whose flinches are up to 1.97 s long.
+- `WhereTheBlowCameFrom`'s first two branches: a gadget's stamped point and a minion's blow. Every test's blow names its
+  striker as causer; the stamp and the source object are read, not tested.
+- Inferno Charge's channel refusing a flinch, and a Warden with an animation Blueprint bound (none exists).
+- A flinch cut short by an ability's wind-up clip or by the Brute's ability montage: read (`ForgetFlinch` in each), not
+  tested.
+- A point-blank skill's share struck at an ally and a wearer's share of an ally's blow: read, not tested.
+- The flinch through the player's own skills, minions and projectiles: every test strikes with a plain creature's
+  ordinary attack, which reaches the same hook.
+
+---
+
 ## 2026-11-02 — Every creature walks as one of a Detour crowd: crowd following, its own capsule as its radius, no RVO, a crowd of 1024 (#761)
 
 **Affects:** `ACataclysmEnemyController`'s constructor, which now takes an `FObjectInitializer` and swaps the
@@ -948,7 +1170,7 @@ roll from a shifted stream under each break as well, and are registered as passi
 
 ### Window material-magic-find-w1: the results
 
-Run by the coordinating session on 2026-11-03 at the registration commit `ec29aaa6e` (on `development` `79f6787d3`),
+Run by the coordinating session on 2026-11-02 at the registration commit `ec29aaa6e` (on `development` `79f6787d3`),
 lock `material-magic-find-w1`, after the six pre-checks all passed (11,393 MB of physical memory free). Every
 registered figure was met, and the two seeded tests on a shifted stream passed.
 

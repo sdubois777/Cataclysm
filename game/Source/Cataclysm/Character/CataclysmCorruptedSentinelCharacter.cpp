@@ -100,6 +100,13 @@ ACataclysmCorruptedSentinelCharacter::ACataclysmCorruptedSentinelCharacter()
 	// `UCataclysmCreaturePanel::UnnamedCreature`.
 	ArchetypeRow = TEXT("Corrupted_Sentinel");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right: the ROOTED ones, `_Planted`, because this creature only
+	// ever stands planted -- its idle is `Idle_Planted` and its shots `Fire_Planted`. The siege folder's unsuffixed
+	// four are the minion standing up, which this creature never does. A judgement. Issue #745.
+	SetHitReactionClipsIn(AnimationFolder,
+		TEXT("HitReact_Front_Planted"), TEXT("HitReact_Back_Planted"), TEXT("HitReact_Left_Planted"),
+		TEXT("HitReact_Right_Planted"));
+
 	// ITS "MELEE REACH" IS ITS SHOT'S RANGE, AND THAT IS NOT A MISUSE.
 	// `ACataclysmEnemyController::Think` treats the reach as the distance at
 	// which the creature stops walking and starts attacking, and for a creature
@@ -400,6 +407,9 @@ void ACataclysmCorruptedSentinelCharacter::UpdateLoopingAnimation()
 float ACataclysmCorruptedSentinelCharacter::PlayOneShot(UAnimSequence* Animation,
 													    float HoldSeconds)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a).
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -431,6 +441,19 @@ float ACataclysmCorruptedSentinelCharacter::PlayOneShot(UAnimSequence* Animation
 	CurrentLoopingAnimation = nullptr;
 
 	return Length / Rate;
+}
+
+bool ACataclysmCorruptedSentinelCharacter::IsPlayingAOneShot() const
+{
+	// THE RECORD `UpdateLoopingAnimation` ALREADY READS. Issue #745.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimeSeconds() < OneShotEndsAtSeconds;
+}
+
+float ACataclysmCorruptedSentinelCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the rooted pose back when it ends. Issue #745.
+	return PlayOneShot(Clip);
 }
 
 bool ACataclysmCorruptedSentinelCharacter::ResolveBody(bool bIncludeAnimation)
@@ -483,6 +506,9 @@ bool ACataclysmCorruptedSentinelCharacter::ResolveBody(bool bIncludeAnimation)
 			DeathAnimations.Add(Cast<UAnimSequence>(
 				FSoftObjectPath(ClipPathIn(AnimationFolder, Name)).TryLoad()));
 		}
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		int32 ShotsFound = 0;
 		for (const TObjectPtr<UAnimSequence>& Clip : FireAnimations)

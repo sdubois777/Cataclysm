@@ -161,6 +161,10 @@ ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 	// out of that row yet.
 	ArchetypeRow = TEXT("Abyssal_Warden");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right, and the only four the Grux pack has. Issue #745.
+	SetHitReactionClipsIn(TEXT("/Game/ParagonGrux/Characters/Heroes/Grux/Animations"),
+		TEXT("HitReact_Front"), TEXT("HitReact_Back"), TEXT("HitReact_Left"), TEXT("HitReact_Right"));
+
 	MeleeReachCm = DesignedMeleeReachCm;
 	AttackIntervalSeconds = DesignedAttackIntervalSeconds;
 	ResistancePercent = DesignedResistancePercent;
@@ -321,6 +325,15 @@ void ACataclysmAbyssalWardenCharacter::AttackTarget(AActor* Target)
 	// replaces it. Nothing waits with the art absent, because nothing played.
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	// BUT A FLINCH IS NOT WAITED FOR: IT IS CUT SHORT. Issue #745, ruled 2026-11-02 (a): a flinch never delays an
+	// attack. Without this the left swing would wait for the flinch to end and the blow with it.
+	if (IsFlinching())
+	{
+		ForgetFlinch();
+		OneShotEndsAtSeconds = Now;
+	}
+
 	const float FirstSwingStartsIn = (LeftSwingAnimation && !bAnimationBlueprintBound)
 		? FMath::Max(0.0f, OneShotEndsAtSeconds - Now) : 0.0f;
 
@@ -370,6 +383,9 @@ void ACataclysmAbyssalWardenCharacter::PlayAttackAnimation()
 float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
 													float HoldSeconds)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, so the flinch is over. Issue #745, ruled 2026-11-02 (a).
+	ForgetFlinch();
+
 	LastPlayedAnimation = Animation;
 
 	USkeletalMeshComponent* MeshComponent = GetMesh();
@@ -440,6 +456,28 @@ float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
 	}
 
 	return Length / Rate;
+}
+
+bool ACataclysmAbyssalWardenCharacter::IsPlayingAOneShot() const
+{
+	// A GRAPH PLAYS THE CLIP WHEN ONE IS BOUND, and the single-node fallback records when its clip ends. Issue #745.
+	if (bAnimationBlueprintBound)
+	{
+		const USkeletalMeshComponent* MeshComponent = GetMesh();
+		const UAnimInstance* AnimInstance = MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
+		return AnimInstance && AnimInstance->IsAnyMontagePlaying();
+	}
+
+	// AND A COMBO STILL QUEUED IS AN ATTACK STILL PLAYING, even in the frame between two of its clips.
+	const UWorld* World = GetWorld();
+	return (World && World->GetTimeSeconds() < OneShotEndsAtSeconds)
+		|| AttackSequence.IsValidIndex(AttackSequenceIndex);
+}
+
+float ACataclysmAbyssalWardenCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// AT ITS AUTHORED SPEED, and `UpdateLoopingAnimation` puts the walk or the idle back when it ends. Issue #745.
+	return PlayOneShot(Clip);
 }
 
 TArray<FCataclysmEnemyAbility>
@@ -637,6 +675,10 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 			FSoftObjectPath(FirstDeathAnimationPath).TryLoad()));
 		DeathAnimations.Add(Cast<UAnimSequence>(
 			FSoftObjectPath(SecondDeathAnimationPath).TryLoad()));
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
+
 		IdleAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(IdleAnimationPath).TryLoad());
 		JogAnimation = Cast<UAnimSequence>(

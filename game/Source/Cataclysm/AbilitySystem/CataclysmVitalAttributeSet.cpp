@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For where a landed blow came from, so the creature it struck flinches away from it. Issue #745.
+#include "Character/CataclysmHitReaction.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
@@ -2789,6 +2791,28 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// the owner is the player state, at the world's origin, so
 				// Contagious Torment searched for enemies near the origin.
 				UCataclysmContagion::SpreadOnDebuffDamage(CataclysmDefendingBody(*this));
+			}
+
+			// AND A CREATURE STRUCK BY A BLOW FLINCHES AWAY FROM IT. Issue #745, ruled 2026-11-02.
+			//
+			// ON A LANDED HIT, AND NEVER ON A TICK, ruling (d). `Hit.bIsDamageOverTime` is read off the effect's asset
+			// tags at the top of this function and is the one place in the game a hit is told from a tick; the
+			// question asked is the impact burst's own, `UCataclysmImpactEffect::ShouldDrawFor` -- something arrived,
+			// to health, the energy shield or a temporary absorb, and it was not damage over time -- so the flinch
+			// and the burst show the same blows. An evaded blow and one mitigated to nothing do not flinch.
+			//
+			// NOT A WEARER'S SHARE OF AN ALLY'S BLOW, which is damage paid on another's behalf and not a blow struck
+			// at this body. A point-blank skill's share struck at an ally inside its area IS a blow struck at it.
+			//
+			// AFTER EVERYTHING ABOVE, so a blow that killed has already marked the creature dead and a blow that
+			// stunned it has already stunned it, and `FlinchFrom` refuses both. Ruling (e).
+			if (UCataclysmImpactEffect::ShouldDrawFor(Hit, Outcome) && !bShareOfAnAllysDamage)
+			{
+				if (ACataclysmEnemyCharacter* Flinching =
+						Cast<ACataclysmEnemyCharacter>(CataclysmDefendingBody(*this)))
+				{
+					Flinching->FlinchFrom(UCataclysmHitReaction::WhereTheBlowCameFrom(Data.EffectSpec, Flinching));
+				}
 			}
 
 			PlayImpactEffect(Data, Hit, Outcome);

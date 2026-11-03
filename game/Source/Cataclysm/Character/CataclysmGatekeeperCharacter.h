@@ -79,6 +79,10 @@ public:
 	virtual void AttackTarget(AActor* Target) override;
 	virtual float DesignedSecondsBetweenAttacks() const override;
 
+	//~ Flinching when hit. Issue #745; see ACataclysmEnemyCharacter::FlinchFrom.
+	virtual bool IsPlayingAOneShot() const override;
+	virtual float PlayFlinchClip(class UAnimSequence* Clip) override;
+
 	virtual TArray<FCataclysmEnemyAbility> EnemyAbilities() const override;
 	virtual void UseEnemyAbility(int32 Index, AActor* Target,
 								 const FVector& AimedAt) override;

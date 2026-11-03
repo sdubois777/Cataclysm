@@ -5368,6 +5368,34 @@ accident, because it is what most creatures do today.
 
 
 
+### **What being hit looks like**
+
+**A creature struck by a blow flinches away from it.** It plays one of four
+clips -- struck from the front, from behind, from its left or from its right --
+chosen by whichever of four quarters around its facing the blow came from.
+Before this a creature kept walking or standing exactly as it was, and a hit
+read as a hit that had not landed.
+
+**Only a landed hit flinches.** A blow that was evaded, or mitigated to nothing,
+does not; nor does a tick of damage over time. The flinch shows the same blows
+the impact burst does.
+
+**A flinch never interrupts what the creature is committed to.** The enemy is
+committed once the wind-up starts, so a creature winding up, swinging, casting
+or charging takes the blow without flinching, and its attack lands when it was
+always going to. The clip of a swing, a cast or a wind-up that starts during a
+flinch replaces it at once, and nothing an attack does ever waits for a flinch
+to end.
+
+**One flinch at a time.** No flinch starts while one is playing, so the clip's
+own length is the rate limit and a creature hit five times a second still
+finishes each one.
+
+**A creature that is dead, stunned or knocked down does not flinch.** It is
+already showing what happened to it.
+
+
+
 ## **Enemy Score Formula**
 
 Every enemy's score is built from **the width of its difficulty tier**: the gap between the maximum Power Score a player is expected to reach at the end of this tier and the end of the tier below. Nothing in the formula multiplies. Each contribution is a fraction of that width, or a flat number of points, and they are added.

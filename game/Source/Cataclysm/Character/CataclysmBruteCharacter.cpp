@@ -232,6 +232,11 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	// ArchetypeRow. Nothing reads the creature's stats out of that row yet.
 	ArchetypeRow = TEXT("Brute");
 
+	// ITS FOUR HIT REACTIONS, front, back, left and right. Issue #745. Named here rather than in ResolveBody so the
+	// choice is visible without the art; see ACataclysmEnemyCharacter::HitReactionClipPaths.
+	SetHitReactionClipsIn(TEXT("/Game/ParagonRampage/Characters/Heroes/Rampage/Animations"),
+		TEXT("HitReact_Front"), TEXT("HitReact_Back"), TEXT("HitReact_Left"), TEXT("HitReact_Right"));
+
 	// The designed numbers, overriding the base enemy's judgement figures. Each
 	// one is cited on its declaration in the header.
 	MeleeReachCm = DesignedMeleeReachCm;
@@ -640,6 +645,9 @@ float ACataclysmBruteCharacter::MontageDelaySecondsFor(
 
 void ACataclysmBruteCharacter::PlayAbilityMontage(int32 Index)
 {
+	// AN ABILITY'S MONTAGE TAKES THE SLOT FROM ANY FLINCH. Issue #745, ruled 2026-11-02 (a).
+	ForgetFlinch();
+
 	UAnimMontage* Montage = AbilityMontageFor(Index);
 
 	// RECORDED BEFORE ANYTHING IS ASKED TO PLAY IT, for the reason given on
@@ -1066,6 +1074,10 @@ float ACataclysmBruteCharacter::PlayOneShot(UAnimSequence* Animation,
 											float HoldSeconds,
 											float BlendOutTriggerTime)
 {
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH IN THE SLOT, so the flinch is over. Issue #745, ruled 2026-11-02 (a).
+	// First, before anything can refuse, so a swing ordered without the art ends one too.
+	ForgetFlinch();
+
 	const UWorld* World = GetWorld();
 	if (!World || !Animation)
 	{
@@ -1184,6 +1196,23 @@ void ACataclysmBruteCharacter::PlayInAttackSlot(UAnimSequence* Animation,
 		BlendOutTriggerTime);
 }
 
+bool ACataclysmBruteCharacter::IsPlayingAOneShot() const
+{
+	// ASKED OF THE ANIMATION GRAPH, WHICH IS WHAT PLAYS EVERY ONE-SHOT THIS CREATURE HAS: the swing and a flinch as
+	// dynamic montages in AttackSlotName, the stomp and the rock throw as montage assets. Issue #745. Without the art
+	// there is no graph and nothing is playing.
+	const USkeletalMeshComponent* MeshComponent = GetMesh();
+	const UAnimInstance* AnimInstance = MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
+	return AnimInstance && AnimInstance->IsAnyMontagePlaying();
+}
+
+float ACataclysmBruteCharacter::PlayFlinchClip(UAnimSequence* Clip)
+{
+	// THROUGH THE SAME SLOT AS THE SWING, so it blends in over the walk and back out, and a swing ordered during it
+	// replaces it. Issue #745. At its authored speed: a flinch fits no window.
+	return PlayOneShot(Clip);
+}
+
 bool ACataclysmBruteCharacter::IsChasing() const
 {
 	// ASKED OF THE BRAIN RATHER THAN INFERRED FROM SPEED. ABP_Brute does infer
@@ -1296,6 +1325,9 @@ bool ACataclysmBruteCharacter::ResolveBody(bool bIncludeAnimation)
 		DeathAnimations.Reset();
 		DeathAnimations.Add(Cast<UAnimSequence>(
 			FSoftObjectPath(DeathAnimationPath).TryLoad()));
+
+		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
+		LoadHitReactionClips();
 
 		// TWO MONTAGES INSTEAD OF SIX CLIPS. Each one holds its ability's
 		// wind-up and release back to back, so this class no longer loads,

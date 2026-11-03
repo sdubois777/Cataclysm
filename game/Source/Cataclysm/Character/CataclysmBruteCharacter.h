@@ -63,6 +63,10 @@ public:
 	 */
 	virtual void AttackTarget(AActor* Target) override;
 
+	//~ Flinching when hit. Issue #745; see ACataclysmEnemyCharacter::FlinchFrom.
+	virtual bool IsPlayingAOneShot() const override;
+	virtual float PlayFlinchClip(class UAnimSequence* Clip) override;
+
 	/**
 	 * Seconds between swings: the designed interval, or the console override.
 	 *
