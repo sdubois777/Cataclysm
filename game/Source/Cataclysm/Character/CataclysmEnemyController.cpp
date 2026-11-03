@@ -1552,23 +1552,43 @@ float ACataclysmEnemyController::ReachAgainstCm(const ACataclysmCharacterBase* A
 
 	// A MINION'S OR A GADGET'S REACH IS LEFT AS IT IS: a range set against enemies, and the measure its own
 	// `HostilesWithinReach` chooses by. See the header.
-	if (!Attacker->IsA<ACataclysmEnemyCharacter>())
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (!Creature)
 	{
 		return Designed;
 	}
 
+	// A RANGE IS LEFT AS IT IS TOO: the Gatekeeper's sweep, the Succubus's and the Sentinel's bolt, a Stalker's
+	// weapon. Each is chosen by `ChooseAbility` against its own centre-to-centre `MaxRangeCm` or started from its
+	// centre, so lengthening it would stand the creature where it may not attack. See
+	// `ACataclysmEnemyCharacter::AttackReachIsAContactReach`.
+	if (!Creature->AttackReachIsAContactReach())
+	{
+		return Designed;
+	}
+
+	float Reach = Designed;
+
+	// ITS OWN BODY AS IT STANDS, AGAINST ITS BODY AS DESIGNED: a rarer creature is scaled bigger by `SetRarityStep`,
+	// and its blow starts that much further out. The unscaled radius is the capsule's own, so no creature's figure is
+	// written twice. Never shortened.
+	if (const UCapsuleComponent* OwnCapsule = Creature->GetCapsuleComponent())
+	{
+		Reach += FMath::Max(0.0f, OwnCapsule->GetScaledCapsuleRadius() - OwnCapsule->GetUnscaledCapsuleRadius());
+	}
+
 	// THE TARGET'S BODY AS IT STANDS, scaled with it, so a rarer creature's wider body counts. A character's root is
-	// its capsule; anything without one has no width to read and keeps the designed reach.
+	// its capsule; anything without one has no width to read and adds nothing.
 	const UCapsuleComponent* TargetCapsule =
 		Target ? Cast<UCapsuleComponent>(Target->GetRootComponent()) : nullptr;
 	if (!TargetCapsule)
 	{
-		return Designed;
+		return Reach;
 	}
 
 	// WIDER THAN THE PLAYER LENGTHENS IT BY THE DIFFERENCE; NARROWER LEAVES IT. See the header for why it is never
 	// shortened.
-	return Designed
+	return Reach
 		+ FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm());
 }
 

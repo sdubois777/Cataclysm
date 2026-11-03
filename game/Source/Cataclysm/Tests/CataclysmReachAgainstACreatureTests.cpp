@@ -14,12 +14,17 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -42,6 +47,11 @@
  * ReachAgainstCm`, the designed reach plus how much wider the target is than the player, never shorter; and one test,
  * `IsInReach`, at the chase, the swing order, the swing's landing and Famished Beasts. Against the player nothing
  * moves, and the tests that say so are the controls.
+ *
+ * AND THE ATTACKER'S OWN BODY, the second bug, ruled into the same change: a rarer creature is scaled bigger by its
+ * rung (`SetRarityStep`), so an Elite Brute touches the player at 99.6 cm and never swung. The reach now also grows by
+ * how much the attacker's capsule has grown past its unscaled radius. A creature whose reach is a RANGE rather than a
+ * contact reach -- the Gatekeeper's sweep, the Succubus's and the Sentinel's bolts -- is lengthened by neither term.
  *
  * NO WORLD IS TICKED, as everywhere in the brain's tests. The clock is moved by hand, a swing that waits is landed by
  * calling `LandPendingBasicAttack`, and nothing walks: a chase is read from what `Think` answers. Every distance is
@@ -669,6 +679,356 @@ bool FCataclysmReachFamishedPlayerTest::RunTest(const FString& Parameters)
 	PlaceReachTestActor(Rig.Player, Brute, 93.0f);
 	TestEqual(TEXT("CONTROL: at 93 cm, beyond them, it walks to the drop"),
 		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::SeekingADrop));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The attacker's own body: a rarer creature is bigger, and its blow starts further out
+// ---------------------------------------------------------------------------------------------------------------
+
+namespace CataclysmReachAgainstACreatureTest
+{
+	/** The radius of a character's body as designed, before any scale, or -1 for an actor with no capsule. */
+	static float ReachTestUnscaledRadiusOf(const AActor* Who)
+	{
+		const UCapsuleComponent* Capsule = Who ? Cast<UCapsuleComponent>(Who->GetRootComponent()) : nullptr;
+		return Capsule ? Capsule->GetUnscaledCapsuleRadius() : -1.0f;
+	}
+
+	/**
+	 * Land a swing the brain just ordered, the clock moved just past the moment it is due, and say whether it was
+	 * dealt. False when no swing waits, so an assertion on it reads the same whether the swing was never ordered or
+	 * was ordered and missed.
+	 */
+	static bool LandReachTestSwingAndSay(UWorld* World, ACataclysmEnemyCharacter* Swinger)
+	{
+		if (!World || !Swinger || !Swinger->HasPendingBasicAttack())
+		{
+			return false;
+		}
+		World->TimeSeconds += FMath::Max(0.0, Swinger->PendingBasicAttackLandsAtSeconds - World->GetTimeSeconds())
+			+ 0.01;
+		return Swinger->LandPendingBasicAttack();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachGrowsWithTheBodyFigureTest,
+	"Cataclysm.ReachAgainstACreature.TheReachGrowsWithTheAttackersOwnBodyAndARangeDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReachGrowsWithTheBodyFigureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmReachAgainstACreatureTest;
+	using Controller_t = ACataclysmEnemyController;
+
+	// THE SECOND HALF OF THE RULING: effective reach = designed + max(0, own scaled radius - own unscaled radius) +
+	// max(0, target's scaled radius - the player's). Everything far apart; nothing thinks.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	const int32 BossRung = ACataclysmDungeonGameMode::CataclysmBossRung;
+	const FReachTestPlayer Rig(World, FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmBruteCharacter* Common =
+		SpawnReachTestCreature<ACataclysmBruteCharacter>(World, FVector(0.0f, 20.0f * ReachTestMetre, 0.0f));
+	ACataclysmBruteCharacter* Elite =
+		SpawnReachTestCreature<ACataclysmBruteCharacter>(World, FVector(0.0f, 40.0f * ReachTestMetre, 0.0f));
+	ACataclysmHellhoundCharacter* Hellhound =
+		SpawnReachTestCreature<ACataclysmHellhoundCharacter>(World, FVector(0.0f, 60.0f * ReachTestMetre, 0.0f));
+	ACataclysmImpCharacter* Imp =
+		SpawnReachTestCreature<ACataclysmImpCharacter>(World, FVector(0.0f, 80.0f * ReachTestMetre, 0.0f));
+	ACataclysmEnemyCharacter* Wide =
+		SpawnReachTestBody(World, FVector(0.0f, 100.0f * ReachTestMetre, 0.0f), ECataclysmTeam::Players);
+	ACataclysmGatekeeperCharacter* Gatekeeper =
+		SpawnReachTestCreature<ACataclysmGatekeeperCharacter>(World, FVector(0.0f, 120.0f * ReachTestMetre, 0.0f));
+	ACataclysmSuccubusCharacter* Succubus =
+		SpawnReachTestCreature<ACataclysmSuccubusCharacter>(World, FVector(0.0f, 140.0f * ReachTestMetre, 0.0f));
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnReachTestCreature<ACataclysmCorruptedSentinelCharacter>(
+		World, FVector(0.0f, 160.0f * ReachTestMetre, 0.0f));
+	AActor* NoBody = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("set-up: the rarity table"), Rarities)
+		|| !TestNotNull(TEXT("set-up: a possessed player"), Rig.Player)
+		|| !TestNotNull(TEXT("set-up: a Common Brute"), Common) || !TestNotNull(TEXT("set-up: an Elite Brute"), Elite)
+		|| !TestNotNull(TEXT("set-up: a Hellhound"), Hellhound) || !TestNotNull(TEXT("set-up: an Imp"), Imp)
+		|| !TestNotNull(TEXT("set-up: a plain creature"), Wide) || !TestNotNull(TEXT("set-up: a Gatekeeper"), Gatekeeper)
+		|| !TestNotNull(TEXT("set-up: a Succubus"), Succubus) || !TestNotNull(TEXT("set-up: a Sentinel"), Sentinel)
+		|| !TestNotNull(TEXT("set-up: an actor with no body"), NoBody))
+	{
+		return false;
+	}
+
+	Elite->SetRarityStep(1);
+	Hellhound->SetRarityStep(2);
+	Imp->SetRarityStep(1);
+	Gatekeeper->SetRarityStep(BossRung);
+	Succubus->SetRarityStep(1);
+	Sentinel->SetRarityStep(1);
+
+	// THE SCALES AND THE BODIES, STATED: the rungs' `BodyScale` from game/Data/EnemyRarities.csv, and what each body
+	// is once scaled. The unscaled radius is the capsule's own, which is what `ReachAgainstCm` reads.
+	TestEqual(TEXT("set-up: the Elite rung scales a body by 1.2"),
+		UCataclysmEnemyRarity::BodyScaleForStep(Rarities, 1), 1.2f, 0.0001f);
+	TestEqual(TEXT("set-up: the Legendary rung by 1.44"),
+		UCataclysmEnemyRarity::BodyScaleForStep(Rarities, 2), 1.44f, 0.0001f);
+	TestEqual(TEXT("set-up: the Cataclysm Boss rung by 2.48832"),
+		UCataclysmEnemyRarity::BodyScaleForStep(Rarities, BossRung), 2.48832f, 0.0001f);
+	TestEqual(TEXT("set-up: a Common Brute's body is its designed 48 cm"), ReachTestRadiusOf(Common),
+		ACataclysmBruteCharacter::BruteCapsuleRadius, 0.001f);
+	TestEqual(TEXT("set-up: an Elite Brute's capsule is still 48 cm unscaled"), ReachTestUnscaledRadiusOf(Elite),
+		ACataclysmBruteCharacter::BruteCapsuleRadius, 0.001f);
+	TestEqual(TEXT("set-up: and 57.6 cm as it stands"), ReachTestRadiusOf(Elite), 57.6f, 0.01f);
+	TestEqual(TEXT("set-up: a Legendary Hellhound's body is 69.12 cm"), ReachTestRadiusOf(Hellhound), 69.12f, 0.01f);
+	TestEqual(TEXT("set-up: an Elite Imp's body is 36 cm"), ReachTestRadiusOf(Imp), 36.0f, 0.01f);
+	TestEqual(TEXT("set-up: a Cataclysm Boss Gatekeeper's body is 119.44 cm"), ReachTestRadiusOf(Gatekeeper),
+		119.44f, 0.01f);
+
+	// CONTROL: A COMMON CREATURE AGAINST THE PLAYER IS EXACTLY WHAT IT WAS.
+	TestEqual(TEXT("CONTROL: a Common Brute against the player reaches its designed 90 cm"),
+		Controller_t::ReachAgainstCm(Common, Rig.Player), ACataclysmBruteCharacter::DesignedMeleeReachCm, 0.001f);
+
+	// THE ATTACKER'S GROWTH, ALONE AND WITH THE TARGET'S.
+	TestEqual(TEXT("an Elite Brute against the player reaches 99.6 cm: its 90 and the 9.6 its body grew"),
+		Controller_t::ReachAgainstCm(Elite, Rig.Player), 99.6f, 0.01f);
+	TestEqual(TEXT("and against a body 48 cm across, 105.6 cm: both terms add"),
+		Controller_t::ReachAgainstCm(Elite, Wide), 105.6f, 0.01f);
+	TestEqual(TEXT("and against an actor with no body, 99.6 cm: its own growth still counts"),
+		Controller_t::ReachAgainstCm(Elite, NoBody), 99.6f, 0.01f);
+	TestEqual(TEXT("a Legendary Hellhound against the player reaches 111.12 cm"),
+		Controller_t::ReachAgainstCm(Hellhound, Rig.Player), 111.12f, 0.01f);
+	TestEqual(TEXT("an Elite Imp against the player reaches 138 cm: its 132 and the 6 its body grew"),
+		Controller_t::ReachAgainstCm(Imp, Rig.Player), 138.0f, 0.01f);
+
+	// A RANGE IS NOT LENGTHENED BY EITHER TERM: it is chosen against the ability's own centre-to-centre range.
+	TestTrue(TEXT("a Brute's reach is a contact reach"), Common->AttackReachIsAContactReach());
+	TestFalse(TEXT("a Gatekeeper's is not: it is Dread Cleave's sweep"), Gatekeeper->AttackReachIsAContactReach());
+	TestFalse(TEXT("nor a Succubus's: it is Soulfire's range"), Succubus->AttackReachIsAContactReach());
+	TestFalse(TEXT("nor a Corrupted Sentinel's: it is Siege Bolt's range"), Sentinel->AttackReachIsAContactReach());
+	TestEqual(TEXT("a Cataclysm Boss Gatekeeper against the player reaches Dread Cleave's 200 cm, not lengthened"),
+		Controller_t::ReachAgainstCm(Gatekeeper, Rig.Player), ACataclysmGatekeeperCharacter::DreadCleaveRadiusCm,
+		0.001f);
+	TestEqual(TEXT("and against a body 48 cm across, the same 200 cm"),
+		Controller_t::ReachAgainstCm(Gatekeeper, Wide), ACataclysmGatekeeperCharacter::DreadCleaveRadiusCm, 0.001f);
+	TestEqual(TEXT("an Elite Succubus against a body 48 cm across reaches Soulfire's 800 cm, not lengthened"),
+		Controller_t::ReachAgainstCm(Succubus, Wide), ACataclysmSuccubusCharacter::SoulfireRangeCm, 0.001f);
+	TestEqual(TEXT("an Elite Corrupted Sentinel against a body 48 cm across reaches Siege Bolt's 1400 cm, not "
+				   "lengthened"),
+		Controller_t::ReachAgainstCm(Sentinel, Wide), ACataclysmCorruptedSentinelCharacter::SiegeBoltRangeCm, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachEliteBruteTest,
+	"Cataclysm.ReachAgainstACreature.AnEliteBruteSwingsAtThePlayerItTouchesAndItsBlowLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReachEliteBruteTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmReachAgainstACreatureTest;
+
+	// THE SECOND BUG, BY CONSTRUCTION. An Elite Brute's body is 57.6 cm, so it touches the player at 99.6 cm. Until
+	// the attacker's own growth was counted its reach there was 90 plus the 2 cm tolerance, so it chased a player it
+	// was pressed against and never swung.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = SpawnReachTestCreature<ACataclysmBruteCharacter>(World, FVector::ZeroVector);
+	const FReachTestPlayer Rig(World, FVector(20.0f * ReachTestMetre, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = ReachTestBrainOf(Brute);
+	if (!TestNotNull(TEXT("set-up: a Brute"), Brute) || !TestNotNull(TEXT("set-up: with a brain"), Brain)
+		|| !TestNotNull(TEXT("set-up: a possessed player"), Rig.Player))
+	{
+		return false;
+	}
+	Brute->SetRarityStep(1);
+
+	const float Contact = ReachTestRadiusOf(Brute) + ReachTestRadiusOf(Rig.Player);
+	PlaceReachTestActor(Rig.Player, Brute, Contact);
+	if (!TestEqual(TEXT("set-up: an Elite Brute's body is 57.6 cm"), ReachTestRadiusOf(Brute), 57.6f, 0.01f)
+		|| !TestEqual(TEXT("set-up: so it touches the player at 99.6 cm"), ReachTestApart(Brute, Rig.Player), 99.6f,
+			0.01f))
+	{
+		return false;
+	}
+	SpendReachTestAbilities(World, Brain, Contact);
+
+	const int32 OrderedBefore = Brain->AttacksOrdered;
+	TestEqual(TEXT("an Elite Brute touching the player swings rather than chasing"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("and the player is what it swings at"), Brain->CurrentTarget.Get() == Rig.Player);
+	TestEqual(TEXT("and it ordered one swing"), Brain->AttacksOrdered - OrderedBefore, 1);
+	TestTrue(TEXT("and the blow lands on the player it touches"), LandReachTestSwingAndSay(World, Brute));
+
+	PlaceReachTestActor(Rig.Player, Brute, Contact + ACataclysmEnemyController::ContactToleranceCm + 0.5f);
+	TestEqual(TEXT("CONTROL: half a centimetre beyond the contact and the tolerance, it chases: the reach grew by its "
+				   "body's 9.6 cm and no more"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Chasing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachLegendaryHellhoundTest,
+	"Cataclysm.ReachAgainstACreature.ALegendaryHellhoundBitesThePlayerItTouches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReachLegendaryHellhoundTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmReachAgainstACreatureTest;
+
+	// A LEGENDARY HELLHOUND'S BODY IS 69.12 CM, so it touches the player at 111.12 cm, 19 cm beyond the 92 it reached
+	// before. Its bite lands at once (`MaulStrikeSeconds` is unmeasured, issue #783), so the order is what is in
+	// question; Hellrush starts at 622.5 cm, so at contact it has no ability to spend.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmHellhoundCharacter* Hellhound =
+		SpawnReachTestCreature<ACataclysmHellhoundCharacter>(World, FVector::ZeroVector);
+	const FReachTestPlayer Rig(World, FVector(20.0f * ReachTestMetre, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = ReachTestBrainOf(Hellhound);
+	if (!TestNotNull(TEXT("set-up: a Hellhound"), Hellhound) || !TestNotNull(TEXT("set-up: with a brain"), Brain)
+		|| !TestNotNull(TEXT("set-up: a possessed player"), Rig.Player))
+	{
+		return false;
+	}
+	Hellhound->SetRarityStep(2);
+
+	const float Contact = ReachTestRadiusOf(Hellhound) + ReachTestRadiusOf(Rig.Player);
+	PlaceReachTestActor(Rig.Player, Hellhound, Contact);
+	if (!TestEqual(TEXT("set-up: a Legendary Hellhound's body is 69.12 cm"), ReachTestRadiusOf(Hellhound), 69.12f,
+			0.01f)
+		|| !TestEqual(TEXT("set-up: so it touches the player at 111.12 cm"), ReachTestApart(Hellhound, Rig.Player),
+			111.12f, 0.01f))
+	{
+		return false;
+	}
+	SpendReachTestAbilities(World, Brain, Contact);
+
+	const int32 OrderedBefore = Brain->AttacksOrdered;
+	TestEqual(TEXT("a Legendary Hellhound touching the player bites rather than chasing"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("and it ordered one bite"), Brain->AttacksOrdered - OrderedBefore, 1);
+
+	PlaceReachTestActor(Rig.Player, Hellhound, Contact + ACataclysmEnemyController::ContactToleranceCm + 0.5f);
+	TestEqual(TEXT("CONTROL: half a centimetre beyond the contact and the tolerance, it chases"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Chasing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachEliteBruteAgainstAWideBodyTest,
+	"Cataclysm.ReachAgainstACreature.AnEliteBrutePressedAgainstACreatureAsWideAsAPlainOneSwings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReachEliteBruteAgainstAWideBodyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmReachAgainstACreatureTest;
+
+	// BOTH TERMS AT ONCE: an Elite Brute (57.6 cm) against a plain creature of the players' side (48 cm) touches it at
+	// 105.6 cm, which is 90 + 9.6 + 6. Either term alone leaves it chasing: 99.6 + 2 or 96 + 2.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = SpawnReachTestCreature<ACataclysmBruteCharacter>(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Wide =
+		SpawnReachTestBody(World, FVector(20.0f * ReachTestMetre, 0.0f, 0.0f), ECataclysmTeam::Players);
+	ACataclysmEnemyController* Brain = ReachTestBrainOf(Brute);
+	if (!TestNotNull(TEXT("set-up: a Brute"), Brute) || !TestNotNull(TEXT("set-up: with a brain"), Brain)
+		|| !TestNotNull(TEXT("set-up: a plain creature"), Wide))
+	{
+		return false;
+	}
+	Brute->SetRarityStep(1);
+
+	const float Contact = ReachTestRadiusOf(Brute) + ReachTestRadiusOf(Wide);
+	PlaceReachTestActor(Wide, Brute, Contact);
+	if (!TestEqual(TEXT("set-up: the plain creature is 48 cm across"), ReachTestRadiusOf(Wide), 48.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and an Elite Brute touches it at 105.6 cm"), ReachTestApart(Brute, Wide), 105.6f,
+			0.01f))
+	{
+		return false;
+	}
+	SpendReachTestAbilities(World, Brain, Contact);
+
+	const int32 OrderedBefore = Brain->AttacksOrdered;
+	TestEqual(TEXT("an Elite Brute pressed against a creature 48 cm across swings rather than chasing"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("and it ordered one swing at it"), Brain->AttacksOrdered - OrderedBefore, 1);
+
+	PlaceReachTestActor(Wide, Brute, Contact + ACataclysmEnemyController::ContactToleranceCm + 0.5f);
+	TestEqual(TEXT("CONTROL: half a centimetre beyond the contact and the tolerance, it chases"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Chasing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachCataclysmBossGatekeeperTest,
+	"Cataclysm.ReachAgainstACreature.ACataclysmBossGatekeeperCleavesThePlayerItTouchesAndItsSweepIsNotLengthened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReachCataclysmBossGatekeeperTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmReachAgainstACreatureTest;
+
+	// WHAT IS TRUE OF THE GATEKEEPER, which slice 6d places at the Cataclysm Boss rung. Its reach is Dread Cleave's
+	// 200 cm sweep, measured from its centre and chosen by `ChooseAbility` against that same 200, so it is a range and
+	// not a contact reach and is not lengthened. At the rung its body is 119.44 cm, so it touches the player at
+	// 161.44 cm, inside the sweep: it cleaves at contact without any adjustment. Phase 1 at full health, where Dread
+	// Cleave is the only ability that reaches that close.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmGatekeeperCharacter* Gatekeeper =
+		SpawnReachTestCreature<ACataclysmGatekeeperCharacter>(World, FVector::ZeroVector);
+	const FReachTestPlayer Rig(World, FVector(20.0f * ReachTestMetre, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = ReachTestBrainOf(Gatekeeper);
+	if (!TestNotNull(TEXT("set-up: a Gatekeeper"), Gatekeeper) || !TestNotNull(TEXT("set-up: with a brain"), Brain)
+		|| !TestNotNull(TEXT("set-up: a possessed player"), Rig.Player))
+	{
+		return false;
+	}
+	Gatekeeper->SetRarityStep(ACataclysmDungeonGameMode::CataclysmBossRung);
+
+	const float Contact = ReachTestRadiusOf(Gatekeeper) + ReachTestRadiusOf(Rig.Player);
+	if (!TestEqual(TEXT("set-up: a Cataclysm Boss Gatekeeper's body is 119.44 cm"), ReachTestRadiusOf(Gatekeeper),
+			119.44f, 0.01f)
+		|| !TestEqual(TEXT("set-up: so it touches the player at 161.44 cm"), Contact, 161.44f, 0.01f)
+		|| !TestEqual(TEXT("set-up: it is in its first phase"), Gatekeeper->CurrentPhase(), 1))
+	{
+		return false;
+	}
+
+	// CONTROL FIRST, BEFORE IT HAS ATTACKED: half a centimetre beyond the sweep and the tolerance it chases. Its
+	// body's 71.44 cm of growth does not lengthen a sweep measured from its centre.
+	PlaceReachTestActor(Rig.Player, Gatekeeper,
+		ACataclysmGatekeeperCharacter::DreadCleaveRadiusCm + ACataclysmEnemyController::ContactToleranceCm + 0.5f);
+	TestEqual(TEXT("CONTROL: half a centimetre beyond Dread Cleave's 200 cm and the tolerance, it chases"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::Chasing));
+
+	PlaceReachTestActor(Rig.Player, Gatekeeper, Contact);
+	const int32 UsedBefore = Brain->AbilitiesUsed;
+	TestEqual(TEXT("a Cataclysm Boss Gatekeeper touching the player winds up rather than chasing"),
+		static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::WindingUp));
+	TestEqual(TEXT("and what it winds up is Dread Cleave"), Brain->WindingUpAbility,
+		static_cast<int32>(ACataclysmGatekeeperCharacter::DreadCleaveAbility));
+
+	World->TimeSeconds += ACataclysmGatekeeperCharacter::DreadCleaveWindUpSeconds + 0.05;
+	Brain->Think();
+	TestEqual(TEXT("and the sweep lands"), Brain->AbilitiesUsed - UsedBefore, 1);
 	return true;
 }
 

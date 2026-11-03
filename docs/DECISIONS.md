@@ -2,40 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-03 — A creature's melee reach against a body wider than the player's grows by the difference, so a Brute, Hellhound or Abyssal Warden pressed against another 48 cm creature swings at it (#2706)
+## 2026-11-03 — A creature's contact reach grows with its own rarity-scaled body and with a target wider than the player, so an Elite Brute swings at the player it touches and a Brute swings at another 48 cm creature; a range is lengthened by neither (#2706)
 
 **Affects:** `ACataclysmEnemyController::ReachAgainstCm` and `IsInReach`, new, and `Think`'s chase and Famished Beasts
 test (`game/Source/Cataclysm/Character/CataclysmEnemyController.h`, `.cpp`); `ACataclysmEnemyCharacter::
 StrikeWhenTheSwingConnects` and `LandPendingBasicAttack` (`CataclysmEnemyCharacter.cpp`);
-`ACataclysmPlayerCharacter::CapsuleRadiusCm`, new (`CataclysmPlayerCharacter.h`, `.cpp`);
-`game/Source/Cataclysm/Tests/CataclysmReachAgainstACreatureTests.cpp`, new, nine tests in the new group
+`ACataclysmEnemyCharacter::AttackReachIsAContactReach`, new (`CataclysmEnemyCharacter.h`), overridden to answer false
+by `ACataclysmGatekeeperCharacter`, `ACataclysmSuccubusCharacter`, `ACataclysmCorruptedSentinelCharacter` (their
+headers) and by `ACataclysmCorruptedStalkerCharacter` while it wears a build (`CataclysmCorruptedStalkerCharacter.h`,
+`.cpp`); `ACataclysmPlayerCharacter::CapsuleRadiusCm`, new (`CataclysmPlayerCharacter.h`, `.cpp`);
+`game/Source/Cataclysm/Tests/CataclysmReachAgainstACreatureTests.cpp`, new, fourteen tests in the new group
 `Cataclysm.ReachAgainstACreature.`; `test_the_engine_measures_reach_on_the_floor_plane` in
 `tools/tests/test_enemy_abilities.py`, extended. Issue [#2706](https://github.com/sdubois777/Cataclysm/issues/2706).
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED, NOT RUN.** Phase 1 was written while the build machine was in use, by instruction: no build,
-  no Unreal test and no C++ guard proof has run. Every Unreal figure below is a prediction registered for a window.
-- **ONE CHANGE AGAINST THE PLAYER, AND IT IS THE RULING'S.** Famished Beasts' "fight rather than eat" compared the bare
-  90 cm with no contact tolerance, so a hungry Brute pressed against the player (which leaves it a hair past 90) walked
-  off to eat. It now asks the swing's own test, tolerance included. Every other figure against the player is
-  unchanged.
-- **A SEPARATE DEFECT WAS FOUND AND IS NOT FIXED HERE: THE ATTACKER'S OWN RARITY SCALE.** A rarer creature is bigger
-  (`SetRarityStep` scales the actor; `BodyScale` 1.2 for Elite in `game/Data/EnemyRarities.csv`), and its reach is not.
-  An Elite Brute's body is 57.6 cm, so it touches the player at 99.6 cm, beyond 90 plus the 2 cm tolerance: by reading,
-  an Elite or rarer Brute, Hellhound or Abyssal Warden never swings at the player at all. Not measured. The ruling
-  for this issue adjusts for the target's body only, so this change leaves it as it was.
+- **COMPILED, NOT RUN.** Phase 1 was written without a build. Phase 2 compiled the whole branch (`Build: Succeeded`),
+  every changed `.cpp` alone and the unity files that hold them; see "Compiled" below. No Unreal test and no C++ guard
+  proof has run: every Unreal figure below is a prediction registered for a window.
+- **A SECOND BUG, RULED INTO THIS CHANGE: THE ATTACKER'S OWN RARITY SCALE.** A rarer creature is bigger
+  (`SetRarityStep` scales the whole actor by `BodyScale` in `game/Data/EnemyRarities.csv`: Common 1.0, Elite 1.2,
+  Legendary 1.44, Herald 1.728, Boss 2.0736, Cataclysm Boss 2.48832), and its reach was not. By reading: an Elite
+  Brute's body is 57.6 cm, so it touches the player at 99.6 cm, beyond its 90 plus the 2 cm tolerance, and an Elite or
+  rarer Brute, Hellhound or Abyssal Warden never swung at the player it was pressed against. (The Imp's 132 covers its
+  contact at every rung: 116.6 cm at the Cataclysm Boss rung.)
+  Fixed here; tests 11 to 13 fail without it by construction (the "Registered" table's P4).
+- **ONE CHANGE AGAINST THE PLAYER FOR A COMMON CREATURE, AND IT IS THE RULING'S.** Famished Beasts' "fight rather than
+  eat" compared the bare 90 cm with no contact tolerance, so a hungry Brute pressed against the player walked off to
+  eat. It now asks the swing's own test, tolerance included. Every other figure for a Common creature against the
+  player is unchanged.
+- **PHASE 2 TAKES SOMETHING BACK FROM PHASE 1.** Phase 1 lengthened every enemy character's reach against a wider
+  target, the Gatekeeper's, the Succubus's and the Corrupted Sentinel's included. Their reach is the range of an
+  ability chosen against its own centre-to-centre `MaxRangeCm`, so the longer reach only stood them in a band where they
+  could not attack (a thrall Succubus against a 48 cm creature between 802 and 808 cm). A range is now lengthened by
+  neither term, as it was on `development`.
 
 ### The ruling, by the coordinating session, 2026-11-03
 
-One helper used at every site that compares a creature's distance to a target with its reach: effective reach =
-`AttackReachCm()` + (the target's capsule radius − the player's capsule radius, 42 cm), so the figure against the player
-is exactly unchanged and against a larger target the reach grows by the difference. The player's radius is read from
-the code; a target with no capsule keeps the unadjusted reach; no designed reach constant changes. Applied at the
-chase, the swing order, the #783 landing check and Famished Beasts, which gains the missing tolerance. If shrinking for
-a narrower target would make a working matchup fail, clamp the adjustment at nought and say why.
+**Phase 1.** One helper used at every site that compares a creature's distance to a target with its reach: effective
+reach = `AttackReachCm()` + (the target's capsule radius − the player's capsule radius, 42 cm), so the figure against
+the player is exactly unchanged and against a larger target the reach grows by the difference. The player's radius is
+read from the code; a target with no capsule keeps the unadjusted reach; no designed reach constant changes. Applied at
+the chase, the swing order, the #783 landing check and Famished Beasts, which gains the missing tolerance. If shrinking
+for a narrower target would make a working matchup fail, clamp the adjustment at nought and say why.
 
-No genre research was done: the shape was ruled before the work began. The judgements below are this session's.
+**Phase 2, the second bug.** The reach used at all four sites is
+
+    AttackReachCm()
+      + max(0, the attacker's own scaled capsule radius − its unscaled radius)
+      + max(0, the target's scaled capsule radius − the player's capsule radius)
+
+so an ordinary creature against the player is exactly unchanged. Each creature's unscaled radius is read from the code
+(the capsule's own, not a literal). A ranged attacker's reach is a range, which a bigger body does not lengthen: if a
+reach is a range rather than a contact reach, leave it unadjusted, and say which creatures are which and how the code
+tells them apart. Ability ranges are examined only to say whether they share the fault, not changed here.
+
+No genre research was done: the shape was ruled before the work began. The judgements below are the writing
+sessions'.
 
 ### What was verified, by reading, before anything changed
 
@@ -47,48 +70,104 @@ No genre research was done: the shape was ruled before the work began. The judge
   48 cm; the player's is 42 (`CapsuleRadius` in `CataclysmPlayerCharacter.cpp`); a plain creature's is 48
   (`EnemyCapsuleRadius`). Two 48 cm bodies cannot stand closer than 96 cm, so against another 48 cm creature those
   three pressed against it and chased for ever. The claim of the issue holds.
+- **The rarity scale.** `ACataclysmEnemyCharacter::SetRarityStep` calls `SetActorScale3D(BodyScaleForStep(...))`, which
+  scales the root capsule, so `GetScaledCapsuleRadius` grows and `GetUnscaledCapsuleRadius` stays the designed figure;
+  `MeleeReachCm` and every `AttackReachCm` override are constants or a weapon's figure and are never scaled. No code
+  scaled a reach anywhere. The second bug holds.
 - No other place compares a creature's distance with its reach. `AttackReachCm` is otherwise read by Echoes of the
   Past to place an echo, which is a distance and not a test; a minion's and a gadget's targets are chosen by
   `ACataclysmMinion::HostilesWithinReach`, its own measure.
 
+### Contact reach or range, creature by creature
+
+**How the code tells them apart:** `ACataclysmEnemyCharacter::AttackReachIsAContactReach()`, a virtual answering true,
+overridden to answer false beside `AttackReachCm` by every creature whose reach is the reach of an attack measured from
+its centre. Those are the three whose basic attack is an entry in `EnemyAbilities` (`bIsBasicAttack`, chosen by
+`ChooseAbility` against the entry's own `MaxRangeCm`, with `AttackTarget` overridden to do nothing) and a Corrupted
+Stalker wearing a build, whose `AttackReachCm` is its weapon's basic attack's `Params.RadiusCm` (the override asks the
+same condition `AttackReachCm` does). A summoned minion and a gadget are not enemy characters and keep their reach, as
+phase 1 judged.
+
+| Creature | `AttackReachCm` | Kind | Unscaled radius (its capsule's) | Under the ruling |
+|---|---|---|---|---|
+| Brute | 90 (`DesignedMeleeReachCm`) | contact: its own swing, `StrikeWhenTheSwingConnects` | 48 (`BruteCapsuleRadius`) | both terms; Elite against the player 99.6, against a 48 cm body 105.6 |
+| Hellhound | 90 | contact: its bite, dealt at once | 48 (`HellhoundCapsuleRadius`) | both terms; Legendary against the player 111.12 |
+| Abyssal Warden | 90 | contact: its swing | 48 (`WardenCapsuleRadius`) | both terms; Elite against the player 99.6 |
+| Imp | 132: contact (30 + 42) and one rank of 60 | contact: its swipe | 30 (`ImpCapsuleRadius`) | both terms; Elite against the player 138 |
+| A plain `ACataclysmEnemyCharacter` (the training dummy, the floor's sources) | 200 (`MeleeReachCm`'s default, a judgement: "a little over twice the capsule radius") | contact: the base `AttackTarget`, at once | 48 (`EnemyCapsuleRadius`) | both terms; the floor's sources are all placed at rung 0 |
+| Corrupted Stalker and its Consumption Double, no build worn | 200, the base's | contact | 48 | both terms |
+| Corrupted Stalker wearing a build | its weapon's basic attack's radius | **range**: a player skill started from its centre | 48 | unadjusted |
+| Gatekeeper | 200 (`DreadCleaveRadiusCm`) | **range**: Dread Cleave, a sweep from its centre, chosen against its `MaxRangeCm` 200 | 48 (`GatekeeperCapsuleRadius`) | unadjusted. At the Cataclysm Boss rung its body is 119.44 cm and it touches the player at 161.44, inside 200, so **it cleaves at contact without any adjustment**, and did before (test 14) |
+| Succubus | 800 (`SoulfireRangeCm`) | **range**: Soulfire, a bolt | 48 (`SuccubusCapsuleRadius`) | unadjusted |
+| Corrupted Sentinel | 1,400 (`SiegeBoltRangeCm`) | **range**: Siege Bolt, a bolt | 48 (`SentinelCapsuleRadius`) | unadjusted |
+| Summoned minion, gadget | their `ReachCm` | not an enemy character | 30 | unadjusted (phase 1) |
+
+**Judgement:** the Imp's 132 is contact plus one rank of Imps, and the rank is itself an Imp's width, so strictly a
+grown Imp's second rank moves out by three times its growth; the ruling's formula adds it once, and that is what this
+does. An Elite Imp reaches 138 against the player, its contact being 78.
+
+### Ability ranges: which share the fault (not changed here)
+
+Listed for the coordinating session to file. **The same fault, a figure built from the unscaled body:**
+
+- **The Brute's Rip and Toss minimum**, `RockThrowRadiusCm` 210 + `BruteCapsuleRadius` 48 = 258 cm
+  (`CataclysmBruteCharacter.cpp`, `RockThrow.MinRangeCm`). It exists so the circle the throw marks never covers the
+  thrower's own feet; an Elite Brute's feet reach 57.6 cm, so between 258 and 267.6 cm the circle covers them again, and
+  at the Cataclysm Boss rung between 258 and 329.4.
+- **The Gatekeeper's Soulfall minimum**, `SoulfallRadiusCm` 300 + `GatekeeperCapsuleRadius` 48 = 348 cm: the same
+  reason and the same fault; at the Cataclysm Boss rung, which slice 6d places, between 348 and 419.4 cm.
+- **The Corrupted Sentinel's Brimstone Mortar minimum**, `BrimstoneMortarRadiusCm` 300 + `SentinelCapsuleRadius` 48 =
+  348 cm: the same.
+- **The Gatekeeper's Call the Damned arrival ring** starts at `GatekeeperCapsuleRadius` + `CallTheDamnedRadiusCm` = 248
+  cm, also the unscaled body; it has no effect at any rung, because 248 is outside even a Cataclysm Boss body and an Imp
+  (119.44 + 30).
+
+**Not affected:** the rings from a creature's own feet reach past contact at every rung (the Brute's Stomp 350, the
+Warden's Molten Roar 650, the Gatekeeper's Soul Harvest 650 and Dread Cleave 200, against a contact of at most 161.44);
+the charge minimums (Hellrush 622.5, Stampede 232.4) are walk speed times wind-up, not a body; every maximum is a range.
+
 ### What changes
 
-- **`ReachAgainstCm(Attacker, Target)`**: `AttackReachCm()` plus `max(0, target radius − player radius)`, the target's
-  radius read from the capsule at its root, scaled (so a rarer, bigger target counts). The player's radius is
-  `ACataclysmPlayerCharacter::CapsuleRadiusCm()`, a function returning the file's own `CapsuleRadius`, kept where it is
-  because four Python checks read it there.
+- **`ReachAgainstCm(Attacker, Target)`**: the designed `AttackReachCm()`; for an `ACataclysmEnemyCharacter` whose reach
+  is a contact reach, plus `max(0, its capsule's scaled radius − its unscaled radius)`, plus `max(0, the target's root
+  capsule's scaled radius − the player's radius)`. The player's radius is `ACataclysmPlayerCharacter::CapsuleRadiusCm()`,
+  a function returning the file's own `CapsuleRadius`, kept where it is because four Python checks read it there. A
+  target with no capsule adds nothing; the attacker's own growth still counts.
 - **`IsInReach(Attacker, Target)`**: floor-plane distance `<= ReachAgainstCm + ContactToleranceCm`; false when either
   is missing. **The four call sites**: `Think`'s chase (`!IsInReach`, which replaced `Distance > Reach +
-  ContactToleranceCm`; the chase's move request now aims at 0.8 of the reach against the target), Famished Beasts in
+  ContactToleranceCm`; the chase's move request aims at 0.8 of the reach against the target), Famished Beasts in
   `Think` (`!IsInReach`, which replaced the bare comparison), and in `ACataclysmEnemyCharacter` the swing order's
   "must stay in reach" and the landing's "walked out of the blow". `Think`'s own `Distance` stays a `Dist2D`; it now
   only chooses an ability.
-- **Against the player**: 90 + max(0, 42 − 42) = 90, exactly as before, and 92 with the tolerance. **Against a 48 cm
-  body**: 96, and 98 with the tolerance.
+- **`AttackReachIsAContactReach()`**, new, as above.
+- **For a Common creature against the player**: 90 + 0 + 0 = 90, exactly as before, and 92 with the tolerance. **Against
+  a 48 cm body**: 96, and 98 with the tolerance. **An Elite one against the player**: 99.6, and 101.6.
 
-### Judgements of the writing session
+### Judgements of the writing sessions
 
-- **THE SHRINK QUESTION: CLAMPED AT NOUGHT, BECAUSE SHRINKING BREAKS A MATCHUP THAT WORKS.** For the Imp itself,
-  shrinking would be harmless: its reach is 132 cm, against a 30 cm target it would be 120, and two 30 cm bodies touch
-  at 60, so an Imp would still reach another Imp, and even the second rank its 132 is built for (60 + 60 = 120) stays
-  within 120 + 2. A Brute against a 30 cm body would shrink to 78, exactly the 48 + 30 contact, which the tolerance
-  covers. But an **Elite Brute (57.6 cm, by its rarity) touches a 30 cm minion or Imp at 87.6 cm**: the designed 90
-  reaches that today and a shrunk 78 + 2 would not. So the adjustment never goes below nought, and against any body
-  narrower than the player every reach is what it was.
+- **THE SHRINK QUESTION: CLAMPED AT NOUGHT, AS RULED.** Phase 1 argued that shrinking would break an Elite Brute
+  against a 30 cm minion (87.6 cm apart, beyond 78 + 2). With the attacker's own growth counted that argument no longer
+  holds: the Elite's reach would shrink to 87.6, exactly its contact, which the tolerance covers. Shrinking would also
+  be harmless for a Common Brute (78 against a contact of 78) and for the Imp (120 against another Imp's 60 and its
+  second rank's 120). So nothing measured needs the clamp; it is kept because the ruling writes `max(0, ...)`, and it
+  keeps every reach against a body narrower than the player exactly what it was.
 - **A SUMMONED MINION'S AND A GADGET'S REACH IS NOT ADJUSTED.** `ReachAgainstCm` answers the designed reach for any
   attacker that is not an `ACataclysmEnemyCharacter`. Their reaches (150 to 1,500 cm, `game/Data/MinionTypes.csv`) are
   ranges set against enemies, not against the player, and "within its reach" for a minion is ruled (2026-10-27) to be
   the centre-to-centre `ReachCm` that `HostilesWithinReach`, `FurthestWithinReach` and `SkillCopyTarget` choose by and
-  "the brain fires by". Lengthening the brain's reach for them would make those disagree. **This is not in the
-  ruling's words; the coordinating session may overrule it.** A thrall, a maddened creature and a Compel-driven
-  creature are enemy characters and are adjusted.
-- **THE TARGET'S BODY IS ITS ROOT CAPSULE**, which every character's is; any other actor keeps the designed reach.
+  "the brain fires by". Lengthening the brain's reach for them would make those disagree. Accepted by the coordinating
+  session. A thrall, a maddened creature and a Compel-driven creature are enemy characters and are adjusted.
+- **A RANGE IS ADJUSTED BY NEITHER TERM, NOT ONLY BY THE ATTACKER'S.** The ruling named the attacker's term for a
+  ranged attacker; the target's term is left off too, for the same reason: the attack is chosen against the ability's
+  own centre-to-centre range, so either term opens a band where the creature stops walking and cannot attack.
+- **THE TARGET'S BODY IS ITS ROOT CAPSULE**, which every character's is; any other actor adds nothing.
 - **COMPEL IS NOT A CASE.** A strike a rule orders (`StrikeAsARuleOrders`: Compel, Echoes of the Past) never asked the
   reach and still does not; the test for it is `Cataclysm.EnemyHitTiming.AStrikeARuleOrdersLandsOnATargetThatWalkedOutOfReach`.
 
 ### Tests
 
-Unreal, nine new, `Cataclysm.ReachAgainstACreature.` (`CataclysmReachAgainstACreatureTests.cpp`), no skipped half:
+Unreal, fourteen new, `Cataclysm.ReachAgainstACreature.` (`CataclysmReachAgainstACreatureTests.cpp`), no skipped half.
+Every creature in tests 1 to 9 is Common; tests 10 to 14 set a rung with `SetRarityStep`.
 
 1. `TheReachIsTheDesignedOnePlusHowMuchWiderTheTargetIsThanThePlayer`: against a possessed player, the Brute's, the
    Hellhound's and the Warden's reach is their designed 90 (CONTROL); against a 48 cm body, 96 each; against an enemy
@@ -109,19 +188,44 @@ Unreal, nine new, `Cataclysm.ReachAgainstACreature.` (`CataclysmReachAgainstACre
    the abilities are spent, a drop 5 m behind, a 48 cm body at 96: `Attacking`, not `SeekingADrop`.
 9. `AHungryBruteTouchingThePlayerFightsAndOneStepBeyondItEats`: the same with a possessed player at 91 cm, `Attacking`
    (the tolerance it lacked); at 93, `SeekingADrop` (CONTROL).
+10. `TheReachGrowsWithTheAttackersOwnBodyAndARangeDoesNot`: set-up states the rungs' scales (1.2, 1.44, 2.48832, read
+    through `BodyScaleForStep`), an Elite Brute's capsule 48 unscaled and 57.6 as it stands, a Legendary Hellhound's
+    69.12, an Elite Imp's 36 and a Cataclysm Boss Gatekeeper's 119.44. CONTROL: a Common Brute against the player, 90.
+    An Elite Brute against the player 99.6, against a 48 cm body 105.6 (both terms), against an actor with no body
+    99.6; a Legendary Hellhound against the player 111.12; an Elite Imp 138. A Brute's reach is a contact reach and the
+    Gatekeeper's, the Succubus's and the Sentinel's are not; a Cataclysm Boss Gatekeeper reaches 200 against the player
+    and against a 48 cm body; an Elite Succubus 800 and an Elite Sentinel 1,400 against a 48 cm body.
+11. `AnEliteBruteSwingsAtThePlayerItTouchesAndItsBlowLands`: an Elite Brute and a possessed player at contact (99.6, by
+    the two capsules), its Stomp spent: `Attacking`, at the player, one swing ordered, and `LandPendingBasicAttack`
+    answers that the blow was dealt. CONTROL: at contact + 2.5 (102.1), `Chasing`.
+12. `ALegendaryHellhoundBitesThePlayerItTouches`: at contact (111.12), `Attacking` and one bite ordered. CONTROL: at
+    contact + 2.5, `Chasing`.
+13. `AnEliteBrutePressedAgainstACreatureAsWideAsAPlainOneSwings`: an Elite Brute and a players'-side 48 cm body at
+    contact (105.6), its Stomp spent: `Attacking`, one swing ordered. CONTROL: at contact + 2.5 (108.1), `Chasing`.
+14. `ACataclysmBossGatekeeperCleavesThePlayerItTouchesAndItsSweepIsNotLengthened`: a Gatekeeper at
+    `ACataclysmDungeonGameMode::CataclysmBossRung`, in phase 1. CONTROL first, before it has attacked: the player at
+    202.5 cm, `Chasing` (its 71.44 cm of growth does not lengthen the sweep). Then at contact (161.44): `WindingUp`,
+    Dread Cleave, and the sweep lands (`AbilitiesUsed` up by one). **This test passes on `development` too**: it
+    records what is true of the Gatekeeper, that its reach is a range and that it attacks at contact at the rung slice
+    6d places it on.
 
-**Written test-first in intent, not in fact proven so**: the "fails before the fix" half of each is what the guard
-proofs below register, because no build was allowed in phase 1.
+**Fails before the fix, by construction, not by a run**: tests 11 to 13 against `development` (an Elite Brute's reach
+there is 92 against a contact of 99.6; the Hellhound's 92 against 111.12; the Elite Brute's 98 against 105.6), and
+tests 2 to 4, 6 to 8 against it as well (phase 1's case). The guard proofs below register both.
 
 **Where each fixture's starting state comes from.** A plain creature's body is `EnemyCapsuleRadius` at the Common scale
 of 1, stated in each test before it is used. Its health is written to 100,000 by `SetHealth` and its evasion, block and
 energy shield to nought after it; critical strikes are silenced by `MakeWorldThatHasBegunPlay`. Every creature spawns
-facing +X with its abilities ready, and the targets stand along +X. Abilities are spent by `SpendReachTestAbilities`,
-the shape of `Cataclysm.AI.`'s `SpendAbilities`: it puts every actor back afterwards (the Stomp shoves) and moves the
-clock past the attack interval, so the next `Think` may swing. The Brute's Stomp cools for 8 s and the Warden's Molten
-Roar for 12, longer than the spending takes. The player is possessed by the game's own controller and given 10,000
-health, as `Cataclysm.BasicReach.` does. No world is ticked: the clock is moved by hand and a waiting blow landed by
-`LandPendingBasicAttack`. No assertion reads a health figure; each reads "less than before" or "unchanged".
+facing +X with its abilities ready, and the targets stand along +X. A rung is set after spawning and the body's radius
+read back from its capsule before any distance is placed; each contact distance is the two radii read from the
+capsules, asserted against the figure. Abilities are spent by `SpendReachTestAbilities`, the shape of `Cataclysm.AI.`'s
+`SpendAbilities`: it puts every actor back afterwards (the Stomp shoves) and moves the clock past the attack interval,
+so the next `Think` may swing. The Brute's Stomp cools for 8 s and the Warden's Molten Roar for 12, longer than the
+spending takes. The player is possessed by the game's own controller and given 10,000 health, as
+`Cataclysm.BasicReach.` does; its evasion is not zeroed, so no assertion reads the player's health: test 11 reads
+`LandPendingBasicAttack`'s own answer, which is true when the blow was dealt, evaded or not. No world is ticked: the
+clock is moved by hand and a waiting blow landed by `LandPendingBasicAttack`. No assertion reads a health figure; each
+reads "less than before" or "unchanged".
 
 **Python**: `test_the_engine_measures_reach_on_the_floor_plane` now also requires `IsInReach` to measure with
 `FVector::Dist2D`, because since this change that, and not `Think`'s `Distance`, decides the chase. Proved in phase 1
@@ -130,22 +234,54 @@ with `tools/prove_guard.py`'s `break_and_run`, in an archive copy of `540a72deb`
 "PROVED: 1 failed, 119 passed in 1.36s | restored: 120 passed in 1.16s", `crashed` False, `named_failures`
 `tools/tests/test_enemy_abilities.py::test_the_engine_measures_reach_on_the_floor_plane`.
 
+### Audit of every assertion that compares against a fixed number or relies on a starting state
+
+Read, not run, 2026-11-03.
+
+- **The distances in tests 5 to 9 and their radii**: every creature there is Common (scale 1), so its own term is 0.
+  Test 5's 91.5 and 92.5 straddle 90 + 0 + 0 + 2 = 92; test 6's 97.5 and 98.5 straddle 90 + 6 + 2 = 98; test 7's 96
+  and 98.5 straddle the same 98 at landing; test 8's 96 is inside 98; test 9's 91 and 93 straddle 92. Each holds.
+- **Tests 2 to 4's 96** is not a literal: it is the two capsules' radii, asserted equal to each other and to 96 (0.01)
+  before use; the designed 90 is asserted too.
+- **The rung figures in tests 10 to 14** are asserted as set-up before use. Floats: 48 × 1.2f is 57.6000023, 48 ×
+  1.44f is 69.1200027, 48 × 2.48832f is about 119.4394, all inside their 0.01 tolerances; the expected 161.44 is 0.0006
+  from 119.4394 + 42.
+- **The possessed-player rig** (`FReachTestPlayer`): the player's capsule is 42 at scale 1 (test 1 asserts it); the rig
+  sets maximum and current health to 10,000; nothing reads its evasion. The Elite Brute's Stomp in test 11's spending
+  lands on the player and shoves it; the spending puts it back, and its damage is far below 10,000.
+- **Subjugate** (tests 2 to 4): refuses only a target already on the commander's side, a boss, a creature that cannot be
+  hurt, or one that is dead. The thrall is a Common, living, monster-side creature and the commander a players'-side
+  plain creature, and the call is asserted true in set-up.
+- **The minion spawn** (test 1): `ACataclysmMinion::Spawn(Summoner, Location, Lifetime, bBurns, TypeName)`, read in
+  full; the assertion compares its reach with its own `AttackReachCm`, not with a number.
+- **The Warden's Molten Roar** (test 4): range 0 to 650, a ring from its feet with a wind-up, cooling 12 s, so it is
+  chosen at 96 cm and spent by the helper's two passes; Stampede starts at 232.4 and is never chosen at 96. If the
+  helper's second pass also orders a swing, the test's own swing replaces it, and the helper's is dealt first; the
+  health read is taken after the spending, so the assertion still reads only the test's blow under every break below.
+- **The Gatekeeper at the Cataclysm Boss rung** (test 14): at full health it is in phase 1 (asserted), where Soul
+  Harvest (phase 3) and Call the Damned (phase 2) are skipped and Soulfall starts at 348, so at 161.44 only Dread Cleave
+  (0 to 200) is chosen, with a 0.9714 s wind-up; at 202.5 nothing is chosen and the reach (200 + 2) is exceeded.
+- **Existing tests outside this file.** The attacker's term moves only a creature whose rung is above Common. Of the
+  files that call `Think` or land a swing, five set a rung: `CataclysmDungeonModifierEffectsTests.cpp` (the Morale
+  Break leader is an Elite, placed 10 to 20 m from the player), `CataclysmEnemyModifierTests.cpp` (the Herald does not
+  think; the Inferno Charge creature is Common, 9 m off), `CataclysmFearTests.cpp` and `CataclysmSilenceTests.cpp`
+  (their Boss-rung creatures do not think) and `CataclysmGatekeeperTests.cpp` (a range, unadjusted). `Cataclysm.Crowd.`
+  scales a Brute by hand and reads only its crowd radius. None is at a distance either term can reach.
+
+### Compiled
+
+TO-BE-MEASURED
+
 ### Registered before the run
 
 Assertion wording is the engine's: "Expected '<what>' to be <n>, but it was <m>." for an `int32` `TestEqual`, "Expected
 '<what>' to be <e>, but it was <a> and outside tolerance <t>." for a `float` one (six decimals), and "Expected '<what>'
 to be true." (`AutomationTest.cpp` lines 2065, 2095 and 2676 in this engine). `ECataclysmBrainAction` counts Chasing 1,
-Attacking 2, SeekingADrop 13.
+Attacking 2, WindingUp 4 (no break below moves it), SeekingADrop 13. **The six-decimal figures of a rarer creature's
+reach are not predicted** (99.6 is a sum of floats that may print as 99.599998 or 99.600006); for those only the
+assertion's words and the count are registered.
 
-| Figure | Registered |
-|---|---|
-| `Cataclysm.ReachAgainstACreature.` alone | 9 performed, 9 succeeded: none at the base, + 9 by name; no skipped half |
-| Neighbours, each alone: `Cataclysm.AI.`, `Cataclysm.EnemyHitTiming.`, `Cataclysm.Brute.`, `Cataclysm.Hellhound.`, `Cataclysm.Warden.`, `Cataclysm.DungeonModifierEffects.` | every test passes, counts as the base's: none added or changed. A sweep of every `Think` and landing assertion that expects a chase or a miss found none at a distance the 6 cm could reach (every one at 3 m or more); that sweep was a read, not a run |
-| Whole Unreal suite | the base's last measured total + 9 by name, 0 failed; skipped halves the base's; 0 test saves left behind |
-| P1, the adjustment zeroed (`FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm())` to `0.0f * FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm())`, in `CataclysmEnemyController.cpp`), prefix `Cataclysm.ReachAgainstACreature.` | 9 performed, 2 succeeded (tests 5 and 9), 7 failed, 16 assertions: test 1, three, "against a body 48 cm across the Brute reaches 96 cm", "and so does the Hellhound" and "and so does the Abyssal Warden", each "... to be 96.000000, but it was 90.000000 and outside tolerance 0.001000."; tests 2, 3 and 4, three each: "a thrall <Brute / Hellhound / Abyssal Warden> pressed against a creature as wide as itself swings rather than chasing" ("... to be 2, but it was 1."), "and it ordered one swing" ("... to be 1, but it was 0.") and "and the blow lands: the creature it touches loses health" ("... to be true."); test 6, one, "half a centimetre inside 98 cm, it swings at a creature as wide as itself" ("... to be 2, but it was 1."); test 7, two, "the blow lands on a creature as wide as itself that is pressed against it" and "and takes health" (each "... to be true."); test 8, one, "a hungry Brute pressed against a creature as wide as itself swings rather than walking to the drop" ("... to be 2, but it was 13.") |
-| P2, the landing's old comparison (`if (bMustStayInReach && !ACataclysmEnemyController::IsInReach(this, Target))` to `if (bMustStayInReach && FVector::Dist2D(GetActorLocation(), Target->GetActorLocation()) > AttackReachCm() + ACataclysmEnemyController::ContactToleranceCm)`, in `CataclysmEnemyCharacter.cpp`), same prefix | 9 performed, 6 succeeded, 3 failed, 4 assertions: "and the blow lands: the creature it touches loses health" in tests 2 and 4 (each "... to be true."); in test 7 "the blow lands on a creature as wide as itself that is pressed against it" and "and takes health" (each "... to be true."). Test 3 passes: the Hellhound's bite lands at once and is never asked |
-| P3, Famished Beasts' old comparison (`Hungry && Hungry->bSeeksDropsForTheFloorRule && !IsInReach(Driven, Target))` to `Hungry && Hungry->bSeeksDropsForTheFloorRule && !(Target && FVector::Dist2D(Driven->GetActorLocation(), Target->GetActorLocation()) <= Driven->AttackReachCm()))`, in `CataclysmEnemyController.cpp`), same prefix | 9 performed, 7 succeeded, 2 failed, 2 assertions: test 8's "a hungry Brute pressed against a creature as wide as itself swings rather than walking to the drop" and test 9's "a hungry Brute 91 cm from the player, inside its reach and the tolerance, swings rather than eats", each "... to be 2, but it was 13.". Test 9's CONTROL at 93 cm passes |
-| Python | `ruff check .` clean; the whole suite in the window, 0 failed |
+TO-BE-MEASURED
 
 Each anchor occurs once in its file, counted with Python `str.count` at the commit that registers this. The breaks
 were not compiled.
@@ -153,9 +289,11 @@ were not compiled.
 ### Not tested
 
 - Whether the change lets a creature's swing land in play, with real collision: no level was played.
-- The attacker's own rarity scale (SAID FIRST); an Elite target is covered by the formula (its scaled radius) but no
-  test places one.
-- Every existing test outside the neighbours above; the Unreal suite was not run.
+- A Corrupted Stalker wearing a build answering false from `AttackReachIsAContactReach`: read, not tested.
+- The Abyssal Warden and the Imp at a rarer rung swinging at contact: the figure is tested for the Imp (138), and the
+  Warden shares the Brute's code path, but neither swings in a test.
+- The ability-range faults listed above: not changed and not tested.
+- Every existing test outside the groups registered below; the Unreal suite was not run.
 
 ---
 

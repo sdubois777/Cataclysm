@@ -130,6 +130,9 @@ public:
 	/** Its weapon's basic attack reach once it wears a build, and a creature's melee reach before. */
 	virtual float AttackReachCm() const override;
 
+	/** A range once it wears a build, its weapon's basic attack's, and a contact reach before. Issue #2706. */
+	virtual bool AttackReachIsAContactReach() const override;
+
 	/** Its weapon's basic attack once it wears a build, cast as a player's is; a creature's blow before. */
 	virtual void AttackTarget(AActor* Target) override;
 

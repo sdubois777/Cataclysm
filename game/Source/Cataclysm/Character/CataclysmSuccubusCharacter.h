@@ -121,6 +121,8 @@ public:
 	static const TCHAR* SoulfireTags;
 
 	virtual float AttackReachCm() const override { return SoulfireRangeCm; }
+	/** A RANGE, Soulfire's, and not a contact reach: a bigger body does not carry a bolt further. Issue #2706. */
+	virtual bool AttackReachIsAContactReach() const override { return false; }
 	virtual float SightRadiusCm() const override { return SuccubusNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return SuccubusRoamRadiusCm; }
 

@@ -105,6 +105,8 @@ public:
 	static const TCHAR* BrimstoneMortarTags;
 
 	virtual float AttackReachCm() const override { return SiegeBoltRangeCm; }
+	/** A RANGE, Siege Bolt's, and not a contact reach: a bigger body does not carry a bolt further. Issue #2706. */
+	virtual bool AttackReachIsAContactReach() const override { return false; }
 	virtual float SightRadiusCm() const override { return SentinelNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return SentinelRoamRadiusCm; }
 

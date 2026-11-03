@@ -465,6 +465,14 @@ public:
 	 * How far `Attacker`'s attack reaches against `Target`, centre to centre along
 	 * the floor, in centimetres. Issue #2706.
 	 *
+	 * IN FULL, ruled by the coordinating session on 2026-11-03:
+	 *
+	 *     AttackReachCm()
+	 *       + max(0, the attacker's scaled capsule radius - its unscaled radius)
+	 *       + max(0, the target's scaled capsule radius - the player's radius)
+	 *
+	 * so an ordinary (Common) creature against the player is exactly unchanged.
+	 *
 	 * WHY THE TARGET'S SIZE ENTERS AT ALL. Every creature's melee reach is designed
 	 * against the PLAYER's body: the Brute's, the Hellhound's and the Abyssal
 	 * Warden's 90 cm is their own 48 cm radius plus the player's 42, so it is
@@ -481,23 +489,30 @@ public:
 	 *
 	 * NEVER SHORTER THAN THE DESIGNED REACH. Against a body narrower than the
 	 * player (an Imp, a summoned minion, both 30 cm) the difference is negative,
-	 * and it is held at zero, so the reach there is what it was. Shortening it
-	 * would stop a matchup that works today: an Elite Brute, scaled to a 57.6 cm
-	 * body by its rarity (`BodyScale` 1.2 in game/Data/EnemyRarities.csv), touches
-	 * a 30 cm minion at 87.6 cm, which the designed 90 reaches and 78 would not.
+	 * and it is held at zero, as ruled, so the reach there is what it was.
 	 *
-	 * THE ATTACKER'S OWN SIZE IS NOT READ, which is a separate question and is
-	 * not answered here: that same Elite Brute touches the player at 99.6 cm,
-	 * beyond its 90 plus the tolerance, whatever this function does with the
-	 * target.
+	 * AND THE ATTACKER'S OWN GROWTH. A rarer creature is bigger: `SetRarityStep`
+	 * scales the whole actor (`BodyScale` in game/Data/EnemyRarities.csv, 1.2 for
+	 * an Elite), so an Elite Brute's body is 57.6 cm and it touches the player at
+	 * 99.6, beyond its 90 plus the tolerance. Until this term it never swung at the
+	 * player at all. The growth is the capsule's scaled radius less its unscaled
+	 * one, so each creature's own designed body is read from its capsule and not
+	 * written again here.
 	 *
 	 * THE DESIGNED REACH UNCHANGED, as it was before issue #2706, for:
-	 *   - a target with no capsule as its root, which has no body width to read;
 	 *   - an attacker that is not an `ACataclysmEnemyCharacter` -- a summoned
 	 *     minion or a gadget -- whose reach is a range set against enemies and not
 	 *     against the player, and whose "within its reach" is ruled to be the
 	 *     brain's own centre-to-centre measure (`ACataclysmMinion::
-	 *     HostilesWithinReach`, ruled 2026-10-27), which this keeps true.
+	 *     HostilesWithinReach`, ruled 2026-10-27), which this keeps true;
+	 *   - a creature whose reach is a RANGE rather than a contact reach
+	 *     (`ACataclysmEnemyCharacter::AttackReachIsAContactReach` false: the
+	 *     Gatekeeper, the Succubus, the Corrupted Sentinel, a Corrupted Stalker
+	 *     wearing a build), whose attack the brain chooses by comparing the
+	 *     centre-to-centre distance with the ability's own range, so a longer
+	 *     reach would only stand it where it may not attack.
+	 * A target with no capsule as its root has no width to read, and adds
+	 * nothing; the attacker's own growth still counts.
 	 *
 	 * Zero for no attacker.
 	 */

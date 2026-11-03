@@ -1166,6 +1166,23 @@ public:
 	virtual void AttackTarget(AActor* Target) override;
 
 	/**
+	 * Whether `AttackReachCm` is a CONTACT reach -- how far this creature's own blow carries from its body, designed
+	 * against the player's -- rather than a range measured from its centre. Issue #2706.
+	 *
+	 * WHY IT IS ASKED. `ACataclysmEnemyController::ReachAgainstCm` lengthens a contact reach by how much this body has
+	 * grown past its unscaled size (a rarer creature is bigger, `SetRarityStep`) and by how much wider the target is
+	 * than the player. A range is not lengthened by either: a bigger body does not carry a bolt or a sweep further, and
+	 * the brain chooses such an attack by comparing the centre-to-centre distance with the ability's own
+	 * `MaxRangeCm` (`ChooseAbility`), so a lengthened reach would stand the creature where it may not attack.
+	 *
+	 * TRUE HERE: every creature whose basic attack is its own swing, `AttackTarget`. FALSE for a creature whose
+	 * `AttackReachCm` is the reach of an attack measured from its centre: the Gatekeeper (Dread Cleave's sweep), the
+	 * Succubus (Soulfire), the Corrupted Sentinel (Siege Bolt), and a Corrupted Stalker holding a player's build (its
+	 * weapon's basic attack). Each overrides this beside its `AttackReachCm`.
+	 */
+	virtual bool AttackReachIsAContactReach() const { return true; }
+
+	/**
 	 * A creature the floor made its medic starts nothing hostile.
 	 *
 	 * THE ROW SAYS SO TWICE. `War_Field_Medic` reads "It does not attack",
