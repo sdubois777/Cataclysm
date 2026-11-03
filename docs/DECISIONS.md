@@ -253,6 +253,28 @@ predicted message was re-read against the test as it stands and the engine's own
 "Expected '%s' to be %d, but it was %d.", and for a float "... %f, but it was %f and outside tolerance %f."). P2's break
 is not `&& false`, so it cannot be refused as a constant condition.
 
+### Window item-comparison-w1: the results
+
+Run by the coordinating session on 2026-11-02, three times. The first run (at `6aa62dd6`) and the second (at `cef70c46`)
+stopped at a group run alone, as recorded above, and ran nothing after it. The third ran at the registration commit
+`cb32de836` (on `development` `23d2333d6`), lock `item-comparison-w1`, after the six pre-checks all passed (11,684 MB of
+physical memory free). Every registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.15.cpp" |
+| `Cataclysm.ItemComparison.` alone | 6 / 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `Cataclysm.CharacterSheet.` alone | 10 / 10 | "10 tests performed, 10 succeeded, 0 failed" |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| Whole Unreal suite | 4569 / 4569 | "4569 tests performed, 4569 succeeded, 0 failed"; "Declared: 4569 tests in the tree at cb32de836; 4569 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 185.69s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1a | 2 | PROVED. The kept broken-half log fails exactly "no slot changed by asking" (0 expected, 1 read) and "and the Worn Residue is what it was" (1000 expected, 2000 read); restored 1 of 1 |
+| P1b | 1 | PROVED. Exactly "and asking changed nothing worn" (1600 expected, 300 read); restored 1 of 1 |
+| P2 | 4 in 2 tests | PROVED. Exactly "an unchanged total gives no line" (read "Health: 606 to 606, down 0"), "nor does a change too small to show" (read "Health: 606 to 606, up 0"), "only the three that move are listed" (3 expected, 47 read) and "one total changes" (1 expected, 47 read); restored 6 of 6 |
+| P3 | 3 | PROVED. Exactly "both weapons would come off" (2 expected, 1 read), "the heading names both" and "the worn column holds both weapons' own tooltips"; restored 6 of 6 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - The tooltip as drawn: under `-nullrhi` no widget is painted, so the two columns, their background, the font size and
