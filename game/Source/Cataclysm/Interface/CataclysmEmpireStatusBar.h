@@ -33,6 +33,25 @@ struct CATACLYSM_API FCataclysmEmpireStatusFacts
 
 	/** Distinct standing cities with a dungeon on them. See `UCataclysmEmpireStatusBar::CitiesAtRiskIn`. */
 	int32 CitiesAtRisk = 0;
+
+	/**
+	 * Whether every field is the same as another set's, the flag included.
+	 *
+	 * NOT WHETHER THE TWO LINES ARE THE SAME: days owed are read only at 0 days, so two sets differing in them alone
+	 * can say one line. The HUD then writes it again, which costs one line's writing and is never wrong.
+	 *
+	 * WHAT LETS THE HUD KEEP ITS LINE. `ACataclysmHUD::DrawEmpireStatusBar` reads the figures each frame -- a few
+	 * integers -- and writes and measures the line again only when they differ from the ones it last drew, so a field
+	 * left out of this comparison would leave a stale figure on screen. A new field goes here as well.
+	 */
+	bool SaysTheSameAs(const FCataclysmEmpireStatusFacts& Other) const
+	{
+		return bRunBound == Other.bRunBound
+			&& DungeonsStanding == Other.DungeonsStanding
+			&& DaysToNextSurge == Other.DaysToNextSurge
+			&& DaysOwed == Other.DaysOwed
+			&& CitiesAtRisk == Other.CitiesAtRisk;
+	}
 };
 
 /**

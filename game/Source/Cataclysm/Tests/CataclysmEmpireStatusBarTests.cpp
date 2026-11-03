@@ -133,6 +133,31 @@ bool FCataclysmEmpireStatusBarZeroDaysTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireStatusBarSameFiguresTest,
+	"Cataclysm.EmpireStatusBar.TheFiguresAreTheSameOnlyWhenEveryOneIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireStatusBarSameFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireStatusBarTest;
+
+	// THE HUD KEEPS ITS LINE WHILE THE FIGURES ARE THE SAME, so a figure the comparison skipped would leave a stale
+	// number on screen. Each field is changed alone below, and each change must be seen.
+	const FCataclysmEmpireStatusFacts Drawn = BoundFacts(3, 4, 0, 2);
+
+	TestTrue(TEXT("CONTROL: the same figures are the same"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 0, 2)));
+
+	FCataclysmEmpireStatusFacts Unbound = Drawn;
+	Unbound.bRunBound = false;
+	TestFalse(TEXT("a run no longer bound is a change"), Drawn.SaysTheSameAs(Unbound));
+	TestFalse(TEXT("another dungeon standing is a change"), Drawn.SaysTheSameAs(BoundFacts(4, 4, 0, 2)));
+	TestFalse(TEXT("a day closer to the surge is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 3, 0, 2)));
+	TestFalse(TEXT("a day owed is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 1, 2)));
+	TestFalse(TEXT("another city at risk is a change"), Drawn.SaysTheSameAs(BoundFacts(3, 4, 0, 3)));
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // No run bound: nothing said, ruling (c)
 // ---------------------------------------------------------------------------
@@ -320,6 +345,12 @@ bool FCataclysmEmpireStatusBarWorldTest::RunTest(const FString& Parameters)
 	const int32 Standing = Run->Dungeons.Num();
 	const int32 Cities = StandingCitiesCarryingADungeon(*Run);
 	const int32 Days = FMath::CeilToInt(Run->Surges->DaysUntilNextSurge(Run->Day()));
+
+	// THE SET-UP LINES BELOW ARE READ FROM THE RUN, NOT ASSUMED, and the code says why each holds on day 1 whatever the
+	// seed: the opening wave lands on day 1 (`NextSurgeDay` starts at 0, and `AdvanceDay` asks `IsDue` of day 1) and puts
+	// the next surge `IntervalDays`, 90, after it; no timer can run out on the day it starts (`ResolveDaysFor` gives at
+	// least 11.6 days, less 15% jitter); and the one bite on day 1 is a Siege's 1% of a full city. Recorded in
+	// `docs/DECISIONS.md`. The extra dungeon makes "more dungeons than cities" true by construction.
 
 	if (!TestTrue(TEXT("set-up: the world's game instance gives this run"),
 				  UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false) == Run)

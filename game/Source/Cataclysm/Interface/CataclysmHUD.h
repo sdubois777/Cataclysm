@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmEmpireStatusBar.h"
 #include "Math/Box2D.h"
 #include "CataclysmHUD.generated.h"
 
@@ -352,6 +353,15 @@ private:
 
 	/** The world's time in seconds when the cursor last pointed at it. */
 	float DescribedAt = 0.0f;
+
+	/**
+	 * The empire status bar's line as last written, the figures it was written from and its width at
+	 * `UCataclysmEmpireStatusBar::BaseScale`. `DrawEmpireStatusBar` writes and measures the line again only when the
+	 * figures differ (`FCataclysmEmpireStatusFacts::SaysTheSameAs`); empty until a run is first bound.
+	 */
+	FString EmpireStatusLine;
+	FCataclysmEmpireStatusFacts EmpireStatusFactsDrawn;
+	float EmpireStatusWidthAtBase = 0.0f;
 
 	//~ Layout, in pixels at an unscaled viewport.
 

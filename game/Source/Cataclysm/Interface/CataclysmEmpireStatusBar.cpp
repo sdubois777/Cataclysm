@@ -47,7 +47,10 @@ int32 UCataclysmEmpireStatusBar::CitiesAtRiskIn(const UCataclysmEmpireRun* Run)
 
 	// A SET, SO A CITY CARRYING SEVERAL DUNGEONS COUNTS ONCE. Ruling (a): the bar counts cities, and three dungeons on
 	// one Outpost put one city at risk.
-	TSet<int32> AtRisk;
+	//
+	// HELD INLINE, because the HUD asks this every frame: the map has 25 cities (`UCataclysmEmpireMap::Radius` 3), so
+	// thirty-two places never reach the heap.
+	TSet<int32, DefaultKeyFuncs<int32>, TInlineSetAllocator<32>> AtRisk;
 
 	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 	{
