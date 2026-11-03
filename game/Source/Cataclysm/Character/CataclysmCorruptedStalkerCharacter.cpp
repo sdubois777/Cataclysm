@@ -217,6 +217,15 @@ float ACataclysmCorruptedStalkerCharacter::AttackReachCm() const
 		: Super::AttackReachCm();
 }
 
+bool ACataclysmCorruptedStalkerCharacter::AttackReachIsAContactReach() const
+{
+	// THE SAME QUESTION `AttackReachCm` ASKS, so the two cannot disagree: once its reach is its weapon's basic attack,
+	// that is a player skill's radius started from its centre, and not a contact reach. Issue #2706.
+	return bHoldsAPlayerBuild && BasicAttack.Slot != ECataclysmAbilitySlot::None && BasicAttack.Params.RadiusCm > 0.0f
+		? false
+		: Super::AttackReachIsAContactReach();
+}
+
 TArray<ECataclysmAbilitySlot> ACataclysmCorruptedStalkerCharacter::ChoiceOrder()
 {
 	using Slot = ECataclysmAbilitySlot;

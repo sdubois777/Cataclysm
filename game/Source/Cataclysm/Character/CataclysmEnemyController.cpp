@@ -18,6 +18,8 @@
 // The charge lives on the enemy subclass rather than the shared base, so the
 // brain has to know about it to ask whether one is running. Issue #499.
 #include "Character/CataclysmEnemyCharacter.h"
+// The player's body, which every melee reach is designed against. Issue #2706.
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -674,9 +676,10 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// unless what it would fight is already within its attack reach, where it fights. Issues #1820 and #41, Famished
 	// Beasts. The game mode's beat does the eating. The walk is the guide's: the roam's acceptance radius and the same
 	// straight-line fallback when there is no navigation mesh. BELOW THE CHARGE AND THE WIND-UP, which it does not cut.
+	// "WITHIN ITS ATTACK REACH" IS THE SWING'S OWN TEST, `IsInReach`, the contact tolerance and the target's width
+	// included; until issue #2706 this compared the bare reach, so a Brute pressed against the player went to eat.
 	if (const ACataclysmEnemyCharacter* Hungry = Cast<ACataclysmEnemyCharacter>(Driven);
-		Hungry && Hungry->bSeeksDropsForTheFloorRule
-		&& !(Target && FVector::Dist2D(Driven->GetActorLocation(), Target->GetActorLocation()) <= Driven->AttackReachCm()))
+		Hungry && Hungry->bSeeksDropsForTheFloorRule && !IsInReach(Driven, Target))
 	{
 		if (const AActor* Drop = UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(
 				GetWorld(), Driven->GetActorLocation(), UCataclysmDungeonModifierEffects::FamishedBeastsSeekWithinCm))
@@ -750,7 +753,9 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	bHasRoamTarget = false;
 	RoamPauseUntil = 0.0f;
 
-	const float Reach = Driven->AttackReachCm();
+	// THE REACH AGAINST THIS TARGET, which is the designed reach against the player and longer against a wider body.
+	// Issue #2706; see `ReachAgainstCm`. The chase below aims short of it, and `IsInReach` decides with it.
+	const float Reach = ReachAgainstCm(Driven, Target);
 
 	// HORIZONTAL DISTANCE, NOT 3D DISTANCE. Reach is a floor-plane question --
 	// how close is it standing -- and capsule centres sit at different heights,
@@ -788,7 +793,10 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// collision solver never leaves two touching capsules at exactly the
 	// distance where they touch. See ContactToleranceCm for the measurement
 	// this comes from and why no other enemy needs it.
-	if (Distance > Reach + ContactToleranceCm)
+	//
+	// ASKED OF `IsInReach`, the one test the swing's landing and Famished Beasts
+	// ask too, so the three cannot disagree. Issue #2706.
+	if (!IsInReach(Driven, Target))
 	{
 		// A PINNED CREATURE DOES NOT CHASE, AND STILL FACES WHAT IT IS FIGHTING.
 		// `ForcedMovement=Pin` holds a target where it stands and leaves
@@ -1531,6 +1539,66 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 
 	LastAction = ECataclysmBrainAction::Attacking;
 	return LastAction;
+}
+
+float ACataclysmEnemyController::ReachAgainstCm(const ACataclysmCharacterBase* Attacker,
+												const AActor* Target)
+{
+	if (!Attacker)
+	{
+		return 0.0f;
+	}
+	const float Designed = Attacker->AttackReachCm();
+
+	// A MINION'S OR A GADGET'S REACH IS LEFT AS IT IS: a range set against enemies, and the measure its own
+	// `HostilesWithinReach` chooses by. See the header.
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (!Creature)
+	{
+		return Designed;
+	}
+
+	// A RANGE IS LEFT AS IT IS TOO: the Gatekeeper's sweep, the Succubus's and the Sentinel's bolt, a Stalker's
+	// weapon. Each is chosen by `ChooseAbility` against its own centre-to-centre `MaxRangeCm` or started from its
+	// centre, so lengthening it would stand the creature where it may not attack. See
+	// `ACataclysmEnemyCharacter::AttackReachIsAContactReach`.
+	if (!Creature->AttackReachIsAContactReach())
+	{
+		return Designed;
+	}
+
+	float Reach = Designed;
+
+	// ITS OWN BODY AS IT STANDS, AGAINST ITS BODY AS DESIGNED: a rarer creature is scaled bigger by `SetRarityStep`,
+	// and its blow starts that much further out. The unscaled radius is the capsule's own, so no creature's figure is
+	// written twice. Never shortened.
+	if (const UCapsuleComponent* OwnCapsule = Creature->GetCapsuleComponent())
+	{
+		Reach += FMath::Max(0.0f, OwnCapsule->GetScaledCapsuleRadius() - OwnCapsule->GetUnscaledCapsuleRadius());
+	}
+
+	// THE TARGET'S BODY AS IT STANDS, scaled with it, so a rarer creature's wider body counts. A character's root is
+	// its capsule; anything without one has no width to read and adds nothing.
+	const UCapsuleComponent* TargetCapsule =
+		Target ? Cast<UCapsuleComponent>(Target->GetRootComponent()) : nullptr;
+	if (!TargetCapsule)
+	{
+		return Reach;
+	}
+
+	// WIDER THAN THE PLAYER LENGTHENS IT BY THE DIFFERENCE; NARROWER LEAVES IT. See the header for why it is never
+	// shortened.
+	return Reach
+		+ FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm());
+}
+
+bool ACataclysmEnemyController::IsInReach(const ACataclysmCharacterBase* Attacker, const AActor* Target)
+{
+	// ON THE FLOOR PLANE, for the reason `Think` records at its own distance: capsule centres sit at different
+	// heights, and a designed reach is a floor-plane quantity.
+	return Attacker && Target
+		&& FVector::Dist2D(Attacker->GetActorLocation(), Target->GetActorLocation())
+			<= ReachAgainstCm(Attacker, Target) + ContactToleranceCm;
 }
 
 FAIMoveRequest ACataclysmEnemyController::MakeChaseMoveRequest(

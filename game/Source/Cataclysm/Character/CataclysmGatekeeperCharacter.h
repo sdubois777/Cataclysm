@@ -110,6 +110,11 @@ public:
 	};
 
 	virtual float AttackReachCm() const override { return DreadCleaveRadiusCm; }
+	/**
+	 * Dread Cleave's sweep, measured from its centre and chosen by that measure, and not a contact reach: a bigger body
+	 * does not sweep further. Issue #2706.
+	 */
+	virtual bool AttackReachIsAContactReach() const override { return false; }
 	virtual float SightRadiusCm() const override { return GatekeeperNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return GatekeeperRoamRadiusCm; }
 
