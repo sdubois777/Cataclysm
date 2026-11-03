@@ -250,6 +250,14 @@ void ACataclysmEnemyCharacter::HandleDeath()
 	// has left.
 	SetActorEnableCollision(false);
 
+	// AND IT LEAVES THE CROWD, for the same reason: the living steer round
+	// every agent the crowd holds, and a corpse whose capsule blocks nothing is
+	// not one of them. Ruled 2026-11-02; the controller says how.
+	if (ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController()))
+	{
+		Brain->LeaveTheCrowdAtDeath();
+	}
+
 	// WHAT IT DROPPED, before the actor goes away. How much and how good both
 	// follow from this creature's own rarity, which it already knows as a Step
 	// from 0 to 5.

@@ -37,6 +37,9 @@
 #include "Navigation/CrowdManager.h"
 #include "UObject/UnrealType.h"
 
+// A dead creature leaves the crowd. Ruled 2026-11-02.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+
 /**
  * Whether a character can actually walk a generated dungeon floor.
  *
@@ -1266,6 +1269,99 @@ bool FCataclysmFloorCrowdHoldsSixtyImpsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every one of sixty Imps is an agent the crowd simulates"), Held, CrowdImps);
 	TestEqual(TEXT("and each one's crowd radius is its own 30 cm body"), RightSize, CrowdImps);
 	TestNotNull(TEXT("and the crowd walks on the floor's navigation mesh"), Manager->GetNavData());
+
+	TearDown(Setup);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdDeadCreatureLeavesTest,
+	"Cataclysm.Crowd.ACreatureThatDiesLeavesTheCrowdAndItsLivingNeighbourStays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature that dies is taken out of the Detour crowd at once, and a living creature beside it stays in. Ruled
+ * 2026-11-02 by the coordinating session: a dead creature leaves the crowd at death.
+ *
+ * WHAT WAS WRONG. Since issue #761 every creature walks as a crowd agent, and a dead one stayed an agent until its
+ * body was destroyed, which for a dressed creature is after its whole death clip. The living kept steering round a
+ * corpse whose capsule no longer blocks anything.
+ *
+ * IN THE GROUP `Cataclysm.Crowd.` AND IN THIS FILE, BECAUSE ONLY HERE DOES THE CROWD HOLD ANYONE. The worlds in
+ * `CataclysmCrowdTests.cpp` have either no navigation system, so no crowd manager, or one with no navigation mesh,
+ * where `ACataclysmEnemyController::LeaveTheCrowdIfItWasNotTakenIn` takes every creature back out at possession. A
+ * creature is an agent the crowd simulates only on a real mesh -- `UCrowdManager::IsAgentValid` -- and building one
+ * needs the editor's bounds volume, which is this file's `Build`.
+ *
+ * IT DIES MID-WALK, ON PURPOSE. `UCrowdFollowingComponent::SetCrowdSimulationState` refuses while path following is
+ * not idle, so a creature killed while walking -- the ordinary case -- is the one a careless way out would leave in.
+ * The walk is real: the mesh is built, so `MoveToLocation` finds its path at once and the component reads `Moving`.
+ *
+ * THE CONTROL IS THE NEIGHBOUR, an Imp three metres away that nothing happens to: it is still held afterwards, so
+ * the dead one did not leave by the crowd emptying.
+ */
+bool FCataclysmCrowdDeadCreatureLeavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const FIntPoint Corner = OpenSquareCorner(Setup.Floor->GetPlan(), 2);
+	const UCrowdManager* Manager = UCrowdManager::GetCurrent(Setup.World);
+	if (!TestTrue(TEXT("set-up: an open square for the Imps"), Corner.X >= 0)
+		|| !TestNotNull(TEXT("set-up: the floor's navigation system has a crowd manager"), Manager))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// TWO IMPS IN THE OPEN SQUARE `Cataclysm.FloorCrowd.` USES, three metres apart, at the height it spawns them.
+	const FVector Origin = Setup.Floor->WorldOfCell(Corner);
+	const double Up = ACataclysmImpCharacter::ImpCapsuleHalfHeight + 5.0;
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmImpCharacter* Dying = Setup.World->SpawnActor<ACataclysmImpCharacter>(
+		ACataclysmImpCharacter::StaticClass(), Origin + FVector(0.0, 0.0, Up), FRotator::ZeroRotator, Params);
+	ACataclysmImpCharacter* Living = Setup.World->SpawnActor<ACataclysmImpCharacter>(
+		ACataclysmImpCharacter::StaticClass(), Origin + FVector(300.0, 0.0, Up), FRotator::ZeroRotator, Params);
+	AAIController* Brain = Dying ? Cast<AAIController>(Dying->GetController()) : nullptr;
+	UCrowdFollowingComponent* DyingCrowd = CrowdFollowingOf(Dying);
+	UCrowdFollowingComponent* LivingCrowd = CrowdFollowingOf(Living);
+	if (!TestNotNull(TEXT("set-up: the Imp that will die spawned with its brain"), Brain)
+		|| !TestNotNull(TEXT("set-up: and walks through a crowd-following component"), DyingCrowd)
+		|| !TestNotNull(TEXT("set-up: its neighbour walks through one too"), LivingCrowd))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// BOTH ARE IN THE CROWD WHILE BOTH LIVE: in crowd mode, and given a slot in the Detour crowd.
+	TestTrue(TEXT("while it lives, the Imp is in crowd mode"), DyingCrowd->IsCrowdSimulationEnabled());
+	TestTrue(TEXT("and the crowd holds it"), Manager->IsAgentValid(DyingCrowd));
+	TestTrue(TEXT("set-up: its neighbour is in crowd mode"), LivingCrowd->IsCrowdSimulationEnabled());
+	TestTrue(TEXT("set-up: and the crowd holds its neighbour"), Manager->IsAgentValid(LivingCrowd));
+
+	// A WALK UNDER WAY WHEN IT DIES, four and a half metres across the square.
+	Brain->MoveToLocation(Origin + FVector(0.0, 450.0, Up));
+	TestTrue(TEXT("set-up: the Imp is walking when it dies"),
+			 DyingCrowd->GetStatus() == EPathFollowingStatus::Moving);
+
+	Dying->HandleDeath();
+	if (!TestTrue(TEXT("set-up: the Imp is dead"), UCataclysmSkillEffects::IsDead(Dying)))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	TestFalse(TEXT("once dead, the crowd no longer holds it"), Manager->IsAgentValid(DyingCrowd));
+	TestFalse(TEXT("and it is out of crowd mode"), DyingCrowd->IsCrowdSimulationEnabled());
+	TestTrue(TEXT("and its walk is over"), DyingCrowd->GetStatus() == EPathFollowingStatus::Idle);
+
+	TestTrue(TEXT("CONTROL: the crowd still holds its living neighbour"), Manager->IsAgentValid(LivingCrowd));
+	TestTrue(TEXT("CONTROL: which is still in crowd mode"), LivingCrowd->IsCrowdSimulationEnabled());
 
 	TearDown(Setup);
 	return true;
