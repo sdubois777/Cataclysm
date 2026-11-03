@@ -218,6 +218,25 @@ Each anchor occurs once in `CataclysmDungeonGameMode.cpp`, counted by a Python `
 and again by `prove_p6d.py --anchors-only`. P2's `TArray::Remove` returns a count that is discarded, which is not an
 error (`Remove` is not `[[nodiscard]]` in this engine's `Array.h`). The breaks were not compiled.
 
+### Window boss-floor-w1: the results
+
+Run by the coordinating session on 2026-11-03 (local time) at the registration commit `e4dc26009` (on `development`
+`6472dd420`), lock `boss-floor-w1`, after the six pre-checks all passed (11,736 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The six groups alone | each at its registered count | every one "0 failed": BossFloor. 5, DungeonMode. 46, DungeonStairs. 9, Gatekeeper. 13, ConsumptionDouble. 15, SaveLoad. 75 |
+| Whole Unreal suite | 4652, 47 skipped halves | "4652 tests performed, 4652 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4652 tests in the tree at e4dc26009; 4652 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7338 passed, 9 skipped in 196.51s"; JUnit tests 7347, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 1 test, 6 | PROVED. Exactly the six registered CONTROL assertions on floors 1 and 2 and the Quest floor ("keeps a drawn rung" and "no Cataclysm Boss is recorded"); restored 5 of 5 |
+| P2 | 4 tests, 1 each | PROVED. Exactly the four "seals the stairs" assertions, one in each of the four registered tests; restored 5 of 5 |
+| P3 | 3 tests, 4 | PROVED. Exactly the three "once it is dead ... nothing seals" assertions and "and taking them clears the boss dungeon"; restored 5 of 5 |
+| P4 | 1 test, 2 | PROVED. Exactly "CONTROL: a Gatekeeper at the Cataclysm Boss rung that rose from the dead is not taken for the boss" and "CONTROL: so it seals nothing"; restored 5 of 5 |
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **A Horde Cataclysm dungeon's last wave** bringing the boss through `ContinueTheWaveArriving`, and its "the dungeon is
