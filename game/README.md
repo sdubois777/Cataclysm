@@ -404,10 +404,15 @@ by `git add` with no error and no warning. Guarded by
   status line counts the Cataclysms finished against the number that opens it,
   "1 of 5 Cataclysms finished; the boss dungeon opens when 3 are finished", and
   the opening is the screen's latest event until something later happens.
-  Pressing the box opens nothing: there is no travel from the map (below), and
-  `Cataclysm.EnterDungeon <id>` walks it like any other dungeon, which its line
-  says, with the identifier (issue
-  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6c).
+  Pressing the box says what it is (issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6c); the
+  **Walk** box under it enters it, since 2026-11-03 (issue
+  [#2715](https://github.com/sdubois777/Cataclysm/issues/2715)), and so does a
+  **Walk** button under each dungeon line on a city's screen. A press calls
+  `ACataclysmDungeonGameMode::EnterEmpireDungeon` and closes the empire
+  screens. It works only in a dungeon level, because there is no travel from
+  the map (below); anywhere else the press is refused and the screen says why.
+  `Cataclysm.EnterDungeon <id>` still walks any of them from the console.
 
   **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
   the city is worth, the dungeons standing on it soonest to bite first, what it
@@ -434,11 +439,11 @@ by `git add` with no error and no warning. Guarded by
   fall in them; the empire map's status line says how many days will pass.
   `Cataclysm.EmpireAdvance` refuses while a dungeon is being walked.
 
-  **Nothing takes the player from the map into a dungeon, or back.** There is no
-  capital to stand in between runs (issue
+  **Nothing takes the player from the map into a dungeon level, or back.** There
+  is no capital to stand in between runs (issue
   [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
-  the empire and a dungeon level, so entering one is a console command typed
-  while already standing in `L_Dungeon`, and clearing one leaves the player
+  the empire and a dungeon level, so entering one is a Walk button pressed, or a
+  console command typed, while already standing in `L_Dungeon`, and clearing one leaves the player
   standing on the floor they beat. **Only walking a dungeon, dying in one and the
   console commands move the day**: a death inside a dungeon of the empire costs
   5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once so

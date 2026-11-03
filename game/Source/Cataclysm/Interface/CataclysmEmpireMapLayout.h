@@ -412,6 +412,39 @@ public:
 	static FVector2D CataclysmDungeonMarkerSize(float Scale);
 
 	/**
+	 * The gap between the marker and the Walk box under it, at a scale of one, in pixels. Issue #2715.
+	 */
+	static constexpr float CataclysmDungeonWalkGapPx = 4.0f;
+
+	/**
+	 * Where the boss dungeon's Walk box sits, as its CENTRE: directly under the marker, its left edge on the marker's,
+	 * the gap below it. Issue #2715.
+	 *
+	 * ONE CITY WIDE AND ONE TALL, AND IT COVERS NO CITY ON ANY PANEL THE DIAMOND FITS IN, for the reason the marker
+	 * covers none, worked the same way. Its right edge is at most one city width (172 scaled pixels) right of the
+	 * diamond's left edge, and the first three rows of the diamond begin at least one cell (188) right of it; the fourth
+	 * row, the first that begins at the diamond's left edge, starts 204 below the diamond's top, where the Walk box ends
+	 * 100 below it (48 of marker, 4 of gap, 48 of box). A test in `Cataclysm.WalkFromTheScreen.` checks it against
+	 * every city on the panels the marker's test uses. NOT ON A PANEL TOO SMALL FOR THE DIAMOND, for the marker's
+	 * reason.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D CataclysmDungeonWalkPosition(float Scale);
+
+	/** How big the Walk box is drawn at this scale: one city's box. Issue #2715. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D CataclysmDungeonWalkSize(float Scale);
+
+	/**
+	 * The name the boss dungeon's Walk box carries, which says which dungeon a press walks:
+	 * `FCataclysmWalkFromTheScreen::ButtonNameFor` the boss's identifier. `NAME_None` while no Cataclysm boss dungeon
+	 * stands. Issue #2715.
+	 *
+	 * @param Run the run to describe. Null, or one that has not begun, answers `NAME_None`.
+	 */
+	static FName CataclysmDungeonWalkButtonName(const UCataclysmEmpireRun* Run);
+
+	/**
 	 * What the marker's box says: "Cataclysm boss: 137 floors". Empty while no Cataclysm boss dungeon stands --
 	 * before it opens, and after it has been cleared -- which is what hides the marker.
 	 *
@@ -423,12 +456,12 @@ public:
 	/**
 	 * What the line under the map says when the cursor is on the marker, or it is pressed: "The Cataclysm boss
 	 * dungeon (Death, Horde): 137 floors, 12 of them added by ordinary dungeons defeated. Every ordinary dungeon
-	 * defeated adds a floor. It stands on no city and never resolves. To walk it, type Cataclysm.EnterDungeon 31 in a
-	 * dungeon level; nothing enters a dungeon from this map yet." Empty while none stands.
+	 * defeated adds a floor. It stands on no city and never resolves. Walk, under this box, enters it." Empty while
+	 * none stands.
 	 *
-	 * IT SAYS HOW TO WALK IT because pressing the box cannot: there is no travel between the empire and a dungeon
-	 * level (issue #48), so the press writes this line and opens nothing. The command is the registered one, with
-	 * this dungeon's identifier.
+	 * IT NAMES THE WALK BOX, since issue #2715, which is what enters it. Until then it named the console command
+	 * `Cataclysm.EnterDungeon` with the dungeon's identifier and said nothing entered a dungeon from this map, which
+	 * was true then and is not now.
 	 *
 	 * THE CATACLYSM IS `UCataclysmRoster::NameFor`'s, the name `Describe` uses, and the sub-type is
 	 * `UCataclysmSurgeScheduler::SubTypeName`'s; either is left out when it says nothing. THE FLOORS ADDED are the

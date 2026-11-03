@@ -15259,7 +15259,8 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 
 	// A WALK ALREADY UNDER WAY IS LEFT FIRST, which runs the days it owes. Ruled by the coordinating session on
 	// 2026-10-24, under the owner's decision that a walk's days run when the player leaves: otherwise the days owed
-	// by one dungeon would be carried into the next walk. Only `Cataclysm.EnterDungeon` typed mid-walk, and a test,
+	// by one dungeon would be carried into the next walk. `Cataclysm.EnterDungeon` typed mid-walk, a Walk button
+	// pressed mid-walk on another dungeon (issue #2715; on the dungeon being walked the button refuses), and a test
 	// reach this. Asked before the dungeon is looked up, because those days can take it off the map.
 	if (EmpireDungeonId != INDEX_NONE)
 	{

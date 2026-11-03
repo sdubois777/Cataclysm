@@ -302,9 +302,10 @@ public:
 	 * Which dungeon of the empire is being walked, or `INDEX_NONE`.
 	 *
 	 * `INDEX_NONE` IS THE ORDINARY CASE TODAY, because nothing takes a player
-	 * from the empire map into a dungeon -- that needs somewhere to stand
-	 * between runs, which is issue #48. `Cataclysm.EnterDungeon` binds one by
-	 * hand.
+	 * from the empire map into a dungeon LEVEL -- that needs somewhere to stand
+	 * between runs, which is issue #48. Standing in one, a Walk button on the
+	 * city screen or under the boss dungeon's marker binds one (issue #2715),
+	 * and so does `Cataclysm.EnterDungeon`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	int32 EmpireDungeonId = INDEX_NONE;

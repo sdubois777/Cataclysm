@@ -126,14 +126,14 @@ FString UCataclysmCityScreenLayout::SlotsTextFor(const UCataclysmEmpireRun* Run,
 						   City->Upgrades.Num(), Run->Map->UpgradeSlots);
 }
 
-TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
+TArray<int32> UCataclysmCityScreenLayout::DungeonIdsFor(
 	const UCataclysmEmpireRun* Run, int32 CityId)
 {
-	TArray<FString> Lines;
+	TArray<int32> Ids;
 
 	if (CityIn(Run, CityId) == nullptr || Run->Clock == nullptr)
 	{
-		return Lines;
+		return Ids;
 	}
 
 	// SOONEST TO RESOLVE FIRST. The whole reason to open a city is to decide
@@ -147,7 +147,28 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 							 < Run->Clock->DaysUntilResolveFor(Right);
 				  });
 
+	// ONLY WHAT THE RUN CAN FIND, so every identifier here has a line and the
+	// line and the Walk button under it stand for the same dungeon.
 	for (const int32 DungeonId : Standing)
+	{
+		if (Run->FindDungeon(DungeonId) != nullptr)
+		{
+			Ids.Add(DungeonId);
+		}
+	}
+
+	return Ids;
+}
+
+TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
+	const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	TArray<FString> Lines;
+
+	// THE ORDER IS `DungeonIdsFor`'s, soonest to resolve first, and it is that
+	// list rather than a second sort so that the Walk button under each line
+	// walks the dungeon the line describes. Issue #2715.
+	for (const int32 DungeonId : DungeonIdsFor(Run, CityId))
 	{
 		const FCataclysmDungeon* Dungeon = Run->FindDungeon(DungeonId);
 		if (Dungeon == nullptr)

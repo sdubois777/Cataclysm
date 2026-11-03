@@ -157,8 +157,9 @@ def test_the_empire_layer_claim_is_still_true() -> None:
 
     WHAT IS STILL TRUE IS THAT NOTHING TAKES THE PLAYER FROM THE MAP INTO A
     DUNGEON, OR BACK. Walking one spends the empire's days since issue #1092, and
-    entering one is still a console command typed while already standing in
-    `L_Dungeon`, because there is nowhere to stand between runs.
+    entering one is still done while already standing in `L_Dungeon` -- a console
+    command, or since issue #2715 a Walk button on an empire screen -- because
+    there is nowhere to stand between runs.
 
     A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
     looks for is part of the sentence about what is missing rather than the old

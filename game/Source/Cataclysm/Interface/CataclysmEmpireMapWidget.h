@@ -7,6 +7,7 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "CataclysmEmpireMapWidget.generated.h"
 
+class ACataclysmDungeonGameMode;
 class UCanvasPanel;
 class UCataclysmChoiceButton;
 class UCataclysmEmpireRun;
@@ -47,14 +48,18 @@ class UTextBlock;
  * `UCataclysmEmpireMapLayout` decides where it goes and every word. Issue #1324
  * slice 6c.
  *
+ * AND A WALK BOX UNDER IT, since issue #2715, which enters it: the design,
+ * "The empire map shows a marker for it that the player enters from." A press
+ * calls `ACataclysmDungeonGameMode::EnterEmpireDungeon` and closes the empire
+ * screens; in a level whose game mode is not the dungeon one it is refused and
+ * the line under the map says why. `FCataclysmWalkFromTheScreen` holds the
+ * words and the refusals, shared with the city screen's Walk buttons.
+ *
  * WHAT IT DOES NOT DO YET:
  *
- *   - **A city cannot be entered from here, and nor can the boss dungeon.**
- *     Clicking a city opens its screen and pressing the boss's box says what it
- *     is; no dungeon can be walked from either, because there is no travel
- *     between the empire and a dungeon level. Issue #48.
- *     `Cataclysm.EnterDungeon <id>` in a dungeon level walks any of them, the
- *     boss included; `Cataclysm.ShowEmpire` lists the identifiers.
+ *   - **No dungeon can be walked from outside a dungeon level.** There is no
+ *     travel between the empire and a dungeon level. Issue #48. A city's
+ *     dungeons are walked from the city screen its box opens.
  *   - **It does not advance the day.** Nothing in the game does except a console
  *     command. Walking a dungeon and spending days at the forge are what
  *     eventually will.
@@ -134,6 +139,24 @@ public:
 	 * same handler the button calls, not a copy of it.
 	 */
 	void ClickCityForTests(int32 CityId);
+
+	/**
+	 * The dungeon game mode a test stands in for the level's, for the reason
+	 * `UCataclysmCityScreenWidget::SetDungeonModeForTests` gives. Issue #2715.
+	 */
+	void SetDungeonModeForTests(ACataclysmDungeonGameMode* Mode);
+
+	/**
+	 * Presses the Walk box under the boss dungeon's marker as though it had been
+	 * clicked: the handler the box calls, with the name the box carries, which
+	 * `UCataclysmEmpireMapLayout::CataclysmDungeonWalkButtonName` gives. Nothing
+	 * happens while no boss dungeon stands, as nothing is drawn. Issue #2715.
+	 */
+	void ClickCataclysmDungeonWalkForTests();
+
+	/** Why the last Walk press did nothing, as the line under the map shows it;
+	 *  empty when it entered the dungeon or nothing was pressed. Issue #2715. */
+	FString LastWalkRefusal() const { return WalkRefusal; }
 
 protected:
 	/**
@@ -227,6 +250,25 @@ private:
 
 	/** Writes the boss dungeon's brief into the line under the map. */
 	void WriteCataclysmDungeonDetail();
+
+	/**
+	 * The Walk box under the boss dungeon's marker, made and hidden with it.
+	 * Issue #2715.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> CataclysmDungeonWalkButton;
+
+	/** Enters a dungeon and closes the empire screens, or says why not. */
+	void WalkDungeon(int32 DungeonId);
+
+	/** The level's dungeon game mode, or the one a test supplied, or null. */
+	ACataclysmDungeonGameMode* DungeonMode() const;
+
+	/** See `LastWalkRefusal`. */
+	FString WalkRefusal;
+
+	/** See `SetDungeonModeForTests`. Weak, as the city screen's is. */
+	TWeakObjectPtr<ACataclysmDungeonGameMode> DungeonModeForTests;
 
 	/** The run supplied by a test. See `SetRunForTests`. */
 	UPROPERTY(Transient)
