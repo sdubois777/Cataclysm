@@ -426,10 +426,27 @@ public:
 	 * `UCataclysmGameInstance::BeginTheRunAfterAWin` pays the first-kill passive points, raises the character's tier,
 	 * begins the next run at once and writes both records, in that order.
 	 *
+	 * AND THE DEFEAT'S EMPIRE UPGRADE POINTS ARE BANKED, since issue #52's first slice: `BankTheDefeatsEmpirePoints`,
+	 * after the clear and before the walk's days -- and before a win begins the next run, so the boss dungeon's award
+	 * is banked into the account before the run that earned it is replaced.
+	 *
 	 * @return whether there was a dungeon to clear
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	bool ClearEmpireDungeon();
+
+	/**
+	 * Banks what the dungeon just cleared awarded (`UCataclysmEmpireRun::LastEmpirePointsAwarded`) into the account
+	 * record of the playing character's partition, logs it, and raises `ECataclysmSaveTrigger::AccountChanged` so the
+	 * save writer writes that record. Issue #52, the first slice.
+	 *
+	 * NOTHING IS BANKED, AND THAT IS LOGGED, with no game instance of this project's, no character playing, a Solo
+	 * Self-Found character -- its points belong in its own character record, which this slice does not write -- or an
+	 * account record that would not read. `ClearEmpireDungeon` calls it only for a clear that cleared something.
+	 *
+	 * @return whether the points were banked
+	 */
+	bool BankTheDefeatsEmpirePoints(const UCataclysmEmpireRun& Run, int32 DungeonId);
 
 	/**
 	 * What the death of the player's character does to the dungeon being

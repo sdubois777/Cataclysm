@@ -190,6 +190,14 @@ private:
 	/** Build the character record from the world as it stands, and write it. */
 	bool WriteTheCharacterRecord(ECataclysmSaveTrigger Trigger);
 
+	/**
+	 * Write the account record the game instance holds, the bank a defeated dungeon added to
+	 * (`UCataclysmGameInstance::HeldAccount`), to its partition's slot. Nothing is gathered from the world: the record
+	 * is the game instance's and is written as it stands. False with no game instance of this project's or no record
+	 * held. Issue #52.
+	 */
+	bool WriteTheAccountRecord(ECataclysmSaveTrigger Trigger);
+
 	/** Send one record to its slot, synchronously or not as the trigger requires. */
 	bool Write(const UCataclysmSaveRecord* Record, const FString& SlotName,
 			   ECataclysmSaveTrigger Trigger);

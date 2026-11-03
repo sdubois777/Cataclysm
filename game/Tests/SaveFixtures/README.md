@@ -513,6 +513,22 @@ followed, ruled 2026-11-01:
   `Cataclysm.WinningTheRun.ARunFileFromBeforeTheWinLineMigratesWithNone` runs it
   through the step and checks every other field is kept. Every test that read
   `Run_v4.json` as the committed run file reads `Run_v5.json` now.
+- **The account record took its first version on 2026-11-03, to 2**, for the
+  empire upgrade points a defeated dungeon banks (issue #52, the first slice):
+  `EmpireUpgradePoints` was a whole number and is a double, because an award is
+  a fraction -- an ordinary dungeon is worth 1 point times the share of the
+  empire's population living -- and the coordinating session ruled that a
+  fraction is banked rather than rounded away. `Migrate_1_to_2` writes a version
+  1 file's whole number back as the same number (and 0 where the key is absent),
+  and `Account_v2.json` is `Account_v1.json` at version 2 with
+  `"EmpireUpgradePoints": 37.625` in place of 37 and nothing else changed.
+  **37.625 and not 37**: a whole number would round-trip identically through the
+  old integer field, so only a fraction shows the double is read; and it is exact
+  in binary. `Account_v1.json` is now a migration input, not edited again;
+  `Cataclysm.EmpirePoints.AnAccountFileFromBeforeFractionsMigratesKeepingItsPoints`
+  runs it through the step and checks every other field is kept, and
+  `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` reads
+  `Account_v2.json` as the committed account file.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -527,6 +543,7 @@ followed, ruled 2026-11-01:
 | File | What it is |
 | :-- | :-- |
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
+| `Account_v2.json` | The same account at version 2: version 1's contents, with its banked empire upgrade points 37.625, a fraction |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -551,8 +568,9 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had six since
-(version 7 since 2026-11-02), and the run record four (version 5 since
-2026-11-03). Its header says more.
+(version 7 since 2026-11-02), the run record four (version 5 since
+2026-11-03), and the account record one (version 2 since 2026-11-03). Its
+header says more.
 
 ## Two things to keep in mind when editing one
 

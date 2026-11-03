@@ -53,8 +53,11 @@ enum class ECataclysmSaveTrigger : uint8
 	 * Something in the account record changed: banked empire upgrade points, the
 	 * shared stash, the list of characters.
 	 *
-	 * **NOTHING RAISES THIS YET** because nothing writes to an account record.
-	 * It exists so that the rule below has something to be a rule about.
+	 * A DEFEATED DUNGEON RAISES IT, since issue #52's first slice (2026-11-03):
+	 * `ACataclysmDungeonGameMode::ClearEmpireDungeon` banks the defeat's empire
+	 * upgrade points into the account record the game instance holds, and the
+	 * writer writes that record. Nothing else raises it yet -- there is no stash.
+	 * This said nothing raised it until then.
 	 */
 	AccountChanged = 7,
 

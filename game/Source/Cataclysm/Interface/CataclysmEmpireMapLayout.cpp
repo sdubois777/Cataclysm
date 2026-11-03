@@ -5,6 +5,8 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveRecords.h"
 
 int32 UCataclysmEmpireMapLayout::CellsAcross()
 {
@@ -190,6 +192,50 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 	return FString::Printf(TEXT("%s, %s, %d of %d Cataclysm%s finished; %s"),
 						   *ClearedPart, *ObjectivePart, Finished, Facing,
 						   Facing == 1 ? TEXT("") : TEXT("s"), *BossPart);
+}
+
+FString UCataclysmEmpireMapLayout::EmpirePointsText(double Points)
+{
+	// DOWN TO A TENTH, after forgiving noise below a millionth: see the header.
+	const double Tenths = FMath::FloorToDouble(FMath::Max(0.0, Points) * 10.0 + 1.0e-6);
+	return FString::Printf(TEXT("%.1f"), Tenths / 10.0);
+}
+
+FString UCataclysmEmpireMapLayout::EmpirePointsLine(double Banked, double LastAwarded)
+{
+	const FString Bank = FString::Printf(TEXT("%s empire points banked"), *EmpirePointsText(Banked));
+
+	// AN AWARD OF NOTHING IS NOT SHOWN: no clear yet this session, or a defeat with nobody left living. Shown, "+0.0"
+	// would read as a fault in the award rather than as the rule.
+	if (LastAwarded <= 0.0)
+	{
+		return Bank;
+	}
+
+	return FString::Printf(TEXT("%s (+%s from the last dungeon defeated)"), *Bank, *EmpirePointsText(LastAwarded));
+}
+
+FString UCataclysmEmpireMapLayout::EmpirePointsLineIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run)
+{
+	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(WorldContext);
+	FCataclysmCharacterPartition Partition;
+	if (Instance == nullptr || !UCataclysmGameInstance::PlayingPartition(WorldContext, Partition))
+	{
+		return FString();
+	}
+
+	if (Partition.bSoloSelfFound)
+	{
+		return TEXT("Solo Self-Found: empire points are not banked yet");
+	}
+
+	const UCataclysmAccountSave* Account = Instance->AccountFor(Partition);
+	if (Account == nullptr)
+	{
+		return FString();
+	}
+
+	return EmpirePointsLine(Account->EmpireUpgradePoints, Run != nullptr ? Run->LastEmpirePointsAwarded : 0.0);
 }
 
 FString UCataclysmEmpireMapLayout::DaysOwedLine(const UCataclysmEmpireRun* Run)

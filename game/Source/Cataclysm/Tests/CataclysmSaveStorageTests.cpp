@@ -100,7 +100,7 @@ bool FCataclysmSaveSlotRoundTrip::RunTest(const FString&)
 	Written->SchemaVersion = UCataclysmAccountSave::SchemaVersionNow;
 	Written->Lethality = ECataclysmLethality::Heretic;
 	Written->Population = ECataclysmPopulation::Offline;
-	Written->EmpireUpgradePoints = 37;
+	Written->EmpireUpgradePoints = 37.0;
 	Written->Characters.Add(FGuid(0x11112222, 0x33334444, 0x55556666, 0x77778888));
 
 	FString Error;
@@ -142,7 +142,9 @@ bool FCataclysmSaveSlotRoundTrip::RunTest(const FString&)
 		static_cast<int32>(ECataclysmLethality::Heretic));
 	TestEqual(TEXT("the population came back"), static_cast<int32>(Read->Population),
 		static_cast<int32>(ECataclysmPopulation::Offline));
-	TestEqual(TEXT("the banked points came back"), Read->EmpireUpgradePoints, 37);
+	// A DOUBLE SINCE THE ACCOUNT RECORD'S VERSION 2 (issue #52), so the expected value is one: a whole-number literal
+	// against a double would leave the call ambiguous between the engine's integer and floating overloads.
+	TestEqual(TEXT("the banked points came back"), Read->EmpireUpgradePoints, 37.0);
 	TestEqual(TEXT("the character list came back"), Read->Characters.Num(), 1);
 	TestEqual(TEXT("and it is the same character"), Read->Characters[0], Written->Characters[0]);
 	TestEqual(TEXT("the record knows which slot it came from"),

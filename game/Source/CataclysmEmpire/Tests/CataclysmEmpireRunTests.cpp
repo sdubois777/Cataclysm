@@ -8832,4 +8832,350 @@ bool FCataclysmBossClearedWinsBeginTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Empire upgrade points a defeat earns -- issue #52, the first slice
+// ---------------------------------------------------------------------------
+
+/**
+ * What a defeated dungeon is worth in empire upgrade points, measured by the run. Issue #52, the first slice.
+ *
+ * THE RULE, `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades, ruled by the owner on 2026-09-06: "points awarded = base
+ * points for the dungeon type x (living population / total maximum population)", measured at the instant each dungeon
+ * is defeated, with no floor and no cap, the denominator counting every city, fallen or not. The bases are the
+ * simulation's, 1, 3, 5 and 25, ruled by the coordinating session on 2026-11-03.
+ *
+ * EVERY EXPECTED FIGURE IS A LITERAL OR IS BUILT FROM THE MAP'S MAXIMUM, which the share's numerator never touches, for
+ * the reason `sim/tests/test_population_scales_empire_points.py` gives: an expectation computed the way the code
+ * computes it cannot fail.
+ *
+ * WHAT IS NOT HERE. Banking the award into the account and showing it: the Cataclysm module's
+ * `CataclysmEmpirePointsBankTests.cpp`, under the same prefix.
+ *
+ * IN THIS FILE AND NOT ONE OF ITS OWN because `tools/tests/test_game_readme_is_true.py` holds the empire module to
+ * the files `game/README.md` describes; these are the empire run's own tests, under a prefix of their own.
+ */
+
+namespace CataclysmEmpirePointsRunTest
+{
+	/** A run begun and nothing standing on it: `Begin` lands no wave until the first day is advanced. */
+	UCataclysmEmpireRun* MakeRun()
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(1);
+		return Run;
+	}
+
+	/** The first Outpost that has not fallen, or `INDEX_NONE`. */
+	int32 AnOutpost(const UCataclysmEmpireRun& Run)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Outpost && !City.bFallen)
+			{
+				return City.CityId;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/**
+	 * One dungeon of this kind on this city, by hand, with its timer: both lists, as a surge fills them. Its timer has
+	 * `DaysLeft` to run. Answers its number, or `INDEX_NONE`.
+	 */
+	int32 Place(UCataclysmEmpireRun& Run, ECataclysmDungeonType Type, int32 CityId, float DaysLeft = 100.0f)
+	{
+		const FCataclysmCity* City = Run.Map->Find(CityId);
+		if (City == nullptr || Run.Clock == nullptr)
+		{
+			return INDEX_NONE;
+		}
+
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = Run.NextDungeonId;
+		Dungeon.Type = Type;
+		Dungeon.SubType = ECataclysmDungeonSubType::None;
+		Dungeon.CityId = CityId;
+		Dungeon.CityTier = City->Tier;
+		Dungeon.Floors = 5;
+		Dungeon.ResolveDays = 100.0f;
+		Dungeon.SpawnedDay = Run.Day();
+		Run.NextDungeonId = Dungeon.DungeonId + 1;
+		Run.Dungeons.Add(Dungeon);
+
+		if (!Run.Clock->AddDungeon(Dungeon.DungeonId, Dungeon.Floors)
+			|| !Run.Clock->SetResolveDays(Dungeon.DungeonId, 100.0f))
+		{
+			return INDEX_NONE;
+		}
+		for (FCataclysmDungeonTimer& Counting : Run.Clock->Timers)
+		{
+			if (Counting.DungeonId == Dungeon.DungeonId)
+			{
+				Counting.DaysUntilResolve = DaysLeft;
+			}
+		}
+		return Dungeon.DungeonId;
+	}
+
+	/** Every city at half its maximum population: 2,500, 10,000, 30,000 and 75,000 people, all exact in binary. */
+	void HalveEveryCity(UCataclysmEmpireRun& Run)
+	{
+		for (FCataclysmCity& City : Run.Map->Cities)
+		{
+			City.Population = City.MaxPopulation * 0.5f;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// At full population a defeat is worth its base
+// ---------------------------------------------------------------------------
+
+/**
+ * An intact empire's defeat of each of the four kinds awards that kind's base exactly: 1, 3, 5 and 25.
+ *
+ * A FRESH RUN FOR EACH KIND, so no clear before it can move the population a later one reads. A Fallen City dungeon is
+ * put on a standing Outpost here, which play never does; `Retake` refuses a city that has not fallen, so the clear
+ * changes no population, and the kind's base is what is under test. Prints "BASES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBasesTest,
+	"Cataclysm.EmpirePoints.ADefeatAtFullPopulationAwardsTheBaseOfEachKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsBasesTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsRunTest;
+
+	struct FCase
+	{
+		ECataclysmDungeonType Type;
+		double Expected;
+		const TCHAR* Name;
+	};
+	const FCase Cases[] = {
+		{ ECataclysmDungeonType::Basic, 1.0, TEXT("an ordinary dungeon") },
+		{ ECataclysmDungeonType::Quest, 3.0, TEXT("a Quest dungeon") },
+		{ ECataclysmDungeonType::FallenCity, 5.0, TEXT("a Fallen City") },
+		{ ECataclysmDungeonType::Cataclysm, 25.0, TEXT("the Cataclysm boss dungeon") },
+	};
+
+	FString Seen;
+	for (const FCase& Case : Cases)
+	{
+		UCataclysmEmpireRun* Run = MakeRun();
+		if (!TestTrue(TEXT("set-up: the run has a map and a clock"), Run->Map != nullptr && Run->Clock != nullptr))
+		{
+			return false;
+		}
+		TestTrue(TEXT("CONTROL: an intact empire has all of its population living"),
+				 Run->LivingPopulationShare() == 1.0);
+		TestTrue(TEXT("CONTROL: nothing has been awarded before a defeat"), Run->LastEmpirePointsAwarded == 0.0);
+
+		const int32 DungeonId = Place(*Run, Case.Type, AnOutpost(*Run));
+		if (!TestTrue(TEXT("set-up: the dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: and it was cleared"), Run->ClearDungeon(DungeonId)))
+		{
+			return false;
+		}
+
+		Seen += FString::Printf(TEXT("%s %g; "), Case.Name, Run->LastEmpirePointsAwarded);
+		TestTrue(FString::Printf(TEXT("%s at full population awards its base, %g"), Case.Name, Case.Expected),
+				 Run->LastEmpirePointsAwarded == Case.Expected);
+	}
+
+	AddInfo(FString::Printf(TEXT("BASES: %s"), *Seen));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The share of the population living scales it
+// ---------------------------------------------------------------------------
+
+/**
+ * With every city at half its people, an ordinary dungeon awards 0.5 and a Quest dungeon 1.5. Linear: half the
+ * population is half the points. Prints "HALF".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsHalfTest,
+	"Cataclysm.EmpirePoints.ADefeatAtHalfTheLivingPopulationAwardsHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsHalfTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	if (!TestTrue(TEXT("set-up: the run has a map and a clock"), Run->Map != nullptr && Run->Clock != nullptr))
+	{
+		return false;
+	}
+	HalveEveryCity(*Run);
+
+	// THE CONTROL IS ON THE MAP'S OWN TOTALS, NOT ON THE SHARE UNDER TEST.
+	TestTrue(TEXT("CONTROL: the living population is exactly half the maximum"),
+			 2.0 * Run->Map->TotalPopulation() == Run->Map->TotalMaxPopulation());
+
+	const int32 Outpost = AnOutpost(*Run);
+	const int32 Ordinary = Place(*Run, ECataclysmDungeonType::Basic, Outpost);
+	const int32 Quest = Place(*Run, ECataclysmDungeonType::Quest, Outpost);
+	if (!TestTrue(TEXT("set-up: both dungeons were placed"), Ordinary != INDEX_NONE && Quest != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: the ordinary one was cleared"), Run->ClearDungeon(Ordinary)))
+	{
+		return false;
+	}
+	const double FromOrdinary = Run->LastEmpirePointsAwarded;
+
+	if (!TestTrue(TEXT("set-up: the Quest one was cleared"), Run->ClearDungeon(Quest)))
+	{
+		return false;
+	}
+	const double FromQuest = Run->LastEmpirePointsAwarded;
+
+	AddInfo(FString::Printf(TEXT("HALF: ordinary %g, Quest %g"), FromOrdinary, FromQuest));
+	TestTrue(TEXT("an ordinary dungeon at half the population awards 0.5"), FromOrdinary == 0.5);
+	TestTrue(TEXT("a Quest dungeon at half the population awards 1.5"), FromQuest == 1.5);
+	return true;
+}
+
+/**
+ * A Fallen City's defeat is measured BEFORE the city it retakes gets half its people back.
+ *
+ * ONE OUTPOST FALLEN, ITS PEOPLE GONE: the share is every other city's people over every city's maximum, the fallen one
+ * included. Clearing its Fallen City dungeon retakes it, which gives it half its maximum back. The award is the share
+ * before that, 5 x (all - outpost) / all, and not the share after it, 5 x (all - outpost / 2) / all. Built from the
+ * map's maximum. Prints "FALLEN CITY".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBeforeRetakeTest,
+	"Cataclysm.EmpirePoints.AFallenCitysDefeatIsMeasuredBeforeItsCityIsRetaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsBeforeRetakeTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	if (!TestTrue(TEXT("set-up: the run has a map and a clock"), Run->Map != nullptr && Run->Clock != nullptr))
+	{
+		return false;
+	}
+
+	const int32 Outpost = AnOutpost(*Run);
+	FCataclysmCity* City = Run->Map->FindMutable(Outpost);
+	if (!TestNotNull(TEXT("set-up: an Outpost was found"), City))
+	{
+		return false;
+	}
+	const double All = Run->Map->TotalMaxPopulation();
+	const double OutpostMax = City->MaxPopulation;
+	City->bFallen = true;
+	City->Defence = 0.0f;
+	City->Population = 0.0f;
+
+	const int32 DungeonId = Place(*Run, ECataclysmDungeonType::FallenCity, Outpost);
+	if (!TestTrue(TEXT("set-up: the Fallen City dungeon was placed"), DungeonId != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: and cleared"), Run->ClearDungeon(DungeonId)))
+	{
+		return false;
+	}
+
+	const double Before = 5.0 * (All - OutpostMax) / All;
+	const double After = 5.0 * (All - 0.5 * OutpostMax) / All;
+	AddInfo(FString::Printf(TEXT("FALLEN CITY: awarded %.9f; the share before the retake gives %.9f, after it %.9f; "
+								 "the city is %s"),
+							Run->LastEmpirePointsAwarded, Before, After, City->bFallen ? TEXT("still fallen") : TEXT("retaken")));
+
+	TestFalse(TEXT("CONTROL: the clear retook the city"), City->bFallen);
+	TestTrue(TEXT("CONTROL: the retake gave it half its people back"), City->Population == 0.5f * City->MaxPopulation);
+	TestEqual(TEXT("the award is the share before the retake"), Run->LastEmpirePointsAwarded, Before, 1.0e-9);
+	TestTrue(TEXT("and not the share after it"), FMath::Abs(Run->LastEmpirePointsAwarded - After) > 1.0e-3);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What awards nothing
+// ---------------------------------------------------------------------------
+
+/**
+ * A dungeon whose timer runs out hits its city and leaves, and nothing is awarded for it: only `ClearDungeon` awards,
+ * and a resolve never reaches it. And a clear that clears nothing awards nothing, so the award a caller reads after it
+ * is that call's and not the last one's. Prints "NOTHING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsNothingTest,
+	"Cataclysm.EmpirePoints.AResolveAndARefusedClearAwardNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	if (!TestTrue(TEXT("set-up: the run has a map and a clock"), Run->Map != nullptr && Run->Clock != nullptr))
+	{
+		return false;
+	}
+
+	// THE FIRST WAVE LANDS ON DAY ONE; it is cleared out of the way so the resolve below is the only thing that day.
+	Run->AdvanceDay();
+	Run->Dungeons.Empty();
+	Run->Clock->Timers.Empty();
+
+	// A RESOLVE: half a day left on the timer, so the next day runs it out.
+	const int32 Detonated = Run->DungeonsDetonated;
+	const int32 Resolving = Place(*Run, ECataclysmDungeonType::Basic, AnOutpost(*Run), 0.5f);
+	if (!TestTrue(TEXT("set-up: the resolving dungeon was placed"), Resolving != INDEX_NONE))
+	{
+		return false;
+	}
+	Run->AdvanceDay();
+	const double AfterTheResolve = Run->LastEmpirePointsAwarded;
+
+	TestEqual(TEXT("CONTROL: the dungeon hit its city"), Run->DungeonsDetonated, Detonated + 1);
+	TestNull(TEXT("CONTROL: and left the map"), Run->FindDungeon(Resolving));
+	TestTrue(TEXT("a resolve awards nothing"), AfterTheResolve == 0.0);
+
+	// A CLEAR, THEN A CLEAR OF A DUNGEON THAT IS NOT THERE.
+	const int32 Cleared = Place(*Run, ECataclysmDungeonType::Quest, AnOutpost(*Run));
+	if (!TestTrue(TEXT("set-up: a Quest dungeon was placed"), Cleared != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: and cleared"), Run->ClearDungeon(Cleared)))
+	{
+		return false;
+	}
+	const double AfterTheClear = Run->LastEmpirePointsAwarded;
+	const bool bRefused = !Run->ClearDungeon(9999);
+	const double AfterTheRefusal = Run->LastEmpirePointsAwarded;
+
+	AddInfo(FString::Printf(TEXT("NOTHING: after the resolve %g; after a clear %g; after a refused clear %g"),
+							AfterTheResolve, AfterTheClear, AfterTheRefusal));
+	TestTrue(TEXT("CONTROL: the clear awarded something"), AfterTheClear > 0.0);
+	TestTrue(TEXT("CONTROL: clearing a dungeon that is not there is refused"), bRefused);
+	TestTrue(TEXT("a refused clear awards nothing"), AfterTheRefusal == 0.0);
+	return true;
+}
+
+/**
+ * The award is the formula with no floor and no cap: nobody living is worth nothing, an empire with no population at
+ * all is worth nothing rather than a division by zero, and a share above one -- which nothing in play produces -- is
+ * not cut back. Prints "SHAPE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsShapeTest,
+	"Cataclysm.EmpirePoints.TheAwardIsLinearWithNoFloorAndNoCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsShapeTest::RunTest(const FString&)
+{
+	using Run = UCataclysmEmpireRun;
+
+	const double Nobody = Run::EmpirePointsFor(ECataclysmDungeonType::Quest, 0.0, 610000.0);
+	const double NoEmpire = Run::EmpirePointsFor(ECataclysmDungeonType::Quest, 0.0, 0.0);
+	const double Quarter = Run::EmpirePointsFor(ECataclysmDungeonType::Cataclysm, 152500.0, 610000.0);
+	const double Over = Run::EmpirePointsFor(ECataclysmDungeonType::Basic, 3.0, 2.0);
+
+	AddInfo(FString::Printf(TEXT("SHAPE: nobody %g; no empire %g; a quarter of the boss %g; a share of 1.5 %g"),
+							Nobody, NoEmpire, Quarter, Over));
+	TestTrue(TEXT("no floor: nobody living is worth nothing"), Nobody == 0.0);
+	TestTrue(TEXT("an empire with no population is worth nothing, not a division by zero"), NoEmpire == 0.0);
+	TestTrue(TEXT("linear: a quarter of the population is a quarter of the boss's 25"), Quarter == 6.25);
+	TestTrue(TEXT("no cap: a share of 1.5 is 1.5 times the base"), Over == 1.5);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

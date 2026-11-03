@@ -63,6 +63,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	SurgesFromEmptyBoard = 0;
 	OwedDays = 0;
 
+	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
+	LastEmpirePointsAwarded = 0.0;
+
 	// AND THE CATACLYSM BOSS DUNGEON IS SHUT AGAIN. A second `Begin` carrying the
 	// last run's opened boss would stop this run ever opening its own. Issue
 	// #1324 slice 6b.
@@ -1547,6 +1550,10 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	const ECataclysmType Sender = Dungeon != nullptr
 		? Dungeon->Cataclysm : ECataclysmType::None;
 
+	// A CALL THAT CLEARS NOTHING AWARDS NOTHING, so the award a caller reads after it is this call's and never the
+	// last one's. Issue #52.
+	LastEmpirePointsAwarded = 0.0;
+
 	if (!RemoveDungeon(DungeonId))
 	{
 		// NOTHING WAS CLEARED, SO NOTHING IS COUNTED. `Kind` above is a
@@ -1555,6 +1562,17 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		// really did come off the map.
 		return false;
 	}
+
+	// THE EMPIRE UPGRADE POINTS THE DEFEAT EARNS, MEASURED NOW: the base for its kind times the share of the empire's
+	// population living at this instant. Issue #52, the owner's ruling of 2026-09-06 in `docs/Cataclysm_GDD_v2.md`,
+	// Empire-Wide Upgrades.
+	//
+	// BEFORE `Retake` BELOW AND NOT AFTER. Retaking a Fallen City gives it back half its people, and the share is the
+	// empire's at the moment the dungeon was defeated, not after the defeat has been paid for; `Simulation.
+	// _finish_current` awards before it calls `_retake`. `tools/tests/test_empire_points_port.py` holds the order.
+	LastEmpirePointsAwarded = EmpirePointsFor(Kind,
+		Map != nullptr ? static_cast<double>(Map->TotalPopulation()) : 0.0,
+		Map != nullptr ? static_cast<double>(Map->TotalMaxPopulation()) : 0.0);
 
 	const bool bWasFallenCity = Kind == ECataclysmDungeonType::FallenCity;
 
@@ -1685,6 +1703,40 @@ void UCataclysmEmpireRun::NoteLastRunWon(int32 InDay, int32 InTier, ECataclysmTy
 	LastRunWonTier = InTier;
 	LastRunWonCataclysm = InCataclysm;
 	LastRunWonPassivePoints = InPassivePoints;
+}
+
+double UCataclysmEmpireRun::EmpirePointsBaseFor(ECataclysmDungeonType Type)
+{
+	switch (Type)
+	{
+		case ECataclysmDungeonType::Basic:      return BasicDungeonEmpirePoints;
+		case ECataclysmDungeonType::Quest:      return QuestDungeonEmpirePoints;
+		case ECataclysmDungeonType::FallenCity: return FallenCityEmpirePoints;
+		case ECataclysmDungeonType::Cataclysm:  return CataclysmDungeonEmpirePoints;
+	}
+
+	// A KIND ADDED WITHOUT A BASE IS WORTH AN ORDINARY DUNGEON'S, as `Simulation._finish_current` reads one:
+	// `empire_points_per_dungeon.get(d.dtype, 1.0)`.
+	return BasicDungeonEmpirePoints;
+}
+
+double UCataclysmEmpireRun::EmpirePointsFor(ECataclysmDungeonType Type, double LivingPopulation,
+											double MaxPopulation)
+{
+	// LIVING OVER EVERY CITY'S MAXIMUM, THE DENOMINATOR HELD AT ONE OR MORE, as `World.population_frac` holds it.
+	// Linear, no floor and no cap: the owner's ruling of 2026-09-06.
+	return EmpirePointsBaseFor(Type) * (LivingPopulation / FMath::Max(1.0, MaxPopulation));
+}
+
+double UCataclysmEmpireRun::LivingPopulationShare() const
+{
+	if (Map == nullptr)
+	{
+		return 0.0;
+	}
+
+	return static_cast<double>(Map->TotalPopulation())
+		/ FMath::Max(1.0, static_cast<double>(Map->TotalMaxPopulation()));
 }
 
 bool UCataclysmEmpireRun::RemoveDungeon(int32 DungeonId)

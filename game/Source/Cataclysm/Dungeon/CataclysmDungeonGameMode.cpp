@@ -24787,7 +24787,15 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	// defence it restores -- and then `LeaveEmpireDungeon` runs the days owed. A city another dungeon fells in those
 	// days still falls. The run cannot have lost this dungeon while the player was inside it, so the case issue
 	// #2414 handled here, a clear that credited nothing, was removed.
+	const int32 Cleared = EmpireDungeonId;
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
+
+	// AND THE DEFEAT'S EMPIRE UPGRADE POINTS GO INTO THE ACCOUNT'S BANK, measured by `ClearDungeon` at the defeat and
+	// before the walk's days run below. Issue #52. A dungeon that resolves never comes here, and earns nothing.
+	if (bCleared)
+	{
+		BankTheDefeatsEmpirePoints(*Run, Cleared);
+	}
 
 	LeaveEmpireDungeon();
 
@@ -24812,6 +24820,48 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	}
 
 	return bCleared;
+}
+
+bool ACataclysmDungeonGameMode::BankTheDefeatsEmpirePoints(const UCataclysmEmpireRun& Run, int32 DungeonId)
+{
+	const double Awarded = Run.LastEmpirePointsAwarded;
+
+	// THE PARTITION OF THE CHARACTER PLAYING, whose lethality mode and population the points are earned into: the design,
+	// "An empire upgrade point earned by a character is earned into that character's lethality mode".
+	FCataclysmCharacterPartition Partition;
+	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(this);
+	if (Instance == nullptr || !UCataclysmGameInstance::PlayingPartition(this, Partition))
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: there is no game instance of this "
+					"project's or no character playing to bank them for."),
+			   DungeonId, Awarded);
+		return false;
+	}
+
+	const UCataclysmAccountSave* Account = Instance->BankEmpirePoints(Partition, Awarded);
+	if (Account == nullptr)
+	{
+		// SOLO SELF-FOUND, OR A BANK THAT WOULD NOT READ (`AccountFor` logged that). A Solo Self-Found character's points
+		// belong in its own character record, which this slice does not bank into. Issue #52.
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: %s."),
+			   DungeonId, Awarded,
+			   Partition.bSoloSelfFound
+				   ? TEXT("a Solo Self-Found character's points are not banked yet")
+				   : TEXT("the account record could not be read"));
+		return false;
+	}
+
+	// THE LINE A PLAYTEST LOG READS, since no line reported a clear at all until this.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Dungeon %d defeated: +%.3f empire upgrade points; %.3f banked in '%s'."),
+		   DungeonId, Awarded, Account->EmpireUpgradePoints,
+		   *UCataclysmGameInstance::AccountSlotFor(Partition));
+
+	// AND THE ACCOUNT RECORD IS WRITTEN, by the one trigger that writes it.
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::AccountChanged);
+	return true;
 }
 
 /**

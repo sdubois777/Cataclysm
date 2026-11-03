@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Character/CataclysmPassivePoints.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
@@ -12,9 +13,13 @@
 #include "Misc/DateTime.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
+
+const TCHAR* UCataclysmGameInstance::AutomationTestSlotSuffix = TEXT("_AutomationTest");
 
 UCataclysmEmpireRun* UCataclysmGameInstance::GetOrBeginEmpireRun()
 {
@@ -201,4 +206,115 @@ UCataclysmEmpireRun* UCataclysmGameInstance::EmpireRunFor(
 
 	return bStartIfNone ? Instance->GetOrBeginEmpireRun()
 						: Instance->EmpireRun.Get();
+}
+
+UCataclysmGameInstance* UCataclysmGameInstance::In(const UObject* WorldContext)
+{
+	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	return World != nullptr ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+}
+
+FString UCataclysmGameInstance::AccountSlotFor(const FCataclysmCharacterPartition& Partition)
+{
+	const FString Slot = UCataclysmSavePartition::AccountSlotName(Partition);
+
+	// NOT THE PLAYER'S OWN BANK WHILE A TEST RUNS. See the header: an account slot is named for its partition, so
+	// without this a test's clear would read and rewrite the bank in the player's own slot.
+	if (Slot.IsEmpty() || !GIsAutomationTesting)
+	{
+		return Slot;
+	}
+	return Slot + AutomationTestSlotSuffix;
+}
+
+UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharacterPartition& Partition)
+{
+	const FString Slot = AccountSlotFor(Partition);
+	if (Slot.IsEmpty())
+	{
+		// SOLO SELF-FOUND: NO ACCOUNT RECORD. Its points belong in its own character record, which this slice does not
+		// bank into. Issue #52.
+		return nullptr;
+	}
+
+	// THE HELD ONE, WHEN IT IS THIS PARTITION'S. A record carries its partition, so the check is on what it says.
+	if (HeldAccount != nullptr && HeldAccount->Lethality == Partition.Lethality
+		&& HeldAccount->Population == Partition.Population)
+	{
+		return HeldAccount;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+	FString Message;
+	UCataclysmSaveRecord* Read = FCataclysmSaveStorage::ReadFromSlot(
+		Slot, UCataclysmSaveWriter::UserIndex, UCataclysmAccountSave::StaticClass(), this, Result, Message);
+
+	if (Result == ECataclysmSaveLoadResult::SlotIsEmpty)
+	{
+		// A NEW BANK: nothing has been banked into this partition on this machine yet.
+		UCataclysmAccountSave* Fresh = NewObject<UCataclysmAccountSave>(this);
+		Fresh->SchemaVersion = UCataclysmAccountSave::SchemaVersionNow;
+		Fresh->Lethality = Partition.Lethality;
+		Fresh->Population = Partition.Population;
+		HeldAccount = Fresh;
+		return HeldAccount;
+	}
+
+	UCataclysmAccountSave* Account = Cast<UCataclysmAccountSave>(Read);
+	if (Account == nullptr || !FCataclysmSaveStorage::Succeeded(Result))
+	{
+		// REFUSED, NOT REPLACED. A fresh record banked into would be written over this file and empty its bank.
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The account record in '%s' could not be read (%s: %s), so no empire upgrade points are banked "
+					"into it this session."),
+			   *Slot, FCataclysmSaveStorage::Describe(Result), *Message);
+		return nullptr;
+	}
+
+	if (Account->Lethality != Partition.Lethality || Account->Population != Partition.Population)
+	{
+		// A FILE COPIED INTO ANOTHER PARTITION'S SLOT, which the record carries its partition to catch. Banking into it
+		// would pour one mode's points into another's tree.
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The account record in '%s' names another partition, so no empire upgrade points are banked into "
+					"it this session."),
+			   *Slot);
+		return nullptr;
+	}
+
+	HeldAccount = Account;
+	return HeldAccount;
+}
+
+UCataclysmAccountSave* UCataclysmGameInstance::BankEmpirePoints(const FCataclysmCharacterPartition& Partition,
+																 double Points)
+{
+	UCataclysmAccountSave* Account = AccountFor(Partition);
+	if (Account == nullptr)
+	{
+		return nullptr;
+	}
+
+	// THE FRACTION IS KEPT: ruled 2026-11-03. Rounding each award down would erase most ordinary dungeons' awards.
+	Account->EmpireUpgradePoints += Points;
+	return Account;
+}
+
+bool UCataclysmGameInstance::PlayingPartition(const UObject* WorldContext, FCataclysmCharacterPartition& OutPartition)
+{
+	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	const ACataclysmPlayerCharacter* Character = World != nullptr ? FCataclysmSaveGather::CharacterIn(*World) : nullptr;
+	const ACataclysmPlayerState* State = Character != nullptr ? Character->GetPlayerState<ACataclysmPlayerState>()
+															  : nullptr;
+	if (State == nullptr)
+	{
+		return false;
+	}
+
+	OutPartition = State->GetPartition();
+	return true;
 }

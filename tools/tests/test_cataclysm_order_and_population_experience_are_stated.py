@@ -52,9 +52,12 @@ went further: a failed run replays the same tier against the same Cataclysms.
 The first sentence was reworded and the Ending a Run section, which promised
 only the same NUMBER of simultaneous Cataclysms, now promises the same ones.
 
-WHAT IS NOT CHECKED HERE. That the GAME implements any of this; nothing in the
-C++ does yet, for either rule. Both simulation halves have landed and are
-guarded in `sim/tests/` rather than here -- this file is about the document.
+WHAT IS NOT CHECKED HERE. That the GAME implements any of this. This said
+nothing in the C++ did, for either rule; since issue #52's first slice
+(2026-11-03) the game awards empire points scaled by the population living, and
+`tools/tests/test_empire_points_port.py` holds that to the model. Both
+simulation halves are guarded in `sim/tests/` rather than here -- this file is
+about the document.
 """
 
 from __future__ import annotations

@@ -129,7 +129,10 @@ namespace CataclysmSaveRecordTest
 	static TArray<FFixture> Fixtures()
 	{
 		return {
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
+			// ACCOUNT IS AT v2 SINCE 2026-11-03, when its banked empire upgrade
+			// points became a double so a fraction of a point is kept (issue #52);
+			// Account_v1.json is a migration input now.
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v2.json") },
 			// RUN IS AT v5 SINCE 2026-11-03, when a run came to carry the win
 			// of the run before it (issue #1324 slice 6e); Run_v4.json is a migration
 			// input now.

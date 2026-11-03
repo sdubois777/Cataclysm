@@ -35,7 +35,10 @@ the multiplier at all. The shape these tests guard is what was ruled and is
 deliberately unchanged; only the argument for it moved.
 
 WHAT IS DELIBERATELY NOT TESTED HERE. That the GAME implements any of this. The
-C++ awards no empire points yet; this is the model only. The design document and
+C++ awards them since issue #52's first slice (2026-11-03), and
+`tools/tests/test_empire_points_port.py` holds it to this model: the same bases,
+the same share, awarded at the same moment. This file is the model only. This
+said the C++ awarded none until then. The design document and
 the decisions log are checked by
 `tools/tests/test_cataclysm_order_and_population_experience_are_stated.py`.
 """
