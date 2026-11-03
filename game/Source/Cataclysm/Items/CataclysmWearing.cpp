@@ -100,9 +100,9 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	// lands exactly there whenever no lower slot is free, being put in the
 	// first free slot. The player would then see a piece they never
 	// picked up drawn on the pointer, and the next press would move it.
-	// Every wear the player chooses, the right button's and the one asked
-	// about first (WearAfterConfirming), comes through here, so this is the
-	// one place that covers them all. Wearing a different item leaves the
+	// Every wear the player chooses -- the right button's, the one asked about
+	// first (WearAfterConfirming) and the Cataclysm.Equip command's -- comes
+	// through here, so this is the one place that covers them all. Wearing a different item leaves the
 	// hold where it is: that item is still in its slot.
 	if (bWearingWhatIsHeld)
 	{

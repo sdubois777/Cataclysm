@@ -201,6 +201,13 @@ empty either, since the item is still in it. The line above the grid still says
 judgements to be settled in play; no published source was found for where Path of
 Exile, Last Epoch or Diablo place a held item relative to the pointer.
 
+**Wearing the held item lets go of it.** Ruled 2026-11-02 under issue #878. A
+right click on the item being held puts it on and leaves nothing on the cursor.
+The cursor holds a slot number, and what comes off the body lands in the first
+free slot, which is usually the one just emptied, so keeping the hold would put
+a piece the player never picked up on the cursor. Wearing a different item while
+holding one keeps the held one where it is.
+
 ## Dropping an item on the floor
 
 **Left click outside both panels while holding an item and it lands on the floor
