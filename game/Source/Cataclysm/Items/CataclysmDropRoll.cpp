@@ -53,16 +53,19 @@ namespace
 	/**
 	 * One rung's chance in a weighted cascade, given that the cascade reached it.
 	 *
-	 * THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT, multiplied by
-	 * magic find and capped at certainty. Shared by the gear rarity roll and the
-	 * crafting material tier roll, because they are the same cascade over
-	 * different ladders; `_cascade_step_chance` in `sim/cataclysm_sim/loot.py`
-	 * is the same function on the other side.
+	 * THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. Used by the
+	 * crafting material tier roll; `_cascade_step_chance` in
+	 * `sim/cataclysm_sim/loot.py` is the same function on the other side.
+	 *
+	 * IT TAKES NO MAGIC FIND, AND IT USED TO. It multiplied this share by magic
+	 * find and capped it at 1, so at +500% the Uncommon rung reached certainty
+	 * and a Cataclysm Boss dropped no Common materials. Issue #891. Magic find is
+	 * inside the weights passed in now, as it has been for gear since #890, and
+	 * a share of the weight at or below a rung is never above one.
 	 *
 	 * @param Index  ONE-BASED, so it lines up with a difficulty tier.
 	 */
-	float CascadeStepChance(const TArray<float>& Weights, int32 Index,
-							float MagicFind)
+	float CascadeStepChance(const TArray<float>& Weights, int32 Index)
 	{
 		if (Index < 1 || Index > Weights.Num())
 		{
@@ -79,12 +82,15 @@ namespace
 			return 0.0f;
 		}
 
-		return FMath::Min(1.0f, Weights[Index - 1] / AtOrBelow
-			* (1.0f + FMath::Max(0.0f, MagicFind) / 100.0f));
+		return Weights[Index - 1] / AtOrBelow;
 	}
 
-	/** The material tier weights, weakest first, or empty. */
-	TArray<float> MaterialTierWeights(const UDataTable* MaterialTierTable)
+	/**
+	 * The material tier weights, weakest first, or empty, with magic find
+	 * multiplied in. At no magic find they are the table's own figures.
+	 */
+	TArray<float> MaterialTierWeights(const UDataTable* MaterialTierTable,
+									  float MagicFind)
 	{
 		TArray<float> Weights;
 		if (!MaterialTierTable)
@@ -106,6 +112,14 @@ namespace
 				}
 				Weights[Row.Tier - 1] = Row.DropWeight;
 			});
+
+		// MAGIC FIND MULTIPLIES THE WEIGHTS, ONCE EVERY ROW IS READ, because a
+		// tier's share of the exponent depends on how many tiers there are.
+		for (int32 Index = 0; Index < Weights.Num(); ++Index)
+		{
+			Weights[Index] *= UCataclysmDropRoll::MaterialMagicFindMultiplier(
+				Index + 1, Weights.Num(), MagicFind);
+		}
 		return Weights;
 	}
 
@@ -523,7 +537,9 @@ void UCataclysmDropRoll::MaterialTierDistribution(
 	const UDataTable* MaterialTierTable, float MagicFind,
 	TArray<float>& OutShares)
 {
-	const TArray<float> Weights = MaterialTierWeights(MaterialTierTable);
+	// MAGIC FIND IS INSIDE THE WEIGHTS AND NOT APPLIED TO THE STEPS. Issue #891.
+	const TArray<float> Weights =
+		MaterialTierWeights(MaterialTierTable, MagicFind);
 	OutShares.Init(0.0f, Weights.Num());
 	if (Weights.Num() == 0)
 	{
@@ -533,7 +549,7 @@ void UCataclysmDropRoll::MaterialTierDistribution(
 	float Left = 1.0f;
 	for (int32 Rung = Weights.Num(); Rung >= 2; --Rung)
 	{
-		const float Chance = CascadeStepChance(Weights, Rung, MagicFind);
+		const float Chance = CascadeStepChance(Weights, Rung);
 		OutShares[Rung - 1] = Left * Chance;
 		Left *= 1.0f - Chance;
 	}
@@ -678,7 +694,8 @@ int32 UCataclysmDropRoll::RollMaterialTier(const UDataTable* MaterialTierTable,
 										   float MagicFind,
 										   FRandomStream& Stream)
 {
-	const TArray<float> Weights = MaterialTierWeights(MaterialTierTable);
+	const TArray<float> Weights =
+		MaterialTierWeights(MaterialTierTable, MagicFind);
 	if (Weights.Num() == 0)
 	{
 		UE_LOG(LogCataclysm, Warning,
@@ -689,12 +706,28 @@ int32 UCataclysmDropRoll::RollMaterialTier(const UDataTable* MaterialTierTable,
 
 	for (int32 Rung = Weights.Num(); Rung >= 2; --Rung)
 	{
-		if (Stream.FRand() < CascadeStepChance(Weights, Rung, MagicFind))
+		if (Stream.FRand() < CascadeStepChance(Weights, Rung))
 		{
 			return Rung;
 		}
 	}
 	return 1;
+}
+
+float UCataclysmDropRoll::MaterialMagicFindMultiplier(int32 Tier,
+													  int32 TierCount,
+													  float MagicFind)
+{
+	const float Effective = EffectiveMagicFind(MagicFind);
+	if (Effective <= 0.0f || TierCount < 2)
+	{
+		return 1.0f;
+	}
+
+	const int32 Rung = FMath::Clamp(Tier, 1, TierCount) - 1;
+	const float Share = static_cast<float>(Rung)
+		/ static_cast<float>(TierCount - 1) * MaterialMagicFindReach;
+	return FMath::Pow(1.0f + Effective / 100.0f, Share);
 }
 
 

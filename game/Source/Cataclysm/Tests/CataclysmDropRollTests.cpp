@@ -987,22 +987,11 @@ bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
 			FMath::Abs(Total - 1.0f) < 1e-4f);
 	}
 
-	// MAGIC FIND RAISES THE TIER, which departs from the genre on purpose.
-	// Printed by loot.material_tier_distribution(300.0).
-	FDrop::MaterialTierDistribution(Tiers, 300.0f, Shares);
-	TestTrue(*FString::Printf(
-		TEXT("300 percent magic find quadruples the top tier (%.7f)"),
-		Shares[4]),
-		FMath::Abs(Shares[4] - 0.0117302053f) < 0.0117302053f * 1e-3f);
-
-	// AND AT 500 PERCENT THE SECOND RUNG SATURATES, so nothing falls through to
-	// the commonest tier. A Cataclysm Boss adds exactly 500%, so it drops no
-	// Common materials at all. That is the intended shape -- the ordinary
-	// supply comes from ordinary enemies, which add none -- and it is sharp
-	// enough to pin here rather than leave to be discovered.
-	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
-	TestEqual(TEXT("a 500 percent magic find kill drops no Common materials"),
-		Shares[0], 0.0f);
+	// WHAT MAGIC FIND DOES TO THE TIERS IS PINNED IN
+	// Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates below,
+	// since issue #891. This test used to pin "300 percent quadruples the top
+	// tier" and "500 percent drops no Common materials", which were the
+	// saturating cascade's figures.
 
 	// AND THE ROLL DRAWS FROM THAT DISTRIBUTION.
 	FRandomStream Stream(/*InSeed=*/818);
@@ -1026,6 +1015,133 @@ bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
 		TestTrue(*FString::Printf(
 			TEXT("tier %d came up %.4f against a stated %.4f"), Tier, Seen,
 			Shares[Tier - 1]),
+			FMath::Abs(Seen - Shares[Tier - 1]) < Shares[Tier - 1] * 0.1f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialMagicFindTest,
+	"Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #891. Magic find used to multiply each step of the material cascade and
+ * cap it at certainty, so at +500% the Uncommon rung reached 1 and a Cataclysm
+ * Boss dropped no Common materials at all. It now multiplies the weights, with
+ * MaterialMagicFindReach 3 and the gear MagicFindCeiling of 400.
+ */
+bool FCataclysmMaterialMagicFindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Tiers =
+		LoadTable<FCataclysmMaterialTierRow>(TEXT("MaterialTiers.csv"));
+	if (!TestNotNull(TEXT("MaterialTiers.csv loads"), Tiers))
+	{
+		return false;
+	}
+
+	// Printed by loot.material_tier_distribution(300.0) and (500.0): a Boss and
+	// a Cataclysm Boss, Common down to Extremely Rare.
+	// `tools/tests/test_unreal_drop_figures_match_the_model.py` fails when these
+	// literals stop matching the model.
+	const float MaterialShareAtBoss[] = {
+		0.4916362667f, 0.2599115574f, 0.1374064979f, 0.0726421936f,
+		0.0384034843f,
+	};
+	const float MaterialShareAtCataclysmBoss[] = {
+		0.4327512006f, 0.2601925794f, 0.1564413415f, 0.0940606892f,
+		0.0565541893f,
+	};
+
+	TArray<float> Shares;
+	const auto Matches = [&](const TCHAR* Who, float MagicFind,
+							 const float (&Expected)[5])
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		if (!TestEqual(*FString::Printf(TEXT("%s: five tiers"), Who),
+				Shares.Num(), 5))
+		{
+			return;
+		}
+		for (int32 Index = 0; Index < 5; ++Index)
+		{
+			TestTrue(*FString::Printf(
+				TEXT("%s: tier %d is %.7f of material drops (%.7f)"), Who,
+				Index + 1, Expected[Index], Shares[Index]),
+				FMath::Abs(Shares[Index] - Expected[Index])
+					< Expected[Index] * 1e-3f);
+		}
+	};
+	Matches(TEXT("a Boss, 300 percent"), 300.0f, MaterialShareAtBoss);
+	Matches(TEXT("a Cataclysm Boss, 500 percent"), 500.0f,
+		MaterialShareAtCataclysmBoss);
+
+	// THE FAULT ITSELF, stated on its own so a failure names it. The saturating
+	// cascade gave a Cataclysm Boss exactly zero Common materials.
+	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
+	if (Shares.Num() == 5)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("a Cataclysm Boss drops Common materials (%.4f)"), Shares[0]),
+			Shares[0] > 0.0f);
+	}
+
+	// NO TIER IS EVER COMMONER THAN THE ONE BELOW IT, however much magic find is
+	// carried. That is the upper bound the reach was ruled under; gear's 4
+	// breaks it on this ladder.
+	for (float MagicFind : { 0.0f, 500.0f, 10000.0f, 1.0e12f })
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		for (int32 Index = 1; Index < Shares.Num(); ++Index)
+		{
+			TestTrue(*FString::Printf(
+				TEXT("at %.0f percent magic find tier %d (%.4f) stays rarer than "
+					 "tier %d (%.4f)"), MagicFind, Index + 1, Shares[Index],
+				Index, Shares[Index - 1]),
+				Shares[Index] < Shares[Index - 1]);
+		}
+	}
+
+	// THE MULTIPLIER: one for the commonest tier, and the top tier's approaches
+	// 5 cubed, which is the ceiling's 1 + 400 / 100 raised to the reach. The
+	// small allowance above the bound is float rounding at 1e12, where the
+	// effective magic find comes out as 400 to within a float's precision.
+	TestEqual(TEXT("the commonest tier's weight is never multiplied"),
+		FDrop::MaterialMagicFindMultiplier(1, 5, 1.0e12f), 1.0f);
+	TestEqual(TEXT("no magic find multiplies nothing"),
+		FDrop::MaterialMagicFindMultiplier(5, 5, 0.0f), 1.0f);
+	const float Bound = FMath::Pow(1.0f + FDrop::MagicFindCeiling / 100.0f,
+		FDrop::MaterialMagicFindReach);
+	const float Top = FDrop::MaterialMagicFindMultiplier(5, 5, 1.0e12f);
+	TestTrue(*FString::Printf(
+		TEXT("the top tier's multiplier approaches %.3f (%.3f)"), Bound, Top),
+		Top <= Bound * 1.0001f && Top > Bound * 0.999f);
+
+	// AND THE ROLL DRAWS FROM THE CATACLYSM BOSS DISTRIBUTION, the case the
+	// saturation lived in.
+	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
+	FRandomStream Stream(/*InSeed=*/891);
+	TArray<int32> Counts;
+	Counts.Init(0, 6);
+	constexpr int32 Draws = 40000;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Tier = FDrop::RollMaterialTier(Tiers, 500.0f, Stream);
+		if (Tier < 1 || Tier > 5)
+		{
+			AddError(FString::Printf(TEXT("a material rolled tier %d"), Tier));
+			return false;
+		}
+		++Counts[Tier];
+	}
+	for (int32 Tier = 1; Tier <= 4; ++Tier)
+	{
+		const float Seen = static_cast<float>(Counts[Tier]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("at 500 percent tier %d came up %.4f against a stated %.4f"),
+			Tier, Seen, Shares[Tier - 1]),
 			FMath::Abs(Seen - Shares[Tier - 1]) < Shares[Tier - 1] * 0.1f);
 	}
 

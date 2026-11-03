@@ -1289,19 +1289,158 @@ def test_magic_find_raises_the_material_tier():
     assert lucky["Common"] < plain["Common"]
 
 
-def test_a_saturating_magic_find_stops_the_commonest_tier_appearing():
-    """A CONSEQUENCE WORTH PINNING. Each cascade step is multiplied by magic
-    find and clamped at certainty, so at 500% the Uncommon rung reaches 1 and
-    nothing falls through to Common.
+def test_a_cataclysm_boss_drops_common_materials():
+    """THE FAULT ISSUE #891 WAS ABOUT, and the opposite of what this file pinned
+    before it.
 
-    A Cataclysm Boss adds exactly 500%, so its materials are never Common. That
-    is a reasonable shape -- the ordinary supply comes from ordinary enemies,
-    which add no magic find at all -- but it is sharp enough that it should not
-    be discovered by accident.
+    Magic find used to multiply each step of the material cascade and cap it at
+    certainty. A Cataclysm Boss adds exactly +500%, the Uncommon rung is 64 of
+    the 320 weight at or below it, so that rung reached 1 and nothing could fall
+    through to Common: 0%, 65.22%, 26.09%, 6.93%, 1.76%. A test here asserted
+    that zero as "a consequence worth pinning".
+
+    Magic find now multiplies weights, so every tier keeps a share at any magic
+    find, and a Cataclysm Boss drops Common materials a little under half the
+    time.
     """
-    assert loot.material_tier_distribution(500.0)["Common"] == 0.0
-    assert loot.material_tier_distribution(0.0)["Common"] > 0.7
     assert loot.magic_find_from("Cataclysm Boss") == 500.0
+
+    spread = loot.material_tier_distribution(loot.magic_find_from("Cataclysm Boss"))
+    assert spread["Common"] > 0.0, (
+        "a Cataclysm Boss drops no Common materials at all, which is the "
+        "saturating cascade issue #891 removed")
+    assert spread["Common"] == pytest.approx(0.4327512006, rel=1e-6)
+
+    # AND NO TIER TAKES ALMOST EVERYTHING, which is what saturation looks like
+    # from the other side: the swallowing rung had 65% of the drop.
+    assert max(spread.values()) < 0.5
+
+
+def test_no_amount_of_magic_find_stops_a_material_tier_dropping():
+    """Every weight stays above zero however large magic find is, so no tier
+    can be removed. That is a property of putting magic find on the weights,
+    not of the reach chosen."""
+    for magic_find in (0.0, 150.0, 300.0, 500.0, 10_000.0, 1e12):
+        spread = loot.material_tier_distribution(magic_find)
+        for tier in loot.MATERIAL_TIERS:
+            assert spread[tier] > 0.0, (
+                f"{tier} never drops at {magic_find:g}% magic find")
+        # AND THE FLOOR NEVER FALLS NEAR ZERO: with unlimited magic find Common
+        # settles at 27.7% rather than tending to nothing.
+        assert spread["Common"] > 0.25
+
+
+#: What the saturating rule gave each enemy before issue #891, Common up to
+#: Extremely Rare, rounded to two places of a percentage. Stated rather than
+#: recomputed, because the rule is gone from the code. Herald, Boss and
+#: Cataclysm Boss are the issue's own table; Elite and Legendary were measured
+#: from the same code on 2026-11-02 before it changed.
+MATERIAL_SHARES_BEFORE_ISSUE_891 = {
+    "Elite":          (0.6357, 0.2725, 0.0699, 0.0176, 0.0044),
+    "Legendary":      (0.5270, 0.3513, 0.0925, 0.0234, 0.0059),
+    "Herald":         (0.4244, 0.4244, 0.1147, 0.0292, 0.0073),
+    "Boss":           (0.1525, 0.6099, 0.1794, 0.0465, 0.0117),
+    "Cataclysm Boss": (0.0000, 0.6522, 0.2609, 0.0693, 0.0176),
+}
+
+
+def test_the_two_rarest_material_tiers_are_no_rarer_from_any_enemy_than_before():
+    """THE CRITERION THE REACH WAS CHOSEN ON, issue #891.
+
+    #890 chose gear's reach as the one where no rarity above the rung that had
+    swallowed the drop got rarer. Here that would hold Rare at 26.09% from a
+    Cataclysm Boss, and the middle rung of five cannot exceed 20%, so the ruling
+    reads it as every tier that CAN be held: Very Rare and Extremely Rare, from
+    every enemy that adds magic find. That needs a reach of at least 2.49.
+    """
+    for enemy, before in MATERIAL_SHARES_BEFORE_ISSUE_891.items():
+        now = loot.material_tier_distribution(loot.magic_find_from(enemy))
+        for tier in ("Very Rare", "Extremely Rare"):
+            was = before[loot.MATERIAL_TIERS.index(tier)]
+            assert now[tier] >= was, (
+                f"a {enemy} drops {tier} materials {now[tier] * 100:.2f}% of the "
+                f"time against {was * 100:.2f}% before issue #891")
+
+
+def test_the_middle_material_tier_could_not_have_been_held():
+    """Why the criterion had to be read as "every tier that can be held".
+
+    Asserted rather than left in a comment, because it is the reason a weaker
+    criterion was ruled: with the ladder falling by one even ratio, the middle
+    rung peaks at exactly a fifth of drops when every weight is equal.
+    """
+    for ratio in (0.25, 0.5, 0.9, 1.0, 1.1, 2.0, 4.0):
+        weights = [ratio ** rung for rung in range(5)]
+        assert weights[2] / sum(weights) <= 0.2 + 1e-12
+    assert MATERIAL_SHARES_BEFORE_ISSUE_891["Cataclysm Boss"][2] > 0.2
+
+
+def test_the_material_shares_by_enemy_are_the_ruled_figures():
+    """The table in the issue #891 entry of docs/DECISIONS.md and in section VI
+    of the design document, at `MATERIAL_MAGIC_FIND_REACH` 3 with the 400
+    ceiling. The Unreal test pins the Boss and Cataclysm Boss rows too."""
+    assert loot.MATERIAL_MAGIC_FIND_REACH == 3.0
+    expected = {
+        "Herald":         (0.5742113639, 0.2496106752, 0.1085061931,
+                           0.0471678302, 0.0205039376),
+        "Boss":           (0.4916362667, 0.2599115574, 0.1374064979,
+                           0.0726421936, 0.0384034843),
+        "Cataclysm Boss": (0.4327512006, 0.2601925794, 0.1564413415,
+                           0.0940606892, 0.0565541893),
+    }
+    for enemy, shares in expected.items():
+        now = loot.material_tier_distribution(loot.magic_find_from(enemy))
+        assert [now[tier] for tier in loot.MATERIAL_TIERS] == pytest.approx(
+            list(shares), rel=1e-8), enemy
+
+
+def test_magic_find_never_makes_a_rarer_material_tier_the_commoner():
+    """THE UPPER BOUND ON THE REACH: under 3.445. Gear's 4 breaks it on this
+    ladder -- with unlimited magic find Extremely Rare would be 29.8% of drops
+    and Common 12.2%."""
+    for magic_find in (0.0, 300.0, 500.0, 10_000.0, 1e12):
+        spread = loot.material_tier_distribution(magic_find)
+        shares = [spread[tier] for tier in loot.MATERIAL_TIERS]
+        assert shares == sorted(shares, reverse=True), (
+            f"at {magic_find:g}% magic find the material tiers are out of "
+            f"order: {shares}")
+
+
+def test_magic_find_is_worth_more_the_rarer_the_material():
+    """The ordering the weight mechanism promises: the floor loses share and
+    every tier above it gains more than the one below."""
+    plain = loot.material_tier_distribution(0.0)
+    lucky = loot.material_tier_distribution(150.0)
+    gains = [lucky[tier] / plain[tier] for tier in loot.MATERIAL_TIERS]
+    assert gains[0] < 1.0
+    assert gains == sorted(gains)
+    assert all(gain > 1.0 for gain in gains[1:])
+
+
+def test_material_magic_find_has_the_gear_ceiling():
+    """Issue #891 option 1: the same mechanism, so the same diminishing
+    returns. The multiplier on the top tier approaches 5 ** 3 and never
+    reaches it."""
+    top = loot.MATERIAL_TIERS[-1]
+    assert loot.material_magic_find_multiplier(top, 0.0) == 1.0
+    assert loot.material_magic_find_multiplier("Common", 1e12) == 1.0
+    bound = (1.0 + loot.MAGIC_FIND_CEILING / 100.0) ** loot.MATERIAL_MAGIC_FIND_REACH
+    assert loot.material_magic_find_multiplier(top, 1e12) < bound
+    assert loot.material_magic_find_multiplier(top, 1e12) == pytest.approx(
+        bound, rel=1e-6)
+    with pytest.raises(ValueError, match="cannot be negative"):
+        loot.material_tier_distribution(-1.0)
+
+
+def test_rolling_materials_at_a_cataclysm_boss_draws_the_stated_distribution():
+    """The roll and the exact distribution are two pieces of code describing
+    one thing, and the saturating rule lived in both."""
+    rng = random.Random(891)
+    stated = loot.material_tier_distribution(500.0)
+    drawn = collections.Counter(
+        loot.roll_material_tier(500.0, rng) for _ in range(40000))
+    for tier in ("Common", "Uncommon", "Rare", "Very Rare"):
+        assert drawn[tier] / 40000 == pytest.approx(stated[tier], rel=0.1)
 
 
 def test_rolling_materials_draws_from_the_stated_distribution():
@@ -1360,3 +1499,20 @@ def test_the_material_import_time_checks_can_fail():
             loot._check_every_enemy_rarity_drops_materials()
     finally:
         loot.ENEMY_MATERIAL_DROPS = drops
+
+
+def test_the_material_reach_check_refuses_a_reach_that_inverts_the_ladder():
+    """The upper bound on `MATERIAL_MAGIC_FIND_REACH` is enforced on import,
+    and it fires at gear's 4 and at 3.45, just past the bound, while 3.44
+    passes."""
+    original = loot.MATERIAL_MAGIC_FIND_REACH
+    try:
+        for too_far in (4.0, 3.45):
+            loot.MATERIAL_MAGIC_FIND_REACH = too_far
+            with pytest.raises(AssertionError, match="commoner one"):
+                loot._check_no_material_tier_overtakes_the_one_below_it()
+
+        loot.MATERIAL_MAGIC_FIND_REACH = 3.44
+        loot._check_no_material_tier_overtakes_the_one_below_it()
+    finally:
+        loot.MATERIAL_MAGIC_FIND_REACH = original

@@ -17,6 +17,10 @@ tables going stale in one afternoon on 2026-08-14. Reading the pinned numbers
 and comparing them is strictly better than restating them: it needs no
 maintenance and cannot itself go stale.
 
+SINCE ISSUE #891 IT ALSO READS `CataclysmDropRoll.h` for the magic find reach,
+material reach and ceiling, and the material shares the Unreal test pins for a
+Boss and a Cataclysm Boss kill, for the same reason.
+
 WHAT IS NOT CHECKED HERE. Whether the C++ actually produces those fractions.
 Only the automation test can decide that, because only it can run the engine.
 This checks that what the automation test will compare against is still what the
@@ -148,3 +152,66 @@ def test_the_pinned_headline_odds_match_the_model(loot) -> None:
         assert abs(one_in - float(stated.replace(",", ""))) < one_in * 0.03, (
             f"{UNREAL_TEST.name} says a {rarity} drop is one in {stated} and "
             f"the model puts it at one in {one_in:.1f}.")
+
+
+UNREAL_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Items"
+                 / "CataclysmDropRoll.h")
+
+
+def header_constant(name: str) -> float:
+    """One `static constexpr float <name> = <value>f;` from the drop header."""
+    if not UNREAL_HEADER.is_file():
+        pytest.skip(f"{UNREAL_HEADER.name} is not present")
+
+    text = UNREAL_HEADER.read_text(encoding="utf-8")
+    found = re.findall(
+        r"static\s+constexpr\s+float\s+" + re.escape(name)
+        + r"\s*=\s*([0-9]*\.?[0-9]+)f\s*;", text)
+    assert len(found) == 1, (
+        f"{UNREAL_HEADER.name} declares `static constexpr float {name}` "
+        f"{len(found)} times, where exactly one was expected. If it was renamed, "
+        "fix the name in this file; otherwise the comparison below compared "
+        "nothing.")
+    return float(found[0])
+
+
+@pytest.mark.parametrize(("cpp", "python"), [
+    ("MaterialMagicFindReach", "MATERIAL_MAGIC_FIND_REACH"),
+    ("MagicFindCeiling", "MAGIC_FIND_CEILING"),
+    ("MagicFindReach", "MAGIC_FIND_REACH"),
+])
+def test_the_magic_find_constants_match_the_model(loot, cpp, python) -> None:
+    """Issue #891. The game and the model each hold a copy of the magic find
+    reach and ceiling, and nothing on a pull request compiles the C++, so a
+    change to one copy alone would merge and be found by whoever next ran the
+    engine. The material reach is the one issue #891 added; the gear pair had
+    no such check before it either."""
+    assert header_constant(cpp) == getattr(loot, python), (
+        f"{UNREAL_HEADER.name} has {cpp} = {header_constant(cpp)} and "
+        f"sim/cataclysm_sim/loot.py has {python} = {getattr(loot, python)}.")
+
+
+@pytest.mark.parametrize(("array", "enemy"), [
+    ("MaterialShareAtBoss", "Boss"),
+    ("MaterialShareAtCataclysmBoss", "Cataclysm Boss"),
+])
+def test_the_pinned_material_shares_by_enemy_match_the_model(
+        loot, array, enemy) -> None:
+    """One number per material tier, Common first, at the magic find a kill of
+    that enemy adds, from loot.material_tier_distribution. Issue #891."""
+    pinned = pinned_floats(array)
+    expected = loot.material_tier_distribution(loot.magic_find_from(enemy))
+
+    assert len(pinned) == len(loot.MATERIAL_TIERS), (
+        f"the C++ pins {len(pinned)} material share(s) in {array}[] and there "
+        f"are {len(loot.MATERIAL_TIERS)} material tiers.")
+
+    wrong = [
+        (tier, pinned[index], expected[tier])
+        for index, tier in enumerate(loot.MATERIAL_TIERS)
+        if abs(pinned[index] - expected[tier]) > expected[tier] * 1e-6
+    ]
+    assert not wrong, (
+        f"{UNREAL_TEST.name} pins material shares for a {enemy} kill that the "
+        "model no longer produces. Tier: pinned, model -- "
+        + "; ".join(f"{t}: {p:.10f}, {m:.10f}" for t, p, m in wrong))
