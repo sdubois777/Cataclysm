@@ -8051,7 +8051,7 @@ namespace CataclysmSaveLoadDrawTest
  * A new character draws its Cataclysm order seed once, when it is made; its run faces the first N of that draw, N its
  * tier; the character record keeps the seed; and a death's write leaves it as it was. `docs/Cataclysm_GDD_v2.md`,
  * Ending a Run: "The order a character adds Cataclysms in is drawn once when the character is created". Issue #1324
- * slice 6a, ruled 2026-11-03.
+ * slice 6a, ruled 2026-11-02.
  *
  * TIER 4, AS `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` SETS IT, so the run faces four and a list drawn from
  * anything but the character's seed agrees with its draw by chance about once in 1,680. The seed itself is drawn from
@@ -8123,7 +8123,7 @@ bool FCataclysmSaveLoadNewCharacterDrawTest::RunTest(const FString&)
  * A loaded character whose run cannot be read begins a new run against its own draw -- the first N of the seed its
  * record keeps, N its tier -- and does so again on a second load: the same Cataclysms, by name and in order, though each
  * new run's own seed comes from the clock. "The same tier means the same Cataclysms, by name and not only by count."
- * Issue #1324 slice 6a, ruled 2026-11-03.
+ * Issue #1324 slice 6a, ruled 2026-11-02.
  *
  * THE RECORD IS REWRITTEN TO SEED 7 AND TIER 3, naming no run, so the load takes the new-run path
  * (`ARunThatCannotBeReadStartsANewOneAndSaysSo`'s "no run named"). A list drawn from the clock instead agrees with seed

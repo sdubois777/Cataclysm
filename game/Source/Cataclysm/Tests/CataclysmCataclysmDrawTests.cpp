@@ -16,7 +16,7 @@
 
 /**
  * A character keeps its Cataclysm draw across runs. Issue #1324 slice 6a, ruled by the coordinating session on
- * 2026-11-03 from `docs/Cataclysm_GDD_v2.md`, section II, Ending a Run: "The same tier means the same Cataclysms, by
+ * 2026-11-02 from `docs/Cataclysm_GDD_v2.md`, section II, Ending a Run: "The same tier means the same Cataclysms, by
  * name and not only by count." and "Only defeating the boss dungeon adds a Cataclysm to the next run."
  *
  * THE RULING: the character record carries a Cataclysm order seed, drawn once when the character is created, and every

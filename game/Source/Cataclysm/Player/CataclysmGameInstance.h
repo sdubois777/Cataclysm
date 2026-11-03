@@ -173,7 +173,7 @@ public:
 	/**
 	 * Throws away whatever run was in progress and starts a CHARACTER'S run: as `BeginEmpireRun`, except that the
 	 * Cataclysms it faces are drawn from the character's Cataclysm order seed rather than from the run's `Seed`
-	 * (`UCataclysmEmpireRun::BeginForCharacter`). Issue #1324 slice 6a, ruled 2026-11-03 from
+	 * (`UCataclysmEmpireRun::BeginForCharacter`). Issue #1324 slice 6a, ruled 2026-11-02 from
 	 * `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the same Cataclysms, by name and not only by count."
 	 *
 	 * THE TWO DOORS A CHARACTER'S RUN COMES THROUGH IN PLAY: a new character's (`ACataclysmGameMode::

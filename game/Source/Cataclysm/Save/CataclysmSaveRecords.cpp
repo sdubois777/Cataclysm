@@ -280,7 +280,7 @@ namespace CataclysmCharacterSaveMigration
 
 	/**
 	 * A character written before it carried a Cataclysm order seed is given the one its identifier gives, so it keeps one
-	 * fixed draw from then on. Issue #1324 slice 6a, ruled 2026-11-03. Written out, for `Migrate_3_to_4`'s reason.
+	 * fixed draw from then on. Issue #1324 slice 6a, ruled 2026-11-02. Written out, for `Migrate_3_to_4`'s reason.
 	 *
 	 * THE IDENTIFIER IS READ FROM THE RECORD, AS THE SAVE WRITES IT (32 hex digits). A record with no identifier, or one
 	 * that does not parse, gets the seed of the zero identifier: still one fixed seed, and no refusal, since a character

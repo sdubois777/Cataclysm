@@ -437,7 +437,7 @@ followed, ruled 2026-11-01:
   `Cataclysm.ConsumptionDouble.ACharacterFileFromBeforeTheBuildMigratesWithNone`
   runs it through the step and checks every other field is kept.
 - **The fourth is `CataclysmOrderSeed`, the character's Cataclysm order seed**
-  (issue #1324 slice 6a, ruled 2026-11-03 from `docs/Cataclysm_GDD_v2.md`, Ending
+  (issue #1324 slice 6a, ruled 2026-11-02 from `docs/Cataclysm_GDD_v2.md`, Ending
   a Run: "The same tier means the same Cataclysms, by name and not only by
   count."): the character record went to version 7 on 2026-11-02,
   `Migrate_6_to_7` writes into a version 6 file the seed its `CharacterId` gives

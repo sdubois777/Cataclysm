@@ -921,7 +921,7 @@ public:
 	 * `UCataclysmRoster::OrderFor(InCataclysmOrderSeed)`: two runs of one
 	 * character at one tier face the same list in the same order, and a run one
 	 * tier higher faces that list with one more at its end -- whatever each run's
-	 * own seed is. Ruled by the coordinating session on 2026-11-03 from that
+	 * own seed is. Ruled by the coordinating session on 2026-11-02 from that
 	 * sentence.
 	 *
 	 * THE TWO SEEDS ARE SEPARATE ON PURPOSE. `InSeed` is the run's chance -- its

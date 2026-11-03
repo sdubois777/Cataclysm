@@ -42,9 +42,7 @@ lead, and the sentence this slice builds: "**The same tier means the same Catacl
 count.**" That paragraph goes on: "The order a character adds Cataclysms in is drawn once when the character is
 created, described under Game Start in this section, so a replay has nothing left to draw."
 
-**Ruled by the coordinating session on 2026-11-03, from that sentence** (its date; this entry and the version dates
-below are the local date, 2026-11-02, which `tools/tests/test_decisions_entries_are_separated.py` requires of a
-heading)**:** the character record carries a Cataclysm
+**Ruled by the coordinating session on 2026-11-02, from that sentence:** the character record carries a Cataclysm
 order seed, drawn once when the character is created, and every run's Cataclysm list is the first N (N the tier's
 count) of `UCataclysmRoster::OrderFor(that seed)`. A character file from before the field migrates with a seed derived
 deterministically from its `CharacterId`, so an existing character keeps one fixed draw from then on. So a run at tier

@@ -1232,7 +1232,7 @@ public:
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
 	 * before the field, and what the save writes for a character that never drew one. Issue #1324 slice 6a, ruled
-	 * 2026-11-03.
+	 * 2026-11-02.
 	 *
 	 * 32-BIT FNV-1a OVER THE IDENTIFIER'S SIXTEEN BYTES, IN THE ORDER ITS DIGITS ARE WRITTEN (`A`, `B`, `C`, `D`, each
 	 * most significant byte first), THEN THE SIGN BIT CLEARED, so the seed is positive like every clock-drawn seed in the

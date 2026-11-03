@@ -2,7 +2,7 @@
 
 `docs/Cataclysm_GDD_v2.md`, section II, Ending a Run: "The same tier means the
 same Cataclysms, by name and not only by count." Ruled by the coordinating
-session on 2026-11-03: the character record carries a Cataclysm order seed,
+session on 2026-11-02: the character record carries a Cataclysm order seed,
 drawn once when the character is created, and every run's Cataclysm list is the
 first N of `UCataclysmRoster::OrderFor(that seed)`. A character file from before
 the field migrates with the seed its `CharacterId` gives.
