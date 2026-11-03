@@ -404,10 +404,15 @@ FString UCataclysmEmpireMapLayout::CataclysmDungeonBrief(const UCataclysmEmpireR
 		AddedPart = FString::Printf(TEXT("%d of them added by ordinary dungeons defeated"), Added);
 	}
 
+	// AND HOW TO WALK IT, because pressing its box cannot: nothing enters a dungeon from this map (issue #48), so the
+	// line names the console command that does, with this dungeon's identifier. `Cataclysm.EnterDungeon` is the one
+	// registered in `CataclysmPlayerCharacter.cpp`; `test_a_message_names_only_registered_console_commands.py` holds
+	// that every `Cataclysm.` name in a message here is registered.
 	return FString::Printf(
 		TEXT("The Cataclysm boss dungeon%s: %d floor%s, %s. Every ordinary dungeon defeated adds a floor. It stands on "
-			 "no city and never resolves."),
-		*Marked, Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"), *AddedPart);
+			 "no city and never resolves. To walk it, type Cataclysm.EnterDungeon %d in a dungeon level; nothing "
+			 "enters a dungeon from this map yet."),
+		*Marked, Boss->Floors, Boss->Floors == 1 ? TEXT("") : TEXT("s"), *AddedPart, Boss->DungeonId);
 }
 
 FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run)

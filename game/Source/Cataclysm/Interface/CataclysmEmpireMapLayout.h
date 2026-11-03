@@ -355,12 +355,18 @@ public:
 	 * Where the marker sits, as its CENTRE, for the reason `PositionFor` answers a centre: the box is placed on a
 	 * canvas slot aligned to its middle, as a city's is.
 	 *
-	 * THE TOP LEFT CORNER, A MARGIN IN FROM BOTH EDGES, AND IT COVERS NO CITY AT ANY SCALE `ScaleToFit` GIVES. The
+	 * THE TOP LEFT CORNER, A MARGIN IN FROM BOTH EDGES, AND IT COVERS NO CITY ON ANY PANEL THE DIAMOND FITS IN. The
 	 * diamond is fitted inside the same margins and centred, so its top row starts no higher than the marker's top,
 	 * and that row holds only the Outpost in the middle, whose box begins 564 scaled pixels right of the diamond's left
 	 * edge -- three cells -- where the marker ends at most 344 right of it. The next row down begins 68 below
 	 * the top row, where the marker is 48 tall. `Cataclysm.BossOnTheMap.TheMarkerSitsInTheEmptyCornerAndItsLabelFits`
 	 * checks it against every city on the panels the city overlap test uses.
+	 *
+	 * NOT ON A PANEL TOO SMALL FOR THE DIAMOND, where `ScaleToFit` is held at `SmallestScale` and the diamond spills
+	 * past the margins: then the corner is not empty and the marker can lie over the top rows. Measured on 2026-11-03
+	 * with a Python copy of `ScaleToFit` and `PositionFor`, sweeping panels from 100 to 4,000 pixels wide and 100 to
+	 * 3,000 tall in steps of 7: the 73 panels on which it covered a city were all held at `SmallestScale`, and none
+	 * was wider than 233 or taller than 128.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FVector2D CataclysmDungeonMarkerPosition(float Scale);
@@ -381,7 +387,12 @@ public:
 	/**
 	 * What the line under the map says when the cursor is on the marker, or it is pressed: "The Cataclysm boss
 	 * dungeon (Death, Horde): 137 floors, 12 of them added by ordinary dungeons defeated. Every ordinary dungeon
-	 * defeated adds a floor. It stands on no city and never resolves." Empty while none stands.
+	 * defeated adds a floor. It stands on no city and never resolves. To walk it, type Cataclysm.EnterDungeon 31 in a
+	 * dungeon level; nothing enters a dungeon from this map yet." Empty while none stands.
+	 *
+	 * IT SAYS HOW TO WALK IT because pressing the box cannot: there is no travel between the empire and a dungeon
+	 * level (issue #48), so the press writes this line and opens nothing. The command is the registered one, with
+	 * this dungeon's identifier.
 	 *
 	 * THE CATACLYSM IS `UCataclysmRoster::NameFor`'s, the name `Describe` uses, and the sub-type is
 	 * `UCataclysmSurgeScheduler::SubTypeName`'s; either is left out when it says nothing. THE FLOORS ADDED are the

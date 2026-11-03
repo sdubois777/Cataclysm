@@ -11,6 +11,7 @@
 #include "Empire/CataclysmSurge.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Tests/CataclysmTestSkip.h"
@@ -208,7 +209,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossOnTheMapMarkerTextTest,
  * Three tier 1 runs at seed 11 open the boss after three ordinary dungeons defeated and one more after it opened
  * (four added), after one before it (one added), and with none (as it rolled). The box says the depth; the brief
  * names the Cataclysm that sent it and its sub-type, the floors and the floors the ordinary dungeons added, singular
- * and plural, and that it stands on no city and never resolves. Prints "BOSS MARKER".
+ * and plural, that it stands on no city and never resolves, and -- because pressing the box opens nothing -- the
+ * registered console command that walks it, with its identifier. Prints "BOSS MARKER".
  */
 bool FCataclysmBossOnTheMapMarkerTextTest::RunTest(const FString& Parameters)
 {
@@ -219,7 +221,7 @@ bool FCataclysmBossOnTheMapMarkerTextTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and no brief"), UCataclysmEmpireMapLayout::CataclysmDungeonBrief(nullptr), FString());
 
 	const FString Rule = TEXT(". Every ordinary dungeon defeated adds a floor. It stands on no city and never "
-							  "resolves.");
+							  "resolves. ");
 
 	// FOUR ADDED: three before it opened and one after.
 	UCataclysmEmpireRun* Four = RunWithItsBossOpen(/* OrdinaryBefore */ 3, /* OrdinaryAfter */ 1);
@@ -248,7 +250,14 @@ bool FCataclysmBossOnTheMapMarkerTextTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and says four of its floors were added by ordinary dungeons defeated"),
 			 Brief.Contains(FString::Printf(TEXT(": %d floors, 4 of them added by ordinary dungeons defeated. "),
 											Boss->Floors)));
-	TestTrue(TEXT("and that it stands on no city and never resolves"), Brief.EndsWith(Rule));
+	TestTrue(TEXT("and that it stands on no city and never resolves"), Brief.Contains(Rule));
+
+	// AND HOW TO WALK IT, because pressing the box cannot: the registered command, with this dungeon's identifier.
+	TestTrue(TEXT("and ends by naming the command that walks it, with its identifier"),
+			 Brief.EndsWith(FString::Printf(TEXT("To walk it, type Cataclysm.EnterDungeon %d in a dungeon level; nothing "
+												  "enters a dungeon from this map yet."), Boss->DungeonId)));
+	TestNotNull(TEXT("and that command is registered"),
+				IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.EnterDungeon")));
 
 	// ONE ADDED, SINGULAR.
 	UCataclysmEmpireRun* One = RunWithItsBossOpen(/* OrdinaryBefore */ 1, /* OrdinaryAfter */ 0);

@@ -435,8 +435,8 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 	// THE BOSS DUNGEON'S BOX SAYS WHAT IT IS AND OPENS NOTHING. It has no city
 	// screen, and nothing walks a dungeon from this map -- there is no travel
 	// between the empire and a dungeon level, issue #48 -- so a press does what
-	// the cursor does. `Cataclysm.EnterDungeon <id>` walks it. Issue #1324 slice
-	// 6c.
+	// the cursor does: the brief, which ends by naming the command that walks it,
+	// `Cataclysm.EnterDungeon <id>`, with its identifier. Issue #1324 slice 6c.
 	if (Value == CataclysmDungeonButtonName())
 	{
 		WriteCataclysmDungeonDetail();

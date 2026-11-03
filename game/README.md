@@ -401,7 +401,8 @@ by `git add` with no error and no warning. Guarded by
   "1 of 5 Cataclysms finished; the boss dungeon opens when 3 are finished", and
   the opening is the screen's latest event until something later happens.
   Pressing the box opens nothing: there is no travel from the map (below), and
-  `Cataclysm.EnterDungeon <id>` walks it like any other dungeon (issue
+  `Cataclysm.EnterDungeon <id>` walks it like any other dungeon, which its line
+  says, with the identifier (issue
   [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6c).
 
   **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
