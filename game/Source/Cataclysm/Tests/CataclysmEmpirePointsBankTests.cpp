@@ -25,6 +25,7 @@
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
+#include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -200,6 +201,59 @@ namespace CataclysmEmpirePointsBankTest
 			City.Population = City.MaxPopulation * 0.5f;
 		}
 	}
+
+	/** Waits for any write to the slot to finish, giving up after two seconds. */
+	void WaitForTheSlot(const FString& SlotName)
+	{
+		const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(SlotName) && FPlatformTime::Seconds() < GiveUpAt)
+		{
+			FPlatformProcess::Sleep(0.01f);
+		}
+	}
+
+	/** The account record in a slot as the storage reads it, or null. */
+	const UCataclysmAccountSave* ReadTheAccountSlot(const FString& SlotName)
+	{
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+		FString Message;
+		return Cast<UCataclysmAccountSave>(FCataclysmSaveStorage::ReadFromSlot(
+			SlotName, UCataclysmSaveWriter::UserIndex, UCataclysmAccountSave::StaticClass(), GetTransientPackage(),
+			Result, Message));
+	}
+
+	/**
+	 * The Cataclysm boss dungeon, put on the board by hand as the run builds it: on no city, sent by the newest active
+	 * Cataclysm, with the timer that never runs out. Answers its number, or `INDEX_NONE`.
+	 */
+	int32 PlaceTheBoss(UCataclysmEmpireRun& Run)
+	{
+		if (Run.Clock == nullptr)
+		{
+			return INDEX_NONE;
+		}
+
+		FCataclysmDungeon Boss;
+		Boss.DungeonId = Run.NextDungeonId;
+		Boss.Type = ECataclysmDungeonType::Cataclysm;
+		Boss.SubType = ECataclysmDungeonSubType::None;
+		Boss.Cataclysm = Run.ActiveCataclysms.Num() > 0 ? Run.ActiveCataclysms.Last() : ECataclysmType::None;
+		Boss.CityId = INDEX_NONE;
+		Boss.CityTier = ECataclysmCityTier::Pillar;
+		Boss.Floors = 3;
+		Boss.WalkDays = 3.0f;
+		Boss.ResolveDays = UCataclysmSurgeScheduler::NeverResolveDays;
+		Boss.SpawnedDay = Run.Day();
+		Run.NextDungeonId = Boss.DungeonId + 1;
+		Run.Dungeons.Add(Boss);
+
+		if (!Run.Clock->AddDungeon(Boss.DungeonId, Boss.Floors)
+			|| !Run.Clock->SetResolveDays(Boss.DungeonId, Boss.ResolveDays))
+		{
+			return INDEX_NONE;
+		}
+		return Boss.DungeonId;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +305,84 @@ bool FCataclysmEmpirePointsBankFullTest::RunTest(const FString&)
 			  Scene.Instance->HeldAccount != nullptr
 				  ? static_cast<int32>(Scene.Instance->HeldAccount->Lethality) : -1,
 			  static_cast<int32>(ECataclysmLethality::Standard));
+	return true;
+}
+
+/**
+ * Clearing the Cataclysm boss dungeon wins the run (issue #1324 slice 6e), and it is a defeat like any other: it banks
+ * its base, 25, times the share living -- the design's "It applies to every dungeon type, the Cataclysm boss included"
+ * -- and it banks it BEFORE the win begins the next run, since the account outlives the run that measured the award.
+ * The win's own write, `ECataclysmSaveTrigger::RunWon`, is still the last trigger raised: the bank's `AccountChanged`
+ * comes first. Prints "BOSS".
+ *
+ * THE RUN IS A CHARACTER'S, begun through the game instance as play begins one, so the win has a run to replace; the
+ * empire is intact, so the share is exactly one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankBossTest,
+	"Cataclysm.EmpirePoints.ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsBankBossTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsBankTest;
+
+	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/false, /*bWriting=*/true);
+	UCataclysmSaveWriter* Writer = Scene.World ? UCataclysmSaveWriter::In(Scene.World) : nullptr;
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable())
+		|| !TestTrue(TEXT("set-up: and its save writer is writing"), Writer != nullptr && Writer->IsWriting()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmEmpireRun* WonRun = Scene.Instance->BeginACharactersEmpireRun(
+		/* Seed */ 11, Scene.State->GetCataclysmOrderSeed(), ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
+		/* DifficultyTier */ 1);
+	if (!TestTrue(TEXT("set-up: a character's run was begun, and is the game instance's"),
+				  WonRun != nullptr && WonRun->Map != nullptr && WonRun->Clock != nullptr
+					  && Scene.Instance->EmpireRun == WonRun))
+	{
+		return false;
+	}
+	Scene.Run = WonRun;
+	TestTrue(TEXT("CONTROL: the empire is intact, every city's people living"),
+			 WonRun->Map->TotalPopulation() == WonRun->Map->TotalMaxPopulation());
+
+	const int32 BossId = PlaceTheBoss(*WonRun);
+	if (!TestTrue(TEXT("set-up: the boss dungeon was placed"), BossId != INDEX_NONE))
+	{
+		return false;
+	}
+	Scene.Mode->EmpireDungeonId = BossId;
+	const bool bCleared = Scene.Mode->ClearEmpireDungeon();
+	const ECataclysmSaveTrigger LastTrigger = Writer->LastTrigger();
+	const bool bNextRunBegan = Scene.Instance->EmpireRun != nullptr && Scene.Instance->EmpireRun != WonRun;
+	const double Banked = Bank(Scene);
+
+	const FString Slot = UCataclysmGameInstance::AccountSlotFor(Scene.Partition);
+	WaitForTheSlot(Slot);
+	const UCataclysmAccountSave* OnDisk = ReadTheAccountSlot(Slot);
+
+	AddInfo(FString::Printf(TEXT("BOSS: cleared %s, won %s, the next run %s; the won run measured %g; banked %g, on "
+								 "disk %g; the last trigger '%s'"),
+							bCleared ? TEXT("yes") : TEXT("NO"), WonRun->bWon ? TEXT("yes") : TEXT("NO"),
+							bNextRunBegan ? TEXT("began") : TEXT("DID NOT BEGIN"), WonRun->LastEmpirePointsAwarded,
+							Banked, OnDisk != nullptr ? OnDisk->EmpireUpgradePoints : -1.0,
+							UCataclysmSaveTriggers::NameOf(LastTrigger)));
+
+	TestTrue(TEXT("CONTROL: the boss dungeon was cleared"), bCleared);
+	TestTrue(TEXT("CONTROL: and won the run"), WonRun->bWon);
+	TestTrue(TEXT("CONTROL: and the next run began"), bNextRunBegan);
+	TestTrue(TEXT("the won run measured the boss's base at full population, 25"),
+			 WonRun->LastEmpirePointsAwarded == 25.0);
+	TestTrue(TEXT("and the account banked it, 25"), Banked == 25.0);
+	TestTrue(TEXT("and wrote it to its slot"), OnDisk != nullptr && OnDisk->EmpireUpgradePoints == 25.0);
+	TestEqual(TEXT("the win's write is still the last trigger"), static_cast<int32>(LastTrigger),
+			  static_cast<int32>(ECataclysmSaveTrigger::RunWon));
 	return true;
 }
 
@@ -438,6 +570,81 @@ bool FCataclysmEmpirePointsBankSoloTest::RunTest(const FString&)
 			 Scene.Instance->HeldAccount == nullptr);
 	TestEqual(TEXT("and the screen says its points are not banked"), Line,
 			  FString(TEXT("Solo Self-Found: empire points are not banked yet")));
+	return true;
+}
+
+/**
+ * A slot holding ANOTHER PARTITION'S account record -- a Hardcore bank copied into this Standard partition's slot -- is
+ * refused: nothing is banked into it, nothing is held, the screen shows no bank, and the file is left as it was rather
+ * than written over. AND THE REFUSAL IS LOGGED ONCE: the bank, the screen and a third ask each ask for the slot, and
+ * the game instance remembers the refusal (`RefusedAccountSlots`) instead of reading and logging it at every ask -- the
+ * empire screen asks at every refresh. Prints "REFUSED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankRefusedTest,
+	"Cataclysm.EmpirePoints.ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpirePointsBankRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpirePointsBankTest;
+
+	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/false, /*bWriting=*/true);
+	UCataclysmSaveWriter* Writer = Scene.World ? UCataclysmSaveWriter::In(Scene.World) : nullptr;
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable())
+		|| !TestTrue(TEXT("set-up: and its save writer is writing"), Writer != nullptr && Writer->IsWriting()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ANOTHER PARTITION'S BANK, IN THIS PARTITION'S SLOT, holding 7.5 points.
+	const FString Slot = UCataclysmGameInstance::AccountSlotFor(Scene.Partition);
+	UCataclysmAccountSave* Foreign = NewObject<UCataclysmAccountSave>(GetTransientPackage());
+	Foreign->SchemaVersion = UCataclysmAccountSave::SchemaVersionNow;
+	Foreign->Lethality = ECataclysmLethality::Hardcore;
+	Foreign->Population = Scene.Partition.Population;
+	Foreign->EmpireUpgradePoints = 7.5;
+	FString WriteError;
+	if (!TestTrue(TEXT("set-up: the other partition's record was written into the slot"),
+				  FCataclysmSaveStorage::WriteToSlot(Foreign, Slot, UCataclysmSaveWriter::UserIndex, WriteError)))
+	{
+		AddInfo(WriteError);
+		return false;
+	}
+
+	// THE REFUSAL IS AN ERROR IN THE LOG, AND THERE IS ONE OF IT FOR THE THREE ASKS BELOW.
+	AddExpectedError(TEXT("names another partition"), EAutomationExpectedErrorFlags::Contains, 1);
+
+	const bool bCleared = PlaceAndClear(*this, Scene, ECataclysmDungeonType::Basic);
+	const FString Line = UCataclysmEmpireMapLayout::EmpirePointsLineIn(Scene.World, Scene.Run);
+	const UCataclysmAccountSave* Asked = Scene.Instance->AccountFor(Scene.Partition);
+
+	WaitForTheSlot(Slot);
+	const UCataclysmAccountSave* OnDisk = ReadTheAccountSlot(Slot);
+
+	AddInfo(FString::Printf(TEXT("REFUSED: cleared %s, awarded %g; asked %s, held %s; the line '%s'; on disk %s "
+								 "holding %g"),
+							bCleared ? TEXT("yes") : TEXT("NO"), Scene.Run->LastEmpirePointsAwarded,
+							Asked != nullptr ? TEXT("a record") : TEXT("nothing"),
+							Scene.Instance->HeldAccount != nullptr ? TEXT("a record") : TEXT("nothing"), *Line,
+							OnDisk != nullptr
+								? (OnDisk->Lethality == ECataclysmLethality::Hardcore ? TEXT("the Hardcore record")
+																						: TEXT("ANOTHER record"))
+								: TEXT("NOTHING"),
+							OnDisk != nullptr ? OnDisk->EmpireUpgradePoints : -1.0));
+
+	TestTrue(TEXT("CONTROL: the dungeon was cleared and the run measured its award, 1"),
+			 bCleared && Scene.Run->LastEmpirePointsAwarded == 1.0);
+	TestTrue(TEXT("the slot is refused"), Asked == nullptr);
+	TestTrue(TEXT("and no account record is held"), Scene.Instance->HeldAccount == nullptr);
+	TestEqual(TEXT("and the screen shows no bank"), Line, FString());
+	TestTrue(TEXT("the file is left as it was: the Hardcore record, holding its 7.5"),
+			 OnDisk != nullptr && OnDisk->Lethality == ECataclysmLethality::Hardcore
+				 && OnDisk->EmpireUpgradePoints == 7.5);
 	return true;
 }
 

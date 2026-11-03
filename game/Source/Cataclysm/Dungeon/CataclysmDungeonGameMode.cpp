@@ -24792,6 +24792,11 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 
 	// AND THE DEFEAT'S EMPIRE UPGRADE POINTS GO INTO THE ACCOUNT'S BANK, measured by `ClearDungeon` at the defeat and
 	// before the walk's days run below. Issue #52. A dungeon that resolves never comes here, and earns nothing.
+	//
+	// AND BEFORE A WIN BEGINS THE NEXT RUN, below: the Cataclysm boss dungeon is a defeat like any other and awards its
+	// 25 times the share living -- the design's "It applies to every dungeon type, the Cataclysm boss included" -- and
+	// the account it goes into outlives the run. Banked here, the award is in the account, and `AccountChanged` has
+	// started its write, before `BeginTheRunAfterAWin` replaces the run that measured it.
 	if (bCleared)
 	{
 		BankTheDefeatsEmpirePoints(*Run, Cleared);
@@ -24842,14 +24847,15 @@ bool ACataclysmDungeonGameMode::BankTheDefeatsEmpirePoints(const UCataclysmEmpir
 	const UCataclysmAccountSave* Account = Instance->BankEmpirePoints(Partition, Awarded);
 	if (Account == nullptr)
 	{
-		// SOLO SELF-FOUND, OR A BANK THAT WOULD NOT READ (`AccountFor` logged that). A Solo Self-Found character's points
-		// belong in its own character record, which this slice does not bank into. Issue #52.
+		// SOLO SELF-FOUND, OR A BANK REFUSED: a record that would not read or one naming another partition (`AccountFor`
+		// logged which, the first time it was asked). A Solo Self-Found character's points belong in its own character
+		// record, which this slice does not bank into. Issue #52.
 		UE_LOG(LogCataclysm, Log,
 			   TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: %s."),
 			   DungeonId, Awarded,
 			   Partition.bSoloSelfFound
 				   ? TEXT("a Solo Self-Found character's points are not banked yet")
-				   : TEXT("the account record could not be read"));
+				   : TEXT("the account record in its slot was refused"));
 		return false;
 	}
 

@@ -266,6 +266,13 @@ public:
 	TObjectPtr<UCataclysmAccountSave> HeldAccount;
 
 	/**
+	 * The account slots `AccountFor` refused this session -- a record that would not read, or one naming another
+	 * partition -- so each is read and logged once and then refused without either. The empire screen asks at every
+	 * refresh of its status line. Issue #52, found reviewing the first slice, 2026-11-03.
+	 */
+	TSet<FString> RefusedAccountSlots;
+
+	/**
 	 * The slot a partition's account record is read from and written to: `UCataclysmSavePartition::AccountSlotName`,
 	 * empty for a Solo Self-Found character.
 	 *
@@ -287,7 +294,8 @@ public:
 	 * (`UCataclysmCharacterSave::PrivateEmpireUpgradePoints`), and THIS SLICE DOES NOT BANK THEM. Issue #52.
 	 *
 	 * NULL WHEN THE SLOT HOLDS A RECORD THAT WOULD NOT READ, or one naming another partition, and that is logged: a
-	 * fresh record banked into would be written over the file and empty the bank it held.
+	 * fresh record banked into would be written over the file and empty the bank it held. Logged ONCE: the slot is
+	 * remembered in `RefusedAccountSlots`, and every later ask this session is refused without reading it.
 	 */
 	UCataclysmAccountSave* AccountFor(const FCataclysmCharacterPartition& Partition);
 

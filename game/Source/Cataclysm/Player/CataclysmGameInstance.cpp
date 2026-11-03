@@ -246,6 +246,14 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 		return HeldAccount;
 	}
 
+	// A SLOT REFUSED ONCE IS REFUSED FOR THE REST OF THE SESSION, without being read or logged again. The empire screen
+	// asks at every refresh of its status line, so without this a slot that will not read would be read from disk and
+	// logged as an error every time the screen redrew. Issue #52, found reviewing the first slice, 2026-11-03.
+	if (RefusedAccountSlots.Contains(Slot))
+	{
+		return nullptr;
+	}
+
 	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
 	FString Message;
 	UCataclysmSaveRecord* Read = FCataclysmSaveStorage::ReadFromSlot(
@@ -270,6 +278,7 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 			   TEXT("The account record in '%s' could not be read (%s: %s), so no empire upgrade points are banked "
 					"into it this session."),
 			   *Slot, FCataclysmSaveStorage::Describe(Result), *Message);
+		RefusedAccountSlots.Add(Slot);
 		return nullptr;
 	}
 
@@ -281,6 +290,7 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 			   TEXT("The account record in '%s' names another partition, so no empire upgrade points are banked into "
 					"it this session."),
 			   *Slot);
+		RefusedAccountSlots.Add(Slot);
 		return nullptr;
 	}
 
