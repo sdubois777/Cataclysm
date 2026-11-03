@@ -169,7 +169,11 @@ the test (7); each loads them in `ResolveBody` after its death clips (7); each o
 reads how long its swing waits; the hook is guarded by `ShouldDrawFor(Hit, Outcome) && !bShareOfAnAllysDamage` and
 calls `FlinchFrom` with `WhereTheBlowCameFrom`, and `ShouldDrawFor` still refuses a tick; the asset record's table
 matches; every clip exists on disk (skipped without the packs; all 28 checked by hand against the main checkout on
-2026-11-02); and the design document's five sentences. No Python guard proof was run.
+2026-11-02); and the design document's five sentences. One Python proof, with `tools/prove_guard.py`'s
+`break_and_run` in an archive copy of `93dcfd1a5`: the `ForgetFlinch();` line removed from the Imp's `PlayOneShot`,
+command `python -m pytest tools/tests/test_a_struck_enemy_flinches.py`, printed "PROVED: 1 failed, 31 passed, 1
+skipped in 0.17s | restored: 32 passed, 1 skipped in 0.07s", `crashed` False, `named_failures`
+`test_each_creatures_one_shot_ends_a_flinch_first[Imp]`.
 
 ### Where each fixture's starting state comes from
 
