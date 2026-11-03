@@ -19,8 +19,9 @@ condition and its comment (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTe
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written while the build machine was in use. Every
-  Unreal figure below is a prediction.
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written while the build machine was in use; phase 2 compiled it,
+  found one fault in the new navigation test by reading the engine (it would have failed with the fix in place;
+  "Phase 2" below), and corrected two statements. Every Unreal figure below is still a prediction.
 - **A JUDGEMENT ON THE RULING'S WORDS.** #1180 was ruled "keep the unarmed punch clip for SelfBuff, Summon, Deployable
   and Aura for now, and suppress it on Aura toggles." `UCataclysmAuraSkill`'s own header defines a toggle: "TOGGLED
   WHEN IT HAS NO DURATION, TIMED WHEN IT HAS ONE". So an aura with no Duration (Conflagration, the aura slot) plays no
@@ -37,8 +38,8 @@ condition and its comment (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTe
 
 - **Clicking the floor (or a drop's name, or a floor object's name, from out of reach) now plays the run**, as holding
   the button always has, instead of the idle pose sliding across the floor. The end of the walk changes a little: the
-  character eases off over the last few tens of centimetres and brakes as it does when a held button is let go,
-  instead of being stopped dead on the point.
+  walk is still called finished about half a metre short of the point, and the character now brakes from there as it
+  does when a held button is let go, over about 15 cm, instead of being stopped dead where it was called finished.
 - **Switching Conflagration on throws no punch.** Switching it off never did (below). Living Pyre, a Movement skill
   and every other shape are as they were: the three other non-striking shapes, SelfBuff, Summon and Deployable, still
   punch, as ruled.
@@ -66,9 +67,15 @@ cycle on a clicked walk, and this is the engine's own switch for doing that.
 ### Consequences checked
 
 - **The end of a walk.** With acceleration, `UPathFollowingComponent::ShouldStopMovementOnPathFinished` is false, so
-  the walk is not stopped dead on arrival; the follower eases its input over `GetPathFollowingBrakingDistance`, which
-  for a character is speed squared over twice `BrakingDecelerationWalking` (400 squared over 4096, about 39 cm at the
-  default 400 cm/s; the player sets no braking figure of its own), and then lets go. Not judged by eye.
+  the walk is not stopped dead on arrival. **Phase 1 said the follower eases its input first, and it does not.** It
+  calls the walk finished within its acceptance radius, a tenth of the agent's radius, plus 1.1 times that radius
+  (`MinAgentRadiusPct`): about 50 cm for the player's 42 cm capsule. Its easing begins only within
+  `GetPathFollowingBrakingDistance` of the path's end -- speed squared over twice `BrakingDecelerationWalking`, 400
+  squared over 4096, about 39 cm (the player sets no braking figure of its own) -- which a finished walk never
+  reaches. So the follower lets go at walking pace and the character brakes on the engine's defaults (ground friction
+  8, doubled by `BrakingFrictionFactor`, and 2,048 cm/s² of deceleration) over about 15 cm, worked out and not
+  measured. Read in `UPathFollowingComponent::FollowPathSegment`, `HasReachedDestination` and `OnPathFinished` on
+  2026-11-02. Not judged by eye.
 - **Shoulder Through now fires on a clicked walk.** It asks the acceleration, which a clicked walk used to leave at
   zero. Its ruling of 2026-09-25 says "ordinary walking", which a clicked walk is. The walk to a clicked enemy is still
   excluded: `PostProcessInput` asks only while `PendingAttack` is not valid, and `PendingAttack` is kept for the whole
@@ -98,9 +105,10 @@ New in Unreal, four:
 1. `Cataclysm.ClickToMove.AClickedWalkMovesTheCharacterByAccelerationSoItRunsAndStillTurnsAndArrives` (editor
    module, on seed 3's halls floor with a real navigation mesh): the player character, stood at the arrival point
    facing directly away from its path's first leg, is sent to the stairs by `SimpleMoveToLocation` and stepped by hand
-   (path follower, then movement component, a thirtieth of a second a frame). Asserts no moving frame has zero
-   acceleration, the facing turned at least 90 degrees, the walk finished, and it ended within 150 cm of the stairs
-   (#793). CONTROL: the same walk with the setting forced false moves, has zero acceleration on every moving frame
+   (path follower, then movement component, a thirtieth of a second a frame). Asserts no moving frame the follower
+   drove has zero acceleration, the facing turned at least 90 degrees, the walk finished, and it ended within 150 cm
+   of the stairs (#793). CONTROL: the same walk with the setting forced false moves, has zero acceleration on every
+   moving frame
    (the fault measured, not read), and turns all the same. **It is possessed by an `AAIController`, not the player's
    own**: `APlayerController::IsLocalController` answers false with no net driver and no local player, and
    `UCharacterMovementComponent::TickComponent` moves only a locally controlled character, so under
@@ -125,6 +133,74 @@ Python, two: `test_a_clicked_walk_is_driven_by_acceleration` (exactly one assign
 of true, outside comments, in `CataclysmPlayerCharacter.cpp`) and `test_a_movement_skill_and_an_aura_toggle_play_no_swing`
 (`CommitAndBegin`'s code names Movement and an aura with `Params.Duration <= 0.0f`, and names no SelfBuff, Summon or
 Deployable).
+
+### Phase 2: compiled, reviewed, and every fixed figure audited
+
+Rebased onto `development` `5eab89868` (#891); the only conflict was this file, both entries at the top, both kept,
+this one first. Built with `python tools/unreal_build.py build` with the branch's changes uncommitted, so that each
+changed file compiles alone: "Build: Succeeded - 15 actions, 10 files compiled: CataclysmPlayerAttackAnimationTests.cpp,
+CataclysmSkillTemplate.cpp, Module.Cataclysm.5.cpp, CataclysmPlayerMovementTests.cpp, CataclysmPlayerCharacter.cpp,
+CataclysmPlayerController.cpp, CataclysmDungeonNavigationTests.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.27.cpp,
+Module.Cataclysm.9.cpp". Both `UnrealEditor-Cataclysm.dll` and `UnrealEditor-CataclysmEditor.dll` were relinked by
+it, so the editor module links against `AIModule`. No compile error was found.
+
+**Review, each read in the code:**
+
+- **The setting is not overwritten.** The only engine code that writes `FNavMovementProperties::bUseAccelerationForPaths`
+  besides its default is `UNavMovementComponent::Serialize`, which in an editor build copies the deprecated member over
+  it when loading an object saved before the 5.5 change. The player is never loaded from an asset:
+  `ACataclysmGameMode` names the native class as `DefaultPawnClass`, and nothing derives from it. Nothing in
+  `game/Source` or `game/Config` sets it anywhere else.
+- **Enemies and minions are untouched.** `ACataclysmEnemyCharacter` and `ACataclysmMinion` derive from
+  `ACataclysmCharacterBase`, not from the player's class, and each has its own movement component from `ACharacter`.
+- **The `AAIController` in the walk test is necessary**, as phase 1 read: `APlayerController::IsLocalController`
+  answers false when there is no net driver and `Player` is not a `ULocalPlayer`; `UCharacterMovementComponent::
+  TickComponent` performs a move only for a locally controlled character (or one with no controller);
+  `AController::IsLocalController` answers true in a standalone world.
+- **The charge, Shoulder Through and holding the button** are as stated above: `PawnCannotWalk` includes
+  `IsBeingWalkedByASkill`, and `Input_MoveToCursorStarted` and `Input_Move` both call `StopMovement`.
+- **The aura rows.** `game/Data/WeaponSkills.csv` has two rows of the Aura shape: `Demonic_All_Aura`, Conflagration,
+  with no Duration, which now plays no punch; and `Demonic_Fist_Ultimate`, Living Pyre, `Duration=6`, which keeps it.
+  The seven other Aura-slot rows (War's Blood and Iron, and the empty Celestial, Pestilence, Void, Death, Chaos and
+  Famine rows) have no Shape and are not aura skills, so nothing changes for them. `Params.Duration` defaults to 0
+  (`CataclysmSkillShape.h`), and the aura itself tells a toggle by the same `Params.Duration <= 0.0f`.
+
+**One fault, in the new navigation test, fixed.** It counted every frame on which the character moved on the ground
+with no acceleration. On the frame a walk driven by acceleration finishes, the follower gives no input and does not
+stop the character (above), so the movement component has no acceleration while the character, braking from walking
+pace, still moves at more than 100 cm/s: one counted frame, and the assertion would have failed with the fix in
+place. The test now counts only frames the follower drove -- still following after its own tick. That frame is the
+brake a released key gives, not the slide. Its comment also claimed
+`ACharacterCanPathFromTheArrivalPointToTheStairs` proves seed 3 can be crossed; that test walks seeds 21 onward, and
+the path on seed 3 is asserted in this test as set-up. Both corrected; the end-of-walk statements above were corrected
+in the constructor's comment too.
+
+**Every assertion against a fixed number or a starting state**, because two windows on 2026-11-02 stopped on one. None
+of these was measured; each is read. **None depends on chance or on the wall clock**: the floor is a fixed seed, the
+navigation mesh is built synchronously, every frame is a fixed thirtieth of a second and the world clock is advanced
+by hand. So each passes on every run or fails on every run.
+
+| Assertion | Why the figure holds | If it does not |
+|---|---|---|
+| set-up: at least 30 moving frames | 30 frames at 400 cm/s is 4 m, one cell; the generator puts the arrival point and the stairs at the two ends of the floor's longest walk (`FCataclysmFloorGenerator`'s "two-sweep trick") | the test stops at set-up, not at the fault |
+| no driven moving frame with zero acceleration | on a driven frame the input is the unit direction to the current path point, and the follower's easing never begins (above) | it would fail with the fix in, which the run shows |
+| the facing turned at least 90 degrees | stood facing directly away from the first leg, which starts at the arrival cell's middle, at least 2 m from that cell's edge and so at least about 1.66 m from any corner of a mesh inset 34 cm; facing along it is about 180 degrees, reached in about 0.28 s at 640 degrees a second | none foreseen; the margin is 90 degrees |
+| the walk finishes | at most twice the path's time at 200 cm/s, plus 3 s | a snag, below |
+| it ends within 150 cm of the stairs | about 50 cm expected (above); the stairs' cell middle is on the mesh, so the path ends there | a snag, below |
+| CONTROL, moving within 45 frames | 2,048 cm/s² for one frame is 68 cm/s, over the 50 cm/s floor | none foreseen |
+| CONTROL, the velocity walk turns | `PerformMovement` turns the character before it clears the requested velocity it turns toward | none foreseen |
+| the animation tests: nothing playing to begin with | a spawned player has played no montage; the Movement test asserts the same and passed in the 4,606-test run | none foreseen |
+| the animation tests: mana 10,000 | maximum set before current, which the vital set clamps to it; the aura slot costs 20 (`game/Data/SkillSlots.csv`) | none foreseen |
+
+**Capsule 42 cm against a navigation agent of 34.** The path keeps 34 cm from a wall, so at a corner the capsule can
+meet the wall by up to 8 cm and slides along it. The follower counts a path point passed within 1.1 times 42 cm of it,
+or once the character is beyond it, and calls a walk blocked only after under 10 cm of travel across ten samples half
+a second apart. A snag that stopped the walk would fail "finishes" or "within 150 cm" on every run, and the run's
+info line prints the path's length, the frames, the turn and where it ended. **Not measured.** No assertion was
+weakened; the frame count was narrowed to what the animation actually reads.
+
+The animation tests' groups skipped no half in that run, so the Mannequin art is in this worktree and proofs A and B
+reach the assertions they break.
 
 ### Registered before the run
 

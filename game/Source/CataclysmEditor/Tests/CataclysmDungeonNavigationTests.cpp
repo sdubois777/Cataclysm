@@ -911,7 +911,18 @@ namespace CataclysmDungeonNavTest
 		/** Whether the order started a walk at all. */
 		bool bOrdered = false;
 
-		/** Frames on the ground at more than `MovingCmPerSecond`, flat. */
+		/**
+		 * Frames the path follower drove -- it was still following the path after its own tick -- on which the
+		 * character was on the ground at more than `MovingCmPerSecond`, flat.
+		 *
+		 * ONLY FRAMES THE FOLLOWER DROVE, AND THE FIRST WRITING MISSED IT. On the frame a walk driven by acceleration
+		 * finishes, the follower gives no input (`OnPathFinished` does not stop a walk driven by acceleration:
+		 * `ShouldStopMovementOnPathFinished` is false for it), so the movement component has no acceleration while
+		 * the character, still braking from a walking pace, moves at well over `MovingCmPerSecond`. Counted, that
+		 * frame alone failed the assertion with the fix in place. It is the brake a released key gives, not the
+		 * slide, and the slide is what is asked about. Found by reading `UPathFollowingComponent::OnPathFinished`
+		 * on 2026-11-02, before any run.
+		 */
 		int32 MovingFrames = 0;
 
 		/** Of those, the frames on which the movement component's acceleration was zero: what plays the idle pose. */
@@ -933,7 +944,16 @@ namespace CataclysmDungeonNavTest
 	/** Slower than this, flat, is not counted as moving: the first frame of a start and the last of a stop. */
 	constexpr double MovingCmPerSecond = 50.0;
 
-	/** How near the stairs the walk to them has to end, flat. */
+	/**
+	 * How near the stairs the walk to them has to end, flat.
+	 *
+	 * WHERE IT IS EXPECTED TO END, READ AND NOT RUN: about half a metre short. The follower calls a walk finished
+	 * within its acceptance radius, a tenth of the agent's radius, plus 1.1 times that radius
+	 * (`UPathFollowingComponent::MinAgentRadiusPct`), about 50 cm for the player's 42 cm capsule; the last frame
+	 * carries it a little nearer as it brakes. The stairs' cell middle is on the navigation mesh (the halls floor's
+	 * cells are four metres wide), so the path ends on the stairs. A metre and a half leaves room for that and
+	 * still fails a walk that stopped in the wrong room or never set off.
+	 */
 	constexpr double ArrivedWithinCm = 150.0;
 
 	/** How far a clicked walk must turn the character, which was stood facing directly away from its first leg. */
@@ -981,10 +1001,11 @@ namespace CataclysmDungeonNavTest
 			// THE WORLD'S CLOCK TOO, because the path follower's block detection samples by it.
 			World->TimeSeconds += ClickedWalkStepSeconds;
 			Follower->TickComponent(ClickedWalkStepSeconds, LEVELTICK_All, nullptr);
+			const bool bDriven = Follower->GetStatus() == EPathFollowingStatus::Moving;
 			Movement->TickComponent(ClickedWalkStepSeconds, LEVELTICK_All, nullptr);
 
 			const FVector Travel(Movement->Velocity.X, Movement->Velocity.Y, 0.0);
-			if (Movement->IsMovingOnGround() && Travel.Size() > MovingCmPerSecond)
+			if (bDriven && Movement->IsMovingOnGround() && Travel.Size() > MovingCmPerSecond)
 			{
 				++Reading.MovingFrames;
 				if (Movement->GetCurrentAcceleration().IsNearlyZero())
@@ -1017,8 +1038,9 @@ bool FCataclysmClickedWalkRunsTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonNavTest;
 
-	// THE FLOOR EVERY OTHER TEST IN THIS FILE STANDS ON, seed 3 in halls, which
-	// `ACharacterCanPathFromTheArrivalPointToTheStairs` already proves can be crossed.
+	// THE FLOOR MOST TESTS IN THIS FILE STAND ON, seed 3 in halls. That a path joins its arrival point to its stairs
+	// is asserted below as set-up: `ACharacterCanPathFromTheArrivalPointToTheStairs` walks seeds 21 onward, not this
+	// one, which the first writing of this comment claimed.
 	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
 	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
 	{

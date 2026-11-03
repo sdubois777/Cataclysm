@@ -206,13 +206,18 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// character that reads the shared asset, and would be lost by anyone
 	// re-copying it from the engine's template.
 	//
-	// WHAT ELSE IT CHANGES. The end of a walk: the path follower eases its input
-	// over the engine's own braking distance -- speed squared over twice
-	// `BrakingDecelerationWalking`, about 39 cm at 400 cm/s
-	// (`GetPathFollowingBrakingDistance`) -- and then lets go, and the character
-	// brakes as it does when a held key is released, instead of being stopped
-	// dead on the point (`ShouldStopMovementOnPathFinished` is false for a walk
-	// driven by acceleration). Shoulder Through now fires on a clicked walk,
+	// WHAT ELSE IT CHANGES. The end of a walk: the path follower calls a walk
+	// finished about 50 cm short of the point -- a tenth of the agent's radius
+	// plus 1.1 times it, for this 42 cm capsule -- and then lets go, and the
+	// character brakes as it does when a held key is released, over about
+	// 15 cm, instead of being stopped dead where the follower finished
+	// (`ShouldStopMovementOnPathFinished` is false for a walk driven by
+	// acceleration). The follower's own easing, over speed squared over twice
+	// `BrakingDecelerationWalking` -- about 39 cm at 400 cm/s
+	// (`GetPathFollowingBrakingDistance`) -- would begin nearer the point than
+	// that, so it never starts. Read in the engine source on 2026-11-02, and
+	// the 15 cm worked out from its default friction and braking, not
+	// measured. Shoulder Through now fires on a clicked walk,
 	// which is the "ordinary walking" its ruling of 2026-09-25 names; a walk to a
 	// clicked enemy is still excluded by the controller's `PendingAttack` test.
 	// A charge is unaffected: `PawnCannotWalk` stops every path while one runs.
