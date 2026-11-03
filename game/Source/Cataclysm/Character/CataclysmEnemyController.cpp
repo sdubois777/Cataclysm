@@ -25,7 +25,11 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "NavigationSystem.h"
+// The crowd every creature walks in, and the manager that simulates it. Issue #761.
+#include "Navigation/CrowdFollowingComponent.h"
+#include "Navigation/CrowdManager.h"
 #include "Navigation/PathFollowingComponent.h"
+#include "Cataclysm.h"
 #include "TimerManager.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "ProfilingDebugging/CsvProfiler.h"
@@ -61,7 +65,11 @@ namespace
 	uint32 GCataclysmEnemyControllerPossessions = 0;
 }
 
-ACataclysmEnemyController::ACataclysmEnemyController()
+// A DETOUR CROWD AGENT RATHER THAN A PLAIN PATH FOLLOWER. Issue #761; see the
+// header for the design's sentence and for the subobject's name.
+ACataclysmEnemyController::ACataclysmEnemyController(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UCrowdFollowingComponent>(
+		TEXT("PathFollowingComponent")))
 {
 	// Nothing to do per frame. Think() runs on a timer; see the class comment.
 	PrimaryActorTick.bCanEverTick = false;
@@ -113,6 +121,74 @@ void ACataclysmEnemyController::OnPossess(APawn* InPawn)
 			/*InFirstDelay=*/FirstThinkDelaySeconds(
 				GCataclysmEnemyControllerPossessions++));
 	}
+
+	// AFTER `Super::OnPossess`, WHICH IS WHERE THE CROWD IS JOINED:
+	// `AAIController::OnPossess` calls `PathFollowingComponent->Initialize()`.
+	LeaveTheCrowdIfItWasNotTakenIn();
+}
+
+void ACataclysmEnemyController::LeaveTheCrowdIfItWasNotTakenIn()
+{
+	UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent());
+	if (!Crowd || !Crowd->IsCrowdSimulationEnabled())
+	{
+		return;
+	}
+
+	// NO MANAGER, NOTHING TO DO. A world without a navigation system has none, and
+	// the component has already set itself to `Disabled` there.
+	UCrowdManager* Manager = UCrowdManager::GetCurrent(GetWorld());
+	if (!Manager)
+	{
+		return;
+	}
+
+	// TAKEN IN MEANS GIVEN A SLOT IN THE DETOUR CROWD, which is what
+	// `UCrowdManager::IsAgentValid` answers. A registered agent without one is
+	// never moved: the manager applies the crowd's velocity only to agents it
+	// holds, and a crowd-mode component asks nothing else to move it.
+	if (Manager->IsAgentValid(Crowd))
+	{
+		return;
+	}
+
+	// SAID IN THE LOG, because a creature that walks without avoiding the others
+	// looks exactly like one whose crowd is working badly.
+	UE_LOG(LogCataclysm, Warning,
+		TEXT("%s was not taken into the crowd (%s), so it walks without crowd "
+			 "avoidance. Issue #761."),
+		*GetNameSafe(GetPawn()),
+		Manager->GetNavData()
+			? TEXT("the crowd is full: see MaxAgents in game/Config/DefaultEngine.ini")
+			: TEXT("there is no navigation mesh for the crowd to walk on"));
+
+	// `SetCrowdSimulationState` REFUSES UNLESS PATH FOLLOWING IS IDLE, which it
+	// is on possession: no walk has been ordered yet, because `Think` first runs
+	// from the timer set above. Taking it out of crowd mode also unregisters it.
+	Crowd->SetCrowdSimulationState(ECrowdSimulationState::Disabled);
+}
+
+bool ACataclysmEnemyController::IsDrivenByACrowdAgent(const AActor* Actor)
+{
+	// NAMED SO AS TO HIDE NOTHING: `Body` is a member function of this class, and
+	// a local that hides a member draws the compiler's shadow-variable warning.
+	const APawn* ItsPawn = Cast<APawn>(Actor);
+	const AAIController* ItsDriver = ItsPawn ? Cast<AAIController>(ItsPawn->GetController()) : nullptr;
+	return ItsDriver && Cast<UCrowdFollowingComponent>(ItsDriver->GetPathFollowingComponent()) != nullptr;
+}
+
+FPathFollowingRequestResult ACataclysmEnemyController::MoveTo(const FAIMoveRequest& MoveRequest,
+															  FNavPathSharedPtr* OutPath)
+{
+	// STEERING OFF FOR A WALK AT ANOTHER CROWD MEMBER, ON FOR EVERY OTHER WALK.
+	// Issue #761; the header says why. `GetGoalActor` answers null for a walk to
+	// a point, so a point is steered for.
+	if (UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent()))
+	{
+		Crowd->SuspendCrowdSteering(IsDrivenByACrowdAgent(MoveRequest.GetGoalActor()));
+	}
+
+	return Super::MoveTo(MoveRequest, OutPath);
 }
 
 float ACataclysmEnemyController::FirstThinkDelaySeconds(uint32 PossessionsBefore)

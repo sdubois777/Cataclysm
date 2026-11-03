@@ -30,6 +30,13 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Navigation/PathFollowingComponent.h"
 
+// The crowd on a navigable floor. Issue #761. (AIController.h is above.)
+#include "Character/CataclysmImpCharacter.h"
+#include "Engine/World.h"
+#include "Navigation/CrowdFollowingComponent.h"
+#include "Navigation/CrowdManager.h"
+#include "UObject/UnrealType.h"
+
 /**
  * Whether a character can actually walk a generated dungeon floor.
  *
@@ -1141,6 +1148,124 @@ bool FCataclysmClickedWalkRunsTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("CONTROL: and it turns toward its path all the same, so the turn was never the fault"),
 				 Slid.MostTurnedDegrees >= TurnedAtLeastDegrees);
 	}
+
+	TearDown(Setup);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Detour crowd on a real navigation mesh. Issue #761: every creature walks as a crowd agent. The tests in
+// `CataclysmCrowdTests.cpp`, group `Cataclysm.Crowd.`, check the configuration in worlds with no navigation mesh;
+// this is the one place a crowd actually holds creatures.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonNavTest
+{
+	/**
+	 * How many Imps are put on the floor. MORE THAN THE ENGINE'S OWN CROWD OF 50 (`UCrowdManager`'s constructor), so
+	 * a crowd left at the engine's size holds fifty of them and this test says so; the project sets 1024 in
+	 * `game/Config/DefaultEngine.ini`.
+	 */
+	constexpr int32 CrowdImps = 60;
+
+	/** The crowd size ruled for issue #761, as `Cataclysm.Crowd.` copies it. */
+	constexpr int32 RuledCrowdSize = 1024;
+
+	/** The crowd-following component that walks this pawn, or null when its brain walks it any other way. */
+	UCrowdFollowingComponent* CrowdFollowingOf(const APawn* Pawn)
+	{
+		const AAIController* Brain = Pawn ? Cast<AAIController>(Pawn->GetController()) : nullptr;
+		return Brain ? Cast<UCrowdFollowingComponent>(Brain->GetPathFollowingComponent()) : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorCrowdHoldsSixtyImpsTest,
+	"Cataclysm.FloorCrowd.SixtyImpsOnANavigableFloorAreEachHeldByTheCrowd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Sixty Imps put on a generated floor with a navigation mesh over it are each an agent the Detour crowd simulates,
+ * each the radius of its own 30 cm body.
+ *
+ * WHAT THIS ADDS TO `Cataclysm.Crowd.` That a crowd manager on a real navigation mesh actually takes every creature
+ * in: a slot in its Detour crowd is what `UCrowdManager::IsAgentValid` answers, and the manager moves only agents it
+ * holds. It also shows `ACataclysmEnemyController`'s fallback, which takes a creature the crowd refused back out of
+ * crowd mode, leaves alone every creature the crowd did take.
+ *
+ * WHAT IT DOES NOT DO: MOVE THEM. Nothing here ticks the world, so whether a pack rings the player is not measured.
+ * See `docs/DECISIONS.md`.
+ *
+ * WHERE THEY STAND. An eight by eight grid, less four, 150 cm apart, inside an open square of two by two cells and the
+ * ring of cells around it -- 16 metres of walkable floor -- which `OpenSquareCorner` finds on this seed for the pit
+ * test above. 150 cm apart, each Imp's 60 cm body clears the next by 90.
+ */
+bool FCataclysmFloorCrowdHoldsSixtyImpsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonNavTest;
+
+	FNavigableFloor Setup = Build(3, ECataclysmFloorLayout::Halls);
+	if (!TestTrue(FString::Printf(TEXT("a navigable floor was set up: %s"), *Setup.Trouble), Setup.IsReady()))
+	{
+		TearDown(Setup);
+		return false;
+	}
+	const FIntPoint Corner = OpenSquareCorner(Setup.Floor->GetPlan(), 2);
+	UCrowdManager* Manager = UCrowdManager::GetCurrent(Setup.World);
+	if (!TestTrue(TEXT("set-up: an open square for the Imps"), Corner.X >= 0)
+		|| !TestNotNull(TEXT("set-up: the floor's navigation system has a crowd manager"), Manager))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	// THE LIVE MANAGER'S SIZE, read through reflection because the property is protected.
+	const FIntProperty* Property = FindFProperty<FIntProperty>(UCrowdManager::StaticClass(), TEXT("MaxAgents"));
+	if (TestNotNull(TEXT("set-up: the crowd manager has a whole-number property called MaxAgents"), Property))
+	{
+		TestEqual(TEXT("the crowd on the floor holds the ruled 1024 creatures"),
+				  Property->GetPropertyValue_InContainer(Manager), RuledCrowdSize);
+	}
+
+	const FVector Origin = Setup.Floor->WorldOfCell(Corner);
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TArray<ACataclysmImpCharacter*> Imps;
+	for (int32 Index = 0; Index < CrowdImps; ++Index)
+	{
+		const FVector Where = Origin + FVector(-300.0 + 150.0 * (Index % 8), -300.0 + 150.0 * (Index / 8),
+											   ACataclysmImpCharacter::ImpCapsuleHalfHeight + 5.0);
+		if (ACataclysmImpCharacter* Imp = Setup.World->SpawnActor<ACataclysmImpCharacter>(
+				ACataclysmImpCharacter::StaticClass(), Where, FRotator::ZeroRotator, Params))
+		{
+			Imps.Add(Imp);
+		}
+	}
+	if (!TestEqual(TEXT("set-up: sixty Imps spawned on the floor"), Imps.Num(), CrowdImps))
+	{
+		TearDown(Setup);
+		return false;
+	}
+
+	int32 Held = 0;
+	int32 RightSize = 0;
+	for (const ACataclysmImpCharacter* Imp : Imps)
+	{
+		UCrowdFollowingComponent* Crowd = CrowdFollowingOf(Imp);
+		if (!Crowd)
+		{
+			continue;
+		}
+		Held += Crowd->IsCrowdSimulationEnabled() && Manager->IsAgentValid(Crowd) ? 1 : 0;
+
+		float Radius = 0.0f;
+		float HalfHeight = 0.0f;
+		Crowd->GetCrowdAgentCollisions(Radius, HalfHeight);
+		RightSize += FMath::IsNearlyEqual(Radius, ACataclysmImpCharacter::ImpCapsuleRadius, 0.01f) ? 1 : 0;
+	}
+
+	TestEqual(TEXT("every one of sixty Imps is an agent the crowd simulates"), Held, CrowdImps);
+	TestEqual(TEXT("and each one's crowd radius is its own 30 cm body"), RightSize, CrowdImps);
+	TestNotNull(TEXT("and the crowd walks on the floor's navigation mesh"), Manager->GetNavData());
 
 	TearDown(Setup);
 	return true;

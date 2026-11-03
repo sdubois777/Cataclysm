@@ -49,9 +49,11 @@
  *    ceiling.
  *
  * WHAT THESE DELIBERATELY DO NOT CHECK. Whether the pack queues into rings. The
- * design says the ring is what crowd avoidance produces, this project has none
- * at all, and an automation test world holds no navigation mesh to path across
- * anyway. Issue #761.
+ * design says the ring is what crowd avoidance produces, and no test here moves
+ * a pack across a navigation mesh. What the crowd is given -- a crowd agent per
+ * creature, each the radius of its own capsule, and no RVO beside it -- is
+ * checked by `Cataclysm.Crowd.` and, on a navigable floor, by
+ * `Cataclysm.FloorCrowd.`. Issue #761.
  */
 
 namespace CataclysmImpTest
