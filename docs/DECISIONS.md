@@ -32,8 +32,10 @@ Dungeon Basics growth bullet, the Dungeon Types row, the spawn-weight note and s
 
 ### SAID FIRST
 
-- **NOT COMPILED, NOT RUN IN UNREAL.** Written while the build machine was in use: no Unreal build, no Unreal test and
-  no Unreal lock. Every Unreal figure below is registered for a window, and nothing in Unreal has been measured.
+- **COMPILED IN PHASE 2, NOT YET RUN IN UNREAL.** Phase 1 was written while the build machine was in use, with no
+  Unreal build, test or lock. Phase 2 rebased it onto `development` `32b56c2bb` (slice 6a), compiled both modules --
+  every changed `.cpp` alone and again in its unity file -- and reviewed it (below). No Unreal test has run: every
+  Unreal figure below is registered for a window.
 - **THE BOSS'S TIMER IS A BILLION DAYS, NOT AN ABSENT ONE.** Every standing dungeon must have a timer or a save refuses
   it (`DungeonsAgreeWithTimers`), so the boss gets `NeverResolveDays`; floats near a billion are 64 apart, so the
   clock's `-= 1.0f` leaves it where it was. The model skips the timer outright. A judgement, below.
@@ -255,20 +257,40 @@ shortened line is 85.5 (Cow Level and Siege off), the Siege is skipped with the 
 
 | Figure | Registered |
 |---|---|
-| `Cataclysm.EarnedBoss.` alone | 4 / 4, a new group: every test it selects is this branch's |
-| `Cataclysm.EarnedBossSave.` alone | 3 / 3, a new group |
-| `Cataclysm.SaveRecords.` alone | 17 / 17: 17 at window death-cost-w1; this branch moves assertions in seven and adds none |
-| `Cataclysm.DeathCost.` alone | 9 / 9: 9 at death-cost-w1; two changed |
-| `Cataclysm.ConsumptionDouble.` alone | 15 / 15: 15 at death-cost-w1; one changed |
-| `Cataclysm.Surge.` alone | 54 / 54, a STATIC count of name literals (no measured count of this group was found on record); two changed |
-| `Cataclysm.EmpireRun.` and `Cataclysm.Roster.` alone | 68 / 68 and 11 / 11, STATIC counts; none changed, both reach the opening through `ClearDungeon` |
-| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total, 4610 at `f939a69ee` (window click-move-w1, whose tree this branch's base `ec2319181` holds), + 7 = 4617 if nothing else moved |
-| Python | of record, with JUnit, and ruff, at the registration commit |
+| `Cataclysm.EarnedBoss.` alone | 4 / 4, a new group: none at the base, + 4 by name |
+| `Cataclysm.EarnedBossSave.` alone | 3 / 3, a new group: none at the base, + 3 by name. `Cataclysm.EarnedBoss.` with its dot does not select it |
+| `Cataclysm.SaveRecords.` alone | 17 / 17: 17 at the base; this branch moves assertions in seven and adds none |
+| `Cataclysm.DeathCost.` alone | 9 / 9: 9 at the base; two changed |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15: 15 at the base; one changed |
+| `Cataclysm.Surge.` alone | 54 / 54: 54 at the base (phase 1's static count, now measured); two changed |
+| `Cataclysm.EmpireRun.` alone | 68 / 68: 68 at the base; none changed, it reaches the opening through `ClearDungeon`. With its dot it does not select `Cataclysm.EmpireRunTier.` |
+| `Cataclysm.Roster.` alone | 11 / 11: 11 at the base; none changed, the unlock rule it tests is what opens the boss |
+| `Cataclysm.SaveApply.` alone | 24 / 24: 24 at the base; none changed, `RunInto` puts the three fields back |
+| `Cataclysm.CataclysmDraw.` alone | 6 / 6: 6 at the base; none changed, slice 6a's draw is what names the newest Cataclysm |
+| `Cataclysm.EmpireStatusBar.` alone | 8 / 8: 8 at the base; none changed, `CitiesAtRiskIn` reads a dungeon's city |
+| Whole Unreal suite | 4640 + 7 = **4647** performed and declared, 0 failed; 47 skipped halves as at the base (this branch adds no `ReportSkippedHalf`); 0 test saves left behind (the new tests write none) |
+| Python | of record, with JUnit, and ruff, at the registration commit. Measured before it, on this tree but for this row: "7334 passed, 9 skipped in 200.19s", JUnit `tests="7343" failures="0" errors="0" skipped="9"`; ruff "All checks passed!" |
 | P1, the Siege not barred (`return CataclysmAlsoForbiddenSubType;` to `return ECataclysmDungeonSubType::None;`, in `CataclysmSurge.cpp`'s `AlsoBarredSubTypeOn`), prefix `Cataclysm.EarnedBoss.` | 1 test, 3 assertions, all in `ACataclysmDungeonIsNeverASiege`: "Expected 'a Cataclysm dungeon never rolls a Siege' to be 0, but it was N.", "Expected 'no boss dungeon built is a Siege' to be 0, but it was M." and "Expected 'the Cataclysm kind bars the Siege' to be 3, but it was 0." **N and M are not predicted** beyond being above nought. Tests 1 to 3 assert no sub-type and pass whatever the boss rolls |
 | P2, no growth on an ordinary clear (`\t\tDeepenCataclysmDungeon();`, the one in `ClearDungeon`'s Basic branch, to `\t\t;`, in `CataclysmEmpireRun.cpp`), prefix `Cataclysm.EarnedBoss.` | 1 test, 4 assertions, all in `ItIsAsDeepAsItsRollAndEveryOrdinaryDungeonDefeatedBeforeAndAfter`: "an ordinary dungeon defeated after it opened adds a floor" (to be R+5, but it was R+4), "and a day to its walk" (the float form, R+5 against R+4), "and to the clock's copy of its floors" (to be true) and "a quest dungeon defeated after it opened adds no floor" (to be true), R the roll, not predicted. The four before opening still count: opening deepens |
 | P3, the roll not gathered (`Record.CataclysmDungeonBaseFloors = Run.CataclysmDungeonBaseFloors;` to `Record.CataclysmDungeonBaseFloors = 0;`, in `CataclysmSaveGather.cpp`), prefix `Cataclysm.EarnedBossSave.` | 1 test, 2 assertions, in `AnOpenedBossSurvivesTheRecordItsJsonAndARestore`: "Expected 'with the floors it rolled' to be R, but it was 0." and "Expected 'and as deep as it was' to be R+4, but it was 4.", R not predicted. The dungeon's own floors are saved in `Dungeons` and pass; the flag is saved and the second-boss check passes; tests 6 and 7 read files |
 
 Each anchor occurs once in its file (checked by a script at the registration commit). The breaks were not compiled.
+
+**THE BASE COUNTS ARE MEASURED, NOT STATIC**, since phase 2: "Test Completed" lines counted by prefix, ignoring case,
+in the whole-suite engine log of window cataclysm-draw-w1 at `7a0a18452` (4640 performed), whose game tree is
+`development` `32b56c2bb`'s, the base this branch is rebased onto. Every prefix ends in a dot, and no other group
+shares one: `EarnedBoss.` and `EarnedBossSave.`, `EmpireRun.` and `EmpireRunTier.`, `Death.` and `DeathCost.` differ
+after it. The tests this branch adds by name are counted from its diff: four `IMPLEMENT_SIMPLE_AUTOMATION_TEST` in
+`CataclysmEmpireRunTests.cpp` and three in the new `CataclysmEarnedBossSaveTests.cpp`, none removed. Phase 1 counted
+the whole suite from 4610 at `f939a69ee`, which `development` has since moved past (#761, #745, slice 6a).
+
+**THE PREDICTIONS WERE READ AGAIN AGAINST THE COMPILED CODE.** Each anchor occurs once (`AlsoBarredSubTypeOn`'s
+return; the two-tab `DeepenCataclysmDungeon();`, which is `ClearDungeon`'s -- the opening's call has one tab; the
+gather's line). `ECataclysmDungeonSubType::Siege` is 3 (`CataclysmDungeonKind.h`), so P1's third message holds. Under
+P1 a boss that rolls a Siege stands on no city, and every Siege reader asks `Map->Find` or `IsValidIndex` first, so
+tests 1 to 3 still pass and its runs read "4 performed, 3 succeeded, 1 failed". P2 reads the same; P3 "3 performed, 2
+succeeded, 1 failed". The messages are `TestEqual`'s ("Expected '...' to be X, but it was Y.", the float form adding
+"within tolerance") and `TestTrue`'s.
 
 ### Proofs run in phase 1 (Python only)
 
@@ -290,10 +312,110 @@ prediction written down before the run; all three PROVED exactly as predicted:
   `test_the_model_records_exactly_two_forbidden_pairs`, `test_the_game_bars_the_same_pairs_the_model_does`,
   `test_the_model_bars_exactly_two_pairs`.
 
+### Phase 2: the rebase, the build and a second reading
+
+- **THE REBASE** onto `development` `32b56c2bb`, which added #761, #745 and slice 6a since phase 1's base
+  `ec2319181`. Three files conflicted. `CataclysmSaveRecordTests.cpp`: the fixture list takes 6a's `Character_v7.json`
+  and this branch's `Run_v4.json`, and the comment above it keeps both histories, newest first.
+  `game/Tests/SaveFixtures/README.md`: the closing count says the character record has had six migrations (version 7)
+  and the run record three (version 4). `docs/DECISIONS.md`: every entry kept, this one first. Merged without a
+  conflict and read: `Begin`, which slice 6a turned into a call to `BeginForCharacter` -- the three boss fields are
+  cleared there, beside the other per-run counters; the run record at 4 beside the character record at 7 in
+  `CataclysmSaveRecords.h`; the two migration tests whose expected objects gain the three keys.
+  `tools/check_resolved_cpp.py` read the sixteen C++ files the branch changes: no complaints.
+- **THE BUILD**, `python tools/unreal_build.py build`: "Build: Succeeded - 61 actions, 54 files compiled" at the
+  rebased head, with no fix needed. Then with the branch's changes uncommitted, so each changed file is built alone:
+  "Build: Succeeded - 20 actions, 15 files compiled" -- the eight changed `.cpp` files of the `Cataclysm` module and
+  the one test file edited since, each with its own object, and six unity files. The `CataclysmEmpire` module builds
+  no unity files at all (one object per source file), so its three other changed files had compiled alone in the first
+  build. Then committed again with `Makefile.bin` moved aside: "Build: Succeeded - 11 actions, 6 files compiled:
+  Module.Cataclysm.30.cpp, Module.Cataclysm.9.cpp, Module.Cataclysm.18.cpp, Module.Cataclysm.13.cpp,
+  Module.Cataclysm.17.cpp, Module.Cataclysm.21.cpp", the six unity files holding the eight (read from the generated
+  unity sources).
+- **ONE FIX, THE DATE**: phase 1 dated the owner's decision and the coordinating session's rulings 2026-11-03, the UTC
+  date, in 87 places it added -- this entry, the source and test comments, both READMEs, the design document and the
+  Python. They were made on 2026-11-02, local time, the date this log uses. Corrected in its own commit, on the
+  branch's added lines only.
+- **TWO STALE TEXTS, FIXED.** The simulation test's docstring named `Cataclysm.EmpireRun.` as the game's half; it is
+  `Cataclysm.EarnedBoss.` and `Cataclysm.EarnedBossSave.`. `ACataclysmDungeonNeverRollsACowLevel`'s comment gave
+  Sacrificial's share as 14.04% against 12.00%, from a weight of 12 that has been 13.3 since #1369 (and was already
+  stale before this branch, at 12.90% against 12.00%): it is 15.56% against 13.30%, 14.30% before the Siege came off.
+- **THE OPENING RUNS ONCE.** `OpenCataclysmDungeonIfEarned` has one caller, the end of `ClearDungeon`'s Quest branch,
+  and returns at once while `bCataclysmDungeonOpened` is set. Only that branch raises `QuestObjectivesByCataclysm`, so
+  no other path can meet the requirement. `RunInto` restores the flag, so a restored run that had opened its boss opens
+  no second; `AnOpenedBossSurvivesTheRecordItsJsonAndARestore` clears a quest dungeon on the restored run to show it.
+- **THE BILLION-DAY TIMER.** Every writer of a timer's days was read: `UCataclysmDayClock::AdvanceDay` takes 1.0f a
+  day and nothing else subtracts (no bulk subtraction exists, which matters: 1e9 less 50 would round to 999,999,936);
+  `SetResolveDays` sets both halves; the refill after a run-out and `ResolveOnDeath`'s refill are never reached for a
+  kind that does not resolve (`Resolves()` is true for `Basic` only, and `ResolveOnDeath` returns first). Its readers:
+  `Describe` prints "it never resolves" for a dungeon on no city; the city screen and the map widget read the timers
+  of dungeons on a city, which this is not; `BuyCityUpgrade`'s urgency sort reads `DungeonsOn` a real city. The save
+  writes the timer list whole; 1e9 is a whole number exact in a float and in the JSON's double, which the save test's
+  "with its timer unchanged by the JSON" holds.
+- **THE EMPTY-BOARD SURGE STILL COUNTS IT.** While the boss stands the board is never empty, so the owner's
+  empty-board surge (2026-09-07) does not fire until it is beaten. That is the model's stated rule rather than an
+  accident of this change: `Simulation.board_is_empty` says "SO DO THE CATACLYSM DUNGEON AND THE LAST STAND" count as
+  standing, and the game's `IsDueOnEmptyBoard` is asked with `Dungeons.Num()`, which holds the boss. Standing on no
+  city changes neither.
+- **THE DEPTH** is set on every ordinary clear (`ClearDungeon`'s Basic branch, after the count is raised) and at the
+  opening; `BasicDungeonsCleared` has no other writer but `Begin` and `RunInto`. After a load the dungeon's `Floors`,
+  `WalkDays` and the timer's floors come back from the saved `Dungeons` and timers, which were written in step with
+  the count, and `CataclysmDungeonFloorsNow` is worked out from two restored fields, so the two agree without a
+  recompute.
+- **THE SIEGE BAR, BOTH HALVES**: `RollSubType` takes both exclusions off the line before its one draw, and
+  `MakeCataclysmDungeon` passes `bSiegeAllowed` true so the kind is what bars it; the model's
+  `SUBTYPES_FORBIDDEN_ON[CATACLYSM]` holds both, and `test_dungeon_subtype_port.py` compares them.
+
+### Every reader of `FCataclysmDungeon::CityId`, swept again in phase 2
+
+`(\.|->)CityId\b` over `game/Source` outside the tests at the rebased head, then every reader of a dungeon's city read.
+Phase 1's table stands; what `development` added since, and what the first sweep did not name:
+
+| Reader | What it does with `INDEX_NONE` |
+|---|---|
+| `UCataclysmEmpireStatusBar::CitiesAtRiskIn` (#49) | `Map->Find` null: puts no city at risk; `DungeonsStanding` counts the boss |
+| `NameOfDungeon` and `NoteDeath` (#41) | "the <sub-type> Cataclysm dungeon" with no city; `NoteDeath` takes the name and no city. `ResolveOnDeath` returns for a kind that does not resolve, so a death in the boss fells nothing |
+| `UCataclysmEmpireMapLayout` death and hit lines | read `LastDeathFallenCityIds` and `LastHitCityId`, never a dungeon's city |
+| `ApplySiegeDamage`, `RollWave`'s Siege counts | a Siege only; the first asks `Map->Find`, the second counts wave dungeons, which stand on cities |
+| `ClearDungeon` (retake, repair) and `ResolveDungeon` | as phase 1 says |
+| The dungeon game mode (`EnterEmpireDungeon`) | reads no city at all |
+| #761 (crowd) and #745 (hit reactions) | touch no empire type |
+
+### Phase 2: every assertion that compares with a fixed number or a starting state
+
+Read one by one against the code they reach:
+
+- **THE TIER 3 EXAMPLE** (`ItOpensOnTheQuestClearThatMeetsTheRequirementAndNotOneBefore`): three active is
+  `ActiveCountFor`, `Clamp(tier, 1, 8)`, whatever the seed; two required is three halved and rounded up; day 3 is
+  `UCataclysmDayClock::Day`'s starting 0 plus three `AdvanceDay` calls, each raising it once (the only early return is
+  for a run not begun). The opening day and arrival day follow from it, no day passing in between. 100 to 150 is
+  `SpecFor(Cataclysm, Pillar)`; a walk equal to the floors is `DaysPerFloor` 1.0 and a sub-type that cannot be a Cow
+  Level; "one dungeon more" holds because hand clears add and remove their own dungeon and no day passes.
+- **THE 2,000 DAYS** (`ItOpensOnceAndNeverResolvesOrBitesOverTwoThousandDays`): the timer's equality with
+  `NeverResolveDays` and `TimesResolved` 0 follow from the clock's 1.0f step, which cannot move 1e9. Its CONTROL that
+  cities fell is a measurement of seed 5 at tier 3, not a constant: an existing test, the one asserting that four
+  hundred unattended days lose a city, is the precedent, and 2,000 days is five times that.
+- **THE DEPTH ARITHMETIC** (`ItIsAsDeepAsItsRollAndEveryOrdinaryDungeonDefeatedBeforeAndAfter`): R is read from the
+  run, never written down; +4 and +5 rest on `BasicDungeonsCleared` starting at 0 (`Begin` clears it, and the set-up
+  asserts 4 and 0), `CataclysmFloorsPerOrdinaryDungeon` 1, and both runs drawing the same numbers: `AdvanceDays(2)` on
+  one seed, and a hand clear draws nothing (the Basic branch and an unmet Quest clear take no number; the opening
+  draws, and `GiveModifiers` returns before its draw with the empty pool a run built in a test has).
+- **THE SAVE TEST'S FOUR** are three clears by hand and one more, from `Begin`'s 0, asserted in its set-up; **THE
+  FILE'S** 4, 109 and 137 were read in `Run_v4.json`, which differs from `Run_v3.json` in the version and those three
+  keys only (compared with line endings ignored). `TheCommittedRunFileReadsIntoTheDeathItStates`' five values are in
+  both files; the SaveRecords tests that remove lines find the same lines.
+- **THE SURGE GROUP'S 85.5** is the seven weights in `CataclysmSurge.h`, 100 in all, less the Cow Level's 7 and the
+  Siege's 7.5. The thousand seeds and the twenty thousand rolls assert an absence the bar makes certain, and their
+  CONTROLS (an ordinary dungeon rolls both) are the same streams.
+- **THE SEEDS** (3, 5, 7, 11, 77, 20261103) are chosen by nothing: no assertion depends on what one of them rolls,
+  only on two runs from one seed rolling alike.
+- **THE PYTHON** asserts the same shapes: the requirement is asserted before it is used, the depth counts start from a
+  fresh `Simulation`'s 0, and the 2,000 days' CONTROL is the model's own resolve count.
+
 ### Not tested
 
-- **Anything in Unreal**: not compiled and not run (above). `TNumericLimits` is not used; `NeverResolveDays` is a
-  literal, so the header tool sees `1.0e9f`.
+- **Anything in Unreal at run time**: compiled in phase 2, not run (above). `TNumericLimits` is not used;
+  `NeverResolveDays` is a literal, so the header tool sees `1.0e9f`.
 - **A boss walked in the game**: entering it, its floors and its Cataclysm Boss are slice 6d; winning by it, 6e. The
   map marker is 6c. `ClearDungeon` on it counts a dungeon cleared and nothing else.
 - **A Last Stand while the boss is open** stays with #43; the model keeps both on the board, as before.
