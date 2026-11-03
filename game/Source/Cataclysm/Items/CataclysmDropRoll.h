@@ -246,8 +246,32 @@ public:
 	 * past about one in 333 at difficulty tier 8. Mirrors
 	 * `MAGIC_FIND_CEILING` in `sim/cataclysm_sim/loot.py`, where the reasoning
 	 * and the measurements are written out.
+	 *
+	 * THE MATERIAL TIER ROLL PASSES THROUGH IT TOO, since issue #891: the same
+	 * mechanism, with only the exponent different.
 	 */
 	static constexpr float MagicFindCeiling = 400.0f;
+
+	/**
+	 * How much of magic find's multiplier the top of the MATERIAL tier ladder
+	 * gets. Common receives none of it and Extremely Rare receives the effective
+	 * figure raised to this power, with the tiers between spread evenly on the
+	 * exponent. Mirrors `MATERIAL_MAGIC_FIND_REACH` in
+	 * `sim/cataclysm_sim/loot.py`, where the ruling and the measurements are
+	 * written out; `tools/tests/test_unreal_drop_figures_match_the_model.py`
+	 * fails when the two copies disagree.
+	 *
+	 * WHY IT EXISTS. Issue #891. The material roll multiplied each cascade step
+	 * by magic find and capped it at certainty, so at +500% the Uncommon rung
+	 * reached 1 and a Cataclysm Boss dropped no Common materials at all.
+	 *
+	 * WHY 3 AND NOT MagicFindReach. Ruled on 2026-11-02. On a five-rung ladder
+	 * falling four times a step, 4 lets enough magic find make a rarer tier the
+	 * commoner one; any reach of 3.445 or more does. 3 is the only whole number
+	 * that also keeps Very Rare and Extremely Rare no rarer from any enemy than
+	 * the old rule gave them, which needs 2.49 or more.
+	 */
+	static constexpr float MaterialMagicFindReach = 3.0f;
 
 	/** The same plus one, for which affix tiers a drop may reach. */
 	static constexpr int32 AffixTiersAboveDifficulty = 1;
@@ -1075,10 +1099,12 @@ public:
 	 * rarity contribution exists so a harder enemy is more rewarding, and
 	 * materials are half of what a kill gives.
 	 *
-	 * A CONSEQUENCE WORTH KNOWING: at 500% magic find the second rung saturates
-	 * to certainty and nothing falls through to the commonest tier, so a
-	 * Cataclysm Boss drops no Common materials at all. The ordinary supply comes
-	 * from ordinary enemies, which add none.
+	 * IT RAISES THE WEIGHTS, NOT THE CASCADE'S STEPS, since issue #891. It used
+	 * to multiply each step and cap it at certainty, so at 500% magic find the
+	 * second rung saturated, nothing fell through to the commonest tier, and a
+	 * Cataclysm Boss dropped no Common materials at all. Now every tier keeps a
+	 * share at any magic find; a Cataclysm Boss drops Common 43.3% of the time.
+	 * See MaterialMagicFindReach.
 	 *
 	 * WHICH MATERIAL WITHIN THE TIER IS AN EQUAL CHANCE, and this does not make
 	 * it: the names are in the CraftingMaterials table.
@@ -1087,10 +1113,25 @@ public:
 								  float MagicFind, FRandomStream& Stream);
 
 	/** What fraction of material drops is each tier, indexed by tier minus one.
-	 *  Empty when the table is missing. */
+	 *  Empty when the table is missing. The same weights RollMaterialTier
+	 *  rolls on, stated exactly. */
 	static void MaterialTierDistribution(const UDataTable* MaterialTierTable,
 										 float MagicFind,
 										 TArray<float>& OutShares);
+
+	/**
+	 * What magic find multiplies a material tier's drop weight by.
+	 *
+	 * ONE FOR THE COMMONEST TIER AND LARGEST FOR THE RAREST: the effective magic
+	 * find, after MagicFindCeiling, raised to (Tier - 1) / (TierCount - 1) of
+	 * MaterialMagicFindReach. Mirrors `material_magic_find_multiplier` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 *
+	 * @param Tier       1 for the commonest material tier
+	 * @param TierCount  how many tiers the ladder has, 5 today
+	 */
+	static float MaterialMagicFindMultiplier(int32 Tier, int32 TierCount,
+											 float MagicFind);
 
 	/** The crafting material table, loaded once. Null when it cannot be read. */
 	static const UDataTable* LoadCraftingMaterialTable();

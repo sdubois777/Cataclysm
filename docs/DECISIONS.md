@@ -2,6 +2,303 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — Crafting materials get magic find on the weights, with their own reach of 3 (#891)
+
+**Affects:** `sim/cataclysm_sim/loot.py` (new `MATERIAL_MAGIC_FIND_REACH`, `material_magic_find_multiplier`,
+`material_drop_weight` and the import-time check `_check_no_material_tier_overtakes_the_one_below_it`; changed
+`material_tier_distribution`, `roll_material_tier` and `_cascade_step_chance`, which no longer takes magic find; the
+comments on `MAGIC_FIND_REACH` and `MAGIC_FIND_CEILING` corrected); `game/Source/Cataclysm/Items/CataclysmDropRoll.h`
+and `.cpp` (new `MaterialMagicFindReach` and `MaterialMagicFindMultiplier`; `MaterialTierDistribution` and
+`RollMaterialTier` roll on the multiplied weights); `game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp` (one
+new test, two old assertions removed); `sim/tests/test_loot.py`;
+`tools/tests/test_unreal_drop_figures_match_the_model.py`; the material paragraphs of section VI of
+`docs/Cataclysm_GDD_v2.md`. No data file changed. Issue [#891](https://github.com/sdubois777/Cataclysm/issues/891).
+
+**It supersedes** the "A consequence, stated rather than left to be found" paragraph of the 2026-08-18 entry "Crafting
+materials drop on their own roll, a drop rolls its slot, and a drop on the ground is a clickable name", which called a
+Cataclysm Boss dropping no Common materials a reasonable shape, and the "Crafting materials keep the older mechanism"
+paragraph of the 2026-08-23 entry "Magic find multiplies a rarity's weight, not its step of the cascade". Both are
+left as they were, as history.
+
+### SAID FIRST
+
+- **THE C++ COMPILES AND HAS NOT BEEN RUN.** Phase 1 wrote it without a build, by instruction: a build-machine window
+  was in use. Phase 2, after rebasing onto `development` `79f6787d3`, compiled both changed `.cpp` files alone and
+  both unity files that hold them, with no error and no fix needed; see "Phase 2's review of phase 1". No Unreal
+  test or guard proof has been run. Everything under "Registered before the run" is a prediction for a later window.
+- **WHAT THE PLAYER SEES.** A Cataclysm Boss's crafting materials are Common 43.3% of the time where they were never
+  Common, and Uncommon 26.0% where they were 65.2%. Every enemy that adds magic find now drops more Very Rare and
+  Extremely Rare materials than before, and less Uncommon and Rare. A Common enemy, which adds none, is unchanged.
+- **GEAR'S OWN CRITERION DOES NOT HOLD ANY MORE, AND GEAR WAS NOT CHANGED.** See "Found on the way".
+
+### The ruling, by the coordinating session under the owner's delegation
+
+On 2026-09-14 the master session ruled, recorded on the issue: "crafting materials get magic find on the weights
+with their own exponent, measured for five rungs". The issue's option 1 says the same mechanism, so **the 400 magic
+find ceiling applies to materials too** and the exponent is the only thing to choose.
+
+**On 2026-11-02 the coordinating session ruled the exponent is 3**, under the owner's delegation of numbers the
+design leaves unstated. **The reasons are the coordinator's judgement, not a derivation:**
+
+1. **#890's criterion cannot be met on this ladder.** Gear's reach was chosen as the one at which no rarity above the
+   rung that had swallowed the drop got rarer than before. Here that rung is Uncommon, so Rare would have to stay at
+   26.09% from a Cataclysm Boss. Rare is the middle of five rungs whose weights fall by one even ratio, and the middle
+   one peaks at exactly a fifth of drops, when every weight is equal. No exponent reaches 26.09%.
+2. **So it is read as "every tier that can be held": Very Rare and Extremely Rare**, from every enemy that adds magic
+   find, no rarer than under the old rule. That needs a reach of **at least 2.49** (searched in steps of 0.01).
+   Holding Extremely Rare alone would need 1.74.
+3. **Upper bound: no tier may become commoner than the one below it at any magic find.** The effective multiplier
+   approaches 5 at the ceiling, so 5 ** (reach / 4) must stay under the step of four: **a reach under 3.445**. Gear's
+   4 breaks it: with unlimited magic find, Extremely Rare would be 29.75% of material drops and Common 12.18%.
+4. **3 is the only whole number in [2.49, 3.445)**, gear's candidates were whole numbers, and of the values that hold
+   both tiers it takes least from a hard enemy's Rare share.
+
+### The measurement
+
+One material drop, in percent, Common up to Extremely Rare, from `sim/cataclysm_sim/loot.py`. "Old" is the
+saturating rule as it stood on `development` `28d95ab3d`; the reach columns use the 400 ceiling.
+
+| Enemy killed (magic find) | Old rule | Reach 2 | Reach 2.5 | **Reach 3, chosen** | Reach 4 |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Common (0%) | 75.07 / 18.77 / 4.69 / 1.17 / 0.29 | unchanged | unchanged | **unchanged** | unchanged |
+| Elite (50%) | 63.57 / 27.25 / 6.99 / 1.76 / 0.44 | 70.13 / 21.07 / 6.33 / 1.90 / 0.57 | 68.75 / 21.63 / 6.80 / 2.14 / 0.67 | **67.32 / 22.18 / 7.30 / 2.41 / 0.79** | 64.28 / 23.21 / 8.38 / 3.03 / 1.09 |
+| Legendary (100%) | 52.70 / 35.13 / 9.25 / 2.34 / 0.59 | 66.74 / 22.39 / 7.51 / 2.52 / 0.84 | 64.30 / 23.21 / 8.38 / 3.02 / 1.09 | **61.70 / 23.97 / 9.31 / 3.62 / 1.41** | 56.03 / 25.22 / 11.35 / 5.11 / 2.30 |
+| Herald (150%) | 42.44 / 42.44 / 11.47 / 2.92 / 0.73 | 64.25 / 23.23 / 8.40 / 3.04 / 1.10 | 60.96 / 24.16 / 9.58 / 3.80 / 1.51 | **57.42 / 24.96 / 10.85 / 4.72 / 2.05** | 49.67 / 25.96 / 13.57 / 7.09 / 3.71 |
+| Boss (300%) | 15.25 / 60.99 / 17.94 / 4.65 / 1.17 | 59.52 / 24.51 / 10.10 / 4.16 / 1.71 | 54.54 / 25.45 / 11.88 / 5.54 / 2.59 | **49.16 / 25.99 / 13.74 / 7.26 / 3.84** | 37.54 / 25.48 / 17.29 / 11.73 / 7.96 |
+| Cataclysm Boss (500%) | **0.00** / 65.22 / 26.09 / 6.93 / 1.76 | 56.15 / 25.20 / 11.31 / 5.07 / 2.28 | 49.94 / 25.94 / 13.48 / 7.00 / 3.64 | **43.28 / 26.02 / 15.64 / 9.41 / 5.66** | 29.43 / 23.70 / 19.10 / 15.38 / 12.39 |
+| Unlimited magic find | -- | 46.64 / 26.08 / 14.58 / 8.15 / 4.56 | 37.19 / 25.42 / 17.38 / 11.88 / 8.12 | **27.72 / 23.17 / 19.37 / 16.19 / 13.54** | 12.18 / 15.23 / 19.04 / 23.80 / **29.75** |
+
+At reach 2, the Boss's Very Rare share is 4.16% against 4.65% before and the Cataclysm Boss's is 5.07% against 6.93%,
+which is why 2 fails point 2. At reach 2.5 the Cataclysm Boss's is 7.00% against 6.93%, only just held.
+
+**The issue's own reach-4 table did not use the ceiling.** It gave a Boss "20% of each tier", which holds only for
+raw +300%; with the ceiling a Boss at reach 4 drops 37.54 / 25.48 / 17.29 / 11.73 / 7.96.
+
+### What changes
+
+- **The model.** `material_drop_weight` multiplies `MATERIAL_TIER_DROP_WEIGHT` by
+  `(1 + effective_magic_find(mf) / 100) ** (rung / 4 * MATERIAL_MAGIC_FIND_REACH)`, rung 0 for Common and 4 for
+  Extremely Rare, and both the exact distribution and the roll run the plain cascade over those weights. With no magic
+  find nothing moves: Extremely Rare is still one material drop in 341.
+- **`_cascade_step_chance` no longer takes magic find.** Both ladders put it in the weights, so the parameter that
+  could saturate was removed rather than left at zero for the next caller.
+- **The upper bound is an import-time check**, `_check_no_material_tier_overtakes_the_one_below_it`, asked at the
+  ceiling itself, which `effective_magic_find` approaches and never returns.
+- **The game does the same.** `MaterialTierWeights` in `CataclysmDropRoll.cpp` multiplies each weight by
+  `UCataclysmDropRoll::MaterialMagicFindMultiplier(Tier, TierCount, MagicFind)` once every row is read, and
+  `CascadeStepChance` lost its magic find parameter. `MaterialMagicFindReach` is 3.0f beside `MagicFindReach`.
+  `UCataclysmDropSpawner::SpawnMaterialsFor` is the one caller outside the tests and is unchanged.
+
+### Found on the way: gear no longer meets the criterion its reach was chosen on
+
+The comment on `MAGIC_FIND_REACH` said 4 was the only reach at which a tier 8 Boss's drop got better at every rarity
+than before #890, and quoted Everyday 3.0%, Superb 22.7%, Masterful 62.6%, Legendary 2.01% against 1.95% and
+Cataclysmic 0.173% against 0.016%. **Those figures were measured before `MAGIC_FIND_CEILING` existed.** Re-measured
+on 2026-11-02 with the ceiling, a tier 8 Boss at reach 4 drops Everyday 5.17%, Quality 11.43%, Superb 25.29%,
+Masterful 55.92%, **Legendary 1.44% against 1.95% before #890**, and Cataclysmic 0.064% against 0.016%. So
+Legendary is rarer from a Boss than it was under the saturating rule, and the criterion does not hold. The ceiling
+was chosen after the reach and nobody measured the reach against it again. The comment now says this. **Gear's
+reach was not changed**; whether it should move is a separate question for the owner.
+
+### Tests
+
+Python, in `sim/tests/test_loot.py`. Removed: `test_a_saturating_magic_find_stops_the_commonest_tier_appearing`,
+which pinned the fault as a consequence. New:
+
+1. `test_a_cataclysm_boss_drops_common_materials`: Common above 0 and equal to 0.4327512006, no tier above 50%.
+2. `test_no_amount_of_magic_find_stops_a_material_tier_dropping`: every tier above 0, and Common above 25%, from 0%
+   to 1e12%.
+3. `test_the_two_rarest_material_tiers_are_no_rarer_from_any_enemy_than_before`: the criterion, against the old
+   rule's figures stated as literals, since the rule is gone from the code.
+4. `test_the_middle_material_tier_could_not_have_been_held`: the reason the criterion was relaxed.
+5. `test_the_material_shares_by_enemy_are_the_ruled_figures`: the Herald, Boss and Cataclysm Boss rows above.
+6. `test_magic_find_never_makes_a_rarer_material_tier_the_commoner`: the upper bound, from 0% to 1e12%.
+7. `test_magic_find_is_worth_more_the_rarer_the_material`: the floor loses, every tier above gains more than the
+   one below.
+8. `test_material_magic_find_has_the_gear_ceiling`: the top multiplier approaches 5 ** 3, and negative magic find is
+   refused.
+9. `test_rolling_materials_at_a_cataclysm_boss_draws_the_stated_distribution`: 40,000 seeded rolls at 500%.
+10. `test_the_material_reach_check_refuses_a_reach_that_inverts_the_ladder`: the import-time check fires at 4 and
+    3.45 and passes 3.44.
+
+`tools/tests/test_unreal_drop_figures_match_the_model.py`, five new cases: `MaterialMagicFindReach`,
+`MagicFindCeiling` and `MagicFindReach` read from `CataclysmDropRoll.h` equal the model's, and the C++ arrays
+`MaterialShareAtBoss` and `MaterialShareAtCataclysmBoss` equal `loot.material_tier_distribution` to 1e-6. The gear
+pair had no such check before.
+
+Unreal, in `CataclysmDropRollTests.cpp`. `Cataclysm.Drop.MaterialTiersMatchTheModelAndMagicFindRaisesThem` loses
+"300 percent magic find quadruples the top tier" and "a 500 percent magic find kill drops no Common materials". New,
+`Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates`: the Boss and Cataclysm Boss rows to 1e-3
+relative (10 assertions), "a Cataclysm Boss drops Common materials", every tier rarer than the one below at 0, 500,
+10,000 and 1e12 percent (16), the multiplier at the floor, at no magic find and at the ceiling (3), and 40,000
+seeded rolls at 500% against the distribution, tiers 1 to 4.
+
+### The Python proof
+
+`tools/prove_guard.break_and_run` in a detached `git worktree add` copy of `816b67c4b`, breaking
+`material_tier_distribution` back to the saturating rule: its weights line to the plain
+`MATERIAL_TIER_DROP_WEIGHT[tier]`, and its step line to `min(1.0, _cascade_step_chance(...) * (1.0 + magic_find /
+100.0))`, each anchor asserted to occur once. Command `python -m pytest sim/tests/test_loot.py`.
+
+`PROVED: 7 failed, 107 passed in 22.69s | restored: 114 passed in 22.57s`, `crashed` False. `named_failures`:
+
+- `test_a_cataclysm_boss_drops_common_materials`
+- `test_no_amount_of_magic_find_stops_a_material_tier_dropping`
+- `test_the_two_rarest_material_tiers_are_no_rarer_from_any_enemy_than_before`
+- `test_the_material_shares_by_enemy_are_the_ruled_figures`
+- `test_magic_find_never_makes_a_rarer_material_tier_the_commoner`
+- `test_material_magic_find_has_the_gear_ceiling`
+- `test_rolling_materials_at_a_cataclysm_boss_draws_the_stated_distribution`
+
+all under `sim/tests/test_loot.py::`. Test 3 fails with the old rule restored because its literals are rounded to
+two places and some round up (Elite's Very Rare is 1.757%, stated 1.76%). That makes it slightly stricter than "no
+rarer than before" and was not the break's target. Tests 4, 7 and 10 do not see this break and were not proved by
+it: 4 is arithmetic on no code of the model's, 7 holds under the old rule as well, and 10 asks the import-time
+check directly, which it does with a failing and a passing case of its own.
+
+**Phase 1's Python suite**, at `a4b677e05` on the phase 1 branch, before the rebase: `python -u -m pytest
+--junit-xml=<outside the repository>` printed "7249 passed, 7 skipped in 217.31s"; the JUnit `testsuite` reads tests
+7256, failures 0, errors 0, skipped 7. `python -m ruff check .` printed "All checks passed!". The suite of record
+for this branch is the Python row of the registration below.
+
+### Phase 2's review of phase 1
+
+Done on `fix/material-magic-find-on-the-weights-2`, phase 1's three commits rebased onto `development` `79f6787d3`
+(which added #41, #783 and #878 since phase 1's base). The one conflict was this file, both sides adding an entry at
+the top; every entry was kept, this one first. No C++ conflicted.
+
+- **It compiles.** With the branch's changes left uncommitted, so that the build compiles each changed file on its
+  own, `python tools/unreal_build.py build` printed "Build: Succeeded - 55 actions, 50 files compiled";
+  `CataclysmDropRoll.cpp.obj` and `CataclysmDropRollTests.cpp.obj` were both rewritten by that build. With the
+  changes committed again and `Makefile.bin` moved aside to force the unity files to be regenerated, it printed
+  "Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.20.cpp, Module.Cataclysm.11.cpp", which are the
+  unity files holding `CataclysmDropRollTests.cpp` and `CataclysmDropRoll.cpp`. No error, so nothing was fixed. The
+  second build's UnrealBuildTool log holds no warning; the first build's log was overwritten by the second, so its
+  warnings, if any, were not read.
+- **The game's formula is the model's.** `material_magic_find_multiplier` takes `effective_magic_find(mf)`, which is
+  `mf * 400 / (mf + 400)`, and returns `(1 + effective / 100) ** (index / (tiers - 1) * 3)`, index 0 for Common.
+  `MaterialMagicFindMultiplier` takes `EffectiveMagicFind(MagicFind)`, the same expression, and returns
+  `FMath::Pow(1 + Effective / 100, (Tier - 1) / (TierCount - 1) * MaterialMagicFindReach)`; `Tier - 1` is the same
+  zero-based index. Both multiply the table's weights and then run the same cascade: from the top rung down, the
+  rung's weight over the sum of the weights at or below it, Common taking what falls through. The only difference
+  is negative magic find, which the model refuses with an error and the game clamps to zero, as gear's
+  `MagicFindMultiplier` already does on each side.
+- **Gear's rarity roll is untouched.** The diff to `CataclysmDropRoll.cpp` touches `CascadeStepChance`,
+  `MaterialTierWeights`, `MaterialTierDistribution`, `RollMaterialTier` and the new `MaterialMagicFindMultiplier`
+  and nothing else. **`CascadeStepChance` had only the two material callers**, before this branch as well (searched
+  in `development`'s file: lines 536 and 692); the gear roll never used it, so its old comment calling it shared
+  with the rarity roll was already wrong, and the new one says what it is. In the model, `rarity_step_chance` passed
+  `0.0` to `_cascade_step_chance` and now passes nothing, which is the same arithmetic.
+- **Seeded tests that can draw different numbers.** Every enemy rarity above Common adds magic find
+  (`MagicFindFrom`, inside `SpawnDropsFor`), so every kill above Common now rolls its materials on different
+  chances, and `RollMaterialTier` takes one draw per rung it passes. Within one `SpawnDropsFor` call the gear and
+  material counts are drawn before any item, so **how many drops a call makes cannot change**; only what follows a
+  material roll on the same stream can. Searched every caller of `SpawnDropsFor`, `SpawnOneInfestedDropFor`,
+  `SpawnMaterialsFor` and `RollMaterialTier` in the tests and the game:
+  - `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` (eight Cataclysm Boss kills on one stream, seed 20260823)
+    reads the mean gear rarity, so kills two to eight now roll their gear from a different point of the stream. Its
+    bounds were set across six seeds (tier 1 averaged 0.68 to 0.95 against a bound of 3; tier 8 averaged 2.6 to 3.7
+    times tier 1 against a bound of 2), so a shifted stream is one more seed. Registered as passing, not proved.
+  - `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (the same eight kills) reads the best upgrade stone. At
+    tier 1 the cap is applied by `RollMaterial` whatever is rolled. At tier 8 it needs one stone of +4 or better
+    among about 96 materials: with the new Cataclysm Boss shares that is 26.0% x 1/5 + 15.6% x 2/6 + 9.4% x 2/5 +
+    5.7% x 2/5, about 16% of materials (25% under the old rule), so the chance of none in 96 is about 3 in 100
+    million. Registered as passing.
+  - Every other one asserts a count, "more than zero", a property of each drop that holds for any material, or a
+    control rolled through the same code on the same seed: `AKillPutsNamedItemsOnTheFloor`,
+    `AKillPutsCraftingMaterialsOnTheFloorToo`, `CataclysmSaveFloorTests.cpp` lines 675 and 769, the marked-drop
+    search at `CataclysmDungeonModifierEffectsTests.cpp` 24608 and the Reality Chamber's control and empty-seed
+    search at 56555 and 56941. The Reality Chamber's extra drop is decided only after a roll that dropped nothing,
+    so no material was rolled before it; Luxury Hoarders' "loot lies at the hoard" holds because the first of a
+    pile's three rolls that makes any drop is reached before any material is rolled, and its total is only printed.
+    A creature's death seeds its stream from the clock, so no test can pin what it rolls.
+- **The header comments say what the code does**: `CascadeStepChance`, `MaterialTierWeights`, `MagicFindCeiling`,
+  `MaterialMagicFindReach`, `RollMaterialTier`, `MaterialTierDistribution` and `MaterialMagicFindMultiplier` were
+  each read against the code. The figures in them (43.3% Common from a Cataclysm Boss; the 3.445 bound, which is
+  4 ln 4 / ln 5) were recomputed.
+
+### The assertion audit: every fixed number the new Unreal test compares against
+
+Computed on 2026-11-02 from `sim/` at this branch's head with `loot.material_tier_distribution`, and replayed in
+float32 with the engine's `FRandomStream` (`Seed = Seed * 196314165 + 907633515`, a fraction from the top 23 bits,
+read from `RandomStream.h` in this engine) by a scratch script, `j891_rollsim.py`, outside the repository.
+
+- **The ten pinned shares equal the model's** to within 1.2e-9 relative, against an allowance of 1e-3 relative:
+  Boss (+300%) 0.4916362667, 0.2599115574, 0.1374064979, 0.0726421936, 0.0384034843; Cataclysm Boss (+500%)
+  0.4327512006, 0.2601925794, 0.1564413415, 0.0940606892, 0.0565541893. The smallest allowance is 3.8e-5 (the
+  Boss's Extremely Rare share); the engine's float arithmetic is good to about 1e-6 relative.
+- **The order holds** at 0, 500, 10,000 and 1e12 percent: 75.07 / 18.77 / 4.69 / 1.17 / 0.29, 43.28 / 26.02 /
+  15.64 / 9.41 / 5.66, 28.80 / 23.52 / 19.20 / 15.68 / 12.80 and 27.72 / 23.17 / 19.37 / 16.19 / 13.54.
+- **The multiplier at 1e12 percent**: in float32, `EffectiveMagicFind(1e12f)` comes out at exactly 400.0 (the 400
+  is lost adding to 1e12) and the top tier's multiplier at exactly 125.0, inside `(124.875, 125.0125]`; the model
+  gives 124.99999988. Common's multiplier is `Pow(x, 0)`, exactly 1, and no magic find returns 1 before `Pow`.
+- **The 40,000 seeded rolls at +500%.** The allowance is 10% of each stated share. The standard error of a share
+  `p` over 40,000 rolls is `sqrt(p (1 - p) / 40000)`: tier 1, 0.4328, 0.0025 against an allowance of 0.0433 (17.5
+  standard errors); tier 2, 0.2602, 0.0022 against 0.0260 (11.9); tier 3, 0.1564, 0.0018 against 0.0156 (8.6);
+  tier 4, 0.0941, 0.0015 against 0.0094 (6.4). Tier 5 is not checked. Replayed at seed 891, the rolls come up
+  0.4306, 0.2625, 0.1567 and 0.0962, the largest miss 2.3% of the share against 10%.
+- **The two proofs below were replayed the same way**: break A fails exactly the ten pinned shares and nothing else
+  (its own roll check misses by at most 1.3%), and break B exactly those ten and the eight order checks at 10,000%
+  and 1e12% (its roll check misses by at most 1.5%).
+
+### Registered before the run
+
+For window material-magic-find-w1, at this branch's registration commit. The engine words a failed `TestTrue`
+"Expected '<what>' to be true." (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp`, line 2676 in this
+engine). Base counts are "Test Completed" lines in the whole-suite engine log of window held-item-w1 at `660b8a0ca`,
+whose tree `development` `79f6787d3` holds: 4605 performed, 29 under `Cataclysm.Drop.`, all succeeded. This branch
+adds one test by name, `MaterialMagicFindMovesTheWeightsAndNeverSaturates`, and removes none; every other test in
+`CataclysmDropRollTests.cpp` is `Cataclysm.Drop.` or `Cataclysm.Item.`, and no `Cataclysm.Item.` test changed.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates` alone | 1 / 1: new |
+| `Cataclysm.Drop.` alone | 30 / 30: 29 at the base, + 1 by name. Includes `MaterialTiersMatchTheModelAndMagicFindRaisesThem`, two assertions fewer than before, and the two seeded tests named in phase 2's review, registered as passing |
+| Whole Unreal suite | 4606 / 4606: 4605 at the base, + 1 by name |
+| Python | 7265 passed, 8 skipped (JUnit: tests 7273, failures 0, errors 0, skipped 8), and `ruff check .` "All checks passed!", measured on this desktop on the tree of the registration commit except this one table cell. The window measures it again at that commit |
+| A, magic find taken out of the material weights (`Weights[Index] *= UCataclysmDropRoll::MaterialMagicFindMultiplier(` to `Weights[Index] *= 1.0f + 0.0f * UCataclysmDropRoll::MaterialMagicFindMultiplier(`, in `CataclysmDropRoll.cpp`), prefix `Cataclysm.Drop.` | 1 test, 10 assertions, all in `MaterialMagicFindMovesTheWeightsAndNeverSaturates`: the five "a Boss, 300 percent: tier N is ... of material drops (...)" and the five "a Cataclysm Boss, 500 percent: tier N is ... of material drops (...)", each "to be true". Every share becomes the no-magic-find share, 0.7507 / 0.1877 / 0.0469 / 0.0117 / 0.0029. Common stays above 0, the order holds at all four figures, the multiplier is not broken, and the roll draws from the same broken weights as the distribution (largest miss 1.3% against 10%, replayed), so all of those pass. `MaterialTiersMatchTheModelAndMagicFindRaisesThem` passes, its pins being at no magic find |
+| B, gear's reach for materials (`static constexpr float MaterialMagicFindReach = 3.0f;` to `static constexpr float MaterialMagicFindReach = 4.0f;`, in `CataclysmDropRoll.h`), prefix `Cataclysm.Drop.` | 1 test, 18 assertions, all in `MaterialMagicFindMovesTheWeightsAndNeverSaturates`: the ten pinned shares as in A, and eight "at ... percent magic find tier N (...) stays rarer than tier N-1 (...)", tiers 2 to 5 at 10,000% (the effective multiplier 4.85 is past the step of four) and tiers 2 to 5 at 1e12%. At 0% and 500% the order holds; the bound is computed from the constant, so the multiplier check holds; the roll check misses by at most 1.5%, replayed. Python's `tools/tests` check would also fail on this break, which is its own job |
+
+Each break's anchor occurs once in its file, counted with Python's `str.count` on the committed file
+(`prove_j891.py <proof> --anchors-only`). Both predictions were checked by replaying the test in float32 (see the
+assertion audit); the breaks were not compiled before registration. The two seeded tests named in phase 2's review
+roll from a shifted stream under each break as well, and are registered as passing for the reasons given there.
+**A C++ guard proof must not run while the Python suite runs.**
+
+### Window material-magic-find-w1: the results
+
+Run by the coordinating session on 2026-11-03 at the registration commit `ec29aaa6e` (on `development` `79f6787d3`),
+lock `material-magic-find-w1`, after the six pre-checks all passed (11,393 MB of physical memory free). Every
+registered figure was met, and the two seeded tests on a shifted stream passed.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the worker's builds of the same tree compiled both changed files alone and both unity files holding them) |
+| `Cataclysm.Drop.` alone | 30 / 30 | "30 tests performed, 30 succeeded, 0 failed" |
+| The new test alone | 1 / 1 | "1 tests performed, 1 succeeded, 0 failed" |
+| Whole Unreal suite | 4606 / 4606 | "4606 tests performed, 4606 succeeded, 0 failed"; "Declared: 4606 tests in the tree at ec29aaa6e; 4606 performed, gap 0"; "Test saves: 720 written and deleted, 0 left behind" |
+| Python | of record | "7265 passed, 8 skipped in 213.19s"; JUnit tests 7273, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| A | 10 | PROVED. The kept broken-half log fails exactly the ten pinned shares, each reading the no-magic-find share (0.7507331 / 0.1876833 / 0.0469208 / 0.0117302 / 0.0029326), as the float32 replay predicted; restored 30 of 30 |
+| B | 18 | PROVED. Exactly the ten pinned shares and the eight order assertions, tiers 2 to 5 at 10,000% and at 999999995904% (1e12 in float32); restored 30 of 30 |
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **Any of the C++ in the engine.** Compiled, not run; the figures above are predictions. The float32 replay of the
+  new test is a model of the engine's arithmetic and stream, not a run of it.
+- **The two seeded tests whose stream shifts**, `ADropIsRolledAtTheTierBeingPlayed` and
+  `AnUpgradeStoneOnTheFloorRespectsTheTier`: argued to pass, not replayed; the first rolls gear, which no script here
+  models.
+- **Play.** Whether a Cataclysm Boss's 43% Common materials feels like dust again, and whether the Very Rare and
+  Extremely Rare supply is now too generous for crafting, have not been tried. The material economy is the lever
+  the ruling moved, and nobody has crafted with it.
+- **Gear's reach** against the ceiling: found and reported, not changed.
+- `sim/experiments.py` was not run. The empire simulation does not roll crafting materials:
+  `roll_material_drops_from_kill` has no caller in `sim/cataclysm_sim` outside the tests.
+
+---
+
 ## 2026-11-02 — A held item is drawn under the cursor, and the slot it came from is drawn as lifted (#878)
 
 **Affects:** `ECataclysmCellLook`, new, and `UCataclysmInventoryScreen::HeldSlotToDraw`, `CellLookFor`,

@@ -58,6 +58,12 @@ below whichever rung reached certainty, and a tier 8 Boss dropped Masterful 97.6
 of the time and nothing under it. Issue #890. Magic find now multiplies weights
 rather than cascade steps, and passes through `MAGIC_FIND_CEILING` first.
 
+CRAFTING MATERIALS FOLLOWED ON 2026-11-02, issue #891. Their tier roll kept the
+saturating rule after #890 and a Cataclysm Boss dropped no Common materials at
+all. They now use the same mechanism with their own exponent,
+`MATERIAL_MAGIC_FIND_REACH`, so no cascade in this file multiplies a step chance
+by magic find any more.
+
 Sources: Drop rate, PoE Wiki, https://www.poewiki.net/wiki/Drop_rate ; Rarity,
 PoE Wiki, https://www.poewiki.net/wiki/Rarity ; Magic find diminishing returns,
 Diablo Wiki, https://diablo2.diablowiki.net/Magic_find_diminishing_returns .
@@ -346,16 +352,25 @@ def _ordinary_total(tier: int) -> float:
 #: `docs/DECISIONS.md` carries the sources.
 #:
 #: WHY 4, chosen by the project owner on 2026-08-23 from measured candidates. At
-#: a tier 8 Boss it is the only one where the drop gets better at EVERY rarity
+#: a tier 8 Boss it was the only one where the drop got better at EVERY rarity
 #: than it was before: Everyday 3.0%, Superb 22.7%, Masterful 62.6%, Legendary
-#: 2.01% against 1.95%, Cataclysmic 0.173% against 0.016%. Reach 3 gives a wider
-#: spread but leaves Legendary rarer from a Boss than it used to be.
+#: 2.01% against 1.95%, Cataclysmic 0.173% against 0.016%. Reach 3 gave a wider
+#: spread but left Legendary rarer from a Boss than it used to be.
+#:
+#: THOSE FIGURES WERE MEASURED BEFORE `MAGIC_FIND_CEILING` EXISTED, and with the
+#: ceiling gear no longer meets that criterion. Re-measured on 2026-11-02 with
+#: the 400 ceiling, a tier 8 Boss at reach 4 drops Everyday 5.17%, Quality 11.4%,
+#: Superb 25.3%, Masterful 55.9%, Legendary 1.44% AGAINST 1.95% before #890, and
+#: Cataclysmic 0.064% against 0.016%. So Legendary is rarer from a Boss than it
+#: was under the saturating rule. The ceiling was chosen after the reach, to keep
+#: magic find from running away, and nobody re-measured the reach against it.
+#: Whether the reach should move is a separate question and has not been asked;
+#: this comment only stops quoting pre-ceiling figures as if they were current.
 #:
 #: IT IS NOT APPLIED TO CRAFTING MATERIALS, and that is deliberate rather than an
 #: oversight. Their ladder is five rungs falling four times a step, so this same
-#: exponent very nearly cancels their whole weight spread: a Boss would drop 20%
-#: of each of the five tiers. They keep the older mechanism and their own milder
-#: version of the same fault, which is issue #891.
+#: exponent cancels most of their weight spread. They have their own exponent,
+#: `MATERIAL_MAGIC_FIND_REACH` below, since issue #891.
 MAGIC_FIND_REACH = 4.0
 
 #: What magic find approaches however much of it a character carries.
@@ -377,8 +392,63 @@ MAGIC_FIND_REACH = 4.0
 #: built around it. A Boss at +300% carries an effective +171%, which makes a
 #: Cataclysmic drop one in 1,569 against one in 6,250 before this change.
 #:
-#: IT DOES NOT APPLY TO CRAFTING MATERIALS EITHER, for the reason above.
+#: IT APPLIES TO CRAFTING MATERIALS AS WELL, since issue #891: the material tier
+#: roll uses the same mechanism and only its exponent differs. That is option 1
+#: of the issue, "the same mechanism ... the exponent is the only thing to
+#: choose", and the ceiling is the part of the mechanism that stops it running
+#: away, which a material ladder needs as much as a gear one.
 MAGIC_FIND_CEILING = 400.0
+
+#: How much of magic find's multiplier the top of the MATERIAL tier ladder gets.
+#:
+#: THE SAME MECHANISM AS `MAGIC_FIND_REACH`, ON A DIFFERENT LADDER. Common
+#: receives none of the multiplier and Extremely Rare receives the effective
+#: figure raised to this power, with the three tiers between spread evenly on
+#: the exponent. Magic find passes through `MAGIC_FIND_CEILING` first, as it
+#: does for gear.
+#:
+#: WHAT IT REPLACED. Issue #891. The material roll multiplied each cascade step
+#: by magic find and capped it at certainty, which is the rule #890 removed from
+#: gear. The Uncommon rung is 64 of the 320 weight at or below it, so +500%
+#: took it past certainty and a Cataclysm Boss dropped NO Common materials:
+#: 0%, 65.22%, 26.09%, 6.93%, 1.76% from Common up.
+#:
+#: WHY NOT GEAR'S 4. The ladder is five rungs falling four times a step, so a
+#: multiplier raised to the fourth power cancels most of the spread, and with
+#: unlimited magic find it inverts it: Extremely Rare 29.8% of drops and Common
+#: 12.2%.
+#:
+#: WHY 3. A RULING BY THE COORDINATING SESSION ON 2026-11-02, under the project
+#: owner's delegation of unstated numbers. It is a judgement, not a derivation:
+#:
+#:   GEAR'S CRITERION CANNOT BE MET HERE. #890 chose its reach as the one where
+#:   no rarity above the rung that had swallowed the drop got rarer. Here that
+#:   rung is Uncommon, and Rare would have to stay at 26.09% from a Cataclysm
+#:   Boss, and Rare is the middle of five rungs whose weights fall by one even
+#:   ratio, which cannot exceed 20% of drops at any ratio at all.
+#:
+#:   SO IT IS READ AS "EVERY TIER THAT CAN BE HELD". Very Rare and Extremely Rare
+#:   no rarer from any enemy than under the old rule needs a reach of at least
+#:   2.49 (searched in steps of 0.01).
+#:
+#:   AND NO TIER MAY BECOME COMMONER THAN THE ONE BELOW IT AT ANY MAGIC FIND,
+#:   which needs a reach under 3.445: the multiplier approaches 5 at the
+#:   ceiling, and 5 ** (reach / 4) must stay under the step of four.
+#:   `_check_no_material_tier_overtakes_the_one_below_it` enforces it on import.
+#:
+#:   3 IS THE ONLY WHOLE NUMBER BETWEEN THE TWO, gear's candidates were whole
+#:   numbers, and of the values that hold both tiers it takes least from a hard
+#:   enemy's Rare share.
+#:
+#: WHAT IT DOES, one material drop, Common up to Extremely Rare:
+#:
+#:     Herald, +150%          57.42%  24.96%  10.85%   4.72%   2.05%
+#:     Boss, +300%            49.16%  25.99%  13.74%   7.26%   3.84%
+#:     Cataclysm Boss, +500%  43.28%  26.02%  15.64%   9.41%   5.66%
+#:     unlimited magic find   27.72%  23.17%  19.37%  16.19%  13.54%
+#:
+#: Every figure with no magic find is unchanged.
+MATERIAL_MAGIC_FIND_REACH = 3.0
 
 
 def effective_magic_find(magic_find: float = 0.0) -> float:
@@ -576,8 +646,7 @@ def roll_residue(rarity: str, rng) -> float:
     return float(rng.randint(int(lowest), int(highest)))
 
 
-def _cascade_step_chance(weights: list[float], index: int,
-                         magic_find: float, what: str) -> float:
+def _cascade_step_chance(weights: list[float], index: int, what: str) -> float:
     """One rung's chance in a weighted cascade, given that the cascade reached it.
 
     THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. That is what turns
@@ -592,6 +661,13 @@ def _cascade_step_chance(weights: list[float], index: int,
     the same cascade over different ladders. Two copies of this would be two
     places to get the share wrong.
 
+    IT TAKES NO MAGIC FIND, AND IT USED TO. It multiplied this share by magic find
+    and capped it at 1, which is what let a rung reach certainty and wipe out
+    every rung below it: Masterful 97.6% of a tier 8 Boss's gear, issue #890, and
+    no Common materials at all from a Cataclysm Boss, issue #891. Both ladders
+    now put magic find inside the weights they pass in, so the parameter was
+    removed rather than left at zero for the next caller to fill in.
+
     @param weights  every rung's weight, weakest first
     @param index    which rung, ONE-BASED so it lines up with a difficulty tier
     @param what     what is being rolled, for the error messages only
@@ -601,10 +677,6 @@ def _cascade_step_chance(weights: list[float], index: int,
     if index > len(weights):
         raise ValueError(f"index {index} is above the {len(weights)} rungs "
                          f"{what} has")
-    if magic_find < 0.0:
-        raise ValueError(
-            f"magic find is {magic_find}; it is an added percentage with a "
-            "baseline of zero and cannot be negative")
 
     at_or_below = sum(weights[:index])
     if at_or_below <= 0.0:
@@ -612,8 +684,7 @@ def _cascade_step_chance(weights: list[float], index: int,
             f"every rung of {what} up to {index} has a weight of zero, so there "
             "is nothing for the cascade to choose between")
 
-    return min(1.0, weights[index - 1] / at_or_below
-               * (1.0 + magic_find / 100.0))
+    return weights[index - 1] / at_or_below
 
 
 def rarity_step_chance(index: int, tier: int, magic_find: float = 0.0) -> float:
@@ -633,15 +704,14 @@ def rarity_step_chance(index: int, tier: int, magic_find: float = 0.0) -> float:
     Issue #886. Before it they were read straight out of `RARITY_DROP_WEIGHT` and
     every tier had the same shape, which is what made tiers 4 to 8 identical.
 
-    MAGIC FIND IS INSIDE THE WEIGHTS AND NOT APPLIED TO THIS CHANCE. Issue #890,
-    and the zero passed to `_cascade_step_chance` below is the whole of the fix
-    rather than an oversight. Multiplying this chance is what let a rung reach 1
-    and wipe out every rarity below it; a weight cannot do that, because a rung's
-    share of the weight at or below it is always under one. `MAGIC_FIND_REACH`
-    carries the reasoning and the measurements.
+    MAGIC FIND IS INSIDE THE WEIGHTS AND NOT APPLIED TO THIS CHANCE. Issue #890.
+    Multiplying this chance is what let a rung reach 1 and wipe out every rarity
+    below it; a weight cannot do that, because a rung's share of the weight at or
+    below it is always under one. `MAGIC_FIND_REACH` carries the reasoning and
+    the measurements.
 
-    THE MATERIAL TIER LADDER STILL MULTIPLIES ITS STEP CHANCES, through the same
-    `_cascade_step_chance`. That is deliberate; see `MAGIC_FIND_REACH`.
+    THE MATERIAL TIER LADDER DOES THE SAME SINCE ISSUE #891, with its own
+    exponent; see `MATERIAL_MAGIC_FIND_REACH`.
     """
     if 1 <= index <= len(af.RARITIES):
         at_or_below = sum(drop_weight(rarity_at_index(rung), tier, magic_find)
@@ -652,9 +722,9 @@ def rarity_step_chance(index: int, tier: int, magic_find: float = 0.0) -> float:
                 "of zero, so there is nothing for the cascade to choose between")
 
     # NEGATIVE MAGIC FIND IS STILL REFUSED, by `magic_find_multiplier` inside
-    # `drop_weight`, so passing zero on does not lose that check.
+    # `drop_weight`; the cascade itself no longer takes magic find at all.
     weights = [drop_weight(rarity, tier, magic_find) for rarity in af.RARITIES]
-    return _cascade_step_chance(weights, index, 0.0, "the rarity ladder")
+    return _cascade_step_chance(weights, index, "the rarity ladder")
 
 
 def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
@@ -1276,11 +1346,57 @@ def expected_material_drops(
             * loot_quantity / BASELINE_LOOT_QUANTITY)
 
 
+def _material_multiplier_at(tier: str, effective: float) -> float:
+    """What an EFFECTIVE magic find multiplies a material tier's weight by.
+
+    Split out of `material_magic_find_multiplier` so the import-time check can
+    ask about the ceiling itself, which `effective_magic_find` approaches and
+    never returns.
+    """
+    if tier not in MATERIAL_TIER_DROP_WEIGHT:
+        raise ValueError(f"{tier!r} is not a material tier; expected one of "
+                         f"{list(MATERIAL_TIERS)}")
+    rungs = len(MATERIAL_TIERS) - 1
+    share = MATERIAL_TIERS.index(tier) / rungs * MATERIAL_MAGIC_FIND_REACH
+    return (1.0 + effective / 100.0) ** share
+
+
+def material_magic_find_multiplier(tier: str, magic_find: float = 0.0) -> float:
+    """What magic find multiplies this material tier's drop weight by.
+
+    ONE FOR COMMON AND LARGEST FOR EXTREMELY RARE, the same shape as
+    `magic_find_multiplier` for gear with `MATERIAL_MAGIC_FIND_REACH` in place of
+    `MAGIC_FIND_REACH`. Common's weight is never touched, so magic find cannot
+    scale the floor away. Negative magic find is refused by
+    `effective_magic_find`.
+
+    @param magic_find  an added percentage with a baseline of zero
+    """
+    return _material_multiplier_at(tier, effective_magic_find(magic_find))
+
+
+def material_drop_weight(tier: str, magic_find: float = 0.0) -> float:
+    """How heavily a material tier is weighted on a drop at this magic find.
+
+    `MATERIAL_TIER_DROP_WEIGHT` multiplied by `material_magic_find_multiplier`.
+    At no magic find that is a multiplication by one, so the Material Tiers
+    sheet's own figures come straight through.
+    """
+    return (MATERIAL_TIER_DROP_WEIGHT[tier]
+            * material_magic_find_multiplier(tier, magic_find))
+
+
 def material_tier_distribution(magic_find: float = 0.0) -> dict[str, float]:
     """What fraction of material drops is each tier.
 
     Exact rather than sampled, the same way `rarity_distribution` is, so a test
     can check the shape without rolling ten thousand materials.
+
+    MAGIC FIND IS INSIDE THE WEIGHTS, since issue #891. It used to multiply each
+    step of the cascade and cap it at certainty, so at +500% the Uncommon rung
+    reached 1 and a Cataclysm Boss dropped no Common materials. A weight cannot
+    do that: every weight stays above zero, so every tier keeps a share at any
+    magic find. See `MATERIAL_MAGIC_FIND_REACH`.
 
     NO DIFFICULTY TIER CAP, UNLIKE GEAR. The design gates gear rarity, gem
     rarity, upgrade stones and weapon damage types on the difficulty tier, and
@@ -1289,13 +1405,12 @@ def material_tier_distribution(magic_find: float = 0.0) -> dict[str, float]:
     what stops a tier 1 player owning a T7 affix is cost. So a shallow dungeon
     can produce an Extremely Rare material, rarely, and that is a windfall.
     """
-    weights = [MATERIAL_TIER_DROP_WEIGHT[tier] for tier in MATERIAL_TIERS]
+    lucky = [material_drop_weight(tier, magic_find) for tier in MATERIAL_TIERS]
 
     out = {tier: 0.0 for tier in MATERIAL_TIERS}
     left = 1.0
     for index in range(len(MATERIAL_TIERS), 1, -1):
-        chance = _cascade_step_chance(weights, index, magic_find,
-                                      "the material tier ladder")
+        chance = _cascade_step_chance(lucky, index, "the material tier ladder")
         out[MATERIAL_TIERS[index - 1]] = left * chance
         left *= 1.0 - chance
 
@@ -1313,14 +1428,19 @@ def roll_material_tier(magic_find: float, rng) -> str:
     hand over twenty-four pieces of Tier 1 dust. That is a judgement about this
     design rather than something read off another game.
 
+    IT RAISES THE WEIGHTS RATHER THAN THE CASCADE'S STEPS, since issue #891, and
+    passes through the same diminishing returns as gear. See
+    `MATERIAL_MAGIC_FIND_REACH`; `material_tier_distribution` is the same
+    arithmetic stated exactly.
+
     WHICH MATERIAL WITHIN THE TIER IS AN EQUAL CHANCE, and this function does not
     make it: the names live in the Crafting sheet and reach the game through
     `game/Data/CraftingMaterials.csv`, so whoever holds that table picks. Adding
     a copy of eighteen names here would be a copy the simulation never reads.
     """
-    weights = [MATERIAL_TIER_DROP_WEIGHT[tier] for tier in MATERIAL_TIERS]
+    weights = [material_drop_weight(tier, magic_find) for tier in MATERIAL_TIERS]
     for index in range(len(MATERIAL_TIERS), 1, -1):
-        if rng.random() < _cascade_step_chance(weights, index, magic_find,
+        if rng.random() < _cascade_step_chance(weights, index,
                                                "the material tier ladder"):
             return MATERIAL_TIERS[index - 1]
     return MATERIAL_TIERS[0]
@@ -1378,6 +1498,34 @@ def _check_no_material_tier_gets_commoner_as_it_rises() -> None:
             raise AssertionError(
                 f"a rarer material tier is weighted {above} against the "
                 f"{below} below it, so it is not rarer at all")
+
+
+def _check_no_material_tier_overtakes_the_one_below_it() -> None:
+    """THE UPPER BOUND ON `MATERIAL_MAGIC_FIND_REACH`, and why it is under 3.445.
+
+    Magic find raises each tier's weight more than the one below it, so enough
+    of it could make a rarer tier commoner than a less rare one -- gear's reach of
+    4 does exactly that to this ladder, with Extremely Rare 29.8% of drops and
+    Common 12.2%. The issue #891 ruling holds that no amount of magic find may.
+
+    CHECKED AT THE CEILING ITSELF, which is the most magic find can ever be worth;
+    `effective_magic_find` approaches it and never returns it, so the multiplier
+    is asked for the ceiling directly. Below the ceiling every multiplier is
+    smaller, so holding here holds everywhere.
+    """
+    at_the_ceiling = [MATERIAL_TIER_DROP_WEIGHT[tier]
+                      * _material_multiplier_at(tier, MAGIC_FIND_CEILING)
+                      for tier in MATERIAL_TIERS]
+    for index in range(1, len(MATERIAL_TIERS)):
+        below, above = at_the_ceiling[index - 1], at_the_ceiling[index]
+        if above >= below:
+            raise AssertionError(
+                f"with as much magic find as can be carried, the "
+                f"{MATERIAL_TIERS[index]} material tier is weighted {above:.3f} "
+                f"against {below:.3f} for {MATERIAL_TIERS[index - 1]}, so magic "
+                f"find makes the rarer tier the commoner one. "
+                f"MATERIAL_MAGIC_FIND_REACH is {MATERIAL_MAGIC_FIND_REACH}; "
+                "issue #891 rules it must keep the ladder in order")
 
 
 def _check_the_material_distribution_sums_to_one() -> None:
@@ -1870,4 +2018,5 @@ _check_every_enemy_rarity_drops_materials()
 _check_a_better_enemy_never_drops_fewer_materials()
 _check_every_material_tier_has_a_weight()
 _check_no_material_tier_gets_commoner_as_it_rises()
+_check_no_material_tier_overtakes_the_one_below_it()
 _check_the_material_distribution_sums_to_one()

@@ -2843,7 +2843,21 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A consequence of that: an enemy adding 500% magic find drops no Common materials at all.** Each rung of the cascade is multiplied and capped at certainty, so at 500% the Uncommon rung reaches certainty and nothing falls through to Common. A Cataclysm Boss adds exactly 500%. This is the intended shape rather than an oversight -- the ordinary supply of Common materials comes from ordinary enemies, which add no magic find at all -- but it is sharp enough to state.
+**Magic find multiplies each material tier's weight, the same way it does for gear, and the rarer the tier the more of it the tier receives.** Magic find first passes through the same diminishing returns as gear, `mf * 400 / (mf + 400)`. Common's weight is never multiplied. Extremely Rare's is multiplied by one plus that figure over 100, raised to the material reach of 3, and the three tiers between take an even share of that exponent. Every weight stays above zero, so no tier can be removed at any magic find. The reach is also low enough that no amount of magic find makes a rarer tier commoner than the one below it.
+
+  
+
+| Enemy killed | Magic find it adds | Common | Uncommon | Rare | Very Rare | Extremely Rare |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Common | 0% | 75.07% | 18.77% | 4.69% | 1.17% | 0.29% |
+| Herald | 150% | 57.42% | 24.96% | 10.85% | 4.72% | 2.05% |
+| Boss | 300% | 49.16% | 25.99% | 13.74% | 7.26% | 3.84% |
+| Cataclysm Boss | 500% | 43.28% | 26.02% | 15.64% | 9.41% | 5.66% |
+| any, with unlimited magic find | -- | 27.72% | 23.17% | 19.37% | 16.19% | 13.54% |
+
+  
+
+**Until 2026-11-02 a Cataclysm Boss dropped no Common materials at all, and this section called that the intended shape.** Magic find used to multiply each rung of the cascade and cap it at certainty, so at 500% the Uncommon rung reached certainty and nothing fell through to Common. That was the same fault that made a Boss drop one rarity of gear, and it was removed from materials the same way (issue #891). The rarer the enemy, the better its materials still are: a Cataclysm Boss drops Extremely Rare materials nineteen times as often as a Common enemy does.
 
   
 
