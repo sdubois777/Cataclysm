@@ -494,7 +494,11 @@ other exit.
 
 There are two ways to get into one:
 
-- **Earned.** Clear the quest objectives and the enemy capital opens.
+- **Earned.** Clear the quest objectives and the enemy capital opens: the
+  boss dungeon, which since 2026-11-02 stands on no city (the owner, verbatim,
+  "On no city (Recommended)"), runs no timer, is never a Siege, and grows by a
+  floor for every ordinary dungeon cleared after it opens as well as before.
+  It stood on the Pillar until then. Issue #1324 slice 6b.
 - **The Last Stand.** Some Outpost, its parent Bulwark, and that Bulwark's
   parent Sanctuary have all fallen, so the Cataclysm can reach the Pillar
   and comes to the player, absorbing every dungeon still standing as extra

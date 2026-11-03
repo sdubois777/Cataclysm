@@ -25,7 +25,7 @@ Between dungeon runs, players manage a layered empire of Outposts, Bulwarks, and
 
   
 
-The game is won by defeating the Cataclysm boss dungeon. It is lost when a clear path to the capital is opened. Each run that fails feeds permanent empire-wide upgrades, making each attempt stronger than the last in a true roguelike loop.
+The game is won by defeating the Cataclysm boss dungeon. It is lost when the Pillar is lost: a clear path to the capital opening does not end the run, it starts the Last Stand, in which the boss dungeon moves to the Pillar and the player fights it there. (This sentence said the run "is lost when a clear path to the capital is opened" until 2026-11-02; the project owner ruled that wrong on 2026-09-06, verbatim "Losing the Pillar ends the run (Recommended)", issue #1324.) Each run that fails feeds permanent empire-wide upgrades, making each attempt stronger than the last in a true roguelike loop.
 
   
 
@@ -4028,7 +4028,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A death resolves an ordinary dungeon and no other kind: dying in a Quest dungeon or a Dungeon City costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death; its timer is not touched by the death, runs on through the days paid, and hits the city when it runs out. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
-  - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06.
+  - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06. **Those defeated before the boss dungeon opens and those defeated after it both count**, with no cap: it opens as deep as its roll plus every ordinary dungeon defeated so far, and grows by one for each defeated while it stands (ruled by the coordinating session on 2026-11-02, issue #1324).
   - **The Last Stand takes none of that growth.** When the Cataclysm reaches the capital the fight is built from its own bonuses alone — see the Last Stand section — because adding earned growth on top would punish a player twice for the same run. That fight is won once in 54 by deliberate design and the figure was chosen on purpose. Settled the same day.
 
   
@@ -4109,7 +4109,7 @@ This makes a surviving player's escape worth something to the whole party, and i
 | Basic | Standard dungeon. Most common type. Hits its city once when its timer runs out, then leaves. |
 | Quest | When its timer runs out it hits its host city with an ordinary dungeon's hit for that city, then its timer refreshes and it may move to an adjacent city. Required to challenge the Cataclysm. |
 | Fallen City | Captured player city. Must be retaken to restore it. Higher floor count and multiple bosses. |
-| Cataclysm | The final boss dungeon for the current run tier. Grows by one floor for every **ordinary** dungeon the player defeats; Quest dungeons and retaken Dungeon Cities do not count, and the Last Stand takes none of the growth. |
+| Cataclysm | The final boss dungeon for the current run tier. Grows by one floor for every **ordinary** dungeon the player defeats, before it opens and after; Quest dungeons and retaken Dungeon Cities do not count, and the Last Stand takes none of the growth. Once earned it stands on no city: it never bites one and no timer runs on it. It is never a Cow Level or a Siege. |
 
   
 
@@ -5507,7 +5507,7 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 | Siege | 7.5 |
 | Cow Level | 7 |
 
-A Cataclysm dungeon cannot be a Cow Level; for that kind the excluded weight is shared by the others in proportion. A Quest dungeon does not use these weights: its Cataclysm fixes its sub-type (see Dungeon Sub-Types).
+A Cataclysm dungeon cannot be a Cow Level or a Siege; for that kind the excluded weight is shared by the others in proportion. (The Siege was added on 2026-11-02: the earned boss stands on no city, and a Siege's whole effect is a daily bite on its city.) A Quest dungeon does not use these weights: its Cataclysm fixes its sub-type (see Dungeon Sub-Types).
 
 
 
@@ -6661,6 +6661,8 @@ At one Cataclysm the rule gives one, so it reduces to the single count the table
 **The individual counts stay meaningful, which is the point.** Facing all eight, the four cheapest -- Death, Pestilence, Famine and The Void, at 5 each -- total 20 quest dungeons, and the four dearest -- Demonic, War and Celestial at 10 and Chaos at 8 -- total 38. So the real requirement is somewhere between 20 and 38 depending on what the player is offered and what they take, against 58 if the eight counts were simply added together.
 
 **What this does not settle.** Whether an already-unlocked Cataclysm dungeon re-locks if the number of active Cataclysms rises mid-run. A run is played at a fixed difficulty tier and the tier is what sets the count, so the situation does not arise today.
+
+**Where it stands once earned: on no city.** The project owner decided it on 2026-11-02, verbatim: "On no city (Recommended)". The boss dungeon opens the moment the requirement is met, on the quest dungeon clear that meets it, and once a run. The empire map shows a marker for it that the player enters from. It never bites a city and no timer runs on it, so it cannot resolve; it stays until the player defeats it, or until a Last Stand moves it to the Pillar. Its depth is a roll of 100 to 150 floors plus one floor for every ordinary dungeon defeated in the run, before it opened and after (see Dungeon Basics). It is sent by the newest of the Cataclysms the player faces, and it is never a Cow Level or a Siege. Issue [#1324](https://github.com/sdubois777/Cataclysm/issues/1324).
 
   
 

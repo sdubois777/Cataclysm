@@ -214,11 +214,24 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::BarredSubTypeOn(
 {
 	// ONE KIND IS CONSTRAINED AND THREE ARE NOT. The owner's ruling of
 	// 2026-09-06 names exactly one illegal pair of the 28 and says nothing about
-	// the other 27; see `CataclysmForbiddenSubType`. A second `case` here is a
-	// design decision and belongs to the owner.
+	// the other 27; see `CataclysmForbiddenSubType`. The Siege is the second
+	// pair since 2026-11-02, on the same kind, in `AlsoBarredSubTypeOn`. A
+	// second `case` here is a design decision.
 	switch (Type)
 	{
 	case ECataclysmDungeonType::Cataclysm:	return CataclysmForbiddenSubType;
+	default:								return ECataclysmDungeonSubType::None;
+	}
+}
+
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::AlsoBarredSubTypeOn(
+	ECataclysmDungeonType Type)
+{
+	// THE SAME ONE KIND, AND ONLY IT. Ruled by the coordinating session on
+	// 2026-11-02 for issue #1324 slice 6b; see `CataclysmAlsoForbiddenSubType`.
+	switch (Type)
+	{
+	case ECataclysmDungeonType::Cataclysm:	return CataclysmAlsoForbiddenSubType;
 	default:								return ECataclysmDungeonSubType::None;
 	}
 }
@@ -314,7 +327,9 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 {
 	// **WHAT THIS KIND OF DUNGEON MAY NOT BE, TAKEN OFF THE LINE BEFORE THE
 	// DRAW RATHER THAN REFUSED AFTER IT.** A Cataclysm may not be a Cow Level;
-	// see `BarredSubTypeOn` and `CataclysmForbiddenSubType` for the ruling.
+	// see `BarredSubTypeOn` and `CataclysmForbiddenSubType` for the ruling. Nor,
+	// since 2026-11-02, a Siege: `AlsoBarredSubTypeOn`, the second exclusion
+	// `TotalSpawnWeight` and `SubTypeAtPoint` take.
 	//
 	// WHY BEFORE. Shortening the line is what makes the barred sub-type's weight
 	// land on the other six in proportion to theirs -- the gap closes rather
@@ -323,13 +338,19 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 	// Siege's; there is no need for either when the option was never on the line.
 	//
 	// AND IT LEAVES EVERY EXISTING CALLER'S STREAM EXACTLY WHERE IT WAS. Three
-	// of the four kinds bar nothing, so `Barred` is `None`, which is not in the
-	// distribution and excludes nothing. Nothing builds a Cataclysm dungeon in
-	// the game yet -- see `SpecFor` -- so this rule answers rather than fires,
-	// and it is here so that it cannot be forgotten when something does.
+	// of the four kinds bar nothing, so `Barred` and `AlsoBarred` are `None`,
+	// which is not in the distribution and excludes nothing. The one kind that
+	// bars both is the earned Cataclysm boss dungeon, which
+	// `MakeCataclysmDungeon` rolls since 2026-11-02; until then nothing built a
+	// Cataclysm and this rule answered rather than fired.
+	//
+	// THE SIEGE IS NEVER CHOSEN WHEN IT IS BARRED, so the refused-Siege re-read
+	// below is reached only for a kind that does not bar it, where `AlsoBarred`
+	// is `None` and the re-read is the one it always was.
 	const ECataclysmDungeonSubType Barred = BarredSubTypeOn(Type);
+	const ECataclysmDungeonSubType AlsoBarred = AlsoBarredSubTypeOn(Type);
 
-	const float Total = TotalSpawnWeight(Barred);
+	const float Total = TotalSpawnWeight(Barred, AlsoBarred);
 
 	// EVERY WEIGHT ZERO WOULD DIVIDE BY NOTHING. It cannot happen with the
 	// constants in the header and it is one line to be safe about. A dungeon
@@ -343,7 +364,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 
 	// ONE DRAW, AND THE ONLY ONE. See the header.
 	const float Point = Stream.FRand() * Total;
-	const ECataclysmDungeonSubType Chosen = SubTypeAtPoint(Point, Barred);
+	const ECataclysmDungeonSubType Chosen = SubTypeAtPoint(Point, Barred, AlsoBarred);
 
 	if (bSiegeAllowed || Chosen != ECataclysmDungeonSubType::Siege)
 	{
@@ -967,6 +988,57 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	return Dungeon;
 }
 
+FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(
+	int32 DungeonId, int32 Day, FRandomStream& Stream, ECataclysmType Cataclysm)
+{
+	// THE PILLAR'S ROW, THE ONLY ONE A CATACLYSM HAS: 100 to 150 floors, and no
+	// damage. `Simulation._maybe_open_cataclysm` rolls from the same row.
+	const FCataclysmDungeonSpec Spec =
+		SpecFor(ECataclysmDungeonType::Cataclysm, ECataclysmCityTier::Pillar);
+
+	FCataclysmDungeon Dungeon;
+	Dungeon.DungeonId = DungeonId;
+	Dungeon.Type = ECataclysmDungeonType::Cataclysm;
+	Dungeon.Cataclysm = Cataclysm;
+	Dungeon.SpawnedDay = Day;
+
+	// ON NO CITY. The project owner, 2026-11-02, verbatim: "On no city
+	// (Recommended)". `CityTier` names the row the depth comes from and nothing
+	// else; see the header.
+	Dungeon.CityId = INDEX_NONE;
+	Dungeon.CityTier = ECataclysmCityTier::Pillar;
+
+	// ONE BOSS, ON THE FINAL FLOOR: the design's universal rule, and the
+	// Cataclysm Boss is the one it holds.
+	Dungeon.Bosses = 1;
+
+	Dungeon.DefenceDamage = Spec.DefenceDamage;
+	Dungeon.PopulationDamage = Spec.PopulationDamage;
+
+	// THE DEPTH FIRST AND THE SUB-TYPE SECOND, the order `MakeDungeon` draws
+	// them in. Inclusive at both ends, as `random.randint` is.
+	Dungeon.Floors = FMath::Max(1, Stream.RandRange(Spec.LeastFloors,
+													Spec.MostFloors));
+
+	// AS A CATACLYSM'S, so neither a Cow Level nor a Siege can come out. A Siege
+	// IS ALLOWED as far as a city goes -- there is no city to hold one already --
+	// and the kind is what bars it; passing `false` here would bar it a second
+	// way, and a break of the kind's bar would then fail nothing.
+	Dungeon.SubType = RollSubType(Stream, /* bSiegeAllowed */ true,
+								  ECataclysmDungeonType::Cataclysm);
+
+	// ONE DAY A FLOOR. No city upgrade reaches a dungeon that stands on no city,
+	// and the empire tree is not in the game. It is never a Cow Level, so its
+	// walk is never doubled. The run lengthens it with the floors it gains.
+	Dungeon.WalkDays =
+		FMath::Max(1.0f, Dungeon.Floors * UCataclysmDayClock::DaysPerFloor);
+
+	// NO TIMER RUNS OUT ON IT; see `NeverResolveDays`. No jitter is drawn.
+	Dungeon.ResolveDays = NeverResolveDays;
+
+	return Dungeon;
+}
+
 ECataclysmDungeonType UCataclysmSurgeScheduler::RollKind(FRandomStream& Stream)
 {
 	// STRICTLY LESS THAN, which is what `self.rng.random() < quest_dungeon_chance`
@@ -1187,7 +1259,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 {
 	// A SURGE ROLLS TWO KINDS AND `RollKind` IS WHERE THAT IS DECIDED. A Fallen
 	// City is built by `MakeFallenCityDungeon` from what the city was carrying,
-	// and nothing builds a Cataclysm yet -- so neither reaches here. Asked for
+	// and the earned Cataclysm by `MakeCataclysmDungeon` since 2026-11-02 --
+	// so neither reaches here. Asked for
 	// one anyway, this builds a Basic rather than a dungeon carrying a Fallen
 	// City's floors and a Quest's timer, which is a shape nothing in the design
 	// describes.

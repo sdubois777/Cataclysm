@@ -56,9 +56,13 @@ enum class ECataclysmSurgeMode : uint8
 //   - **FallenCity** is what a city that has fallen becomes.
 //     `MakeFallenCityDungeon` builds it and `UCataclysmEmpireRun::CityFell`
 //     is the only caller. Issue #1324 slice 2.
-//   - **Cataclysm** is the boss dungeon. NOTHING CREATES ONE; issue #1324
-//     slice 6. Issue #43 moves it to the Pillar for the Last Stand and issue
-//     #1315 grows it per dungeon defeated, and both assume it exists first.
+//   - **Cataclysm** is the boss dungeon. `MakeCataclysmDungeon` builds it and
+//     `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` is the only caller,
+//     on the quest clear that meets the requirement, since issue #1324 slice
+//     6b (2026-11-02). It stands on no city, and the run grows it by one floor
+//     per ordinary dungeon defeated (`DeepenCataclysmDungeon`, issue #1315's
+//     rule). This said NOTHING CREATES ONE until then. Issue #43 moves it to
+//     the Pillar for the Last Stand.
 
 /**
  * How deep a dungeon of one kind on one tier of city is, and what it takes when
@@ -198,7 +202,19 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmType Cataclysm = ECataclysmType::None;
 
-	/** Which city it is assaulting. */
+	/**
+	 * Which city it is assaulting.
+	 *
+	 * **`INDEX_NONE` FOR THE EARNED CATACLYSM BOSS DUNGEON, WHICH STANDS ON NO
+	 * CITY**, since 2026-11-02. The project owner, verbatim: "On no city
+	 * (Recommended)". Every reader of this field either cannot meet that
+	 * dungeon -- it is never a Siege, never resolves and never moves -- or asks
+	 * `UCataclysmEmpireMap::Find`, `IsValidIndex` or compares it with a real
+	 * city's number, all of which treat `INDEX_NONE` as no city. So
+	 * `UCataclysmEmpireRun::DungeonsOn` never lists it for a city, and
+	 * `DungeonsOn(INDEX_NONE)` is the dungeons on no city. `docs/DECISIONS.md`,
+	 * 2026-11-02, lists the readers. Issue #1324 slice 6b.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
 
@@ -1012,12 +1028,13 @@ public:
 	 * the doubling was lost. Offered the repair, the owner removed the situation
 	 * rather than fixing the symptom.
 	 *
-	 * **THIS IS THE ONLY ILLEGAL PAIR OF THE 28 AND NOTHING MAY BE INFERRED FROM
-	 * IT.** Whether a Quest dungeon may carry a Siege that never resolves, or a
-	 * Fallen City a Sacrificial, is unstated by omission rather than decided.
-	 * Adding a second exclusion is a design decision for the owner, not a code
-	 * one; issue #1333 raises the general question and #1342 asks whether a
-	 * Fallen City should carry a sub-type at all.
+	 * **IT WAS THE ONLY ILLEGAL PAIR OF THE 28 UNTIL 2026-11-02**, when the
+	 * Siege joined it; see `CataclysmAlsoForbiddenSubType`. Nothing more may be
+	 * inferred from the two. Whether a Quest dungeon may carry a Siege that
+	 * never resolves, or a Fallen City a Sacrificial, is unstated by omission
+	 * rather than decided. Adding a third exclusion is a design decision, not a
+	 * code one; issue #1333 raises the general question and #1342 asks whether
+	 * a Fallen City should carry a sub-type at all.
 	 *
 	 * IT IS A COPY AND `config.SUBTYPES_FORBIDDEN_ON` IS THE ORIGINAL, the same
 	 * arrangement every other constant in this file is in.
@@ -1028,12 +1045,32 @@ public:
 		ECataclysmDungeonSubType::CowLevel;
 
 	/**
+	 * The second sub-type a Cataclysm dungeon may not roll: the Siege.
+	 *
+	 * RULED BY THE COORDINATING SESSION ON 2026-11-02, under the project
+	 * owner's delegation for issue #1324 slice 6b, and barred the same way as
+	 * the Cow Level. The earned boss dungeon stands on no city -- the owner,
+	 * that day, verbatim "On no city (Recommended)" -- and a Siege's whole
+	 * effect is a daily bite on the city it stands on, which it does not have.
+	 * In the model a Cataclysm dungeon on the Pillar could roll one and bite
+	 * the Pillar every day until then.
+	 *
+	 * A SECOND CONSTANT RATHER THAN A LIST, so `RollSubType` keeps its one draw
+	 * against a line two sub-types shorter, through the two exclusions
+	 * `TotalSpawnWeight` and `SubTypeAtPoint` already take. The model holds both
+	 * in `config.SUBTYPES_FORBIDDEN_ON[CATACLYSM]`, in this order, and
+	 * `tools/tests/test_dungeon_subtype_port.py` compares the two.
+	 */
+	static constexpr ECataclysmDungeonSubType CataclysmAlsoForbiddenSubType =
+		ECataclysmDungeonSubType::Siege;
+
+	/**
 	 * Which sub-type this kind of dungeon may not roll, or `None` for a kind
 	 * that may roll all seven.
 	 *
 	 * THREE OF THE FOUR KINDS ANSWER `None`, which is the whole rule: only a
-	 * Cataclysm is constrained, and only against Cow Level. See
-	 * `CataclysmForbiddenSubType`.
+	 * Cataclysm is constrained, against Cow Level here and against the Siege in
+	 * `AlsoBarredSubTypeOn`. See `CataclysmForbiddenSubType`.
 	 *
 	 * `None` IS THE RIGHT WAY TO SAY "NOTHING IS BARRED" HERE and not a missing
 	 * answer, because `None` is not in the distribution at all --
@@ -1042,6 +1079,14 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static ECataclysmDungeonSubType BarredSubTypeOn(ECataclysmDungeonType Type);
+
+	/**
+	 * The second sub-type this kind of dungeon may not roll, or `None`: the
+	 * Siege for a Cataclysm since 2026-11-02, and nothing for the other three
+	 * kinds. See `CataclysmAlsoForbiddenSubType`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static ECataclysmDungeonSubType AlsoBarredSubTypeOn(ECataclysmDungeonType Type);
 
 	/**
 	 * The total weight of every sub-type that can be rolled, leaving out up to
@@ -1122,13 +1167,14 @@ public:
 	 *                      the ruling and the implementation for why re-reading
 	 *                      is exact.
 	 * @param Type what kind of dungeon is being rolled for. **A CATACLYSM MAY
-	 *                      NOT BE A COW LEVEL** and everything else may be
-	 *                      anything; see `BarredSubTypeOn`. The bar is applied
-	 *                      by shortening the line the single draw is read
-	 *                      against, so the barred sub-type's weight is spread
-	 *                      over the rest in proportion and no second draw is
-	 *                      taken. The default is `Basic`, which bars nothing and
-	 *                      leaves every existing caller's stream untouched.
+	 *                      NOT BE A COW LEVEL, NOR, SINCE 2026-11-02, A SIEGE**,
+	 *                      and everything else may be anything; see
+	 *                      `BarredSubTypeOn` and `AlsoBarredSubTypeOn`. The bar
+	 *                      is applied by shortening the line the single draw is
+	 *                      read against, so the barred sub-types' weight is
+	 *                      spread over the rest in proportion and no second draw
+	 *                      is taken. The default is `Basic`, which bars nothing
+	 *                      and leaves every existing caller's stream untouched.
 	 */
 	static ECataclysmDungeonSubType RollSubType(
 		FRandomStream& Stream,
@@ -1171,18 +1217,20 @@ public:
 	 * has carried all thirteen since long before the game had any of them.
 	 * `tools/tests/test_surge_port.py` compares all thirteen.
 	 *
-	 * ANSWERING IS NOT BUILDING. Nothing creates a Quest, Fallen City or
-	 * Cataclysm dungeon yet -- `MakeDungeon` still sets `Basic` on every dungeon
-	 * a surge lands. This function says what one WOULD be, which is what the
-	 * work that creates them needs first. Issue #1324 has the breakdown.
+	 * ANSWERING WAS NOT BUILDING, AND ALL FOUR ARE BUILT NOW. This said nothing
+	 * created a Quest, Fallen City or Cataclysm dungeon; `MakeDungeon` builds a
+	 * Quest dungeon since slice 3, `MakeFallenCityDungeon` a Fallen City since
+	 * slice 2 and `MakeCataclysmDungeon` the earned boss since slice 6b
+	 * (2026-11-02). Issue #1324 has the breakdown.
 	 *
-	 * THE CATACLYSM EXISTS ONLY AT THE PILLAR. Asked for on any other tier this
+	 * THE CATACLYSM'S ROW IS AT THE PILLAR. Asked for on any other tier this
 	 * answers a spec whose `IsBuilt` is false, because the model has no such row
-	 * and raises when asked for one.
+	 * and raises when asked for one. The earned boss is rolled from the Pillar's
+	 * row and stands on no city.
 	 *
 	 * THE THREE NEW KINDS ALL CARRY NO DAMAGE OF THEIR OWN, which is the design
-	 * rather than a gap. A Fallen City and a Cataclysm stand on a city whose
-	 * damage is already done. A Quest dungeon's rows are nought as well, and
+	 * rather than a gap. A Fallen City stands on a city whose damage is already
+	 * done, and the earned Cataclysm stands on none. A Quest dungeon's rows are nought as well, and
 	 * since 2026-10-13 its timer hits its host with the BASIC row of the host's
 	 * tier, which `UCataclysmEmpireRun::ResolveDungeon` asks this function for.
 	 */
@@ -1312,6 +1360,70 @@ public:
 	static FCataclysmDungeon MakeFallenCityDungeon(
 		int32 DungeonId, const FCataclysmCity& City, int32 Day,
 		int32 DungeonsAbsorbed);
+
+	/**
+	 * The Cataclysm boss dungeon a run has earned, as it is the moment it opens.
+	 *
+	 * ISSUE #1324 SLICE 6B, AND ITS ONE CALLER IS
+	 * `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned`, on the quest clear
+	 * that meets the requirement. A port of what `Simulation._maybe_open_cataclysm`
+	 * builds.
+	 *
+	 * **ON NO CITY.** The project owner, 2026-11-02, verbatim: "On no city
+	 * (Recommended)". `CityId` is `INDEX_NONE`: it never bites a city, and the
+	 * Last Stand that moves it to the Pillar is issue #43's. `CityTier` is the
+	 * Pillar because that is the row its depth was rolled from -- the only
+	 * Cataclysm row `SpecFor` builds -- and `BiteScale`, the one thing that reads
+	 * the field, is never reached for a dungeon that does not resolve.
+	 *
+	 * ITS ROLLED DEPTH ONLY, 100 TO 150. The floors for the ordinary dungeons
+	 * defeated are added by the run, which keeps the count; see
+	 * `UCataclysmEmpireRun::DeepenCataclysmDungeon`.
+	 *
+	 * TWO DRAWS FROM THE STREAM, the depth and then the sub-type, in the order
+	 * `MakeDungeon` takes them. The sub-type is rolled as a Cataclysm's, so it is
+	 * never a Cow Level or a Siege (`BarredSubTypeOn`, `AlsoBarredSubTypeOn`).
+	 * No timer jitter is drawn: no timer runs out on it (`NeverResolveDays`).
+	 *
+	 * @param Cataclysm which Cataclysm it belongs to: the run passes its newest
+	 *        active one, the last of `UCataclysmEmpireRun::ActiveCataclysms`, by
+	 *        the coordinating session's ruling for the slice.
+	 */
+	static FCataclysmDungeon MakeCataclysmDungeon(
+		int32 DungeonId, int32 Day, FRandomStream& Stream,
+		ECataclysmType Cataclysm);
+
+	/**
+	 * The timer a dungeon that never resolves is given: a billion days.
+	 *
+	 * FOR THE EARNED CATACLYSM BOSS DUNGEON, since 2026-11-02, which stands on
+	 * no city and so has nothing to resolve against. It still needs a timer,
+	 * because the run keeps one for every dungeon standing and a save refuses a
+	 * dungeon without one (`UCataclysmEmpireRun::DungeonsAgreeWithTimers`).
+	 *
+	 * WHY A BILLION AND NOT A LONG ONE LIKE `FallenCityResolveDays`. Floats
+	 * near a billion are 64 apart, so taking a day off it rounds back to a
+	 * billion: the clock's `DaysUntilResolve -= 1.0f` leaves it where it was,
+	 * and it never reaches nought however long the run lasts, where 999 days
+	 * ends in the day report's resolved list on day 999. Were the clock ever
+	 * to count it down exactly, no run lasts a billion days. It is a whole
+	 * number exact in a float, so a save writes and reads it unchanged, which
+	 * the largest float, a thirty-nine digit number, would only by care. The
+	 * model skips such a dungeon's timer outright (`Simulation._empire_day`).
+	 */
+	static constexpr float NeverResolveDays = 1.0e9f;
+
+	/**
+	 * How many floors the earned Cataclysm boss dungeon gains for each ordinary
+	 * dungeon the player defeats. `config.cataclysm_floors_per_dungeon_cleared`.
+	 *
+	 * ONE, which the design document states: "Every **ordinary** dungeon
+	 * defeated adds one floor to the Cataclysm boss dungeon." Settled with the
+	 * project owner on 2026-09-06. Those defeated before it opens and after it
+	 * opens both count, and there is no cap, ruled by the coordinating session
+	 * on 2026-11-02. `tools/tests/test_surge_port.py` holds it to the model.
+	 */
+	static constexpr int32 CataclysmFloorsPerOrdinaryDungeon = 1;
 
 	// ----------------------------------------------------------------------
 	// The schedule
@@ -1587,7 +1699,8 @@ public:
 	 *                      anything else asked for here is built as a `Basic`
 	 *                      rather than as a half-made Fallen City -- see the
 	 *                      implementation. `MakeFallenCityDungeon` is how a
-	 *                      Fallen City is built and nothing builds a Cataclysm.
+	 *                      Fallen City is built and `MakeCataclysmDungeon` how
+	 *                      the earned boss is, since 2026-11-02.
 	 * @param Cataclysm     which Cataclysm is sending it, read only for a Quest
 	 *                      dungeon's sub-type; see `QuestSubTypeFor`. IT DOES
 	 *                      NOT STAMP THE DUNGEON -- `RollWave` does that -- and
@@ -1609,8 +1722,9 @@ public:
 	 * building a map.
 	 *
 	 * IT ANSWERS `Basic` OR `Quest` AND NOTHING ELSE. A Fallen City is not
-	 * rolled -- it is what a city that fell became -- and nothing creates a
-	 * Cataclysm yet; issue #1324 slice 6.
+	 * rolled -- it is what a city that fell became -- and nor is a Cataclysm,
+	 * which a run earns rather than a surge sending it
+	 * (`MakeCataclysmDungeon`, issue #1324 slice 6b).
 	 *
 	 * ONE DRAW, ALWAYS. It takes exactly one number off the stream whichever
 	 * answer it gives, so the rolls that follow it do not depend on which kind

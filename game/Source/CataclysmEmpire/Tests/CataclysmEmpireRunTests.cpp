@@ -6,6 +6,8 @@
 
 #include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
+#include "Empire/CataclysmSurge.h"
 
 /**
  * Tests for the empire's day loop, issue #1084.
@@ -8178,6 +8180,463 @@ bool FCataclysmEmpireRunDaysOwedTest::RunTest(const FString& Parameters)
 	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
 	TestEqual(TEXT("Begin starts a run owing nothing"), Run->DaysOwed(), 0);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Cataclysm boss dungeon, once earned -- issue #1324 slice 6b
+// ---------------------------------------------------------------------------
+
+/**
+ * The Cataclysm boss dungeon opens when a run has earned it. Issue #1324 slice
+ * 6b, 2026-11-02.
+ *
+ * THE OWNER'S DECISION, VERBATIM: "On no city (Recommended)". Once earned -- the
+ * quest objectives of half the run's Cataclysms met, rounded up -- the boss
+ * dungeon sits on no city: it never bites one, no timer runs out on it, and a
+ * Last Stand later moves it to the Pillar (issue #43's). The coordinating
+ * session ruled the rest for the slice: its depth is a roll from the Cataclysm
+ * row plus one floor for every ordinary dungeon defeated, before it opens and
+ * after; it is never a Siege; it is sent by the newest active Cataclysm.
+ *
+ * `Cataclysm.EarnedBoss.` IS A NEW GROUP and selects these and nothing else. The
+ * save half is `Cataclysm.EarnedBossSave.`, in the `Cataclysm` module, because
+ * this module may not read the save records.
+ *
+ * NO WORLD AND NO ACTOR. A run is an object; the quest dungeons are built by hand
+ * and cleared through `ClearDungeon`, the live path, which is what the roster
+ * tests do for the unlock rule.
+ */
+namespace CataclysmEarnedBossTest
+{
+	UCataclysmEmpireRun* MakeTierRun(int32 Seed, int32 DifficultyTier)
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
+				   DifficultyTier);
+		return Run;
+	}
+
+	/**
+	 * Clears one dungeon of this kind, built by hand on the map's first city,
+	 * through `ClearDungeon`. NO DRAW IS TAKEN for it: it never reaches a wave or
+	 * the clock, and `ClearDungeon` draws only when the clear opens the boss.
+	 */
+	void ClearOneByHand(UCataclysmEmpireRun& Run, ECataclysmDungeonType Kind,
+						ECataclysmType Sender)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = Run.NextDungeonId++;
+		Dungeon.Type = Kind;
+		Dungeon.Cataclysm = Sender;
+		Dungeon.CityId = Run.Map->Cities[0].CityId;
+
+		Run.Dungeons.Add(Dungeon);
+		Run.ClearDungeon(Dungeon.DungeonId);
+	}
+
+	/** Clears exactly as many quest dungeons as this Cataclysm asks for. */
+	void FinishOne(UCataclysmEmpireRun& Run, ECataclysmType Cataclysm)
+	{
+		const int32 Needed = UCataclysmRoster::QuestObjectivesFor(Cataclysm);
+		for (int32 Index = 0; Index < Needed; ++Index)
+		{
+			ClearOneByHand(Run, ECataclysmDungeonType::Quest, Cataclysm);
+		}
+	}
+
+	/** How many dungeons of the Cataclysm kind stand on the board. */
+	int32 CataclysmDungeonsStanding(const UCataclysmEmpireRun& Run)
+	{
+		int32 Count = 0;
+		for (const FCataclysmDungeon& Standing : Run.Dungeons)
+		{
+			Count += Standing.Type == ECataclysmDungeonType::Cataclysm ? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossOpensTest,
+	"Cataclysm.EarnedBoss.ItOpensOnTheQuestClearThatMeetsTheRequirementAndNotOneBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE WORKED EXAMPLE: difficulty tier 3, three Cataclysms, so two must be
+ * finished. Finishing the first opens nothing, nor does the second one quest
+ * clear short; the clear that finishes the second opens it, on no city, sent by
+ * the newest active Cataclysm, as deep as its roll. Prints "BOSS OPENS".
+ */
+bool FCataclysmEarnedBossOpensTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEarnedBossTest;
+
+	UCataclysmEmpireRun* Run = MakeTierRun(/* Seed */ 3, /* DifficultyTier */ 3);
+	Run->AdvanceDays(3);
+
+	if (!TestEqual(TEXT("set-up: a tier 3 run faces three Cataclysms"),
+				   Run->ActiveCataclysms.Num(), 3)
+		|| !TestEqual(TEXT("set-up: and needs two of them finished"),
+					  Run->CataclysmDungeonRequirement(), 2)
+		|| !TestEqual(TEXT("set-up: the run is on day 3"), Run->Day(), 3))
+	{
+		return false;
+	}
+
+	const int32 StandingBefore = Run->DungeonCount();
+	const ECataclysmType First = Run->ActiveCataclysms[0];
+	const ECataclysmType Second = Run->ActiveCataclysms[1];
+
+	FinishOne(*Run, First);
+
+	TestFalse(TEXT("with one of the two finished it is not opened"),
+			  Run->bCataclysmDungeonOpened);
+	TestNull(TEXT("and no boss dungeon stands"), Run->FindCataclysmDungeon());
+	TestEqual(TEXT("and the board holds what it held"), Run->DungeonCount(),
+			  StandingBefore);
+
+	const int32 SecondNeeds = UCataclysmRoster::QuestObjectivesFor(Second);
+	for (int32 Index = 0; Index < SecondNeeds - 1; ++Index)
+	{
+		ClearOneByHand(*Run, ECataclysmDungeonType::Quest, Second);
+	}
+
+	TestFalse(TEXT("one quest clear short of the second it is still not opened"),
+			  Run->bCataclysmDungeonOpened);
+	TestEqual(TEXT("CONTROL: one Cataclysm is finished at that point"),
+			  Run->CataclysmsComplete(), 1);
+
+	ClearOneByHand(*Run, ECataclysmDungeonType::Quest, Second);
+
+	TestTrue(TEXT("the clear that finishes the second opens it"),
+			 Run->bCataclysmDungeonOpened);
+
+	const FCataclysmDungeon* Boss = Run->FindCataclysmDungeon();
+	if (!TestNotNull(TEXT("and the boss dungeon stands on the board"), Boss))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS OPENS: dungeon %d on day %d, %d floors rolled, %d now, city %d, "
+			 "sub-type %d, Cataclysm %d of active last %d"),
+		Boss->DungeonId, Run->CataclysmDungeonOpenedDay,
+		Run->CataclysmDungeonBaseFloors, Boss->Floors, Boss->CityId,
+		static_cast<int32>(Boss->SubType), static_cast<int32>(Boss->Cataclysm),
+		static_cast<int32>(Run->ActiveCataclysms.Last())));
+
+	TestEqual(TEXT("it stands on no city"), Boss->CityId, INDEX_NONE);
+	TestEqual(TEXT("it is sent by the newest active Cataclysm"),
+			  static_cast<int32>(Boss->Cataclysm),
+			  static_cast<int32>(Run->ActiveCataclysms.Last()));
+	TestEqual(TEXT("it opened on the day of the clear"),
+			  Run->CataclysmDungeonOpenedDay, 3);
+	TestEqual(TEXT("and arrived that day"), Boss->SpawnedDay, 3);
+	TestTrue(TEXT("its roll is inside the Cataclysm row, 100 to 150"),
+			 Run->CataclysmDungeonBaseFloors >= 100
+				 && Run->CataclysmDungeonBaseFloors <= 150);
+	TestEqual(TEXT("with no ordinary dungeon defeated it is as deep as its roll"),
+			  Boss->Floors, Run->CataclysmDungeonBaseFloors);
+	TestEqual(TEXT("its walk is a day a floor"), Boss->WalkDays,
+			  static_cast<float>(Boss->Floors));
+	TestEqual(TEXT("it takes no defence from a city"), Boss->DefenceDamage, 0.0f);
+	TestEqual(TEXT("and no people"), Boss->PopulationDamage, 0.0f);
+	TestEqual(TEXT("the board holds one dungeon more"), Run->DungeonCount(),
+			  StandingBefore + 1);
+	TestNotNull(TEXT("and the clock holds a timer for it"),
+				Run->Clock->FindTimer(Boss->DungeonId));
+
+	// CONTROL: NO CITY LISTS IT, and the one question that asks for no city does.
+	bool bOnACity = false;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		bOnACity |= Run->DungeonsOn(City.CityId).Contains(Boss->DungeonId);
+	}
+	TestFalse(TEXT("no city lists it among its dungeons"), bOnACity);
+	TestTrue(TEXT("the dungeons on no city are it"),
+			 Run->DungeonsOn(INDEX_NONE) == TArray<int32>{ Boss->DungeonId });
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossNeverResolvesTest,
+	"Cataclysm.EarnedBoss.ItOpensOnceAndNeverResolvesOrBitesOverTwoThousandDays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Opened at tier 3, a third Cataclysm finished afterwards opens no second one;
+ * then 2,000 days pass with nobody clearing anything, and the boss is in no
+ * day's resolved, moved or absorbed list, its timer reads what it was given,
+ * and it is still on the board on no city. Beaten, it does not come back.
+ * Prints "BOSS NEVER RESOLVES".
+ */
+bool FCataclysmEarnedBossNeverResolvesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEarnedBossTest;
+
+	UCataclysmEmpireRun* Run = MakeTierRun(/* Seed */ 5, /* DifficultyTier */ 3);
+	Run->AdvanceDays(2);
+
+	if (!TestEqual(TEXT("set-up: three Cataclysms are active"),
+				   Run->ActiveCataclysms.Num(), 3))
+	{
+		return false;
+	}
+
+	FinishOne(*Run, Run->ActiveCataclysms[0]);
+	FinishOne(*Run, Run->ActiveCataclysms[1]);
+
+	const FCataclysmDungeon* Opened = Run->FindCataclysmDungeon();
+	if (!TestNotNull(TEXT("set-up: two finished opened the boss dungeon"), Opened))
+	{
+		return false;
+	}
+
+	const int32 BossId = Opened->DungeonId;
+	const int32 OpenedDay = Run->CataclysmDungeonOpenedDay;
+	const int32 Rolled = Run->CataclysmDungeonBaseFloors;
+
+	// ONCE: THE THIRD CATACLYSM FINISHED AFTERWARDS OPENS NO SECOND ONE.
+	FinishOne(*Run, Run->ActiveCataclysms[2]);
+
+	TestEqual(TEXT("finishing the third leaves one boss dungeon standing"),
+			  CataclysmDungeonsStanding(*Run), 1);
+	TestEqual(TEXT("the same one"), Run->FindCataclysmDungeon()->DungeonId, BossId);
+	TestEqual(TEXT("opened on the same day"), Run->CataclysmDungeonOpenedDay,
+			  OpenedDay);
+	TestEqual(TEXT("with the same roll"), Run->CataclysmDungeonBaseFloors, Rolled);
+
+	int32 OthersResolved = 0;
+	int32 DaysItAppeared = 0;
+	for (int32 Day = 0; Day < 2000; ++Day)
+	{
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+		OthersResolved += Report.Resolved.Num();
+
+		const bool bAppeared = Report.Resolved.Contains(BossId)
+			|| Report.Relocated.Contains(BossId)
+			|| Report.Absorbed.Contains(BossId)
+			|| Report.MovedByAFall.Contains(BossId);
+		DaysItAppeared += bAppeared ? 1 : 0;
+	}
+
+	const FCataclysmDungeon* Boss = Run->FindDungeon(BossId);
+	const FCataclysmDungeonTimer* Timer = Run->Clock->FindTimer(BossId);
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS NEVER RESOLVES: day %d, boss %s, timer %.1f resolved %d times, "
+			 "on %d of 2000 days' lists, %d other timers ran out, %d cities fell"),
+		Run->Day(), Boss ? TEXT("standing") : TEXT("GONE"),
+		Timer ? Timer->DaysUntilResolve : -1.0f, Timer ? Timer->TimesResolved : -1,
+		DaysItAppeared, OthersResolved, Run->Map->FallenCityCount()));
+
+	TestEqual(TEXT("it is in no day's resolved, moved or absorbed list"),
+			  DaysItAppeared, 0);
+	if (!TestNotNull(TEXT("it is still on the board after 2000 days"), Boss)
+		|| !TestNotNull(TEXT("with its timer"), Timer))
+	{
+		return false;
+	}
+	TestEqual(TEXT("still on no city"), Boss->CityId, INDEX_NONE);
+	TestEqual(TEXT("its timer reads what it was given"), Timer->DaysUntilResolve,
+			  UCataclysmSurgeScheduler::NeverResolveDays);
+	TestEqual(TEXT("and it has never run out"), Timer->TimesResolved, 0);
+	TestTrue(TEXT("CONTROL: the clock was running, other timers ran out"),
+			 OthersResolved > 0);
+	TestTrue(TEXT("CONTROL: and cities fell around it"),
+			 Run->Map->FallenCityCount() > 0);
+
+	const FString Described = Run->Describe();
+	TestTrue(TEXT("the run's description lists it on no city, never resolving"),
+			 Described.Contains(FString::Printf(TEXT("dungeon %d (Cataclysm"), BossId))
+				 && Described.Contains(TEXT("on no city: "))
+				 && Described.Contains(TEXT("it never resolves")));
+
+	// BEATEN, IT DOES NOT COME BACK: a quest clear afterwards opens nothing.
+	TestTrue(TEXT("the player beats it"), Run->ClearDungeon(BossId));
+	ClearOneByHand(*Run, ECataclysmDungeonType::Quest, Run->ActiveCataclysms[0]);
+
+	TestEqual(TEXT("and a quest clear afterwards opens no other"),
+			  CataclysmDungeonsStanding(*Run), 0);
+	TestTrue(TEXT("the run still says it opened"), Run->bCataclysmDungeonOpened);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossDepthTest,
+	"Cataclysm.EarnedBoss.ItIsAsDeepAsItsRollAndEveryOrdinaryDungeonDefeatedBeforeAndAfter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two runs from one seed roll the same boss, because a dungeon cleared by hand
+ * draws nothing. One defeats four ordinary dungeons before the boss opens: its
+ * boss is four floors deeper. A fifth ordinary dungeon defeated after it opened
+ * adds a fifth floor, to the walk and the clock's copy as well; a quest clear
+ * after it opened adds nothing. Prints "BOSS DEPTH".
+ */
+bool FCataclysmEarnedBossDepthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEarnedBossTest;
+
+	UCataclysmEmpireRun* Deeper = MakeTierRun(/* Seed */ 7, /* DifficultyTier */ 1);
+	UCataclysmEmpireRun* Plain = MakeTierRun(/* Seed */ 7, /* DifficultyTier */ 1);
+	Deeper->AdvanceDays(2);
+	Plain->AdvanceDays(2);
+
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		ClearOneByHand(*Deeper, ECataclysmDungeonType::Basic, ECataclysmType::None);
+	}
+
+	const ECataclysmType Only = Deeper->ActiveCataclysms[0];
+	FinishOne(*Deeper, Only);
+	FinishOne(*Plain, Plain->ActiveCataclysms[0]);
+
+	const FCataclysmDungeon* Boss = Deeper->FindCataclysmDungeon();
+	const FCataclysmDungeon* Control = Plain->FindCataclysmDungeon();
+	if (!TestEqual(TEXT("set-up: four ordinary dungeons were defeated first"),
+				   Deeper->BasicDungeonsCleared, 4)
+		|| !TestEqual(TEXT("set-up: and none in the control"),
+					  Plain->BasicDungeonsCleared, 0)
+		|| !TestNotNull(TEXT("set-up: the boss opened"), Boss)
+		|| !TestNotNull(TEXT("set-up: and in the control"), Control))
+	{
+		return false;
+	}
+
+	const int32 BossId = Boss->DungeonId;
+	const int32 Rolled = Deeper->CataclysmDungeonBaseFloors;
+	const int32 AtOpening = Boss->Floors;
+
+	TestEqual(TEXT("the same seed rolls the same boss"), Rolled,
+			  Plain->CataclysmDungeonBaseFloors);
+	TestEqual(TEXT("four ordinary dungeons defeated before it opened are four floors"),
+			  Boss->Floors, Control->Floors + 4);
+	TestEqual(TEXT("it opens as deep as its roll and the four"), Boss->Floors,
+			  Rolled + 4);
+	TestEqual(TEXT("which is what the run says it is"),
+			  Deeper->CataclysmDungeonFloorsNow(), Rolled + 4);
+
+	// AND ONE MORE AFTER IT OPENED.
+	ClearOneByHand(*Deeper, ECataclysmDungeonType::Basic, ECataclysmType::None);
+	Boss = Deeper->FindDungeon(BossId);
+	if (!TestNotNull(TEXT("set-up: the boss still stands"), Boss))
+	{
+		return false;
+	}
+
+	const FCataclysmDungeonTimer* Timer = Deeper->Clock->FindTimer(BossId);
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS DEPTH: rolled %d, opened at %d against the control's %d, %d after "
+			 "a fifth ordinary clear, walk %.1f, clock floors %d"),
+		Rolled, AtOpening, Control->Floors, Boss->Floors, Boss->WalkDays,
+		Timer ? Timer->Floors : -1));
+
+	TestEqual(TEXT("an ordinary dungeon defeated after it opened adds a floor"),
+			  Boss->Floors, Rolled + 5);
+	TestEqual(TEXT("and a day to its walk"), Boss->WalkDays,
+			  static_cast<float>(Rolled + 5));
+	TestTrue(TEXT("and to the clock's copy of its floors"),
+			 Timer != nullptr && Timer->Floors == Rolled + 5);
+	TestTrue(TEXT("and leaves its timer where it was"),
+			 Timer != nullptr
+				 && Timer->DaysUntilResolve == UCataclysmSurgeScheduler::NeverResolveDays);
+
+	// A QUEST CLEAR AFTER IT OPENED ADDS NOTHING.
+	const int32 ObjectivesBefore = Deeper->QuestObjectives;
+	ClearOneByHand(*Deeper, ECataclysmDungeonType::Quest, Only);
+	Boss = Deeper->FindDungeon(BossId);
+
+	TestEqual(TEXT("CONTROL: the quest clear counted as an objective"),
+			  Deeper->QuestObjectives, ObjectivesBefore + 1);
+	TestTrue(TEXT("a quest dungeon defeated after it opened adds no floor"),
+			 Boss != nullptr && Boss->Floors == Rolled + 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossNoSiegeTest,
+	"Cataclysm.EarnedBoss.ACataclysmDungeonIsNeverASiege",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The second barred pair, since 2026-11-02: a Cataclysm dungeon rolls neither a
+ * Siege nor a Cow Level, in 20,000 rolls and in 2,000 built bosses, and the roll
+ * still takes one draw. CONTROL: an ordinary dungeon rolls both on the same
+ * stream. Prints "BOSS NO SIEGE".
+ */
+bool FCataclysmEarnedBossNoSiegeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEarnedBossTest;
+
+	constexpr int32 Rolls = 20000;
+
+	FRandomStream Cataclysms(20261103);
+	FRandomStream Ordinary(20261103);
+	int32 CataclysmSieges = 0;
+	int32 CataclysmCowLevels = 0;
+	int32 OrdinarySieges = 0;
+	int32 OrdinaryCowLevels = 0;
+
+	for (int32 Index = 0; Index < Rolls; ++Index)
+	{
+		const ECataclysmDungeonSubType Boss = UCataclysmSurgeScheduler::RollSubType(
+			Cataclysms, /* bSiegeAllowed */ true, ECataclysmDungeonType::Cataclysm);
+		CataclysmSieges += Boss == ECataclysmDungeonSubType::Siege ? 1 : 0;
+		CataclysmCowLevels += Boss == ECataclysmDungeonSubType::CowLevel ? 1 : 0;
+
+		const ECataclysmDungeonSubType Plain = UCataclysmSurgeScheduler::RollSubType(
+			Ordinary, /* bSiegeAllowed */ true, ECataclysmDungeonType::Basic);
+		OrdinarySieges += Plain == ECataclysmDungeonSubType::Siege ? 1 : 0;
+		OrdinaryCowLevels += Plain == ECataclysmDungeonSubType::CowLevel ? 1 : 0;
+	}
+
+	int32 BuiltSieges = 0;
+	int32 BuiltOutOfRow = 0;
+	int32 BuiltOnACity = 0;
+	for (int32 Seed = 0; Seed < 2000; ++Seed)
+	{
+		FRandomStream Stream(Seed);
+		const FCataclysmDungeon Built = UCataclysmSurgeScheduler::MakeCataclysmDungeon(
+			Seed, /* Day */ 1, Stream, ECataclysmType::Death);
+		BuiltSieges += Built.SubType == ECataclysmDungeonSubType::Siege ? 1 : 0;
+		BuiltOutOfRow += (Built.Floors < 100 || Built.Floors > 150) ? 1 : 0;
+		BuiltOnACity += Built.CityId != INDEX_NONE ? 1 : 0;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS NO SIEGE: in %d rolls a Cataclysm rolled %d Sieges and %d Cow "
+			 "Levels, an ordinary dungeon %d and %d; of 2000 built bosses %d were "
+			 "Sieges, %d out of the row, %d on a city"),
+		Rolls, CataclysmSieges, CataclysmCowLevels, OrdinarySieges, OrdinaryCowLevels,
+		BuiltSieges, BuiltOutOfRow, BuiltOnACity));
+
+	TestEqual(TEXT("a Cataclysm dungeon never rolls a Siege"), CataclysmSieges, 0);
+	TestEqual(TEXT("nor a Cow Level"), CataclysmCowLevels, 0);
+	TestTrue(TEXT("CONTROL: an ordinary dungeon rolls a Siege"), OrdinarySieges > 0);
+	TestTrue(TEXT("CONTROL: and a Cow Level"), OrdinaryCowLevels > 0);
+	TestEqual(TEXT("no boss dungeon built is a Siege"), BuiltSieges, 0);
+	TestEqual(TEXT("every one is rolled from the Cataclysm row"), BuiltOutOfRow, 0);
+	TestEqual(TEXT("and none stands on a city"), BuiltOnACity, 0);
+
+	TestEqual(TEXT("the Cataclysm kind bars the Siege"),
+			  static_cast<int32>(UCataclysmSurgeScheduler::AlsoBarredSubTypeOn(
+				  ECataclysmDungeonType::Cataclysm)),
+			  static_cast<int32>(ECataclysmDungeonSubType::Siege));
+	for (const ECataclysmDungeonType Kind :
+			{ ECataclysmDungeonType::Basic, ECataclysmDungeonType::Quest,
+			  ECataclysmDungeonType::FallenCity })
+	{
+		TestEqual(TEXT("and no other kind bars a second sub-type"),
+				  static_cast<int32>(UCataclysmSurgeScheduler::AlsoBarredSubTypeOn(Kind)),
+				  static_cast<int32>(ECataclysmDungeonSubType::None));
+	}
+
+	// ONE DRAW, STILL: the bar shortens the line rather than refusing after it.
+	FRandomStream Rolled(77);
+	FRandomStream Drawn(77);
+	UCataclysmSurgeScheduler::RollSubType(Rolled, true, ECataclysmDungeonType::Cataclysm);
+	Drawn.FRand();
+	TestEqual(TEXT("rolling a Cataclysm's sub-type takes exactly one draw"),
+			  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
 	return true;
 }
 

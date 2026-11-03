@@ -412,33 +412,45 @@ class TestWhatACowLevelCosts:
 
 
 class TestWhichSubTypesAKindOfDungeonMayNotRoll:
-    """**ONE PAIR OF THE 28 IS ILLEGAL AND BOTH SIDES HAVE TO AGREE WHICH.**
+    """**TWO PAIRS OF THE 28 ARE ILLEGAL AND BOTH SIDES HAVE TO AGREE WHICH.**
 
-    The project owner ruled on 2026-09-06, verbatim: *"Last stand is a cataclysm
-    dungeon and should not be allowed to roll as a cow level sub type."* Asked
-    how far to take it they answered *"Only the one you ruled"*. Issue #1333.
+    The project owner ruled the first on 2026-09-06, verbatim: *"Last stand is a
+    cataclysm dungeon and should not be allowed to roll as a cow level sub
+    type."* Asked how far to take it they answered *"Only the one you ruled"*.
+    Issue #1333. THE SECOND, Cataclysm and Siege, since 2026-11-02: ruled by the
+    coordinating session under the owner's delegation for issue #1324 slice 6b,
+    barred the same way, because the earned boss stands on no city (the owner,
+    that day: "On no city (Recommended)") and a Siege's whole effect is a daily
+    bite on its city.
 
     THE MODEL IS THE ORIGINAL AND THE GAME IS THE COPY, the same direction as
     the weights above. `config.SUBTYPES_FORBIDDEN_ON` holds the rule;
-    `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and `BarredSubTypeOn`
-    hold it in the game.
+    `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
+    `CataclysmAlsoForbiddenSubType`, read by `BarredSubTypeOn` and
+    `AlsoBarredSubTypeOn`, hold it in the game.
 
-    WHAT THIS CANNOT SEE, and why the Unreal test exists beside it. A constant
+    WHAT THIS CANNOT SEE, and why the Unreal tests exist beside it. A constant
     both sides agree on says nothing about whether either side reads it.
-    `Cataclysm.Surge.ACataclysmDungeonNeverRollsACowLevel` rolls the C++
-    implementation many times and checks what comes out;
+    `Cataclysm.Surge.ACataclysmDungeonNeverRollsACowLevel` and
+    `Cataclysm.EarnedBoss.ACataclysmDungeonIsNeverASiege` roll the C++
+    implementation many times and check what comes out;
     `sim/tests/test_cataclysm_cannot_be_a_cow_level.py` does the same for the
-    model. All three are needed.
+    model. All of them are needed.
     """
 
     def forbidden_in_the_game(self, surge_source) -> dict[str, tuple[str, ...]]:
-        """The game's rule, as dungeon-type name against sub-type names."""
-        barred = constant(surge_source, "CataclysmForbiddenSubType",
-                          r"ECataclysmDungeonSubType::\w+", SURGE_HEADER.name)
-        return {"Cataclysm": (barred.split("::")[1],)}
+        """The game's rule, as dungeon-type name against sub-type names, in the
+        order the two constants are read: `BarredSubTypeOn`'s, then
+        `AlsoBarredSubTypeOn`'s."""
+        names = []
+        for name in ("CataclysmForbiddenSubType", "CataclysmAlsoForbiddenSubType"):
+            barred = constant(surge_source, name,
+                              r"ECataclysmDungeonSubType::\w+", SURGE_HEADER.name)
+            names.append(barred.split("::")[1])
+        return {"Cataclysm": tuple(names)}
 
-    def test_the_game_bars_the_same_pair_the_model_does(self, surge_source,
-                                                        model):
+    def test_the_game_bars_the_same_pairs_the_model_does(self, surge_source,
+                                                         model):
         game = self.forbidden_in_the_game(surge_source)
 
         wanted = {dtype.name.title().replace("_", ""):
@@ -448,62 +460,59 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
         assert game == wanted, (
             f"the game bars {game} and the model bars {wanted}; "
             "config.SUBTYPES_FORBIDDEN_ON is the original and "
-            "UCataclysmSurgeScheduler::CataclysmForbiddenSubType is the copy")
+            "UCataclysmSurgeScheduler::CataclysmForbiddenSubType and "
+            "CataclysmAlsoForbiddenSubType are the copy")
 
-    def test_the_model_bars_exactly_one_pair(self, model):
-        """"Only the one you ruled". Twenty-seven pairs stay legal, and a
-        session adding a second row is making a design decision the owner has
-        not made."""
-        pairs = [(dtype, name)
+    def test_the_model_bars_exactly_two_pairs(self, model):
+        """"Only the one you ruled", and the Siege the coordinating session
+        added on 2026-11-02. Twenty-six pairs stay legal, and a session adding a
+        third is making a design decision nobody has made."""
+        pairs = [(dtype.name, name)
                  for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()
                  for name in names]
 
-        assert len(pairs) == 1, (
-            f"the model now bars {pairs}. The ruling of 2026-09-06 named one "
-            "pair and explicitly declined to name any others")
+        assert pairs == [("CATACLYSM", "Cow Level"), ("CATACLYSM", "Siege")], (
+            f"the model now bars {pairs}. The rulings of 2026-09-06 and "
+            "2026-11-02 named two pairs and declined to name any others")
 
-        dtype, name = pairs[0]
-        assert dtype.name == "CATACLYSM"
-        assert name == "Cow Level"
+    @pytest.mark.parametrize("function", ["BarredSubTypeOn", "AlsoBarredSubTypeOn"])
+    def test_the_game_constrains_only_the_cataclysm(self, function):
+        """Each of the two answers `None` for the other three kinds.
 
-    def test_the_game_constrains_only_the_cataclysm(self):
-        """`BarredSubTypeOn` answers `None` for the other three kinds.
-
-        READ OUT OF THE SWITCH ITSELF, because the constant above says which
-        sub-type is barred and not which dungeon it is barred on. A second
-        `case` here would be the same unmade design decision as a second row in
-        the model.
+        READ OUT OF THE SWITCH ITSELF, because the constants say which sub-type
+        is barred and not which dungeon it is barred on. A second `case` here
+        would be the same unmade design decision as a third pair in the model.
         """
         source = (SURGE_HEADER.parent / "CataclysmSurge.cpp").read_text(
             encoding="utf-8")
 
         body = re.search(
-            r"ECataclysmDungeonSubType UCataclysmSurgeScheduler::"
-            r"BarredSubTypeOn\((.*?)\n\}\n", source, re.DOTALL)
+            rf"ECataclysmDungeonSubType UCataclysmSurgeScheduler::"
+            rf"{function}\((.*?)\n\}}\n", source, re.DOTALL)
 
-        assert body, ("UCataclysmSurgeScheduler::BarredSubTypeOn is gone from "
+        assert body, (f"UCataclysmSurgeScheduler::{function} is gone from "
                       "CataclysmSurge.cpp, so nothing in the game applies the "
-                      "ruling of 2026-09-06")
+                      "ruling it carries")
 
         cases = re.findall(r"case\s+ECataclysmDungeonType::(\w+)\s*:",
                            body.group(1))
 
         assert cases == ["Cataclysm"], (
-            f"BarredSubTypeOn now names {cases}. The owner barred one pair and "
-            "said nothing about any other dungeon type")
+            f"{function} now names {cases}. The rulings bar two pairs, both on "
+            "the Cataclysm, and say nothing about any other dungeon type")
 
         assert "default:" in body.group(1), (
-            "BarredSubTypeOn no longer answers for the kinds it does not name, "
+            f"{function} no longer answers for the kinds it does not name, "
             "so a dungeon type added to the enum would fall through")
 
-    def test_the_roll_actually_applies_the_bar(self):
-        """The wiring, which the constant cannot show.
+    def test_the_roll_actually_applies_both_bars(self):
+        """The wiring, which the constants cannot show.
 
-        `RollSubType` has to hand the barred sub-type to BOTH `TotalSpawnWeight`
-        and `SubTypeAtPoint`. Passing it to only the first would shorten the
+        `RollSubType` has to hand both barred sub-types to BOTH `TotalSpawnWeight`
+        and `SubTypeAtPoint`. Passing them to only the first would shorten the
         line the draw is scaled against while still walking the full one, which
-        skews every share instead of removing one option -- and would not
-        change what the constant says.
+        skews every share instead of removing two options -- and would not
+        change what the constants say.
         """
         source = (SURGE_HEADER.parent / "CataclysmSurge.cpp").read_text(
             encoding="utf-8")
@@ -518,11 +527,14 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
         assert "BarredSubTypeOn(Type)" in body, (
             "RollSubType no longer asks what this kind of dungeon may not roll")
-        assert "TotalSpawnWeight(Barred)" in body, (
-            "RollSubType scales its draw against the full line again, so the "
-            "barred sub-type's weight is dropped rather than redistributed")
-        assert "SubTypeAtPoint(Point, Barred)" in body, (
-            "RollSubType walks the full line again, so the barred sub-type can "
+        assert "AlsoBarredSubTypeOn(Type)" in body, (
+            "RollSubType no longer asks the second thing this kind may not roll, "
+            "so a Cataclysm dungeon can be a Siege again")
+        assert "TotalSpawnWeight(Barred, AlsoBarred)" in body, (
+            "RollSubType scales its draw against a line that keeps a barred "
+            "sub-type, so its weight is dropped rather than redistributed")
+        assert "SubTypeAtPoint(Point, Barred, AlsoBarred)" in body, (
+            "RollSubType walks a line that keeps a barred sub-type, so it can "
             "still be chosen")
 
     def test_the_model_lets_the_last_stand_recompute_with_the_sub_type(self):
