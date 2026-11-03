@@ -169,6 +169,7 @@ namespace CataclysmHitReactionTest
 CATACLYSM_TEST(FCataclysmHitReactionDirectionTest,
 	"Cataclysm.HitReaction.TheDirectionIsTheNearestOfFourQuarters")
 {
+	using namespace CataclysmHitReactionTest;
 	using Rule = UCataclysmHitReaction;
 
 	auto Expect = [this](const TCHAR* What, const FVector& Facing, const FVector& ToSource,
