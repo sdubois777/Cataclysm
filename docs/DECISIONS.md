@@ -9,30 +9,33 @@ Decisions made outside the Google Drive documents, newest first.
 `ForgetTheCataclysmBoss`, `NoteDeathForTheCataclysmBoss`, `CataclysmBoss` and `bCataclysmBossPlaced`, new and private;
 changed: `PopulateFloor` and `ContinueTheWaveArriving` (the population's rung), `StairsSealedBy` (one more seal),
 `OnSomethingDied` (one more listener), `LeaveEmpireDungeon` (forgets the boss), `RowsTheFloorPanelLists` and
-`LiveCountsForTheFloor` (the boss's line), `RestoreCreatureRoles` (a load finds the boss again)
+`LiveCountsForTheFloor` (the boss's line), `RestoreCreatureRoles` and its header comment (a load finds the boss again)
 (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`, `.cpp`); on `UCataclysmFloorModifierPanelLayout`,
 `CataclysmBossKey`, `CataclysmBossName` and `FCataclysmFloorModifierLine::bIsTheCataclysmBoss`, new, and `LinesFor` and
 `NameLineFor` (`game/Source/Cataclysm/Interface/CataclysmFloorModifierPanelLayout.h`, `.cpp`);
-`UCataclysmFloorModifierPanel::Redraw` (`CataclysmFloorModifierPanel.cpp`); 3 new tests in
+`UCataclysmFloorModifierPanel::Redraw` (`CataclysmFloorModifierPanel.cpp`); 5 new tests in
 `game/Source/Cataclysm/Tests/CataclysmBossFloorTests.cpp`, group `Cataclysm.BossFloor.`;
 `tools/tests/test_the_cataclysm_boss_rung_is_the_tables.py`, new. No `.uasset`, data table or saved field changed.
 
 **Issue:** [#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 6d. Slices 6a (the character keeps its
-Cataclysm draw), 6b (the dungeon opens, on no city), 6c (the map shows it) and 6e (winning) are separate branches; this
-one depends on none of their code.
+Cataclysm draw) and 6b (the dungeon opens, on no city) have landed; 6c (the map shows it) and 6e (winning) are separate
+branches. This one reads 6b's `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` in one test and changes none of its
+code.
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED AND NOT RUN.** Phase 1 was written while the build machine was in use, by instruction. No
-  Unreal build, no Unreal test and no guard proof has been run. Everything under "Registered before the run" is a
-  prediction for a later window.
-- **NOTHING IN PLAY REACHES IT YET.** A dungeon of `ECataclysmDungeonType::Cataclysm` is made by nothing until slice 6b
-  lands; the tests make one by rewriting a run's dungeon, as the Heavenly Core's tests make an Ascendant.
-- **WHAT THE PLAYER WILL SEE**, once 6b puts the dungeon on the map: the Gatekeeper at the exit of its last floor is a
-  Cataclysm Boss -- rung 5, 2.49 times a Common's size, five modifiers, immune to stuns and executes, priced by the
-  enemy score at that rung -- and the floor panel reads "The Cataclysm Boss (it stands; the stairs are sealed until it
-  dies)". Taking the stairs while it stands does nothing. Once it is dead, by any hand, the line reads "The Cataclysm
-  Boss (slain; the way out is open)" and the stairs clear the dungeon as any last floor's do. Winning is slice 6e.
+- **COMPILED, NOT RUN.** Phase 1 was written without a build, by instruction. Phase 2 rebased it onto development
+  6472dd420 (slices 6a and 6b; one conflict, in this file, resolved by keeping every entry) and compiled it with
+  `python tools/unreal_build.py build`, every changed `.cpp` alone and then in its unity file (below). No Unreal test
+  and no guard proof has been run. Everything under "Registered before the run" is a prediction for a window.
+- **PLAY REACHES IT NOW.** Since slice 6b the run opens the boss dungeon on the quest clear that earns it, 100 to 150
+  floors deep, and this branch puts the Cataclysm Boss at the exit of its last floor. Test 4 walks that dungeon; tests
+  1, 2, 3 and 5 make one by rewriting a run's dungeon, as the Heavenly Core's tests make an Ascendant.
+- **WHAT THE PLAYER WILL SEE**: the Gatekeeper at the exit of the boss dungeon's last floor is a Cataclysm Boss -- rung
+  5, 2.49 times a Common's size, five modifiers, immune to stuns and executes, priced by the enemy score at that rung --
+  and the floor panel reads "The Cataclysm Boss (it stands; the stairs are sealed until it dies)". Taking the stairs
+  while it stands does nothing. Once it is dead, by any hand, the line reads "The Cataclysm Boss (slain; the way out is
+  open)" and the stairs clear the dungeon as any last floor's do. Winning is slice 6e.
 
 ### The design, and the rulings
 
@@ -67,7 +70,11 @@ session's ruling; nothing here is a new formula. The judgements below are labell
   (issue #2490), so the boss's fixed rung moves no other creature's draw.
 - **ONLY THE POPULATION'S GATEKEEPER.** A Gatekeeper a floor rule makes on that floor -- Royal Guard's guards, Dead
   Rising, Divine Resurgence, Grave Tide, a Demon Prince -- draws or takes its own rule's rung, as before. A Cataclysm
-  Boss that Dead Rising raises is a new creature and does not seal again (judgement J2).
+  Boss that Dead Rising raises is a new creature and does not seal again (judgement J2). Phase 2 read every rule that
+  sets a standing creature's rung (`SetRarityStep` in `CataclysmDungeonGameMode.cpp`): none lowers one, and the ones
+  that raise -- Volatile Evolution, Blood-Forged Champions, the dark floor, Soul Chains and Infernal Seals' bearers, the
+  Plaguebearer -- either skip a creature at or above their ceiling or never choose a boss, so nothing moves the boss
+  off rung 5 once it is placed.
 - **THE SEAL (R5).** `StairsSealedBy` names `Cataclysm_Boss` while `CataclysmBossSealsTheStairs()`: the boss floor, and
   `CataclysmBossNow()` is the recorded boss, valid and not dead. `HandleStairsTaken` already refuses while anything
   seals, so taking the stairs does nothing and they watch again. **The last floor is sealed here**, as the Heavenly
@@ -85,26 +92,35 @@ session's ruling; nothing here is a new formula. The judgements below are labell
   "The Cataclysm Boss" with `bIsTheCataclysmBoss`, and the panel neither dims it nor counts it among the heading's
   modifiers, as the corrupted double's line is not (issue #2688).
 - **A LOAD FINDS IT AGAIN (judgement J3).** A load rebuilds the floor and then replaces its creatures with the saved
-  ones, which would leave the record pointing at a destroyed boss and the stairs open under a living one.
-  `RestoreCreatureRoles` records the saved Gatekeeper at rung 5 that did not rise from the dead
-  (`bRisenFromTheDead`) as the boss on the boss floor. No saved field is added; a boss dead when the floor was saved has
-  no record, so the stairs stay open.
+  ones (`CataclysmSaveLoad::RelinkTheCreatures`), which would leave the record pointing at a destroyed boss and the
+  stairs open under a living one. `RestoreCreatureRoles` records the saved Gatekeeper at rung 5 that did not rise from
+  the dead (`bRisenFromTheDead`) as the boss on the boss floor. No saved field is added; a boss dead when the floor was
+  saved has no record, so the stairs stay open.
+- **THE RISEN BOSS ON A LOAD, ANSWERED BY PHASE 2.** Phase 1 recorded that "a rung-5 Gatekeeper that Divine Resurgence
+  raised and the save then holds could be taken for the boss on a load; not handled". **It cannot be, and phase 1's own
+  check is why.** Divine Resurgence (`NoteDeathForDivineResurgence`) and Dead Rising both set `bRisenFromTheDead` on
+  what they raise, at the rung it died at; `FCataclysmSaveGather::CreatureFrom` writes that flag into the record and
+  `FCataclysmSaveApply::CreatureInto` puts it back; and `RestoreCreatureRoles` skips a record that carries it. Nothing else makes a
+  Gatekeeper at rung 5: Royal Guard's guards, a Demon Prince and a Plague Lord are held to Herald (3). So a load treats
+  the risen boss as play does -- the boss it rose from is dead and its death opened the stairs for good. No code
+  changed for it; test 5 now drives the hook both ways.
 - **WHAT DOES NOT CHANGE.** Death inside the dungeon (`EndTheDungeonForADeath` still leaves a Cataclysm dungeon to the
   level, by its existing ruling); what clearing it does (6e); every other dungeon's floors.
 
 ### Tests
 
-Three new, in the new group `Cataclysm.BossFloor.`. Every fixture's starting state: a run from `Begin(1)` and one
-`AdvanceDay`, as the Heavenly Core's tests; a dungeon of it rewritten to the depth, kind and sub-type the test names,
-with no modifiers, so no floor draws one; `EnemyScale` 0, so the population places the boss at the exit and nothing
-else (`FCataclysmFloorPopulator::Populate` places the boss before it asks the density); a possessed player with no
-gear. No assertion reads a health or a score.
+Five new, in the new group `Cataclysm.BossFloor.`. The fixtures: a run from `Begin(1)` (seed 1, difficulty tier 1) and
+one `AdvanceDay`, as the Heavenly Core's tests; the first dungeon of it that is not a Cow Level rewritten to the depth,
+kind and sub-type the test names, with no modifiers, so no floor draws one; `EnemyScale` 0, so the population places
+the boss at the exit and nothing else (`FCataclysmFloorPopulator::Populate` places the boss before it asks the density);
+a possessed player with no gear. No assertion reads a health or a score.
 
 1. `OnlyTheLastFloorOfACataclysmDungeonPlacesTheCataclysmBoss`: an Elite Cataclysm dungeon three floors deep, so floors
    1 and 2 have a Gatekeeper too. On each: CONTROL, not the boss floor, its Gatekeeper's rung below 5, no boss
    recorded, nothing sealed. On floor 3: the boss floor, its Gatekeeper at rung 5, which the rarity table names
-   "Cataclysm Boss", a boss, and the one recorded. Then the CONTROL of another kind: an Elite Quest dungeon's last
-   floor -- not the boss floor, a drawn rung, nothing recorded or sealed, no panel line.
+   "Cataclysm Boss", a boss, and the one recorded. Then the CONTROL of another kind: the same dungeon rewritten as an
+   Elite Quest dungeon two floors deep, its last floor -- not the boss floor, a drawn rung, nothing recorded or sealed,
+   no panel line.
 2. `TheLastFloorsStairsStaySealedUntilThePlayerKillsTheCataclysmBoss`: a Cataclysm dungeon two floors deep. CONTROL on
    floor 1: no seal, no panel line. On floor 2: the boss at rung 5; the panel's line, word for word; the stairs sealed
    by `Cataclysm_Boss` alone; taking them leaves the dungeon on the map. The player's blow kills it; then nothing
@@ -112,39 +128,105 @@ gear. No assertion reads a health or a score.
 3. `TheLastFloorsStairsOpenWhenTheCataclysmBossDiesOfAnythingElse`: the same floor; the boss dies of a loss of health
    it takes from itself (`ReduceHealthDirectly`, no hit, no player on record); then nothing seals, the line says slain,
    and the stairs clear the dungeon.
+4. `TheEarnedBossDungeonsLastFloorHoldsTheCataclysmBossUntilItDies`, new in phase 2: THE REAL BOSS DUNGEON. The first
+   active Cataclysm's quest dungeons, as many as `UCataclysmRoster::QuestObjectivesFor` asks, are built by hand on the
+   map's first city and cleared through `ClearDungeon`, as `Cataclysm.EarnedBoss.` does, which opens the boss dungeon
+   through `OpenCataclysmDungeonIfEarned`. Asserted as set-up: it stands on no city and is 100 floors or more. Its
+   rolled sub-type is set to none and its modifiers taken off, so no Horde wave and no floor rule decides what stands at
+   the exit. CONTROL on floor 1: not the boss floor, no boss, no seal. On its last floor: the boss floor, the Gatekeeper
+   at rung 5 and recorded, the stairs sealed by `Cataclysm_Boss` alone, taking them leaves it on the map; the player's
+   blow kills it, nothing seals, and taking them clears it (`FindCataclysmDungeon` null).
+5. `ALoadFindsTheSavedCataclysmBossAndNotOneThatRoseFromTheDead`, new in phase 2: on the boss floor of a rewritten
+   dungeon two floors deep, the two steps of a load by hand -- the rebuilt boss destroyed (set-up: no boss stands),
+   then `RestoreCreatureRoles` handed a fresh Gatekeeper at rung 5 with a record. CONTROL: a record saying it rose from
+   the dead -- not the boss, nothing sealed. Then one that did not: the boss again, the stairs sealed by it alone, the
+   panel's "it stands" line.
 
 Before each kill the boss's drawn modifiers are taken off and its evasion, block, retaliation and energy shield set to
 0 and its health to 1, so the kill does not depend on what it drew. No world is ticked, so a dead boss's body is still
 standing when the seal is read (`HandleDeath` removes a body with no clip on the next tick).
 
+**THE STARTING-STATE AUDIT, PHASE 2**, every assertion that compares against a fixed number or relies on a state the
+fixture did not set, read from the code at development 6472dd420:
+
+- **Phase 1's Quest control needed two dungeons that are not Cow Levels on day 1.** It no longer needs more than one:
+  it rewrites the same dungeon a second time. For the one, day 1 fires the opening wave: `NextSurgeDay` starts at 0, so
+  `IsDue(1)`, and the wave is `OpeningDungeonsPerSurge` = 12 at `SurgeIndex` 0 (`DungeonMultiplier` 1 at lethality 0);
+  only a Cow Level is skipped, weight 7 of 100. Slice 6b added no draw to a surge: it changed the sub-type roll of the
+  Cataclysm kind only, and a boss dungeon is made only on the quest clear that earns it. The one owed day run when test
+  1 leaves the first dungeon cannot take that dungeon off the board: the shallowest row is 8 floors, and its timer is
+  `ResolveDaysFor` of its rolled depth, not of the 3 the test writes.
+- **"a drawn rung, below 5" (test 1, floors 1 and 2 and the Quest's last floor).** `RollRarityStep` draws only among
+  `SpawnableSteps`; rung 5's SpawnWeight is 0.0, and no rule of an Elite dungeon or of a floor with no modifiers raises
+  a Gatekeeper's drawn rung. Test 1's floors 1 to 3 have a Gatekeeper each because `BossAtTheExit` answers yes on every
+  floor of an Elite dungeon; tests 2 to 5 use sub-type none, whose first floor of two (or of 100 or more) has none.
+- **"at rung 5"** is the constant under test, `CataclysmBossRung`, which the Python test holds to the table.
+- **"100 floors or more" (test 4)** is `SpecFor(Cataclysm, Pillar)`'s 100 to 150, plus one floor per ordinary dungeon
+  cleared (`CataclysmFloorsPerOrdinaryDungeon` 1), and the test clears none. A tier 1 run faces one Cataclysm and needs
+  it finished (`CataclysmsRequiredFor(1)` = 1).
+- **`EnemyScale` 0** gives the boss alone: `FCataclysmFloorPopulator::Populate` places it before the early return on a
+  density of nothing. Test 4's floor of 100 or more is built at the size every floor is: the generator reads the floor
+  number only for its seed.
+- **Test 5's two Gatekeepers** are spawned with `AdjustIfPossibleButAlwaysSpawn`, as
+  `Cataclysm.DungeonModifierEffects.` spawns its own, so a capsule in the way moves them rather than refusing them.
+
 Python, `tools/tests/test_the_cataclysm_boss_rung_is_the_tables.py`, 4 cases: the rung is the table's "Cataclysm Boss"
 step; it is the top of the ladder with SpawnWeight 0; the design still says "**A Cataclysm Boss is placed, not
-drawn**"; the seal key and the panel key are the same text. "4 passed in 0.05s".
+drawn**"; the seal key and the panel key are the same text. Phase 1 measured "4 passed in 0.05s".
+
+### Compiled in phase 2
+
+`python tools/unreal_build.py build`, three times, each in the background with no timeout, the tracked tree as committed
+at each step:
+
+| Build | What it compiled | Line it printed |
+|---|---|---|
+| 1, after the rebase | the rebased branch, against intermediates built for development | `Build: Succeeded - 56 actions, 51 files compiled` |
+| 2, every changed `.cpp` alone | `git reset --mixed origin/development`, so the adaptive unity build takes every file the branch changes out of its unity file; the review's fixes included. The four changed sources' own `.obj` files -- `CataclysmDungeonGameMode.cpp`, `CataclysmFloorModifierPanel.cpp`, `CataclysmFloorModifierPanelLayout.cpp`, `CataclysmBossFloorTests.cpp` -- were written by this build (02:18 local). Then `git reset --mixed` back, with the working diff byte-identical before and after (`cmp`) | `Build: Succeeded - 34 actions, 31 files compiled` |
+| 3, in their unity files | the fixes committed, `Makefile.bin` moved aside so it was regenerated (the moved copy deleted after). `Module.Cataclysm.11.cpp` holds both panel sources, `.14` the tests and `.38` the game mode, and all three are in the list | `Build: Succeeded - 10 actions, 7 files compiled: Module.Cataclysm.14.cpp, Module.Cataclysm.11.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.39.cpp` |
+
+No build failed, so no compile error needed fixing: phase 1's code compiled as written.
 
 ### Registered before the run
 
-The engine words a failed `TestTrue` "Expected '<what>' to be true.", a failed `TestNull` "Expected '<what>' to be
-null." and a failed `TestEqual` "Expected '<what>' to be <expected>, but it was <actual>."
-(`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` lines 2676 and 2686 for the first two, in this engine).
+The engine words a failed `TestTrue` "Expected '<what>' to be true.", a failed `TestFalse` "Expected '<what>' to be
+false.", a failed `TestNull` "Expected '<what>' to be null." and a failed `TestEqual` "Expected '<what>' to be
+<expected>, but it was <actual>." (`Engine/Source/Runtime/Core/Private/Misc/AutomationTest.cpp` lines 2666, 2676 and
+2686 for the first three, in this engine).
+
+THE BASE COUNTS are "Test Completed" lines counted by prefix, ignoring case, in the whole-suite engine log of the 6b
+window's registration commit fa271e158, whose game tree is development 6472dd420's: 4647 performed, 4647 succeeded, 47
+skipped halves, "720 written and deleted, 0 left behind", "Declared: 4647". Every prefix ends in a dot and none is a
+prefix of another group's name.
 
 | Figure | Registered |
 |---|---|
-| `Cataclysm.BossFloor.` alone | 3 / 3: none at the base, + 3 by name; no skipped half |
-| Whole Unreal suite | TO-BE-MEASURED: the base's last measured total + 3 by name; 0 failed; skipped halves the base's, unchanged |
-| Python | the whole suite TO-BE-MEASURED in the window. Phase 1 ran only the 145 test files that name the changed files, read every C++ source or read this log, plus the new one: "4100 passed, 6 skipped in 148.98s", JUnit tests 4106, failures 0, errors 0, skipped 6 -- before this entry was written; `ruff check .` below |
-| P1, the rung forced on every population Gatekeeper (`return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsTheCataclysmBossFloor()` to `return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper`, in `CataclysmDungeonGameMode.cpp`), prefix `Cataclysm.BossFloor.` | fails 6, all in test 1: "CONTROL: floor 1's Gatekeeper keeps a drawn rung, below the Cataclysm Boss's (it stands at 5)" and the same for floor 2 (each "... to be true."), "CONTROL: and no Cataclysm Boss is recorded on floor 1" and on floor 2 (each "... to be null."), "CONTROL: its Gatekeeper keeps a drawn rung, below the Cataclysm Boss's (it stands at 5)" ("... to be true.") and "CONTROL: and no Cataclysm Boss is recorded there" ("... to be null."). Nothing else: the seal still needs the boss floor, and tests 2 and 3 have no Gatekeeper before their last floor |
-| P2, the seal never added (`		Sealing.Add(FName(CataclysmBossSealKey));` to `		Sealing.Remove(FName(CataclysmBossSealKey));`), prefix `Cataclysm.BossFloor.` | fails 2: "while it stands the Cataclysm Boss seals the stairs" (test 2) and "while it stands the Cataclysm Boss seals the stairs, here too" (test 3), each "... to be true.", and each test stops there; the panel line before it holds, because it reads the boss and not the seal |
-| P3, a dead boss still counted as standing (`return IsValid(Boss) && !UCataclysmSkillEffects::IsDead(Boss) ? Boss : nullptr;` to `return IsValid(Boss) ? Boss : nullptr;`), prefix `Cataclysm.BossFloor.` | fails 2: "once it is dead nothing seals the stairs" (test 2) and "once it is dead, whoever killed it, nothing seals the stairs" (test 3), each "... to be true.", and each test stops there. Depends on the body still standing, which holds because no world is ticked |
+| `Cataclysm.BossFloor.` alone | 5 / 5: none at the base, + 5 by name; no skipped half |
+| `Cataclysm.DungeonMode.` alone | 46 / 46: none added or changed; it walks the population, the floors and the stairs this changes |
+| `Cataclysm.DungeonStairs.` alone | 9 / 9: none added or changed; the stairs' refusal while sealed |
+| `Cataclysm.Gatekeeper.` alone | 13 / 13: none added or changed; the Gatekeeper's rung on every other floor |
+| `Cataclysm.ConsumptionDouble.` alone | 15 / 15: none added or changed; the panel line that is no row, whose code the boss's line shares |
+| `Cataclysm.SaveLoad.` alone | 75 / 75: none added or changed; `RestoreCreatureRoles` on every load |
+| Whole Unreal suite | 4652 performed, 4652 succeeded, 0 failed: the base's 4647 + 5 by name; skipped halves the base's 47, unchanged; test saves 0 left behind; "Declared: 4652" |
+| Python | the whole suite in the window, registered at 7338 passed and 9 skipped, JUnit tests 7347, failures 0, errors 0; `ruff check .` clean. Phase 2, before this registration, on the fix commit with this entry not yet final: "7338 passed, 9 skipped in 204.13s (0:03:24)", exit 0; JUnit tests 7347, failures 0, errors 0, skipped 9 (the base window's 7343 tests, 7334 passed and 9 skipped, + this branch's 4); `ruff check .` "All checks passed!", exit 0 |
+| P1, the rung forced on every population Gatekeeper (`return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper && IsTheCataclysmBossFloor()` to `return Placement.Creature == ECataclysmDungeonCreature::Gatekeeper`, in `CataclysmDungeonGameMode.cpp`), prefix `Cataclysm.BossFloor.` | 5 performed, 4 succeeded, 1 failed: 6 assertions, all in test 1: "CONTROL: floor 1's Gatekeeper keeps a drawn rung, below the Cataclysm Boss's (it stands at 5)" and the same for floor 2 (each "... to be true."), "CONTROL: and no Cataclysm Boss is recorded on floor 1" and on floor 2 (each "... to be null."), "CONTROL: its Gatekeeper keeps a drawn rung, below the Cataclysm Boss's (it stands at 5)" ("... to be true.") and "CONTROL: and no Cataclysm Boss is recorded there" ("... to be null."). Nothing else: the seal and the panel line still need the boss floor, and tests 2 to 5 have no Gatekeeper before their last floor |
+| P2, the seal never added (`		Sealing.Add(FName(CataclysmBossSealKey));` to `		Sealing.Remove(FName(CataclysmBossSealKey));`), prefix `Cataclysm.BossFloor.` | 5 performed, 1 succeeded, 4 failed, one assertion each: "while it stands the Cataclysm Boss seals the stairs" (test 2), "while it stands the Cataclysm Boss seals the stairs, here too" (test 3) and "while it stands the earned boss dungeon's last stairs are sealed by it alone" (test 4), each "... to be true." and each test stops there; and "and it seals the stairs again, alone" (test 5, "... to be true."), after which test 5's panel line still holds, because it reads the boss and not the seal |
+| P3, a dead boss still counted as standing (`return IsValid(Boss) && !UCataclysmSkillEffects::IsDead(Boss) ? Boss : nullptr;` to `return IsValid(Boss) ? Boss : nullptr;`), prefix `Cataclysm.BossFloor.` | 5 performed, 2 succeeded, 3 failed, 4 assertions: "once it is dead nothing seals the stairs" (test 2) and "once it is dead, whoever killed it, nothing seals the stairs" (test 3), each "... to be true." and each test stops there; in test 4 "once it is dead nothing seals the earned boss dungeon's last stairs" ("... to be true.") and then "and taking them clears the boss dungeon" ("... to be null."), because the stairs refuse. Test 5 passes: a destroyed boss is not valid. Depends on the body still standing, which holds because no world is ticked |
+| P4, a risen Gatekeeper taken for the boss on a load (`&& Saved.RarityStep == CataclysmBossRung && !Saved.bRisenFromTheDead)` to `&& Saved.RarityStep == CataclysmBossRung)`), prefix `Cataclysm.BossFloor.` | 5 performed, 4 succeeded, 1 failed: 2 assertions, both in test 5: "CONTROL: a Gatekeeper at the Cataclysm Boss rung that rose from the dead is not taken for the boss" ("... to be null.") and "CONTROL: so it seals nothing" ("... to be false."). The saved boss after it is then the boss and seals, so the rest of test 5 holds |
 
-Each anchor occurs once in `CataclysmDungeonGameMode.cpp`, counted by a Python `str.count` at this commit; the breaks
-were not compiled. P2's `TArray::Remove` returns a count that is discarded, which is not an error.
+Each anchor occurs once in `CataclysmDungeonGameMode.cpp`, counted by a Python `str.count` at the registration commit
+and again by `prove_p6d.py --anchors-only`. P2's `TArray::Remove` returns a count that is discarded, which is not an
+error (`Remove` is not `[[nodiscard]]` in this engine's `Array.h`). The breaks were not compiled.
 
 ### Not tested
 
 - **A Horde Cataclysm dungeon's last wave** bringing the boss through `ContinueTheWaveArriving`, and its "the dungeon is
-  not beaten while it lives" line: read, not tested.
-- **A load onto the boss floor** (`RestoreCreatureRoles` finding the saved boss): read, not tested. A rung-5 Gatekeeper
-  that Divine Resurgence raised and the save then holds could be taken for the boss on a load; not handled.
+  not beaten while it lives" line: read, not tested. Test 4 sets the earned dungeon's sub-type to none for that reason.
+- **A whole save and load onto the boss floor.** Test 5 drives `RestoreCreatureRoles` by hand with records it builds;
+  that `FCataclysmSaveGather` writes `bRisenFromTheDead` and the rung, and that `RelinkTheCreatures` calls the hook, is
+  read, not run here.
+- **The earned boss dungeon with its own sub-type and modifiers.** Test 4 takes them off; a rolled Volatile or Horde
+  boss dungeon, or one whose modifiers also seal the last stairs, is not walked.
 - **`NoteDeathForTheCataclysmBoss`'s panel refresh**: the tests do not call `StartPlay`, so the death listener is not
   bound and `RefreshFloorModifierPanel` returns early without a `ACataclysmPlayerController`; the seal and the line are
   read without it.
@@ -153,7 +235,6 @@ were not compiled. P2's `TArray::Remove` returns a count that is discarded, whic
 - A dungeon one floor deep, which has no boss at all (`BossAtTheExit`), and the dark floor: no boss floor by
   construction, not tested.
 - Anything on screen: the panel line is read through `LinesFor` and `NameLineFor`, not drawn.
-
 ---
 
 ## 2026-11-02 — The Cataclysm boss dungeon opens when earned, stands on no city, never resolves, is never a Siege, and grows with every ordinary dungeon defeated; the run record keeps it at version 4 (#1324 slice 6b)
