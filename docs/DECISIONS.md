@@ -2,6 +2,293 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-02 — A carried item's tooltip compares it with what wearing it would replace (#832)
+
+**Affects:** `FCataclysmEquipPreview` and `UCataclysmEquipmentComponent::PreviewEquip`, `PlayerNumbers` and
+`WornResidueOf`, new, with `WornResidueIfEquipped` and `RefreshAttributes` rewritten on top of them
+(`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h`, `.cpp`); `UCataclysmWeaponSlotsComponent::BasicAttackCarrying`,
+new, which `EquipWeaponTypes` now calls for its basic attack (`Items/CataclysmWeaponSlotsComponent.h`, `.cpp`);
+`ACataclysmComparisonStandIn`, new (`game/Source/Cataclysm/Character/CataclysmComparisonStandIn.h`, `.cpp`);
+`UCataclysmItemComparison`, `FCataclysmComparisonReading` and `FCataclysmComparisonResult`, new
+(`game/Source/Cataclysm/Interface/CataclysmItemComparison.h`, `.cpp`); `UCataclysmCharacterSheetLayout::FigureFor` and
+`FigureText`, new, read by `LineFor` (`Interface/CataclysmCharacterSheetLayout.h`, `.cpp`);
+`UCataclysmInventoryWidget::Refresh`, `NativeDestruct`, `StandInForComparing` and `MakeComparisonToolTip`
+(`Interface/CataclysmInventoryWidget.h`, `.cpp`); `UCataclysmInventoryScreen::ComparisonFontPx`, new
+(`Interface/CataclysmInventoryScreen.h`); the "WHAT IS NOT HERE" paragraph of `Interface/CataclysmItemTooltip.h`; six new
+tests in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp` and one in
+`game/Source/Cataclysm/Tests/CataclysmCharacterSheetTests.cpp`. Issue
+[#832](https://github.com/sdubois777/Cataclysm/issues/832).
+
+### SAID FIRST
+
+- **COMPILED; TWO GROUPS RUN.** Phase 1 was written while another change's build-machine window held this machine and
+  was not compiled. Phase 2, rebased onto `development` at `23d2333d6` (issue #340's minion attribute channel; the only
+  conflict was this file's top), compiled it with `python tools/unreal_build.py build`: "Build: Succeeded - 44 actions,
+  41 files compiled", every one of the 41 unity files rebuilt, among them the seven that hold this change's `.cpp`
+  files. Then each changed and new `.cpp` was compiled alone, as a guard proof's break compiles it, by marking it
+  changed for the adaptive build: "Build: Succeeded - 15 actions, 12 files compiled: CataclysmCharacterSheetTests.cpp,
+  CataclysmCharacterSheetLayout.cpp, CataclysmItemComparison.cpp, CataclysmInventoryWidget.cpp,
+  CataclysmWeaponSlotsComponent.cpp, CataclysmItemComparisonTests.cpp, CataclysmEquipmentComponent.cpp, ...", and the
+  stand-in's in the build below. Only `Cataclysm.ItemComparison.` and `Cataclysm.CharacterSheet.` have been through the
+  automation run (the two window bullets below), so every other figure under "Registered before the run" is still a
+  prediction.
+- **ONE FAULT FOUND COMPILING AND REVIEWING, AND FIXED.** `ACataclysmComparisonStandIn`'s constructor called
+  `AbilitySystem->SetIsReplicated(false)`. The class sets true, so a call asking for false runs the body, and in a
+  constructor that body's ensure fires ("SetIsReplicatedByDefault is preferred during Component Construction";
+  `UActorComponent::SetIsReplicated` asserts `!NeedsInitialization()`) -- on the class default object at start-up and on
+  every stand-in spawned, which a test would report as an error. `SetIsReplicatedByDefault` is protected
+  (C2248 when tried), and the call is not needed: a component replicates only through its actor, whose `bReplicates` is
+  false. The call is gone ("Build: Succeeded - 4 actions, 1 file compiled: CataclysmComparisonStandIn.cpp"). The other
+  actors here that call `SetIsReplicated` in a constructor ask for the true the class already holds, so their bodies
+  never run. The review below found nothing else to change; the window found one more fault, next.
+- **THE WINDOW STOPPED ONCE, ON A PRODUCT FAULT THE TESTS ALSO HAD, AND IT IS FIXED.** Window item-comparison-w1 at
+  `6aa62dd6` stopped at its first step: `Cataclysm.ItemComparison.` alone performed 6, 4 succeeded, 2 failed -- the
+  helm's "the left column names what it would replace" and the two-handed weapon's "the heading names both". A
+  temporary `AddInfo` in both tests printed "NameOfItem=[] heading=[If worn, in place of Head_Helm:]" and
+  "heading=[If worn, in place of Weapon_Sword and Weapon_Dagger:]". `UCataclysmItemName::NameOf` names only an item
+  with a rarity, `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no enchantment, and
+  `HeadingFor` fell back to the row key -- which a player holding the starting weapon, such a piece, would have read.
+  `HeadingFor` now takes the whole name, else the base's `BaseName`, as the piece's inventory cell shows it
+  (`UCataclysmInventoryScreen::LabelFor`), and the row key only for a base the table does not hold. The two tests hold
+  the headings to "If worn, in place of Helm:" and "If worn, in place of Sword and Dagger:", and the helm's adds a
+  control that the plain helm has no whole name and a check that a piece with a rarity is called by its whole name.
+  Built ("Build: Succeeded - 7 actions, 4 files compiled: CataclysmItemComparison.cpp,
+  CataclysmItemComparisonTests.cpp, ...", each alone) and rerun with the coordinator's lock: "Tests: 6 tests
+  performed, 6 succeeded, 0 failed", "Test saves: 0 written and deleted, 0 left behind". The registration below is
+  unchanged by it, and P3's predicted "the heading names both" still fails under its break, the heading then naming
+  the sword alone.
+- **THE WINDOW STOPPED A SECOND TIME, ON A TEST THAT ASSUMED A FIGURE, AND IT IS FIXED.** At `cef70c46` the window
+  passed `Cataclysm.ItemComparison.` alone (6 of 6) and stopped at `Cataclysm.CharacterSheet.` alone: 10 performed, 9
+  succeeded, 1 failed, `EveryRowShowsTheFigureAComparisonReads`: "Expected 'CONTROL: a pool's figure is its maximum'
+  to be 606.000000, but it was 706.000000". A temporary `AddInfo` printed, before the test's adds, "max 100 health 100
+  war 0 all 0 cdr 0", and after them "max 706 health 512 war 45 all 10 cdr 0.25 figure 706 row [512 of 706]": the
+  fixture's `Add` adds to what a set starts with, and the vital set starts maximum health and health at 100. So
+  `FigureFor` and the sheet were right and the test's 606 was assumed; its 55 and 0.25 held only because those
+  attributes start at nought. All three controls now read their expected figure off the attributes, each with a set-up
+  check that it differs from the figure a wrong reading would give. Rerun with the coordinator's lock:
+  `Cataclysm.CharacterSheet.` "Tests: 10 tests performed, 10 succeeded, 0 failed" and `Cataclysm.ItemComparison.`
+  "Tests: 6 tests performed, 6 succeeded, 0 failed", both "Test saves: 0 written and deleted, 0 left behind". Nothing
+  else has run since; the registration below is unchanged.
+- **EVERY FIXED NUMBER THE ADDED TESTS COMPARE AGAINST, CHECKED FOR THE SAME FAULT, read after the second stop.** In
+  `CataclysmItemComparisonTests.cpp`: the helm's rise is `AffixValue(120, 0, 7, 1.0, 10)` held against a real equip's
+  measured difference, and its change line is built from the measured figures; the residues (1000, 11) are set by the
+  tests themselves on the items they wear, and the threshold is `ConsumptionThresholdFor(1)`; the sword's hit is held
+  to the attack damage attribute as read; the slots, "Ring 4" and the headings' "Helm", "Sword" and "Dagger" are the
+  game's own wording for the items set up (`ItemBases.csv`'s `BaseName`), and the counts (one change line, one or two
+  pieces off, none off) follow from what is worn. The line-wording test's 606, 726, 1240, 5, 7.5, 50 and 60 are inputs
+  it hands to `ChangeLine`, not figures read from a character, and its "47" is only in the P2 prediction. None assumes
+  what a fixture starts with.
+- **THE REVIEW, phase 2, read and not run.** `PreviewEquip` calls `Equip` itself on the live component, so the slot
+  choice, a two-handed weapon over two held (both recorded, `Equip`'s `OutRemoved` then `OutAlsoRemoved`) and Both Hands
+  Full (read by `Equip` off the live owner's ability system) are `Equip`'s own. `Equip` and `EquipInto` change only
+  `Slots` and announce only through `AnnounceChange`, which the preview silences and whose count it puts back, so no
+  listener runs: no skill is taken back or granted (`ACataclysmPlayerCharacter::OnEquipmentChanged` is the listener), no
+  save is triggered, and `UCataclysmWearing`'s threshold question is not asked (it is asked only by
+  `WearFromCarried`). The gathering writes to the stand-in's ability system and to an equipment component in the
+  transient package, never to the player's. The inventory widget rebuilds carried tooltips only when the bag's or the
+  worn gear's change count moves, and neither moves by asking. The stand-in is destroyed in `NativeDestruct`, which runs
+  when `ACataclysmPlayerController::Input_ToggleInventory` takes the screen off with `RemoveFromParent`; it is spawned
+  again on the next rebuild. ITS ABILITY SYSTEM CAN BE FOUND: `UCataclysmTargeting::AbilitySystemOf` asks
+  `UAbilitySystemGlobals::GetAbilitySystemComponentFromActor` with its default, which falls back to a component search.
+  Nothing reaches it to ask, read in the code rather than run: it has no collision, so no overlap finds it, and the
+  only walk over every actor outside the tests (`CataclysmDungeonGameMode.cpp`, the floor's placement) keeps pawns,
+  floor objects, ground zones and stairs, none of which it is.
+- **THE FIGURE THE PLANNER GAVE FOR THE HELM TEST WAS WRONG, AND WAS NOT USED.** "Health: N to N+120" assumes the flat
+  health affix gives its top value, 120, on any piece; `UCataclysmItemValues::AffixValue` divides by the +10 multiplier
+  before applying the piece's own, so 120 is its value at +10 only. Test 1 wears both helms at +10 and reads the rise
+  from a real equip, holding it to `AffixValue(120, 0, 7, 1.0, 10)` rather than to a literal.
+- **For the owner's launch check:** open the inventory with a helm worn and another carried, and hover the carried
+  one: the tooltip has two columns, the carried helm and "If worn, in place of ..." with the totals that would move on
+  the left, "Worn now:" and the worn helm on the right. Hover a greatsword while holding two one-handed weapons: both
+  are in the right column.
+
+### The rulings, by the coordinating session, 2026-11-02 (under the owner's delegation)
+
+- **(a)** Compare against the piece the equip action would actually replace -- the same slot choice
+  `UCataclysmEquipmentComponent::Equip` makes (the player equips through `UCataclysmWearing::WearFromCarried`, which calls
+  `Equip`). A free slot means "compared with nothing".
+- **(b)** Show the character's totals that would change, up or down, computed through the game's single stat gatherer
+  (`RefreshAttributesAs`) on a stand-in, with no side effects on the live character, plus the worn piece's own tooltip
+  lines as a second column.
+- **(c)** A two-handed weapon replacing two one-handed weapons compares against both.
+- **(d)** Shown always on hover; no held key.
+- **(e)** The comparison also lists one line the sheet does not have: attack damage per hit, before the target's
+  defences, computed by the game's own hit-damage function on the stand-in; and if no such function can be called
+  without a target, the line is left out rather than invented.
+
+### What changes
+
+- **ONE PROBE, `PreviewEquip`.** It is the probe `WornResidueIfEquipped` already ran for the threshold question (issue
+  #2687) -- copy the slots, run `Equip` with announcing silenced, put the slots and the change count back -- now
+  recording where the item went and what came off, both pieces in `Equip`'s order. `WornResidueIfEquipped` reads its
+  total from the preview's slots, so the question and the comparison cannot disagree about where an item goes, and
+  Both Hands Full is still read off the owner's ability system by `Equip` itself.
+- **THE TOTALS, ON A STAND-IN (ruling (b)).** `UCataclysmItemComparison::ReadingOf` restores a set of slots exactly
+  (`RestoreWornGear`, which decides nothing) onto an equipment component that belongs to no actor -- the corrupted
+  double's way -- copies the live component's switched-off slot and the live ability system's floor lines, and runs
+  `RefreshAttributesAs` with the player's numbers (`PlayerNumbers`, which `RefreshAttributes` now reads them through)
+  onto `ACataclysmComparisonStandIn`: a hidden, transient, non-replicated, non-ticking actor with no collision, carrying
+  an ability system and the player state's five attribute sets. Both columns are read there, so a change line compares
+  like with like. Nothing is written to the player.
+- **WHICH TOTALS: THE SHEET'S 46, READ AS THE SHEET READS THEM.** `UCataclysmCharacterSheetLayout::FigureFor` is the
+  figure a row is about -- a pool's maximum, a resistance's generic and typed shares before the tier's penalty,
+  cooldown reduction's shown percentage, otherwise the stat with what the refresh could not fold in -- and `LineFor`
+  now reads the pools, the resistances, cooldown reduction and the plain rows through it. A line is listed only when
+  the two figures differ as written (`FigureText`), so "606 to 606" is never said: "Health: 606 to 726, up 120".
+- **THE HIT (ruling (e)), BUILT.** The game prices a player's basic attack with `UCataclysmSkillEffects::ApplyHit`,
+  which needs a target and returns nought without one. Its own no-target form exists and is already used for self
+  hits, copied blows and ground patches: `UCataclysmSkillEffects::SkillHitWithNoTarget`, `ApplyHit`'s bracket with every
+  enemy fact "not known". `UCataclysmItemComparison::BasicHitOf` calls it on the stand-in with the basic attack the first
+  worn weapon supplies, carrying the element tag it would be granted with -- `BasicAttackCarrying`, which the weapon
+  slots component now grants from too, so the two cannot differ -- and its damage percent, its own or else its slot's,
+  as `UCataclysmSkillTemplate::GetDamagePercent` takes it. Written last, as "Basic attack hit, before the target's
+  defences: 140 to 180, up 40". Not counted, because no enemy is in it: a row about the enemy struck, increased damage
+  against its type, a critical strike, and what the moment holds (a stored blow, a cut on the attacker, a charge bought).
+- **THE TOOLTIP (rulings (c), (d)).** For a carried piece of gear, two columns built in the widget tree on the panel's
+  colour (a widget tooltip has no background of its own: `UWidget::SetToolTip` gives it a null border image). Left: the
+  item's own lines, a blank line, "If worn, in place of A:" / "If worn, in place of A and B:" / "If worn in Ring 4:", and
+  the change lines or "No total on the character sheet changes." Right: "Worn now:" and each replaced piece's own lines,
+  or "Compared with nothing: Ring 4 is empty." Shown on hover with no key. A material or an empty cell keeps the text
+  tooltip it had. Rebuilt when the carried inventory OR the worn gear changes, never every frame (issue #1192); what is
+  worn now is read once per rebuild and shared by every carried item, so a bag of N pieces costs N + 1 readings.
+
+### Genre sources, read 2026-11-02
+
+- **Path of Exile**, its in-game help text as poedb lists it (https://poedb.tw/us/HelpfulTips): "Holding Alt while
+  hovering over an item in your inventory will display it against what you have equipped." A held key, not the default.
+- **Diablo IV**, Den of Geek (https://www.denofgeek.com/games/diablo-4-best-hidden-setting-compare-gear/): by default the
+  hover says whether the item has a higher or lower power level than the one equipped in that slot; holding Shift shows
+  each stat against the equipped gear, and only with the "Advanced Tooltip Compare" setting, which is off by default.
+- **Diablo IV, players** (https://us.forums.blizzard.com/en/d4/t/some-rings-wont-compare-with-with-equipped-rings/132580):
+  a ring is compared with one equipped ring at a time, and Alt switches the comparison to the other ring. None of the
+  posters is Blizzard staff.
+- **Last Epoch, players** (https://forum.lastepoch.com/t/ring-comparison/34054): left Ctrl compares a ring "only against
+  the left hand ring", and a two-handed weapon is compared with the weapon alone, not with a one-handed weapon and its
+  shield. None of the posters is a developer.
+
+Two further player threads the planner named (Steam, and Last Epoch's "compare to left and right items") were not
+re-read, so they are not recorded.
+
+### What the research settles, and what is our judgement
+
+- **Settled:** a carried item's tooltip is compared with the equipped piece for the same slot, beside it. All three
+  games do it, and the question it answers -- "if I put this on, what changes?" -- is the one issue #832 names.
+- **Settled, as a fault to avoid:** with several slots of one kind, comparing with an arbitrary one, or with one weapon
+  when two would come off, is what players of both Diablo IV and Last Epoch report as wrong. Rulings (a) and (c)
+  compare with what the equip would really take off.
+- **Our judgement, not read off another game:** showing the change in the character's totals rather than an item
+  against item stat table (issue #832's own proposal; two items of one base rarely carry the same stats); showing it
+  always rather than on a key (ruling (d)), where all three games put the full comparison behind a key or a setting;
+  and the basic attack's hit as the one figure beyond the sheet (ruling (e)), because attack damage is not one of the
+  sheet's 46 and a weapon's worth is otherwise invisible in the comparison.
+
+### Limits
+
+- **NOT MODELLED:** a random buff the player is holding (the stand-in holds none, so a held buff's lines are in
+  neither column), and a weapon planted in the ground by a skill (the restored components belong to no actor, so a
+  planted weapon is read as held in both columns). The "now" column is the stand-in's reading of the worn set, so while
+  one of these, or a timed effect on the player, holds, it can differ from the sheet.
+- **REBUILT ON A CHANGE TO THE BAG OR THE WORN GEAR ONLY.** A level gained, a point spent or a floor entered while the
+  inventory is open leaves the figures one change stale until something is picked up, dropped or worn.
+- **`UCataclysmWearing::WearFromCarried`'s refusals are not shown.** A weapon that would take two off with no room in
+  the bag is still compared, as `Equip` would wear it.
+
+### Tests
+
+Six new in `CataclysmItemComparisonTests.cpp`, group `Cataclysm.ItemComparison.`, each in a world that has begun play
+with a spawned stand-in, on characters with no player state (no attribute points); one new in
+`CataclysmCharacterSheetTests.cpp`.
+
+1. `Cataclysm.ItemComparison.AHelmIsComparedWithTheHelmItWouldReplace` ("ITEM COMPARISON: helm"): a plain helm worn, a
+   helm with flat health hovered, both +10. CONTROL: a real equip on a second character raises maximum health by
+   exactly `AffixValue(120, 0, 7, 1.0, 10)`. Compared in Head; the plain helm comes off; one change line, "Health: N to
+   M, up R" from the live and the really-worn figures; the heading is "If worn, in place of Helm:", the plain helm
+   having no whole name (CONTROL), and a piece that has a rarity is called by its whole name; the right column is "Worn
+   now:" and the helm's own lines.
+2. `Cataclysm.ItemComparison.ARingIsComparedWithTheRingTheEquipActionWouldReplace`: three rings worn: Ring 4, as a real
+   equip on a copy chooses (CONTROL), nothing comes off, "Compared with nothing: Ring 4 is empty." and "If worn in Ring
+   4:". Eight worn: Ring 1, as a real equip chooses (CONTROL), and the ring that real equip takes off, marked by its
+   residue.
+3. `Cataclysm.ItemComparison.ATwoHandedWeaponIsComparedWithBothWeaponsItWouldReplace`: a sword and a dagger worn, a
+   greatsword hovered: Weapon 1, the sword then the dagger come off, the heading is "If worn, in place of Sword and
+   Dagger:", and the right column holds both weapons' own lines.
+4. `Cataclysm.ItemComparison.AskingChangesNothingWornAndAnnouncesNothing`: a helm of residue 1000 worn and boots of 1000
+   with flat health hovered, which would cross tier 1's threshold (CONTROL). After the comparison: no slot changed, the
+   Worn Residue, the change count and maximum health as they were, and no listener of `EquipmentChanged` called.
+5. `Cataclysm.ItemComparison.OnlyTheTotalsThatMoveAreListedAndEachSaysWhichWay`: the wording of a rise, a fall and a
+   percentage; no line for an unchanged total or one too small to show; the hit's own line; and two readings where
+   health, evasion and the hit move list exactly those three, in the sheet's order with the hit last.
+6. `Cataclysm.ItemComparison.AWeaponComparisonListsTheBasicAttacksHitAsTheHitFunctionPricesIt` ("ITEM COMPARISON: sword
+   to greatsword"), ruling (e): CONTROL: with nothing conditional worn the sword's no-target hit is its attack damage
+   attribute, the design's 100% anchor, and the greatsword's is larger. The comparison's two hit figures are those of
+   the worn sword and of a character really wearing the greatsword, and its lines hold the hit's line.
+7. `Cataclysm.CharacterSheet.EveryRowShowsTheFigureAComparisonReads`: with health, armour, evasion, attack speed,
+   cooldown reduction and War resistance (own and generic) set, every one of the 46 rows shows `FigureText` of
+   `FigureFor`; CONTROLS, each expected figure read off the attributes rather than written as a literal, each with a
+   set-up check that it differs from the figure a wrong reading would give: a pool's figure is its maximum, a
+   resistance's is both shares, cooldown reduction's the shown percentage.
+
+### Registered before the run
+
+THE BASE COUNTS ARE MEASURED, from the engine log of the last whole-suite run on the tree `development` holds at
+`23d2333d6` (issue #340's window, at `b07b9b19`, whose run performed 4562): its "Test Completed" lines whose `Path`
+starts with each prefix, all of them `Result={Success}`. The whole suite registered is that 4562 and the seven tests this
+branch adds by name.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ItemComparison.` alone | 6 / 6 (a new group) |
+| `Cataclysm.CharacterSheet.` alone | 10 / 10: 9 completed in that log, + 1 |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4: 4 completed in that log, unchanged (`WornResidueIfEquipped` now runs through `PreviewEquip`) |
+| Whole Unreal suite | 4569 / 4569: 4562 + 7, 0 failed; a "Test saves:" line with 0 left behind |
+| Python | of record, with JUnit, and ruff, at the registration commit |
+| P1a, the preview leaves its slots in place (`Slots = SlotsBefore;` to `Slots = Out.SlotsAfter;`, in `CataclysmEquipmentComponent.cpp`), prefix `Cataclysm.ItemComparison.AskingChangesNothingWornAndAnnouncesNothing` | fails "no slot changed by asking" ("to be 0, but it was 1") and "and the Worn Residue is what it was" ("to be 1000.000000, but it was 2000.000000") -- 2 -- and nothing else; the change count, the listener and maximum health hold |
+| P1b, the same break, prefix `Cataclysm.ThresholdQuestion.TheQuestionStatesTheTotalAndAYesAboutOneItemPutsOnNoOther` | fails "and asking changed nothing worn" ("to be 1600.000000, but it was 300.000000") -- 1 -- and nothing else |
+| P2, every total listed (`if (NowText == WithText)` to `if (NowText == WithText && NowText.IsEmpty())`, in `CataclysmItemComparison.cpp`), prefix `Cataclysm.ItemComparison.` | fails, in `OnlyTheTotalsThatMoveAreListedAndEachSaysWhichWay`, "an unchanged total gives no line", "nor does a change too small to show" and "only the three that move are listed" ("to be 3, but it was 47"), and in `AHelmIsComparedWithTheHelmItWouldReplace` "one total changes" ("to be 1, but it was 47") -- 4 in 2 tests -- and nothing else |
+| P3, the second weapon not recorded (`Out.Replaced.Add(SecondOff);` to `(void)SecondOff;`, in `CataclysmEquipmentComponent.cpp`), prefix `Cataclysm.ItemComparison.` | fails, in `ATwoHandedWeaponIsComparedWithBothWeaponsItWouldReplace`, "both weapons would come off" ("to be 2, but it was 1"), "the heading names both" and "the worn column holds both weapons' own tooltips" -- 3 -- and nothing else |
+
+Each anchor occurs once in its file (counted with `grep -cF` at registration, and again by the window's proof script
+with `--anchors-only`). The breaks were not compiled; each broken file was compiled alone unbroken (above). Each
+predicted message was re-read against the test as it stands and the engine's own wording (`AutomationTest.cpp`:
+"Expected '%s' to be %d, but it was %d.", and for a float "... %f, but it was %f and outside tolerance %f."). P2's break
+is not `&& false`, so it cannot be refused as a constant condition.
+
+### Window item-comparison-w1: the results
+
+Run by the coordinating session on 2026-11-02, three times. The first run (at `6aa62dd6`) and the second (at `cef70c46`)
+stopped at a group run alone, as recorded above, and ran nothing after it. The third ran at the registration commit
+`cb32de836` (on `development` `23d2333d6`), lock `item-comparison-w1`, after the six pre-checks all passed (11,684 MB of
+physical memory free). Every registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.15.cpp" |
+| `Cataclysm.ItemComparison.` alone | 6 / 6 | "6 tests performed, 6 succeeded, 0 failed" |
+| `Cataclysm.CharacterSheet.` alone | 10 / 10 | "10 tests performed, 10 succeeded, 0 failed" |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| Whole Unreal suite | 4569 / 4569 | "4569 tests performed, 4569 succeeded, 0 failed"; "Declared: 4569 tests in the tree at cb32de836; 4569 performed, gap 0"; "Test saves: 713 written and deleted, 0 left behind" |
+| Python | of record | "7234 passed, 8 skipped in 185.69s"; JUnit tests 7242, failures 0, errors 0, skipped 8; ruff "All checks passed!" |
+| P1a | 2 | PROVED. The kept broken-half log fails exactly "no slot changed by asking" (0 expected, 1 read) and "and the Worn Residue is what it was" (1000 expected, 2000 read); restored 1 of 1 |
+| P1b | 1 | PROVED. Exactly "and asking changed nothing worn" (1600 expected, 300 read); restored 1 of 1 |
+| P2 | 4 in 2 tests | PROVED. Exactly "an unchanged total gives no line" (read "Health: 606 to 606, down 0"), "nor does a change too small to show" (read "Health: 606 to 606, up 0"), "only the three that move are listed" (3 expected, 47 read) and "one total changes" (1 expected, 47 read); restored 6 of 6 |
+| P3 | 3 | PROVED. Exactly "both weapons would come off" (2 expected, 1 read), "the heading names both" and "the worn column holds both weapons' own tooltips"; restored 6 of 6 |
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- The tooltip as drawn: under `-nullrhi` no widget is painted, so the two columns, their background, the font size and
+  that they appear on hover with no key (ruling (d)) are the owner's launch check above. That the carried tooltips are
+  rebuilt when only the worn gear changes is read in the widget's code, not run.
+- A character with a player state: every test gathers with no build, so the player's attribute points, passive tree
+  and creation damage type reaching the comparison through `PlayerNumbers` are not exercised.
+- Both Hands Full: the preview asks `Equip`, which reads it, and no test holds it.
+- A floor's stat lines and a switched-off slot being copied onto the stand-in.
+- The basic attack's element tag: with no creation damage type and weapons carrying none, the tests' basic attack has
+  no element, so `BasicAttackCarrying`'s tag is not read here; the weapon slots component's own tests cover it.
+
+---
+
 ## 2026-11-02 — A summoner's Spirit and Agility raise its minions' damage by tag, and an imp's explosion is a share of its blow as dealt (#340)
 
 **Affects:** `UCataclysmClassStats::MinionScalingModifiersForValues`, new (`game/Source/Cataclysm/Character/CataclysmClassStats.h`,

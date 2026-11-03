@@ -184,6 +184,23 @@ public:
 									  const UAbilitySystemComponent* ASC,
 									  int32 DifficultyTier);
 
+	/**
+	 * The one figure a row of the sheet is about, as a number. Issue #832: the tooltip's comparison reads the
+	 * character's totals through this, so a figure it says will change is the figure the sheet shows.
+	 *
+	 * A POOL'S MAXIMUM, not what is in it, because what is in it is not a total gear changes. A RESISTANCE'S HELD
+	 * FIGURE, the generic share and the type's own as a blow reads them, before the tier's penalty. COOLDOWN
+	 * REDUCTION'S SHOWN PERCENTAGE, not the sum of increases the attribute holds. Every other stat its attribute, with
+	 * what the refresh could not fold into it. `LineFor` reads each of these through this function, and
+	 * `Cataclysm.CharacterSheet.EveryRowShowsTheFigureAComparisonReads` holds every row to it.
+	 *
+	 * Zero with no ability system component, as every row reads.
+	 */
+	static float FigureFor(const FString& Stat, const UAbilitySystemComponent* ASC);
+
+	/** A figure as the sheet writes it: with a percent sign for a percentage stat, plain otherwise, and no unit. */
+	static FString FigureText(const FString& Stat, float Figure);
+
 	/** Every row in one group. */
 	static TArray<FCataclysmStatLine> LinesIn(ECataclysmSheetGroup Group,
 											  const UAbilitySystemComponent* ASC,

@@ -261,6 +261,18 @@ public:
 	static TArray<FString> InFillOrder(const TArray<FName>& Carried, FName CreationDamageType);
 
 	/**
+	 * The basic attack a weapon type supplies, carrying the `Element.<DamageType>` tag: exactly what
+	 * `EquipWeaponTypes` grants, handed the first carried type, `GetDamageType`. Issue #832: the tooltip's comparison
+	 * prices the basic attack a set of weapons not yet worn would give, and it is priced with the tags the granted
+	 * attack would carry because both come from here.
+	 *
+	 * @return a skill whose `Slot` is None when the weapon supplies no basic attack, which today is the Shield. An
+	 *         empty damage type adds no tag; one with no registered tag adds none and logs the warning it always has
+	 */
+	static FCataclysmWeaponSkill BasicAttackCarrying(const UDataTable* BaseTable, const FString& WeaponType,
+													 const FString& DamageType);
+
+	/**
 	 * Uses this matrix instead of the generated one.
 	 *
 	 * For tests, which build a table they control so a case can be set up that

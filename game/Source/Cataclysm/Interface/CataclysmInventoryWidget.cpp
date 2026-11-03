@@ -1,9 +1,13 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Interface/CataclysmInventoryWidget.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmComparisonStandIn.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmGearPanel.h"
 #include "Interface/CataclysmInventoryScreen.h"
+#include "Interface/CataclysmItemComparison.h"
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -95,14 +99,70 @@ void UCataclysmInventoryWidget::NativeTick(const FGeometry& MyGeometry,
 	// at all; holding a pointer here would be a second record of what the
 	// controller already knows.
 	const UCataclysmInventoryComponent* Inventory = nullptr;
-	const UCataclysmEquipmentComponent* Equipment = nullptr;
+	UCataclysmEquipmentComponent* Equipment = nullptr;
+	const UAbilitySystemComponent* Abilities = nullptr;
 	if (const APawn* Pawn = GetOwningPlayerPawn())
 	{
 		Inventory = Pawn->FindComponentByClass<UCataclysmInventoryComponent>();
 		Equipment = Pawn->FindComponentByClass<UCataclysmEquipmentComponent>();
+		// THE PLAYER'S LIVES ON THE PLAYER STATE, which the targeting helper finds through the pawn.
+		Abilities = UCataclysmTargeting::AbilitySystemOf(Pawn);
 	}
 
-	Refresh(Inventory, Equipment);
+	Refresh(Inventory, Equipment, Abilities);
+}
+
+void UCataclysmInventoryWidget::NativeDestruct()
+{
+	// THE STAND-IN GOES WITH THE SCREEN. It is spawned again the next time a comparison is built.
+	if (ACataclysmComparisonStandIn* StandIn = ComparisonStandIn.Get())
+	{
+		StandIn->Destroy();
+	}
+	ComparisonStandIn.Reset();
+
+	Super::NativeDestruct();
+}
+
+ACataclysmComparisonStandIn* UCataclysmInventoryWidget::StandInForComparing()
+{
+	if (!ComparisonStandIn.IsValid())
+	{
+		ComparisonStandIn = ACataclysmComparisonStandIn::SpawnIn(GetWorld());
+	}
+	return ComparisonStandIn.Get();
+}
+
+UWidget* UCataclysmInventoryWidget::MakeComparisonToolTip(const FString& Left, const FString& Right)
+{
+	// BUILT INTO THE WIDGET TREE LIKE EVERY OTHER WIDGET HERE, with no asset, and only when the contents or what is
+	// worn changed, never every frame: a new tooltip object each frame is issue #1192's fault.
+	UBorder* Back = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+	Back->SetBrush(FSlateColorBrush(PanelColour()));
+	Back->SetPadding(FMargin(FScreen::PanelPaddingPx * 0.5f));
+
+	UHorizontalBox* Across = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	Back->SetContent(Across);
+
+	// THE HOVERED ITEM AND WHAT WEARING IT WOULD DO, ON THE LEFT.
+	UTextBlock* Hovered = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Hovered->SetText(FText::FromString(Left));
+	Hovered->SetColorAndOpacity(FSlateColor(InkColour()));
+	Hovered->SetFontSize(static_cast<float>(FScreen::ComparisonFontPx));
+	Across->AddChildToHorizontalBox(Hovered)->SetVerticalAlignment(VAlign_Top);
+
+	// WHAT IS WORN NOW, ON THE RIGHT, a panel's padding away.
+	if (!Right.IsEmpty())
+	{
+		UTextBlock* Worn = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Worn->SetText(FText::FromString(Right));
+		Worn->SetColorAndOpacity(FSlateColor(InkColour()));
+		Worn->SetFontSize(static_cast<float>(FScreen::ComparisonFontPx));
+		UHorizontalBoxSlot* WornSlot = Across->AddChildToHorizontalBox(Worn);
+		WornSlot->SetVerticalAlignment(VAlign_Top);
+		WornSlot->SetPadding(FMargin(FScreen::PanelPaddingPx, 0.0f, 0.0f, 0.0f));
+	}
+	return Back;
 }
 
 void UCataclysmInventoryWidget::BuildTree()
@@ -351,7 +411,8 @@ void UCataclysmInventoryWidget::BuildCell(
 
 void UCataclysmInventoryWidget::Refresh(
 	const UCataclysmInventoryComponent* Inventory,
-	const UCataclysmEquipmentComponent* Equipment)
+	UCataclysmEquipmentComponent* Equipment,
+	const UAbilitySystemComponent* Abilities)
 {
 	if (Cells.Num() != UCataclysmInventoryComponent::SlotCount || !Header)
 	{
@@ -409,6 +470,21 @@ void UCataclysmInventoryWidget::Refresh(
 	LastChangeCount = Changes;
 	bToolTipsBuilt = true;
 
+	// AND WHAT IS WORN, read here rather than below the carried cells since issue
+	// #832: a carried item's tooltip compares it with what is worn, so it is
+	// stale when either changes. The worn gear's own tooltips read the same flag.
+	const int32 GearChanges = Equipment ? Equipment->ChangeCount() : 0;
+	const bool bWornChanged = GearChanges != LastGearChangeCount
+		|| !bGearToolTipsBuilt;
+	LastGearChangeCount = GearChanges;
+	bGearToolTipsBuilt = true;
+	const bool bCarriedToolTipsStale = bContentsChanged || bWornChanged;
+
+	// WHAT IS WORN NOW IS READ ONCE FOR EVERY CARRIED ITEM, when the first item
+	// that is gear needs it, so a bag of gear costs one reading more than it holds
+	// items rather than two for each.
+	FCataclysmComparisonReading WornNow;
+
 	float CellPx = LastCellPx;
 	if (const APlayerController* Controller = GetOwningPlayer())
 	{
@@ -464,19 +540,53 @@ void UCataclysmInventoryWidget::Refresh(
 		Widgets.Quantity->SetText(
 			FText::FromString(FScreen::QuantityTextFor(Carried)));
 
-		if (bContentsChanged)
+		if (bCarriedToolTipsStale)
 		{
 			// ON THE FRAME RATHER THAN ON THE SIZE BOX. A USizeBox lays out and
 			// does not take part in hit testing, so a tool tip on one is never
 			// shown. The frame is a UBorder, which paints and is hit-testable,
 			// and it is the outermost widget of the cell that is.
 			//
-			// AN EMPTY STRING REMOVES THE TOOL TIP RATHER THAN SHOWING A BLANK
-			// BOX, which is what an empty cell should do.
-			Widgets.Frame->SetToolTipText(FText::FromString(
-				UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes, Materials,
-											   PositiveEnchantments,
-											   NegativeEnchantments)));
+			// A PIECE OF GEAR IS COMPARED WITH WHAT WEARING IT WOULD REPLACE,
+			// since issue #832, in two columns, shown whenever it is hovered with
+			// no key held (ruling (d)).
+			FCataclysmComparisonResult Compared;
+			ACataclysmComparisonStandIn* StandIn =
+				!Carried.Item.Base.IsNone() && Equipment ? StandInForComparing() : nullptr;
+			if (StandIn)
+			{
+				if (!WornNow.bRead)
+				{
+					WornNow = UCataclysmItemComparison::ReadingOf(
+						Equipment->GetSlots(), *Equipment, Abilities, *StandIn);
+				}
+				Compared = UCataclysmItemComparison::Compare(
+					Carried.Item, *Equipment, Abilities, *StandIn, &WornNow);
+			}
+
+			if (Compared.bCompared)
+			{
+				FString Left;
+				FString Right;
+				UCataclysmItemComparison::Columns(Carried, Compared, Bases, Affixes,
+												  Materials, PositiveEnchantments,
+												  NegativeEnchantments, Left, Right);
+				Widgets.Frame->SetToolTip(MakeComparisonToolTip(Left, Right));
+			}
+			else
+			{
+				// A MATERIAL, AN EMPTY CELL, OR GEAR WITH NOTHING TO COMPARE
+				// AGAINST: the item's own text, as before. The widget tooltip
+				// is cleared first, or a cell that held gear would keep it.
+				//
+				// AN EMPTY STRING REMOVES THE TOOL TIP RATHER THAN SHOWING A BLANK
+				// BOX, which is what an empty cell should do.
+				Widgets.Frame->SetToolTip(nullptr);
+				Widgets.Frame->SetToolTipText(FText::FromString(
+					UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes, Materials,
+												   PositiveEnchantments,
+												   NegativeEnchantments)));
+			}
 		}
 	}
 
@@ -487,13 +597,8 @@ void UCataclysmInventoryWidget::Refresh(
 	// way to notice a change to what is worn". There is now --
 	// UCataclysmEquipmentComponent::ChangeCount, added for this and the same
 	// shape as the inventory's -- and the tool tip is the one thing that must
-	// use it. Everything else in RefreshGear is cheap and stays per frame.
-	const int32 GearChanges = Equipment ? Equipment->ChangeCount() : 0;
-	const bool bWornChanged = GearChanges != LastGearChangeCount
-		|| !bGearToolTipsBuilt;
-	LastGearChangeCount = GearChanges;
-	bGearToolTipsBuilt = true;
-
+	// use it, read above the carried cells. Everything else in RefreshGear is
+	// cheap and stays per frame.
 	RefreshGear(Equipment, Bases, Affixes, Rarities, Materials, Tiers,
 				PositiveEnchantments, NegativeEnchantments, bResized, CellPx,
 				LabelFontPx, bWornChanged);

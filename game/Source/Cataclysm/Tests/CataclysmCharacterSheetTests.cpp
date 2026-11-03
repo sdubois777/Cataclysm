@@ -520,4 +520,84 @@ bool FCataclysmSheetShowsWornResidue::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * Every row of the sheet shows the figure `UCataclysmCharacterSheetLayout::FigureFor` reads, written as `FigureText`
+ * writes it. Issue #832: a carried item's tooltip says which totals would change by reading them through `FigureFor`,
+ * so a row that showed a different figure would let the tooltip say "Health: 606 to 726" beside a sheet reading
+ * otherwise. A pool's row ends with it ("412 of 606"); every other row starts with it, alone or before its unit.
+ */
+CATACLYSM_SHEET_TEST(FCataclysmSheetRowsShowTheComparedFigure,
+	"Cataclysm.CharacterSheet.EveryRowShowsTheFigureAComparisonReads")
+{
+	using namespace CataclysmCharacterSheetTest;
+
+	UWorld* World = MakeWorld();
+	{
+		FScopedSheetCharacter Character(World);
+
+		// FIGURES THAT ARE NOT NOUGHT AND NOT WHOLE WHERE THAT MATTERS, so a row reading the wrong attribute, or
+		// rounding differently, shows a different figure. A resistance held by both the type and the generic set,
+		// and a cooldown reduction whose shown percentage is not its sum.
+		Character.Add(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 606.0f);
+		Character.Add(UCataclysmVitalAttributeSet::GetHealthAttribute(), 412.0f);
+		Character.Add(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1240.0f);
+		Character.Add(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 4.5f);
+		Character.Add(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.3f);
+		Character.Add(UCataclysmCombatAttributeSet::GetCooldownReductionAttribute(), 0.25f);
+		Character.Add(UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(), 45.0f);
+		Character.Add(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 10.0f);
+
+		const UAbilitySystemComponent* ASC = Character.AbilitySystem;
+
+		// CONTROLS: the three figures the sheet does not read straight off one attribute. EACH EXPECTED FIGURE IS READ
+		// OFF THE ATTRIBUTES, NOT WRITTEN AS A LITERAL: `Add` adds to what a set starts with, and the vital set starts
+		// maximum health and health at 100 (`UCataclysmVitalAttributeSet`'s constructor), so the 606 added makes 706.
+		// This control said 606 until the item comparison window ran it. Each also checks that the figure it picks
+		// differs from the figure a wrong reading would give, or the control could not tell them apart.
+		const float MaxHealth = ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Health = ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		TestTrue(TEXT("set-up: health is below its maximum, so the two figures differ"), Health < MaxHealth);
+		TestEqual(TEXT("CONTROL: a pool's figure is its maximum"),
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("max_health"), ASC), MaxHealth, 0.01f);
+
+		const float Typed = ASC->GetNumericAttribute(UCataclysmResistanceAttributeSet::GetWarResistanceAttribute());
+		const float Generic =
+			ASC->GetNumericAttribute(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute());
+		TestTrue(TEXT("set-up: both resistance shares are held"), Typed > 0.0f && Generic > 0.0f);
+		TestEqual(TEXT("CONTROL: a resistance's figure is both shares"),
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("resistance_war"), ASC), Typed + Generic, 0.01f);
+
+		const float Increases =
+			ASC->GetNumericAttribute(UCataclysmCombatAttributeSet::GetCooldownReductionAttribute());
+		const float Shown = UCataclysmCombatAttributeSet::DisplayedCooldownReduction(Increases);
+		TestFalse(TEXT("set-up: the shown percentage is not the sum of increases"),
+				  FMath::IsNearlyEqual(Shown, 100.0f * Increases, 0.01f));
+		TestEqual(TEXT("CONTROL: cooldown reduction's figure is the shown percentage"),
+				  UCataclysmCharacterSheetLayout::FigureFor(TEXT("cooldown_reduction"), ASC), Shown, 0.01f);
+
+		int32 Rows = 0;
+		int32 Misses = 0;
+		for (const FString& Stat : UCataclysmCharacterSheetLayout::SheetStats())
+		{
+			++Rows;
+			const FString Value = Row(Stat, ASC, 1).Value;
+			const FString Text = UCataclysmCharacterSheetLayout::FigureText(
+				Stat, UCataclysmCharacterSheetLayout::FigureFor(Stat, ASC));
+			const bool bShows = Value == Text || Value.StartsWith(Text + TEXT(" "))
+				|| Value.EndsWith(TEXT(" of ") + Text);
+			if (!bShows)
+			{
+				++Misses;
+				AddError(FString::Printf(TEXT("%s: the row shows '%s', and FigureFor reads '%s'"), *Stat, *Value,
+										 *Text));
+			}
+		}
+		TestEqual(TEXT("every sheet stat has a row"), Rows, UCataclysmCharacterSheetLayout::SheetStatCount());
+		TestEqual(TEXT("rows showing a figure other than the one a comparison reads"), Misses, 0);
+	}
+	World->DestroyWorld(false);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

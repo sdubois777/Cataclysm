@@ -59,15 +59,16 @@ namespace
 		return 0.0f;
 	}
 
-	/** "412 of 606". */
+	/** "412 of 606": what is in the pool, and the maximum `FigureFor` reads. */
 	FString PoolValue(const UAbilitySystemComponent* ASC,
 					  const FGameplayAttribute& Current,
-					  const FGameplayAttribute& Maximum)
+					  const FString& MaximumStat)
 	{
 		return FString::Printf(
 			TEXT("%s of %s"),
 			*UCataclysmCharacterSheetLayout::Number(Read(ASC, Current)),
-			*UCataclysmCharacterSheetLayout::Number(Read(ASC, Maximum)));
+			*UCataclysmCharacterSheetLayout::Number(
+				UCataclysmCharacterSheetLayout::FigureFor(MaximumStat, ASC)));
 	}
 
 	const FString ResistancePrefix = TEXT("resistance_");
@@ -401,8 +402,7 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 		const UCataclysmAbilitySystemComponent* Reserving =
 			Cast<UCataclysmAbilitySystemComponent>(ASC);
 		const float Reserved = Reserving ? Reserving->HealthReserved() : 0.0f;
-		return FCataclysmStatLine(Name, PoolValue(ASC, FVital::GetHealthAttribute(),
-												  FVital::GetMaxHealthAttribute()),
+		return FCataclysmStatLine(Name, PoolValue(ASC, FVital::GetHealthAttribute(), Stat),
 								  Reserved > 0.0f
 									  ? FString::Printf(TEXT("%s reserved."), *Number(Reserved))
 									  : FString());
@@ -410,8 +410,7 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 
 	if (Stat == TEXT("max_mana"))
 	{
-		return FCataclysmStatLine(Name, PoolValue(ASC, FVital::GetManaAttribute(),
-												  FVital::GetMaxManaAttribute()));
+		return FCataclysmStatLine(Name, PoolValue(ASC, FVital::GetManaAttribute(), Stat));
 	}
 
 	if (Stat == TEXT("max_energy_shield"))
@@ -421,41 +420,23 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 		const UCataclysmAbilitySystemComponent* Absorbing =
 			Cast<UCataclysmAbilitySystemComponent>(ASC);
 		return FCataclysmStatLine(
-			Name, PoolValue(ASC, FVital::GetEnergyShieldAttribute(),
-							FVital::GetMaxEnergyShieldAttribute()),
+			Name, PoolValue(ASC, FVital::GetEnergyShieldAttribute(), Stat),
 			TemporaryAbsorbNote(Absorbing ? Absorbing->TemporaryAbsorbHeld() : 0.0f));
 	}
 
 	if (Stat == TEXT("class_resource"))
 	{
 		return FCataclysmStatLine(
-			Name, PoolValue(ASC, FResource::GetClassResourceAttribute(),
-							FResource::GetMaxClassResourceAttribute()));
+			Name, PoolValue(ASC, FResource::GetClassResourceAttribute(), Stat));
 	}
 
 	// -- the eight resistances, which show three numbers rather than one
 	if (const FName Type = DamageTypeFromStat(Stat, ResistancePrefix);
 		Type != NAME_None)
 	{
-		// THE GENERIC FIGURE IS PART OF WHAT THE CHARACTER HOLDS, exactly as
-		// `Cataclysm.ShowResistances` treats it: All Resistance applies to every
-		// type by definition, so a per-type row that left it out would disagree
-		// with what the player takes.
-		float Generic = 0.0f;
-		if (ASC)
-		{
-			if (const UCataclysmAllResistanceAttributeSet* All =
-					ASC->GetSet<UCataclysmAllResistanceAttributeSet>())
-			{
-				Generic = All->GetAllResistance();
-			}
-		}
-
-		// THROUGH `TypedResistanceOf`, AS A BLOW READS IT, since 2026-10-12: a
-		// resistance a worn row is holding at nought shows as nought here for as
-		// long as it is held, which is the visible part of that row.
-		const float Held =
-			Generic + UCataclysmDamageCalculation::TypedResistanceOf(ASC, Type);
+		// THE GENERIC SHARE AND THE TYPE'S OWN, AS `FigureFor` READS THEM, which
+		// says why both.
+		const float Held = FigureFor(Stat, ASC);
 		const float Penalty =
 			UCataclysmDamageCalculation::ResistancePenaltyAt(DifficultyTier);
 		// UNDER THE CHARACTER'S OWN CAP, the one `Resolve` holds a hit to.
@@ -578,7 +559,7 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 
 		return FCataclysmStatLine(
 			Name,
-			Percent(FCombat::DisplayedCooldownReduction(Increases)),
+			Percent(FigureFor(Stat, ASC)),
 			FString::Printf(TEXT("From increases totalling %s. It never reaches "
 								 "100%%."),
 						   *Percent(100.0f * Increases)));
@@ -619,10 +600,66 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 	}
 
 	// -- everything else: the figure and nothing else to say about it
-	const float Value = ReadStat(ASC, Stat);
+	return FCataclysmStatLine(Name, FigureText(Stat, FigureFor(Stat, ASC)));
+}
 
-	return FCataclysmStatLine(Name,
-							  IsPercentage(Stat) ? Percent(Value) : Number(Value));
+float UCataclysmCharacterSheetLayout::FigureFor(const FString& Stat,
+											   const UAbilitySystemComponent* ASC)
+{
+	// -- the four pools: the maximum, which is what gear moves
+	if (Stat == TEXT("max_health"))
+	{
+		return Read(ASC, FVital::GetMaxHealthAttribute());
+	}
+	if (Stat == TEXT("max_mana"))
+	{
+		return Read(ASC, FVital::GetMaxManaAttribute());
+	}
+	if (Stat == TEXT("max_energy_shield"))
+	{
+		return Read(ASC, FVital::GetMaxEnergyShieldAttribute());
+	}
+	if (Stat == TEXT("class_resource"))
+	{
+		return Read(ASC, FResource::GetMaxClassResourceAttribute());
+	}
+
+	// -- a resistance: the generic share and the type's own
+	if (const FName Type = DamageTypeFromStat(Stat, ResistancePrefix);
+		Type != NAME_None)
+	{
+		// THE GENERIC FIGURE IS PART OF WHAT THE CHARACTER HOLDS, exactly as
+		// `Cataclysm.ShowResistances` treats it: All Resistance applies to every
+		// type by definition, so a per-type row that left it out would disagree
+		// with what the player takes.
+		float Generic = 0.0f;
+		if (ASC)
+		{
+			if (const UCataclysmAllResistanceAttributeSet* All =
+					ASC->GetSet<UCataclysmAllResistanceAttributeSet>())
+			{
+				Generic = All->GetAllResistance();
+			}
+		}
+
+		// THROUGH `TypedResistanceOf`, AS A BLOW READS IT, since 2026-10-12: a
+		// resistance a worn row is holding at nought shows as nought here for as
+		// long as it is held, which is the visible part of that row.
+		return Generic + UCataclysmDamageCalculation::TypedResistanceOf(ASC, Type);
+	}
+
+	// -- cooldown reduction: the percentage shown, not the sum the attribute holds
+	if (Stat == TEXT("cooldown_reduction"))
+	{
+		return FCombat::DisplayedCooldownReduction(ReadStat(ASC, Stat));
+	}
+
+	return ReadStat(ASC, Stat);
+}
+
+FString UCataclysmCharacterSheetLayout::FigureText(const FString& Stat, float Figure)
+{
+	return IsPercentage(Stat) ? Percent(Figure) : Number(Figure);
 }
 
 TArray<FCataclysmStatLine> UCataclysmCharacterSheetLayout::LinesIn(
