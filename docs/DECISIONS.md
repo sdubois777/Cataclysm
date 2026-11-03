@@ -124,7 +124,11 @@ health, as `Cataclysm.BasicReach.` does. No world is ticked: the clock is moved 
 `LandPendingBasicAttack`. No assertion reads a health figure; each reads "less than before" or "unchanged".
 
 **Python**: `test_the_engine_measures_reach_on_the_floor_plane` now also requires `IsInReach` to measure with
-`FVector::Dist2D`, because since this change that, and not `Think`'s `Distance`, decides the chase.
+`FVector::Dist2D`, because since this change that, and not `Think`'s `Distance`, decides the chase. Proved in phase 1
+with `tools/prove_guard.py`'s `break_and_run`, in an archive copy of `540a72deb`: `IsInReach`'s `FVector::Dist2D(` to
+`FVector::Dist(` (anchor counted once), command `python -m pytest tools/tests/test_enemy_abilities.py`, printed
+"PROVED: 1 failed, 119 passed in 1.36s | restored: 120 passed in 1.16s", `crashed` False, `named_failures`
+`tools/tests/test_enemy_abilities.py::test_the_engine_measures_reach_on_the_floor_plane`.
 
 ### Registered before the run
 
