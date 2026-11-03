@@ -43,7 +43,7 @@ Dungeon Basics growth bullet, the Dungeon Types row, the spawn-weight note and s
 
 ### The decision and the rulings
 
-- **The project owner, 2026-11-03, verbatim: "On no city (Recommended)".** Once a run has earned the Cataclysm boss
+- **The project owner, 2026-11-02, verbatim: "On no city (Recommended)".** Once a run has earned the Cataclysm boss
   dungeon (the quest objectives of half its Cataclysms met), it sits on no city: the empire map shows a marker the
   player enters from (slice 6c), it never bites a city, and a Last Stand later moves it to the Pillar (#43). The
   simulation, which hosted it on the Pillar, changes to match.

@@ -1,6 +1,6 @@
 """The earned Cataclysm boss dungeon stands on no city, never resolves, and grows.
 
-Issue #1324 slice 6b. THE OWNER, 2026-11-03, verbatim: "On no city
+Issue #1324 slice 6b. THE OWNER, 2026-11-02, verbatim: "On no city
 (Recommended)". Once a run has earned the boss -- the quest objectives of half
 its Cataclysms met, rounded up -- it sits on no city: it never bites one, no
 timer runs on it, and a Last Stand later moves it to the Pillar (issue #43's).
@@ -100,7 +100,7 @@ class TestWhereItStands:
 
         assert boss.city_id is None, (
             f"the earned boss stands on city {boss.city_id}; the owner put it "
-            "on no city on 2026-11-03")
+            "on no city on 2026-11-02")
         assert boss.dtype is DungeonType.CATACLYSM
 
         # CONTROL: every other dungeon the run made stands on a city.
@@ -166,7 +166,7 @@ class TestHowDeepItIs:
         assert sim.cataclysm_floors_earned == 7
 
     def test_an_ordinary_clear_after_it_opens_deepens_it(self):
-        """The half that changed on 2026-11-03. Until then the model said a
+        """The half that changed on 2026-11-02. Until then the model said a
         later clear did not deepen a dungeon that already existed."""
         sim = campaign(seed=5)
         earn_the_boss(sim)

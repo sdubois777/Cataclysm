@@ -19,7 +19,7 @@
 
 /**
  * The run record keeps its Cataclysm boss dungeon, at version 4. Issue #1324
- * slice 6b, 2026-11-03.
+ * slice 6b, 2026-11-02.
  *
  * WHAT IS KEPT: whether it has opened, the day it opened and the floors it
  * rolled (`UCataclysmRunSave::bCataclysmDungeonOpened` and the two beside it).

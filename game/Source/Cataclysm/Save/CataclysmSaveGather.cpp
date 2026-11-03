@@ -396,7 +396,7 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	Record.LastDeathWalkDays = Run.LastDeathWalkDays;
 	Record.LastDeathDaysCost = Run.LastDeathDaysCost;
 	Record.LastDeathFallenCityIds = Run.LastDeathFallenCityIds;
-	// THE CATACLYSM BOSS DUNGEON, since run record version 4 (issue #1324 slice 6b, 2026-11-03). Its depth is worked out
+	// THE CATACLYSM BOSS DUNGEON, since run record version 4 (issue #1324 slice 6b, 2026-11-02). Its depth is worked out
 	// from the floors it rolled and `BasicDungeonsCleared` above, so it is not written twice.
 	Record.bCataclysmDungeonOpened = Run.bCataclysmDungeonOpened;
 	Record.CataclysmDungeonOpenedDay = Run.CataclysmDungeonOpenedDay;

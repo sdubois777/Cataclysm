@@ -59,7 +59,7 @@ enum class ECataclysmSurgeMode : uint8
 //   - **Cataclysm** is the boss dungeon. `MakeCataclysmDungeon` builds it and
 //     `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` is the only caller,
 //     on the quest clear that meets the requirement, since issue #1324 slice
-//     6b (2026-11-03). It stands on no city, and the run grows it by one floor
+//     6b (2026-11-02). It stands on no city, and the run grows it by one floor
 //     per ordinary dungeon defeated (`DeepenCataclysmDungeon`, issue #1315's
 //     rule). This said NOTHING CREATES ONE until then. Issue #43 moves it to
 //     the Pillar for the Last Stand.
@@ -206,14 +206,14 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * Which city it is assaulting.
 	 *
 	 * **`INDEX_NONE` FOR THE EARNED CATACLYSM BOSS DUNGEON, WHICH STANDS ON NO
-	 * CITY**, since 2026-11-03. The project owner, verbatim: "On no city
+	 * CITY**, since 2026-11-02. The project owner, verbatim: "On no city
 	 * (Recommended)". Every reader of this field either cannot meet that
 	 * dungeon -- it is never a Siege, never resolves and never moves -- or asks
 	 * `UCataclysmEmpireMap::Find`, `IsValidIndex` or compares it with a real
 	 * city's number, all of which treat `INDEX_NONE` as no city. So
 	 * `UCataclysmEmpireRun::DungeonsOn` never lists it for a city, and
 	 * `DungeonsOn(INDEX_NONE)` is the dungeons on no city. `docs/DECISIONS.md`,
-	 * 2026-11-03, lists the readers. Issue #1324 slice 6b.
+	 * 2026-11-02, lists the readers. Issue #1324 slice 6b.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
@@ -1028,7 +1028,7 @@ public:
 	 * the doubling was lost. Offered the repair, the owner removed the situation
 	 * rather than fixing the symptom.
 	 *
-	 * **IT WAS THE ONLY ILLEGAL PAIR OF THE 28 UNTIL 2026-11-03**, when the
+	 * **IT WAS THE ONLY ILLEGAL PAIR OF THE 28 UNTIL 2026-11-02**, when the
 	 * Siege joined it; see `CataclysmAlsoForbiddenSubType`. Nothing more may be
 	 * inferred from the two. Whether a Quest dungeon may carry a Siege that
 	 * never resolves, or a Fallen City a Sacrificial, is unstated by omission
@@ -1047,7 +1047,7 @@ public:
 	/**
 	 * The second sub-type a Cataclysm dungeon may not roll: the Siege.
 	 *
-	 * RULED BY THE COORDINATING SESSION ON 2026-11-03, under the project
+	 * RULED BY THE COORDINATING SESSION ON 2026-11-02, under the project
 	 * owner's delegation for issue #1324 slice 6b, and barred the same way as
 	 * the Cow Level. The earned boss dungeon stands on no city -- the owner,
 	 * that day, verbatim "On no city (Recommended)" -- and a Siege's whole
@@ -1082,7 +1082,7 @@ public:
 
 	/**
 	 * The second sub-type this kind of dungeon may not roll, or `None`: the
-	 * Siege for a Cataclysm since 2026-11-03, and nothing for the other three
+	 * Siege for a Cataclysm since 2026-11-02, and nothing for the other three
 	 * kinds. See `CataclysmAlsoForbiddenSubType`.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
@@ -1167,7 +1167,7 @@ public:
 	 *                      the ruling and the implementation for why re-reading
 	 *                      is exact.
 	 * @param Type what kind of dungeon is being rolled for. **A CATACLYSM MAY
-	 *                      NOT BE A COW LEVEL, NOR, SINCE 2026-11-03, A SIEGE**,
+	 *                      NOT BE A COW LEVEL, NOR, SINCE 2026-11-02, A SIEGE**,
 	 *                      and everything else may be anything; see
 	 *                      `BarredSubTypeOn` and `AlsoBarredSubTypeOn`. The bar
 	 *                      is applied by shortening the line the single draw is
@@ -1221,7 +1221,7 @@ public:
 	 * created a Quest, Fallen City or Cataclysm dungeon; `MakeDungeon` builds a
 	 * Quest dungeon since slice 3, `MakeFallenCityDungeon` a Fallen City since
 	 * slice 2 and `MakeCataclysmDungeon` the earned boss since slice 6b
-	 * (2026-11-03). Issue #1324 has the breakdown.
+	 * (2026-11-02). Issue #1324 has the breakdown.
 	 *
 	 * THE CATACLYSM'S ROW IS AT THE PILLAR. Asked for on any other tier this
 	 * answers a spec whose `IsBuilt` is false, because the model has no such row
@@ -1369,7 +1369,7 @@ public:
 	 * that meets the requirement. A port of what `Simulation._maybe_open_cataclysm`
 	 * builds.
 	 *
-	 * **ON NO CITY.** The project owner, 2026-11-03, verbatim: "On no city
+	 * **ON NO CITY.** The project owner, 2026-11-02, verbatim: "On no city
 	 * (Recommended)". `CityId` is `INDEX_NONE`: it never bites a city, and the
 	 * Last Stand that moves it to the Pillar is issue #43's. `CityTier` is the
 	 * Pillar because that is the row its depth was rolled from -- the only
@@ -1396,7 +1396,7 @@ public:
 	/**
 	 * The timer a dungeon that never resolves is given: a billion days.
 	 *
-	 * FOR THE EARNED CATACLYSM BOSS DUNGEON, since 2026-11-03, which stands on
+	 * FOR THE EARNED CATACLYSM BOSS DUNGEON, since 2026-11-02, which stands on
 	 * no city and so has nothing to resolve against. It still needs a timer,
 	 * because the run keeps one for every dungeon standing and a save refuses a
 	 * dungeon without one (`UCataclysmEmpireRun::DungeonsAgreeWithTimers`).
@@ -1421,7 +1421,7 @@ public:
 	 * defeated adds one floor to the Cataclysm boss dungeon." Settled with the
 	 * project owner on 2026-09-06. Those defeated before it opens and after it
 	 * opens both count, and there is no cap, ruled by the coordinating session
-	 * on 2026-11-03. `tools/tests/test_surge_port.py` holds it to the model.
+	 * on 2026-11-02. `tools/tests/test_surge_port.py` holds it to the model.
 	 */
 	static constexpr int32 CataclysmFloorsPerOrdinaryDungeon = 1;
 
@@ -1700,7 +1700,7 @@ public:
 	 *                      rather than as a half-made Fallen City -- see the
 	 *                      implementation. `MakeFallenCityDungeon` is how a
 	 *                      Fallen City is built and `MakeCataclysmDungeon` how
-	 *                      the earned boss is, since 2026-11-03.
+	 *                      the earned boss is, since 2026-11-02.
 	 * @param Cataclysm     which Cataclysm is sending it, read only for a Quest
 	 *                      dungeon's sub-type; see `QuestSubTypeFor`. IT DOES
 	 *                      NOT STAMP THE DUNGEON -- `RollWave` does that -- and

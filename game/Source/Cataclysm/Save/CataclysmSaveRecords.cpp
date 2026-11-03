@@ -396,7 +396,7 @@ namespace CataclysmRunSaveMigration
 
 	/**
 	 * A run written before it kept its Cataclysm boss dungeon had not opened one: nothing in the game opened one until
-	 * issue #1324 slice 6b, 2026-11-03. Written out, for `Migrate_1_to_2`'s reason, as the three fields' defaults: not
+	 * issue #1324 slice 6b, 2026-11-02. Written out, for `Migrate_1_to_2`'s reason, as the three fields' defaults: not
 	 * opened, day 0 and no floors.
 	 */
 	bool Migrate_3_to_4(const TSharedRef<FJsonObject>& Record, FString& OutError)

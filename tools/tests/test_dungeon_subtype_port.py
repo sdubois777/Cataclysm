@@ -417,7 +417,7 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
     The project owner ruled the first on 2026-09-06, verbatim: *"Last stand is a
     cataclysm dungeon and should not be allowed to roll as a cow level sub
     type."* Asked how far to take it they answered *"Only the one you ruled"*.
-    Issue #1333. THE SECOND, Cataclysm and Siege, since 2026-11-03: ruled by the
+    Issue #1333. THE SECOND, Cataclysm and Siege, since 2026-11-02: ruled by the
     coordinating session under the owner's delegation for issue #1324 slice 6b,
     barred the same way, because the earned boss stands on no city (the owner,
     that day: "On no city (Recommended)") and a Siege's whole effect is a daily
@@ -465,7 +465,7 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
     def test_the_model_bars_exactly_two_pairs(self, model):
         """"Only the one you ruled", and the Siege the coordinating session
-        added on 2026-11-03. Twenty-six pairs stay legal, and a session adding a
+        added on 2026-11-02. Twenty-six pairs stay legal, and a session adding a
         third is making a design decision nobody has made."""
         pairs = [(dtype.name, name)
                  for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()
@@ -473,7 +473,7 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
         assert pairs == [("CATACLYSM", "Cow Level"), ("CATACLYSM", "Siege")], (
             f"the model now bars {pairs}. The rulings of 2026-09-06 and "
-            "2026-11-03 named two pairs and declined to name any others")
+            "2026-11-02 named two pairs and declined to name any others")
 
     @pytest.mark.parametrize("function", ["BarredSubTypeOn", "AlsoBarredSubTypeOn"])
     def test_the_game_constrains_only_the_cataclysm(self, function):

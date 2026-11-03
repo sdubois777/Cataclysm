@@ -8189,7 +8189,7 @@ bool FCataclysmEmpireRunDaysOwedTest::RunTest(const FString& Parameters)
 
 /**
  * The Cataclysm boss dungeon opens when a run has earned it. Issue #1324 slice
- * 6b, 2026-11-03.
+ * 6b, 2026-11-02.
  *
  * THE OWNER'S DECISION, VERBATIM: "On no city (Recommended)". Once earned -- the
  * quest objectives of half the run's Cataclysms met, rounded up -- the boss
@@ -8558,7 +8558,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossNoSiegeTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The second barred pair, since 2026-11-03: a Cataclysm dungeon rolls neither a
+ * The second barred pair, since 2026-11-02: a Cataclysm dungeon rolls neither a
  * Siege nor a Cow Level, in 20,000 rolls and in 2,000 built bosses, and the roll
  * still takes one draw. CONTROL: an ordinary dungeon rolls both on the same
  * stream. Prints "BOSS NO SIEGE".

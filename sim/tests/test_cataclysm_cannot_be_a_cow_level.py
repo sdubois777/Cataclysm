@@ -14,7 +14,7 @@ bonuses after the dungeon is built and worked the walk out again with a bare
 walked in 145 days where 290 was correct. Offered the repair, the owner removed
 the situation instead. About 7 in 100 Last Stands were affected.
 
-**THE SIEGE JOINED IT ON 2026-11-03**, ruled by the coordinating session under
+**THE SIEGE JOINED IT ON 2026-11-02**, ruled by the coordinating session under
 the owner's delegation for issue #1324 slice 6b and barred the same way. The
 earned boss stands on no city -- the owner, that day, verbatim "On no city
 (Recommended)" -- and a Siege's whole effect is a daily bite on its city. It
@@ -71,14 +71,14 @@ def spread(sim: Simulation, dtype: DungeonType, city,
 
 class TestTheRule:
     def test_a_cataclysm_dungeon_never_rolls_a_siege(self):
-        """The second pair, since 2026-11-03. Its control is the Basic line of
+        """The second pair, since 2026-11-02. Its control is the Basic line of
         `TestTheOtherPairsStayLegal`, which sees a Siege on the same draw."""
         sim = Simulation(TuningConfig(), seed=0)
         seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
 
         assert seen["Siege"] == 0, (
             f"a Cataclysm dungeon rolled Siege {seen['Siege']} times in "
-            f"{ROLLS}; the coordinating session barred it on 2026-11-03")
+            f"{ROLLS}; the coordinating session barred it on 2026-11-02")
 
     def test_a_cataclysm_dungeon_never_rolls_a_cow_level(self):
         sim = Simulation(TuningConfig(), seed=0)
@@ -124,7 +124,7 @@ class TestTheRule:
         Level from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that
         #1293 decided, so the six that remain when it is barred are 93 again.
 
-        AND 85.5 SINCE 2026-11-03, when the Siege's 7.5 was barred as well: the
+        AND 85.5 SINCE 2026-11-02, when the Siege's 7.5 was barred as well: the
         five that remain share both.
         """
         sim = Simulation(TuningConfig(), seed=2)
@@ -184,7 +184,7 @@ class TestTheRule:
 
 class TestTheOtherPairsStayLegal:
     """The owner: "Only the one you ruled"; the coordinating session added the
-    Siege on 2026-11-03. Twenty-six pairs are untouched."""
+    Siege on 2026-11-02. Twenty-six pairs are untouched."""
 
     # NO QUEST CASE SINCE 2026-10-18. Each Cataclysm's Quest dungeons are one
     # fixed sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`, the owner's
@@ -200,7 +200,7 @@ class TestTheOtherPairsStayLegal:
         missing = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - set(seen)
         assert not missing, (
             f"a {dtype.value} dungeon can no longer roll {sorted(missing)}. "
-            "The rulings of 2026-09-06 and 2026-11-03 barred two pairs -- "
+            "The rulings of 2026-09-06 and 2026-11-02 barred two pairs -- "
             "Cataclysm and Cow Level, Cataclysm and Siege -- and said nothing "
             "about any other")
 
@@ -215,7 +215,7 @@ class TestTheOtherPairsStayLegal:
 
     def test_the_model_records_exactly_two_forbidden_pairs(self):
         """The rule is data, so this is where "only the one you ruled" is held,
-        with the Siege the coordinating session added on 2026-11-03.
+        with the Siege the coordinating session added on 2026-11-02.
 
         A session that adds a third is making a design decision nobody has
         made. `docs/DECISIONS.md` carries both rulings and the scope; issue

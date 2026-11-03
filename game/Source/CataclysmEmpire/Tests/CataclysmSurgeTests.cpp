@@ -1525,7 +1525,7 @@ bool FCataclysmSurgeSubTypeOneDrawTest::RunTest(const FString& Parameters)
 	}
 
 	// **THE STACKED REFUSAL IS GONE, AND THIS SAYS SO RATHER THAN LOSING IT.**
-	// Until 2026-11-03 a Cataclysm on a city that already held a Siege had the
+	// Until 2026-11-02 a Cataclysm on a city that already held a Siege had the
 	// Cow Level off the line before the draw and a drawn Siege refused after
 	// it. Since then the Siege is barred on the Cataclysm kind as well (issue
 	// #1324 slice 6b, `AlsoBarredSubTypeOn`), so a Cataclysm's draw never
@@ -1621,7 +1621,7 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 		// from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that #1293
 		// decided, so the shortened line was 93 again.
 		//
-		// AND 85.5 SINCE 2026-11-03, when the Siege's 7.5 came off the line for
+		// AND 85.5 SINCE 2026-11-02, when the Siege's 7.5 came off the line for
 		// a Cataclysm as well (issue #1324 slice 6b, `AlsoBarredSubTypeOn`). The
 		// five left share both; `Cataclysm.EarnedBoss.ACataclysmDungeonIsNeverASiege`
 		// holds the Siege half.
@@ -1697,7 +1697,7 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 	}
 
 	// **ONLY THE PAIRS RULED.** The owner barred one on 2026-09-06 and the
-	// coordinating session the Siege on 2026-11-03, both on the Cataclysm, so
+	// coordinating session the Siege on 2026-11-02, both on the Cataclysm, so
 	// twenty-six of the twenty-eight stay legal, and this is where that is held
 	// for the other kinds: a session barring another pair by inference has to
 	// break a test that quotes the scope back.

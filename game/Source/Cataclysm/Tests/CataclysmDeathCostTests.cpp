@@ -783,7 +783,7 @@ bool FCataclysmDeathCostMigrationTest::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("LastDeathDaysCost"), 0);
 	Expected->SetArrayField(TEXT("LastDeathFallenCityIds"), TArray<TSharedPtr<FJsonValue>>());
 	// AND THE UNOPENED CATACLYSM BOSS DUNGEON `Migrate_3_to_4` WRITES, because the chain runs on to version 4 since
-	// 2026-11-03 (issue #1324 slice 6b).
+	// 2026-11-02 (issue #1324 slice 6b).
 	Expected->SetBoolField(TEXT("bCataclysmDungeonOpened"), false);
 	Expected->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
 	Expected->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);
@@ -820,7 +820,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostCommittedFileTest,
 
 /**
  * `Run_v4.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
- * Prints "DEATH FILE". It read `Run_v3.json` until the run record went to version 4 on 2026-11-03 (issue #1324 slice
+ * Prints "DEATH FILE". It read `Run_v3.json` until the run record went to version 4 on 2026-11-02 (issue #1324 slice
  * 6b); `Run_v4.json` holds the same five values, and `Run_v3.json` is a migration input now.
  */
 bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)

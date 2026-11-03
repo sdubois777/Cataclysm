@@ -621,7 +621,7 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.LastDeathWalkDays = Record.LastDeathWalkDays;
 	Run.LastDeathDaysCost = Record.LastDeathDaysCost;
 	Run.LastDeathFallenCityIds = Record.LastDeathFallenCityIds;
-	// THE CATACLYSM BOSS DUNGEON, since run record version 4 (issue #1324 slice 6b, 2026-11-03), so a restored run that
+	// THE CATACLYSM BOSS DUNGEON, since run record version 4 (issue #1324 slice 6b, 2026-11-02), so a restored run that
 	// had opened it does not open a second, and its depth is the floors it rolled plus the ordinary dungeons above.
 	Run.bCataclysmDungeonOpened = Record.bCataclysmDungeonOpened;
 	Run.CataclysmDungeonOpenedDay = Record.CataclysmDungeonOpenedDay;

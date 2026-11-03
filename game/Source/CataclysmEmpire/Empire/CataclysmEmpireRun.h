@@ -60,7 +60,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 * list of timers that ran out. An ordinary dungeon on a city already fallen
 	 * takes nothing, and a Fallen City stands on a city whose damage is already
 	 * done. (The Cataclysm boss dungeon is never here: it stands on no city and
-	 * its timer never runs out, since 2026-11-03.) A caller counting how often the empire was hurt
+	 * its timer never runs out, since 2026-11-02.) A caller counting how often the empire was hurt
 	 * reads `UCataclysmEmpireRun::DungeonsDetonated` and
 	 * `UCataclysmEmpireRun::QuestHits` rather than the length of this list.
 	 *
@@ -280,7 +280,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *   - **Winning, though no longer the dungeon a win is earned in.** Since
  *     issue #1357 this answers whether the player has earned the right to face
  *     the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active Cataclysms
- *     finished, rounded up -- and since issue #1324 slice 6b (2026-11-03) it
+ *     finished, rounded up -- and since issue #1324 slice 6b (2026-11-02) it
  *     ACTS on the answer: the quest clear that meets it opens the Cataclysm boss
  *     dungeon, on no city (`OpenCataclysmDungeonIfEarned`). What it still does
  *     not do is set a won state when that dungeon is defeated; that is slice 6e.
@@ -658,7 +658,7 @@ public:
 	 * as many words beside `Simulation.basic_cleared`, which this ports.
 	 *
 	 * THE CATACLYSM BOSS DUNGEON'S DEPTH READS IT, since issue #1324 slice 6b
-	 * (2026-11-03): `CataclysmDungeonFloorsNow` is its rolled floors plus this,
+	 * (2026-11-02): `CataclysmDungeonFloorsNow` is its rolled floors plus this,
 	 * so the ordinary dungeons defeated before it opened and after it opened
 	 * both count -- the rule of
 	 * [#1315](https://github.com/sdubois777/Cataclysm/issues/1315). This said
@@ -1003,7 +1003,7 @@ public:
 	 * **IT ANSWERS AND `OpenCataclysmDungeonIfEarned` ACTS.** The quest clear
 	 * that makes this true opens the Cataclysm boss dungeon, since issue
 	 * [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6b
-	 * (2026-11-03). **This said nothing created that dungeon and that two
+	 * (2026-11-02). **This said nothing created that dungeon and that two
 	 * blockers were left -- the enemy capital did not exist, and neither did
 	 * the loss condition.** The project owner answered both on 2026-09-06: the
 	 * enemy capital "is just the boss dungeon becoming enterable", and "Losing
@@ -1067,7 +1067,7 @@ public:
 	 * dungeon. Quest dungeons and retaken Dungeon Cities do not", and the
 	 * Dungeon Types row, "Grows by one floor for every ordinary dungeon the
 	 * player defeats". Before and after it opens and with no cap, ruled by the
-	 * coordinating session on 2026-11-03.
+	 * coordinating session on 2026-11-02.
 	 *
 	 * COMPUTED FROM `BasicDungeonsCleared` AND NOT INCREMENTED, a judgement of
 	 * the session that built it: one counter is the only record of the growth,
@@ -1183,7 +1183,7 @@ public:
 	 *
 	 * THE CATACLYSM BOSS DUNGEON IS ON NO CITY, so it is never among them for a
 	 * city's number; asked for `INDEX_NONE`, this answers the dungeons on no
-	 * city, which is that one. Since 2026-11-03.
+	 * city, which is that one. Since 2026-11-02.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	TArray<int32> DungeonsOn(int32 CityId) const;
@@ -1246,7 +1246,7 @@ public:
 	 * raised after the removal succeeds, so clearing the same identifier twice,
 	 * or one that never existed, adds nothing.
 	 *
-	 * **AND SINCE 2026-11-03 IT IS WHERE THE CATACLYSM BOSS DUNGEON OPENS AND
+	 * **AND SINCE 2026-11-02 IT IS WHERE THE CATACLYSM BOSS DUNGEON OPENS AND
 	 * GROWS.** A Quest clear that meets the requirement opens it
 	 * (`OpenCataclysmDungeonIfEarned`, last in the Quest branch), and an
 	 * ordinary clear deepens a boss already standing by a floor
@@ -1540,7 +1540,7 @@ private:
 	 *
 	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City also refuses to resolve and
 	 * also reaches here, and *is* its city and cannot leave it. The Cataclysm
-	 * boss dungeon would refuse as well, and since 2026-11-03 does not reach
+	 * boss dungeon would refuse as well, and since 2026-11-02 does not reach
 	 * here: it stands on no city with a timer that never runs out, and its one
 	 * move is the Last Stand, issue #43.
 	 */
@@ -1655,7 +1655,7 @@ private:
 	 * has opened before this run (`bCataclysmDungeonOpened`), or when the run
 	 * has not begun.
 	 *
-	 * ON NO CITY: the project owner, 2026-11-03, verbatim "On no city
+	 * ON NO CITY: the project owner, 2026-11-02, verbatim "On no city
 	 * (Recommended)". ITS CATACLYSM IS THE NEWEST ACTIVE ONE, the last of
 	 * `ActiveCataclysms`, ruled by the coordinating session for the slice.
 	 *

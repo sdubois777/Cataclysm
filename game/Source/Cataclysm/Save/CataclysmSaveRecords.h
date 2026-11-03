@@ -1602,7 +1602,7 @@ public:
 	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and `Migrate_2_to_3` writes an empty death into a run
 	 * written at 2.
 	 *
-	 * 4 SINCE 2026-11-03. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
+	 * 4 SINCE 2026-11-02. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
 	 * day it opened and the floors it rolled, `bCataclysmDungeonOpened` to `CataclysmDungeonBaseFloors`, and
 	 * `Migrate_3_to_4` writes a boss not yet opened into a run written at 3.
 	 */
@@ -1933,7 +1933,7 @@ public:
 	/**
 	 * The run's Cataclysm boss dungeon: whether it has opened, the day it opened, and the floors it rolled before any
 	 * ordinary dungeon's floor was added. `UCataclysmEmpireRun::bCataclysmDungeonOpened` and the two beside it; issue
-	 * #1324 slice 6b, 2026-11-03. A SCHEMA VERSION, 4: `Migrate_3_to_4` writes a boss not yet opened -- false, 0 and 0
+	 * #1324 slice 6b, 2026-11-02. A SCHEMA VERSION, 4: `Migrate_3_to_4` writes a boss not yet opened -- false, 0 and 0
 	 * -- into a run written at 3, which is what such a run was, since nothing opened one before.
 	 *
 	 * THE DEPTH IS NOT SAVED HERE, because it is worked out: the floors rolled plus `BasicDungeonsCleared`, which is

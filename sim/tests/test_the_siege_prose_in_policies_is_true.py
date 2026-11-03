@@ -455,7 +455,7 @@ class TestAPillarSiegeCanNeverBeAnswered:
         """At most the Cataclysm and the Pillar's own Fallen City, and the
         Cataclysm always.
 
-        A SUBSET SINCE 2026-11-03, NOT AN EQUALITY. Until then a Siege boss
+        A SUBSET SINCE 2026-11-02, NOT AN EQUALITY. Until then a Siege boss
         dungeon stood on the Pillar and bit it, and the Pillar fell in 246 of
         6,000 campaigns at `analyse_siege_dose.py`'s settings -- which is where
         Pillar Fallen Cities came from. Issue #1324 slice 6b put the earned boss on no city and barred

@@ -875,7 +875,7 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	Expected->SetNumberField(TEXT("LastDeathDaysCost"), 0);
 	Expected->SetArrayField(TEXT("LastDeathFallenCityIds"), TArray<TSharedPtr<FJsonValue>>());
 	// AND THE UNOPENED CATACLYSM BOSS DUNGEON `Migrate_3_to_4` WRITES, because the chain runs on to version 4 since
-	// 2026-11-03 (issue #1324 slice 6b).
+	// 2026-11-02 (issue #1324 slice 6b).
 	Expected->SetBoolField(TEXT("bCataclysmDungeonOpened"), false);
 	Expected->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
 	Expected->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);

@@ -659,7 +659,7 @@ class TuningConfig:
     # be allowed to roll as a cow level sub type." Asked how far to take it,
     # they answered "Only the one you ruled".
     #
-    # THE SECOND, THE SIEGE, SINCE 2026-11-03: ruled by the coordinating session
+    # THE SECOND, THE SIEGE, SINCE 2026-11-02: ruled by the coordinating session
     # under the owner's delegation for issue #1324 slice 6b, barred the same way
     # as the Cow Level. The earned boss stands on no city (the owner, that day,
     # verbatim "On no city (Recommended)"), and a Siege is the sub-type whose

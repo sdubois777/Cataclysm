@@ -427,7 +427,7 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     Fallen City at 80 to 120 -- and both openers only ever ADD floors to a
     Cataclysm. The shortest walk to any of them is therefore 80 days against the
     70 a fresh Siege leaves, so a Pillar Siege can never be answered: not at the
-    median, and not at the best roll the model can produce. (Since 2026-11-03
+    median, and not at the best roll the model can produce. (Since 2026-11-02
     no Siege can stand on the Pillar at all: the earned boss stands on no city
     and a Cataclysm dungeon may not be a Siege, issue #1324 slice 6b. The
     sentence holds and has nothing left to describe.) What changed is that

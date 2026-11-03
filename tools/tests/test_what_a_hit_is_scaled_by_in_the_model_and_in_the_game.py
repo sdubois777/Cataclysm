@@ -76,7 +76,7 @@ def surge_code_without_the_boss() -> str:
     """`CataclysmSurge.cpp` as code, with `MakeCataclysmDungeon` cut out.
 
     THE BOSS DUNGEON'S MAKER IS LEFT OUT OF THE COUNTS BELOW ON PURPOSE, since
-    issue #1324 slice 6b (2026-11-03). Those counts hold `MakeDungeon` and
+    issue #1324 slice 6b (2026-11-02). Those counts hold `MakeDungeon` and
     `MakeFallenCityDungeon` to the rule about what a hit is scaled by, and they
     were written when nothing built a Cataclysm dungeon. The boss rolls its
     floors once, takes no city upgrade (it stands on no city) and never hits
@@ -253,7 +253,7 @@ def test_nothing_else_in_the_game_moves_a_dungeons_floors() -> None:
 
 
 def test_the_boss_dungeons_floors_are_its_roll_and_it_never_hits() -> None:
-    """The Cataclysm boss dungeon, since issue #1324 slice 6b (2026-11-03).
+    """The Cataclysm boss dungeon, since issue #1324 slice 6b (2026-11-02).
 
     ITS FLOORS ARE SET ONCE, FROM THE ROLL, and no `UpgradeFloors` is set, so
     all of them read as rolled: it stands on no city, so no city upgrade can

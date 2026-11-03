@@ -969,7 +969,7 @@ class TestWhatADungeonIs:
         WHAT IT STILL GUARDS, and it is a real thing rather than a formality.
         A Fallen City must keep coming from `MakeFallenCityDungeon` and nowhere
         else, and the Cataclysm boss dungeon from `MakeCataclysmDungeon`, which
-        slice 6b added on 2026-11-03 for a run that has earned it, and nowhere
+        slice 6b added on 2026-11-02 for a run that has earned it, and nowhere
         else -- that dungeon is the win condition and issue #43 also reaches for
         it, so a surge landing one by accident is exactly what this stops. The
         name still says what it checks, so it did not change a third time.
@@ -1002,7 +1002,7 @@ class TestWhatADungeonIs:
         """Two routes put a dungeon on the map that no surge rolled, and two only.
 
         CALLED `test_only_a_city_falling_creates_a_dungeon_a_surge_did_not` UNTIL
-        2026-11-03, when slice 6b of #1324 added the second route and made the
+        2026-11-02, when slice 6b of #1324 added the second route and made the
         old name false. Slice 2 added `MakeFallenCityDungeon`; slice 6b added
         `MakeCataclysmDungeon`, the boss dungeon a run earns. This is the guard
         that a fourth route does not appear without being noticed: the three
@@ -2227,7 +2227,7 @@ class TestWhatClearingADungeonCounts:
 
 class TestTheEarnedBossDungeon:
     """**THE CATACLYSM BOSS DUNGEON OPENS THE SAME WAY IN BOTH HALVES.** Issue
-    #1324 slice 6b, 2026-11-03.
+    #1324 slice 6b, 2026-11-02.
 
     The project owner, that day, verbatim: "On no city (Recommended)". The
     coordinating session ruled the rest: its depth is a roll from the Cataclysm
@@ -2261,7 +2261,7 @@ class TestTheEarnedBossDungeon:
         assert "d.city_id = None" in self.model_code(
             Simulation._maybe_open_cataclysm), (
                 "Simulation._maybe_open_cataclysm no longer puts the earned boss "
-                "on no city; the owner ruled it on 2026-11-03")
+                "on no city; the owner ruled it on 2026-11-02")
 
         made = body_of(read(self.SURGE_SOURCE),
                        "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")

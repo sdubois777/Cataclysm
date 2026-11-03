@@ -215,7 +215,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::BarredSubTypeOn(
 	// ONE KIND IS CONSTRAINED AND THREE ARE NOT. The owner's ruling of
 	// 2026-09-06 names exactly one illegal pair of the 28 and says nothing about
 	// the other 27; see `CataclysmForbiddenSubType`. The Siege is the second
-	// pair since 2026-11-03, on the same kind, in `AlsoBarredSubTypeOn`. A
+	// pair since 2026-11-02, on the same kind, in `AlsoBarredSubTypeOn`. A
 	// second `case` here is a design decision.
 	switch (Type)
 	{
@@ -228,7 +228,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::AlsoBarredSubTypeOn(
 	ECataclysmDungeonType Type)
 {
 	// THE SAME ONE KIND, AND ONLY IT. Ruled by the coordinating session on
-	// 2026-11-03 for issue #1324 slice 6b; see `CataclysmAlsoForbiddenSubType`.
+	// 2026-11-02 for issue #1324 slice 6b; see `CataclysmAlsoForbiddenSubType`.
 	switch (Type)
 	{
 	case ECataclysmDungeonType::Cataclysm:	return CataclysmAlsoForbiddenSubType;
@@ -328,7 +328,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 	// **WHAT THIS KIND OF DUNGEON MAY NOT BE, TAKEN OFF THE LINE BEFORE THE
 	// DRAW RATHER THAN REFUSED AFTER IT.** A Cataclysm may not be a Cow Level;
 	// see `BarredSubTypeOn` and `CataclysmForbiddenSubType` for the ruling. Nor,
-	// since 2026-11-03, a Siege: `AlsoBarredSubTypeOn`, the second exclusion
+	// since 2026-11-02, a Siege: `AlsoBarredSubTypeOn`, the second exclusion
 	// `TotalSpawnWeight` and `SubTypeAtPoint` take.
 	//
 	// WHY BEFORE. Shortening the line is what makes the barred sub-type's weight
@@ -341,7 +341,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 	// of the four kinds bar nothing, so `Barred` and `AlsoBarred` are `None`,
 	// which is not in the distribution and excludes nothing. The one kind that
 	// bars both is the earned Cataclysm boss dungeon, which
-	// `MakeCataclysmDungeon` rolls since 2026-11-03; until then nothing built a
+	// `MakeCataclysmDungeon` rolls since 2026-11-02; until then nothing built a
 	// Cataclysm and this rule answered rather than fired.
 	//
 	// THE SIEGE IS NEVER CHOSEN WHEN IT IS BARRED, so the refused-Siege re-read
@@ -1002,7 +1002,7 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(
 	Dungeon.Cataclysm = Cataclysm;
 	Dungeon.SpawnedDay = Day;
 
-	// ON NO CITY. The project owner, 2026-11-03, verbatim: "On no city
+	// ON NO CITY. The project owner, 2026-11-02, verbatim: "On no city
 	// (Recommended)". `CityTier` names the row the depth comes from and nothing
 	// else; see the header.
 	Dungeon.CityId = INDEX_NONE;
@@ -1259,7 +1259,7 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 {
 	// A SURGE ROLLS TWO KINDS AND `RollKind` IS WHERE THAT IS DECIDED. A Fallen
 	// City is built by `MakeFallenCityDungeon` from what the city was carrying,
-	// and the earned Cataclysm by `MakeCataclysmDungeon` since 2026-11-03 --
+	// and the earned Cataclysm by `MakeCataclysmDungeon` since 2026-11-02 --
 	// so neither reaches here. Asked for
 	// one anyway, this builds a Basic rather than a dungeon carrying a Fallen
 	// City's floors and a Quest's timer, which is a shape nothing in the design

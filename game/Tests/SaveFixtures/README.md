@@ -479,7 +479,7 @@ followed, ruled 2026-11-01:
   not edited again; `Cataclysm.DeathCost.ARunFileFromBeforeTheDeathLineMigratesWithNone`
   runs it through the step and checks every other field is kept. Every test that
   read `Run_v2.json` as the committed run file reads `Run_v3.json` now.
-- **The run record went to version 4 on 2026-11-03**, for the Cataclysm boss
+- **The run record went to version 4 on 2026-11-02**, for the Cataclysm boss
   dungeon the run has earned (issue #1324 slice 6b): three fields after
   `LastDeathFallenCityIds` -- `bCataclysmDungeonOpened`,
   `CataclysmDungeonOpenedDay` and `CataclysmDungeonBaseFloors`. `Migrate_3_to_4`

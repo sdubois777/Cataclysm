@@ -940,7 +940,7 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 	// ONLY A QUEST DUNGEON MOVES. A Fallen City also answers false to
 	// `Resolves` and reaches the caller above, but does not wander: it IS its
 	// city. The Cataclysm boss dungeon would answer the same, and since
-	// 2026-11-03 its timer never runs out, so it never reaches here; its one
+	// 2026-11-02 its timer never runs out, so it never reaches here; its one
 	// move is the Last Stand, issue #43. Checking the kind here rather than at
 	// the call site keeps the rule beside the thing it is a rule about.
 	if (Dungeon->Type != ECataclysmDungeonType::Quest)
@@ -1568,7 +1568,7 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	{
 		++BasicDungeonsCleared;
 
-		// AND A BOSS ALREADY STANDING GROWS BY IT, since 2026-11-03: the ordinary
+		// AND A BOSS ALREADY STANDING GROWS BY IT, since 2026-11-02: the ordinary
 		// dungeons defeated after it opened count as well as those before.
 		DeepenCataclysmDungeon();
 	}
@@ -2152,7 +2152,7 @@ FString UCataclysmEmpireRun::Describe() const
 			// A DUNGEON ON NO CITY HAS NO TIMER WORTH PRINTING: the Cataclysm
 			// boss dungeon's is a billion days and never runs out
 			// (`UCataclysmSurgeScheduler::NeverResolveDays`), and a billion
-			// day countdown would read as a fault. Since 2026-11-03.
+			// day countdown would read as a fault. Since 2026-11-02.
 			const FString Where = City
 				? FString::Printf(TEXT("on %s"), *City->Name)
 				: FString(TEXT("on no city"));

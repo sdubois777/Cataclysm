@@ -4919,7 +4919,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 			}
 
 			// "NO CITY" IS THE CATACLYSM BOSS DUNGEON'S, which stands on none since
-			// 2026-11-03 (issue #1324 slice 6b). It said "nowhere" until then.
+			// 2026-11-02 (issue #1324 slice 6b). It said "nowhere" until then.
 			Ar.Logf(TEXT("Walking dungeon %d on %s: %d floors, so %d days if you "
 						 "clear it. Day %d."),
 					DungeonId,

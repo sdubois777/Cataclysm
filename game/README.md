@@ -223,7 +223,7 @@ by `git add` with no error and no warning. Guarded by
   generic is how the eight differ in attack** — the simulation gives each its own
   shape of wave and this draws uniformly, issue
   [#53](https://github.com/sdubois777/Cataclysm/issues/53). **The unlock opens
-  the Cataclysm boss dungeon**, since 2026-11-03: the quest clear that meets it
+  the Cataclysm boss dungeon**, since 2026-11-02: the quest clear that meets it
   puts the boss on the board on no city (the owner, verbatim, "On no city
   (Recommended)"), where it never bites a city and no timer runs out on it, as
   deep as its roll plus every ordinary dungeon defeated in the run, before it
@@ -339,14 +339,14 @@ by `git add` with no error and no warning. Guarded by
   pairs of the twenty-eight that are barred.** The owner ruled the first on
   2026-09-06 because a Cow Level Last Stand was losing the doubled walk it is
   supposed to keep; the situation was removed rather than the symptom repaired.
-  The coordinating session barred the Siege on 2026-11-03, because the boss
+  The coordinating session barred the Siege on 2026-11-02, because the boss
   dungeon stands on no city and a Siege's whole effect is a daily bite on one.
   `BarredSubTypeOn` and `AlsoBarredSubTypeOn` are the rule and `RollSubType`
   takes both off the line before its single draw, so the weight is spread over
   the other five and no second draw is taken. **Nothing may be inferred from them
   about any other pair** — the other 26 stay legal. Issue
   [#1333](https://github.com/sdubois777/Cataclysm/issues/1333). The rule fires
-  on the boss dungeon a run earns, since 2026-11-03; until then nothing built a
+  on the boss dungeon a run earns, since 2026-11-02; until then nothing built a
   Cataclysm dungeon and it only answered.
 
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
