@@ -213,7 +213,8 @@ namespace CataclysmLobMinimumTest
 			Brain->Think();
 			World->TimeSeconds += Caster->SecondsBetweenAttacks() + 0.05;
 			PlaceLobTestTarget(Target, Caster, Seen.DistanceCm);
-			if (!Test.TestEqual(TEXT("set-up: and it has landed"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE))
+			if (!Test.TestEqual(TEXT("set-up: and it has landed"), Brain->WindingUpAbility,
+					static_cast<int32>(INDEX_NONE))
 				|| !Test.TestFalse(TEXT("set-up: and it is cooling down"), Brain->IsAbilityReady(SpendFirst))
 				|| !Test.TestTrue(TEXT("set-up: and the lob is ready"), Brain->IsAbilityReady(LobIndex)))
 			{
