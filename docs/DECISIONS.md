@@ -345,6 +345,25 @@ of the assertions it guards, with a comment saying why. The other three CONTROLS
 creatures hit harder and they passed. No count, prediction or proof changes; the second window runs the same
 registration at the new head.
 
+### The second window, rule-damage-w1: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at `da83171f4` (on `development` `bead00391`), lock
+`rule-damage-w1`, after the six pre-checks all passed. Every registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the coordinator's build of the corrected test: "Build: Succeeded - 5 actions, 2 files compiled: CataclysmDungeonModifierEffectsTests.cpp, Module.Cataclysm.38.cpp") |
+| The five groups alone | each at its registered count | every one "0 failed": RuleDamageParts. 11, DungeonModifierEffects. 768, SaveLoad. 76, SoulHarvestTravel. 15, ConsumptionDouble. 15 |
+| Whole Unreal suite | 4739, 47 skipped halves, 0 left behind | "4739 tests performed, 4739 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4739 tests in the tree at da83171f4; 4739 performed, gap 0"; "Test saves: 757 written and deleted, 0 left behind" |
+| Python | of record | "7382 passed, 9 skipped in 198.29s"; JUnit tests 7391, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 6 tests, 12 assertions | PROVED. "11 tests performed, 5 succeeded, 6 failed", 12 failed assertions; restored 11 of 11 |
+| P2 | 3 tests, 7 assertions | PROVED. "11 tests performed, 8 succeeded, 3 failed", 7 failed assertions; restored 11 of 11 |
+| P3 | 1 test, 2 assertions | PROVED. "11 tests performed, 10 succeeded, 1 failed": `SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure`, 2 failed assertions; restored 11 of 11 |
+
+Each assertion count is the broken run's failed-assertion lines, read from its kept log.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Nothing here has been run in the engine.** It compiles (phase 2, above); no Unreal test and no C++ guard proof has
