@@ -75,7 +75,42 @@ under the weight table, and the set paragraph); `docs/README.md` (the sheet's co
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**THE FIRST WINDOW FAILED.** `enchant-setid-w1`, 2026-11-17 12:34 to 13:02, on `37d16627d`: the build ("43 actions,
+40 files compiled") and the asset rebuild (exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentsPositive.uasset`
+and `datatable_asset_sources.json`, committed as `59823ff1c`) went as registered, and the whole suite did not: "4712
+tests performed, 4706 succeeded, 6 failed", all six in `CataclysmEnchantmentSetTests.cpp`
+(`AnItemCarryingTwoSetsIsAPieceOfEach`, `ASetWithNoDrawbackGrantsNothing`, `EachThresholdAddsItsBonusToTheOnesBelowIt`,
+`PiecesOfDifferentSetsDoNotAddUp`, `TheDrawbackAppliesOnceHoweverManyPiecesAreWorn`,
+`TwoPiecesGrantTheFirstBonusAndTheDrawbackOnce`), each with "A made-up table in this file did not read. Its columns
+must match the generated CSV's." **The cause:** that file builds two enchantment tables from CSV text, which had no
+`SetId` column, and a field the row struct has and the text lacks stops a table built from CSV text reading -- the
+same thing `RollsDown` did to the same six tests on 2026-10-05, as the file's own comment records. The sweep for the
+new column had covered the generated tables and the Python fixtures and missed CSV text inside a C++ test. **The
+fix**, `997f492cc`: both made-up tables carry `SetId` (7, 8 and 9 for their sets A, B and C, 0 for the ordinary
+rows) and their set rows weight 1. No other file builds an enchantment table from CSV text. The C++ guard did not run
+in that window, because the window stops at a failed suite.
+
+**The second window, `enchant-setid-w2`**, 13:07 to 13:37, on `997f492cc`, waiting first for no build process, at
+least 10,240 MB free and a free lock:
+
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.22.cpp". The assets were already
+  rebuilt and committed.
+- **The full Unreal suite** on `997f492cc`: "4712 tests performed, 4712 succeeded, 0 failed" and "Declared: 4712
+  tests in the tree at 997f492cc; 4712 performed, gap 0", as registered. 47 tests reported skipping part of what
+  they check: the Paragon-art halves a worktree does not have. The whole-suite engine log is kept at
+  `.claude/master-kit-2026-09-23/window-templates/work/enchant-setid-w2_suite_Cataclysm_2026-11-17.log`.
+- **The C++ guard**: "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed:
+  ASetRowIsNeverDrawnFromTheOrdinaryPool | restored: 1 tests performed, 1 succeeded, 0 failed", exactly the
+  registered named failure, the file's hash the same after. The failed assertion was the test's own error, naming
+  `Positive_Archon_s_Aegis_10_Piece_Bonus_When_your_healt` as a set row in the ordinary draw.
+- **The Python guard**, in a detached git worktree copy at `997f492cc`, removed afterwards: "PROVED: 4 failed, 13
+  passed, 1035 deselected in 2.02s | restored: 17 passed, 1035 deselected in 1.64s", named failures exactly the
+  four registered cases ([5], [18], [0] and [2.5]); `result.proved` true.
+
+**Python of record** at `997f492cc`: "7375 passed, 9 skipped in 195.41s"; JUnit tests 7384, failures 0, errors 0,
+skipped 9. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged. Before the asset commit, at
+`37d16627d`, the suite failed one test, `test_datatable_assets_are_current`, naming exactly the two enchantment tables
+("1 failed, 7374 passed, 9 skipped").
 
 ---
 
