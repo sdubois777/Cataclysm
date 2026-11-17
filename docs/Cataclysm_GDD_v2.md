@@ -219,6 +219,8 @@ The following are default controls. Players with multiple damage types can map m
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
+| M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Y | Open and close the character sheet: every stat the character has, and the attributes to spend points into |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -249,6 +251,8 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | C | Open and close the character creator |
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
+| M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Y | Open and close the character sheet: every stat the character has, and the attributes to spend points into |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |

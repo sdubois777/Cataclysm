@@ -3,6 +3,8 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Blueprint/UserWidget.h"
 #include "Player/CataclysmPlayerState.h"
+// For `EmpireRunFor`, which `ToggleEmpireMap` asks to start a run when there is none.
+#include "Player/CataclysmGameInstance.h"
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
 #include "Interface/CataclysmCharacterSheetWidget.h"
@@ -264,6 +266,16 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::ToggleSkillAssignment,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_ToggleSkillAssignment);
+
+	// The empire overview on M and the character sheet on Y, ruled by the
+	// coordinating session on 2026-11-03. Started, as every screen's key is.
+	Input->BindNativeAction(Config, Names::ToggleEmpireMap,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleEmpireMap);
+
+	Input->BindNativeAction(Config, Names::ToggleCharacterSheet,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleCharacterSheet);
 
 	// Started, so a potion is drunk as the key goes down. Issue #806.
 	Input->BindNativeAction(Config, Names::DrinkPotion1, ETriggerEvent::Started,
@@ -884,8 +896,22 @@ void ACataclysmPlayerController::TogglePassiveTree()
 	PassiveTreeScreen->AddToViewport();
 }
 
+void ACataclysmPlayerController::Input_ToggleEmpireMap()
+{
+	ToggleEmpireMap();
+}
+
 void ACataclysmPlayerController::ToggleEmpireMap()
 {
+	// STARTED HERE RATHER THAN BY THE SCREEN, so that opening a screen to look
+	// at it never silently begins a campaign. Asking for the empire map IS
+	// asking for an empire. This line was the console command's own until
+	// 2026-11-17, when the M key was given this screen: here, the key and
+	// `Cataclysm.EmpireMap` both reach it, and neither carries a copy. A
+	// character's run, begun when it was made or loaded, is already there and
+	// this finds it.
+	UCataclysmGameInstance::EmpireRunFor(GetWorld(), /*bStartIfNone*/ true);
+
 	if (!EmpireMapScreen)
 	{
 		UClass* ScreenClass = EmpireMapScreenClass.LoadSynchronous();
@@ -905,7 +931,7 @@ void ACataclysmPlayerController::ToggleEmpireMap()
 		{
 			UE_LOG(LogCataclysm, Error,
 				   TEXT("The empire overview could not be created, so the "
-						"command that opens it does nothing."));
+						"key and the command that open it do nothing."));
 			return;
 		}
 	}
@@ -929,6 +955,11 @@ void ACataclysmPlayerController::ToggleEmpireMap()
 	EmpireMapScreen->AddToViewport();
 }
 
+void ACataclysmPlayerController::Input_ToggleCharacterSheet()
+{
+	ToggleCharacterSheet();
+}
+
 void ACataclysmPlayerController::ToggleCharacterSheet()
 {
 	if (!CharacterSheetScreen)
@@ -950,7 +981,7 @@ void ACataclysmPlayerController::ToggleCharacterSheet()
 		{
 			UE_LOG(LogCataclysm, Error,
 				   TEXT("The character sheet could not be created, so the "
-						"command that opens it does nothing."));
+						"key and the command that open it do nothing."));
 			return;
 		}
 	}

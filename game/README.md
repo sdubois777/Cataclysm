@@ -394,7 +394,10 @@ by `git add` with no error and no warning. Guarded by
   diamond, each reading as sealed, exposed or fallen, with the day, the surge
   countdown and how far the Cataclysm is from the Pillar (issue
   [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
-  `Cataclysm.EmpireMap` opens it.
+  M opens and closes it, in both control schemes, and so does
+  `Cataclysm.EmpireMap`; both start a run when there is none. Y opens and closes
+  the character sheet, as `Cataclysm.CharacterSheet` does. Both keys since
+  2026-11-17, once the input assets are regenerated in the editor.
 
   **The Cataclysm boss dungeon has a box of its own on the map**, since
   2026-11-03, because it stands on no city: once the run has opened it, the

@@ -78,6 +78,14 @@ NATIVE_ACTIONS = [
     # layer 4, ruled Q1 2026-10-25: "K plus Cataclysm.ChooseSkills".
     ("IA_ToggleSkillAssignment", "ToggleSkillAssignment", BOOLEAN,
      "Toggle Skill Assignment"),
+    # The empire overview and the character sheet. Until 2026-11-17 each opened
+    # only from its console command, `Cataclysm.EmpireMap` and
+    # `Cataclysm.CharacterSheet`. Ruled by the coordinating session that day: "M
+    # opens and closes the empire map; Y opens and closes the character sheet,
+    # in both control schemes."
+    ("IA_ToggleEmpireMap", "ToggleEmpireMap", BOOLEAN, "Toggle Empire Map"),
+    ("IA_ToggleCharacterSheet", "ToggleCharacterSheet", BOOLEAN,
+     "Toggle Character Sheet"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -146,6 +154,14 @@ MOUSE_MAPPINGS = [
     # other key considered, moves the character under keyboard movement.
     # Issue #837 layer 4.
     ("IA_ToggleSkillAssignment", "K", []),
+    # The empire overview. M in both schemes, and free in both: M opens the map
+    # in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
+    # session, 2026-11-03.
+    ("IA_ToggleEmpireMap", "M", []),
+    # The character sheet. Y in both schemes, and free in both. Not C, where the
+    # genre puts the character screen: the design gives C to the character
+    # creator, and the same ruling of 2026-11-03 left that row alone.
+    ("IA_ToggleCharacterSheet", "Y", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -195,6 +211,14 @@ KEYBOARD_MAPPINGS = [
     # other key considered, moves the character under keyboard movement.
     # Issue #837 layer 4.
     ("IA_ToggleSkillAssignment", "K", []),
+    # The empire overview. M in both schemes, and free in both: M opens the map
+    # in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
+    # session, 2026-11-03.
+    ("IA_ToggleEmpireMap", "M", []),
+    # The character sheet. Y in both schemes, and free in both. Not C, where the
+    # genre puts the character screen: the design gives C to the character
+    # creator, and the same ruling of 2026-11-03 left that row alone.
+    ("IA_ToggleCharacterSheet", "Y", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

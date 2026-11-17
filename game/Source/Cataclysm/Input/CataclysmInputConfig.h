@@ -118,6 +118,27 @@ namespace CataclysmInputActionNames
 	 * K by default, free in both control schemes. S was not taken: it is a movement key under keyboard movement.
 	 */
 	inline const FName ToggleSkillAssignment = FName(TEXT("ToggleSkillAssignment"));
+
+	/**
+	 * Open and close the empire overview. Tapped, not held. Ruled by the coordinating session, 2026-11-03: "M opens
+	 * and closes the empire map".
+	 *
+	 * M by default, free in both control schemes. M opens the map in Diablo IV (Tab or M) and in Last Epoch.
+	 * `ACataclysmPlayerController::ToggleEmpireMap` is what a press calls, the same function `Cataclysm.EmpireMap`
+	 * calls.
+	 */
+	inline const FName ToggleEmpireMap = FName(TEXT("ToggleEmpireMap"));
+
+	/**
+	 * Open and close the character sheet. Tapped, not held. Ruled by the coordinating session, 2026-11-03: "Y opens
+	 * and closes the character sheet".
+	 *
+	 * Y by default, free in both control schemes. NOT C, which is where the genre puts the character screen: the
+	 * design's controls tables give C to the character creator, and no design row was changed. Y has no genre
+	 * precedent of its own; it is the ruling's choice of a free key. `ACataclysmPlayerController::ToggleCharacterSheet`
+	 * is what a press calls, the same function `Cataclysm.CharacterSheet` calls.
+	 */
+	inline const FName ToggleCharacterSheet = FName(TEXT("ToggleCharacterSheet"));
 }
 
 /**

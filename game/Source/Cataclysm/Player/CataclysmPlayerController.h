@@ -313,9 +313,19 @@ public:
 	 * Opens and closes the empire overview.
 	 *
 	 * THE SAME SHAPE AS THE TWO ABOVE, and public for the same reason:
-	 * `Cataclysm.EmpireMap` calls it. It has no key of its own, and that is not
-	 * an oversight: the input assets are generated in the editor and adding a
-	 * binding to them is a separate change from building a screen. Issue #1087.
+	 * `Cataclysm.EmpireMap` calls it, so a checkout whose input assets predate
+	 * the M key can still open the screen. Issue #1087.
+	 *
+	 * THE M KEY CALLS IT TOO, since 2026-11-17 (ruled by the coordinating
+	 * session: "M opens and closes the empire map"), through
+	 * `Input_ToggleEmpireMap`. The key and the command are one function, so they
+	 * cannot behave differently.
+	 *
+	 * IT STARTS AN EMPIRE RUN WHEN THERE IS NONE, which the console command used
+	 * to do itself before calling this. Moved here on 2026-11-17 so the key does
+	 * what the command does without copying it: asking for the empire map is
+	 * asking for an empire. A character's run, begun when it is made or loaded,
+	 * is already there and is left alone.
 	 */
 	void ToggleEmpireMap();
 
@@ -323,8 +333,12 @@ public:
 	 * Opens and closes the character sheet.
 	 *
 	 * THE SAME SHAPE AS THE THREE ABOVE, and public for the same reason:
-	 * `Cataclysm.CharacterSheet` calls it. It has no key of its own yet, for the
-	 * reason the empire overview has none. Issues #1233 and #50.
+	 * `Cataclysm.CharacterSheet` calls it. Issues #1233 and #50.
+	 *
+	 * THE Y KEY CALLS IT TOO, since 2026-11-17 (ruled by the coordinating
+	 * session: "Y opens and closes the character sheet"), through
+	 * `Input_ToggleCharacterSheet`. Not C, which the design gives to the
+	 * character creator.
 	 */
 	void ToggleCharacterSheet();
 
@@ -341,8 +355,9 @@ public:
 	 * means "show me that one", never "close this".
 	 *
 	 * `Cataclysm.CityScreen` calls it, and so does clicking a city on the empire
-	 * overview. It has no key of its own, for the reason the empire overview has
-	 * none. Issue #42.
+	 * overview. It has no key of its own: a key would have to choose a city, and
+	 * clicking one on the empire overview, which M opens since 2026-11-17, is
+	 * how a city is chosen. Issue #42.
 	 */
 	void ToggleCityScreen(int32 CityId);
 
@@ -438,6 +453,12 @@ private:
 
 	/** The K key's half of it. Calls ToggleSkillAssignment above. Issue #837 layer 4. */
 	void Input_ToggleSkillAssignment();
+
+	/** The M key's half of it. Calls ToggleEmpireMap above, as `Cataclysm.EmpireMap` does. Ruled 2026-11-03. */
+	void Input_ToggleEmpireMap();
+
+	/** The Y key's half of it. Calls ToggleCharacterSheet above, as `Cataclysm.CharacterSheet` does. Ruled 2026-11-03. */
+	void Input_ToggleCharacterSheet();
 
 	/**
 	 * The four potion keys, 2 to 5. One handler a slot, because a native

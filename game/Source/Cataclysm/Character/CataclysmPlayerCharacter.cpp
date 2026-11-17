@@ -4488,7 +4488,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeZoom
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen(
 	TEXT("Cataclysm.EmpireMap"),
-	TEXT("Open or close the empire overview. It has no key of its own yet."),
+	TEXT("Open or close the empire overview, starting an empire run if there is none. M opens it too."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4502,11 +4502,10 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen
 				return;
 			}
 
-			// STARTED HERE RATHER THAN BY THE SCREEN, so that opening a screen
-			// to look at it never silently begins a campaign. Asking for the
-			// empire map IS asking for an empire.
-			UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ true);
-
+			// THE RUN IS STARTED BY `ToggleEmpireMap`, when there is none, and
+			// no longer here: the M key calls the same function, and moving the
+			// line there on 2026-11-17 is what makes the key and this command
+			// one behaviour rather than two copies.
 			Controller->ToggleEmpireMap();
 		}));
 
@@ -5062,8 +5061,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityScreen(
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
 	TEXT("Cataclysm.CharacterSheet"),
 	TEXT("Open or close the character sheet: every stat the character has, and "
-		 "the eight attributes, which points can be spent into from it. It has "
-		 "no key of its own yet."),
+		 "the eight attributes, which points can be spent into from it. Y "
+		 "opens it too."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{

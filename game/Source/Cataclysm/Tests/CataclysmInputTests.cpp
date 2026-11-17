@@ -14,6 +14,7 @@
 #include "Misc/ScopeExit.h"
 #include "InputMappingContext.h"
 #include "EnhancedActionKeyMapping.h"
+#include "InputCoreTypes.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "UObject/UObjectGlobals.h"
@@ -280,7 +281,7 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Twelve native bindings, found by the names the controller uses.
+	// Fourteen native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
@@ -302,6 +303,10 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		// The skill-choice screen, on K, issue #837 layer 4. It joined on
 		// 2026-10-25.
 		CataclysmInputActionNames::ToggleSkillAssignment,
+		// The empire overview on M and the character sheet on Y, ruled by the
+		// coordinating session on 2026-11-03. They joined on 2026-11-17.
+		CataclysmInputActionNames::ToggleEmpireMap,
+		CataclysmInputActionNames::ToggleCharacterSheet,
 	};
 
 	for (const FName& Name : NativeNames)
@@ -387,6 +392,13 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	// key for anything else, so the two have nothing to disagree about either.
 	RequiredEverywhere.Add(
 		Config->FindNativeAction(CataclysmInputActionNames::ToggleInventory));
+
+	// The empire overview on M and the character sheet on Y, in both schemes,
+	// as ruled on 2026-11-03. Neither scheme uses either key for anything else.
+	RequiredEverywhere.Add(
+		Config->FindNativeAction(CataclysmInputActionNames::ToggleEmpireMap));
+	RequiredEverywhere.Add(
+		Config->FindNativeAction(CataclysmInputActionNames::ToggleCharacterSheet));
 
 	// The four potions are on 2 to 5 in both schemes, so a player who changes
 	// scheme finds them where they were. Issue #806.
@@ -501,6 +513,101 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 		TestEqual(
 			FString::Printf(TEXT("%s: a key other than a gamepad stick moves"), Path),
 			bAKeyMoves, Expectation.bAKeyMovesTheCharacter);
+	}
+
+	return true;
+}
+
+/**
+ * The empire overview is on M and the character sheet on Y, in both schemes, and nothing else is on either key.
+ *
+ * RULED BY THE COORDINATING SESSION, 2026-11-03: "M opens and closes the empire map; Y opens and closes the character
+ * sheet, in both control schemes." Until then each screen opened only from its console command.
+ *
+ * THE KEY ITSELF, which the two tests above do not check: they ask that each action has some key in each scheme and
+ * that no key carries two actions. This asks which key. A generator row that put the empire map on N would pass both.
+ *
+ * WHAT IT CANNOT CHECK is a press reaching the screen. A world built by `UWorld::CreateWorld` has no local player, so
+ * `ACataclysmPlayerController::SetupInputComponent` binds nothing there and `CreateWidget` makes no screen.
+ * `tools/tests/test_the_empire_map_and_character_sheet_keys_reach_their_commands.py` reads instead that each key's
+ * handler calls the function its console command calls, and that the controller binds the handler.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapAndCharacterSheetKeysTest,
+	"Cataclysm.Input.TheEmpireMapIsOnMAndTheCharacterSheetOnYInBothSchemes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapAndCharacterSheetKeysTest::RunTest(const FString& Parameters)
+{
+	const UCataclysmInputConfig* Config =
+		LoadObject<UCataclysmInputConfig>(nullptr, CataclysmInputTest::ConfigPath);
+	if (!Config)
+	{
+		AddError(TEXT("The input config does not exist. Run tools/generate_input_assets.py."));
+		return false;
+	}
+
+	const UInputAction* EmpireMap = Config->FindNativeAction(CataclysmInputActionNames::ToggleEmpireMap);
+	const UInputAction* CharacterSheet = Config->FindNativeAction(CataclysmInputActionNames::ToggleCharacterSheet);
+
+	// BOTH ASKED BEFORE EITHER STOPS THE TEST, so a config missing both says so twice rather than once.
+	const bool bHaveEmpireMap = TestNotNull(TEXT("set-up: the config lists the empire overview's action"), EmpireMap);
+	const bool bHaveCharacterSheet =
+		TestNotNull(TEXT("set-up: the config lists the character sheet's action"), CharacterSheet);
+	if (!bHaveEmpireMap || !bHaveCharacterSheet)
+	{
+		return false;
+	}
+
+	struct FScreenKey
+	{
+		const UInputAction* Action;
+		FKey Key;
+		const TCHAR* Screen;
+	};
+
+	const FScreenKey ScreenKeys[] = {
+		{ EmpireMap,      EKeys::M, TEXT("the empire overview") },
+		{ CharacterSheet, EKeys::Y, TEXT("the character sheet") },
+	};
+
+	const TCHAR* const ContextPaths[] = {
+		CataclysmInputTest::MouseContextPath,
+		CataclysmInputTest::KeyboardContextPath,
+	};
+
+	for (const TCHAR* Path : ContextPaths)
+	{
+		const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, Path);
+		if (!TestNotNull(FString::Printf(TEXT("set-up: %s exists"), Path), Context))
+		{
+			continue;
+		}
+
+		const TArray<FEnhancedActionKeyMapping> Mappings = CataclysmInputTest::MappingsOf(Context);
+
+		for (const FScreenKey& Screen : ScreenKeys)
+		{
+			TArray<FKey> KeysOfTheAction;
+			TArray<const UInputAction*> ActionsOnTheKey;
+			for (const FEnhancedActionKeyMapping& Mapping : Mappings)
+			{
+				if (Mapping.Action.Get() == Screen.Action)
+				{
+					KeysOfTheAction.Add(Mapping.Key);
+				}
+				if (Mapping.Key == Screen.Key)
+				{
+					ActionsOnTheKey.Add(Mapping.Action.Get());
+				}
+			}
+
+			TestEqual(FString::Printf(TEXT("%s: %s is on one key"), Path, Screen.Screen),
+				KeysOfTheAction.Num(), 1);
+			TestTrue(FString::Printf(TEXT("%s: %s is on %s"), Path, Screen.Screen, *Screen.Key.ToString()),
+				KeysOfTheAction.Contains(Screen.Key));
+			TestEqual(FString::Printf(TEXT("%s: %s carries one action and no other"), Path, *Screen.Key.ToString()),
+				ActionsOnTheKey.Num(), 1);
+		}
 	}
 
 	return true;

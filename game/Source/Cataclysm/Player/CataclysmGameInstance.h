@@ -84,10 +84,12 @@ public:
 	 * one that has to be right. Issue #1444.
 	 *
 	 * IT NAMES NO CHARACTER, so the clock's seed also draws the run's Cataclysms
-	 * (`BeginEmpireRun`). In the C++, only console commands reach it
-	 * (`Cataclysm.EmpireMap`, `Cataclysm.EmpireAdvance`, `Cataclysm.EnterDungeon`); a
-	 * character's run comes through `BeginACharactersEmpireRun`. Issue #1324
-	 * slice 6a.
+	 * (`BeginEmpireRun`). In the C++, only console commands and the M key reach
+	 * it (`Cataclysm.EmpireMap` and M through
+	 * `ACataclysmPlayerController::ToggleEmpireMap`, `Cataclysm.EmpireAdvance`,
+	 * `Cataclysm.EnterDungeon`); a character's run comes through
+	 * `BeginACharactersEmpireRun`, and once one is held none of these begins
+	 * another. Issue #1324 slice 6a; the M key since 2026-11-17.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* GetOrBeginEmpireRun();
