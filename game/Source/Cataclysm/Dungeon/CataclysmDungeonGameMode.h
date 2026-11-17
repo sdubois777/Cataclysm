@@ -393,8 +393,8 @@ public:
 	 * SOUL HARVEST: its souls and the health they added (which the saved maximum includes) are held again, and
 	 * `ApplySoulHarvestFigures` re-applies the damage and resistance with bFreshBlock false, which keeps the health
 	 * where it is. NOTHING IS FORGOTTEN: the creature is the void's boss again, and the attack damage the void gave
-	 * (`NothingIsForgottenDamageGiven`) is its Nothing Is Forgotten part again; `ApplyNothingIsForgottenFigures` is NOT called, because it adds
-	 * the void's health to a maximum that already holds it. THE CATACLYSM BOSS, issue #1324 slice 6d: on
+	 * (`NothingIsForgottenDamageGiven`) is its Nothing Is Forgotten part again (issue #2723);
+	 * `ApplyNothingIsForgottenFigures` is NOT called, because it adds the void's health to a maximum that already holds it. THE CATACLYSM BOSS, issue #1324 slice 6d: on
 	 * `IsTheCataclysmBossFloor`, the saved Gatekeeper at `CataclysmBossRung` whose record does not say it rose from the
 	 * dead is the floor's boss again, so the stairs stay sealed under it; one that rose (Dead Rising, Divine Resurgence)
 	 * is not, as it is not in play.

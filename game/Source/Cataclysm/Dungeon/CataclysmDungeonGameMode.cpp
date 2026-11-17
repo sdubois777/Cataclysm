@@ -19979,7 +19979,8 @@ void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
 	// how a floor rule gives the PLAYER a stat change; a creature has no such path, so this
 	// is the only way a rule reaches one. The cost is that anything writing the creature's
 	// stat block again wipes these, which is why the two rules that raise a living
-	// creature's rung both call this afterwards.
+	// creature's rung both call this afterwards. THE DAMAGE INCREASE IS THE EXCEPTION since
+	// issue #2723: it is the creature's own part, which a rewrite of the stat block keeps.
 	//
 	// THE ROW'S 90 GOES INTO THE MULTIPLICATIVE BUCKET, WHICH IS THE PROJECT OWNER'S
 	// DECISION. `UCataclysmDamageCalculation::DamageReductionCap` bounds the ADDITIVE pool
