@@ -105,7 +105,26 @@ and the three armour and damage rows already stacked.
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The editor window `enchant-seven-w1`**, 2026-11-17 11:37 to 12:08, on `feat/seven-approved-enchantment-rewords` at
+`29f5bff0e`, the commit that registered the Unreal total. It waited, before taking the lock, for another session's
+Python run to end.
+
+- **The build**: "Build: Succeeded - 62 actions, 55 files compiled".
+- **The asset rebuild** changed exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsNegative.uasset`,
+  `DT_EnchantmentsPositive.uasset` and `datatable_asset_sources.json`, committed as `f4cf7b597`, the tested head.
+- **The full Unreal suite** on `f4cf7b597`: "4712 tests performed, 4712 succeeded, 0 failed" and "Declared: 4712
+  tests in the tree at f4cf7b597; 4712 performed, gap 0", as registered. 47 tests reported skipping part of what
+  they check: the Paragon-art halves a worktree does not have. The whole-suite engine log is kept at
+  `.claude/master-kit-2026-09-23/window-templates/work/enchant-seven-w1_suite_Cataclysm_2026-11-17.log`.
+- **The Python guard**, in a detached git worktree copy at `f4cf7b597`, removed afterwards: "PROVED: 1 failed, 4
+  passed in 0.88s | restored: 5 passed in 0.80s", named failure
+  `tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table`, as registered;
+  `result.proved` true.
+
+**Python of record** at `f4cf7b597`: "7358 passed, 9 skipped in 192.28s"; JUnit tests 7367, failures 0, errors 0,
+skipped 9. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged. Before the asset commit the
+suite failed one test, `test_datatable_assets_are_current`, naming exactly the three enchantment tables ("1 failed,
+7357 passed, 9 skipped").
 
 ---
 
