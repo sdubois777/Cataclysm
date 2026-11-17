@@ -8341,4 +8341,284 @@ bool FCataclysmSaveLoadLoadedDrawTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A creature's attack damage from its parts, through a save and a load into a new world. Issue #2723.
+//
+// `RestoreCreatureRoles` gives a creature its souls and the void's damage back BEFORE it writes the Famished Beasts and
+// Grim Totems multipliers, and until #2723 those writes rebuilt the attack damage from the creature's own figure and
+// dropped what the two rules had given. THE GROUP IS `Cataclysm.RuleDamageParts.`, WITH THE TRAILING DOT; its in-play
+// tests are at the end of CataclysmDungeonModifierEffectsTests.cpp. The rules' state is put on the creatures in the
+// saving world through `RestoreCreatureRoles`, the route `ACreaturesHeldSoulsAndTheFedBossComeBack` takes.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** A creature's attack damage, read off the attribute. */
+	float PartsDamageOf(const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = Creature.GetAbilitySystemComponent();
+		return Abilities ? Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) : -1.0f;
+	}
+
+	/** The standing creatures no rule raised that a save records as creatures and whose damage is their own. */
+	TArray<ACataclysmEnemyCharacter*> PartsCandidates(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Out;
+		for (ACataclysmEnemyCharacter* Creature : UnruledStanding(Mode))
+		{
+			if (!Creature->bHoldsAPlayerBuild && !Creature->IsAnIllusion() && Creature->OwnAttackDamage() > 0.0f)
+			{
+				Out.Add(Creature);
+			}
+		}
+		return Out;
+	}
+
+	/** The living creature standing where `At` is, which a record put back there; null when none does. */
+	ACataclysmEnemyCharacter* PartsCreatureAt(UWorld& World, const FVector& At)
+	{
+		ACataclysmEnemyCharacter* Found = nullptr;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It) && FVector::Dist2D(It->GetActorLocation(), At) < 1.0f)
+			{
+				Found = *It;
+			}
+		}
+		return Found;
+	}
+}
+
+/**
+ * Souls and hunger come back from a load at their figure, given in either order: one creature given three souls then
+ * made hungry (the order a load writes them in), one made hungry then given three souls. Each is its own figure x the
+ * floor's multipliers x 1.3, before the save and after the load. Issue #2723. Prints "LOAD PARTS SOULS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsSaveSoulsHungerTest,
+	"Cataclysm.RuleDamageParts.SoulsAndHungerComeBackFromALoadAtTheirFigureInEitherOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsSaveSoulsHungerTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A HUNDREDTH OF A POINT, on figures of tens to hundreds; a creature without its souls' damage is short by a fifth
+	// or more of its figure.
+	constexpr float Tolerance = 0.01f;
+	const float Hunger = Effects::FamishedBeastsMultiplier(2);
+	const float Souls = 1.0f + Effects::SoulHarvestDamagePercentPerSoul * 3.0f / 100.0f;
+
+	return WithTheSeedPutBack(*this, [this, Tolerance, Hunger, Souls]()
+	{
+		FVector SoulsFirstAt = FVector::ZeroVector;
+		FVector HungerFirstAt = FVector::ZeroVector;
+		float SoulsFirstSaved = -1.0f;
+		float HungerFirstSaved = -1.0f;
+		return ARoundTripOfRows(*this, {},
+			[this, &SoulsFirstAt, &HungerFirstAt, &SoulsFirstSaved, &HungerFirstSaved, Tolerance, Souls](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed&)
+			{
+				const TArray<ACataclysmEnemyCharacter*> Standing = PartsCandidates(Mode);
+				if (!TestTrue(TEXT("set-up: the floor has two creatures whose damage is their own"), Standing.Num() >= 2))
+				{
+					return false;
+				}
+				ACataclysmEnemyCharacter* SoulsFirst = Standing[0];
+				ACataclysmEnemyCharacter* HungerFirst = Standing[1];
+
+				// SOULS, THEN HUNGER: one record, which `RestoreCreatureRoles` writes in that order.
+				FCataclysmSavedCreature Both;
+				Both.SoulHarvestSouls = 3;
+				Both.FamishedDropsEaten = 2;
+				Mode.RestoreCreatureRoles(*SoulsFirst, Both);
+
+				// HUNGER, THEN SOULS: two records.
+				FCataclysmSavedCreature Hungry;
+				Hungry.FamishedDropsEaten = 2;
+				Mode.RestoreCreatureRoles(*HungerFirst, Hungry);
+				FCataclysmSavedCreature Fed;
+				Fed.SoulHarvestSouls = 3;
+				Mode.RestoreCreatureRoles(*HungerFirst, Fed);
+
+				SoulsFirstAt = SoulsFirst->GetActorLocation();
+				HungerFirstAt = HungerFirst->GetActorLocation();
+				SoulsFirstSaved = PartsDamageOf(*SoulsFirst);
+				HungerFirstSaved = PartsDamageOf(*HungerFirst);
+				// CHECKED HERE AND NOT A GATE, so the load is measured whatever the saving world held.
+				TestEqual(TEXT("souls then hunger, before the save: own x the multipliers x the souls"), SoulsFirstSaved,
+						  SoulsFirst->OwnAttackDamage() * SoulsFirst->DamageMultiplierProduct() * Souls, Tolerance);
+				TestEqual(TEXT("hunger then souls, before the save: the same"), HungerFirstSaved,
+						  HungerFirst->OwnAttackDamage() * HungerFirst->DamageMultiplierProduct() * Souls, Tolerance);
+				return ThePlayerIsAlive(*this, Player);
+			},
+			[this, &SoulsFirstAt, &HungerFirstAt, &SoulsFirstSaved, &HungerFirstSaved, Tolerance, Hunger, Souls](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter&, UWorld& World,
+				const FCataclysmLoadReport& Report)
+			{
+				ACataclysmEnemyCharacter* SoulsFirst = PartsCreatureAt(World, SoulsFirstAt);
+				ACataclysmEnemyCharacter* HungerFirst = PartsCreatureAt(World, HungerFirstAt);
+				if (!TestNotNull(TEXT("set-up: the creature given souls first stands where it stood"), SoulsFirst)
+					|| !TestNotNull(TEXT("set-up: and the one made hungry first"), HungerFirst))
+				{
+					return;
+				}
+
+				AddInfo(FString::Printf(TEXT("LOAD PARTS SOULS: %s (%s); souls first saved %.2f, loaded %.2f (own %.2f, "
+											 "multipliers %.3f); hunger first saved %.2f, loaded %.2f (own %.2f, "
+											 "multipliers %.3f)"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, SoulsFirstSaved,
+										PartsDamageOf(*SoulsFirst), SoulsFirst->OwnAttackDamage(),
+										SoulsFirst->DamageMultiplierProduct(), HungerFirstSaved,
+										PartsDamageOf(*HungerFirst), HungerFirst->OwnAttackDamage(),
+										HungerFirst->DamageMultiplierProduct()));
+
+				const TArray<ACataclysmEnemyCharacter*> Both = {SoulsFirst, HungerFirst};
+				for (ACataclysmEnemyCharacter* One : Both)
+				{
+					const TCHAR* Which = One == SoulsFirst ? TEXT("souls first") : TEXT("hunger first");
+					int32 SoulsHeld = 0;
+					float HealthAdded = 0.0f;
+					Mode.SoulHarvestHeldBy(One, SoulsHeld, HealthAdded);
+					TestEqual(FString::Printf(TEXT("%s: it still holds three souls"), Which), SoulsHeld, 3);
+					TestEqual(FString::Printf(TEXT("%s: and is still hungry"), Which),
+							  One->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), Hunger,
+							  0.0001f);
+					const float Expected = One->OwnAttackDamage() * One->DamageMultiplierProduct() * Souls;
+					const float Lost = One->OwnAttackDamage() * One->DamageMultiplierProduct();
+					TestEqual(FString::Printf(TEXT("%s: after the load, own x the multipliers x the souls"), Which),
+							  PartsDamageOf(*One), Expected, Tolerance);
+					TestTrue(FString::Printf(TEXT("%s: CONTROL: that and the figure without the souls' damage, %.2f "
+												  "against %.2f, are told apart"),
+											 Which, Expected, Lost),
+							 FMath::Abs(Expected - Lost) > 1.0f);
+				}
+				TestEqual(TEXT("souls first: the figure it was saved with"), PartsDamageOf(*SoulsFirst), SoulsFirstSaved,
+						  Tolerance);
+				TestEqual(TEXT("hunger first: the figure it was saved with"), PartsDamageOf(*HungerFirst),
+						  HungerFirstSaved, Tolerance);
+			});
+	});
+}
+
+/**
+ * Souls under a Grim Totem's cleanse, and the boss Nothing Is Forgotten fed made hungry and cleansed, come back from a
+ * load at their figure: own x the multipliers x 1.3, and (own + the void's 12) x the multipliers. Issue #2723. Prints
+ * "LOAD PARTS VOID".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsSaveCleanseVoidTest,
+	"Cataclysm.RuleDamageParts.SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsSaveCleanseVoidTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	constexpr float Tolerance = 0.01f;
+	constexpr float VoidGave = 12.0f;
+	const float Cleanse = 1.0f - Effects::GrimTotemsCleanseDamageLessPercent / 100.0f;
+	const float Souls = 1.0f + Effects::SoulHarvestDamagePercentPerSoul * 3.0f / 100.0f;
+
+	return WithTheSeedPutBack(*this, [this, Tolerance, VoidGave, Cleanse, Souls]()
+	{
+		FVector CleansedAt = FVector::ZeroVector;
+		FVector BossAt = FVector::ZeroVector;
+		float CleansedSaved = -1.0f;
+		float BossSaved = -1.0f;
+		return ARoundTripOfRows(*this, {},
+			[this, &CleansedAt, &BossAt, &CleansedSaved, &BossSaved, Tolerance, VoidGave, Cleanse, Souls](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed&)
+			{
+				const TArray<ACataclysmEnemyCharacter*> Standing = PartsCandidates(Mode);
+				if (!TestTrue(TEXT("set-up: the floor has two creatures whose damage is their own"), Standing.Num() >= 2))
+				{
+					return false;
+				}
+				ACataclysmEnemyCharacter* Cleansed = Standing[0];
+				ACataclysmEnemyCharacter* Boss = Standing[1];
+
+				// THE VOID'S FIGURES THROUGH THE WALK, as `ACreaturesHeldSoulsAndTheFedBossComeBack` puts them there.
+				FCataclysmSavedWalk Walk = Mode.WalkStateNow();
+				Walk.NothingIsForgottenHealth = 400.0f;
+				Walk.NothingIsForgottenDamage = 50.0f;
+				Walk.NothingIsForgottenHealthGiven = 400.0f;
+				Walk.NothingIsForgottenDamageGiven = VoidGave;
+				Mode.RestoreWalkState(Walk);
+
+				FCataclysmSavedCreature SoulsCleansed;
+				SoulsCleansed.SoulHarvestSouls = 3;
+				SoulsCleansed.GrimTotemsDamageMultiplier = Cleanse;
+				Mode.RestoreCreatureRoles(*Cleansed, SoulsCleansed);
+
+				FCataclysmSavedCreature FedBoss;
+				FedBoss.bFedByNothingIsForgotten = true;
+				FedBoss.FamishedDropsEaten = 2;
+				FedBoss.GrimTotemsDamageMultiplier = Cleanse;
+				Mode.RestoreCreatureRoles(*Boss, FedBoss);
+
+				CleansedAt = Cleansed->GetActorLocation();
+				BossAt = Boss->GetActorLocation();
+				CleansedSaved = PartsDamageOf(*Cleansed);
+				BossSaved = PartsDamageOf(*Boss);
+				// CHECKED HERE AND NOT A GATE, so the load is measured whatever the saving world held.
+				TestEqual(TEXT("souls under a cleanse, before the save: own x the multipliers x the souls"), CleansedSaved,
+						  Cleansed->OwnAttackDamage() * Cleansed->DamageMultiplierProduct() * Souls, Tolerance);
+				TestEqual(TEXT("the void's boss, before the save: (own + the void's) x the multipliers"), BossSaved,
+						  (Boss->OwnAttackDamage() + VoidGave) * Boss->DamageMultiplierProduct(), Tolerance);
+				return ThePlayerIsAlive(*this, Player);
+			},
+			[this, &CleansedAt, &BossAt, &CleansedSaved, &BossSaved, Tolerance, VoidGave, Cleanse, Souls](
+				ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter&, UWorld& World,
+				const FCataclysmLoadReport& Report)
+			{
+				ACataclysmEnemyCharacter* Cleansed = PartsCreatureAt(World, CleansedAt);
+				ACataclysmEnemyCharacter* Boss = PartsCreatureAt(World, BossAt);
+				if (!TestNotNull(TEXT("set-up: the cleansed creature stands where it stood"), Cleansed)
+					|| !TestNotNull(TEXT("set-up: and the void's boss"), Boss))
+				{
+					return;
+				}
+
+				AddInfo(FString::Printf(TEXT("LOAD PARTS VOID: %s (%s); cleansed saved %.2f, loaded %.2f (own %.2f, "
+											 "multipliers %.3f); the boss saved %.2f, loaded %.2f (own %.2f, multipliers "
+											 "%.3f)"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, CleansedSaved,
+										PartsDamageOf(*Cleansed), Cleansed->OwnAttackDamage(),
+										Cleansed->DamageMultiplierProduct(), BossSaved, PartsDamageOf(*Boss),
+										Boss->OwnAttackDamage(), Boss->DamageMultiplierProduct()));
+
+				TestEqual(TEXT("the cleansed creature is still cleansed"),
+						  Cleansed->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), Cleanse,
+						  0.0001f);
+				const float CleansedExpected =
+					Cleansed->OwnAttackDamage() * Cleansed->DamageMultiplierProduct() * Souls;
+				const float CleansedLost = Cleansed->OwnAttackDamage() * Cleansed->DamageMultiplierProduct();
+				TestEqual(TEXT("souls under a cleanse, after the load: own x the multipliers x the souls"),
+						  PartsDamageOf(*Cleansed), CleansedExpected, Tolerance);
+				TestEqual(TEXT("and the figure it was saved with"), PartsDamageOf(*Cleansed), CleansedSaved, Tolerance);
+				TestTrue(FString::Printf(TEXT("CONTROL: that and the figure without the souls' damage, %.2f against "
+											  "%.2f, are told apart"),
+										 CleansedExpected, CleansedLost),
+						 FMath::Abs(CleansedExpected - CleansedLost) > 1.0f);
+
+				TestTrue(TEXT("the void's boss is the void's boss"), Mode.IsTheVoidsBoss(Boss));
+				TestEqual(TEXT("and still cleansed"),
+						  Boss->DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource), Cleanse, 0.0001f);
+				TestEqual(TEXT("and still hungry"),
+						  Boss->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource),
+						  Effects::FamishedBeastsMultiplier(2), 0.0001f);
+				const float BossExpected = (Boss->OwnAttackDamage() + VoidGave) * Boss->DamageMultiplierProduct();
+				const float BossLost = Boss->OwnAttackDamage() * Boss->DamageMultiplierProduct();
+				TestEqual(TEXT("the void's boss, after the load: (own + the void's) x the multipliers"),
+						  PartsDamageOf(*Boss), BossExpected, Tolerance);
+				TestEqual(TEXT("and the figure it was saved with"), PartsDamageOf(*Boss), BossSaved, Tolerance);
+				TestTrue(FString::Printf(TEXT("CONTROL: that and the figure without the void's damage, %.2f against "
+											  "%.2f, are told apart"),
+										 BossExpected, BossLost),
+						 FMath::Abs(BossExpected - BossLost) > 1.0f);
+			});
+	});
+}
+
 #endif // WITH_AUTOMATION_TESTS

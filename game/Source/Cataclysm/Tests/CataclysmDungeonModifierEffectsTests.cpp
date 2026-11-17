@@ -17642,10 +17642,14 @@ bool FCataclysmWraithIncreaseTest::RunTest(const FString& Parameters)
 	// flag takes the two speeds back to that kind's own. A second creature would not
 	// serve: the rule spawns through the floor's own placer and a hand-spawned one has a
 	// different block.
+	//
+	// THE DAMAGE IS READ AS ITS OWN FIGURE TIMES THE FLOOR'S MULTIPLIERS, since issue #2723: the increase is now the
+	// creature's own part, which a rewrite of the stat block keeps, so reading the attribute after one would compare
+	// the wraith with itself.
 	Wraith->SetRarityStep(Wraith->RarityStep);
 	Wraith->bIsVengefulWraith = false;
 	Wraith->RefreshWalkSpeed();
-	const float PlainDamage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+	const float PlainDamage = Wraith->OwnAttackDamage() * Wraith->DamageMultiplierProduct();
 	const float PlainInterval = Wraith->SecondsBetweenAttacks();
 	const float PlainWalk = Movement->MaxWalkSpeed;
 
@@ -18015,10 +18019,10 @@ bool FCataclysmWraithRungTest::RunTest(const FString& Parameters)
 
 	// AND THE INCREASE DID NOT HAPPEN TWICE. Reading the new rung's own figure back the
 	// same way the increase test does: the wraith must be the row's one increase above it,
-	// not the increase applied twice.
+	// not the increase applied twice. Its own figure times the floor's multipliers since issue
+	// #2723, because a rewrite of the stat block now keeps the increase.
 	const float RaisedDamage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
-	Wraith->SetRarityStep(Wraith->RarityStep);
-	const float PlainAtNewRung = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+	const float PlainAtNewRung = Wraith->OwnAttackDamage() * Wraith->DamageMultiplierProduct();
 
 	TestEqual(TEXT("the wraith is one increase above its new rung and not two"),
 			  RaisedDamage, Effects::VengefulWraithsIncreased(PlainAtNewRung), 0.01f);
@@ -25115,13 +25119,16 @@ bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
 	// differ.
 	//
 	// READ IN THIS ORDER: the fed figures FIRST, then the rung set again for the base. Setting
-	// the rung wipes what the souls added, so reading the fed figures after it would compare the
-	// base with itself and nothing could make this test fail.
+	// the rung wipes what the souls added to the resistance, so reading the fed figures after it
+	// would compare the base with itself and nothing could make this test fail.
+	//
+	// THE DAMAGE'S BASE IS ITS OWN FIGURE TIMES THE FLOOR'S MULTIPLIERS, since issue #2723: the
+	// souls' damage is the creature's own part, which setting the rung keeps.
 	const FSoulFigures Fed = SoulFiguresOf(Champion);
 	Champion->SetRarityStep(To);
 	const FSoulFigures Bare = SoulFiguresOf(Champion);
 	TestEqual(TEXT("its attack damage is its new rung's plus a tenth a soul"), Fed.Damage,
-			  Bare.Damage * (1.0f + 0.1f * Souls), 0.01f);
+			  Champion->OwnAttackDamage() * Champion->DamageMultiplierProduct() * (1.0f + 0.1f * Souls), 0.01f);
 	TestEqual(TEXT("its all-resistance is its new rung's plus five a soul"), Fed.Resistance,
 			  Bare.Resistance + 5.0f * Souls, 0.01f);
 	return true;
@@ -64402,6 +64409,566 @@ bool FCataclysmBeatClockAtTwoFramesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("CONTROL: and one stack at ten"), FourAt, Effects::DeathsEmbracePercentPerStack, 0.01f);
 	TestEqual(TEXT("at two frames a second, nothing a frame short of ten seconds"), TwoShort, 0.0f, 0.01f);
 	TestEqual(TEXT("and one stack at ten, the same real time"), TwoAt, Effects::DeathsEmbracePercentPerStack, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A creature's attack damage from its parts. Issue #2723.
+//
+// Soul Harvest's souls, Nothing Is Forgotten's damage and a wraith's increase are each the creature's own part, in the
+// bucket ruled for it on 2026-11-17, and `ACataclysmEnemyCharacter::WriteAttackDamage` builds the figure from the
+// creature's own damage and every part: (own + flat) x (1 + increases) x every "more" x every floor multiplier. Until
+// #2723 the three were written onto the attribute, and the next damage multiplier -- Famished Beasts' hunger, a Grim
+// Totem's cleanse -- rewrote the attribute from the creature's own figure and dropped them.
+//
+// THE GROUP IS `Cataclysm.RuleDamageParts.`, WITH THE TRAILING DOT. Its save and load tests are at the end of
+// CataclysmSaveLoadTests.cpp. THE SOULS ARE GIVEN THROUGH `RestoreCreatureRoles`, which writes them with the function a
+// soul's arrival calls, `ApplySoulHarvestFigures`: the route the save tests already use to put a rule's state on a
+// creature, and one that issue #1671, the travelling soul, does not change. Hunger and a cleanse are the creature's own
+// setters, the calls Famished Beasts and a Grim Totem's cleanse make; the fault was in what those setters write.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** A creature's attack damage, read off the attribute. */
+	float PartsDamageOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		return CombatStatOf(Creature, UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+	}
+
+	/** Give a creature this many of Soul Harvest's souls, written as an arrival writes them. */
+	void PartsGiveSouls(ACataclysmDungeonGameMode* Mode, ACataclysmEnemyCharacter* Creature, int32 Souls)
+	{
+		FCataclysmSavedCreature Holder;
+		Holder.SoulHarvestSouls = Souls;
+		Mode->RestoreCreatureRoles(*Creature, Holder);
+	}
+
+	/** What this many souls multiply a creature's damage by, from the designed figure: 1 + 10% a soul. */
+	float PartsSoulsMore(int32 Souls)
+	{
+		return 1.0f + UCataclysmDungeonModifierEffects::SoulHarvestDamagePercentPerSoul * static_cast<float>(Souls) / 100.0f;
+	}
+
+	/** What two drops eaten multiply a creature's damage by: Famished Beasts' own figure. */
+	float PartsHunger()
+	{
+		return UCataclysmDungeonModifierEffects::FamishedBeastsMultiplier(2);
+	}
+
+	/** What a Grim Totem's cleanse multiplies a creature's damage by: 25% less. */
+	float PartsCleanse()
+	{
+		return 1.0f - UCataclysmDungeonModifierEffects::GrimTotemsCleanseDamageLessPercent / 100.0f;
+	}
+}
+
+// THE FORMULA, AND EACH BUCKET ADDING OR MULTIPLYING IN ITS OWN WAY: two increases add, two "more"s multiply, flat
+// damage goes in before both, and a part written twice is given once.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsFormulaTest,
+	"Cataclysm.RuleDamageParts.TheThreeBucketsAreOneFormulaAndEachCombinesInItsOwnWay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsFormulaTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Creature = ACataclysmEnemyCharacter;
+
+	// (100 + 50) x 1.2 x 1.5 IS 270. Flat added after the increase and the "more" would be 100 x 1.2 x 1.5 + 50, 230.
+	TestEqual(TEXT("(own + flat) x (1 + increases) x more"),
+			  Creature::AttackDamageFromParts(100.0f, 50.0f, 20.0f, 1.5f), 270.0f, 0.001f);
+	TestEqual(TEXT("and never below nothing"), Creature::AttackDamageFromParts(100.0f, 0.0f, -200.0f, 1.0f), 0.0f,
+			  0.001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* One = SpawnImpWithHealth(World, FVector(1000.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature"), One))
+	{
+		return false;
+	}
+	One->SetAttackDamage(100.0f);
+	const float Own = One->OwnAttackDamage();
+	if (!TestTrue(FString::Printf(TEXT("set-up: it hits for its own %.2f and nothing multiplies it (%.3f)"), Own,
+								  One->DamageMultiplierProduct()),
+				  Own > 0.0f && FMath::IsNearlyEqual(One->DamageMultiplierProduct(), 1.0f)
+					  && FMath::IsNearlyEqual(PartsDamageOf(One), Own, 0.01f)))
+	{
+		return false;
+	}
+
+	// TWO INCREASES ADD: 20% and 30% increased are 1.5 times, where multiplying them would give 1.56.
+	Creature::FRuleDamagePart TwentyIncreased;
+	TwentyIncreased.IncreasedPercent = 20.0f;
+	Creature::FRuleDamagePart ThirtyIncreased;
+	ThirtyIncreased.IncreasedPercent = 30.0f;
+	One->SetRuleDamagePart(TEXT("TestIncreaseA"), TwentyIncreased);
+	One->SetRuleDamagePart(TEXT("TestIncreaseB"), ThirtyIncreased);
+	TestEqual(TEXT("two increases add within their bucket"), PartsDamageOf(One), Own * 1.5f, 0.01f);
+
+	// WRITTEN TWICE, GIVEN ONCE.
+	One->SetRuleDamagePart(TEXT("TestIncreaseB"), ThirtyIncreased);
+	TestEqual(TEXT("a part written again is not given twice"), PartsDamageOf(One), Own * 1.5f, 0.01f);
+
+	// A PART THAT GIVES NOTHING IS NO PART: both increases taken off, the creature is its own again.
+	One->SetRuleDamagePart(TEXT("TestIncreaseA"), Creature::FRuleDamagePart());
+	One->SetRuleDamagePart(TEXT("TestIncreaseB"), Creature::FRuleDamagePart());
+	TestEqual(TEXT("with every part taken off it hits for its own"), PartsDamageOf(One), Own, 0.01f);
+
+	// TWO "MORE"S MULTIPLY, AND FLAT DAMAGE GOES IN UNDER BOTH: (own + 20) x 1.2 x 1.3.
+	Creature::FRuleDamagePart MoreA;
+	MoreA.More = 1.2f;
+	Creature::FRuleDamagePart MoreB;
+	MoreB.More = 1.3f;
+	Creature::FRuleDamagePart Flat;
+	Flat.Added = 20.0f;
+	One->SetRuleDamagePart(TEXT("TestMoreA"), MoreA);
+	One->SetRuleDamagePart(TEXT("TestMoreB"), MoreB);
+	One->SetRuleDamagePart(TEXT("TestFlat"), Flat);
+	TestEqual(TEXT("two \"more\"s multiply, over the flat damage"), PartsDamageOf(One), (Own + 20.0f) * 1.2f * 1.3f,
+			  0.01f);
+
+	// AND THE FLOOR'S MULTIPLIERS MULTIPLY THE WHOLE OF IT.
+	One->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("and a floor multiplier multiplies all of it"), PartsDamageOf(One),
+			  (Own + 20.0f) * 1.2f * 1.3f * PartsHunger(), 0.01f);
+	return true;
+}
+
+// SOULS, THEN HUNGER: a creature holding three souls and then made hungry by Famished Beasts keeps the souls' damage.
+// The issue's first case.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsSoulsThenHungerTest,
+	"Cataclysm.RuleDamageParts.ACreatureWithSoulsMadeHungryKeepsTheSoulsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsSoulsThenHungerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Fed = Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Twin = Mode ? PlaceCreatureAtRung(World, Mode, FVector(-1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature to feed"), Fed) || !TestNotNull(TEXT("and its twin for the control"), Twin))
+	{
+		return false;
+	}
+	const float Own = Fed->OwnAttackDamage();
+	if (!TestTrue(FString::Printf(TEXT("set-up: it hits for its own %.2f and nothing multiplies it (%.3f)"), Own,
+								  Fed->DamageMultiplierProduct()),
+				  Own > 0.0f && FMath::IsNearlyEqual(Fed->DamageMultiplierProduct(), 1.0f)))
+	{
+		return false;
+	}
+
+	PartsGiveSouls(Mode, Fed, 3);
+	TestEqual(TEXT("set-up: it holds three souls"), Mode->SoulHarvestSoulsOn(Fed), 3);
+	TestEqual(TEXT("three souls: its own damage and 30% more"), PartsDamageOf(Fed), Own * PartsSoulsMore(3), 0.01f);
+
+	Fed->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	const float Expected = Own * PartsHunger() * PartsSoulsMore(3);
+	const float Lost = Own * PartsHunger();
+	TestEqual(TEXT("made hungry, it keeps the souls' damage: its own x the hunger x the souls"), PartsDamageOf(Fed),
+			  Expected, 0.01f);
+
+	// CONTROL: THE LOSS, BY THE ROUTE THE THREE RULES TOOK BEFORE #2723. The twin's souls' damage written straight onto
+	// its attribute, as `ApplySoulHarvestFigures` wrote it, and the twin then made hungry: the souls' damage is gone.
+	UAbilitySystemComponent* TwinAbilities = Twin->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("set-up: the twin has an ability system"), TwinAbilities))
+	{
+		return false;
+	}
+	TwinAbilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+										   Twin->OwnAttackDamage() * PartsSoulsMore(3));
+	Twin->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("CONTROL: written onto the attribute, the souls' damage is gone once the twin is hungry"),
+			  PartsDamageOf(Twin), Twin->OwnAttackDamage() * PartsHunger(), 0.01f);
+	TestTrue(FString::Printf(TEXT("CONTROL: the kept figure %.2f and the lost one %.2f are told apart"), Expected, Lost),
+			 FMath::Abs(Expected - Lost) > 1.0f);
+	return true;
+}
+
+// SOULS, THEN A GRIM TOTEM'S CLEANSE, THEN HUNGER AS WELL. A Grim Totem changes a creature's damage only through its
+// cleanse, 25% less for as long as it lives; the embrace strengthens the player. The issue's second case.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsSoulsThenCleanseTest,
+	"Cataclysm.RuleDamageParts.ACreatureWithSoulsATotemWeakensKeepsTheSoulsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsSoulsThenCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Fed = Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature to feed"), Fed))
+	{
+		return false;
+	}
+	const float Own = Fed->OwnAttackDamage();
+	if (!TestTrue(FString::Printf(TEXT("set-up: it hits for its own %.2f and nothing multiplies it (%.3f)"), Own,
+								  Fed->DamageMultiplierProduct()),
+				  Own > 0.0f && FMath::IsNearlyEqual(Fed->DamageMultiplierProduct(), 1.0f)))
+	{
+		return false;
+	}
+
+	PartsGiveSouls(Mode, Fed, 3);
+	Fed->SetGrimTotemsDamageMultiplier(PartsCleanse());
+	const float Expected = Own * PartsCleanse() * PartsSoulsMore(3);
+	TestEqual(TEXT("weakened by a cleanse, it keeps the souls' damage: its own x the cleanse x the souls"),
+			  PartsDamageOf(Fed), Expected, 0.01f);
+	TestTrue(FString::Printf(TEXT("CONTROL: the kept figure %.2f and the lost one %.2f are told apart"), Expected,
+							 Own * PartsCleanse()),
+			 FMath::Abs(Expected - Own * PartsCleanse()) > 1.0f);
+
+	// AND HUNGER ON TOP, the two multipliers and the souls together.
+	Fed->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("and made hungry too: its own x the cleanse x the hunger x the souls"), PartsDamageOf(Fed),
+			  Own * PartsCleanse() * PartsHunger() * PartsSoulsMore(3), 0.01f);
+	return true;
+}
+
+// THE VOID'S DAMAGE, THEN HUNGER AND A CLEANSE: the final boss Nothing Is Forgotten fed keeps what the void gave it, and
+// both multipliers carry it, because it is flat damage in the boss's base. The issue's third case.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsVoidThenMultipliersTest,
+	"Cataclysm.RuleDamageParts.TheVoidsBossKeepsTheVoidsDamageUnderHungerAndACleanse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsVoidThenMultipliersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	FVoidFigures Expected;
+	if (!Mode || !ThePlayerFeedsTheVoid(*this, World, Mode, Player, 2, Expected))
+	{
+		return false;
+	}
+	FVoidFigures Before;
+	ACataclysmEnemyCharacter* Boss = AGatekeeperToFeed(*this, World, 1000.0f, Before);
+	if (!Boss)
+	{
+		return false;
+	}
+	const float Own = Boss->OwnAttackDamage();
+	const float Void = Mode->NothingIsForgottenDamageHeld();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the void holds %.2f, less than the boss's own %.2f, which it hits for"),
+								  Void, Own),
+				  Void > 1.0f && Void < Own && FMath::IsNearlyEqual(Before.Damage, Own, 0.01f)))
+	{
+		return false;
+	}
+
+	Mode->FeedTheFinalBoss(Boss);
+	TestEqual(TEXT("fed: its own and all the void held"), PartsDamageOf(Boss), Own + Void, 0.01f);
+
+	Boss->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("made hungry, it keeps the void's damage, which the hunger multiplies: (own + void) x hunger"),
+			  PartsDamageOf(Boss), (Own + Void) * PartsHunger(), 0.01f);
+
+	Boss->SetGrimTotemsDamageMultiplier(PartsCleanse());
+	const float Kept = (Own + Void) * PartsHunger() * PartsCleanse();
+	const float Lost = Own * PartsHunger() * PartsCleanse();
+	TestEqual(TEXT("and weakened by a cleanse: (own + void) x hunger x cleanse"), PartsDamageOf(Boss), Kept, 0.01f);
+	TestTrue(FString::Printf(TEXT("CONTROL: the kept figure %.2f and the lost one %.2f are told apart"), Kept, Lost),
+			 FMath::Abs(Kept - Lost) > 1.0f);
+	return true;
+}
+
+// THE ORDER REVERSED FOR THE VOID: hunger first, then the feeding, then a cleanse. The same figure as feeding first,
+// where adding the void after the hunger, as the attribute write did, would leave the hunger off the void's damage.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsMultiplierThenVoidTest,
+	"Cataclysm.RuleDamageParts.AMultiplierBeforeTheVoidsFeedingGivesTheSameFigure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsMultiplierThenVoidTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	FVoidFigures Expected;
+	if (!Mode || !ThePlayerFeedsTheVoid(*this, World, Mode, Player, 2, Expected))
+	{
+		return false;
+	}
+	FVoidFigures Before;
+	ACataclysmEnemyCharacter* Boss = AGatekeeperToFeed(*this, World, 1000.0f, Before);
+	if (!Boss)
+	{
+		return false;
+	}
+	const float Own = Boss->OwnAttackDamage();
+	const float Void = Mode->NothingIsForgottenDamageHeld();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the void holds %.2f, less than the boss's own %.2f"), Void, Own),
+				  Void > 1.0f && Void < Own))
+	{
+		return false;
+	}
+
+	Boss->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	Mode->FeedTheFinalBoss(Boss);
+	const float Kept = (Own + Void) * PartsHunger();
+	const float AddedAfter = Own * PartsHunger() + Void;
+	TestEqual(TEXT("hungry first, then fed: (own + void) x hunger, as when fed first"), PartsDamageOf(Boss), Kept, 0.01f);
+	TestTrue(FString::Printf(TEXT("CONTROL: that and the void added after the hunger, %.2f against %.2f, are told apart"),
+							 Kept, AddedAfter),
+			 FMath::Abs(Kept - AddedAfter) > 0.5f);
+
+	Boss->SetGrimTotemsDamageMultiplier(PartsCleanse());
+	TestEqual(TEXT("and a cleanse after: (own + void) x hunger x cleanse"), PartsDamageOf(Boss),
+			  (Own + Void) * PartsHunger() * PartsCleanse(), 0.01f);
+	return true;
+}
+
+// AT ITS CAP THE VOID STILL MAKES THE BOSS HIT AT MOST TWICE AS HARD, WHATEVER MULTIPLIES IT: the cap is read from the
+// boss's own figure, and the hunger set before the feeding multiplies the void's damage with it. Ruled 2026-11-17.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsVoidCapTest,
+	"Cataclysm.RuleDamageParts.AtItsCapTheVoidStillMakesTheBossHitAtMostTwiceAsHard",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsVoidCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	FVoidFigures Expected;
+	if (!Mode || !ThePlayerFeedsTheVoid(*this, World, Mode, Player, 3, Expected))
+	{
+		return false;
+	}
+	FVoidFigures Before;
+	ACataclysmEnemyCharacter* Boss = AGatekeeperToFeed(*this, World, 10.0f, Before);
+	if (!Boss)
+	{
+		return false;
+	}
+	const float Own = Boss->OwnAttackDamage();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the void holds %.2f, more than the boss's own %.2f"),
+								  Mode->NothingIsForgottenDamageHeld(), Own),
+				  Own > 0.0f && Mode->NothingIsForgottenDamageHeld() > Own))
+	{
+		return false;
+	}
+
+	Boss->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	Mode->FeedTheFinalBoss(Boss);
+	TestEqual(TEXT("hungry, then fed past the cap: twice its own, x the hunger"), PartsDamageOf(Boss),
+			  2.0f * Own * PartsHunger(), 0.01f);
+	TestEqual(TEXT("so it hits twice as hard as it would hungry and unfed"),
+			  PartsDamageOf(Boss) / (Own * Boss->DamageMultiplierProduct()), 2.0f, 0.001f);
+
+	Boss->SetGrimTotemsDamageMultiplier(PartsCleanse());
+	TestEqual(TEXT("and still twice as hard under a cleanse"), PartsDamageOf(Boss),
+			  2.0f * Own * PartsHunger() * PartsCleanse(), 0.01f);
+	return true;
+}
+
+// THE ORDER REVERSED FOR THE SOULS: hunger and a cleanse first, then the souls, against a twin given them the other way
+// round. The same figure, which no order of writes can change now.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsMultipliersThenSoulsTest,
+	"Cataclysm.RuleDamageParts.MultipliersBeforeTheSoulsGiveTheSameFigureAsAfter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsMultipliersThenSoulsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* MultipliedFirst =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* SoulsFirst =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(-1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature multiplied first"), MultipliedFirst)
+		|| !TestNotNull(TEXT("and one fed first"), SoulsFirst))
+	{
+		return false;
+	}
+	const float Own = MultipliedFirst->OwnAttackDamage();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the two hit for the same own figure, %.2f and %.2f"), Own,
+								  SoulsFirst->OwnAttackDamage()),
+				  Own > 0.0f && FMath::IsNearlyEqual(Own, SoulsFirst->OwnAttackDamage(), 0.01f)))
+	{
+		return false;
+	}
+
+	MultipliedFirst->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	MultipliedFirst->SetGrimTotemsDamageMultiplier(PartsCleanse());
+	PartsGiveSouls(Mode, MultipliedFirst, 3);
+
+	PartsGiveSouls(Mode, SoulsFirst, 3);
+	SoulsFirst->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	SoulsFirst->SetGrimTotemsDamageMultiplier(PartsCleanse());
+
+	const float Expected = Own * PartsHunger() * PartsCleanse() * PartsSoulsMore(3);
+	TestEqual(TEXT("multiplied first, then fed: own x hunger x cleanse x souls"), PartsDamageOf(MultipliedFirst),
+			  Expected, 0.01f);
+	TestEqual(TEXT("fed first, then multiplied: the same"), PartsDamageOf(SoulsFirst), Expected, 0.01f);
+	return true;
+}
+
+// A WRAITH KEEPS ITS INCREASE UNDER A MULTIPLIER, AND TAKES SOULS ON TOP: its 20% is the increases bucket and the souls
+// are a "more" of their own, so a wraith with souls made hungry is own x 1.2 x hunger x souls.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsWraithTest,
+	"Cataclysm.RuleDamageParts.AWraithKeepsItsIncreaseUnderAMultiplierAndTakesSoulsOnTop",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsWraithTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Slain = SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain) || !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith))
+	{
+		return false;
+	}
+	const float Own = Wraith->OwnAttackDamage();
+	const float Increase = 1.0f + Effects::VengefulWraithsIncreasePercent / 100.0f;
+	if (!TestTrue(FString::Printf(TEXT("set-up: it hits for its own %.2f"), Own), Own > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a wraith: its own x 1.2 x the floor's multipliers"), PartsDamageOf(Wraith),
+			  Own * Increase * Wraith->DamageMultiplierProduct(), 0.01f);
+
+	Wraith->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("made hungry, it keeps its increase"), PartsDamageOf(Wraith),
+			  Own * Increase * Wraith->DamageMultiplierProduct(), 0.01f);
+	TestTrue(TEXT("CONTROL: the hunger is one of the floor's multipliers on it"),
+			 FMath::IsNearlyEqual(
+				 Wraith->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), PartsHunger()));
+	// Ten times the 0.01 tolerance the assertions above compare with, so a lost increase cannot pass them. Not 1.0, as
+	// the other CONTROLS here use: a wraith is a risen Imp, and its 20% is worth about 0.4 on its own damage (window
+	// rule-damage-w1, 2026-11-17: 2.61 kept against 2.18 lost failed a margin of 1.0).
+	TestTrue(FString::Printf(TEXT("CONTROL: the kept figure and the lost one, %.2f and %.2f, are told apart"),
+							 Own * Increase * Wraith->DamageMultiplierProduct(), Own * Wraith->DamageMultiplierProduct()),
+			 FMath::Abs(Own * (Increase - 1.0f) * Wraith->DamageMultiplierProduct()) > 0.1f);
+
+	PartsGiveSouls(Mode, Wraith, 3);
+	TestEqual(TEXT("and with three souls: own x 1.2 x the multipliers x the souls"), PartsDamageOf(Wraith),
+			  Own * Increase * Wraith->DamageMultiplierProduct() * PartsSoulsMore(3), 0.01f);
+	return true;
+}
+
+// A CREATURE HOLDING A PLAYER'S BUILD TAKES THE PARTS AND NOT THE FLOOR'S MULTIPLIERS, as before #2723: the Corrupted
+// Stalker's build is its own figure, the souls go on it, and hunger does not reach it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPartsBuildTest,
+	"Cataclysm.RuleDamageParts.APlayersBuildTakesTheSoulsAndNotTheFloorsMultipliers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPartsBuildTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Holder = Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	UAbilitySystemComponent* Abilities = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature"), Holder) || !TestNotNull(TEXT("with an ability system"), Abilities))
+	{
+		return false;
+	}
+
+	// ITS BUILD: 40, written as the Stalker's build is, onto the attribute, with the flag that keeps the creature's own
+	// writes off it.
+	constexpr float Build = 40.0f;
+	Holder->bHoldsAPlayerBuild = true;
+	Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), Build);
+	TestEqual(TEXT("set-up: its own figure is its build's"), Holder->OwnAttackDamage(), Build, 0.01f);
+
+	PartsGiveSouls(Mode, Holder, 3);
+	TestEqual(TEXT("three souls on the build: 40 x 1.3"), PartsDamageOf(Holder), Build * PartsSoulsMore(3), 0.01f);
+
+	Holder->SetFamishedBeastsDamageMultiplier(PartsHunger());
+	TestEqual(TEXT("hunger does not reach a build, which keeps its souls"), PartsDamageOf(Holder),
+			  Build * PartsSoulsMore(3), 0.01f);
+	TestEqual(TEXT("and its own figure is still the build's"), Holder->OwnAttackDamage(), Build, 0.01f);
+
+	PartsGiveSouls(Mode, Holder, 5);
+	TestEqual(TEXT("five souls replace three on the build, not add to them: 40 x 1.5"), PartsDamageOf(Holder),
+			  Build * PartsSoulsMore(5), 0.01f);
 	return true;
 }
 

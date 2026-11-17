@@ -2,6 +2,384 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — A creature's attack damage is built from its parts, so a damage multiplier no longer erases what Soul Harvest, Nothing Is Forgotten and Vengeful Wraiths gave it (#2723)
+
+**Affects:** `ACataclysmEnemyCharacter` (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`): new
+`FRuleDamagePart`, `SetRuleDamagePart`, `RuleDamagePartFrom`, `OwnAttackDamage`, `AttackDamageFromParts`,
+`SumRuleDamageParts` and the map `RuleDamageParts`, and `WriteAttackDamage`, which builds the figure from them;
+`ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.cpp`, `.h`): `ApplySoulHarvestFigures`,
+`ApplyNothingIsForgottenFigures`, `ApplyVengefulWraithFigures` and `RestoreCreatureRoles` write a part rather than the
+attribute, `StrengthenTheFeeders` and `StrengthenTheEater` put Soul Harvest's health share back through the new
+`SoulHarvestHealthShareOn`, and `FSoulHarvestHeld` loses `DamageAdded`; the `SoulHarvestKey` comment in
+`CataclysmDungeonModifierEffects.h`; three existing Unreal tests in `CataclysmDungeonModifierEffectsTests.cpp` that read
+a creature's plain damage by rewriting its stat block; eleven new Unreal tests in the new group
+`Cataclysm.RuleDamageParts.` (nine at the end of `CataclysmDungeonModifierEffectsTests.cpp`, two at the end of
+`CataclysmSaveLoadTests.cpp`); `tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py`, new. Issue
+[#2723](https://github.com/sdubois777/Cataclysm/issues/2723), found by the worker compiling
+[#1671](https://github.com/sdubois777/Cataclysm/issues/1671).
+
+### SAID FIRST
+
+- **COMPILED, NOT RUN.** Phase 1 was written without compiling. Phase 2 rebased it onto `development` `bead00391`
+  (#2724 and #1671 landed in between) and compiled it three ways with no error and no change needed (below). No Unreal
+  test and no C++ guard proof has run: everything under "Registered before the run" is a prediction for a window. The
+  Python checks ran, and the new Python guard is proved (below).
+- **NO DESIGNED NUMBER CHANGES.** 10% a soul to five souls, the void's 5% and its cap of 100% of the boss's own, a
+  wraith's 20%, Famished Beasts' 10% a drop and a cleanse's 25% less are all as they were.
+- **THE LOSS IS GONE, IN PLAY AND ON A LOAD.** A creature holding souls, the void's boss and a wraith keep what their
+  rule gave them when any damage multiplier is written afterwards: Famished Beasts, a Grim Totem's cleanse, and every
+  other of the fifteen, Ravenous Hoard's on the beat included. Before this, ANY of the fifteen erased it, not only the two
+  the issue names.
+- **WHAT ELSE A PLAYER COULD SEE, in orders that lost nothing before.** (a) A multiplier on the final boss BEFORE the
+  void feeds it now multiplies the void's damage too: `(own + void) x M`, where it was `own x M + void`. (b) The void's
+  cap is read from the boss's own designed figure, so at its cap the boss hits exactly twice as hard whatever multiplies
+  it; read from the attribute, the cap moved with whatever multiplier was on the boss at the feeding. (c) The souls'
+  damage follows the creature's figure as it changes, 10% a soul of whatever it is, where it was frozen at the figure the
+  soul arrived to. Each is a ruling below.
+- **THE HEALTH HALF OF THE SAME FAULT IS FIXED TOO.** Carrion Feast's write of a feeder's maximum health, and Famished
+  Beasts' on a feeder, rebuilt it from the feeder's record and dropped Soul Harvest's share, in play and on every load
+  of a floor with feeders. Resistance loses nothing (below).
+- **THE SOUL BRANCH, #1671, HAS LANDED AND THIS SITS ON IT** (phase 2, below). A soul's arrival,
+  `SoulHarvestSoulArrived`, calls `ApplySoulHarvestFigures`, so it writes the souls' damage as the creature's part; a
+  save still counts a floating soul as arrived (`SoulHarvestHeldBy`), and a load's `RestoreCreatureRoles` writes the
+  part for every soul the record holds. The new tests give souls through `RestoreCreatureRoles`, which calls the
+  function an arrival calls, so they needed no change for the travelling soul.
+
+### What was verified by reading, before anything changed
+
+**Every writer of a creature's attack damage attribute on `development` `9c6b604dd`.** Searched by
+`GetAttackDamageAttribute()` and `SetNumericAttributeBase` across `game/Source` outside the tests: 30
+`SetNumericAttributeBase` calls in `CataclysmDungeonGameMode.cpp`, four of them onto attack damage.
+
+1. `ACataclysmEnemyCharacter::WriteAttackDamage`: `StartingAttackDamage x the rarity's damage scale x
+   DamageMultiplierProduct()`, or 0 for an illusion. Reached from `ApplyStartingAttributes` (every archetype setter, a
+   rung change, `DrawModifiersForRarity`) and from `RewriteAttackDamage`, which `SetDamageMultiplierFrom` calls on
+   every change of any of the fifteen multipliers. **This is the write that erased the three below.**
+2. `ApplySoulHarvestFigures`: the attribute less what the souls had added, plus `SoulHarvestDamageAdded` of that.
+3. `ApplyNothingIsForgottenFigures`: the attribute plus `NothingIsForgottenDamageAdded(held, attribute)`; and
+   `RestoreCreatureRoles`: the attribute plus `NothingIsForgottenDamageGiven`, BEFORE it writes the Famished Beasts and
+   Grim Totems multipliers, so a load dropped the void's damage and the souls' damage every time either was saved on.
+4. `ApplyVengefulWraithFigures`: the attribute times 1.2 (`VengefulWraithsIncreased`).
+5. `ACataclysmCorruptedStalkerCharacter::WearTheBuild`: the build's figure times `CorruptedStalkerDamageMultiplier`, then
+   `bHoldsAPlayerBuild`, which stops 1 for that creature.
+6. A load: `FCataclysmSaveApply::CreatureInto` calls `SetAttackDamage` with the saved starting figure and
+   `SetPlacedDamageMultiplier`, both through 1.
+
+Not writers: the cuts a hit takes at the moment it is dealt (`CataclysmSkillEffects.cpp`, the poison rider's
+`DamageDealt` and a debuff's deal-less, multiplied with Weaken, an effect on the attribute's current value, which no
+base write touches); the readers (Nothing Is Forgotten's 5% of a kill, Hellfire, Infernal Brand, Holy Repercussions,
+a minion's share).
+
+**Every addition and multiplier, and its bucket.** The project's damage rule is `(base + flat) x (1 + increases) x
+more1 x more2`, adopted in this file from Path of Exile, Last Epoch and Torchlight Infinite. Every dungeon rule's stat
+modifier is a "more" of its own: the creature's damage multipliers became one map, multiplied entry by entry, as ruled
+on 2026-09-17, and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` states "every dungeon rule's stat modifier
+goes in the 'more' bucket" for the player's.
+
+| Part | Figure | Bucket | Where it came from |
+| :-- | :-- | :-- | :-- |
+| The creature's designed damage x its rarity's damage scale | 1.4 a rung | base (`own`) | the archetype and `EnemyRarities.csv`; unchanged |
+| The fifteen floor multipliers: Placed (Grave Tide, a Horde wave), TimeAlive (Ravenous Hoard), FloorDepth (March of Progress), GoldenSpires, PlagueBeacons (Pestilent Empowerment), InfernalBeacons, TrialOfEndurance, ObsidianSarcophagi, CarrionFeast, InfectionBloom, GrimTotems (a cleanse, 25% less), BlackestShadow, Plaguebearer, FamishedBeasts, PactOfTemptation | each its own | each its own "more" | the 2026-09-17 map; unchanged |
+| Soul Harvest | 10% a soul, five at most | one "more" of 1 + 10% x souls | ruled below, R1 |
+| Nothing Is Forgotten | 5% of each kill's damage, at most 100% of the boss's own | flat, in the base | ruled below, R2 |
+| Vengeful Wraiths | "20% increased damage" | increases | the row's own word, R3 |
+| The Corrupted Stalker's build | the build x its tier's multiplier | the build is its `own` | unchanged; it takes no floor multiplier |
+
+A Grim Totem changes a creature's damage only through its cleanse (25% less, for as long as it lives). Its embrace
+strengthens the player; nothing a totem does empowers a creature, so the issue's "empowered by a Grim Totem" is the
+cleanse here.
+
+### The rulings, by the worker session under the owner's delegation, 2026-11-17 (judgements)
+
+- **R0, ONE ORDER.** A creature's attack damage is `(own + every flat part) x (1 + every increase / 100) x every "more"
+  part x every floor multiplier`, never below nothing, where `own` is its designed figure x its rarity's damage scale.
+  One function computes it (`AttackDamageFromParts`) and one write applies it (`WriteAttackDamage`), so the order in
+  which rules wrote cannot change the figure. This is the project's rule, not a new one; no new research was done, and
+  where each rule sits in it (R1 to R3) is specific to this game.
+- **R1, SOUL HARVEST'S DAMAGE IS ONE "MORE" OF 1 + 10% x SOULS.** The row says "granting increased health, damage, and
+  resistances" in plain words; the ruling of 2026-09-24 that gave it numbers says "10% MORE ATTACK DAMAGE ... PER SOUL",
+  and its five souls have always added to each other (50% at five, not 1.1 to the fifth). As a "more" it gives exactly
+  today's figure whenever the multipliers were on the creature first, which was the only order that kept it. An
+  "increase" would sum with a wraith's 20% and change a wraith's figure with souls from 1.2 x 1.3 to 1.5.
+- **R2, NOTHING IS FORGOTTEN'S DAMAGE IS FLAT, IN THE BOSS'S BASE, AND ITS CAP IS READ FROM THE BOSS'S OWN DESIGNED
+  FIGURE.** What the void holds is an amount, a portion of figures other creatures had, not a share of the boss's. Flat
+  damage goes in before increases and multipliers in all three games the rule came from. The cap was ruled on 2026-09-23
+  so the boss "hits at most twice as hard"; capped at its own designed figure, `(own + own) x M` is exactly twice
+  `own x M` whatever multiplies it. The 100% is unchanged.
+- **R3, A WRAITH'S 20% IS AN INCREASE**, the row's word. No other part of a creature is an increase, so it is the same
+  1.2 as before.
+- **R4, A CREATURE HOLDING A PLAYER'S BUILD TAKES THE THREE RULES' PARTS AND NOT THE FLOOR'S MULTIPLIERS**, which is
+  what it got before: the rules wrote onto its attribute, and `RewriteAttackDamage` never touched it. Its `own` is its
+  build's figure, read off the attribute's base with its parts taken off.
+- **R5, SOUL HARVEST'S HEALTH SHARE GOES BACK ON TOP OF A MAXIMUM CARRION FEAST OR FAMISHED BEASTS WRITES FROM A
+  FEEDER'S RECORD**, worked out as Soul Harvest works it: its share of the maximum the rule writes.
+- **R6, HEALTH AND RESISTANCE ARE OTHERWISE LEFT AS THEY ARE** (below). They are not rebuilt from parts: no damage
+  multiplier writes either, and rebuilding health would have to decide what a rebuild does to a wounded creature, which
+  is a larger change than this issue.
+
+### The health and resistance shares
+
+- **No damage multiplier writes health or resistance.** `SetDamageMultiplierFrom` ends in `WriteAttackDamage`, which
+  writes the attack damage alone. So the issue's fault, read literally, has no health or resistance half.
+- **Health written from scratch, by reading:** `ApplyStartingAttributes` (a rung change; both rules that change a
+  standing creature's rung already put Carrion Feast's, Famished Beasts', the void's and the souls' shares back);
+  `StrengthenTheFeeders` and `StrengthenTheEater`'s feeder branch, from Carrion Feast's record x both multipliers,
+  **which dropped Soul Harvest's share, in play and on a load**, since `RestoreFloorRuleState` calls
+  `StrengthenTheFeeders` after `RestoreCreatureRoles` has given the souls back. Fixed (R5).
+  `PutTheHealthSharesBack`'s feeder branch writes from the record too, and both its callers call
+  `ApplySoulHarvestFigures` with `bFreshBlock` right after it: safe. Nothing Is Forgotten's health goes only on the
+  final floor's Gatekeeper, which Carrion Feast never raises as a feeder: safe.
+- **Found, not changed: Famished Beasts on any other creature and Soul Harvest each take their share of what the other
+  left**, so nothing is lost, but the maximum depends a little on the order once the hunger changes after the souls:
+  a creature of maximum b given one soul at one drop and then fed a second drop reaches b x (1 + 0.1 x 1.1) x 1.2 =
+  1.332 b, where both orders' rule would give 1.1 x 1.2 = 1.32 b. Under 1%. Not tested.
+- **Resistance loses nothing.** Its writers are `ApplyStartingAttributes`, Soul Harvest (its +5 a soul, its own share
+  recorded) and `SetRuleResistance` (Trial of Endurance's x2, Obsidian Sarcophagi's points), which keeps any other
+  writer's change as an amount before it writes again. So a soul's +5 is never dropped; one that arrives after Trial of
+  Endurance's x2 was written is doubled only when that rule writes again. Recorded, not changed.
+
+### Also found, not fixed
+
+- **A Vengeful Wraith is not saved as one.** No `RaisedBy` tag names it and `bIsVengefulWraith` is not saved, so a
+  loaded wraith is an ordinary creature: no 90% reduction, no 20%, no hunt. By reading; not tested. Not this issue's.
+
+### What changes
+
+- **`ACataclysmEnemyCharacter`**: `FRuleDamagePart` (`Added`, `IncreasedPercent`, `More`); `SetRuleDamagePart(Source,
+  Part)`, which replaces that rule's part (nothing given is no entry; the same part again changes nothing) and rewrites
+  the damage, or for a build holder writes its build's figure with the parts; `OwnAttackDamage()`;
+  `AttackDamageFromParts` (static, the formula); `SumRuleDamageParts` (flat and increases add within their bucket, each
+  "more" multiplies); three keys, `SoulHarvest`, `NothingIsForgotten`, `VengefulWraiths`. `WriteAttackDamage` writes
+  `AttackDamageFromParts(starting x scale, flat, increases, more x DamageMultiplierProduct())`.
+- **The three rules write their part, never the attribute**: Soul Harvest a "more" of 1 + 10% x souls; the void flat,
+  `NothingIsForgottenDamageAdded(held, OwnAttackDamage())` at the feeding and `NothingIsForgottenDamageGiven` on a
+  load; a wraith an increase of `VengefulWraithsIncreasePercent`. Written again after a rung change or a load, each
+  replaces what it gave.
+- **`SoulHarvestHealthShareOn`**, used by `StrengthenTheFeeders` and `StrengthenTheEater`'s feeder branch (R5).
+- **Three existing tests** read a creature's plain damage by setting its rung again, which no longer drops a rule's
+  part; each now reads `OwnAttackDamage() x DamageMultiplierProduct()`: `AWraithIsTwentyPercentAboveItsKindInAllThreeStats`,
+  `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound`, `SoulsSurviveTheRungABloodForgedChampionGains` (its
+  resistance assertion is unchanged).
+
+### Tests
+
+Unreal, eleven new, `Cataclysm.RuleDamageParts.`, none calling `ReportSkippedHalf`. Tolerance 0.01 unless stated. Souls
+are given through `RestoreCreatureRoles` (the route the save tests use; it calls `ApplySoulHarvestFigures`, which a
+soul's arrival calls); hunger and a cleanse through the creature's own setters, the calls the two rules make.
+
+1. `TheThreeBucketsAreOneFormulaAndEachCombinesInItsOwnWay`: `AttackDamageFromParts(100, 50, 20, 1.5)` is 270 (flat
+   added after would be 230); never below 0; on an Imp, two increases of 20 and 30 give 1.5 (not 1.56); written twice,
+   given once; every part off, its own; two "more"s of 1.2 and 1.3 over 20 flat, `(own + 20) x 1.56`; and hunger on all.
+2. `ACreatureWithSoulsMadeHungryKeepsTheSoulsDamage`: a Common, three souls (own x 1.3), then hunger: own x 1.2 x 1.3.
+   CONTROL: its twin's souls written straight onto the attribute, as before #2723, are gone once it is hungry (own x
+   1.2); and the two figures are more than 1 apart.
+3. `ACreatureWithSoulsATotemWeakensKeepsTheSoulsDamage`: three souls, a cleanse: own x 0.75 x 1.3; then hunger too.
+   CONTROL: kept and lost more than 1 apart.
+4. `TheVoidsBossKeepsTheVoidsDamageUnderHungerAndACleanse`: two kills feed the void (about 10), a Gatekeeper hitting for
+   1,000 is fed (own + void), made hungry ((own + void) x 1.2), cleansed (x 0.75). CONTROL: kept and lost more than 1
+   apart.
+5. `AMultiplierBeforeTheVoidsFeedingGivesTheSameFigure`: the order reversed, hunger then the feeding: (own + void) x
+   1.2. CONTROL: that and `own x 1.2 + void`, the old order's, more than 0.5 apart. Then a cleanse.
+6. `AtItsCapTheVoidStillMakesTheBossHitAtMostTwiceAsHard`: three kills, a boss hitting for 10, hungry, then fed past the
+   cap: 2 x own x 1.2, a ratio of 2 (0.001) to its unfed figure; then a cleanse.
+7. `MultipliersBeforeTheSoulsGiveTheSameFigureAsAfter`: one creature hungry and cleansed then given three souls, its
+   twin the other way round; both own x 1.2 x 0.75 x 1.3.
+8. `AWraithKeepsItsIncreaseUnderAMultiplierAndTakesSoulsOnTop`: a wraith (own x 1.2 x its multipliers), made hungry
+   (still x 1.2), then three souls (x 1.3 on top). CONTROLS: the hunger is on it; kept and lost more than 1 apart.
+9. `APlayersBuildTakesTheSoulsAndNotTheFloorsMultipliers`: a creature flagged as holding a build of 40: three souls 52;
+   hunger leaves 52 and its own 40; five souls 60.
+10. `SoulsAndHungerComeBackFromALoadAtTheirFigureInEitherOrder` (`CataclysmSaveLoadTests.cpp`): two of floor 1's
+    creatures, one given three souls and two drops in one record (the load's own order), one two drops then three souls;
+    each checked before the save, and after a load into a new world: three souls, still hungry, own x its multipliers x
+    1.3, the figure it was saved with; CONTROL: more than 1 from the figure without the souls. Prints "LOAD PARTS SOULS".
+11. `SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure`: one creature three souls and a cleanse; another
+    the void's boss (the walk's damage given 12) made hungry and cleansed in one record; before the save and after the
+    load, own x its multipliers x 1.3, and (own + 12) x its multipliers; still cleansed and hungry; the figures saved;
+    CONTROLS. Prints "LOAD PARTS VOID".
+
+**Python**: `tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py`, four checks, comments stripped by syntax:
+no `SetNumericAttributeBase` call in `CataclysmDungeonGameMode.cpp` names the attack damage (26 calls read; 30 before
+this change); each rule writes its own part once, in its ruled bucket (four functions); `AttackDamageFromParts` is the
+three-bucket formula and `WriteAttackDamage` uses it with the parts and the floor's product; the three keys differ.
+
+### Proofs run in phase 1 (Python only)
+
+`tools/prove_guard.py`'s `break_and_run` in this worktree, which no other process uses, command `python -m pytest
+tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py`, the anchor counted once by `str.count`:
+
+- PY1, the void's damage written onto the attribute again (P2's break below): "PROVED: 2 failed, 2 passed in 0.10s |
+  restored: 4 passed in 0.05s", `named_failures`
+  `tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py::test_no_dungeon_rule_writes_a_creatures_attack_damage_attribute`
+  and `tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py::test_each_rule_that_gives_damage_writes_its_own_part_in_its_bucket`.
+
+### Phase 2, 2026-11-17: the rebase, the compile, the review and the audit
+
+**The rebase.** `fix/damage-multipliers-keep-rule-additions-2`, cut from phase 1's `9108f1cc6` and rebased onto
+`development` `bead00391`. Two conflicts, each resolved so that both changes hold:
+
+- `CataclysmDungeonModifierEffects.h`, the `SoulHarvestKey` comment: #1671 kept the 2026-09-24 bullet "THE FIGURES ARE
+  WRITTEN ONTO THE ATTRIBUTE BASES ... adds no creature damage multiplier" and added its own block of rulings after it.
+  This change's bullet (health and resistance on the bases, the damage the creature's Soul Harvest part) replaces that
+  one bullet, and #1671's block follows whole.
+- This file: both entries were new at the top. This one first, then #1671's and #1443's, each separated by `---`.
+
+`CataclysmDungeonGameMode.cpp` and `.h` merged without a conflict and were read after: `SoulHarvestSoulArrived` calls
+`ApplySoulHarvestFigures(Demon, false)`, which writes the souls' damage as the creature's part and never the attribute;
+`SoulHarvestHeldBy` and `WalkStateNow` still count a floating soul as arrived and as given; `RestoreCreatureRoles`' soul
+block writes the part for every soul the record holds, a floating one included, and the health of the souls the saved
+maximum does not hold, as #1671 has it; `StrengthenTheFeeders` and `StrengthenTheEater` still add
+`SoulHarvestHealthShareOn`. `python tools/check_resolved_cpp.py --changed`: "7 files read, 0 with complaints".
+
+**The compile**, by `python tools/unreal_build.py build`, three times, with no error and no source change needed:
+
+1. The whole branch: "Build: Succeeded - 49 actions, 44 files compiled". The line names no file;
+   `CataclysmDungeonGameMode.cpp`, which is always built alone, had its object written at 14:52:38, after its last
+   edit at 14:50:21.
+2. Every changed `.cpp` alone (the index reset to `development`, so the adaptive build takes each changed file out of
+   its unity file, and `Makefile.bin` moved aside): "Build: Succeeded - 14 actions, 11 files compiled:
+   CataclysmDungeonModifierEffects.cpp, CataclysmDungeonModifierEffectsTests.cpp, CataclysmEnemyCharacter.cpp,
+   CataclysmSaveLoadTests.cpp, Module.Cataclysm.10.cpp, Module.Cataclysm.30.cpp, Module.Cataclysm.38.cpp,
+   Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.8.cpp". `git status`
+   and the hash of `git diff HEAD` were the same before and after.
+3. The unity files that hold them (the index back at the branch's head, `Makefile.bin` moved aside again): "Build:
+   Succeeded - 10 actions, 7 files compiled: Module.Cataclysm.10.cpp, Module.Cataclysm.30.cpp, Module.Cataclysm.38.cpp,
+   Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.8.cpp". Read in the
+   generated unity files: 8 holds `CataclysmEnemyCharacter.cpp`, 10 `CataclysmDungeonModifierEffects.cpp`, 30
+   `CataclysmSaveLoadTests.cpp`, 38 `CataclysmDungeonModifierEffectsTests.cpp`.
+
+`FRuleDamagePart`, a plain struct nested in the `UCLASS`, compiles: `ACataclysmDungeonGameMode::FSoulHarvestHeld` is the
+same shape and was already in the tree.
+
+**The review.**
+
+- **Every write of a creature's attack damage goes through the one formula, or is a build's own figure.** By search of
+  `GetAttackDamageAttribute` and `SetAttackDamage` across `game/Source` outside the tests: every damage multiplier
+  setter ends in `SetDamageMultiplierFrom`, then `RewriteAttackDamage`, then `WriteAttackDamage`, which writes
+  `AttackDamageFromParts`; `SetRuleDamagePart`'s build branch writes `AttackDamageFromParts` too; no rule writes the
+  attribute (`test_no_dungeon_rule_writes_a_creatures_attack_damage_attribute`, 26 calls read in the rebased file). Two
+  writes do not use it, by reading and on purpose: `ACataclysmCorruptedStalkerCharacter::WearTheBuild` and
+  `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild` write a build's own figure, once each, on a creature its
+  raise has just spawned, before any rule could give it a part.
+- **#1671's tests keep their meaning and their figures.** In `Cataclysm.SoulHarvestTravel.` every damage assertion is
+  "before x 1.1" for one soul or "before x 1.5" for five, where "before" is the demon's attribute, its own figure x the
+  floor's multipliers, and an arrival now writes own x multipliers x (1 + 10% a soul): the same figure. No assertion
+  changed. `Cataclysm.SaveLoad.ASoulStillFloatingAtASaveComesBackGivenToItsDemon` compares the loaded creature's
+  figures with the arrived ones as text; both are written through the same part, so it holds. Its comment, that
+  `RestoreCreatureRoles` relies on the load rebuilding the attack damage from the creature's own figure, is still true,
+  and for the damage it is no longer needed, since the part replaces. C1 to C5: each anchor still occurs once
+  (`prove_s1671.py <C> --anchors-only`), none is in code this change touches, and their predictions are failures of
+  release, turning, counting and the panel, which no part changes.
+- **R1 to R6 hold** on the rebased code, read function by function.
+- **Fixed in this change, comments only:** the `RestoreCreatureRoles` header comment phase 1 edited had a line past 120
+  columns, reflowed; `ApplyVengefulWraithFigures`' comment said anything writing the stat block again wipes a wraith's
+  figures, which since this change is not true of its damage increase, and now says so.
+
+**The audit**, of every assertion this change adds or changes that compares with a fixed number or relies on a starting
+state:
+
+| What it relies on | Where | Read from | Holds because |
+|---|---|---|---|
+| The rarity | every in-play test places a Common (`PlaceCreatureAtRung(..., 0)`) | `OwnAttackDamage()`, which applies the rung's scale | every expected figure is built from `OwnAttackDamage()`; no rung's scale is written in |
+| The starting damage | tests 2, 3, 7 and 8 gate on own above 0; test 1 sets 100 on an Imp; tests 4, 5 and 6 give a Gatekeeper 1,000 or 10 through `SetAttackDamage` | the creature | the CONTROLS need the kept and lost figures more than 1 apart: 0.36 x own for three souls under hunger, so own above about 2.8; test 5's needs the void above 2.5 (0.2 x void above 0.5), and two kills give about 10 |
+| 10% a soul | `PartsSoulsMore`, the save tests' `Souls` | `SoulHarvestDamagePercentPerSoul` | not written in. Tests already on `development` write 1.1, 1.5 and `0.1f` (#1671's and `SoulsSurviveTheRungABloodForgedChampionGains`); they move only with that constant |
+| The cap | test 6's "twice" (2.0, and the ratio 2 to 0.001) | written in | `NothingIsForgottenMostDamagePercent` is 100; a change to it fails test 6, as it fails `TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage` today |
+| Which creatures are Demonic | none of the eleven | nothing | souls go on through `RestoreCreatureRoles`, which asks no demon; #1671's group relies on every placed creature being Demonic, its own reading |
+| Multiplier values | `PartsHunger`, `PartsCleanse`, the save tests | `FamishedBeastsMultiplier(2)`, `GrimTotemsCleanseDamageLessPercent` | not written in; the predictions below use 1.2 and 0.75 |
+| No multiplier at the start | tests 1 to 3 gate on `DamageMultiplierProduct()` being 1; test 4 on the boss's attribute equalling its own; test 7 on both twins' own figures matching | the creature | every later expectation multiplies by `DamageMultiplierProduct()` or by the named figure only |
+| The build's 40 | test 9 | written in, onto a Common flagged as holding a build | the flag stops every floor write, so 40 is what it holds |
+| The save tests' creatures | tests 10 and 11 need two standing creatures with their own damage | `PartsCandidates`, a gate | every figure is the creature's own x its product, read in each world |
+| The void tests' boss already in the tree | `TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage` ("double its own") and `BelowTheCapTheFinalBossTakesAllTheDamageHeld` ("before + held") | the Gatekeeper's attribute before the feeding | no floor multiplier is on that boss, so `(own + void) x 1` is `before + void`, and the cap `own + own` is `2 x before` |
+
+Nothing the rebase brought moves a figure: no assertion changed in phase 2.
+
+### Registered before the run
+
+Assertion wording is the engine's: "Expected '<what>' to be <e>, but it was <a> and outside tolerance <t>." for a
+`float` `TestEqual`. Figures below are for a Common of designed damage 100 (`PlaceCreatureAtRung`), Famished Beasts at
+two drops 1.2, a cleanse 0.75, three souls 1.3; the save tests' figures depend on the seed's creatures and are not
+predicted, only which assertions fail. Every prefix ends in a dot; no group on `development` begins
+`Cataclysm.RuleDamageParts`.
+
+**THE BASE COUNTS ARE MEASURED**, as "Test Completed" lines counted by prefix, ignoring case, in soul-harvest-w1's
+whole-suite engine log at `2f6adc34c` (`.claude/windows/s1671_suite_engine_2f6adc34.log` in the worktree that ran it:
+4728 "Test Completed" lines, every one `Result={Success}`; its run printed "4728 tests performed, 4728 succeeded, 0
+failed. 47 skipped part of what they check" and "Test saves: 749 written and deleted, 0 left behind"). `development`
+`bead00391`'s `game/` tree is that tree plus #2724: `git diff --stat 2f6adc34c origin/development --
+game/Source/Cataclysm/Tests` shows only `CataclysmEnchantmentSetTests.cpp` and `CataclysmEnchantmentTests.cpp`, and no
+test name line in that diff. This branch adds eleven tests by name, all `Cataclysm.RuleDamageParts.`, and removes or
+renames none (`git diff origin/development HEAD -- game/Source`, lines opening `"Cataclysm.`). No group's prefix with
+its trailing dot is a string prefix of another group's.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.RuleDamageParts.` alone | 11 performed, 11 succeeded: none at the base, + 11 by name; no skipped half |
+| `Cataclysm.DungeonModifierEffects.` alone | 768 performed, 768 succeeded: 768 at the base, none added; the three changed tests included |
+| `Cataclysm.SaveLoad.` alone | 76 performed, 76 succeeded: 76 at the base, none added; `ACreaturesHeldSoulsAndTheFedBossComeBack`, which saves the same code's figures on both sides, and #1671's `ASoulStillFloatingAtASaveComesBackGivenToItsDemon` included |
+| `Cataclysm.SoulHarvestTravel.` alone | 15 performed, 15 succeeded: 15 at the base, none added or changed; an arrival writes the souls' damage as a part |
+| `Cataclysm.ConsumptionDouble.` alone | 15 performed, 15 succeeded: 15 at the base, none added or changed; the double holds a player's build, whose part goes through `SetRuleDamagePart`'s build branch |
+| Whole Unreal suite | 4739 performed, 4739 succeeded, 0 failed: 4728 at the base + 11 by name; 47 skipped halves, as at the base; 0 test saves left behind |
+| P1, Soul Harvest's damage onto the attribute again (in `ApplySoulHarvestFigures`, `Creature->SetRuleDamagePart(ACataclysmEnemyCharacter::SoulHarvestDamageSource, Souls);` to `Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) * Souls.More);`), prefix `Cataclysm.RuleDamageParts.` | 11 performed, 5 succeeded, 6 failed, 12 assertions: test 2 "made hungry, it keeps the souls' damage: its own x the hunger x the souls" (156 against 120); test 3 "weakened by a cleanse, it keeps the souls' damage: its own x the cleanse x the souls" (97.5 against 75) and "and made hungry too: its own x the cleanse x the hunger x the souls" (117 against 90); test 7 "fed first, then multiplied: the same" (117 against 90); test 9 "and its own figure is still the build's" (40 against 52) and "five souls replace three on the build, not add to them: 40 x 1.5" (60 against 78); test 10 "souls then hunger, before the save: own x the multipliers x the souls", "souls first: after the load, own x the multipliers x the souls", "hunger first: after the load, own x the multipliers x the souls" and "hunger first: the figure it was saved with"; test 11 "souls under a cleanse, before the save: own x the multipliers x the souls" and "souls under a cleanse, after the load: own x the multipliers x the souls". Passing: tests 1, 4, 5, 6 and 8 (the wraith's souls come last), both CONTROLS of test 2 |
+| P2, the void's damage onto the attribute again (in `ApplyNothingIsForgottenFigures`, `Creature->SetRuleDamagePart(ACataclysmEnemyCharacter::NothingIsForgottenDamageSource, Void);` to `Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) + Void.Added);`), same prefix | 11 performed, 8 succeeded, 3 failed, 7 assertions: test 4 "made hungry, it keeps the void's damage, which the hunger multiplies: (own + void) x hunger" and "and weakened by a cleanse: (own + void) x hunger x cleanse"; test 5 "hungry first, then fed: (own + void) x hunger, as when fed first" (short by 0.2 x the void, about 2) and "and a cleanse after: (own + void) x hunger x cleanse"; test 6 "hungry, then fed past the cap: twice its own, x the hunger", "so it hits twice as hard as it would hungry and unfed" ("to be 2.000000, but it was 1.833333 and outside tolerance 0.001000.") and "and still twice as hard under a cleanse". Passing: test 4's "fed: its own and all the void held", the save tests (a load does not feed) |
+| P3, a load's void damage onto the attribute again (in `RestoreCreatureRoles`, `Creature.SetRuleDamagePart(ACataclysmEnemyCharacter::NothingIsForgottenDamageSource, Void);` to `if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature)) { Abilities->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()) + Void.Added); }`, the code before #2723), same prefix | 11 performed, 10 succeeded, 1 failed, 2 assertions, both test 11: "the void's boss, before the save: (own + the void's) x the multipliers" and "the void's boss, after the load: (own + the void's) x the multipliers". Passing: "and the figure it was saved with", since both worlds lose it alike |
+
+Each anchor occurs exactly once in its file, counted by `prove_m2723.py <P> --anchors-only` on the rebased branch. The
+predicted failures were read again against the rebased code: the rebase changed none of the eleven tests and none of
+the three functions the breaks are in beyond what this change wrote, and the travelling soul does not reach them,
+since the tests give souls through `RestoreCreatureRoles`.
+
+### The first window, rule-damage-w1: stopped on one CONTROL, a test fault
+
+Run by the coordinating session on 2026-11-17 at `e7f0a5d3c`, after the pre-checks passed. The build was up to date. The
+first step, `Cataclysm.RuleDamageParts.` alone, printed "11 tests performed, 10 succeeded, 1 failed:
+AWraithKeepsItsIncreaseUnderAMultiplierAndTakesSoulsOnTop", and the runner stopped there and released the lock. No other
+group, no suite and no proof ran.
+
+The one failed assertion was "Expected 'CONTROL: the kept figure and the lost one, 2.61 and 2.18, are told apart' to be
+true". Every other assertion in the test passed, including the three that check the figure itself, own x 1.2 x the
+floor's multipliers, before and after hunger and with three souls. The CONTROL demanded that the kept and lost figures
+differ by more than 1.0. A wraith is a risen Imp, and its 20% is worth 0.43 on its own damage. The audit above names a
+threshold, "own above about 2.8", and it was not checked against the wraith that the test raises.
+
+**The correction is to the test, not the game:** that CONTROL now requires more than 0.1, ten times the 0.01 tolerance
+of the assertions it guards, with a comment saying why. The other three CONTROLS in the group keep 1.0, because their
+creatures hit harder and they passed. No count, prediction or proof changes; the second window runs the same
+registration at the new head.
+
+### The second window, rule-damage-w1: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at `da83171f4` (on `development` `bead00391`), lock
+`rule-damage-w1`, after the six pre-checks all passed. Every registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the coordinator's build of the corrected test: "Build: Succeeded - 5 actions, 2 files compiled: CataclysmDungeonModifierEffectsTests.cpp, Module.Cataclysm.38.cpp") |
+| The five groups alone | each at its registered count | every one "0 failed": RuleDamageParts. 11, DungeonModifierEffects. 768, SaveLoad. 76, SoulHarvestTravel. 15, ConsumptionDouble. 15 |
+| Whole Unreal suite | 4739, 47 skipped halves, 0 left behind | "4739 tests performed, 4739 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4739 tests in the tree at da83171f4; 4739 performed, gap 0"; "Test saves: 757 written and deleted, 0 left behind" |
+| Python | of record | "7382 passed, 9 skipped in 198.29s"; JUnit tests 7391, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| P1 | 6 tests, 12 assertions | PROVED. "11 tests performed, 5 succeeded, 6 failed", 12 failed assertions; restored 11 of 11 |
+| P2 | 3 tests, 7 assertions | PROVED. "11 tests performed, 8 succeeded, 3 failed", 7 failed assertions; restored 11 of 11 |
+| P3 | 1 test, 2 assertions | PROVED. "11 tests performed, 10 succeeded, 1 failed": `SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure`, 2 failed assertions; restored 11 of 11 |
+
+Each assertion count is the broken run's failed-assertion lines, read from its kept log.
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **Nothing here has been run in the engine.** It compiles (phase 2, above); no Unreal test and no C++ guard proof has
+  run.
+- The souls given by a real death: since #1671 a death releases a soul that floats and `SoulHarvestSoulArrived` gives
+  it; the eleven tests give souls through `RestoreCreatureRoles`, which calls the same function. The rules' real callers of the two multipliers
+  (`StrengthenTheEater` after a drop eaten, the cleanse's `ChooseAtFloorObject`) are not driven; their setters are.
+- A rung change with all three parts on a creature (`SoulsSurviveTheRungABloodForgedChampionGains` covers the souls,
+  `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` the wraith).
+- R5, the souls' health share under Carrion Feast and Famished Beasts on a feeder: changed by reading, no test.
+- The Corrupted Stalker itself; test 9 sets the flag on an ordinary creature.
+- The order drift of Famished Beasts and Soul Harvest on a non-feeder's health, and the timing of a soul's resistance
+  under Trial of Endurance, are recorded and not tested.
+
+---
+
 ## 2026-11-17 — Six set drawbacks are doubled, each to its cost at two pieces under the old per-piece reading (#1498)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (six drawback sentences on the Enchantments sheet, and the name, sentence and
