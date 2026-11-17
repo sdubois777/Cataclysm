@@ -1840,7 +1840,7 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-**An enemy carries at most one stack of any effect the player applies.** One enemy is bleeding or it is not. There is no counting stacks on a screen full of enemies.
+**An enemy carries at most one stack of each ailment and damage over time effect the player applies.** One enemy is bleeding or it is not. There is no counting stacks on a screen full of enemies. **A debuff the player places on an enemy that lowers one of its stats may stack**, and three enchantments do: "Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6 stacks", "Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely" and "Each melee hit you take reduces the attacker's damage by 3%-5% for 3 seconds, stacking up to 5 times". The project owner narrowed the rule to ailments and damage over time on 2026-11-17 (issue #913); until then it covered every effect the player applies. Last Epoch's armor shred and Path of Exile's Withered are the genre's precedent for a stat-lowering debuff that stacks on an enemy.
 
   
 

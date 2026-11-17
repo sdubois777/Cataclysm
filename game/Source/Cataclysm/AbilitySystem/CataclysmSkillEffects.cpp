@@ -164,7 +164,8 @@ namespace
 	 * available at runtime until the engine provides one. Kept in one function
 	 * so there is a single place to change when it does.
 	 *
-	 * ONE STACK ONLY is the design's rule for every effect a player can apply,
+	 * ONE STACK ONLY is the design's rule for every ailment and damage over time
+	 * effect a player applies,
 	 * and it is aggregated by TARGET rather than by source so that two
 	 * characters burning the same enemy still produce one burn.
 	 *

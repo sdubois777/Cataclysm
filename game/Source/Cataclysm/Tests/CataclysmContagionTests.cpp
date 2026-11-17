@@ -1118,7 +1118,7 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionTwoDamageOverTimesTest,
 
 	// AND THE SINGLE-STACK RULE STILL HOLDS WITHIN ONE EFFECT. A second bleed
 	// refreshes the first rather than adding a second, which the design requires
-	// of everything a player applies. Without this half the repair would have
+	// of every ailment and damage over time effect a player applies. Without this half the repair would have
 	// traded one fault for a worse one.
 	TestTrue(TEXT("a second bleed is applied"),
 		UCataclysmSkillEffects::ApplyDamageOverTime(

@@ -38,8 +38,8 @@
  * ONE PER ACTOR, REPLACED RATHER THAN ADDED TO. A creature caught by a second
  * Skewer belongs to the second line and not to both: the older line has already
  * dealt its damage, and a creature in two lines would free two groups from one
- * death. Which matches the single-stack rule every player-applied effect here
- * follows.
+ * death. Which matches the one-stack rule the design states for ailments and
+ * damage over time.
  */
 UCLASS(ClassGroup = (Cataclysm), meta = (BlueprintSpawnableComponent))
 class CATACLYSM_API UCataclysmPinnedLine : public UActorComponent
