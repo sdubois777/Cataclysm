@@ -345,6 +345,28 @@ THAT REACHES THE CHANGE: the automation command passes `-nullrhi`, so `ACataclys
 Each C anchor was counted once in its file by `python -u prove_s1671.py <C> --anchors-only` at the registration
 commit's code ("anchor count 1" for all five). The breaks were not compiled.
 
+### Window soul-harvest-w1: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at the registration commit `2f6adc34c` (on `development`
+`9c6b604dd`), lock `soul-harvest-w1`, after the six pre-checks all passed (15,482 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The seven groups alone | each at its registered count | every one "0 failed": SoulHarvestTravel. 15, SaveLoad. 76, DungeonModifierEffects. 768, SaveWriter. 25, BossFloor. 5, ConsumptionDouble. 15, SetBonus.Reaper6. 9 |
+| Whole Unreal suite | 4728, 47 skipped halves, 0 left behind | "4728 tests performed, 4728 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4728 tests in the tree at 2f6adc34c; 4728 performed, gap 0"; "Test saves: 749 written and deleted, 0 left behind" |
+| Python | of record | "7361 passed, 9 skipped in 191.58s"; JUnit tests 7370, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| C1 | 12 tests, 20 assertions | PROVED. "15 tests performed, 3 succeeded, 12 failed": exactly the twenty registered, among them "CONTROL: the demon holds no soul at the instant of the death" (1 read) and the restore's 121 and +10 where 110 and +5 are asserted; restored 15 of 15 |
+| C2 | 1 test, 5 assertions | PROVED. Exactly `ASoulWhoseDemonDiesTurnsToTheNearestDemonWhereItIs` on its five registered assertions; restored 15 of 15 |
+| C3 | 2 tests, 6 assertions | PROVED. Exactly "a save reads five, the cap, not seven" (0 read) and the five registered in the save test; restored 15 of 15 |
+| C4 | 1 test, 1 assertion | PROVED. Exactly "landed: the panel was told it was taken and floats no longer"; restored 15 of 15 |
+| C5 | 1 test, 3 assertions | PROVED. "76 tests performed, 75 succeeded, 1 failed": exactly `ASoulStillFloatingAtASaveComesBackGivenToItsDemon` on its three registered assertions; restored 76 of 76 |
+
+Each assertion count is the broken run's failed-assertion lines, read from its kept log.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Anything in Unreal**: compiled, not run. See SAID FIRST.
