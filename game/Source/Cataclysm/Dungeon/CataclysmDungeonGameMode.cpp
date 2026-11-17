@@ -14233,6 +14233,8 @@ void ACataclysmDungeonGameMode::SoulHarvestSoulArrived(ACataclysmEnemyCharacter*
 
 	if (!SoulHarvestMayFeed(Demon))
 	{
+		// THE SOUL IS SPENT ALL THE SAME, so the panel's floating count still changes.
+		RefreshFloorModifierPanel();
 		return;
 	}
 

@@ -102,6 +102,9 @@ bool ACataclysmHarvestedSoul::Step(float DeltaSeconds)
 	if (Effects::SoulHarvestSoulArrivesAfter(GetActorLocation(), Demon->GetActorLocation(), DeltaSeconds, At))
 	{
 		SetActorLocation(At);
+		// NO LONGER FLOATING BEFORE IT IS GIVEN: the arrival refreshes the floor panel, whose floating count asks
+		// `FloatingIn`, and a soul still marked in flight there was counted as floating beside the soul it had just given.
+		Ended = ECataclysmHarvestedSoulEnd::Arrived;
 		Mode->SoulHarvestSoulArrived(Demon);
 		End(ECataclysmHarvestedSoulEnd::Arrived);
 		return false;

@@ -25826,6 +25826,138 @@ bool FCataclysmSoulTravelFadesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// THE FLOOR PANEL IS TOLD A SOUL FLOATS FROM ITS RELEASE UNTIL IT LANDS OR FADES, AND NO LONGER: the line the game's
+// controller was last handed, read after a release, a landing, a second release and a fade. Issue #1671.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelPanelTest,
+	"Cataclysm.SoulHarvestTravel.ThePanelIsToldASoulFloatsUntilItLandsOrFadesAndNoLonger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World, ACataclysmPlayerController::StaticClass());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Player.Controller);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("the game's own controller, which keeps what the panel was told"), Controller)
+		|| !TestNotNull(TEXT("a demon three metres from the death"), Demon))
+	{
+		return false;
+	}
+	auto ToldLine = [Controller]()
+	{
+		const FString* Line = Controller->FloorModifiersShown().LiveCounts.Find(SoulHarvest);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("released: the panel was told one floats"), ToldLine(),
+			  FString(TEXT("soul harvest: 0 soul(s) taken, 1 floating, the most on one living creature 0 of 5")));
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("landed: the panel was told it was taken and floats no longer"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 0 floating, the most on one living creature 1 of 5")));
+
+	// A SECOND SOUL, WHICH FADES: the demon runs at ten metres a second, faster than the soul's eight.
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul)
+	{
+		return false;
+	}
+	TestEqual(TEXT("released again: the panel was told one floats"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 1 floating, the most on one living creature 1 of 5")));
+	int32 Steps = 0;
+	bool bFloating = true;
+	while (bFloating && Steps < 100)
+	{
+		Demon->SetActorLocation(Demon->GetActorLocation() + FVector(100.0f, 0.0f, 0.0f));
+		bFloating = Soul->Step(0.1f);
+		++Steps;
+	}
+	TestTrue(TEXT("the second soul faded"), !bFloating && Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Faded);
+	TestEqual(TEXT("faded: the panel was told it floats no longer, and nothing more was taken"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 0 floating, the most on one living creature 1 of 5")));
+	return true;
+}
+
+// A HORDE'S NEXT WAVE, WHICH KEEPS ITS ARENA, KEEPS A SOUL FLOATING TO ITS DEMON: the clearing does not run, the soul
+// is not turned, and it lands. Ruling 11 of 2026-11-17, issue #1671.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelHordeTest,
+	"Cataclysm.SoulHarvestTravel.AHordesNextWaveKeepsASoulFloatingToItsDemon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {SoulHarvest};
+	if (!TestTrue(TEXT("set-up: the first wave was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* Demon = PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a demon three metres from the death"), Demon)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("it floats a tenth of a second"), Soul->Step(0.1f)))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmHarvestedSoul> Watched(Soul);
+
+	if (!TestTrue(TEXT("set-up: the second wave was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: in the same arena"), Mode->FloorBrief.bSameArenaAsLastFloor))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the soul is still there"), Watched.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("still floating"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::InFlight);
+	TestTrue(TEXT("still bound for its demon"), Soul->Target() == Demon);
+	TestEqual(TEXT("not turned"), Soul->TimesTurned(), 0);
+
+	FloatEverySoulUntilItEnds(World);
+	TestTrue(TEXT("it landed"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Arrived);
+	TestEqual(TEXT("the demon holds it"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("one given"), Mode->SoulHarvestSoulsGiven(), 1);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // Chaos_Chaos_Touched. Issues #1820 and #41.
 //
