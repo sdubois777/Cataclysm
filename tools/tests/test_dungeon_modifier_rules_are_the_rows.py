@@ -4023,10 +4023,10 @@ def test_soul_harvest_row_still_feeds_the_nearest_demon_health_damage_and_resist
     "Defeated enemies release demonic souls that empower other enemies nearby. Souls float
     toward the nearest demon, granting increased health, damage, and resistances." DEFEATED
     ENEMIES is why every death releases one, whoever killed it; NEARBY and THE NEAREST DEMON
-    are why it goes to the nearest living creature within a radius; HEALTH, DAMAGE, AND
-    RESISTANCES are the three things a soul raises; and the row gives no figure, which is why
-    ten per cent, five points and five souls are rulings. If any of them changes, the reading
-    must be revisited.
+    are why it goes to the nearest demon (a Demonic creature, since issue #1671) within a
+    radius; HEALTH, DAMAGE, AND RESISTANCES are the three things a soul raises; and the row
+    gives no figure, which is why ten per cent, five points and five souls are rulings. If any
+    of them changes, the reading must be revisited.
     """
     words = flat(rows()["Demonic_Soul_Harvest"]["Description"])
     lower = words.lower()
@@ -4039,6 +4039,76 @@ def test_soul_harvest_row_still_feeds_the_nearest_demon_health_damage_and_resist
     assert "%" not in words, (
         "Demonic_Soul_Harvest now states a percentage. The figures a soul gives were rulings "
         "because the row gave none; use the row's figure. " + words)
+
+def test_soul_harvest_row_still_releases_souls_that_float():
+    """The phrases the travelling soul rests on. Issue #1671.
+
+    RELEASE DEMONIC SOULS is why a death puts an `ACataclysmHarvestedSoul` where the creature
+    died rather than giving its buff at once; SOULS FLOAT TOWARD is why the soul moves to its
+    demon over time and gives the buff on arrival, which replaced the instant grant of
+    2026-09-24. The row gives no speed, reach or lifetime, which is why eight metres a second,
+    half a metre and four seconds are rulings. If either phrase goes, the travel must be
+    revisited.
+    """
+    words = flat(rows()["Demonic_Soul_Harvest"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("release demonic souls", "souls float toward"):
+        assert phrase in lower, (
+            f"Demonic_Soul_Harvest no longer says {phrase.upper()!r}. The travelling soul "
+            "rests on it; see ACataclysmHarvestedSoul. " + words)
+    for figure in ("m/s", "metres per second", "seconds"):
+        assert figure not in lower, (
+            f"Demonic_Soul_Harvest now states {figure!r}. A soul's speed and life were rulings "
+            "because the row gave none; use the row's figure. " + words)
+
+def test_a_harvested_soul_outruns_every_designed_creature():
+    """A soul catches every creature no rule has hastened. Issue #1671.
+
+    The soul's speed was ruled as faster than any designed creature walks or charges, so a
+    soul bound for a creature walking away from it still arrives; only a hastened creature can
+    outrun one, and then the soul fades after its lifetime. READ FROM WHERE EACH FIGURE IS
+    DEFINED: the soul's speed from the effects header and every archetype's walking and chase
+    speeds from `game/Data/EnemyArchetypes.csv`, so a faster creature added to the table, or a
+    slower soul, fails here rather than in play.
+    """
+    soul = constant("SoulHarvestSoulSpeedMetresPerSecond")
+    table = REPO_ROOT / "game" / "Data" / "EnemyArchetypes.csv"
+    with table.open(newline="", encoding="utf-8") as handle:
+        archetypes = list(csv.DictReader(handle))
+    assert archetypes, f"{table.name} has no rows, so this check would compare with nothing"
+
+    fastest_name, fastest = "", 0.0
+    for archetype in archetypes:
+        for column in ("MoveSpeedMetresPerSecond", "ChaseSpeedMetresPerSecond"):
+            speed = float(archetype[column])
+            if speed > fastest:
+                fastest_name, fastest = f"{archetype['Name']} ({column})", speed
+    assert fastest > 0.0, "no archetype moves, so this check would compare with nothing"
+    assert soul > fastest, (
+        f"A harvested soul floats at {soul} m/s, which does not outrun {fastest_name} at "
+        f"{fastest} m/s. The soul's speed was ruled to catch every designed creature "
+        "(SoulHarvestSoulSpeedMetresPerSecond in CataclysmDungeonModifierEffects.h); raise it "
+        "or rule again.")
+
+def test_the_floors_clearing_ends_every_harvested_soul():
+    """A floor cleared under a floating soul destroys it, in both branches. Issue #1671.
+
+    READ FROM THE C++: after the branch on carrying followers closes, beside the Reaper's
+    Souls. THE CONTROL is the Reaper's Souls' own line, which must still be found where this
+    check looks.
+    """
+    clearing = body_of((EFFECTS_DIR / "CataclysmFloorContents.cpp").read_text(encoding="utf-8"),
+                       "int32 UCataclysmFloorContents::ClearTheFloor(")
+    reaper = "FloorContentsDestroyEvery<ACataclysmReaperSoul>(World);"
+    harvested = "FloorContentsDestroyEvery<ACataclysmHarvestedSoul>(World);"
+    assert clearing.count(reaper) == 1, "CONTROL: the Reaper's Souls' line is not where this looks"
+    assert clearing.count(harvested) == 1, (
+        "UCataclysmFloorContents::ClearTheFloor no longer destroys every ACataclysmHarvestedSoul "
+        "exactly once, so a soul floating when the floor ends would fly into the next one.")
+    assert clearing.index(reaper) < clearing.index(harvested), (
+        "The harvested souls' line is no longer after the Reaper's Souls', outside the branch "
+        "on carrying followers.")
 
 def test_chaos_touched_row_still_adds_a_random_buff_or_debuff_each_floor_until_cleansed():
     """The phrases the rule's readings rest on.

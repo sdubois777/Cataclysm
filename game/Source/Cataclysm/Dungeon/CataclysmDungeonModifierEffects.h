@@ -2505,26 +2505,46 @@ public:
 	static const TCHAR* TrickOrTreatKey;
 
 	/**
-	 * The row where every death feeds the nearest creature. Issues #1820 and #41.
+	 * The row where every death releases a soul that floats to the nearest demon. Issues #1820,
+	 * #41 and #1671.
 	 *
 	 * "Defeated enemies release demonic souls that empower other enemies nearby. Souls float
 	 * toward the nearest demon, granting increased health, damage, and resistances." Each
-	 * creature that dies on a floor carrying the row gives one soul to the nearest living
-	 * creature within `SoulHarvestRadiusMetres`: more maximum health, more attack damage and
-	 * more of its one all-resistance figure, up to `SoulHarvestMostSouls`.
+	 * creature that dies on a floor carrying the row releases one soul where it died, an
+	 * `ACataclysmHarvestedSoul`, bound for the nearest living demon within
+	 * `SoulHarvestRadiusMetres`. The soul floats there at `SoulHarvestSoulSpeedMetresPerSecond`
+	 * and, on arrival, gives that one creature more maximum health, more attack damage and more
+	 * of its one all-resistance figure, up to `SoulHarvestMostSouls`.
 	 *
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
 	 * - EVERY DEATH, WHOEVER KILLED IT, but a risen creature's second death releases nothing.
-	 * - THE NEAREST LIVING CREATURE WITHIN 6 METRES, the Blood-Forged radius, at once. "The
-	 *   nearest demon" is any creature because every creature today is Demonic
-	 *   (docs/Cataclysm_GDD_v2.md, "Vertical Slice Enemies (Demonic Cataclysm)"); a
-	 *   non-Demonic creature would make that reading wrong.
+	 * - THE NEAREST LIVING CREATURE WITHIN 6 METRES, the Blood-Forged radius.
 	 * - 10% MORE MAXIMUM HEALTH, 10% MORE ATTACK DAMAGE AND +5 ALL-RESISTANCE PER SOUL, at
 	 *   most five souls. A play-test point. A creature holds one resistance figure, not eight
 	 *   (the owner's ruling of 2026-08-12), so the +5 is to that figure.
 	 * - THE GAIN STAYS UNTIL THE CREATURE DIES and is written again after a rung change.
 	 * - THE FIGURES ARE WRITTEN ONTO THE ATTRIBUTE BASES, as Nothing Is Forgotten's are, so this
 	 *   adds no creature damage multiplier.
+	 *
+	 * AND BY THE WORKER SESSION OF 2026-11-17 UNDER THE SAME DELEGATION, issue #1671, which
+	 * replaced the instant grant of 2026-09-24 with a soul that travels:
+	 * - A DEMON IS A CREATURE WHOSE DAMAGE TYPE IS DEMONIC (`SoulHarvestTakesAsADemon`): the
+	 *   design gives each Cataclysm one damage type and its creatures deal it. Every creature a
+	 *   floor places today is Demonic, so this passes over only a creature some other rule made
+	 *   of another Cataclysm. The 2026-09-24 entry said this reading must be revisited.
+	 * - NO DEMON WITHIN 6 METRES OF THE DEATH: no soul is released.
+	 * - ITS TARGET DIES, OR STOPS BEING AN ENEMY DEMON, BEFORE IT ARRIVES: it turns to the
+	 *   nearest demon within 6 metres of where the soul is then; with none, it fades, giving
+	 *   nothing.
+	 * - SEVERAL SOULS TO ONE CREATURE: each is one soul, to the same cap of five; one reaching
+	 *   a creature at five gives nothing and is spent, as under the instant grant.
+	 * - IT CANNOT BE STRUCK, BLOCKED OR TAKEN: nothing in the row or #1671 lets the player
+	 *   intercept it, so it collides with nothing and passes through walls.
+	 * - IT FADES AFTER `SoulHarvestSoulLifetimeSeconds`, giving nothing, so one chasing a
+	 *   hastened creature that outruns it does not fly forever.
+	 * - A FLOOR CLEARED UNDER IT DESTROYS IT, giving nothing, beside the Reaper's Souls.
+	 * - A SAVE COUNTS IT AS ARRIVED: its target's record holds the soul, so a load gives it.
+	 *   The soul itself is not saved, as a projectile is not.
 	 */
 	static const TCHAR* SoulHarvestKey;
 
@@ -6120,6 +6140,33 @@ public:
 		"A soul that gives nothing, or a cap of none, is not the row.");
 
 	/**
+	 * How a released soul floats to its demon. Issue #1671. RULED BY THE WORKER SESSION OF
+	 * 2026-11-17 UNDER THE OWNER'S DELEGATION; judgements, and play-test points. No shipped
+	 * game read for this states a travel speed for a soul (docs/DECISIONS.md, 2026-11-17).
+	 *
+	 * - EIGHT METRES A SECOND: faster than any designed creature walks (the Hellhound's 7.5,
+	 *   `EnemyArchetypes.csv`), so a soul catches every creature no rule has hastened, and
+	 *   slower than the slowest player projectile (the Succubus's Soulfire, 12 m/s), so it reads
+	 *   as floating rather than fired. Across the whole 6 metre reach it takes 0.75 seconds.
+	 * - IT ARRIVES WITHIN HALF A METRE of the creature's centre: about a designed creature's
+	 *   body radius (0.48 m), so it arrives as it touches the body.
+	 * - IT FADES AFTER FOUR SECONDS: over five times the longest straight flight.
+	 *
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` holds the speed above every
+	 * designed creature's.
+	 */
+	static constexpr float SoulHarvestSoulSpeedMetresPerSecond = 8.0f;
+	static constexpr float SoulHarvestSoulArrivalCm = 50.0f;
+	static constexpr float SoulHarvestSoulLifetimeSeconds = 4.0f;
+
+	static_assert(
+		SoulHarvestSoulSpeedMetresPerSecond > 0.0f && SoulHarvestSoulArrivalCm > 0.0f
+			&& SoulHarvestSoulLifetimeSeconds * SoulHarvestSoulSpeedMetresPerSecond
+				> SoulHarvestRadiusMetres,
+		"A soul that never moves, never arrives, or fades before it could cross its own reach "
+		"is not a soul that floats to the nearest demon.");
+
+	/**
 	 * Chaos Touched's kinds, as `ChaosTouchedKindFor` answers them: the four buffs first, then
 	 * the four debuffs of the same stats in the same order.
 	 */
@@ -8135,6 +8182,18 @@ public:
 
 	/** What this many souls add to a creature's all-resistance figure. */
 	static float SoulHarvestResistanceAdded(int32 Souls);
+
+	/** Whether a creature dealing this damage type is a demon a soul may float to. Issue #1671. */
+	static bool SoulHarvestTakesAsADemon(FName CreatureDamageType);
+
+	/**
+	 * One step of a soul's float, issue #1671: from `From` toward `To` for `Seconds` at
+	 * `SoulHarvestSoulSpeedMetresPerSecond`. True when it arrives in the step, within
+	 * `SoulHarvestSoulArrivalCm` of `To` at the end of it, and then `OutAt` is `To`; otherwise
+	 * `OutAt` is where the step leaves it, never past `To`. No time, no move.
+	 */
+	static bool SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To, float Seconds,
+											FVector& OutAt);
 
 	/** Which kind a floor draws for this roll, 0 to 100: eight even bands, the lowest first. */
 	static int32 ChaosTouchedKindFor(float Roll);

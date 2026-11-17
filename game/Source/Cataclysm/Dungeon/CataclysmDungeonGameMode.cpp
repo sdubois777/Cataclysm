@@ -41,6 +41,7 @@
 #include "Dungeon/CataclysmEnemyStrength.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -14154,35 +14155,6 @@ void ACataclysmDungeonGameMode::NoteDeathForSoulHarvest(const FCataclysmDeathNot
 		return;
 	}
 
-	UWorld* World = GetWorld();
-	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
-	ACataclysmPlayerCharacter* Player =
-		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!World || !Player)
-	{
-		return;
-	}
-
-	// THE NEAREST LIVING CREATURE WITHIN REACH, found the way Blood-Forged Champions finds
-	// its champion. The creature that died is still in the sphere and is skipped.
-	ACataclysmEnemyCharacter* Nearest = nullptr;
-	float NearestAway = TNumericLimits<float>::Max();
-	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(
-			 World, Player, Notice.Location, Effects::SoulHarvestRadiusCm()))
-	{
-		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
-		if (!IsValid(Creature) || Creature == Fallen || UCataclysmSkillEffects::IsDead(Creature))
-		{
-			continue;
-		}
-		const float Away = FVector::Dist(Creature->GetActorLocation(), Notice.Location);
-		if (Away < NearestAway)
-		{
-			NearestAway = Away;
-			Nearest = Creature;
-		}
-	}
-
 	for (auto Entry = SoulHarvestHeld.CreateIterator(); Entry; ++Entry)
 	{
 		if (Entry->Key.IsStale())
@@ -14191,25 +14163,136 @@ void ACataclysmDungeonGameMode::NoteDeathForSoulHarvest(const FCataclysmDeathNot
 		}
 	}
 
+	// THE NEAREST DEMON WITHIN REACH OF THE DEATH, found the way Blood-Forged Champions finds its
+	// champion. The creature that died is still in the sphere and is skipped. WITH NONE, NO SOUL
+	// IS RELEASED: there is nothing for it to float toward. Ruled 2026-11-17, issue #1671.
+	ACataclysmEnemyCharacter* Nearest = NearestDemonForASoul(Notice.Location, Fallen);
 	if (!Nearest)
+	{
+		return;
+	}
+
+	// RELEASED WHERE THE CREATURE DIED, AND GIVING NOTHING YET: the soul floats to its demon and
+	// `SoulHarvestSoulArrived` gives it on arrival. Until issue #1671 the soul was given here, at once.
+	if (ACataclysmHarvestedSoul* Soul = ACataclysmHarvestedSoul::Release(this, Notice.Location, Nearest))
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Soul Harvest: %s died and released %s toward %s"),
+			   *Fallen->GetName(), *Soul->GetName(), *Nearest->GetName());
+		RefreshFloorModifierPanel();
+	}
+}
+
+bool ACataclysmDungeonGameMode::SoulHarvestMayFeed(const ACataclysmEnemyCharacter* Creature) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	return IsValid(Creature) && Player && !UCataclysmSkillEffects::IsDead(Creature)
+		&& Effects::SoulHarvestTakesAsADemon(Creature->DamageType)
+		&& UCataclysmTargeting::IsHostileTo(Creature, Player);
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::NearestDemonForASoul(const FVector& From,
+																			const AActor* Skip) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!World || !Player)
+	{
+		return nullptr;
+	}
+
+	ACataclysmEnemyCharacter* Nearest = nullptr;
+	float NearestAway = TNumericLimits<float>::Max();
+	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(World, Player, From, Effects::SoulHarvestRadiusCm()))
+	{
+		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
+		if (!Creature || Creature == Skip || !SoulHarvestMayFeed(Creature))
+		{
+			continue;
+		}
+		const float Away = FVector::Dist(Creature->GetActorLocation(), From);
+		if (Away < NearestAway)
+		{
+			NearestAway = Away;
+			Nearest = Creature;
+		}
+	}
+	return Nearest;
+}
+
+void ACataclysmDungeonGameMode::SoulHarvestSoulArrived(ACataclysmEnemyCharacter* Demon)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!SoulHarvestMayFeed(Demon))
 	{
 		return;
 	}
 
 	// A CREATURE AT THE CAP TAKES NOTHING MORE, and the soul is not passed on: it went to the
 	// nearest, and the nearest was full.
-	FSoulHarvestHeld& Held = SoulHarvestHeld.FindOrAdd(Nearest);
+	FSoulHarvestHeld& Held = SoulHarvestHeld.FindOrAdd(Demon);
 	const int32 Souls = Effects::SoulHarvestSoulsAfterFeeding(Held.Souls);
 	if (Souls == Held.Souls)
 	{
+		RefreshFloorModifierPanel();
 		return;
 	}
 	Held.Souls = Souls;
 	++SoulHarvestGiven;
-	ApplySoulHarvestFigures(Nearest, /*bFreshBlock=*/false);
-	UE_LOG(LogCataclysm, Log, TEXT("Soul Harvest: %s died and %s now holds %d soul(s)"),
-		   *Fallen->GetName(), *Nearest->GetName(), Souls);
+	ApplySoulHarvestFigures(Demon, /*bFreshBlock=*/false);
+	UE_LOG(LogCataclysm, Log, TEXT("Soul Harvest: a soul reached %s, which now holds %d soul(s)"),
+		   *Demon->GetName(), Souls);
 	RefreshFloorModifierPanel();
+}
+
+int32 ACataclysmDungeonGameMode::SoulHarvestSoulsFloating() const
+{
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(GetWorld(), this, Floating);
+	return Floating.Num();
+}
+
+int32 ACataclysmDungeonGameMode::SoulHarvestSoulsFloatingToward(const ACataclysmEnemyCharacter* Creature) const
+{
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(GetWorld(), this, Floating);
+	int32 Toward = 0;
+	for (const ACataclysmHarvestedSoul* Soul : Floating)
+	{
+		Toward += (Creature && Soul->Target() == Creature) ? 1 : 0;
+	}
+	return Toward;
+}
+
+int32 ACataclysmDungeonGameMode::SoulHarvestFloatingTaken() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(GetWorld(), this, Floating);
+	TMap<const ACataclysmEnemyCharacter*, int32> Toward;
+	for (const ACataclysmHarvestedSoul* Soul : Floating)
+	{
+		if (const ACataclysmEnemyCharacter* Demon = Soul->Target())
+		{
+			++Toward.FindOrAdd(Demon);
+		}
+	}
+	int32 Taken = 0;
+	for (const TPair<const ACataclysmEnemyCharacter*, int32>& Entry : Toward)
+	{
+		const int32 Held = SoulHarvestSoulsOn(Entry.Key);
+		Taken += FMath::Max(0, FMath::Min(Held + Entry.Value, Effects::SoulHarvestMostSouls) - Held);
+	}
+	return Taken;
 }
 
 void ACataclysmDungeonGameMode::ApplySoulHarvestFigures(ACataclysmEnemyCharacter* Creature,
@@ -15449,7 +15532,9 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 	Walk.EchoChamberHitsOnThePlayer = EchoChamberHitsOnThePlayer;
 	Walk.WildMagicTriggered = WildMagicTriggered;
 	Walk.WildMagicLast = WildMagicLast;
-	Walk.SoulHarvestGiven = SoulHarvestGiven;
+	// AND EVERY FLOATING SOUL ITS DEMON WOULD TAKE, counted as given, as `SoulHarvestHeldBy` counts it as arrived. Issue
+	// #1671.
+	Walk.SoulHarvestGiven = SoulHarvestGiven + SoulHarvestFloatingTaken();
 
 	// GROUP 2: the Stalker's hunt, the echoes' two lists by the creature's name, and Nihil's walked distance.
 	Walk.bCorruptedStalkerHasHunted = bCorruptedStalkerHasHunted;
@@ -15606,6 +15691,15 @@ void ACataclysmDungeonGameMode::SoulHarvestHeldBy(const ACataclysmEnemyCharacter
 	{
 		OutSouls = Held->Souls;
 		OutHealthAdded = Held->HealthAdded;
+	}
+
+	// AND EVERY SOUL STILL FLOATING TOWARD IT, AS ARRIVED, to the cap; the health added stays the held souls'. Issue
+	// #1671: the header says why.
+	const int32 Floating = SoulHarvestSoulsFloatingToward(Creature);
+	if (Floating > 0)
+	{
+		OutSouls = FMath::Max(OutSouls,
+							  FMath::Min(OutSouls + Floating, UCataclysmDungeonModifierEffects::SoulHarvestMostSouls));
 	}
 }
 
@@ -21943,9 +22037,10 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 				Most = FMath::Max(Most, Entry.Value.Souls);
 			}
 		}
+		// AND THE SOULS STILL FLOATING, since they travel: issue #1671.
 		Counting.Add(Souls, FString::Printf(
-			TEXT("soul harvest: %d soul(s) taken, the most on one living creature %d of %d"),
-			SoulHarvestGiven, Most, Effects::SoulHarvestMostSouls));
+			TEXT("soul harvest: %d soul(s) taken, %d floating, the most on one living creature %d of %d"),
+			SoulHarvestGiven, SoulHarvestSoulsFloating(), Most, Effects::SoulHarvestMostSouls));
 	}
 
 	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.

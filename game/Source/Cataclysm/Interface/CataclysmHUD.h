@@ -264,6 +264,19 @@ private:
 	 */
 	void DrawReaperSoulNames();
 
+	/**
+	 * The tag "Demonic soul" over every soul Soul Harvest released that is still floating near the character, in its
+	 * one colour, drawn as a Reaper's Soul's tag is, so a player sees a soul travel to the creature it will feed. Issue
+	 * #1671. Not recorded for a click: nothing can take one.
+	 */
+	void DrawHarvestedSoulNames();
+
+	/**
+	 * Tags of one text and one colour, each `HeightCm` over a point in the world, measured first and separated so two
+	 * do not print over each other, with a plain border. What the two souls' tags share.
+	 */
+	void DrawPlainTags(const TArray<FVector>& Over, float HeightCm, const FString& Words, const FLinearColor& Ink);
+
 	/** One bar: a dark backing, then the filled share of it. */
 	void DrawBar(float ScreenX, float ScreenY, float Width, float Height,
 				 float Fraction, const FLinearColor& Fill, float Opacity);
