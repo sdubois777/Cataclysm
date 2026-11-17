@@ -64912,9 +64912,12 @@ bool FCataclysmPartsWraithTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("CONTROL: the hunger is one of the floor's multipliers on it"),
 			 FMath::IsNearlyEqual(
 				 Wraith->DamageMultiplierFrom(ACataclysmEnemyCharacter::FamishedBeastsDamageSource), PartsHunger()));
+	// Ten times the 0.01 tolerance the assertions above compare with, so a lost increase cannot pass them. Not 1.0, as
+	// the other CONTROLS here use: a wraith is a risen Imp, and its 20% is worth about 0.4 on its own damage (window
+	// rule-damage-w1, 2026-11-17: 2.61 kept against 2.18 lost failed a margin of 1.0).
 	TestTrue(FString::Printf(TEXT("CONTROL: the kept figure and the lost one, %.2f and %.2f, are told apart"),
 							 Own * Increase * Wraith->DamageMultiplierProduct(), Own * Wraith->DamageMultiplierProduct()),
-			 FMath::Abs(Own * (Increase - 1.0f) * Wraith->DamageMultiplierProduct()) > 1.0f);
+			 FMath::Abs(Own * (Increase - 1.0f) * Wraith->DamageMultiplierProduct()) > 0.1f);
 
 	PartsGiveSouls(Mode, Wraith, 3);
 	TestEqual(TEXT("and with three souls: own x 1.2 x the multipliers x the souls"), PartsDamageOf(Wraith),

@@ -327,6 +327,24 @@ predicted failures were read again against the rebased code: the rebase changed 
 the three functions the breaks are in beyond what this change wrote, and the travelling soul does not reach them,
 since the tests give souls through `RestoreCreatureRoles`.
 
+### The first window, rule-damage-w1: stopped on one CONTROL, a test fault
+
+Run by the coordinating session on 2026-11-17 at `e7f0a5d3c`, after the pre-checks passed. The build was up to date. The
+first step, `Cataclysm.RuleDamageParts.` alone, printed "11 tests performed, 10 succeeded, 1 failed:
+AWraithKeepsItsIncreaseUnderAMultiplierAndTakesSoulsOnTop", and the runner stopped there and released the lock. No other
+group, no suite and no proof ran.
+
+The one failed assertion was "Expected 'CONTROL: the kept figure and the lost one, 2.61 and 2.18, are told apart' to be
+true". Every other assertion in the test passed, including the three that check the figure itself, own x 1.2 x the
+floor's multipliers, before and after hunger and with three souls. The CONTROL demanded that the kept and lost figures
+differ by more than 1.0. A wraith is a risen Imp, and its 20% is worth 0.43 on its own damage. The audit above names a
+threshold, "own above about 2.8", and it was not checked against the wraith that the test raises.
+
+**The correction is to the test, not the game:** that CONTROL now requires more than 0.1, ten times the 0.01 tolerance
+of the assertions it guards, with a comment saying why. The other three CONTROLS in the group keep 1.0, because their
+creatures hit harder and they passed. No count, prediction or proof changes; the second window runs the same
+registration at the new head.
+
 ### Not tested
 
 - **Nothing here has been run in the engine.** It compiles (phase 2, above); no Unreal test and no C++ guard proof has
