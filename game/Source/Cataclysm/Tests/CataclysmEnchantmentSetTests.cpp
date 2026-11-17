@@ -59,7 +59,7 @@ namespace CataclysmEnchantmentSetTest
 	const TCHAR* ArchonMarker =
 		TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
 	const TCHAR* ArchonDrawback =
-		TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+		TEXT("Negative_Your_movement_speed_is_reduced_by_20");
 
 	/**
 	 * And the two sets that were waiting for one reading: an attacker asking how
@@ -69,11 +69,11 @@ namespace CataclysmEnchantmentSetTest
 	const TCHAR* BruteMarker =
 		TEXT("Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr");
 	const TCHAR* BruteDrawback =
-		TEXT("Negative_You_take_10_more_damage_from_all_sources");
+		TEXT("Negative_You_take_20_more_damage_from_all_sources");
 	const TCHAR* RegaliaMarker =
 		TEXT("Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2");
 	const TCHAR* RegaliaDrawback =
-		TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you");
+		TEXT("Negative_Ranged_attacks_deal_40_more_damage_to_you");
 
 	/**
 	 * The benefits: three thresholds on set A, one on set B, one on set C, and
@@ -499,7 +499,8 @@ CATACLYSM_TEST(FCataclysmSetRealArchonsAegisTest,
 
 	// THE REAL ROWS: "Archon's Aegis (2-Piece Bonus): Your block chance is
 	// increased by 25%" and the set's drawback, "Your movement speed is reduced
-	// by 10%". This is the end-to-end reading of what the sheet says.
+	// by 20%" (10% until the owner doubled it on 2026-11-17, #1498). This is the
+	// end-to-end reading of what the sheet says.
 	int32 Added = 0;
 	const FTotals Totals =
 		Gather(Tables, Pieces(2, ArchonMarker, ArchonDrawback), Added);
@@ -510,8 +511,8 @@ CATACLYSM_TEST(FCataclysmSetRealArchonsAegisTest,
 			  OnlyValueOn(Totals, TEXT("block_chance")), 25.0f);
 	TestEqual(TEXT("movement speed is lowered once"),
 			  CountOn(Totals, TEXT("movement_speed")), 1);
-	TestEqual(TEXT("by 10, as its words say"),
-			  OnlyValueOn(Totals, TEXT("movement_speed")), -10.0f);
+	TestEqual(TEXT("by 20, as its words say"),
+			  OnlyValueOn(Totals, TEXT("movement_speed")), -20.0f);
 	TestEqual(TEXT("two modifiers in all"), Added, 2);
 
 	return true;
@@ -530,8 +531,8 @@ CATACLYSM_TEST(FCataclysmSetRealBrutesHeartTest,
 
 	// THE REAL ROWS, WHICH DID NOT EXIST UNTIL ISSUE #1596. "Brute's Heart
 	// (2-Piece Bonus): You gain 25% increased damage against enemies that are
-	// within 5 meters of you", and the set's drawback, "You take 10% more damage
-	// from all sources". This set granted NOTHING before them, because it was
+	// within 5 meters of you", and the set's drawback, "You take 20% more damage
+	// from all sources" (10% until 2026-11-17, #1498). This set granted NOTHING before them, because it was
 	// waiting for a reading the game did not have: an attacker asking how far
 	// away its target is.
 	int32 Added = 0;
@@ -578,7 +579,7 @@ CATACLYSM_TEST(FCataclysmSetRealBrutesHeartTest,
 		OnlyModifierOn(Totals, TEXT("damage_taken"));
 	if (TestNotNull(TEXT("the drawback moves damage taken once"), Cost))
 	{
-		TestEqual(TEXT("by 10 more, as its words say"), Cost->Value, 10.0f);
+		TestEqual(TEXT("by 20 more, as its words say"), Cost->Value, 20.0f);
 		TestTrue(TEXT("as a multiplier"),
 				 Cost->Bucket == ECataclysmStatBucket::More);
 		TestTrue(TEXT("and from all sources, so with no condition at all"),
@@ -606,7 +607,8 @@ CATACLYSM_TEST(FCataclysmSetRealDemonKingsRegaliaTest,
 	// increases sum could express the first and would silently mis-build this
 	// one, which looks right on a fresh character and wrong on an invested one.
 	//
-	// Its drawback is "Ranged attacks deal 20% more damage to you", which needed
+	// Its drawback is "Ranged attacks deal 40% more damage to you" (20% until
+	// 2026-11-17, #1498), which needed
 	// nothing new: a hit already records whether it was ranged.
 	int32 Added = 0;
 	const FTotals Totals =
@@ -636,7 +638,7 @@ CATACLYSM_TEST(FCataclysmSetRealDemonKingsRegaliaTest,
 		OnlyModifierOn(Totals, TEXT("damage_taken"));
 	if (TestNotNull(TEXT("the drawback moves damage taken once"), Cost))
 	{
-		TestEqual(TEXT("by 20 more, as its words say"), Cost->Value, 20.0f);
+		TestEqual(TEXT("by 40 more, as its words say"), Cost->Value, 40.0f);
 		TestTrue(TEXT("as a multiplier"),
 				 Cost->Bucket == ECataclysmStatBucket::More);
 		TestTrue(TEXT("and only from a ranged attack, which needed no new "

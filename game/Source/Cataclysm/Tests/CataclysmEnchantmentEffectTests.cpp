@@ -145,7 +145,7 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* BlockWindowBenefit =
 		TEXT("Positive_Blocking_an_attack_grants_10_20_increased_dama");
 
-	const TCHAR* SetDrawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+	const TCHAR* SetDrawback = TEXT("Negative_Your_movement_speed_is_reduced_by_20");
 
 	/**
 	 * The drawback that locks a slot. Issue #41, and the lock's first source.
@@ -10554,7 +10554,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChronomancerSetTest,
  * Chronomancer's Time-Lock, written whole at its first threshold. Issue #1833.
  * Two pieces each carrying the 2-piece bonus, "All debuffs you apply to enemies
  * now last 50% longer", and the set's drawback, "All buffs you apply to
- * yourself now last 25% less time": debuffs 1.5 times as long and a buff 0.75.
+ * yourself now last 50% less time" (25% until the owner doubled it on
+ * 2026-11-17, #1498): debuffs 1.5 times as long and a buff 0.5.
  * One piece is below the threshold, so neither applies.
  */
 bool FCataclysmChronomancerSetTest::RunTest(const FString&)
@@ -10563,7 +10564,7 @@ bool FCataclysmChronomancerSetTest::RunTest(const FString&)
 	using namespace CataclysmDurationRowsTest;
 
 	const TCHAR* Bonus = TEXT("Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de");
-	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les");
+	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_50_les");
 
 	for (const int32 Pieces : {1, 2})
 	{
@@ -10594,7 +10595,7 @@ bool FCataclysmChronomancerSetTest::RunTest(const FString&)
 				  UCataclysmSkillEffects::DebuffDurationMultiplierOf(Wearer.AbilitySystem),
 				  bWhole ? 1.5f : 1.0f, 0.001f);
 		TestEqual(FString::Printf(TEXT("%d piece(s): a buff"), Pieces),
-				  Skill->OwnDurationMultiplier(true), bWhole ? 0.75f : 1.0f, 0.001f);
+				  Skill->OwnDurationMultiplier(true), bWhole ? 0.5f : 1.0f, 0.001f);
 	}
 	return true;
 }
@@ -27575,7 +27576,7 @@ bool FCataclysmWarlordTenRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second");
-	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10_1");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_20_1");
 	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
@@ -27731,7 +27732,7 @@ bool FCataclysmDemonKingTenRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo");
-	const TCHAR* Drawback = TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you");
+	const TCHAR* Drawback = TEXT("Negative_Ranged_attacks_deal_40_more_damage_to_you");
 	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
@@ -27778,7 +27779,7 @@ bool FCataclysmBruteTenRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds");
-	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	const TCHAR* Drawback = TEXT("Negative_You_take_20_more_damage_from_all_sources");
 	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
@@ -27820,7 +27821,7 @@ bool FCataclysmWarlordSixRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da");
-	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10_1");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_20_1");
 	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.WarhoundRoll"));
 	if (!TestNotNull(TEXT("set-up: the Warhound's roll can be pinned"), Roll))
 	{
@@ -27872,7 +27873,7 @@ bool FCataclysmBruteSixAuraRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health");
-	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	const TCHAR* Drawback = TEXT("Negative_You_take_20_more_damage_from_all_sources");
 	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
@@ -27918,7 +27919,7 @@ bool FCataclysmBruteSixResistanceRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health");
-	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	const TCHAR* Drawback = TEXT("Negative_You_take_20_more_damage_from_all_sources");
 	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
@@ -28170,7 +28171,7 @@ bool FCataclysmChronoTenRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSetPiecesTest;
 	const TCHAR* Bonus = TEXT("Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every");
-	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les");
+	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_50_les");
 	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
 	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
 	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
