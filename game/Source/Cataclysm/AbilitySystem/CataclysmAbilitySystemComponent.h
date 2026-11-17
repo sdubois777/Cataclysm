@@ -1516,9 +1516,12 @@ public:
 	 * Chaotic Barrier. The others are drawn as before, each equally likely; a pin naming the one left out draws among
 	 * the others.
 	 *
+	 * AND FOR A STATED NUMBER OF SECONDS, since 2026-11-17: a self buff writing `Effect=RandomBuff` holds what it drew
+	 * for its own duration (issue #2580, [N5]). Nought or less is `RandomBuffSeconds`, as before.
+	 *
 	 * @return whether a buff is now held
 	 */
-	bool HoldARandomBuff(FName Excluded = NAME_None);
+	bool HoldARandomBuff(FName Excluded = NAME_None, float Seconds = 0.0f);
 
 	/** The name of the buff held, or none: none once its seconds have passed, whether or not anything has noticed. */
 	FName HeldRandomBuff() const;

@@ -7,6 +7,8 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the ailment a firing row states, laid on what the shot lands on. Issue #2580.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
@@ -292,6 +294,10 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	{
 		Projectile->SpentIncreasePercent = Firing->LastNextUseIncreasePercent;
 		Projectile->SpentMoreMultiplier = Firing->LastNextUseMoreMultiplier;
+
+		// AND THE AILMENT ITS ROW STATES, read off the firing skill here rather than added to the argument list above,
+		// so the three places that fire a shot carry it without each being told. Issue #2580, [N1].
+		Projectile->StatedAilment = Firing->Params.Ailment;
 	}
 	Projectile->bBurns = bInBurns;
 
@@ -752,6 +758,17 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 											  /*DealtBy=*/nullptr,
 											  /*Skill=*/FiringSkill.Get(),
 											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr);
+		}
+
+		// AND THE AILMENT THE FIRING ROW STATES, BY THE BURN'S OWN RULE: landed, and carrying damage. Issue #2580,
+		// [N1]. At magnitude one, with the firing skill when it is still there, as
+		// `UCataclysmSkillTemplate::ApplyStatedAilmentTo` lays it for every blow that passes through `HitTargets`.
+		if (!StatedAilment.IsEmpty() && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
+		{
+			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(StatedAilment))
+			{
+				UCataclysmAilments::Apply(Firer, Target, *Kind, /*Magnitude=*/1.0f, FiringSkill.Get());
+			}
 		}
 
 		// AND THE FERVOUR THIS ENEMY EARNS THE FIRER, when the shot landed.

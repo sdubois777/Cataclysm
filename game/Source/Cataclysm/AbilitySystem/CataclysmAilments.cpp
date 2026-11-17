@@ -189,6 +189,23 @@ const FCataclysmAilmentKind* UCataclysmAilments::KindNamed(const FString& Ailmen
 	return nullptr;
 }
 
+const FCataclysmAilmentKind* UCataclysmAilments::KindNamedInASkillRow(const FString& Written)
+{
+	const FString Wanted = Written.Replace(TEXT(" "), TEXT(""));
+	if (Wanted.IsEmpty())
+	{
+		return nullptr;
+	}
+	for (const FCataclysmAilmentKind& Kind : EveryKind)
+	{
+		if (Wanted.Equals(FString(Kind.Ailment).Replace(TEXT(" "), TEXT("")), ESearchCase::IgnoreCase))
+		{
+			return &Kind;
+		}
+	}
+	return nullptr;
+}
+
 void UCataclysmAilments::Application(float TotalChance, float& OutChance,
 									 float& OutMagnitude, float MagnitudePercent)
 {

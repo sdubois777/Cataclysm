@@ -295,6 +295,24 @@ public:
 	float LastHealthCostPercentOfMaximum = -1.0f;
 
 	/**
+	 * The damage percent this use drew, for a skill stating `DamageRollMin` and `DamageRollMax`; -1 before its first
+	 * use and for every skill stating none. Issue #2580, [N3]. Drawn once per use in `CommitAndBegin`, so every blow
+	 * of one use deals the same figure, and read back by `GetDamagePercent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float RolledDamagePercent = -1.0f;
+
+	/**
+	 * The name `Effect=` writes on a self buff that draws one buff from the game's random-buff pool,
+	 * `UCataclysmAbilitySystemComponent::RandomBuffTable`. Issue #2580, [N5]. `RANDOM_BUFF_EFFECT` in
+	 * `tools/generate_datatables.py` holds the same name; it names no row of the Status Effects sheet.
+	 */
+	static const TCHAR* RandomBuffEffect;
+
+	/** Whether this skill's `Effect=` cell is `RandomBuffEffect`. */
+	bool DrawsARandomBuff() const;
+
+	/**
 	 * How far the character had moved since its own last attack when this skill
 	 * was last used, in metres. Issue #41, slice 2.
 	 *
@@ -1042,6 +1060,18 @@ protected:
 	 * than assumed. See StatesStunAsItsEffect below.
 	 */
 	void ApplyStunTo(AActor* Self, AActor* Target, float DamageDealt) const;
+
+	/**
+	 * Apply the ailment this skill's `Ailment=` names to one target, at magnitude one, through
+	 * `UCataclysmAilments::Apply`. Issue #2580, [N1]. Nothing for a skill naming none. A rider on HitTargets beside
+	 * the burn, the knockback and the stun, asked only for a blow that landed.
+	 *
+	 * @return whether the ailment was applied
+	 */
+	bool ApplyStatedAilmentTo(AActor* Self, AActor* Target) const;
+
+	/** Draw this use's damage percent between `DamageRollMin` and `DamageRollMax`. See `RolledDamagePercent`. */
+	float DrawDamageRoll() const;
 
 	/**
 	 * Whether this skill names stunning as its effect, rather than merely

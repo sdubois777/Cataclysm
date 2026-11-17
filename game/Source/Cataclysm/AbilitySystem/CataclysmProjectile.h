@@ -748,6 +748,12 @@ private:
 	bool bBurns = false;
 
 	/**
+	 * The ailment the firing row's `Ailment=` names, copied when it is fired, or empty. Laid on what it lands on beside
+	 * the burn above and by the same rule, so a thrown flask poisons as a thrown axe burns. Issue #2580, [N1].
+	 */
+	FString StatedAilment;
+
+	/**
 	 * Whether Finish has already run.
 	 *
 	 * SEPARATE FROM bFinished because they mean different things. bFinished is

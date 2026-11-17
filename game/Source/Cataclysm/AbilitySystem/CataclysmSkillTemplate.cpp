@@ -62,6 +62,32 @@
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
 #include "Items/CataclysmItem.h"
+#include "HAL/IConsoleManager.h"
+
+/**
+ * Pins where a skill's rolled damage percent lands between its `DamageRollMin` and `DamageRollMax`, as a share of
+ * the way from one to the other: 0 the least, 1 the most. -1, the default, draws uniformly. Issue #2580, [N3]. The
+ * same shape as `Cataclysm.RandomDotPick`, so a test can say which figure it expects.
+ */
+static TAutoConsoleVariable<float> CVarCataclysmSkillDamageRoll(
+	TEXT("Cataclysm.SkillDamageRoll"),
+	-1.0f,
+	TEXT("Pins a rolled skill's damage percent as a share of the way from its DamageRollMin to its DamageRollMax: "
+		 "0 the least, 1 the most. -1 draws at random."),
+	ECVF_Default);
+
+/**
+ * Pins which of its named effects a skill stating `EffectPick=Random` lays, by its place among them. -1, the
+ * default, draws each equally likely. Issue #2580, [N4].
+ */
+static TAutoConsoleVariable<int32> CVarCataclysmSkillEffectPick(
+	TEXT("Cataclysm.SkillEffectPick"),
+	-1,
+	TEXT("Pins the effect a skill stating EffectPick=Random lays, by its place among the effects it names. -1 "
+		 "draws at random."),
+	ECVF_Default);
+
+const TCHAR* UCataclysmSkillTemplate::RandomBuffEffect = TEXT("RandomBuff");
 
 UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 {
@@ -97,6 +123,16 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 	// damage from whichever key it was put on would be worth 250% of weapon
 	// damage on the right mouse button and 400% on R. Decided 2026-08-22;
 	// see docs/DECISIONS.md and issue #836.
+	//
+	// AND A SKILL THAT ROLLS ITS DAMAGE ANSWERS WHAT THIS USE DREW. Issue #2580, [N3]. The generator refuses a row
+	// stating a roll and a Damage Percent both, so the roll stands in for the column. Before the first use there is
+	// no draw, and the middle of the range is answered: the figure a reader of the skill bar expects on average.
+	if (Params.RollsItsDamage())
+	{
+		return RolledDamagePercent >= 0.0f
+			? RolledDamagePercent
+			: 0.5f * (Params.DamageRollMin + Params.DamageRollMax);
+	}
 	if (DamagePercentOverride >= 0.0f)
 	{
 		return DamagePercentOverride;
@@ -167,6 +203,10 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// EVERY USE BEGINS HITTING WHAT ITS OWN SHAPE HITS. Written here and not below, because a free start skips the
 	// block that takes what a row rolled.
 	ThisUseHitsAllWithinCm = 0.0f;
+
+	// AND A SKILL THAT ROLLS ITS DAMAGE DRAWS THIS USE'S FIGURE, before anything below reads `GetDamagePercent`.
+	// Issue #2580, [N3]: "drawn uniformly per use". A free repeat is a use of its own and draws again.
+	RolledDamagePercent = Params.RollsItsDamage() ? DrawDamageRoll() : -1.0f;
 
 	if (!bFreeRepeat && !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
@@ -1563,8 +1603,21 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 	// so every caller of it gets the same rule rather than each remembering.
 	const FName Type = DamageTypeName();
 
+	// ONE OF THEM, DRAWN AT RANDOM, WHEN THE ROW SAYS SO. Issue #2580, [N4]: the Chaos aura Unreason lays "one curse
+	// drawn at random" each pulse. A draw for every application, so each target of one pulse draws its own. Among the
+	// effects kept above, so a stun or a damage over time named beside them is never drawn; the generator refuses a
+	// row naming one. Each equally likely; `Cataclysm.SkillEffectPick` pins the place for tests.
+	TArray<FGameplayTag> Laying = NamedEffectTags();
+	if (Params.EffectPick.Equals(TEXT("Random"), ESearchCase::IgnoreCase) && Laying.Num() > 1)
+	{
+		const int32 Pinned = CVarCataclysmSkillEffectPick.GetValueOnAnyThread();
+		const int32 Pick = Laying.IsValidIndex(Pinned) ? Pinned : FMath::RandRange(0, Laying.Num() - 1);
+		const FGameplayTag Drawn = Laying[Pick];
+		Laying = {Drawn};
+	}
+
 	int32 Applied = 0;
-	for (const FGameplayTag& EffectTag : NamedEffectTags())
+	for (const FGameplayTag& EffectTag : Laying)
 	{
 		const float Seconds = AppliedEffectSeconds(EffectTag) * DurationScale;
 		if (Seconds <= 0.0f)
@@ -2470,6 +2523,14 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 											  /*DealtBy=*/nullptr, /*Skill=*/this);
 		}
 
+		// AND THE AILMENT A ROW STATES, BY THE SAME RULE AS THE BURN ABOVE. Issue #2580, [N1], ruled by the owner
+		// 2026-11-17: `Ailment=Necrosis` applies it outright on a landed blow. Whether the blow hurt is not asked, so a
+		// Support skill dealing nothing still lays it (#917); whether it connected is (#1156).
+		if (bLanded)
+		{
+			ApplyStatedAilmentTo(Self, Target);
+		}
+
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
 		// The Warhammer's Groundbreaker: "for 10 seconds every blow you land
 		// cracks the ground beneath what it hits". Here rather than in the Strike
@@ -2945,6 +3006,49 @@ void UCataclysmSkillTemplate::ApplyStunTo(AActor* Self, AActor* Target,
 	// stomp obey one set of rules rather than two.
 	UCataclysmSkillEffects::ApplyStun(Self, Target, Params.StunSeconds,
 									  DamageDealt, StatesStunAsItsEffect());
+}
+
+bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
+{
+	if (Params.Ailment.IsEmpty() || !IsValid(Self) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// A NAME NO AILMENT HAS IS SAID OUT LOUD AND APPLIES NOTHING. The generator refuses one, so a name arriving here
+	// means the table was edited in the editor rather than generated.
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Params.Ailment);
+	if (!Kind)
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("'%s' states Ailment=%s, which names no ailment, so it applies nothing."),
+			   *SkillName, *Params.Ailment);
+		return false;
+	}
+
+	// AT MAGNITUDE ONE, the ailment's own row's figures, as `Burn=1` lays burn at its row's. THE SKILL GOES WITH IT,
+	// so every tick names this skill (issue #41, slice 4) and the applier's damage over time stats are asked with its
+	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
+	// is, which is `RollOnLandedBlow`'s call.
+	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
+}
+
+float UCataclysmSkillTemplate::DrawDamageRoll() const
+{
+	const float Least = FMath::Max(0.0f, Params.DamageRollMin);
+	const float Most = FMath::Max(Least, Params.DamageRollMax);
+	const float Pinned = CVarCataclysmSkillDamageRoll.GetValueOnAnyThread();
+	if (Pinned >= 0.0f)
+	{
+		return FMath::Lerp(Least, Most, FMath::Clamp(Pinned, 0.0f, 1.0f));
+	}
+	// UNIFORM, which is what the row's two numbers say and nothing more: no weighting toward the middle and no rule
+	// against repeating the last draw. See `docs/DECISIONS.md`, 2026-11-17.
+	return FMath::FRandRange(Least, Most);
+}
+
+bool UCataclysmSkillTemplate::DrawsARandomBuff() const
+{
+	return Params.Effect.TrimStartAndEnd().Equals(RandomBuffEffect, ESearchCase::IgnoreCase);
 }
 
 void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const

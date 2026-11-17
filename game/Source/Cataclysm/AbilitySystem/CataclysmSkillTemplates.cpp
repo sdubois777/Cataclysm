@@ -2434,6 +2434,20 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
 		Lasts);
 
+	// AND A ROW WRITING `Effect=RandomBuff` DRAWS ONE BUFF FROM THE GAME'S OWN POOL, for as long as this buff lasts.
+	// Issue #2580, [N5], the Chaos Whip's Loaded Dice: "gain one buff drawn at random from every buff there is, for 8
+	// seconds". THE POOL IS REUSED, NOT COPIED: `HoldARandomBuff` is the draw the Shard of Anarchy set and Chaotic
+	// Barrier make, from `RandomBuffTable`, with its pin, its Touch of Nothing refusal and its one-buff-at-a-time rule.
+	// Only the seconds are this row's. The name above resolves to no tag, so the line above lays nothing for it.
+	if (DrawsARandomBuff())
+	{
+		if (UCataclysmAbilitySystemComponent* Drawing =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			Drawing->HoldARandomBuff(NAME_None, Lasts);
+		}
+	}
+
 	if (UWorld* World = Self->GetWorld())
 	{
 		World->GetTimerManager().SetTimer(

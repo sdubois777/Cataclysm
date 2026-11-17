@@ -335,6 +335,24 @@ SHAPE_RIDERS = {
                        "REFUND_TARGETS. What triggers it is the row's Trigger "
                        "tag",
     "Untargetable": "1 if the caster cannot be hit while the skill runs",
+
+    # --- Added 2026-11-17 for the Corrupted Stalker's kits, issue #2580 -----
+    #
+    # [N1], RULED BY THE OWNER THAT DAY. `Effect` cannot say it: the engine's
+    # `NamedEffectTags` drops every damage over time `Effect` names, because a
+    # tag granted with no per-tick amount behind it is a target bleeding for
+    # nothing. This key prices one, through `UCataclysmAilments::Apply`.
+    "Ailment": "the ailment a landed blow applies outright, at magnitude one, "
+               "one of SKILL_ROW_AILMENTS. Burn is `Burn=1` and not this",
+    # [N3]. NOT `MinDamagePercent` AND `MaxDamagePercent`, which already mean
+    # a charged swing's floor and a scaling ceiling. A row stating a roll
+    # leaves its Damage Percent cell blank; `weapon_skills` refuses both.
+    "DamageRollMin": "the least percent of weapon damage a use may draw; "
+                     "drawn uniformly per use up to DamageRollMax",
+    "DamageRollMax": "the most percent of weapon damage a use may draw",
+    # [N4]. One of the named effects per application rather than all of them.
+    "EffectPick": "how a row naming several effects lays them, one of "
+                  "EFFECT_PICKS. `Random` lays one, drawn on each application",
 }
 
 #: Closed value sets for the text riders above.
@@ -390,6 +408,40 @@ TARGET_MODES = frozenset({"All", "Nearest", "Furthest"})
 #: while the row read as though it worked.
 SPREAD_CONDITIONS = frozenset({"Burning"})
 
+#: The ailments a skill row's `Ailment=` may name. Issue #2580, [N1], ruled by
+#: the owner on 2026-11-17: "Build the new skill-row key
+#: `Ailment=<Poison|Disease|Necrosis|VoidSplinter>`". Written without the
+#: space `UCataclysmAilments` spells "Void Splinter" with, because a cell value
+#: is one word; `UCataclysmAilments::KindNamedInASkillRow` compares without
+#: spaces.
+#:
+#: BURN IS LEFT OUT ON PURPOSE, a judgement of 2026-11-17 recorded in
+#: docs/DECISIONS.md: `Burn=1` already applies it through `ApplyBurn`, which
+#: carries burn's own rules, and two keys for one ailment would let a row state
+#: it twice. BLEED IS LEFT OUT because the owner's set does not name it.
+SKILL_ROW_AILMENTS = frozenset({"Poison", "Disease", "Necrosis", "VoidSplinter"})
+
+#: How a row naming several effects lays them. Issue #2580, [N4]. Absent means
+#: every one, which is what Anathema's `Effect=Shred, Madness` does.
+EFFECT_PICKS = frozenset({"Random"})
+
+#: The rider text keys that take ONE value and never a comma-separated list.
+#: `Ailment=Poison, Necrosis` would otherwise pass the closed-set check one name
+#: at a time and the engine would read no ailment at all.
+SINGLE_VALUED_TEXT_PARAMS = frozenset({"Ailment", "EffectPick"})
+
+#: The name `Effect=` writes on a self buff that draws one buff from the
+#: game's own random-buff pool, `UCataclysmAbilitySystemComponent::
+#: RandomBuffTable`. Issue #2580, [N5], the Chaos Whip's Loaded Dice. It names
+#: no row of the Status Effects sheet, so `validate_skill_effects` passes it by
+#: name; `UCataclysmSkillTemplate::RandomBuffEffect` holds the same text.
+RANDOM_BUFF_EFFECT = "RandomBuff"
+
+#: The shapes whose blows are dealt by something the row puts in the world --
+#: a minion, a gadget -- rather than through the skill's own `HitTargets`, so a
+#: stated ailment would reach nothing. Refused rather than left to do nothing.
+SHAPES_WHOSE_BLOWS_ARE_NOT_THEIR_OWN = frozenset({"Summon", "Deployable"})
+
 #: Which closed set each text rider draws from. A rider absent from this map is
 #: a number.
 TEXT_PARAM_VALUES = {
@@ -404,6 +456,8 @@ TEXT_PARAM_VALUES = {
     "ChargeBreaksOn": CHARGE_BREAKS,
     "RefundsCooldown": REFUND_TARGETS,
     "TargetMode": TARGET_MODES,
+    "Ailment": SKILL_ROW_AILMENTS,
+    "EffectPick": EFFECT_PICKS,
 }
 
 #: The parameters whose value is a name rather than a number.
@@ -590,6 +644,10 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
             # nothing below would have caught a misspelling: "ForcedMovement=Nockdown"
             # would have been stored and then matched no branch in the engine's
             # parser, which is a skill that runs and does not shove.
+            if key in SINGLE_VALUED_TEXT_PARAMS and "," in value:
+                raise DataError(
+                    f"{where}: {key}={value!r} names more than one, and "
+                    f"{key} takes one of {sorted(TEXT_PARAM_VALUES[key])}")
             for one in (v.strip() for v in value.split(",")):
                 if not one:
                     continue
@@ -609,7 +667,75 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
                 ) from None
         params[key] = value
 
+    check_stalker_kit_keys(params, shape, where)
     return params
+
+
+def check_stalker_kit_keys(params: dict[str, str], shape: str,
+                           where: str) -> None:
+    """Refuse the four keys of issue #2580 where they could not do what they say.
+
+    EACH REFUSAL IS A ROW THAT WOULD RUN AND QUIETLY DO SOMETHING ELSE, which is
+    the failure `parse_shape_params` exists to prevent: a roll with one end, a
+    pick with nothing to pick between, a random buff on a shape that grants
+    nothing to its caster, an ailment on a blow the row does not deal.
+    """
+    # [N1] A STATED AILMENT ON A SHAPE WHOSE BLOWS ARE DEALT BY SOMETHING ELSE.
+    if "Ailment" in params and shape in SHAPES_WHOSE_BLOWS_ARE_NOT_THEIR_OWN:
+        raise DataError(
+            f"{where}: a {shape} states Ailment={params['Ailment']}, and its "
+            f"blows are dealt by what it puts in the world, not through the "
+            f"skill's own HitTargets, so the ailment would reach nothing")
+
+    # [N3] BOTH ENDS OR NEITHER, AND IN ORDER.
+    rolled = [k for k in ("DamageRollMin", "DamageRollMax") if k in params]
+    if len(rolled) == 1:
+        raise DataError(
+            f"{where}: states {rolled[0]} without the other end of the roll. "
+            f"A roll needs both DamageRollMin and DamageRollMax")
+    if rolled:
+        least = float(params["DamageRollMin"])
+        most = float(params["DamageRollMax"])
+        if least < 0.0:
+            raise DataError(
+                f"{where}: DamageRollMin is {least}, below nought")
+        if most <= 0.0 or most < least:
+            raise DataError(
+                f"{where}: the roll runs from {least} to {most}. "
+                f"DamageRollMax must be above nought and not below "
+                f"DamageRollMin")
+
+    # [N4] A PICK NEEDS AT LEAST TWO EFFECTS, NONE OF THEM A STUN. The engine
+    # draws among the effects `NamedEffectTags` keeps, which leaves out a stun
+    # (applied by `StunSeconds` through `ApplyStun`) and every damage over time
+    # (`validate_skill_effects` refuses those, since only it holds the sheet).
+    named = [n.strip() for n in (params.get("Effect") or "").split(",")
+             if n.strip()]
+    if "EffectPick" in params:
+        if len(named) < 2:
+            raise DataError(
+                f"{where}: states EffectPick={params['EffectPick']} and names "
+                f"{len(named)} effect(s). A pick draws one of several, so "
+                f"Effect must name at least two")
+        if "Stun" in named:
+            raise DataError(
+                f"{where}: picks at random among {named}, and a stun is never "
+                f"in the draw: it is laid by StunSeconds through ApplyStun")
+        if RANDOM_BUFF_EFFECT in named:
+            raise DataError(
+                f"{where}: picks at random among {named}, and "
+                f"{RANDOM_BUFF_EFFECT} is a self buff's draw, not an effect")
+
+    # [N5] A RANDOM BUFF IS A SELF BUFF'S, AND NAMED ALONE.
+    if RANDOM_BUFF_EFFECT in named:
+        if shape != "SelfBuff":
+            raise DataError(
+                f"{where}: a {shape} names Effect={RANDOM_BUFF_EFFECT}. Only a "
+                f"SelfBuff draws a buff for its caster")
+        if len(named) > 1:
+            raise DataError(
+                f"{where}: names {RANDOM_BUFF_EFFECT} beside {named}. It is "
+                f"the buff the row grants and is named alone")
 
 
 def check_basic_attack(shape: str, params: str, arms_the_holder: bool,
@@ -690,7 +816,8 @@ def weapon_skills(book) -> list[dict]:
         # call is here so a bad cell fails generation rather than producing a
         # skill that runs and does nothing.
         if shape:
-            parse_shape_params(params, shape, where)
+            parsed = parse_shape_params(params, shape, where)
+            check_a_roll_states_no_damage_percent(parsed, damage_percent, where)
 
         out.append({"Name": row_name(damage, weapon, slot),
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,
@@ -705,6 +832,25 @@ def weapon_skills(book) -> list[dict]:
                     "Cooldown": skill_number(cooldown, "cooldown", where),
                     "ManaCost": skill_number(mana_cost, "mana cost", where)})
     return unique(out, "Weapon Skills")
+
+
+def check_a_roll_states_no_damage_percent(params: dict[str, str],
+                                          damage_percent: str,
+                                          where: str) -> None:
+    """A row that rolls its damage leaves the Damage Percent cell blank.
+
+    Issue #2580, [N3], a judgement of 2026-11-17 recorded in docs/DECISIONS.md.
+    The roll IS the row's damage percent, drawn per use, and
+    `UCataclysmSkillTemplate::GetDamagePercent` answers the draw before it
+    reads the column. A row stating both would carry a figure the engine never
+    deals, which is the shape of fault issue #1142 was opened for.
+    """
+    if "DamageRollMax" in params and damage_percent:
+        raise DataError(
+            f"{where}: states a roll from {params.get('DamageRollMin')} to "
+            f"{params['DamageRollMax']} and a Damage Percent of "
+            f"{damage_percent}. The roll is the row's damage percent; leave "
+            f"the Damage Percent cell blank")
 
 
 #: What the DamagePercent, Cooldown and ManaCost columns hold for a skill that
@@ -13735,11 +13881,40 @@ def validate_skill_effects(tables: dict[str, list[dict]]) -> list[str]:
         # would fail on the comma and say nothing useful about which half is
         # wrong.
         for named in (n.strip() for n in (params.get("Effect") or "").split(",")):
+            # A SELF BUFF'S RANDOM BUFF NAMES THE POOL AND NOT A ROW. Issue
+            # #2580, [N5]. `check_stalker_kit_keys` already holds it to a
+            # SelfBuff and to standing alone.
+            if named == RANDOM_BUFF_EFFECT:
+                continue
             if named and named not in known:
                 problems.append(
                     f"WeaponSkills/{row['Name']}: applies the effect {named!r}, "
                     f"which is not in the Buffs, Debuffs or DoTs sheets")
+        problems.extend(refuse_a_pick_among_damage_over_time(
+            params, effects, f"WeaponSkills/{row['Name']}"))
     return problems
+
+
+def refuse_a_pick_among_damage_over_time(params: dict[str, str],
+                                         effects: list[dict],
+                                         where: str) -> list[str]:
+    """A row picking at random among its effects names no damage over time.
+
+    Issue #2580, [N4]. The engine draws among what `NamedEffectTags` keeps, and
+    it drops every damage over time `Effect` names. A row picking among
+    "Poison, Shred" would therefore always lay the Shred, which is not a pick.
+    Asked here rather than in `check_stalker_kit_keys`, because only this
+    function holds the Status Effects sheet that says which rows are DoTs.
+    """
+    if "EffectPick" not in params:
+        return []
+    over_time = {row["EffectName"] for row in effects
+                 if row.get("EffectKind") == "DoT"}
+    named = [n.strip() for n in (params.get("Effect") or "").split(",")
+             if n.strip()]
+    return [f"{where}: picks at random among {named}, and {one!r} is damage "
+            f"over time, which Effect never lays. Use Ailment= for it"
+            for one in named if one in over_time]
 
 
 def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
