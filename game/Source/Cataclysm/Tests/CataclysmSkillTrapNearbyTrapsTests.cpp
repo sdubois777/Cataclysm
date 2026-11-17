@@ -1073,7 +1073,7 @@ CATACLYSM_TEST(FCataclysmNearbyTrapsChainedBleedTest,
 
 	// TWO PLAYERS 100 M APART, EACH WITH THE HEAVY FLAG AND THE CHAIN ROW AT 10 M: a first trap 20 m north with its enemy
 	// 2.5 m east, which sets it off, and a second trap 8 m beyond it, unarmed, with its own enemy 2.5 m east. The control
-	// holds no bleed row; the other holds "Traps apply 1-2 bleed stacks to all enemies caught in their blast" at 1, as
+	// holds no bleed row; the other holds "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast" at 1, as
 	// layer 3's tests write it: `apply_status_sized` on `deployable_hit`, requiring `Type.Trap`, the Ailment Bleed.
 	FNearbyTrapsWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))

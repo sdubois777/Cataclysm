@@ -31,8 +31,8 @@
  * Skill traps, layer 3: the eight trap rows on what layers 1 and 2 built. Ruled 2026-10-21 by the coordinating session
  * (M1-M6), on top of T1-T19 and L1-L6, for "Traps arm 30%-60% faster", "Traps have 30%-50% increased trigger radius",
  * "Your trap skills get +1-6 to max trap count", "Traps do not expire, they remain armed until triggered", "Traps apply
- * a 20%-35% slow to triggered enemies for 2-4 seconds", "Traps apply 1-2 bleed stacks to all enemies caught in their
- * blast", "Each trap triggered in the last 10 seconds increases your damage by 8%-15%" and "Placing a trap generates a
+ * a 20%-35% slow to triggered enemies for 2-4 seconds", "Traps cause a bleed of 1-2 times normal strength in every enemy
+ * caught in their blast", "Each trap triggered in the last 10 seconds increases your damage by 8%-15%" and "Placing a trap generates a
  * burst of evasion, granting 10%-20% evasion chance for 3 seconds". In layer 1's group, `Cataclysm.Traps.`, whose rig
  * this follows, in a file of its own.
  *
@@ -738,7 +738,7 @@ CATACLYSM_TEST(FCataclysmTrapRowBleedTest,
 	// FOUR PLAYERS 100 M APART, EACH WITH A HEAVY TRAP 20 M NORTH, THE ENEMY THAT SETS IT OFF 2.5 M EAST OF IT AND A
 	// SECOND 4 M EAST OF IT, OUTSIDE ITS 3 M AND INSIDE SEARING LASH'S 5 M CONE. The creatures hold 1,500 health, so the
 	// lash's blow takes more than a tenth of it (the owner's rule of #917). The control holds the Heavy flag alone;
-	// the next two also hold "Traps apply 1-2 bleed stacks to all enemies caught in their blast" as the item builds it
+	// the next two also hold "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast" as the item builds it
 	// from its row (action `apply_status_sized` on `deployable_hit`, requiring Type.Trap, Ailment Bleed, no wait),
 	// rolled at 1 and at 2; the fourth holds it at 2 and its creatures 100,000 health, a blow far short of a tenth.
 	FTrapRowWorld Scope;

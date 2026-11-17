@@ -277,7 +277,7 @@ namespace CataclysmTrapLateBlowTest
 		return !Machine.IsValid() || Machine->IsActorBeingDestroyed();
 	}
 
-	/** "Traps apply 1-2 bleed stacks to all enemies caught in their blast" at a size of 1, as the item builds it. */
+	/** "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast" at a size of 1, as the item builds it. */
 	FCataclysmPoolAction TrapLateBlowBleedRow()
 	{
 		FCataclysmPoolAction Sized;

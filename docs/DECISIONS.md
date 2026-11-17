@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — Seven enchantment sentences take the wording the owner approved, and the one-stack rule covers ailments and damage over time only (#913, #1609)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (seven sentences on the Enchantments sheet, and the name and sentence cells
+of their seven Enchantment Effects rows) and from it `game/Data/EnchantmentsPositive.csv`,
+`game/Data/EnchantmentsNegative.csv` and `game/Data/EnchantmentEffects.csv`, with their three DataTable assets;
+`game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` (seven aliases); `tools/tests/enchantment_row_names.txt`
+(seven renames pinned); `docs/Cataclysm_GDD_v2.md` (the one-stack rule); comments that quote the old sentences or the
+old rule in `CataclysmAbilitySystemComponent.h`, `CataclysmRegeneration.cpp`, `CataclysmSkillEffects.cpp` and `.h`,
+`CataclysmStatPipeline.h`, `CataclysmCurseSpread.cpp`, `CataclysmBuriedWeapon.cpp` and `.h`, `CataclysmPinnedLine.h`,
+`sim/cataclysm_sim/affixes.py`, `tools/tests/test_ailment_magnitude_rule.py` and `tools/tests/test_demonic_skills.py`;
+six lines of Unreal tests that name a reworded row (`CataclysmEnchantmentEffectTests.cpp`) and comments in three trap test files;
+this file.
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** Every one of the seven effect rows keeps its stat, action, values, tags and condition; only
+  its sentence and the row name made from the sentence change. Measured: the seven changed rows of
+  `EnchantmentEffects.csv` are identical to their old selves from the third column on.
+- **AN ITEM SAVED OR ROLLED UNDER AN OLD SENTENCE STILL LOADS**, through seven new pairs in
+  `FCataclysmEnchantmentRenames::Aliases`, the table the save loader applies, as for the earlier rewords.
+- **TWO OF THE SEVEN DIFFER FROM THE WORDING FIRST APPROVED**, each ruled the same day by the coordinating session under
+  the owner's delegation, and set out below: one so that two rows do not share a name, and one because the review list
+  was wrong about what a number does.
+
+### THE OWNER'S RULINGS, 2026-11-17, as posted (the nested bullets of #913's first point are run together here)
+
+On #913:
+
+> 1. **The one-stack rule is narrowed to ailments and damage over time** (bleed, poison, burn, necrosis and the like): an enemy carries at most one of each.
+>    - Stat-reduction debuffs the player places on an enemy MAY stack.
+>    - So these three rows keep their words and their stacks, and need no rebuild: "Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6 stacks" (P176); "Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely" (P192); "Each melee hit you take reduces the attacker's damage by 3%-5% for 3 seconds, stacking up to 5 times" (P188).
+>    - `docs/Cataclysm_GDD_v2.md` is to say so.
+>    - Precedent offered with the question: Last Epoch's armor shred and Path of Exile's Withered both stack on enemies.
+> 2. **Approved, as proposed:** "Bleed you apply deals 30%-60% increased damage" (P178); "Poison you apply lasts 30%-60% longer" (P289); "Bleed you apply lasts 50%-100% longer" (P304); "Traps cause bleeding in every enemy caught in their blast" (P215).
+> 3. **The fifty sentences reworded since the first export are confirmed as they stand.**
+
+On #1609:
+
+> | Row | New sentence |
+> | :-- | :-- |
+> | N077 | "Healing, regeneration and leech on you are reduced by 30%-50%" |
+> | N027 | "Healing, regeneration and leech on you are reduced by 50%-75%" |
+> | P141 | "Diseased enemies' healing, regeneration and leech are reduced by 50%-100%" |
+
+### THE TWO WORDINGS RULED AGAIN THE SAME DAY
+
+- **N027, A NAME CLASH.** A row's name is made from the first 48 characters of its sentence
+  (`row_name(kind, text[:48])` in `tools/generate_datatables.py`). N077's and N027's approved sentences are the same for
+  their first 48 characters, so both would have been `Negative_Healing_regeneration_and_leech_on_you_are_reduc`, and
+  the generator refused the workbook ("Enchantment Effects row 128: ... is written here as '...30%-50%' and in the
+  Enchantments sheet as '...50%-75%'"). The proposal that went to the owner had not checked the name rule. **Ruled by the
+  coordinating session under the owner's delegation, option (a):** N027 reads "All healing, regeneration and leech on you
+  is reduced by 50%-75%", the same meaning in a different order; N077 stays as approved. Checked: the 575 enchantment row
+  names are all different.
+- **P215, THE REVIEW LIST WAS WRONG.** The list said the trap sentence's "1-2" "does nothing" and proposed dropping it.
+  It does something: the row is `apply_status_sized`, value 1 to 2, and ruling 8 of 2026-10-07 made "1-2 bleed stacks"
+  one bleed at 1 to 2 times its ordinary size (`CataclysmAbilitySystemComponent.h`, `ApplyStatusSizedAction`). The
+  generator refused the approved sentence because its words state no range. **Ruled by the coordinating session the
+  same day, option (a):** keep the roll and say it. The sentence that went in is the coordinating session's first
+  choice, which the generator accepted: "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their
+  blast".
+
+### THE SEVEN
+
+| Row id | Old sentence | New sentence | Old row name -> new row name |
+| :-- | :-- | :-- | :-- |
+| N077 | Healing effects on you are reduced by 30%-50% | Healing, regeneration and leech on you are reduced by 30%-50% | `Negative_Healing_effects_on_you_are_reduced_by_30_50` -> `Negative_Healing_regeneration_and_leech_on_you_are_reduc` |
+| N027 | Healing effects are reduced by 50%-75% | All healing, regeneration and leech on you is reduced by 50%-75% | `Negative_Healing_effects_are_reduced_by_50_75` -> `Negative_All_healing_regeneration_and_leech_on_you_is_re` |
+| P141 | Disease effects reduce enemy healing by 50%-100% | Diseased enemies' healing, regeneration and leech are reduced by 50%-100% | `Positive_Disease_effects_reduce_enemy_healing_by_50_100` -> `Positive_Diseased_enemies_healing_regeneration_and_leec` |
+| P178 | Bleed stacks you apply deal 30%-60% increased damage | Bleed you apply deals 30%-60% increased damage | `Positive_Bleed_stacks_you_apply_deal_30_60_increased_da` -> `Positive_Bleed_you_apply_deals_30_60_increased_damage` |
+| P289 | Poison stacks you apply have 30%-60% increased duration | Poison you apply lasts 30%-60% longer | `Positive_Poison_stacks_you_apply_have_30_60_increased_d` -> `Positive_Poison_you_apply_lasts_30_60_longer` |
+| P304 | Bleed stacks you apply have 50%-100% increased duration | Bleed you apply lasts 50%-100% longer | `Positive_Bleed_stacks_you_apply_have_50_100_increased_d` -> `Positive_Bleed_you_apply_lasts_50_100_longer` |
+| P215 | Traps apply 1-2 bleed stacks to all enemies caught in their blast | Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast | `Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug` -> `Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength` |
+
+The three healing sentences now say what the rows already did: under the owner's earlier ruling on #1609, "healing
+received" covers regeneration and leech as well as healing.
+
+### THE ONE-STACK RULE
+
+`docs/Cataclysm_GDD_v2.md`, under applying damage over time, now reads "An enemy carries at most one stack of each
+ailment and damage over time effect the player applies", followed by the sentence that a debuff lowering one of an
+enemy's stats may stack, naming P176, P192 and P188, the ruling's date and its genre precedent. The two Python checks
+that quote the rule, the simulation's comment on `MAX_STACKS_ON_AN_ENEMY` and the C++ comments that called every
+player-applied effect single-stack say the same now. No code's behaviour changes: every ailment was already one stack,
+and the three armour and damage rows already stacked.
+
+### REGISTERED BEFORE THE RUNS
+
+- **The asset rebuild** (`tools/run_editor_python.py tools/generate_datatable_assets.py`) changes exactly
+  `DT_EnchantmentsPositive.uasset`, `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`.
+- **The Unreal suite**: @@UNREAL_TOTAL@@ tests performed, all succeeded. This change adds no Unreal test.
+  `Cataclysm.EnchantmentAliases.AHelmSavedUnderTheLeechRowsOldNameLoadsAsItsNewRowAndEveryOldNameMeansACurrentRow`
+  already walks every pair of `Aliases()` against the built tables, so it holds the seven new pairs.
+- **A Python guard**, `tools/prove_guard.py` `break_and_run` in a detached git worktree copy, command
+  `python -m pytest tools/tests/test_a_reword_must_not_rename_a_row.py`: the break deletes the alias line
+  `{TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug"),` and the line under it from
+  `CataclysmEnchantmentRenames.cpp`. Predicted named failure:
+  `tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table`, the check that
+  holds the pinned renames equal to the alias table.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-11-03 — A lobbed attack's minimum range is its marked circle plus the caster's body as it stands, so at a rarer rung the circle never covers its own feet; a Common caster's is unchanged (#2716)
 
 **Affects:** `ACataclysmEnemyCharacter::BodyGrowthCm`, new (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`,
